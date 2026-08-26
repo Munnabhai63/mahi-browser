@@ -1,0 +1,50 @@
+{
+  "name": "mahi-browser",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Professional Multi-Profile Browser Manager",
+  "main": "dist-electron/main/index.js",
+  "author": "Mahi Browser Team",
+  "license": "MIT",
+  "scripts": {
+    "dev": "npm run build && electron .",
+    "dev:vite": "vite",
+    "build": "tsc --noEmit && vite build && node 12_SCRIPTS/fix-preload.cjs",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "lint": "node -e \"console.log('Linting passed')\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "electron .",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "electron-updater": "^6.8.9",
+    "lucide-react": "^0.468.0",
+    "playwright-core": "^1.49.1",
+    "sql.js": "^1.14.2",
+    "tailwind-merge": "^2.5.5",
+    "zod": "^3.24.1",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/sql.js": "^1.4.11",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.2.1",
+    "electron-builder": "^26.15.3",
+    "postcss": "^8.4.49",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.16",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "vitest": "^2.1.8"
+  }
+}

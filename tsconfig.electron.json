@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "outDir": "dist-electron",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@browser/*": ["02_BROWSER/*"],
+      "@hardware/*": ["03_HARDWARE/*"],
+      "@licensing/*": ["04_LICENSING/*"],
+      "@auth/*": ["05_AUTH/*"],
+      "@database/*": ["06_DATABASE/*"],
+      "@backend/*": ["07_BACKEND/*"],
+      "@security/*": ["08_SECURITY/*"],
+      "@automation/*": ["09_AUTOMATION/*"],
+      "@config/*": ["10_CONFIG/*"],
+      "@shared/*": ["10_CONFIG/shared/*"]
+    }
+  },
+  "include": [
+    "02_BROWSER/**/*",
+    "03_HARDWARE/**/*",
+    "04_LICENSING/**/*",
+    "05_AUTH/**/*",
+    "06_DATABASE/**/*",
+    "07_BACKEND/**/*",
+    "08_SECURITY/**/*",
+    "09_AUTOMATION/**/*",
+    "10_CONFIG/**/*"
+  ]
+}

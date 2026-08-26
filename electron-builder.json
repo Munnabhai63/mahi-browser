@@ -1,0 +1,63 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.mahibrowser.app",
+  "productName": "MAHI BROWSER",
+  "copyright": "Copyright © 2026 Mahi Browser Team",
+  "directories": {
+    "output": "release",
+    "buildResources": "13_ASSETS/resources"
+  },
+  "publish": [
+    {
+      "provider": "generic",
+      "url": "https://updates.mahibrowser.com/download/"
+    }
+  ],
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*",
+    "package.json"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "13_ASSETS/resources/icon.ico",
+    "artifactName": "${productName}-${version}-Setup.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "MAHI BROWSER",
+    "runAfterFinish": true,
+    "installerIcon": "13_ASSETS/resources/icon.ico",
+    "uninstallerIcon": "13_ASSETS/resources/icon.ico"
+  },
+  "portable": {
+    "artifactName": "${productName}-${version}-Portable.${ext}"
+  },
+  "asar": true,
+  "extraResources": [
+    {
+      "from": "node_modules/sql.js/dist/sql-wasm.wasm",
+      "to": "sql-wasm.wasm"
+    },
+    {
+      "from": "13_ASSETS/resources/icon.ico",
+      "to": "icon.ico"
+    },
+    {
+      "from": "13_ASSETS/resources/splash.html",
+      "to": "splash.html"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-electron/
+release/
+.mahi_data/
+.test_*/
+*.sqlite
+*.sqlite-journal
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,22 @@
+=== MAHI BROWSER SESSION STARTED AT 2026-08-26T20:28:35.440Z ===
+[2026-08-26T20:28:35.441Z] [CHECKPOINT] Step 1: Application Initializing - Electron version: 33.4.11
+[2026-08-26T20:28:35.443Z] [CHECKPOINT] Step 1: Hardware Acceleration Disabled
+[2026-08-26T20:28:35.444Z] [CHECKPOINT] Step 2: Checking Single Instance Lock
+[2026-08-26T20:28:35.449Z] [CHECKPOINT] Step 2: Single Instance Lock Acquired
+[2026-08-26T20:28:35.485Z] [CHECKPOINT] Step 3: App whenReady fired
+[2026-08-26T20:28:35.565Z] [CHECKPOINT] Step 3: Setting Database Path - C:\Users\munaf\AppData\Roaming\mahi-browser\mahi_browser.sqlite
+[2026-08-26T20:28:35.567Z] [CHECKPOINT] Step 3: Initializing SQLite Engine & Tables
+[2026-08-26T20:28:35.643Z] [CHECKPOINT] Step 3: Database Initialized Successfully
+[2026-08-26T20:28:35.650Z] [CHECKPOINT] Step 4: Registering IPC Bridge Handlers
+[2026-08-26T20:28:35.653Z] [CHECKPOINT] Step 4: IPC Handlers Registered
+[2026-08-26T20:28:35.655Z] [CHECKPOINT] Step 4: Starting Local REST API Server (Port 32123)
+[2026-08-26T20:28:35.658Z] [CHECKPOINT] Step 4: REST API Server Running
+[2026-08-26T20:28:35.660Z] [CHECKPOINT] Step 5: Creating BrowserWindow
+[2026-08-26T20:28:35.661Z] [CHECKPOINT] Step 5: Preload script path - C:\Users\munaf\Desktop\mahai brouser\release\win-unpacked\resources\app.asar\dist-electron\preload\index.cjs
+[2026-08-26T20:28:35.663Z] [CHECKPOINT] Step 5: Preload exists on disk - true
+[2026-08-26T20:28:35.684Z] [CHECKPOINT] Step 5: Loading frontend bundle
+[2026-08-26T20:28:35.685Z] [CHECKPOINT] Step 5: Loading production HTML - C:\Users\munaf\Desktop\mahai brouser\release\win-unpacked\resources\app.asar\dist\index.html
+[2026-08-26T20:28:35.936Z] [CHECKPOINT] Step 6: Window ready-to-show event fired
+[2026-08-26T20:28:35.951Z] [CHECKPOINT] Step 6: Main window displayed successfully
+[2026-08-26T20:28:54.075Z] [CHECKPOINT] Event: second-instance detected - focusing or reopening main window
+[2026-08-26T20:30:27.655Z] [CHECKPOINT] Event: second-instance detected - focusing or reopening main window
