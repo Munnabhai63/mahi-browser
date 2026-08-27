@@ -90,14 +90,14 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
             <div>
               <div className="flex items-center space-x-2">
                 <h2 className="text-xl font-bold text-white">
-                  Welcome back, {currentUser?.displayName || 'Student'}
+                  Welcome back!
                 </h2>
                 <span className="px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-400 text-[10px] font-bold border border-teal-500/20">
-                  Enterprise Workspace
+                  MAHI PRO
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1 font-mono">
-                {currentUser?.email || 'student@domain.com'} · Dedicated Multi-Account & Anti-Detect Environment
+                Premium Secure Workspace
               </p>
             </div>
           </div>

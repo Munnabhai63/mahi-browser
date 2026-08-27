@@ -1400,8 +1400,8 @@ export function registerIpcHandlers(): void {
         if (check.valid) {
           const user = {
             id: 'local-license-user',
-            email: 'licensed@mahi.local',
-            name: 'Licensed User',
+            email: 'Enterprise License',
+            name: 'MAHI PRO',
             role: 'PRO' as any,
             status: 'ACTIVE' as any,
             createdAt: new Date().toISOString(),

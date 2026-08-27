@@ -146,7 +146,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Multi-account anti-detect environment, hardware-isolated fingerprints, and automated workflows
+            Manage your workspaces and profiles
           </p>
         </div>
 
