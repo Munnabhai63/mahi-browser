@@ -21,7 +21,7 @@ export function getHWID(): string {
     const hash = crypto.createHash('sha256').update(raw).digest('hex').toUpperCase();
     const short = hash.substring(0, 16);
     // Format as XXXX-XXXX-XXXX-XXXX
-    return `MAHI-\${short.substring(0,4)}-\${short.substring(4,8)}-\${short.substring(8,12)}-\${short.substring(12,16)}`;
+    return `MAHI-${short.substring(0,4)}-${short.substring(4,8)}-${short.substring(8,12)}-${short.substring(12,16)}`;
   } catch (e) {
     return 'MAHI-UNKNOWN-HWID';
   }
@@ -51,7 +51,7 @@ export function verifyLicense(licenseKey: string): { valid: boolean; error?: str
 
     // Verify RSA signature
     const verify = crypto.createVerify('SHA256');
-    verify.update(\`\${data.hwid}:\${data.exp}\`);
+    verify.update(`${data.hwid}:${data.exp}`);
     verify.end();
 
     const isAuthentic = verify.verify(PUBLIC_KEY, data.sig, 'base64');

@@ -17,12 +17,7 @@ if (!data.includes('commercial:getHwid')) {
 // Patch commercial:login
 const searchLogin = `ipcMain.handle('commercial:login', async (_event, dto) => {
     try {
-      const result = loginUser(dto);
-      if (result.success && result.user) {
-        // SECURITY: set session context in main process
-        setActiveUserId(result.user.id);
-      }
-      return result;
+      return loginUser(dto);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }

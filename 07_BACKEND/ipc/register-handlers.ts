@@ -1,4 +1,6 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
+import { verifyLicense, getHWID } from '../../08_SECURITY/license-service.js';
+import { setActiveUserId } from '../commercial/session-context.js';
 import {
   getProfiles,
   getProfileById,
@@ -1387,9 +1389,36 @@ export function registerIpcHandlers(): void {
     }
   });
 
+  ipcMain.handle('commercial:getHwid', async () => getHWID());
+
   ipcMain.handle('commercial:login', async (_event, dto) => {
     try {
-      return loginUser(dto);
+      if (dto.password === 'LICENSE_MODE') {
+        const licenseKey = dto.email;
+        const check = verifyLicense(licenseKey);
+        
+        if (check.valid) {
+          const user = {
+            id: 'local-license-user',
+            email: 'licensed@mahi.local',
+            name: 'Licensed User',
+            role: 'PRO' as any,
+            status: 'ACTIVE' as any,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          setActiveUserId(user.id);
+          return { success: true, user, token: licenseKey };
+        } else {
+          return { success: false, error: check.error };
+        }
+      }
+      
+      const result = loginUser(dto);
+      if (result.success && result.user) {
+        setActiveUserId(result.user.id);
+      }
+      return result;
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
