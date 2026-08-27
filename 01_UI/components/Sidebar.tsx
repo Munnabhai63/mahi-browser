@@ -71,7 +71,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
     { id: 'history' as NavigationPage, label: 'History', icon: ScrollText },
     { id: 'extensions' as NavigationPage, label: 'Extensions', icon: Puzzle },
     { id: 'automation' as NavigationPage, label: 'Automation', icon: PlaySquare },
-    { id: 'license' as NavigationPage, label: 'MAHI Pro License', icon: ShieldCheck },
     { id: 'logs' as NavigationPage, label: 'Activity Logs', icon: ScrollText },
     { id: 'settings' as NavigationPage, label: 'Settings', icon: Settings },
     { id: 'help' as NavigationPage, label: 'Help & Docs', icon: HelpCircle },
