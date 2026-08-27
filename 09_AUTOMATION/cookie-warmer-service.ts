@@ -4,6 +4,9 @@ import crypto from 'node:crypto';
 import { getProfileById, updateProfile, getProfileStoragePath } from '../02_BROWSER/services/profile-service.js';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { exportCookies } from '../02_BROWSER/services/cookie-service.js';
+import { chromium } from 'playwright-core';
+import { processManager } from '../02_BROWSER/process-manager.js';
+import { getProfileDebugPort } from '../02_BROWSER/launcher.js';
 
 
 export interface WarmerSite {
@@ -138,134 +141,76 @@ export async function warmProfile(
   const queue = getWarmingSiteQueue(siteCount, options.categories);
   const visitedUrls = queue.map((s) => s.url);
 
-  // Calculate realistic farmed cookie count based on visited domains
-  const existingCookies = countProfileCookies(profileId);
-  const estimatedNewCookies = Math.floor(siteCount * 3.5 + Math.random() * 5);
-  const totalFarmedCookies = Math.max(existingCookies + estimatedNewCookies, siteCount * 3);
-
-  // Update profile with Warmed tag in background without polluting user notes
+  // Mark started
   const currentTags = Array.isArray(profile.tags) ? [...profile.tags] : [];
-  if (!currentTags.includes('Warmed')) {
-    currentTags.push('Warmed');
+  if (!currentTags.includes('Warming')) currentTags.push('Warming');
+  updateProfile(profileId, { tags: currentTags });
+
+  const wasRunning = processManager.isRunning(profileId);
+  let browserObj: any = null;
+
+  try {
+    if (!wasRunning) {
+      await processManager.startProfile(profileId);
+      // Wait for browser to initialize
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+
+    const debugPort = getProfileDebugPort(profileId);
+    browserObj = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`, { timeout: 15000 });
+    
+    const contexts = browserObj.contexts();
+    const context = contexts.length > 0 ? contexts[0] : await browserObj.newContext();
+    
+    // Attempt to minimize the browser window so it doesn't disturb user
+    try {
+      const page = await context.newPage();
+      const session = await context.newCDPSession(page);
+      const { windowId } = await session.send('Browser.getWindowForTarget');
+      await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'minimized' } });
+      await page.close();
+    } catch (e) {}
+
+    let sitesVisited = 0;
+    
+    for (const site of queue) {
+      try {
+        const page = await context.newPage();
+        // Go to site, ignore errors (e.g. timeouts, captchas)
+        await page.goto(site.url, { timeout: 15000, waitUntil: 'domcontentloaded' }).catch(() => {});
+        // Wait 2-3 seconds for tracking scripts to drop cookies
+        await page.waitForTimeout(2000 + Math.random() * 2000);
+        await page.close();
+        sitesVisited++;
+      } catch (e) {}
+    }
+
+  } catch (e) {
+    console.error('Warmer CDP Error:', e);
+  } finally {
+    if (browserObj) {
+      try { await browserObj.close(); } catch (e) {}
+    }
+    if (!wasRunning) {
+      try { await processManager.stopProfile(profileId); } catch (e) {}
+    }
   }
 
-  updateProfile(profileId, {
-    tags: currentTags,
-  });
+  // Update profile with Warmed tag
+  const finalTags = (Array.isArray(profile.tags) ? profile.tags : []).filter(t => t !== 'Warming');
+  if (!finalTags.includes('Warmed')) finalTags.push('Warmed');
+  
+  const currentNotes = profile.notes || '';
+  const newNotes = currentNotes ? `${currentNotes}\n[Auto-Warmed on ${new Date().toLocaleDateString()}]` : `[Auto-Warmed on ${new Date().toLocaleDateString()}]`;
+  updateProfile(profileId, { tags: finalTags, notes: newNotes });
 
-
-  // Seed genuine advertising cookies and history
-  try {
-    const storageDir = getProfileStoragePath(profileId);
-    if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
-
-    // 1. Seed History
-    const historyPath = path.join(storageDir, 'mahi_history.json');
-    let existingHistory: any[] = [];
-    if (fs.existsSync(historyPath)) {
-      try { existingHistory = JSON.parse(fs.readFileSync(historyPath, 'utf8')); } catch {}
-    }
-
-    for (const site of queue) {
-      const isAlready = existingHistory.some((h) => h.url === site.url);
-      if (!isAlready) {
-        existingHistory.unshift({
-          id: crypto.randomUUID(),
-          profileId,
-          url: site.url,
-          title: site.name,
-          visitCount: Math.floor(Math.random() * 3) + 1,
-          lastVisitTime: new Date(Date.now() - Math.floor(Math.random() * 7200000)).toISOString(),
-          typedCount: 1,
-        });
-      }
-    }
-    fs.writeFileSync(historyPath, JSON.stringify(existingHistory, null, 2), 'utf8');
-
-    // 2. Seed Cookies
-    const cookiesPath = path.join(storageDir, 'mahi_cookies.json');
-    let existingCookiesList: any[] = [];
-    if (fs.existsSync(cookiesPath)) {
-      try { existingCookiesList = JSON.parse(fs.readFileSync(cookiesPath, 'utf8')); } catch {}
-    }
-
-    for (const site of queue) {
-      let domain = '';
-      try {
-        domain = '.' + new URL(site.url).hostname.replace(/^www\./, '');
-      } catch {
-        domain = '.google.com';
-      }
-
-      const cookieTemplates = [
-        { name: '_ga', value: `GA1.1.${Math.floor(Math.random() * 1000000000)}.${Math.floor(Date.now() / 1000)}`, path: '/', secure: true, httpOnly: false },
-        { name: '_gid', value: `GA1.1.${Math.floor(Math.random() * 1000000000)}.${Math.floor(Date.now() / 1000)}`, path: '/', secure: true, httpOnly: false },
-        { name: 'session_id', value: crypto.randomBytes(16).toString('hex'), path: '/', secure: true, httpOnly: true },
-        { name: 'cf_clearance', value: crypto.randomBytes(24).toString('base64'), path: '/', secure: true, httpOnly: true },
-        { name: 'NID', value: `511=${crypto.randomBytes(32).toString('base64')}`, path: '/', secure: true, httpOnly: true },
-      ];
-
-      for (const t of cookieTemplates) {
-        const exists = existingCookiesList.some((c) => c.domain === domain && c.name === t.name);
-        if (!exists) {
-          existingCookiesList.push({
-            id: crypto.randomUUID(),
-            profileId,
-            domain,
-            name: t.name,
-            value: t.value,
-            path: t.path,
-            expires: Math.floor(Date.now() / 1000) + 86400 * 365,
-            httpOnly: t.httpOnly,
-            secure: t.secure,
-            sameSite: 'Lax',
-          });
-        }
-      }
-    }
-    fs.writeFileSync(cookiesPath, JSON.stringify(existingCookiesList, null, 2), 'utf8');
-  } catch(e) {}
-
-  try {
-    const currentTags = profile.tags || [];
-    const newTags = currentTags.includes('Warmed') ? currentTags : [...currentTags, 'Warmed'];
-    const currentNotes = profile.notes || '';
-    const newNotes = currentNotes ? `${currentNotes}\n[Auto-Warmed on ${new Date().toLocaleDateString()}]` : `[Auto-Warmed on ${new Date().toLocaleDateString()}]`;
-    updateProfile(profileId, { tags: newTags, notes: newNotes });
-  } catch (e) {}
+  const totalFarmedCookies = countProfileCookies(profileId);
 
   logActivity('PROFILE', 'INFO', 'PROFILE_WARMED', `Auto-farmed ${siteCount} websites for profile "${profile.name}" (${totalFarmedCookies} cookies active).`, profileId, profile.name, {
     mode,
     sites: queue.map((s) => s.name),
     cookiesFarmed: totalFarmedCookies,
   });
-
-
-  // Write active warming queue to profile storage so content script picks it up
-  try {
-    const storageDir = getProfileStoragePath(profileId);
-    if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
-    const qFile = path.join(storageDir, 'mahi_warmer_queue.json');
-    fs.writeFileSync(qFile, JSON.stringify({ sites: visitedUrls, index: 0 }), 'utf8');
-  } catch(e) {}
-
-  // Trigger live browser automation
-  try {
-    const { processManager } = await import('../02_BROWSER/process-manager.js');
-    const { synchronizerHub } = await import('./sync-hub.js');
-
-    if (processManager.isRunning(profileId)) {
-      synchronizerHub.broadcastAction('system', {
-        type: 'START_WARMUP',
-        payload: { profileId, sites: visitedUrls },
-        timestamp: Date.now(),
-      });
-    } else {
-      await processManager.startProfile(profileId);
-    }
-  } catch(e) {}
-
-
 
   return {
     success: true,

@@ -84,20 +84,20 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
       <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-teal-950/40 border border-slate-800 rounded-3xl p-6 shadow-sm relative overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
           <div className="flex items-center space-x-4">
-            <div className={`w-14 h-14 rounded-2xl ${currentUser.avatarColor || 'bg-teal-600'} flex items-center justify-center text-white font-black text-2xl shadow-lg shrink-0`}>
-              {currentUser.avatarLetter || 'S'}
+            <div className={`w-14 h-14 rounded-2xl ${currentUser?.avatarColor || 'bg-teal-600'} flex items-center justify-center text-white font-black text-2xl shadow-lg shrink-0`}>
+              {currentUser?.avatarLetter || 'S'}
             </div>
             <div>
               <div className="flex items-center space-x-2">
                 <h2 className="text-xl font-bold text-white">
-                  Welcome back, {currentUser.displayName}
+                  Welcome back, {currentUser?.displayName || 'Student'}
                 </h2>
                 <span className="px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-400 text-[10px] font-bold border border-teal-500/20">
                   Enterprise Workspace
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1 font-mono">
-                {currentUser.email} · Dedicated Multi-Account & Anti-Detect Environment
+                {currentUser?.email || 'student@domain.com'} · Dedicated Multi-Account & Anti-Detect Environment
               </p>
             </div>
           </div>

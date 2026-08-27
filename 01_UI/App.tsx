@@ -8,7 +8,8 @@ import { ToastContainer } from './components/ToastContainer.js';
 import { AppLockModal } from './components/AppLockModal.js';
 import { WelcomeWizardModal } from './components/WelcomeWizardModal.js';
 import { UpdateModal } from './components/UpdateModal.js';
-import { GmailAccountModal } from './components/GmailAccountModal.js';
+import { CommercialUserModal } from './components/CommercialUserModal.js';
+import { useAccountStore } from './stores/useAccountStore.js';
 
 // Pages
 import { Dashboard } from './pages/Dashboard.js';
@@ -54,7 +55,12 @@ export const App: React.FC = () => {
   const { fetchLogs, addLog } = useLogStore();
   const { fetchSettings } = useSettingsStore();
 
+  const { currentUser, commercialUser, isAccountModalOpen, closeAccountModal } = useAccountStore();
+
   useEffect(() => {
+    // Only load data once the user is authenticated
+    if (!commercialUser) return;
+
     // Initial data load
     fetchProfiles();
     fetchLogs();
@@ -75,7 +81,7 @@ export const App: React.FC = () => {
         unsubLogs();
       };
     }
-  }, []);
+  }, [commercialUser]);
 
   const [isSynchronizerOpen, setIsSynchronizerOpen] = useState(false);
 
@@ -204,6 +210,12 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 font-sans">
+      {/* ═══ AUTH GATE: shown when user is not logged in. Blocks entire app ═══ */}
+      <CommercialUserModal
+        isOpen={isAccountModalOpen || !commercialUser}
+        onClose={commercialUser ? closeAccountModal : undefined}
+      />
+
       {/* App Lock PIN Screen */}
       <AppLockModal />
 
@@ -265,7 +277,6 @@ export const App: React.FC = () => {
         isOpen={isSynchronizerOpen}
         onClose={() => setIsSynchronizerOpen(false)}
       />
-      <GmailAccountModal />
       <ToastContainer />
     </div>
   );

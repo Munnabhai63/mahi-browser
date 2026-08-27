@@ -216,61 +216,98 @@ export function ensureProfileStealthExtension(
   // -------------------------------------------------------------
   // 2. Hardware Navigator Overrides
   // -------------------------------------------------------------
+  if (!window.__mahiProxies) window.__mahiProxies = [];
   try {
-    Object.defineProperty(navigator, 'hardwareConcurrency', {
-      get: function() { return ${hardwareConcurrency}; },
-      enumerable: true,
-      configurable: true
-    });
+    function spoofNavigator(prop, value) {
+      var desc = Object.getOwnPropertyDescriptor(Navigator.prototype, prop);
+      if (!desc) return;
+      var proxy = new Proxy(desc.get, {
+        apply: function() { return value; }
+      });
+      Object.defineProperty(Navigator.prototype, prop, {
+        get: proxy,
+        enumerable: desc.enumerable,
+        configurable: desc.configurable
+      });
+      window.__mahiProxies.push({ p: proxy, o: desc.get, n: 'get ' + prop });
+    }
 
-    Object.defineProperty(navigator, 'deviceMemory', {
-      get: function() { return ${deviceMemory}; },
-      enumerable: true,
-      configurable: true
-    });
-
-    Object.defineProperty(navigator, 'platform', {
-      get: function() { return ${JSON.stringify(isMac ? 'MacIntel' : 'Win32')}; },
-      enumerable: true,
-      configurable: true
-    });
-
-    Object.defineProperty(navigator, 'maxTouchPoints', {
-      get: function() { return 0; },
-      enumerable: true,
-      configurable: true
-    });
+    spoofNavigator('hardwareConcurrency', ${hardwareConcurrency});
+    spoofNavigator('deviceMemory', ${deviceMemory});
+    spoofNavigator('platform', ${JSON.stringify(isMac ? 'MacIntel' : 'Win32')});
+    spoofNavigator('maxTouchPoints', 0);
   } catch(e) {}
 
   // -------------------------------------------------------------
   // 3. Canvas Dynamic Hash Perturbation (Stealth Canvas Noise)
   // -------------------------------------------------------------
   try {
-    var origToDataURL = HTMLCanvasElement.prototype.toDataURL;
-    HTMLCanvasElement.prototype.toDataURL = function(type) {
-      try {
-        var ctx = this.getContext('2d');
-        if (ctx && this.width > 8 && this.height > 8) {
-          var dummy = ctx.getImageData(0, 0, 1, 1);
-        }
-      } catch(e) {}
-      return origToDataURL.apply(this, arguments);
-    };
+    const shiftVal = (pSeed % 3) - 1 || 1;
     
-    var origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
-    CanvasRenderingContext2D.prototype.getImageData = function(sx, sy, sw, sh) {
-      var imgData = origGetImageData.apply(this, arguments);
-      if (sw > 8 && sh > 8) {
-        var data = imgData.data;
-        var step = Math.max(16, (sw * sh) >> 4);
-        var shift = (pSeed % 3) - 1; 
-        if (shift === 0) shift = 1;
-        for (var i = 0; i < data.length; i += step) {
-          data[i] = Math.min(255, Math.max(0, data[i] + shift));
-        }
+    function applyNoise(imgData) {
+      var data = imgData.data;
+      var step = Math.max(16, (imgData.width * imgData.height) >> 4);
+      for (var i = 0; i < data.length; i += step) {
+        data[i] = Math.min(255, Math.max(0, data[i] + shiftVal));
       }
       return imgData;
-    };
+    }
+
+    var origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+    var proxyToDataURL = new Proxy(origToDataURL, {
+      apply: function(target, thisArg, argumentsList) {
+        try {
+          if (thisArg.width > 0 && thisArg.height > 0) {
+            var clone = document.createElement('canvas');
+            clone.width = thisArg.width;
+            clone.height = thisArg.height;
+            var ctx = clone.getContext('2d');
+            ctx.drawImage(thisArg, 0, 0);
+            var imgData = ctx.getImageData(0, 0, clone.width, clone.height);
+            ctx.putImageData(applyNoise(imgData), 0, 0);
+            return target.apply(clone, argumentsList);
+          }
+        } catch(e) {}
+        return target.apply(thisArg, argumentsList);
+      }
+    });
+    HTMLCanvasElement.prototype.toDataURL = proxyToDataURL;
+    
+    var origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+    var proxyGetImageData = new Proxy(origGetImageData, {
+      apply: function(target, thisArg, argumentsList) {
+        var imgData = target.apply(thisArg, argumentsList);
+        try {
+          if (imgData.width > 8 && imgData.height > 8) {
+            imgData = applyNoise(imgData);
+          }
+        } catch(e) {}
+        return imgData;
+      }
+    });
+    CanvasRenderingContext2D.prototype.getImageData = proxyGetImageData;
+
+    // Mask toString for native appearance
+    if (!window.__mahiProxies) window.__mahiProxies = [];
+    window.__mahiProxies.push({ p: proxyToDataURL, o: origToDataURL, n: 'toDataURL' });
+    window.__mahiProxies.push({ p: proxyGetImageData, o: origGetImageData, n: 'getImageData' });
+    
+    var origToString = Function.prototype.toString;
+    var proxyToString = new Proxy(origToString, {
+      apply: function(target, thisArg, argumentsList) {
+        if (thisArg === origToString || thisArg === proxyToString) {
+          return 'function toString() { [native code] }';
+        }
+        for (var i = 0; i < window.__mahiProxies.length; i++) {
+          var item = window.__mahiProxies[i];
+          if (thisArg === item.p || thisArg === item.o) {
+            return 'function ' + item.n + '() { [native code] }';
+          }
+        }
+        return target.apply(thisArg, argumentsList);
+      }
+    });
+    Function.prototype.toString = proxyToString;
   } catch(e) {}
 
   // -------------------------------------------------------------
@@ -1127,7 +1164,8 @@ export async function launchBrowser(profile: Profile): Promise<LaunchedProcessIn
       '--disable-sync',
       '--disable-default-apps',
       '--no-service-autorun',
-      '--disable-features=Translate,OptimizationHints,MediaRouter,EnableIPv6',
+      '--suppress-message-center-popups',
+      '--disable-features=Translate,OptimizationHints,MediaRouter,EnableIPv6,ExtensionDeveloperModeWarning',
     ];
 
 

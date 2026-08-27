@@ -39,6 +39,13 @@ export function getProfiles(filter: ProfileFilterOptions = {}): Profile[] {
   let query = 'SELECT p.*, ps.settings_json FROM profiles p LEFT JOIN profile_settings ps ON p.id = ps.profile_id WHERE (p.deleted_at IS NULL)';
   const params: unknown[] = [];
 
+  // --- SECURITY: Profile Isolation by owner_id ---
+  // If ownerId is provided, only return profiles owned by that user.
+  // SYSTEM_OWNER profiles are accessible to any authenticated user (pre-auth / machine-level profiles).
+  if (filter.ownerId) {
+    query += ' AND (p.owner_id = ? OR p.owner_id = \'SYSTEM_OWNER\')';
+    params.push(filter.ownerId);
+  }
 
   if (filter.status && filter.status !== 'ALL') {
     query += ' AND p.status = ?';
@@ -254,6 +261,7 @@ export function createProfile(dto: CreateProfileDTO): Profile {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const storagePath = getProfileStoragePath(id);
+  const ownerId = (dto as any).ownerId || 'SYSTEM_OWNER';
 
   const defaultSettings = getDefaultProfileSettings();
   const mergedSettings: ProfileSettings = {
@@ -265,8 +273,8 @@ export function createProfile(dto: CreateProfileDTO): Profile {
   };
 
   db.prepare(`
-    INSERT INTO profiles (id, name, description, folder, notes, status, storage_path, pinned, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 'STOPPED', ?, 0, ?, ?)
+    INSERT INTO profiles (id, name, description, folder, notes, status, storage_path, pinned, owner_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'STOPPED', ?, 0, ?, ?, ?)
   `).run(
     id,
     dto.name,
@@ -274,6 +282,7 @@ export function createProfile(dto: CreateProfileDTO): Profile {
     dto.folder || 'General',
     dto.notes || '',
     storagePath,
+    ownerId,
     now,
     now
   );

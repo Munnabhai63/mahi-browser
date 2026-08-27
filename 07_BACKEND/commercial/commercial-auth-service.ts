@@ -111,6 +111,38 @@ export function registerUser(dto: RegisterUserDTO, ipAddress?: string): { succes
   return { success: true, user, token };
 }
 
+export function syncSupabaseUser(user: { id: string; email: string; name?: string }): { success: boolean } {
+  const db = getDatabase();
+  try {
+    const existing = db.prepare('SELECT id FROM commercial_users WHERE id = ?').get(user.id);
+    if (!existing) {
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT INTO commercial_users (id, email, password_hash, salt, name, role, status, plan_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        user.id,
+        user.email,
+        'SUPABASE_AUTH',
+        'SUPABASE_AUTH',
+        user.name || user.email.split('@')[0],
+        'USER',
+        'ACTIVE',
+        'plan_free',
+        now,
+        now
+      );
+    } else {
+      // Just update last_login
+      db.prepare('UPDATE commercial_users SET last_login_at = ? WHERE id = ?').run(new Date().toISOString(), user.id);
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('syncSupabaseUser error:', err);
+    return { success: false };
+  }
+}
+
 export function loginUser(dto: LoginUserDTO, ipAddress?: string): { success: boolean; user?: CommercialUser; token?: string; error?: string } {
   const db = getDatabase();
   const email = (dto.email || '').trim().toLowerCase();

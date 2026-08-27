@@ -134,4 +134,6 @@ export interface ProfileFilterOptions {
   includeTrash?: boolean;
   sortBy?: 'name' | 'createdAt' | 'lastUsedAt' | 'status';
   sortDirection?: 'asc' | 'desc';
+  /** Security: if provided, only return profiles belonging to this commercial user ID */
+  ownerId?: string;
 }

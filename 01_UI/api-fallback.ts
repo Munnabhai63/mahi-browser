@@ -565,6 +565,12 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
         return { success: false, message: err.message };
       }
     },
+    commercialLogout: async () => {
+      return { success: true };
+    },
+    commercialSyncUser: async (user: any) => {
+      return { success: true };
+    },
 
     onProfileStatusChanged: () => () => {},
     onActivityLogAdded: () => () => {},

@@ -24,34 +24,33 @@ export interface WorkspaceItem {
 }
 
 interface AccountState {
-  currentUser: UserAccount;
+  currentUser: UserAccount | null;
   savedAccounts: UserAccount[];
   activeWorkspaceId: string;
   workspaces: WorkspaceItem[];
   isAccountModalOpen: boolean;
   dashboardRole: 'ADMIN' | 'STUDENT';
 
-  // Commercial Architecture State
   commercialUser: CommercialUser | null;
   commercialToken: string | null;
   entitlements: CommercialEntitlements | null;
   userDevices: CommercialDevice[];
   isCommercialLoading: boolean;
   commercialError: string | null;
+  rememberMe: boolean;
 
-  // Actions
   setDashboardRole: (role: 'ADMIN' | 'STUDENT') => void;
   openAccountModal: () => void;
   closeAccountModal: () => void;
-  loginWithGmail: (email: string, planName?: string) => { success: boolean; error?: string };
   switchAccount: (email: string) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   setActiveWorkspace: (id: string) => void;
   addWorkspace: (name: string) => void;
+  setRememberMe: (val: boolean) => void;
 
-  // Commercial Backend Actions
   commercialLogin: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   commercialRegister: (email: string, password: string, name?: string) => Promise<{ success: boolean; error?: string }>;
+  
   syncEntitlements: () => Promise<void>;
   fetchUserDevices: () => Promise<void>;
   revokeUserDevice: (deviceId: string) => Promise<boolean>;
@@ -76,160 +75,114 @@ function getRandomColor(str: string): string {
   return DEFAULT_AVATAR_COLORS[index];
 }
 
-const INITIAL_USER: UserAccount = {
-  email: 'owner@gmail.com',
-  displayName: 'owner',
-  avatarLetter: 'O',
-  avatarColor: 'bg-teal-600',
-  planName: 'Enterprise',
-  maxProfiles: 1000,
-  createdAt: new Date().toISOString(),
-};
-
 const INITIAL_WORKSPACES: WorkspaceItem[] = [
-  { id: 'ws-default', name: 'Personal Workspace', color: 'bg-emerald-600', role: 'Owner' },
-  { id: 'ws-agency', name: 'Agency Team', color: 'bg-indigo-600', role: 'Owner' },
+  { id: 'ws-default', name: 'My Workspace', color: 'bg-emerald-600', role: 'Owner' },
 ];
 
 export const useAccountStore = create<AccountState>()(
   persist(
     (set, get) => ({
-      currentUser: INITIAL_USER,
-      savedAccounts: [INITIAL_USER],
+      currentUser: null,
+      savedAccounts: [],
       activeWorkspaceId: 'ws-default',
       workspaces: INITIAL_WORKSPACES,
-      isAccountModalOpen: false,
+      isAccountModalOpen: true,
       dashboardRole: 'ADMIN',
 
-      // Commercial State
       commercialUser: null,
       commercialToken: null,
       entitlements: null,
       userDevices: [],
       isCommercialLoading: false,
       commercialError: null,
+      rememberMe: false,
 
-      setDashboardRole: (role: 'ADMIN' | 'STUDENT') => set({ dashboardRole: role }),
+      setDashboardRole: (role) => set({ dashboardRole: role }),
       openAccountModal: () => set({ isAccountModalOpen: true }),
       closeAccountModal: () => set({ isAccountModalOpen: false }),
+      setRememberMe: (val) => set({ rememberMe: val }),
 
-      loginWithGmail: (rawEmail: string, planName = 'Enterprise') => {
-        const email = rawEmail.trim().toLowerCase();
-        
-        if (!email.endsWith('@gmail.com')) {
-          return {
-            success: false,
-            error: 'Invalid email! Only @gmail.com accounts are allowed.',
-          };
-        }
-
-        const username = email.split('@')[0];
-        if (!username || username.length < 2) {
-          return {
-            success: false,
-            error: 'Please enter a valid Gmail username.',
-          };
-        }
-
-        const avatarLetter = username[0].toUpperCase();
-        const avatarColor = getRandomColor(username);
-
-        const newUser: UserAccount = {
-          email,
-          displayName: username,
-          avatarLetter,
-          avatarColor,
-          planName,
-          maxProfiles: 1000,
-          createdAt: new Date().toISOString(),
-        };
-
-        const existing = get().savedAccounts.filter((a) => a.email !== email);
-
-        set({
-          currentUser: newUser,
-          savedAccounts: [newUser, ...existing],
-          isAccountModalOpen: false,
-        });
-
-        return { success: true };
-      },
-
-      commercialLogin: async (email: string, password: string) => {
+      commercialLogin: async (email, password) => {
         set({ isCommercialLoading: true, commercialError: null });
         try {
-          if (window.mahiAPI) {
-            const res = await window.mahiAPI.commercialLogin({ email, password });
-            if (res.success && res.user) {
-              const username = res.user.name || res.user.email.split('@')[0];
-              const newUser: UserAccount = {
-                email: res.user.email,
-                displayName: username,
-                avatarLetter: username[0].toUpperCase(),
-                avatarColor: getRandomColor(username),
-                planName: res.user.planId,
-                maxProfiles: 100,
-                createdAt: res.user.createdAt,
-              };
+          if (!window.mahiAPI) {
+            set({ isCommercialLoading: false, commercialError: 'API not available' });
+            return { success: false, error: 'API not available' };
+          }
+          const res = await window.mahiAPI.commercialLogin({ email, password });
+          if (res.success && res.user) {
+            const username = res.user.name || res.user.email.split('@')[0];
+            const newUser: UserAccount = {
+              email: res.user.email,
+              displayName: username,
+              avatarLetter: username[0].toUpperCase(),
+              avatarColor: getRandomColor(username),
+              planName: res.user.planId || 'Free',
+              maxProfiles: 100,
+              createdAt: res.user.createdAt,
+            };
 
-              set({
-                commercialUser: res.user,
-                commercialToken: res.token || null,
-                currentUser: newUser,
-                isCommercialLoading: false,
-                isAccountModalOpen: false,
-              });
+            set({
+              commercialUser: res.user,
+              commercialToken: res.token,
+              currentUser: newUser,
+              isCommercialLoading: false,
+              isAccountModalOpen: false,
+              commercialError: null,
+            });
 
-              await get().syncEntitlements();
-              await get().fetchUserDevices();
-              return { success: true };
-            }
-            set({ isCommercialLoading: false, commercialError: res.error || 'Login failed' });
+            await get().syncEntitlements();
+            await get().fetchUserDevices();
+            return { success: true };
+          } else {
+            set({ isCommercialLoading: false, commercialError: res.error || 'Invalid credentials' });
             return { success: false, error: res.error || 'Invalid credentials' };
           }
-          return { success: false, error: 'API bridge unavailable' };
         } catch (err: any) {
-          set({ isCommercialLoading: false, commercialError: err?.message || 'Login error' });
-          return { success: false, error: err?.message || 'Login error' };
+          set({ isCommercialLoading: false, commercialError: err.message || 'Login failed' });
+          return { success: false, error: err.message || 'Login failed' };
         }
       },
 
-      commercialRegister: async (email: string, password: string, name?: string) => {
+      commercialRegister: async (email, password, name) => {
         set({ isCommercialLoading: true, commercialError: null });
         try {
-          if (window.mahiAPI) {
-            const res = await window.mahiAPI.commercialRegister({ email, password, name });
-            if (res.success && res.user) {
-              const username = res.user.name || res.user.email.split('@')[0];
-              const newUser: UserAccount = {
-                email: res.user.email,
-                displayName: username,
-                avatarLetter: username[0].toUpperCase(),
-                avatarColor: getRandomColor(username),
-                planName: res.user.planId,
-                maxProfiles: 5,
-                createdAt: res.user.createdAt,
-              };
+          if (!window.mahiAPI) {
+            set({ isCommercialLoading: false, commercialError: 'API not available' });
+            return { success: false, error: 'API not available' };
+          }
+          const res = await window.mahiAPI.commercialRegister({ email, password, name: name || email.split('@')[0] });
+          if (res.success && res.user) {
+            const username = res.user.name || res.user.email.split('@')[0];
+            const newUser: UserAccount = {
+              email: res.user.email,
+              displayName: username,
+              avatarLetter: username[0].toUpperCase(),
+              avatarColor: getRandomColor(username),
+              planName: res.user.planId || 'Free',
+              maxProfiles: 100,
+              createdAt: res.user.createdAt,
+            };
 
-              set({
-                commercialUser: res.user,
-                commercialToken: res.token || null,
-                currentUser: newUser,
-                isCommercialLoading: false,
-                isAccountModalOpen: false,
-              });
+            set({
+              commercialUser: res.user,
+              commercialToken: res.token,
+              currentUser: newUser,
+              isCommercialLoading: false,
+              isAccountModalOpen: false,
+              commercialError: null,
+            });
 
-              await get().syncEntitlements();
-              await get().fetchUserDevices();
-              return { success: true };
-            }
+            await get().syncEntitlements();
+            await get().fetchUserDevices();
+            return { success: true };
+          } else {
             set({ isCommercialLoading: false, commercialError: res.error || 'Registration failed' });
             return { success: false, error: res.error || 'Registration failed' };
           }
-          return { success: false, error: 'API bridge unavailable' };
         } catch (err: any) {
-          set({ isCommercialLoading: false, commercialError: err?.message || 'Registration error' });
-          return { success: false, error: err?.message || 'Registration error' };
+          set({ isCommercialLoading: false, commercialError: err.message || 'Registration failed' });
+          return { success: false, error: err.message || 'Registration failed' };
         }
       },
 
@@ -241,11 +194,11 @@ export const useAccountStore = create<AccountState>()(
           if (entitlements) {
             set({
               entitlements,
-              currentUser: {
-                ...get().currentUser,
-                planName: entitlements.plan?.name || get().currentUser.planName,
-                maxProfiles: entitlements.limits?.maxProfiles || get().currentUser.maxProfiles,
-              },
+              currentUser: get().currentUser ? {
+                ...get().currentUser!,
+                planName: entitlements.plan?.name || get().currentUser!.planName,
+                maxProfiles: entitlements.limits?.maxProfiles || get().currentUser!.maxProfiles,
+              } : get().currentUser,
             });
           }
         } catch {}
@@ -260,7 +213,7 @@ export const useAccountStore = create<AccountState>()(
         } catch {}
       },
 
-      revokeUserDevice: async (deviceId: string) => {
+      revokeUserDevice: async (deviceId) => {
         const { commercialUser } = get();
         if (!commercialUser || !window.mahiAPI) return false;
         try {
@@ -275,7 +228,7 @@ export const useAccountStore = create<AccountState>()(
         }
       },
 
-      activateLicenseKey: async (rawKey: string) => {
+      activateLicenseKey: async (rawKey) => {
         const { commercialUser } = get();
         if (!commercialUser || !window.mahiAPI) return { success: false, message: 'Please sign in first.' };
         try {
@@ -290,28 +243,32 @@ export const useAccountStore = create<AccountState>()(
         }
       },
 
-      switchAccount: (email: string) => {
-        const found = get().savedAccounts.find((a) => a.email.toLowerCase() === email.toLowerCase());
-        if (found) {
-          set({ currentUser: found });
-        }
-      },
+      logout: async () => {
+        try {
+          if (window.mahiAPI && (window.mahiAPI as any).commercialLogout) {
+            await (window.mahiAPI as any).commercialLogout();
+          }
+        } catch {}
 
-      logout: () => {
         set({
           commercialUser: null,
           commercialToken: null,
           entitlements: null,
           userDevices: [],
+          currentUser: null,
           isAccountModalOpen: true,
+          commercialError: null,
         });
       },
 
-      setActiveWorkspace: (id: string) => {
-        set({ activeWorkspaceId: id });
+      switchAccount: (email) => {
+        const found = get().savedAccounts.find((a) => a.email.toLowerCase() === email.toLowerCase());
+        if (found) set({ currentUser: found });
       },
 
-      addWorkspace: (name: string) => {
+      setActiveWorkspace: (id) => set({ activeWorkspaceId: id }),
+
+      addWorkspace: (name) => {
         const trimmed = name.trim();
         if (!trimmed) return;
         const newWs: WorkspaceItem = {
@@ -328,6 +285,40 @@ export const useAccountStore = create<AccountState>()(
     }),
     {
       name: 'mahi_user_account_storage',
+      partialize: (state) => {
+        const persisted: any = {
+          activeWorkspaceId: state.activeWorkspaceId,
+          workspaces: state.workspaces,
+          dashboardRole: state.dashboardRole,
+          savedAccounts: state.savedAccounts,
+          rememberMe: state.rememberMe,
+        };
+        if (state.rememberMe) {
+          persisted.commercialUser = state.commercialUser;
+          persisted.commercialToken = state.commercialToken;
+          persisted.currentUser = state.currentUser;
+        }
+        return persisted;
+      },
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          if (!state.rememberMe) {
+            state.commercialUser = null;
+            state.commercialToken = null;
+            state.entitlements = null;
+            state.userDevices = [];
+            state.currentUser = null;
+            state.isAccountModalOpen = true;
+          } else {
+            // If they are remembered, the modal should be closed
+            if (state.commercialUser) {
+              state.isAccountModalOpen = false;
+            }
+          }
+          state.isCommercialLoading = false;
+          state.commercialError = null;
+        }
+      },
     }
   )
 );

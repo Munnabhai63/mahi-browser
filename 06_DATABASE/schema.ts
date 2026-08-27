@@ -489,6 +489,16 @@ export async function initializeDatabase(): Promise<void> {
     db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (8, ?)').run(new Date().toISOString());
   }
 
+  // Migration v9: Add owner_id for profile isolation per commercial user
+  const checkMigration9 = db.prepare('SELECT version FROM schema_migrations WHERE version = 9').get();
+  if (!checkMigration9) {
+    try {
+      // Add owner_id column — default SYSTEM_OWNER means "belongs to the machine owner / pre-auth profiles"
+      db.exec(`ALTER TABLE profiles ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'SYSTEM_OWNER'`);
+    } catch {}
+    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (9, ?)').run(new Date().toISOString());
+  }
+
   // Clean legacy auto-warmed status lines from user notes
   try {
     const rows = db.prepare("SELECT id, notes FROM profiles WHERE notes LIKE '%[Auto-Warmed%'").all() as { id: string; notes: string }[];

@@ -54,6 +54,10 @@ export async function initSqlEngine(): Promise<SqlJsStatic> {
             const resPath = path.join((process as any).resourcesPath, file);
             if (fs.existsSync(resPath)) return resPath;
           }
+          if (typeof __dirname !== 'undefined') {
+            const dirWasm = path.join(__dirname, file);
+            if (fs.existsSync(dirWasm)) return dirWasm;
+          }
           const nmPath = path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', file);
           if (fs.existsSync(nmPath)) return nmPath;
         } catch {}

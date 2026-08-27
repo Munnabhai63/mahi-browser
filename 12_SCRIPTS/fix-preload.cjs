@@ -21,3 +21,19 @@ if (fs.existsSync(src)) {
   console.error('ERROR: preload.cjs not found at', src);
   process.exit(1);
 }
+
+// Ensure sql-wasm.wasm is copied to dist and dist-electron
+const wasmSrc = path.join(__dirname, '..', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
+if (fs.existsSync(wasmSrc)) {
+  const targets = [
+    path.join(__dirname, '..', 'dist', 'sql-wasm.wasm'),
+    path.join(__dirname, '..', 'dist-electron', 'main', 'sql-wasm.wasm'),
+    path.join(__dirname, '..', 'dist-electron', 'sql-wasm.wasm'),
+  ];
+  for (const t of targets) {
+    const dir = path.dirname(t);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.copyFileSync(wasmSrc, t);
+  }
+  console.log('sql-wasm.wasm bundled to dist targets.');
+}

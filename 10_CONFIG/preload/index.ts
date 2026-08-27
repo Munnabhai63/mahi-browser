@@ -247,6 +247,8 @@ const api: MahiBrowserAPI = {
   // Commercial APIs
   commercialRegister: (dto: any) => ipcRenderer.invoke('commercial:register', dto),
   commercialLogin: (dto: any) => ipcRenderer.invoke('commercial:login', dto),
+  commercialLogout: () => ipcRenderer.invoke('commercial:logout'),
+  commercialSyncUser: (user: any) => ipcRenderer.invoke('commercial:syncUser', user),
   commercialGetEntitlements: (userId: string, deviceId?: string) => ipcRenderer.invoke('commercial:getEntitlements', userId, deviceId),
   commercialGetDevices: (userId: string) => ipcRenderer.invoke('commercial:getDevices', userId),
   commercialRevokeDevice: (deviceId: string, userId: string) => ipcRenderer.invoke('commercial:revokeDevice', deviceId, userId),

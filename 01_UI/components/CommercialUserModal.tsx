@@ -1,380 +1,123 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Shield,
-  Key,
-  Laptop,
-  CheckCircle2,
-  AlertTriangle,
-  X,
-  Lock,
-  Mail,
-  User,
-  Trash2,
-  RefreshCw,
-  Sparkles,
-  ArrowRight,
-} from 'lucide-react';
+import { Key, Shield, Check, Copy } from 'lucide-react';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 
 interface CommercialUserModalProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose?: () => void;
 }
 
 export const CommercialUserModal: React.FC<CommercialUserModalProps> = ({ isOpen, onClose }) => {
-  const {
-    commercialUser,
-    entitlements,
-    userDevices,
-    isCommercialLoading,
-    commercialError,
-    commercialLogin,
-    commercialRegister,
-    syncEntitlements,
-    fetchUserDevices,
-    revokeUserDevice,
-    activateLicenseKey,
-    logout,
-  } = useAccountStore();
-
+  const { commercialUser, commercialLogin } = useAccountStore();
   const { showToast } = useToastStore();
-
-  const [mode, setMode] = useState<'LOGIN' | 'REGISTER' | 'DASHBOARD'>('LOGIN');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [licenseKeyInput, setLicenseKeyInput] = useState('');
-  const [isKeyActivating, setIsKeyActivating] = useState(false);
+  const [licenseKey, setLicenseKey] = useState('');
+  const [hwid, setHwid] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (commercialUser) {
-      setMode('DASHBOARD');
-      syncEntitlements();
-      fetchUserDevices();
-    } else {
-      setMode('LOGIN');
+    // Fetch HWID on mount
+    (window.mahiAPI as any).getHwid().then((res: string) => setHwid(res)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (commercialUser && onClose) {
+      onClose();
     }
-  }, [commercialUser, isOpen]);
+  }, [commercialUser]);
 
   if (!isOpen) return null;
 
-  const handleLoginSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await commercialLogin(email, password);
-    if (res.success) {
-      showToast({
-        type: 'success',
-        title: 'Authentication Successful',
-        message: `Welcome back to MAHI Browser!`,
-      });
-      setMode('DASHBOARD');
-    } else {
-      showToast({
-        type: 'error',
-        title: 'Login Failed',
-        message: res.error || 'Invalid email or password',
-      });
+    if (!licenseKey.trim()) return;
+    setIsLoading(true);
+    try {
+      // We repurpose the email field to send the license key
+      const res = await commercialLogin(licenseKey.trim(), 'LICENSE_MODE');
+      if (res.success) {
+        showToast({ type: 'success', title: 'License Activated!', message: 'Welcome to MAHI BROWSER.' });
+        if (onClose) onClose();
+      } else {
+        showToast({ type: 'error', title: 'Invalid License', message: res.error || 'Failed to verify license' });
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleRegisterSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const res = await commercialRegister(email, password, name);
-    if (res.success) {
-      showToast({
-        type: 'success',
-        title: 'Account Created',
-        message: `Your MAHI commercial account is active!`,
-      });
-      setMode('DASHBOARD');
-    } else {
-      showToast({
-        type: 'error',
-        title: 'Registration Error',
-        message: res.error || 'Failed to create account',
-      });
-    }
-  };
-
-  const handleActivateKey = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!licenseKeyInput.trim()) return;
-    setIsKeyActivating(true);
-    const res = await activateLicenseKey(licenseKeyInput.trim());
-    setIsKeyActivating(false);
-    if (res.success) {
-      showToast({
-        type: 'success',
-        title: 'License Activated',
-        message: res.message,
-      });
-      setLicenseKeyInput('');
-    } else {
-      showToast({
-        type: 'error',
-        title: 'Activation Failed',
-        message: res.message,
-      });
-    }
-  };
-
-  const handleRevokeDevice = async (deviceId: string) => {
-    const ok = await revokeUserDevice(deviceId);
-    if (ok) {
-      showToast({
-        type: 'info',
-        title: 'Device Removed',
-        message: 'Device authorization cleared.',
-      });
-    }
+  const copyHwid = () => {
+    navigator.clipboard.writeText(hwid);
+    showToast({ type: 'success', title: 'Copied!', message: 'Hardware ID copied to clipboard' });
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden text-slate-100 p-6 space-y-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in">
+      <div className="w-full max-w-md bg-white/10 dark:bg-slate-900/50 backdrop-blur-2xl rounded-3xl border border-white/20 shadow-2xl p-8 relative overflow-hidden">
         
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20 font-black">
-              <Shield size={20} />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-white">Commercial Account & License</h3>
-              <p className="text-xs text-slate-400">Manage plan entitlements and authorized devices</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
-          >
-            <X size={18} />
-          </button>
+        {/* Decorative elements */}
+        <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+          <div className="absolute -top-[20%] -right-[10%] w-64 h-64 bg-purple-500/30 blur-[80px] rounded-full"></div>
+          <div className="absolute -bottom-[20%] -left-[10%] w-64 h-64 bg-blue-500/30 blur-[80px] rounded-full"></div>
         </div>
 
-        {/* VIEW 1: USER DASHBOARD (Logged in) */}
-        {mode === 'DASHBOARD' && commercialUser && (
-          <div className="space-y-5">
-            {/* Account & Plan Summary */}
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center space-x-2">
-                  <span className="font-bold text-sm text-white">{commercialUser.name || commercialUser.email}</span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                    {entitlements?.plan?.name || 'Pro Plan'}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 font-mono">{commercialUser.email}</p>
-              </div>
-              <button
-                onClick={() => logout()}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition"
-              >
-                Sign Out
-              </button>
-            </div>
+        <div className="relative z-10 flex flex-col items-center">
+          <div className="w-16 h-16 bg-gradient-to-tr from-purple-600 to-blue-500 rounded-2xl flex items-center justify-center shadow-lg mb-6">
+            <Shield className="w-8 h-8 text-white" />
+          </div>
+          
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">Activate License</h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm text-center mb-6">
+            Please enter your license key to unlock MAHI BROWSER.
+          </p>
 
-            {/* Plan Entitlements Limits */}
-            {entitlements && (
-              <div className="grid grid-cols-3 gap-3">
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-center space-y-1">
-                  <span className="text-[10px] text-slate-400 uppercase font-bold">Profiles Limit</span>
-                  <div className="text-lg font-bold text-emerald-400 font-mono">
-                    {entitlements.usage.profilesCount} / {entitlements.limits.maxProfiles}
-                  </div>
-                </div>
-
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-center space-y-1">
-                  <span className="text-[10px] text-slate-400 uppercase font-bold">Max Devices</span>
-                  <div className="text-lg font-bold text-teal-400 font-mono">
-                    {entitlements.usage.activeDevicesCount} / {entitlements.limits.maxDevices}
-                  </div>
-                </div>
-
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-center space-y-1">
-                  <span className="text-[10px] text-slate-400 uppercase font-bold">Concurrent Running</span>
-                  <div className="text-lg font-bold text-cyan-400 font-mono">
-                    {entitlements.usage.runningProfilesCount} / {entitlements.limits.maxConcurrentRunning}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* License Key Activation Form */}
-            <form onSubmit={handleActivateKey} className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
-              <span className="text-xs font-bold text-slate-300 flex items-center space-x-1.5">
-                <Key size={14} className="text-emerald-400" />
-                <span>Activate License Key</span>
-              </span>
-              <div className="flex gap-2">
+          <form onSubmit={handleSubmit} className="w-full space-y-5">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 ml-1">Hardware ID (HWID)</label>
+              <div className="relative group">
                 <input
                   type="text"
-                  value={licenseKeyInput}
-                  onChange={(e) => setLicenseKeyInput(e.target.value)}
-                  placeholder="MAHI-XXXX-XXXX-XXXX"
-                  className="flex-1 px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 uppercase"
+                  readOnly
+                  value={hwid || 'Loading...'}
+                  className="w-full bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-mono text-center text-slate-500"
                 />
                 <button
-                  type="submit"
-                  disabled={isKeyActivating}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-sm transition disabled:opacity-50"
+                  type="button"
+                  onClick={copyHwid}
+                  className="absolute inset-y-0 right-2 flex items-center p-2 text-slate-400 hover:text-purple-500"
+                  title="Copy HWID"
                 >
-                  {isKeyActivating ? 'Activating...' : 'Activate'}
+                  <Copy className="w-4 h-4" />
                 </button>
               </div>
-            </form>
+              <p className="text-[10px] text-slate-400 text-center mt-1">Send this ID to your Admin to get a License Key.</p>
+            </div>
 
-            {/* My Authorized Devices */}
-            <div className="space-y-2">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
-                Authorized Devices ({userDevices.length})
-              </span>
-              <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1 custom-scroll">
-                {userDevices.map((d) => (
-                  <div
-                    key={d.id}
-                    className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between text-xs"
-                  >
-                    <div className="flex items-center space-x-2.5">
-                      <Laptop size={16} className="text-teal-400" />
-                      <div>
-                        <div className="font-bold text-white">{d.deviceName}</div>
-                        <div className="text-[10px] text-slate-500 font-mono">{d.deviceId}</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                        d.status === 'ACTIVE' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
-                      }`}>
-                        {d.status}
-                      </span>
-                      {d.status === 'ACTIVE' && (
-                        <button
-                          onClick={() => handleRevokeDevice(d.deviceId)}
-                          className="p-1 text-slate-500 hover:text-rose-400 transition"
-                          title="Revoke Device"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 ml-1">License Key</label>
+              <div className="relative">
+                <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  required
+                  value={licenseKey}
+                  onChange={(e) => setLicenseKey(e.target.value)}
+                  className="w-full bg-white/50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 dark:text-white placeholder:text-slate-400"
+                  placeholder="Paste your license key here..."
+                />
               </div>
             </div>
-          </div>
-        )}
-
-        {/* VIEW 2: LOGIN FORM */}
-        {mode === 'LOGIN' && (
-          <form onSubmit={handleLoginSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-300">Email Address</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="user@domain.com"
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition font-mono"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-300">Password</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition font-mono"
-              />
-            </div>
 
             <button
               type="submit"
-              disabled={isCommercialLoading}
-              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition disabled:opacity-50"
+              disabled={isLoading}
+              className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-xl font-bold shadow-lg shadow-purple-500/25 transition-all active:scale-[0.98] flex items-center justify-center space-x-2 disabled:opacity-70"
             >
-              <span>{isCommercialLoading ? 'Signing in...' : 'Sign In'}</span>
-              <ArrowRight size={14} />
+              <span>{isLoading ? 'Verifying...' : 'Activate License'}</span>
+              <Check className="w-4 h-4" />
             </button>
-
-            <div className="pt-2 text-center text-xs text-slate-400">
-              <span>Don't have an account? </span>
-              <button
-                type="button"
-                onClick={() => setMode('REGISTER')}
-                className="text-emerald-400 font-bold hover:underline"
-              >
-                Create Account
-              </button>
-            </div>
           </form>
-        )}
-
-        {/* VIEW 3: REGISTER FORM */}
-        {mode === 'REGISTER' && (
-          <form onSubmit={handleRegisterSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-300">Full Name / Display Name</label>
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="John Doe"
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-300">Email Address</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="user@domain.com"
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition font-mono"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-300">Password (min 6 chars)</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition font-mono"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={isCommercialLoading}
-              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition disabled:opacity-50"
-            >
-              <span>{isCommercialLoading ? 'Creating Account...' : 'Create Commercial Account'}</span>
-              <Sparkles size={14} />
-            </button>
-
-            <div className="pt-2 text-center text-xs text-slate-400">
-              <span>Already have an account? </span>
-              <button
-                type="button"
-                onClick={() => setMode('LOGIN')}
-                className="text-emerald-400 font-bold hover:underline"
-              >
-                Sign In
-              </button>
-            </div>
-          </form>
-        )}
+        </div>
       </div>
     </div>
   );

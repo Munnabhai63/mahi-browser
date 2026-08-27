@@ -52,6 +52,8 @@ import { synchronizerHub, SyncAction } from '../../09_AUTOMATION/sync-hub.js';
 
 import { getWebAdminHtml } from '../server/web-admin-html.js';
 import { getSuperAdminHtml } from '../server/super-admin-html.js';
+import { getDownloadPortalHtml } from '../server/download-portal-html.js';
+import { getDistributionInfo } from '../../03_HARDWARE/distribution-service.js';
 import { getFolders, createFolder } from '../../02_BROWSER/services/folder-service.js';
 import { getFeatureFlags, updateFeatureFlag } from '../services/feature-flag-service.js';
 import { getFleetDevices, getLiveTelemetry, revokeDevice } from '../services/fleet-service.js';
@@ -78,6 +80,22 @@ function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   });
   res.end(JSON.stringify(data));
+}
+
+function sendFile(res: http.ServerResponse, filePath: string, downloadName: string) {
+  if (!fs.existsSync(filePath)) {
+    sendJSON(res, 404, { success: false, error: 'File not found. Build installers first using npm run dist.' });
+    return;
+  }
+  const stat = fs.statSync(filePath);
+  res.writeHead(200, {
+    'Content-Type': 'application/octet-stream',
+    'Content-Disposition': `attachment; filename="${downloadName}"`,
+    'Content-Length': stat.size,
+    'Access-Control-Allow-Origin': '*',
+  });
+  const stream = fs.createReadStream(filePath);
+  stream.pipe(res);
 }
 
 function parseBody(req: http.IncomingMessage): Promise<any> {
@@ -145,6 +163,32 @@ export function startApiServer(): void {
 
     if ((cleanPath === '' || cleanPath === '/' || cleanPath === '/admin' || cleanPath === '/web' || cleanPath === '/dashboard') && method === 'GET') {
       sendHTML(res, 200, getWebAdminHtml());
+      return;
+    }
+
+    // 0. Client Download & Installation Portal (Open to customers)
+    if ((cleanPath === '/download' || cleanPath === '/install' || cleanPath === '/client' || cleanPath === '/setup' || cleanPath === '/get' || cleanPath === '/app') && method === 'GET') {
+      const info = getDistributionInfo();
+      sendHTML(res, 200, getDownloadPortalHtml(info));
+      return;
+    }
+
+    // 0. Direct File Downloads: Setup and Portable executables
+    if (cleanPath === '/download/setup' || cleanPath === '/api/v2/download/setup') {
+      const info = getDistributionInfo();
+      sendFile(res, info.setupPath, info.setupFileName);
+      return;
+    }
+
+    if (cleanPath === '/download/portable' || cleanPath === '/api/v2/download/portable') {
+      const info = getDistributionInfo();
+      sendFile(res, info.portablePath, info.portableFileName);
+      return;
+    }
+
+    // 0. Distribution Metadata API
+    if (pathname === '/api/v2/distribution/info' && method === 'GET') {
+      sendJSON(res, 200, { success: true, data: getDistributionInfo() });
       return;
     }
 
@@ -622,6 +666,14 @@ export function startApiServer(): void {
 
     } catch (err: unknown) {
       sendJSON(res, 500, { error: sanitizeError(err) });
+    }
+  });
+
+  apiServer.on('error', (err: any) => {
+    if (err && err.code === 'EADDRINUSE') {
+      console.warn(`[API Server] Port ${port} is already in use. Skipping duplicate server bind.`);
+    } else {
+      console.error('[API Server] Error:', err);
     }
   });
 

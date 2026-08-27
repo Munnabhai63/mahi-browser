@@ -104,15 +104,14 @@ if (process.platform === 'win32') {
 }
 
 
-// Single instance lock
-logCheckpoint('Step 2: Checking Single Instance Lock');
+// Single instance lock check (Non-blocking: Never terminate user window)
+logCheckpoint('Step 2: Checking Instance Status');
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
-  logCheckpoint('Step 2: Single Instance Lock Failed (Another instance is already running). Exiting.');
-  app.quit();
-  process.exit(0);
+  logCheckpoint('Step 2: Multi-instance / parallel launch detected. Proceeding to launch UI window.');
+} else {
+  logCheckpoint('Step 2: Primary Instance Lock Acquired');
 }
-logCheckpoint('Step 2: Single Instance Lock Acquired');
 
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
@@ -185,7 +184,7 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     logCheckpoint('Step 6: Window ready-to-show event fired');
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.show();
       mainWindow.focus();
       logCheckpoint('Step 6: Main window displayed successfully');
@@ -202,6 +201,21 @@ function createWindow(): void {
       }
     }
   });
+
+  // Fallback timer: Guarantees window is displayed even on slower disks
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      logCheckpoint('Step 6: Safety fallback window show triggered');
+      mainWindow.show();
+      mainWindow.focus();
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        try {
+          splashWindow.destroy();
+          splashWindow = null;
+        } catch {}
+      }
+    }
+  }, 3500);
 
   // Capture renderer console output into checkpoints
   mainWindow.webContents.on('console-message', (_e, level, message) => {

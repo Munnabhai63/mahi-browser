@@ -35,6 +35,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
     setActiveWorkspace,
     addWorkspace,
     openAccountModal,
+    logout,
   } = useAccountStore();
 
   const profiles = useProfileStore((state) => state.profiles);
@@ -66,6 +67,25 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
   };
 
   const activeWs = workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0];
+
+  // If no user is logged in, show a compact "Sign In" button
+  if (!currentUser) {
+    return (
+      <div className="relative w-full" ref={dropdownRef}>
+        <button
+          type="button"
+          onClick={openAccountModal}
+          className="w-full flex items-center justify-center gap-2 p-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-600/40 transition-all text-left group text-xs font-bold text-emerald-400"
+        >
+          <ShieldCheck size={14} />
+          Sign In to MAHI
+        </button>
+        {isCommercialModalOpen && (
+          <CommercialUserModal isOpen={isCommercialModalOpen} onClose={() => setIsCommercialModalOpen(false)} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full" ref={dropdownRef}>
@@ -235,18 +255,18 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
 
           <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2" />
 
-          {/* Logout / Switch Gmail Account */}
+          {/* Logout Account */}
           <div className="p-1.5">
             <button
               type="button"
               onClick={() => {
-                openAccountModal();
+                logout();
                 setIsOpen(false);
               }}
               className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl hover:bg-rose-500/10 text-rose-500 font-semibold transition"
             >
               <LogOut size={15} />
-              <span>Switch / Logout Account</span>
+              <span>Log Out</span>
             </button>
           </div>
 

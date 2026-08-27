@@ -114,7 +114,7 @@ export function createCentralApiServer(): http.Server {
       }
 
       // 0. Client Download & Installation Portal
-      if ((cleanPath === '/download' || cleanPath === '/install' || cleanPath === '/client' || cleanPath === '/setup') && method === 'GET') {
+      if ((cleanPath === '/download' || cleanPath === '/install' || cleanPath === '/client' || cleanPath === '/setup' || cleanPath === '/get' || cleanPath === '/app') && method === 'GET') {
         const info = getDistributionInfo();
         return sendHTML(res, 200, getDownloadPortalHtml(info));
       }

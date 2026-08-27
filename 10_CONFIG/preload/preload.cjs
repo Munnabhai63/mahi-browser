@@ -243,6 +243,18 @@ const api = {
   openDistributionFolder: () => ipcRenderer.invoke('distribution:openFolder'),
   fixDesktopShortcuts: () => ipcRenderer.invoke('distribution:fixShortcuts'),
   createProfileShortcut: (profileId, profileName) => ipcRenderer.invoke('distribution:createProfileShortcut', profileId, profileName),
+
+  // Commercial APIs
+  commercialRegister: (dto) => ipcRenderer.invoke('commercial:register', dto),
+  commercialLogin: (dto) => ipcRenderer.invoke('commercial:login', dto),
+  getHwid: () => ipcRenderer.invoke('commercial:getHwid'),
+  commercialLogout: () => ipcRenderer.invoke('commercial:logout'),
+  commercialSyncUser: (user) => ipcRenderer.invoke('commercial:syncUser', user),
+  commercialGetEntitlements: (userId, deviceId) => ipcRenderer.invoke('commercial:getEntitlements', userId, deviceId),
+  commercialGetDevices: (userId) => ipcRenderer.invoke('commercial:getDevices', userId),
+  commercialRevokeDevice: (deviceId, userId) => ipcRenderer.invoke('commercial:revokeDevice', deviceId, userId),
+  commercialGetPlans: () => ipcRenderer.invoke('commercial:getPlans'),
+  commercialActivateKey: (userId, rawKey) => ipcRenderer.invoke('commercial:activateKey', userId, rawKey),
 };
 
 contextBridge.exposeInMainWorld('mahiAPI', api);
