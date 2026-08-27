@@ -123,18 +123,18 @@ export function getSuperAdminHtml(): string {
 
     <!-- Navigation Ribbon -->
     <div class="bg-slate-900 border-b border-slate-800 px-6 flex-shrink-0">
-      <nav class="flex space-x-2 py-2.5">
-        <button onclick="switchTab('license-mint')" id="tab-btn-license-mint" class="tab-btn active px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white shadow-sm transition-all"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block mr-1.5 -mt-0.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> License Key Minting</button>
-        <button onclick="switchTab('distribution')" id="tab-btn-distribution" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block mr-1.5 -mt-0.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Software Distribution & Deployments</button>
-        <button onclick="switchTab('fleet-master')" id="tab-btn-fleet-master" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all"> Global Fleet & Hardware IDs</button>
-        <button onclick="switchTab('db-inspector')" id="tab-btn-db-inspector" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all"> SQLite Raw Table Inspector</button>
-        <button onclick="switchTab('core-overrides')" id="tab-btn-core-overrides" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all"> Master Core Overrides</button>
-        <button onclick="switchTab('root-tokens')" id="tab-btn-root-tokens" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block mr-1.5 -mt-0.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Root Authority Tokens</button>
+      <nav class="flex space-x-1.5 py-3 overflow-x-auto custom-scroll">
+        <button onclick="switchTab('license-mint')" id="tab-btn-license-mint" class="tab-btn active px-4 py-2 rounded-xl text-[11px] font-bold bg-emerald-600 text-white shadow-md shadow-emerald-600/20 transition-all flex items-center whitespace-nowrap"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> License Key Minting</button>
+        <button onclick="switchTab('distribution')" id="tab-btn-distribution" class="tab-btn px-4 py-2 rounded-xl text-[11px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition-all flex items-center whitespace-nowrap"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> Distribution & Deploy</button>
+        <button onclick="switchTab('fleet-master')" id="tab-btn-fleet-master" class="tab-btn px-4 py-2 rounded-xl text-[11px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition-all flex items-center whitespace-nowrap"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Global Fleet & HWID</button>
+        <button onclick="switchTab('db-inspector')" id="tab-btn-db-inspector" class="tab-btn px-4 py-2 rounded-xl text-[11px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition-all flex items-center whitespace-nowrap"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>SQLite Inspector</button>
+        <button onclick="switchTab('core-overrides')" id="tab-btn-core-overrides" class="tab-btn px-4 py-2 rounded-xl text-[11px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition-all flex items-center whitespace-nowrap"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Core Overrides</button>
+        <button onclick="switchTab('root-tokens')" id="tab-btn-root-tokens" class="tab-btn px-4 py-2 rounded-xl text-[11px] font-bold text-slate-400 hover:text-white hover:bg-slate-800 transition-all flex items-center whitespace-nowrap"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Root Authority</button>
       </nav>
     </div>
 
     <!-- Main Scrollable Body (White & Green Cards) -->
-    <main class="flex-1 p-6 overflow-y-auto custom-scroll max-w-7xl w-full mx-auto space-y-6">
+    <main class="flex-1 p-6 overflow-y-auto custom-scroll max-w-5xl w-full mx-auto space-y-6">
 
       <!-- ================= 1. LICENSE KEY MINTING ================= -->
       <section id="tab-license-mint" class="tab-content space-y-6">
@@ -149,8 +149,8 @@ export function getSuperAdminHtml(): string {
 
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label class="text-xs font-bold text-slate-700 block mb-1.5">Plan Tier</label>
-              <select id="mint-tier" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:outline-none focus:border-emerald-500">
+              <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Plan Tier</label>
+              <select id="mint-tier" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all cursor-pointer shadow-sm">
                 <option value="enterprise">Enterprise (Unlimited Everything)</option>
                 <option value="pro" selected>Pro Tier (100 Profiles / 5 Devices)</option>
                 <option value="starter">Starter Tier (20 Profiles / 2 Devices)</option>
@@ -158,39 +158,40 @@ export function getSuperAdminHtml(): string {
               </select>
             </div>
             <div>
-              <label class="text-xs font-bold text-slate-700 block mb-1.5">Max Browser Profiles</label>
-              <input type="number" id="mint-profiles" value="9999" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:outline-none focus:border-emerald-500">
+              <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Max Browser Profiles</label>
+              <input type="number" id="mint-profiles" value="9999" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-sm">
             </div>
             <div>
-              <label class="text-xs font-bold text-slate-700 block mb-1.5">Max Device Seats</label>
-              <input type="number" id="mint-devices" value="10" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:outline-none focus:border-emerald-500">
+              <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Max Device Seats</label>
+              <input type="number" id="mint-devices" value="10" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-sm">
             </div>
             <div>
-              <label class="text-xs font-bold text-slate-700 block mb-1.5">Validity Duration (Days)</label>
-              <input type="number" id="mint-days" value="365" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:outline-none focus:border-emerald-500">
+              <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Validity Duration (Days)</label>
+              <input type="number" id="mint-days" value="365" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-sm">
             </div>
           </div>
 
           <div class="flex items-center justify-between pt-2">
-            <button onclick="mintLicenseKey()" class="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition">
+            <button onclick="mintLicenseKey()" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 transition-all flex items-center transform active:scale-95">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
                Mint New License Key
             </button>
-            <div id="minted-result" class="hidden flex items-center space-x-3 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200">
+            <div id="minted-result" class="hidden flex items-center space-x-3 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200 shadow-sm animate-pulse">
               <span class="text-xs text-emerald-800 font-semibold">Minted Key:</span>
-              <code id="minted-key-text" class="text-emerald-700 font-extrabold mono text-xs"></code>
-              <button onclick="copyMintedKey()" class="text-xs bg-emerald-600 text-white hover:bg-emerald-500 px-3 py-1 rounded-lg font-bold shadow-sm">Copy</button>
+              <code id="minted-key-text" class="text-emerald-700 font-extrabold mono text-xs tracking-wider"></code>
+              <button onclick="copyMintedKey()" class="text-xs bg-emerald-600 text-white hover:bg-emerald-500 px-3 py-1.5 rounded-lg font-bold shadow-sm transition-colors flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button>
             </div>
           </div>
         </div>
 
         <!-- Generated Licenses Table -->
         <div class="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
-          <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-            <h3 class="text-sm font-bold text-slate-900">Active System Licenses</h3>
-            <button onclick="loadLicenses()" class="text-xs text-emerald-600 font-bold hover:underline">Refresh</button>
+          <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+            <h3 class="text-sm font-bold text-slate-900 flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 text-emerald-600"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Active System Licenses</h3>
+            <button onclick="loadLicenses()" class="text-xs text-slate-500 hover:text-emerald-600 font-bold transition-colors flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Refresh</button>
           </div>
           <table class="w-full text-left text-xs">
-            <thead class="bg-slate-50 text-slate-600 uppercase font-bold border-b border-slate-200">
+            <thead class="bg-slate-50/80 text-slate-500 uppercase font-extrabold text-[10px] tracking-wider border-b border-slate-200">
               <tr>
                 <th class="px-6 py-4">License Key</th>
                 <th class="px-6 py-4">Tier</th>
@@ -518,16 +519,16 @@ export function getSuperAdminHtml(): string {
         const json = await res.json();
         if (json.success && json.data) {
           const l = json.data;
-          tbody.innerHTML = \`
-            <tr class="hover:bg-slate-50 transition">
-              <td class="px-6 py-4 font-mono font-bold text-emerald-700">\${l.licenseKey || 'MAHI-ENTERPRISE-MASTER'}</td>
-              <td class="px-6 py-4 font-bold uppercase text-slate-900">\${l.tier || 'Enterprise'}</td>
-              <td class="px-6 py-4 mono font-semibold text-slate-700">\${l.maxProfiles || 'Unlimited'} Profiles</td>
-              <td class="px-6 py-4 mono font-semibold text-slate-700">\${l.maxDevices || 'Unlimited'} Devices</td>
-              <td class="px-6 py-4 mono text-slate-500">\${l.expiresAt ? new Date(l.expiresAt).toLocaleDateString() : 'Lifetime (Perpetual)'}</td>
-              <td class="px-6 py-4"><span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">ACTIVE</span></td>
+          tbody.innerHTML = `
+            <tr class="hover:bg-emerald-50/40 hover:shadow-sm cursor-default transition-all duration-300 border-b border-slate-100 last:border-0 group">
+              <td class="px-6 py-4 font-mono font-bold text-emerald-700 group-hover:text-emerald-600 transition-colors">${l.licenseKey || 'MAHI-ENTERPRISE-MASTER'}</td>
+              <td class="px-6 py-4 font-bold uppercase text-slate-800">${l.tier || 'Enterprise'}</td>
+              <td class="px-6 py-4 mono font-semibold text-slate-600 group-hover:text-slate-800 transition-colors">${l.maxProfiles || 'Unlimited'} Profiles</td>
+              <td class="px-6 py-4 mono font-semibold text-slate-600 group-hover:text-slate-800 transition-colors">${l.maxDevices || 'Unlimited'} Devices</td>
+              <td class="px-6 py-4 mono text-slate-400 group-hover:text-slate-500 transition-colors">${l.expiresAt ? new Date(l.expiresAt).toLocaleDateString() : 'Lifetime (Perpetual)'}</td>
+              <td class="px-6 py-4"><span class="px-2.5 py-1 rounded-md text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300/50 shadow-sm">ACTIVE</span></td>
             </tr>
-          \`;
+          `;
         }
       } catch (e) {
         tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-slate-400">Failed to load licenses.</td></tr>';
