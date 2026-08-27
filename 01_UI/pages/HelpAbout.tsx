@@ -103,48 +103,7 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
       </div>
 
       {/* Grid: Diagnostics & Shortcuts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* System Diagnostics */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
-          <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-100">
-            <Cpu className="w-4 h-4 text-teal-500" />
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">System Diagnostics</h2>
-          </div>
-
-          <div className="space-y-2.5 text-xs">
-            <div className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center space-x-2 text-slate-500 dark:text-slate-400">
-                <Database className="w-3.5 h-3.5" />
-                <span>Database Engine:</span>
-              </div>
-              <span className="font-semibold text-teal-600 dark:text-teal-400 font-mono text-[11px] bg-teal-500/10 px-2 py-0.5 rounded-md border border-teal-500/20">
-                SQLite 3 (WAL Active)
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center space-x-2 text-slate-500 dark:text-slate-400">
-                <Lock className="w-3.5 h-3.5" />
-                <span>Encryption Standard:</span>
-              </div>
-              <span className="font-medium text-slate-700 dark:text-slate-300 font-mono text-[11px]">
-                AES-256-GCM + PBKDF2
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center space-x-2 text-slate-500 dark:text-slate-400">
-                <Terminal className="w-3.5 h-3.5" />
-                <span>Automation Engine:</span>
-              </div>
-              <span className="font-medium text-slate-700 dark:text-slate-300 font-mono text-[11px]">
-                Playwright Core / Chromium
-              </span>
-            </div>
-
-
-          </div>
-        </div>
+      <div className="max-w-3xl mx-auto w-full">
 
         {/* Keyboard Shortcuts */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
@@ -182,16 +141,7 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
         </div>
       </div>
 
-      {/* Compliance & Responsible Use */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-2">
-        <div className="flex items-center space-x-2 font-bold text-xs text-slate-800 dark:text-slate-200">
-          <Shield className="w-4 h-4 text-teal-500" />
-          <span>Responsible Use & Compliance Standards</span>
-        </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-          MAHI BROWSER is engineered exclusively for legitimate software testing, multi-profile isolation, QA automation workflows, and secure session management. All features operate strictly within standard Chromium browser capabilities and protocol boundaries.
-        </p>
-      </div>
+
     </div>
   );
 };
