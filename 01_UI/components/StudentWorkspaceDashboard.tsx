@@ -84,8 +84,8 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
       <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-teal-950/40 border border-slate-800 rounded-3xl p-6 shadow-sm relative overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
           <div className="flex items-center space-x-4">
-            <div className={`w-14 h-14 rounded-2xl ${currentUser?.avatarColor || 'bg-teal-600'} flex items-center justify-center text-white font-black text-2xl shadow-lg shrink-0`}>
-              {currentUser?.avatarLetter || 'S'}
+            <div className={`w-14 h-14 rounded-2xl ${'bg-emerald-500'} flex items-center justify-center text-white font-black text-2xl shadow-lg shrink-0`}>
+              M
             </div>
             <div>
               <div className="flex items-center space-x-2">

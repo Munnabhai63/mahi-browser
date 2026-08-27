@@ -1,20 +1,20 @@
-=== MAHI BROWSER SESSION STARTED AT 2026-08-27T03:34:30.176Z ===
-[2026-08-27T03:34:30.177Z] [CHECKPOINT] Step 1: Application Initializing - Electron version: 33.4.11
-[2026-08-27T03:34:30.179Z] [CHECKPOINT] Step 1: Hardware Acceleration Disabled
-[2026-08-27T03:34:30.180Z] [CHECKPOINT] Step 2: Checking Instance Status
-[2026-08-27T03:34:30.184Z] [CHECKPOINT] Step 2: Primary Instance Lock Acquired
-[2026-08-27T03:34:30.226Z] [CHECKPOINT] Step 3: App whenReady fired
-[2026-08-27T03:34:30.227Z] [CHECKPOINT] Step 3: Setting Database Path - C:\Users\munaf\AppData\Roaming\mahi-browser\mahi_browser.sqlite
-[2026-08-27T03:34:30.229Z] [CHECKPOINT] Step 3: Initializing SQLite Engine & Tables
-[2026-08-27T03:34:30.302Z] [CHECKPOINT] Step 3: Database Initialized Successfully
-[2026-08-27T03:34:30.316Z] [CHECKPOINT] Step 4: Registering IPC Bridge Handlers
-[2026-08-27T03:34:30.319Z] [CHECKPOINT] Step 4: IPC Handlers Registered
-[2026-08-27T03:34:30.322Z] [CHECKPOINT] Step 4: Starting Local REST API Server (Port 32123)
-[2026-08-27T03:34:30.328Z] [CHECKPOINT] Step 4: REST API Server Running
-[2026-08-27T03:34:30.331Z] [CHECKPOINT] Step 5: Creating BrowserWindow
-[2026-08-27T03:34:30.332Z] [CHECKPOINT] Step 5: Preload script path - C:\Users\munaf\Desktop\mahai brouser\dist-electron\preload\index.cjs
-[2026-08-27T03:34:30.335Z] [CHECKPOINT] Step 5: Preload exists on disk - true
-[2026-08-27T03:34:30.375Z] [CHECKPOINT] Step 5: Loading frontend bundle
-[2026-08-27T03:34:30.377Z] [CHECKPOINT] Step 5: Loading production HTML - C:\Users\munaf\Desktop\mahai brouser\dist\index.html
-[2026-08-27T03:34:30.580Z] [CHECKPOINT] Step 6: Window ready-to-show event fired
-[2026-08-27T03:34:30.586Z] [CHECKPOINT] Step 6: Main window displayed successfully
+=== MAHI BROWSER SESSION STARTED AT 2026-08-27T03:36:37.182Z ===
+[2026-08-27T03:36:37.183Z] [CHECKPOINT] Step 1: Application Initializing - Electron version: 33.4.11
+[2026-08-27T03:36:37.185Z] [CHECKPOINT] Step 1: Hardware Acceleration Disabled
+[2026-08-27T03:36:37.186Z] [CHECKPOINT] Step 2: Checking Instance Status
+[2026-08-27T03:36:37.191Z] [CHECKPOINT] Step 2: Primary Instance Lock Acquired
+[2026-08-27T03:36:37.225Z] [CHECKPOINT] Step 3: App whenReady fired
+[2026-08-27T03:36:37.226Z] [CHECKPOINT] Step 3: Setting Database Path - C:\Users\munaf\AppData\Roaming\mahi-browser\mahi_browser.sqlite
+[2026-08-27T03:36:37.228Z] [CHECKPOINT] Step 3: Initializing SQLite Engine & Tables
+[2026-08-27T03:36:37.288Z] [CHECKPOINT] Step 3: Database Initialized Successfully
+[2026-08-27T03:36:37.298Z] [CHECKPOINT] Step 4: Registering IPC Bridge Handlers
+[2026-08-27T03:36:37.302Z] [CHECKPOINT] Step 4: IPC Handlers Registered
+[2026-08-27T03:36:37.304Z] [CHECKPOINT] Step 4: Starting Local REST API Server (Port 32123)
+[2026-08-27T03:36:37.309Z] [CHECKPOINT] Step 4: REST API Server Running
+[2026-08-27T03:36:37.311Z] [CHECKPOINT] Step 5: Creating BrowserWindow
+[2026-08-27T03:36:37.313Z] [CHECKPOINT] Step 5: Preload script path - c:\Users\munaf\Desktop\mahai brouser\dist-electron\preload\index.cjs
+[2026-08-27T03:36:37.314Z] [CHECKPOINT] Step 5: Preload exists on disk - true
+[2026-08-27T03:36:37.361Z] [CHECKPOINT] Step 5: Loading frontend bundle
+[2026-08-27T03:36:37.362Z] [CHECKPOINT] Step 5: Loading production HTML - c:\Users\munaf\Desktop\mahai brouser\dist\index.html
+[2026-08-27T03:36:37.559Z] [CHECKPOINT] Step 6: Window ready-to-show event fired
+[2026-08-27T03:36:37.581Z] [CHECKPOINT] Step 6: Main window displayed successfully

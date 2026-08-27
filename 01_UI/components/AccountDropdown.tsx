@@ -96,13 +96,13 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
         className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-slate-800/80 transition-all text-left group"
       >
         <div className="flex items-center space-x-2.5 min-w-0">
-          <div className={`w-8 h-8 rounded-lg ${currentUser.avatarColor || 'bg-teal-600'} flex items-center justify-center text-white font-bold text-sm shadow-xs shrink-0`}>
-            {currentUser.avatarLetter || 'M'}
+          <div className={`w-8 h-8 rounded-lg ${'bg-emerald-500'} flex items-center justify-center text-white font-bold text-sm shadow-xs shrink-0`}>
+            M
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <span className="font-bold text-white text-xs truncate">
-                {currentUser.displayName || 'MAHI User'}
+                Premium Account
               </span>
               <span className="text-[10px] text-teal-400 font-extrabold px-1 py-0.2 bg-teal-950/80 border border-teal-800/60 rounded">
                 PRO
@@ -127,15 +127,15 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
           
           {/* User Profile Header Card */}
           <div className="p-3.5 flex items-center space-x-3 bg-slate-50/80 dark:bg-slate-950/60 border-b border-slate-100 dark:border-slate-800/80">
-            <div className={`w-11 h-11 rounded-xl ${currentUser.avatarColor || 'bg-teal-600'} flex items-center justify-center text-white font-black text-lg shadow-sm shrink-0`}>
-              {currentUser.avatarLetter || 'M'}
+            <div className={`w-11 h-11 rounded-xl ${'bg-emerald-500'} flex items-center justify-center text-white font-black text-lg shadow-sm shrink-0`}>
+              M
             </div>
             <div className="min-w-0 flex-1">
               <h4 className="font-bold text-slate-900 dark:text-white text-xs truncate">
-                {currentUser.displayName}
+                Premium Account
               </h4>
               <p className="text-[11px] text-slate-400 truncate font-mono">
-                {currentUser.email}
+                Enterprise Edition
               </p>
               <div className="flex items-center gap-1 mt-0.5">
                 <span className="text-[10px] font-semibold text-teal-600 dark:text-teal-400">
