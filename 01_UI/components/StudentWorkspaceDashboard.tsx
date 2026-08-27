@@ -107,25 +107,12 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
             <div>
               <div className="text-[10px] text-slate-400 font-semibold uppercase">License Access</div>
               <div className="font-bold text-xs flex items-center gap-1.5 mt-0.5">
-                {isProActive ? (
-                  <span className="text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 size={13} />
-                    <span>MAHI PRO ACTIVE</span>
-                  </span>
-                ) : (
-                  <span className="text-amber-400 flex items-center gap-1">
-                    <AlertTriangle size={13} />
-                    <span>NOT ACTIVATED</span>
-                  </span>
-                )}
+                <span className="text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 size={13} />
+                  <span>MAHI PRO ACTIVE</span>
+                </span>
               </div>
             </div>
-            <button
-              onClick={() => onNavigate('license')}
-              className="px-3 py-1.5 bg-teal-600/20 hover:bg-teal-600/30 text-teal-400 border border-teal-500/30 rounded-xl text-xs font-semibold transition"
-            >
-              {isProActive ? 'View Plan' : 'Activate Key'}
-            </button>
           </div>
         </div>
       </div>
