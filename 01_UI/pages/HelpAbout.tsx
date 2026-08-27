@@ -142,31 +142,7 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
               </span>
             </div>
 
-            <div className="pt-2">
-              <span className="font-semibold text-slate-700 dark:text-slate-300 block mb-2 text-xs">
-                Detected Installed Browsers ({detectedBrowsers.length})
-              </span>
-              <div className="space-y-2">
-                {detectedBrowsers.length === 0 ? (
-                  <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl text-slate-400 text-xs">
-                    Scanning for system browser binaries...
-                  </div>
-                ) : (
-                  detectedBrowsers.map((b, idx) => (
-                    <div
-                      key={idx}
-                      className="p-2.5 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 font-mono text-[11px] space-y-0.5"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-teal-600 dark:text-teal-400 capitalize">{b.name}</span>
-                        <span className="text-[10px] text-slate-400">Native Executable</span>
-                      </div>
-                      <span className="text-slate-500 dark:text-slate-400 truncate block text-[10px]">{b.path}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+
           </div>
         </div>
 
