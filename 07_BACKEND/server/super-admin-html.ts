@@ -1,5 +1,5 @@
 /**
- * MAHI Platform V2 — Master Super Admin Console HTML
+ * MAHI Platform V2  Master Super Admin Console HTML
  * White & Emerald Green Executive Theme (Matching MAHI Browser Software UI)
  * Served on http://127.0.0.1:32123/super-admin
  */
@@ -10,7 +10,7 @@ export function getSuperAdminHtml(): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MAHI BROWSER — Master Super Admin Suite</title>
+  <title>MAHI BROWSER  Master Super Admin Suite</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -62,8 +62,8 @@ export function getSuperAdminHtml(): string {
       <div class="absolute -top-16 -left-16 w-36 h-36 bg-emerald-500/10 rounded-full blur-3xl"></div>
       <div class="absolute -bottom-16 -right-16 w-36 h-36 bg-teal-500/10 rounded-full blur-3xl"></div>
 
-      <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-500 mx-auto flex items-center justify-center text-white text-3xl font-black shadow-xl shadow-emerald-600/30 pulse-glow">
-        👑
+      <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-500 mx-auto flex items-center justify-center text-white shadow-xl shadow-emerald-600/30 pulse-glow">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"/></svg>
       </div>
 
       <div>
@@ -77,8 +77,10 @@ export function getSuperAdminHtml(): string {
       <div class="space-y-3 text-left">
         <label class="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">Master Secret Key / PIN</label>
         <div class="relative">
-          <input type="password" id="master-pin" placeholder="Enter Super Admin Key..." class="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 focus:border-emerald-500 rounded-xl text-sm text-slate-900 mono focus:outline-none transition">
-          <button onclick="togglePinVisibility()" type="button" class="absolute right-3 top-3 text-slate-400 hover:text-slate-600 text-xs">👁️</button>
+          <input type="password" id="master-pin" placeholder="Enter Super Admin Key..." class="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 focus:bg-white focus:border-emerald-500 rounded-xl text-sm text-slate-900 mono focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all">
+          <button onclick="togglePinVisibility()" type="button" class="absolute right-3 top-3 text-slate-400 hover:text-slate-600 transition-colors">
+            <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
         </div>
         <p class="text-[11px] text-slate-500">Default Secret: <code class="text-emerald-700 font-bold mono">mahi_super_admin_2026</code></p>
       </div>
@@ -97,7 +99,7 @@ export function getSuperAdminHtml(): string {
     <header class="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-40 flex-shrink-0 shadow-sm">
       <div class="flex items-center space-x-3">
         <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white text-base font-black shadow-md shadow-emerald-500/20">
-          👑
+          
         </div>
         <div>
           <div class="flex items-center space-x-2">
@@ -122,12 +124,12 @@ export function getSuperAdminHtml(): string {
     <!-- Navigation Ribbon -->
     <div class="bg-slate-900 border-b border-slate-800 px-6 flex-shrink-0">
       <nav class="flex space-x-2 py-2.5">
-        <button onclick="switchTab('license-mint')" id="tab-btn-license-mint" class="tab-btn active px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white shadow-sm transition-all">👑 License Key Minting</button>
-        <button onclick="switchTab('distribution')" id="tab-btn-distribution" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all">📦 Software Distribution & Deployments</button>
-        <button onclick="switchTab('fleet-master')" id="tab-btn-fleet-master" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all">🛡️ Global Fleet & Hardware IDs</button>
-        <button onclick="switchTab('db-inspector')" id="tab-btn-db-inspector" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all">🗄️ SQLite Raw Table Inspector</button>
-        <button onclick="switchTab('core-overrides')" id="tab-btn-core-overrides" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all">⚡ Master Core Overrides</button>
-        <button onclick="switchTab('root-tokens')" id="tab-btn-root-tokens" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all">🔑 Root Authority Tokens</button>
+        <button onclick="switchTab('license-mint')" id="tab-btn-license-mint" class="tab-btn active px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white shadow-sm transition-all"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block mr-1.5 -mt-0.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> License Key Minting</button>
+        <button onclick="switchTab('distribution')" id="tab-btn-distribution" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block mr-1.5 -mt-0.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Software Distribution & Deployments</button>
+        <button onclick="switchTab('fleet-master')" id="tab-btn-fleet-master" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all"> Global Fleet & Hardware IDs</button>
+        <button onclick="switchTab('db-inspector')" id="tab-btn-db-inspector" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all"> SQLite Raw Table Inspector</button>
+        <button onclick="switchTab('core-overrides')" id="tab-btn-core-overrides" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all"> Master Core Overrides</button>
+        <button onclick="switchTab('root-tokens')" id="tab-btn-root-tokens" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-all"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline-block mr-1.5 -mt-0.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Root Authority Tokens</button>
       </nav>
     </div>
 
@@ -171,7 +173,7 @@ export function getSuperAdminHtml(): string {
 
           <div class="flex items-center justify-between pt-2">
             <button onclick="mintLicenseKey()" class="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition">
-              👑 Mint New License Key
+               Mint New License Key
             </button>
             <div id="minted-result" class="hidden flex items-center space-x-3 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200">
               <span class="text-xs text-emerald-800 font-semibold">Minted Key:</span>
@@ -376,7 +378,7 @@ export function getSuperAdminHtml(): string {
                 <button onclick="navigator.clipboard.writeText('http://127.0.0.1:32123/download'); showSuperToast('Copied', 'Localhost link copied!', 'info')" class="px-3 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-xs font-bold text-slate-800 transition">Copy</button>
               </div>
               <div class="flex items-center space-x-2">
-                <a href="/download" target="_blank" class="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs text-center transition shadow-sm">Open Public Download Portal ↗</a>
+                <a href="/download" target="_blank" class="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs text-center transition shadow-sm">Open Public Download Portal </a>
               </div>
             </div>
           </div>
@@ -411,7 +413,7 @@ export function getSuperAdminHtml(): string {
         'bg-white border-slate-300 text-slate-800'
       }\`;
       t.innerHTML = \`
-        <span class="text-base">\${type === 'success' ? '👑' : type === 'error' ? '✕' : 'ℹ'}</span>
+        <span class="text-base">\${type === 'success' ? '' : type === 'error' ? '' : ''}</span>
         <div>
           <h5 class="font-bold text-slate-900">\${title}</h5>
           <p class="text-slate-500 text-[11px]">\${message}</p>
@@ -599,7 +601,7 @@ export function getSuperAdminHtml(): string {
     }
 
     function emergencyLockdown() {
-      if (confirm('⚠️ RED ALERT: Trigger EMERGENCY PLATFORM LOCKDOWN?\\n\\nThis will suspend all profile launches across the fleet.')) {
+      if (confirm(' RED ALERT: Trigger EMERGENCY PLATFORM LOCKDOWN?\\n\\nThis will suspend all profile launches across the fleet.')) {
         showSuperToast('Emergency Lockdown', 'Red Alert broadcasted to all fleet nodes.', 'error');
       }
     }
