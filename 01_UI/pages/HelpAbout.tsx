@@ -57,7 +57,7 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
   };
 
   return (
-    <div className="p-8 space-y-6 max-w-6xl mx-auto h-full flex flex-col justify-between overflow-y-auto custom-scrollbar font-sans">
+    <div className="p-8 space-y-6 max-w-4xl mx-auto overflow-y-auto custom-scrollbar font-sans">
       {/* Brand Hero Banner */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-6">
         <div className="space-y-2">
@@ -103,7 +103,7 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
       </div>
 
       {/* Grid: Diagnostics & Shortcuts */}
-      <div className="max-w-3xl mx-auto w-full">
+      <div className="w-full">
 
         {/* Keyboard Shortcuts */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
