@@ -62,6 +62,8 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
   // User activation form
   const [inputKey, setInputKey] = useState('');
   const [inputAccountId, setInputAccountId] = useState('');
+  const [hwid, setHwid] = useState<string>('');
+  const [copiedHwid, setCopiedHwid] = useState(false);
 
   // Admin login form
   const [adminSecretInput, setAdminSecretInput] = useState('');
@@ -93,9 +95,11 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-
   useEffect(() => {
     fetchCurrentStatus();
+    if (window.mahiAPI?.getHwid) {
+      window.mahiAPI.getHwid().then((id: string) => setHwid(id)).catch(() => {});
+    }
   }, []);
 
   const handleActivate = async () => {
@@ -404,9 +408,32 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
                 {isProActive ? 'Change / Switch License Key' : 'Activate MAHI PRO'}
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Enter your 16-character license key in format <code className="text-teal-500">MAHI-XXXX-XXXX-XXXX-XXXX</code>.
+                Enter your license key to unlock up to 100 profiles and Pro features.
               </p>
             </div>
+
+            {hwid && (
+              <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs">
+                <div className="flex items-center space-x-2">
+                  <Laptop className="w-4 h-4 text-slate-400 shrink-0" />
+                  <span className="text-slate-400 font-medium">Your Hardware ID (HWID):</span>
+                  <span className="font-mono font-bold text-slate-700 dark:text-slate-200 select-all">{hwid}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(hwid);
+                    setCopiedHwid(true);
+                    showToast({ type: 'success', title: 'HWID Copied', message: 'Hardware ID copied to clipboard' });
+                    setTimeout(() => setCopiedHwid(false), 2000);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-semibold flex items-center gap-1 transition"
+                >
+                  {copiedHwid ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedHwid ? 'Copied' : 'Copy HWID'}</span>
+                </button>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="md:col-span-2 relative">

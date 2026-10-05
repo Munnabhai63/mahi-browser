@@ -2,13 +2,13 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 
 const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvIfOhVG2ht8Xm8370MMB
-AqU9PNKu3LRfWMx/C55vgVw+8kpmr8Gb/ceGE9mZnJws6q8C76NgoVMGCHVnv02M
-9qSwFiOgaFXNV7uq/zv/Q6X5UHmOLSZw3tZ5KhU/NYr2o3DxsV5gCzeS0t/shn+g
-nEtOBFNZNN/Q23Nkwv8Z+V1t3solPIZHDkb45CI6Cqbery1bhPAVJ3Mz74BuIVW5
-HqzQfiCfS6IuJ4PiJrw5HvRYChcWIcryLfBiVecsVxllz0p1g9I+zJxMNFI2n603
-KlCKrGJc2FX/6CyiZRsMTxVkWb7b98DrhltmCtiZp55a1ue7TV9S/hOtxmYwJfi3
-TwIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzYel0Zuz0vYdzszLm2z5
+GYRR+UzBtP93VVNaKGmEa81Ga8hQfO2GRAXoCRkwMLUEjByolGP5btsJUndjU6/9
+xnHYPzjC+GfUKIAaJvxAz41YfzOfjnMCEt709LyPBoLDwwKo8c0feuo12pYvYWqB
+hSMo402RGa2nXrYV6u2PHPk0MWkB4MivQTZ7zq932rzNiXihh8kWjDBkSruNfBnd
+GqF3h6MISV3mHoO3AXSwD2PYWKhkljkOp4W/VfypOBXnoU6bKhMthPs/1fAISyH3
+dGocQFs1hIUa/8KolAFRcoORmpBdOcVDdcwGvsoE6JIBgHy7kPlFOMJHUcVd7bPT
+kQIDAQAB
 -----END PUBLIC KEY-----`;
 
 /**
@@ -33,7 +33,11 @@ export function getHWID(): string {
  */
 export function verifyLicense(licenseKey: string): { valid: boolean; error?: string; expiresAt?: string } {
   try {
-    const decoded = Buffer.from(licenseKey, 'base64').toString('utf8');
+    let raw = (licenseKey || '').trim();
+    if (raw.startsWith('MAHI-')) {
+      raw = raw.substring(5);
+    }
+    const decoded = Buffer.from(raw, 'base64').toString('utf8');
     const data = JSON.parse(decoded);
 
     if (!data.hwid || !data.exp || !data.sig) {

@@ -42,6 +42,7 @@ import {
   deactivateDevice,
 } from '../../04_LICENSING/license-engine.js';
 import { verifyAdminAccess } from '../../05_AUTH/admin-auth.js';
+import { isValidAdminWebSecret } from '../../08_SECURITY/install-secrets.js';
 import { CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
 
 function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
@@ -94,7 +95,7 @@ function checkAdminAuth(req: http.IncomingMessage, body?: any): { isAdmin: boole
   // 2. Check X-Admin-Secret header or body secret
   const headerSecret = req.headers['x-admin-secret'] as string;
   const secret = headerSecret || (body && body.adminSecret) || '';
-  if (secret && (verifyAdminAccess(secret) || secret === 'mahi_super_admin_2026')) {
+  if (secret && (verifyAdminAccess(secret) || isValidAdminWebSecret(secret))) {
     return {
       isAdmin: true,
       actor: { id: 'admin', name: 'Master Administrator', role: 'SUPER_ADMIN' },

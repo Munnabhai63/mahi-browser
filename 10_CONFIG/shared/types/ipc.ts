@@ -189,6 +189,8 @@ export interface MahiBrowserAPI {
   // Licensing & MAHI Pro
   getLicenseStatus: () => Promise<LicenseValidationResult>;
   activateLicense: (dto: ActivateLicenseDTO) => Promise<{ success: boolean; status: LicenseStatus; license?: LicenseRecord; message?: string }>;
+  getHwid: () => Promise<string>;
+  getPlanLimits: () => Promise<{ isPro: boolean; currentCount: number; maxAllowed: number; remaining: number; expiresAt?: string | null }>;
   adminCreateLicense: (dto: CreateLicenseDTO, adminSecret: string) => Promise<CreateLicenseResponse>;
   adminGetLicenses: (adminSecret: string, filter?: { status?: string; searchQuery?: string }) => Promise<LicenseRecord[]>;
   adminRevokeLicense: (licenseId: string, adminSecret: string, reason?: string) => Promise<boolean>;

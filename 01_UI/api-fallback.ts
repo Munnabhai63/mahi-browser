@@ -7,7 +7,7 @@ import { getDefaultProfileSettings } from '../10_CONFIG/shared/constants/default
 if (typeof window !== 'undefined' && !window.mahiAPI) {
   console.warn('⚠️ FALLBACK API ACTIVATED - using REST API bridge');
   const API_BASE = 'http://localhost:32123';
-  const AUTH_TOKEN = 'mahi_browser_local_api_2024';
+  const AUTH_TOKEN = (typeof localStorage !== 'undefined' && localStorage.getItem('mahi_local_api_token')) || 'mahi_browser_local_api_2024';
 
   const authHeaders = (): Record<string, string> => ({
     'Authorization': `Bearer ${AUTH_TOKEN}`,
@@ -570,6 +570,22 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     },
     commercialSyncUser: async (user: any) => {
       return { success: true };
+    },
+    getHwid: async () => {
+      try {
+        const r = await apiGet('/license/status');
+        return r.hwid || 'MAHI-FALLBACK-HWID';
+      } catch {
+        return 'MAHI-FALLBACK-HWID';
+      }
+    },
+    getPlanLimits: async () => {
+      try {
+        const r = await apiGet('/license/limits');
+        return r.data || { isPro: false, currentCount: 0, maxAllowed: 15, remaining: 15 };
+      } catch {
+        return { isPro: false, currentCount: 0, maxAllowed: 15, remaining: 15 };
+      }
     },
 
     onProfileStatusChanged: () => () => {},

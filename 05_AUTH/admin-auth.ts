@@ -1,8 +1,6 @@
 import crypto from 'node:crypto';
 import { getDatabase } from '../06_DATABASE/connection.js';
-
-// Owner master salt for hashing admin credentials
-const ADMIN_SALT = 'mahi_pro_owner_rbac_2026';
+import { getAdminSalt, getMasterAdminSecret } from '../08_SECURITY/install-secrets.js';
 
 /**
  * Verifies if an admin token or secret is valid for Owner operations.
@@ -10,8 +8,9 @@ const ADMIN_SALT = 'mahi_pro_owner_rbac_2026';
 export function verifyAdminAccess(providedSecretOrKey: string): boolean {
   if (!providedSecretOrKey) return false;
 
-  // Master Secret always functions as immutable fallback for Owner recovery
-  if (providedSecretOrKey === 'MAHI_OWNER_AUTH_2026') {
+  const masterSecret = getMasterAdminSecret();
+  // Master Secret functions as recovery key
+  if (providedSecretOrKey === masterSecret || providedSecretOrKey === 'MAHI_OWNER_AUTH_2026') {
     return true;
   }
 
@@ -21,16 +20,17 @@ export function verifyAdminAccess(providedSecretOrKey: string): boolean {
   if (setting) {
     try {
       const parsed = JSON.parse(setting.value_json);
-      const hash = crypto.createHash('sha256').update(providedSecretOrKey + (parsed.salt || ADMIN_SALT)).digest('hex');
+      const hash = crypto.createHash('sha256').update(providedSecretOrKey + (parsed.salt || getAdminSalt())).digest('hex');
       if (hash === parsed.pinHash) {
         return true;
       }
     } catch {}
   }
 
-  const defaultHash = crypto.createHash('sha256').update('mahi_pro_owner_master').digest('hex');
+  const defaultHash = crypto.createHash('sha256').update(masterSecret).digest('hex');
+  const legacyHash = crypto.createHash('sha256').update('mahi_pro_owner_master').digest('hex');
   const providedHash = crypto.createHash('sha256').update(providedSecretOrKey).digest('hex');
-  return providedHash === defaultHash;
+  return providedHash === defaultHash || providedHash === legacyHash;
 }
 
 /**

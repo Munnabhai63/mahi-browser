@@ -6,6 +6,7 @@ import { resolveExecutablePath } from './detector.js';
 import { getProxyById, getDecryptedProxyCredentials, testAndSaveProxyStatus } from './services/proxy-service.js';
 import { getExtensions } from './services/extension-service.js';
 import { createProxyTunnel, ProxyTunnelHandle } from './proxy-tunnel.js';
+import { getApiAuthToken } from '../08_SECURITY/install-secrets.js';
 
 
 function debugLog(msg: string) {
@@ -372,7 +373,7 @@ export function ensureProfileStealthExtension(
 (function() {
   var profileId = ${JSON.stringify(profileId)};
   var API_BASE = 'http://127.0.0.1:32123';
-  var AUTH_TOKEN = 'mahi_browser_local_api_2024';
+  var AUTH_TOKEN = ${JSON.stringify(getApiAuthToken())};
   var activePorts = new Set();
 
   chrome.runtime.onConnect.addListener(function(port) {
@@ -630,11 +631,11 @@ export function ensureProfileStealthExtension(
         var quickNum = parseInt(digitMatch[1], 10);
         if (quickNum > 0) {
           digitBuffer = '';
-          fetch('http://127.0.0.1:32123/profiles/quick-switch?token=mahi_browser_local_api_2024', {
+          fetch('http://127.0.0.1:32123/profiles/quick-switch?token=' + encodeURIComponent(${JSON.stringify(getApiAuthToken())}), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': 'Bearer mahi_browser_local_api_2024'
+              'Authorization': 'Bearer ' + ${JSON.stringify(getApiAuthToken())}
             },
             body: JSON.stringify({ number: quickNum })
           }).catch(function() {});
@@ -655,11 +656,11 @@ export function ensureProfileStealthExtension(
         digitBuffer = '';
         clearTimeout(bufferTimer);
         if (!isNaN(num) && num > 0) {
-          fetch('http://127.0.0.1:32123/profiles/quick-switch?token=mahi_browser_local_api_2024', {
+          fetch('http://127.0.0.1:32123/profiles/quick-switch?token=' + encodeURIComponent(${JSON.stringify(getApiAuthToken())}), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': 'Bearer mahi_browser_local_api_2024'
+              'Authorization': 'Bearer ' + ${JSON.stringify(getApiAuthToken())}
             },
             body: JSON.stringify({ number: num })
           }).catch(function() {});
@@ -682,7 +683,7 @@ export function ensureProfileStealthExtension(
   // -------------------------------------------------------------
   var isHandlingRemoteAction = false;
   var API_BASE = 'http://127.0.0.1:32123';
-  var AUTH_TOKEN = 'mahi_browser_local_api_2024';
+  var AUTH_TOKEN = ${JSON.stringify(getApiAuthToken())};
 
   function showClickRipple(x, y) {
     try {
@@ -925,7 +926,7 @@ export function ensureProfileStealthExtension(
       if (rawQueue) {
         processWarmerQueue(JSON.parse(rawQueue));
       } else {
-        fetch('http://127.0.0.1:32123/profiles/' + encodeURIComponent(pId) + '/warmer-queue?token=mahi_browser_local_api_2024')
+        fetch('http://127.0.0.1:32123/profiles/' + encodeURIComponent(pId) + '/warmer-queue?token=' + encodeURIComponent(${JSON.stringify(getApiAuthToken())}))
           .then(function(r) { return r.json(); })
           .then(function(d) {
             if (d && d.success && Array.isArray(d.sites) && d.sites.length > 0) {

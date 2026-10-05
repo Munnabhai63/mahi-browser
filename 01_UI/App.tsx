@@ -58,10 +58,10 @@ export const App: React.FC = () => {
   const { currentUser, commercialUser, isAccountModalOpen, closeAccountModal } = useAccountStore();
 
   useEffect(() => {
-    // Only load data once the user is authenticated
-    if (!commercialUser) return;
+    // Attempt auto-login if saved license exists
+    useAccountStore.getState().commercialLogin('AUTO', 'LICENSE_MODE').catch(() => {});
 
-    // Initial data load
+    // Initial data load for all users (Free and Pro)
     fetchProfiles();
     fetchLogs();
     fetchSettings();
@@ -80,6 +80,13 @@ export const App: React.FC = () => {
         unsubStatus();
         unsubLogs();
       };
+    }
+  }, []);
+
+  // When commercial user state changes, refresh profiles
+  useEffect(() => {
+    if (commercialUser) {
+      fetchProfiles();
     }
   }, [commercialUser]);
 
@@ -210,10 +217,11 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 font-sans">
-      {/* ═══ AUTH GATE: shown when user is not logged in. Blocks entire app ═══ */}
+      {/* â•â•â• AUTH GATE: shown when user is not logged in. Blocks entire app â•â•â• */}
+      {/* License & Account Management Modal */}
       <CommercialUserModal
-        isOpen={isAccountModalOpen || !commercialUser}
-        onClose={commercialUser ? closeAccountModal : undefined}
+        isOpen={isAccountModalOpen}
+        onClose={closeAccountModal}
       />
 
       {/* App Lock PIN Screen */}
@@ -281,3 +289,5 @@ export const App: React.FC = () => {
     </div>
   );
 };
+
+

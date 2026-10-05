@@ -61,6 +61,9 @@ import { getApiKeys, generateApiKey, revokeApiKey } from '../services/api-v2-ser
 import { getActivityLogs } from '../services/audit-service.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { handleCommercialApiRoutes } from '../commercial/commercial-api-router.js';
+import { assertCanCreateProfile } from '../../08_SECURITY/freemium-guard.js';
+import { isValidApiToken } from '../../08_SECURITY/install-secrets.js';
+import { verifyLicense } from '../../08_SECURITY/license-service.js';
 
 let apiServer: http.Server | null = null;
 
@@ -258,18 +261,98 @@ export function startApiServer(): void {
       return;
     }
 
-    // 4. Super Admin Direct License Minting
+    // 4. Super Admin Direct License Minting & Management
     if (pathname === '/api/v2/super-admin/licenses/create' && method === 'POST') {
-      const body = await parseBody(req);
-      const newLic = createLicense({
-        customerName: body.customerName || body.name || 'Admin Created License',
-        durationType: body.durationType || (body.validityDays ? 'CUSTOM' : '1_YEAR'),
-        accountId: body.accountId || 'admin',
-        maxDevices: body.maxDevices || 5,
-        expiresAt: body.expiresAt,
-        notes: body.notes || `Tier: ${body.tier || 'PRO'}`
-      });
-      sendJSON(res, 201, { success: true, data: newLic });
+      try {
+        const body = await parseBody(req);
+        
+        // Use the real ECDSA offline keygen!
+        const { execSync } = await import('node:child_process');
+        const crypto = await import('node:crypto');
+        const studentName = body.customerName || 'Student';
+        const hwid = body.hwid;
+        const tier = body.tier || 'pro';
+        const duration = body.validityDays || 365;
+        const durationMonths = Math.max(1, Math.floor(duration / 30));
+        
+        if (!hwid) throw new Error("HWID is required for offline keys");
+
+        // Call standalone keygen outside app if available
+        const keygenPath = path.resolve(process.cwd(), '..', 'mahi-keygen', 'keygen.cjs');
+        let generatedKey = '';
+        if (fs.existsSync(keygenPath)) {
+          const result = execSync(`node "${keygenPath}" "${hwid}" ${durationMonths}`).toString();
+          const lines = result.trim().split('\n');
+          generatedKey = lines[lines.length - 1].trim();
+        } else {
+          throw new Error('Keygen service not found. Keygen is developer-only and located outside the app at ../mahi-keygen/');
+        }
+        
+        // Save to SQLite for tracking
+        const db = getDatabase();
+        const expiresAt = new Date(Date.now() + duration * 24 * 60 * 60 * 1000).toISOString();
+        const id = crypto.randomUUID();
+        
+        db.prepare(`
+          INSERT INTO licenses (
+            id, license_key_hash, key_masked, customer_name, account_id,
+            status, duration_type, max_devices, starts_at, expires_at,
+            created_at, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          id,
+          generatedKey,
+          generatedKey,
+          studentName,
+          'offline_admin',
+          'ACTIVE',
+          'CUSTOM',
+          body.maxDevices || 5,
+          new Date().toISOString(),
+          expiresAt,
+          new Date().toISOString(),
+          'ROOT_ADMIN'
+        );
+        
+        sendJSON(res, 201, { success: true, data: { licenseKey: generatedKey } });
+      } catch (err: any) {
+        sendJSON(res, 500, { success: false, error: err.message });
+      }
+      return;
+    }
+    
+    // 4b. Super Admin License List
+    if (pathname === '/api/v2/super-admin/licenses/list' && method === 'GET') {
+      try {
+        const db = getDatabase();
+        const licenses = db.prepare('SELECT * FROM licenses ORDER BY created_at DESC').all();
+        sendJSON(res, 200, { success: true, data: licenses });
+      } catch(err: any) {
+        sendJSON(res, 500, { success: false, error: err.message });
+      }
+      return;
+    }
+    
+    // 4c. Super Admin License Action (Activate/Disable/Extend/Delete)
+    if (pathname === '/api/v2/super-admin/licenses/action' && method === 'POST') {
+      try {
+        const body = await parseBody(req);
+        const db = getDatabase();
+        
+        if (body.action === 'delete') {
+          db.prepare('DELETE FROM licenses WHERE id = ?').run(body.id);
+        } else if (body.action === 'disable') {
+          db.prepare("UPDATE licenses SET status = 'DISABLED' WHERE id = ?").run(body.id);
+        } else if (body.action === 'activate') {
+          db.prepare("UPDATE licenses SET status = 'ACTIVE' WHERE id = ?").run(body.id);
+        } else if (body.action === 'extend') {
+          db.prepare("UPDATE licenses SET expires_at = datetime(expires_at, '+30 days') WHERE id = ?").run(body.id);
+        }
+        
+        sendJSON(res, 200, { success: true });
+      } catch(err: any) {
+        sendJSON(res, 500, { success: false, error: err.message });
+      }
       return;
     }
 
@@ -299,6 +382,35 @@ export function startApiServer(): void {
       return;
     }
     if (pathname === '/api/v2/license/status' && method === 'GET') {
+      try {
+        const userDataDir = getProfileStoragePath ? path.dirname(path.dirname(getProfileStoragePath('temp'))) : process.cwd();
+        const licenseFile = path.join(userDataDir, 'offline-license.key');
+        if (fs.existsSync(licenseFile)) {
+          const rawKey = fs.readFileSync(licenseFile, 'utf8').trim();
+          if (rawKey) {
+            const check = verifyLicense(rawKey);
+            if (check.valid) {
+              sendJSON(res, 200, {
+                success: true,
+                data: {
+                  isValid: true,
+                  status: 'ACTIVE',
+                  message: 'MAHI Pro Active',
+                  license: {
+                    id: 'local-rsa-license',
+                    customerName: 'MAHI PRO Subscriber',
+                    keyMasked: 'MAHI-RSA-ACTIVE',
+                    expiresAt: check.expiresAt || new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+                    maxDevices: 1,
+                    activeDevicesCount: 1,
+                  },
+                },
+              });
+              return;
+            }
+          }
+        }
+      } catch {}
       const status = validateCurrentLicense();
       sendJSON(res, 200, { success: true, data: status });
       return;
@@ -310,9 +422,14 @@ export function startApiServer(): void {
       return;
     }
     if (pathname === '/api/v2/profiles' && method === 'POST') {
-      const body = await parseBody(req);
-      const profile = createProfile(body);
-      sendJSON(res, 201, { success: true, data: profile });
+      try {
+        assertCanCreateProfile(1);
+        const body = await parseBody(req);
+        const profile = createProfile(body);
+        sendJSON(res, 201, { success: true, data: profile });
+      } catch (err: any) {
+        sendJSON(res, 400, { success: false, error: err.message });
+      }
       return;
     }
     const profileV2Action = pathname.match(/^\/api\/v2\/profiles\/([a-zA-Z0-9_-]+)\/(start|stop|clone)$/);
@@ -330,9 +447,14 @@ export function startApiServer(): void {
         return;
       }
       if (action === 'clone') {
-        const body = await parseBody(req);
-        const cloned = cloneProfile(profileId, body.name || undefined);
-        sendJSON(res, 201, { success: true, data: cloned });
+        try {
+          assertCanCreateProfile(1);
+          const body = await parseBody(req);
+          const cloned = cloneProfile(profileId, body.name || undefined);
+          sendJSON(res, 201, { success: true, data: cloned });
+        } catch (err: any) {
+          sendJSON(res, 400, { success: false, error: err.message });
+        }
         return;
       }
     }
@@ -340,7 +462,8 @@ export function startApiServer(): void {
     // Authenticate Bearer token for Legacy REST endpoints (Header or Query param)
     const queryToken = parsedUrl.searchParams.get('token');
     const authHeader = req.headers['authorization'];
-    const isAuthorized = authHeader === `Bearer ${token}` || queryToken === token;
+    const bearer = authHeader?.replace(/^Bearer\s+/i, '') || '';
+    const isAuthorized = isValidApiToken(bearer) || isValidApiToken(queryToken);
 
     if (!isAuthorized) {
       sendJSON(res, 401, { error: 'Unauthorized. Invalid or missing Bearer token.' });
@@ -360,6 +483,7 @@ export function startApiServer(): void {
 
       if (pathname === '/profiles/bulk' && method === 'POST') {
         const body = await parseBody(req);
+        assertCanCreateProfile(body?.count || 1);
         const result = bulkCreateProfiles(body);
         sendJSON(res, 201, { success: true, data: result });
         return;
@@ -473,6 +597,7 @@ export function startApiServer(): void {
       const cloneMatch = pathname.match(/^\/profiles\/([^/]+)\/clone$/);
       if (cloneMatch && method === 'POST') {
         const id = cloneMatch[1];
+        assertCanCreateProfile(1);
         const body = await parseBody(req);
         const p = cloneProfile({
           sourceProfileId: id,

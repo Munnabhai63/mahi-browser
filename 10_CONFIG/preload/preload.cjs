@@ -97,6 +97,7 @@ const api = {
   // Licensing & MAHI Pro
   getLicenseStatus: () => ipcRenderer.invoke('license:getStatus'),
   activateLicense: (dto) => ipcRenderer.invoke('license:activate', dto),
+  getPlanLimits: () => ipcRenderer.invoke('license:getLimits'),
   adminCreateLicense: (dto, adminSecret) => ipcRenderer.invoke('admin:createLicense', dto, adminSecret),
   adminGetLicenses: (adminSecret, filter) => ipcRenderer.invoke('admin:getLicenses', adminSecret, filter),
   adminRevokeLicense: (licenseId, adminSecret, reason) => ipcRenderer.invoke('admin:revokeLicense', licenseId, adminSecret, reason),

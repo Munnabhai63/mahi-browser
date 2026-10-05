@@ -147,7 +147,11 @@ export function getSuperAdminHtml(): string {
             <span class="px-3 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-mono font-bold">ECDSA + SHA-256</span>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+            <div>
+              <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Student Name</label>
+              <input type="text" id="mint-student" placeholder="e.g. Rahul Kumar" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-sm">
+            </div>
             <div>
               <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Plan Tier</label>
               <select id="mint-tier" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all cursor-pointer shadow-sm">
@@ -158,28 +162,40 @@ export function getSuperAdminHtml(): string {
               </select>
             </div>
             <div>
-              <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Max Browser Profiles</label>
+              <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Profiles</label>
               <input type="number" id="mint-profiles" value="9999" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-sm">
             </div>
             <div>
-              <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Max Device Seats</label>
+              <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Devices</label>
               <input type="number" id="mint-devices" value="10" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-sm">
             </div>
             <div>
-              <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Validity Duration (Days)</label>
+              <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Days</label>
               <input type="number" id="mint-days" value="365" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-sm">
             </div>
           </div>
 
-          <div class="flex items-center justify-between pt-2">
-            <button onclick="mintLicenseKey()" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 transition-all flex items-center transform active:scale-95">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-               Mint New License Key
-            </button>
-            <div id="minted-result" class="hidden flex items-center space-x-3 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200 shadow-sm animate-pulse">
-              <span class="text-xs text-emerald-800 font-semibold">Minted Key:</span>
-              <code id="minted-key-text" class="text-emerald-700 font-extrabold mono text-xs tracking-wider"></code>
-              <button onclick="copyMintedKey()" class="text-xs bg-emerald-600 text-white hover:bg-emerald-500 px-3 py-1.5 rounded-lg font-bold shadow-sm transition-colors flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button>
+          <!-- Added HWID Input -->
+          <div class="mb-6">
+            <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Student Hardware ID (HWID) <span class="text-rose-500">*Required for Offline Activation</span></label>
+            <input type="text" id="mint-hwid" placeholder="Paste the HWID sent by the student here..." class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 font-mono font-bold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-sm">
+          </div>
+
+          <button onclick="mintLicenseKey()" class="w-full justify-center py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-sm shadow-lg shadow-emerald-600/20 transition-all flex items-center transform active:scale-95">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+             Mint Premium Offline Key
+          </button>
+
+          <div id="minted-result" class="hidden mt-6 bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100 shadow-inner opacity-0 transition-opacity duration-500">
+            <div class="flex items-center justify-between mb-3">
+               <span class="text-xs font-black text-emerald-800 uppercase tracking-wider flex items-center"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Authenticated License Key</span>
+               <button id="copy-minted-btn" onclick="copyMintedKey()" class="text-xs bg-emerald-600 text-white hover:bg-emerald-500 px-4 py-2 rounded-xl font-bold shadow-md shadow-emerald-600/20 transition-all flex items-center transform active:scale-95">
+                 <svg id="copy-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                 <span id="copy-text">Copy Key</span>
+               </button>
+            </div>
+            <div class="bg-white rounded-xl border border-emerald-100 p-4 max-h-32 overflow-y-auto cursor-text shadow-sm">
+               <code id="minted-key-text" class="text-emerald-700 font-mono text-[11px] font-semibold break-all leading-relaxed select-all"></code>
             </div>
           </div>
         </div>
@@ -193,12 +209,12 @@ export function getSuperAdminHtml(): string {
           <table class="w-full text-left text-xs">
             <thead class="bg-slate-50/80 text-slate-500 uppercase font-extrabold text-[10px] tracking-wider border-b border-slate-200">
               <tr>
+                <th class="px-6 py-4">Student</th>
                 <th class="px-6 py-4">License Key</th>
-                <th class="px-6 py-4">Tier</th>
-                <th class="px-6 py-4">Profile Quota</th>
-                <th class="px-6 py-4">Device Quota</th>
+                <th class="px-6 py-4">Quotas</th>
                 <th class="px-6 py-4">Expires At</th>
                 <th class="px-6 py-4">Status</th>
+                <th class="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody id="licenses-tbody" class="divide-y divide-slate-100 text-slate-700">
@@ -477,32 +493,64 @@ export function getSuperAdminHtml(): string {
     }
 
     async function mintLicenseKey() {
+      const btn = document.querySelector('button[onclick="mintLicenseKey()"]');
+      const originalHtml = btn.innerHTML;
+      btn.innerHTML = '<svg class="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Generating...';
+      btn.disabled = true;
+      btn.classList.add('opacity-80', 'cursor-not-allowed');
+
+      const studentName = document.getElementById('mint-student').value || 'Unknown Student';
+      const hwid = document.getElementById('mint-hwid') ? document.getElementById('mint-hwid').value.trim() : '';
       const tier = document.getElementById('mint-tier').value;
       const maxProfiles = parseInt(document.getElementById('mint-profiles').value, 10) || 100;
       const maxDevices = parseInt(document.getElementById('mint-devices').value, 10) || 5;
       const days = parseInt(document.getElementById('mint-days').value, 10) || 365;
+      
+      if (!hwid) {
+        showSuperToast('Error', 'Please paste the Student HWID first.', 'error');
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+        btn.classList.remove('opacity-80', 'cursor-not-allowed');
+        return;
+      }
 
-      const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-      const generatedKey = 'MAHI-' + tier.toUpperCase() + '-' + randomPart;
+      try {
+        const res = await fetch('/api/v2/super-admin/licenses/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerName: studentName,
+            hwid,
+            tier,
+            maxProfiles,
+            maxDevices,
+            validityDays: days
+          })
+        });
 
-      const res = await fetch('/api/v2/super-admin/licenses/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          key: generatedKey,
-          tier,
-          maxProfiles,
-          maxDevices,
-          validityDays: days
-        })
-      });
-
-      const json = await res.json();
-      if (json.success) {
-        document.getElementById('minted-key-text').innerText = generatedKey;
-        document.getElementById('minted-result').classList.remove('hidden');
-        showSuperToast('License Minted', \`Signed key: \${generatedKey}\`, 'success');
-        loadLicenses();
+        const json = await res.json();
+        if (json.success && json.data) {
+          const resultBox = document.getElementById('minted-result');
+          resultBox.classList.remove('hidden');
+          // Add a small delay for CSS transition to kick in
+          setTimeout(() => resultBox.classList.remove('opacity-0'), 10);
+          
+          document.getElementById('minted-key-text').innerText = json.data.licenseKey || json.data.keyMasked || json.data.id;
+          
+          // Clear HWID input to prevent accidental duplicates
+          document.getElementById('mint-hwid').value = '';
+          
+          showSuperToast('Success', 'Offline License Key Generated!', 'success');
+          loadLicenses(); // Refresh the table
+        } else {
+          showSuperToast('Failed', json.error || 'Unknown error', 'error');
+        }
+      } catch (err) {
+        showSuperToast('Error', err.message, 'error');
+      } finally {
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+        btn.classList.remove('opacity-80', 'cursor-not-allowed');
       }
     }
 
@@ -510,28 +558,87 @@ export function getSuperAdminHtml(): string {
       const key = document.getElementById('minted-key-text').innerText;
       navigator.clipboard.writeText(key);
       showSuperToast('Copied', 'License key copied to clipboard!', 'info');
+      
+      const btn = document.getElementById('copy-minted-btn');
+      const icon = document.getElementById('copy-icon');
+      const text = document.getElementById('copy-text');
+      
+      btn.classList.replace('bg-emerald-600', 'bg-teal-600');
+      icon.innerHTML = '<polyline points="20 6 9 17 4 12"></polyline>';
+      text.innerText = 'Copied!';
+      
+      setTimeout(() => {
+        btn.classList.replace('bg-teal-600', 'bg-emerald-600');
+        icon.innerHTML = '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>';
+        text.innerText = 'Copy Key';
+      }, 2000);
+    }
+
+    async function actionLicense(id, action) {
+      if (action === 'delete' && !confirm('Delete this license forever?')) return;
+      try {
+        await fetch('/api/v2/super-admin/licenses/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, action })
+        });
+        loadLicenses();
+      } catch (e) {
+        alert('Action failed');
+      }
+    }
+
+    async function copyToClip(text) {
+      navigator.clipboard.writeText(text);
+      // Brief visual feedback could go here
     }
 
     async function loadLicenses() {
       const tbody = document.getElementById('licenses-tbody');
       try {
-        const res = await fetch('/api/v2/license/status');
+        const res = await fetch('/api/v2/super-admin/licenses/list');
         const json = await res.json();
         if (json.success && json.data) {
-          const l = json.data;
-          tbody.innerHTML = `
-            <tr class="hover:bg-emerald-50/40 hover:shadow-sm cursor-default transition-all duration-300 border-b border-slate-100 last:border-0 group">
-              <td class="px-6 py-4 font-mono font-bold text-emerald-700 group-hover:text-emerald-600 transition-colors">${l.licenseKey || 'MAHI-ENTERPRISE-MASTER'}</td>
-              <td class="px-6 py-4 font-bold uppercase text-slate-800">${l.tier || 'Enterprise'}</td>
-              <td class="px-6 py-4 mono font-semibold text-slate-600 group-hover:text-slate-800 transition-colors">${l.maxProfiles || 'Unlimited'} Profiles</td>
-              <td class="px-6 py-4 mono font-semibold text-slate-600 group-hover:text-slate-800 transition-colors">${l.maxDevices || 'Unlimited'} Devices</td>
-              <td class="px-6 py-4 mono text-slate-400 group-hover:text-slate-500 transition-colors">${l.expiresAt ? new Date(l.expiresAt).toLocaleDateString() : 'Lifetime (Perpetual)'}</td>
-              <td class="px-6 py-4"><span class="px-2.5 py-1 rounded-md text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300/50 shadow-sm">ACTIVE</span></td>
-            </tr>
-          `;
+          if (json.data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-slate-400">No licenses minted yet.</td></tr>';
+            return;
+          }
+          
+          tbody.innerHTML = json.data.map(l => {
+            const isBanned = l.status === 'DISABLED';
+            const statusBadge = isBanned 
+              ? '<span class="px-2.5 py-1 rounded-md text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300/50 shadow-sm">DISABLED</span>'
+              : '<span class="px-2.5 py-1 rounded-md text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300/50 shadow-sm">ACTIVE</span>';
+            
+            const actionBtn = isBanned
+              ? '<button onclick="actionLicense(\\'' + l.id + '\\', \\'activate\\')" class="px-2 py-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded text-[10px] font-bold transition-colors border border-emerald-200">Active</button>'
+              : '<button onclick="actionLicense(\\'' + l.id + '\\', \\'disable\\')" class="px-2 py-1 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded text-[10px] font-bold transition-colors border border-amber-200">Ban</button>';
+
+            const name = l.customer_name || 'Student';
+            const fullHash = l.license_key_hash || '';
+            const hash = fullHash ? fullHash.substring(0,25) + '...' : 'MAHI-...';
+            const dur = l.duration_type || 'PRO';
+            const devs = l.max_devices || 5;
+            const exp = l.expires_at ? new Date(l.expires_at).toLocaleDateString() : 'Lifetime';
+            const rowClass = 'hover:bg-emerald-50/40 hover:shadow-sm cursor-default transition-all duration-300 border-b border-slate-100 last:border-0 group ' + (isBanned ? 'opacity-75' : '');
+
+            return '<tr class="' + rowClass + '">' +
+              '<td class="px-6 py-4 font-bold text-slate-800">' + name + '</td>' +
+              '<td class="px-6 py-4"><div class="flex items-center space-x-2">' +
+              '<span class="font-mono font-bold text-emerald-700 text-[10px] group-hover:text-emerald-600 transition-colors">' + hash + '</span>' +
+              '<button onclick="copyToClip(\\'' + fullHash + '\\')" class="text-slate-400 hover:text-emerald-600 transition-colors" title="Copy Key">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div></td>' +
+              '<td class="px-6 py-4 mono font-semibold text-slate-600 text-[10px]">' + dur + ' | ' + devs + ' Dev</td>' +
+              '<td class="px-6 py-4 mono text-slate-500 text-[10px]">' + exp + '</td>' +
+              '<td class="px-6 py-4">' + statusBadge + '</td>' +
+              '<td class="px-6 py-4 text-right space-x-1">' +
+              '<button onclick="actionLicense(\\'' + l.id + '\\', \\'extend\\')" class="px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded text-[10px] font-bold transition-colors border border-blue-200" title="+30 Days">+30D</button>' +
+              actionBtn +
+              '<button onclick="actionLicense(\\'' + l.id + '\\', \\'delete\\')" class="px-2 py-1 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded text-[10px] font-bold transition-colors border border-rose-200">Del</button></td></tr>';
+          }).join('');
         }
       } catch (e) {
-        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-slate-400">Failed to load licenses.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-rose-500 font-bold">Failed to load licenses. Database error.</td></tr>';
       }
     }
 

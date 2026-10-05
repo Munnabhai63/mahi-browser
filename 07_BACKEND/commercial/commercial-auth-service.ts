@@ -9,8 +9,8 @@ import {
   AuthSessionResponse,
 } from '../../10_CONFIG/shared/types/commercial.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
+import { getJwtSecret } from '../../08_SECURITY/install-secrets.js';
 
-const JWT_SECRET = 'mahi_commercial_jwt_secret_2026_x893k';
 const JWT_EXPIRATION_HOURS = 24 * 7; // 7 days
 
 export function hashPassword(password: string, salt: string): string {
@@ -25,7 +25,7 @@ export function signToken(payload: { userId: string; email: string; role: Commer
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const exp = Math.floor(Date.now() / 1000) + JWT_EXPIRATION_HOURS * 3600;
   const body = Buffer.from(JSON.stringify({ ...payload, exp })).toString('base64url');
-  const signature = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${body}`).digest('base64url');
+  const signature = crypto.createHmac('sha256', getJwtSecret()).update(`${header}.${body}`).digest('base64url');
   return `${header}.${body}.${signature}`;
 }
 
@@ -35,8 +35,15 @@ export function verifyToken(token: string): { userId: string; email: string; rol
   if (parts.length !== 3) return null;
   const [header, body, signature] = parts;
 
-  const expectedSig = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${body}`).digest('base64url');
-  if (signature !== expectedSig) return null;
+  const currentSecret = getJwtSecret();
+  let expectedSig = crypto.createHmac('sha256', currentSecret).update(`${header}.${body}`).digest('base64url');
+  if (signature !== expectedSig) {
+    // Backward compatibility check with legacy key for smooth migration
+    const legacySig = crypto.createHmac('sha256', 'mahi_commercial_jwt_secret_2026_x893k').update(`${header}.${body}`).digest('base64url');
+    if (signature !== legacySig) {
+      return null;
+    }
+  }
 
   try {
     const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));

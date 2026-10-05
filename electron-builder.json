@@ -16,7 +16,11 @@
   "files": [
     "dist/**/*",
     "dist-electron/**/*",
-    "package.json"
+    "package.json",
+    "!_ADMIN_KEYGEN/**",
+    "!keys.json",
+    "!*.pem",
+    "!*.key"
   ],
   "win": {
     "target": [

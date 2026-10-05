@@ -1,5 +1,9 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron';
+import { ipcMain, dialog, BrowserWindow, app } from 'electron';
+import * as fs from 'fs';
+import * as path from 'path';
 import { verifyLicense, getHWID } from '../../08_SECURITY/license-service.js';
+import { assertCanCreateProfile, getPlanLimitsInfo } from '../../08_SECURITY/freemium-guard.js';
+import { getDatabase } from '../../06_DATABASE/connection.js';
 import { setActiveUserId } from '../commercial/session-context.js';
 import {
   getProfiles,
@@ -197,6 +201,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:create', async (_event, dto) => {
     try {
+      assertCanCreateProfile(1);
       const validated = CreateProfileDTOSchema.parse(dto);
       return createProfile(validated);
     } catch (err) {
@@ -206,6 +211,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:bulkCreate', async (_event, dto) => {
     try {
+      assertCanCreateProfile(dto?.count || 1);
       return bulkCreateProfiles(dto);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -271,6 +277,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:clone', async (_event, dto) => {
     try {
+      assertCanCreateProfile(1);
       const validated = CloneProfileDTOSchema.parse(dto);
       return cloneProfile(validated);
     } catch (err) {
@@ -673,6 +680,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('archive:import', async (_event, options) => {
     try {
+      assertCanCreateProfile(1);
       return importProfileFromArchive(options);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -705,6 +713,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('archive:importCrossPlatform', async (_event, dto) => {
     try {
+      assertCanCreateProfile(1);
       return importCrossPlatformProfiles(dto);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -931,6 +940,43 @@ export function registerIpcHandlers(): void {
   // LICENSING & MAHI PRO
   ipcMain.handle('license:getStatus', async () => {
     try {
+      const userDataDir = app.getPath('userData');
+      const licenseFile = path.join(userDataDir, 'offline-license.key');
+      if (fs.existsSync(licenseFile)) {
+        const rawKey = fs.readFileSync(licenseFile, 'utf8').trim();
+        if (rawKey) {
+          const check = verifyLicense(rawKey);
+          if (check.valid) {
+            return {
+              isValid: true,
+              status: 'ACTIVE',
+              message: 'MAHI Pro Active',
+              license: {
+                id: 'local-rsa-license',
+                customerName: 'MAHI PRO Subscriber',
+                keyMasked: 'MAHI-RSA-ACTIVE',
+                expiresAt: check.expiresAt || new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+                maxDevices: 1,
+                activeDevicesCount: 1,
+              },
+            };
+          } else if (check.error === 'License has expired') {
+            return {
+              isValid: false,
+              status: 'EXPIRED',
+              message: 'Your MAHI PRO license has expired. Free plan limits apply.',
+              license: {
+                id: 'local-rsa-license',
+                customerName: 'MAHI PRO Subscriber',
+                keyMasked: 'MAHI-RSA-EXPIRED',
+                expiresAt: check.expiresAt,
+                maxDevices: 1,
+                activeDevicesCount: 1,
+              },
+            };
+          }
+        }
+      }
       return validateCurrentLicense();
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -939,10 +985,43 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('license:activate', async (_event, dto) => {
     try {
-      return activateLicense(dto.licenseKey, undefined, dto.deviceName, dto.accountId);
+      const rawKey = dto?.licenseKey?.trim();
+      if (!rawKey) {
+        return { success: false, status: 'NOT_ACTIVATED', message: 'License key is required.' };
+      }
+
+      // 1. Check RSA signature
+      const rsaCheck = verifyLicense(rawKey);
+      if (rsaCheck.valid) {
+        const userDataDir = app.getPath('userData');
+        const licenseFile = path.join(userDataDir, 'offline-license.key');
+        fs.writeFileSync(licenseFile, rawKey, 'utf8');
+        setActiveUserId('local-license-user');
+        return {
+          success: true,
+          status: 'ACTIVE',
+          message: 'MAHI Pro license successfully activated!',
+        };
+      }
+
+      // If invalid RSA format or failed signature, return specific error
+      if (rsaCheck.error && rsaCheck.error !== 'Invalid license key' && rsaCheck.error !== 'Invalid license format') {
+        return {
+          success: false,
+          status: 'NOT_ACTIVATED',
+          message: rsaCheck.error,
+        };
+      }
+
+      // 2. Fallback to 04_LICENSING DB engine
+      return activateLicense(rawKey, undefined, dto.deviceName, dto.accountId);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
+  });
+
+  ipcMain.handle('license:getLimits', async () => {
+    return getPlanLimitsInfo();
   });
 
   ipcMain.handle('admin:createLicense', async (_event, dto, adminSecret: string) => {
@@ -1216,9 +1295,9 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  // ─────────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // V2 Enterprise Handlers: Folders, Locks, Feature Flags, Fleet & API Keys
-  // ─────────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   ipcMain.handle('folders:get', async (_event, workspaceId?: string) => {
     try {
       return getFolders(workspaceId);
@@ -1393,32 +1472,91 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('commercial:login', async (_event, dto) => {
     try {
-      if (dto.password === 'LICENSE_MODE') {
-        const licenseKey = dto.email;
-        const check = verifyLicense(licenseKey);
-        
-        if (check.valid) {
-          const user = {
-            id: 'local-license-user',
-            email: 'Enterprise License',
-            name: 'MAHI PRO',
-            role: 'PRO' as any,
-            status: 'ACTIVE' as any,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
-          setActiveUserId(user.id);
-          return { success: true, user, token: licenseKey };
-        } else {
-          return { success: false, error: check.error };
+      const claimedFile = path.join(app.getPath('userData'), 'claimed-licenses.json');
+      const licenseFile = path.join(app.getPath('userData'), 'offline-license.key');
+
+      // Helper: read claimed licenses { email -> licenseKey }
+      function readClaimed(): Record<string, string> {
+        try { return JSON.parse(fs.readFileSync(claimedFile, 'utf8')); } catch { return {}; }
+      }
+      function writeClaimed(data: Record<string, string>) {
+        fs.writeFileSync(claimedFile, JSON.stringify(data), 'utf8');
+      }
+
+      // â”€â”€ MODE 1: CHECK_LICENSE â”€â”€
+      // Called after user logs in with email+password.
+      // Returns: { success: true, licenseKey } if email has valid license
+      //          { needsLicense: true }        if email has no license yet
+      if (dto.mode === 'CHECK_LICENSE') {
+        const claimed = readClaimed();
+        const storedKey = claimed[dto.email?.toLowerCase()];
+        if (storedKey) {
+          const check = verifyLicense(storedKey);
+          if (check.valid) {
+            setActiveUserId('local-license-user');
+            return { success: true, licenseKey: storedKey };
+          } else {
+            // License expired â€” remove it and ask for new one
+            delete claimed[dto.email?.toLowerCase()];
+            writeClaimed(claimed);
+            return { needsLicense: true, error: 'License expired. Please enter a new key.' };
+          }
         }
+        return { needsLicense: true };
       }
-      
+
+      // â”€â”€ MODE 2: ACTIVATE_LICENSE â”€â”€
+      // Called when user submits a new license key.
+      // Validates the key, ensures 1-to-1 email mapping, saves it.
+      if (dto.mode === 'ACTIVATE_LICENSE') {
+        const { email, licenseKey: rawKey } = dto;
+        if (!email || !rawKey) return { success: false, error: 'Missing email or license key.' };
+
+        const check = verifyLicense(rawKey);
+        if (!check.valid) return { success: false, error: check.error || 'Invalid license key.' };
+
+        const claimed = readClaimed();
+        const emailLower = email.toLowerCase();
+
+        // Check if this license key is already claimed by a DIFFERENT email
+        const alreadyClaimedBy = claimed[Object.keys(claimed).find(k => claimed[k] === rawKey) || ''];
+        if (alreadyClaimedBy && alreadyClaimedBy !== emailLower) {
+          return { success: false, error: 'This license key is already activated on another account.' };
+        }
+
+        // Link license to this email
+        claimed[emailLower] = rawKey;
+        writeClaimed(claimed);
+        fs.writeFileSync(licenseFile, rawKey, 'utf8');
+
+        setActiveUserId('local-license-user');
+        return { success: true, licenseKey: rawKey };
+      }
+
+      // â”€â”€ LEGACY: LICENSE_MODE (auto-login on app start) â”€â”€
+      if (dto.password === 'LICENSE_MODE') {
+        let licenseKey = dto.email;
+        if (licenseKey === 'AUTO') {
+          if (fs.existsSync(licenseFile)) {
+            licenseKey = fs.readFileSync(licenseFile, 'utf8').trim();
+          } else {
+            return { success: false, error: 'NO_SAVED_LICENSE' };
+          }
+        }
+        const check = verifyLicense(licenseKey);
+        if (check.valid) {
+          setActiveUserId('local-license-user');
+          const user = { id: 'local-license-user', email: 'Enterprise License', name: 'MAHI PRO', role: 'PRO' as any, status: 'ACTIVE' as any, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+          return { success: true, user, token: licenseKey };
+        }
+        return { success: false, error: check.error };
+      }
+
+      // â”€â”€ Normal DB login (fallback) â”€â”€
       const result = loginUser(dto);
-      if (result.success && result.user) {
-        setActiveUserId(result.user.id);
-      }
+      if (result.success && result.user) setActiveUserId(result.user.id);
       return result;
+
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -1485,3 +1623,9 @@ export function registerIpcHandlers(): void {
     }
   });
 }
+
+
+
+
+
+

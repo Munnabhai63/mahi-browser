@@ -9,3 +9,9 @@ release/
 *.log
 .DS_Store
 Thumbs.db
+.env
+keys.json
+_ADMIN_KEYGEN/
+*.pem
+*.key
+crash-log.txt
