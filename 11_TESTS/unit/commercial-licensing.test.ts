@@ -49,7 +49,7 @@ describe('Commercial Licensing, Plans & Device Entitlements', () => {
 
     const freePlan = plans.find((p) => p.tier === 'FREE');
     expect(freePlan).toBeDefined();
-    expect(freePlan?.limits.maxProfiles).toBe(5);
+    expect(freePlan?.limits.maxProfiles).toBe(15);
     expect(freePlan?.limits.maxDevices).toBe(1);
 
     const proPlan = plans.find((p) => p.tier === 'PRO');
@@ -149,7 +149,7 @@ describe('Commercial Licensing, Plans & Device Entitlements', () => {
     const ent = evaluateUserEntitlements(userId);
     expect(ent.allowed).toBe(true);
     expect(ent.plan.tier).toBe('FREE');
-    expect(ent.limits.maxProfiles).toBe(5);
+    expect(ent.limits.maxProfiles).toBe(15);
 
     // Profile creation check
     const canCreate = canCreateProfile(userId);

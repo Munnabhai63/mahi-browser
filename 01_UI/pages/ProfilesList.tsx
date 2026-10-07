@@ -128,14 +128,9 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
     try {
       const runningCount = profiles.filter((p) => p.status === 'RUNNING').length;
       if (!isSyncActive) {
-        await fetch('http://127.0.0.1:32123/sync/start?token=mahi_browser_local_api_2024', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer mahi_browser_local_api_2024',
-          },
-          body: JSON.stringify({}),
-        });
+        if (window.mahiAPI?.synchronizerStart) {
+          await window.mahiAPI.synchronizerStart();
+        }
         setIsSyncActive(true);
         showToast({
           type: 'success',
@@ -143,14 +138,9 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
           message: `Mirroring mouse, typing & scroll across all running profiles (${runningCount} active)!`,
         });
       } else {
-        await fetch('http://127.0.0.1:32123/sync/stop?token=mahi_browser_local_api_2024', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer mahi_browser_local_api_2024',
-          },
-          body: JSON.stringify({}),
-        });
+        if (window.mahiAPI?.synchronizerStop) {
+          await window.mahiAPI.synchronizerStop();
+        }
 
         setIsSyncActive(false);
         showToast({

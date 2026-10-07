@@ -6,6 +6,7 @@ import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { setCustomDatabasePath, closeDatabase } from '../../06_DATABASE/connection.js';
 import { createCentralApiServer } from '../../07_BACKEND/server/app.js';
 import { registerUser } from '../../07_BACKEND/commercial/commercial-auth-service.js';
+import { getInstallSecrets } from '../../08_SECURITY/install-secrets.js';
 
 describe('Commercial Admin & REST API Integration Suite', () => {
   const testDbDir = path.join(process.cwd(), '.test_commercial_api');
@@ -97,15 +98,21 @@ describe('Commercial Admin & REST API Integration Suite', () => {
     expect(res.data.data.length).toBeGreaterThanOrEqual(4);
   });
 
-  it('GET /api/v1/admin/dashboard should reject requests without admin credentials (403 Forbidden)', async () => {
-    const res = await request('/api/v1/admin/dashboard');
-    expect(res.status).toBe(403);
+  it('GET /api/v1/admin/dashboard should reject requests without admin credentials or with old backdoor (403 Forbidden)', async () => {
+    const resNoAuth = await request('/api/v1/admin/dashboard');
+    expect(resNoAuth.status).toBe(403);
+
+    const resBackdoor = await request('/api/v1/admin/dashboard', {
+      headers: { 'X-Admin-Secret': 'mahi_super_admin_2026' },
+    });
+    expect(resBackdoor.status).toBe(403);
   });
 
-  it('GET /api/v1/admin/dashboard should return real telemetry stats with valid admin secret', async () => {
+  it('GET /api/v1/admin/dashboard should return real telemetry stats with valid dynamic admin secret', async () => {
+    const validSecret = getInstallSecrets().adminWebSecret;
     const res = await request('/api/v1/admin/dashboard', {
       headers: {
-        'X-Admin-Secret': 'mahi_super_admin_2026',
+        'X-Admin-Secret': validSecret,
       },
     });
 
@@ -116,9 +123,10 @@ describe('Commercial Admin & REST API Integration Suite', () => {
   });
 
   it('GET /api/v1/admin/users and PUT /status should allow admin to manage user accounts and record audit logs', async () => {
+    const validSecret = getInstallSecrets().adminWebSecret;
     // 1. Get users list
     const listRes = await request('/api/v1/admin/users', {
-      headers: { 'X-Admin-Secret': 'mahi_super_admin_2026' },
+      headers: { 'X-Admin-Secret': validSecret },
     });
     expect(listRes.status).toBe(200);
     expect(listRes.data.data.length).toBeGreaterThan(0);
@@ -127,7 +135,7 @@ describe('Commercial Admin & REST API Integration Suite', () => {
     // 2. Suspend user
     const suspendRes = await request(`/api/v1/admin/users/${targetUser.id}/status`, {
       method: 'PUT',
-      headers: { 'X-Admin-Secret': 'mahi_super_admin_2026' },
+      headers: { 'X-Admin-Secret': validSecret },
       body: { status: 'SUSPENDED', reason: 'Admin integration test' },
     });
     expect(suspendRes.status).toBe(200);
@@ -135,17 +143,18 @@ describe('Commercial Admin & REST API Integration Suite', () => {
 
     // 3. Verify audit log was created
     const logsRes = await request('/api/v1/admin/audit-logs', {
-      headers: { 'X-Admin-Secret': 'mahi_super_admin_2026' },
+      headers: { 'X-Admin-Secret': validSecret },
     });
     expect(logsRes.status).toBe(200);
     expect(logsRes.data.data.length).toBeGreaterThan(0);
     expect(logsRes.data.data.some((l: any) => l.action.includes('USER_SUSPENDED'))).toBe(true);
   });
 
-  it('POST /api/v1/admin/licenses should allow admin to mint license keys', async () => {
+  it('POST /api/v1/admin/licenses should reject minting and instruct to use external keygen (403 Forbidden)', async () => {
+    const validSecret = getInstallSecrets().adminWebSecret;
     const mintRes = await request('/api/v1/admin/licenses', {
       method: 'POST',
-      headers: { 'X-Admin-Secret': 'mahi_super_admin_2026' },
+      headers: { 'X-Admin-Secret': validSecret },
       body: {
         customerName: 'Enterprise Client',
         durationType: '1_YEAR',
@@ -153,8 +162,8 @@ describe('Commercial Admin & REST API Integration Suite', () => {
       },
     });
 
-    expect(mintRes.status).toBe(201);
-    expect(mintRes.data.success).toBe(true);
-    expect(mintRes.data.rawLicenseKey).toMatch(/^MAHI-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    expect(mintRes.status).toBe(403);
+    expect(mintRes.data.success).toBe(false);
+    expect(mintRes.data.error).toContain('Use external keygen');
   });
 });

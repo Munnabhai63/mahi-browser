@@ -7,7 +7,7 @@ import { getDefaultProfileSettings } from '../10_CONFIG/shared/constants/default
 if (typeof window !== 'undefined' && !window.mahiAPI) {
   console.warn('⚠️ FALLBACK API ACTIVATED - using REST API bridge');
   const API_BASE = 'http://localhost:32123';
-  const AUTH_TOKEN = (typeof localStorage !== 'undefined' && localStorage.getItem('mahi_local_api_token')) || 'mahi_browser_local_api_2024';
+  const AUTH_TOKEN = (typeof localStorage !== 'undefined' && localStorage.getItem('mahi_local_api_token')) || '';
 
   const authHeaders = (): Record<string, string> => ({
     'Authorization': `Bearer ${AUTH_TOKEN}`,

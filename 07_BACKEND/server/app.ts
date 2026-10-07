@@ -25,6 +25,7 @@ import { getSuperAdminHtml } from './super-admin-html.js';
 import { getDownloadPortalHtml } from './download-portal-html.js';
 import { getDistributionInfo, fixDesktopShortcuts } from '../../03_HARDWARE/distribution-service.js';
 import { handleCommercialApiRoutes } from '../commercial/commercial-api-router.js';
+import { assertCanCreateProfile } from '../../08_SECURITY/freemium-guard.js';
 
 function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
   res.writeHead(statusCode, {
@@ -171,9 +172,14 @@ export function createCentralApiServer(): http.Server {
       }
 
       if (pathname === '/api/v2/profiles' && method === 'POST') {
-        const body = await parseBody(req);
-        const profile = createProfile(body);
-        return sendJSON(res, 201, { success: true, data: profile });
+        try {
+          assertCanCreateProfile(1);
+          const body = await parseBody(req);
+          const profile = createProfile(body);
+          return sendJSON(res, 201, { success: true, data: profile });
+        } catch (err: any) {
+          return sendJSON(res, 400, { success: false, error: err.message });
+        }
       }
 
       // Single profile route: /api/v2/profiles/:id
@@ -211,9 +217,14 @@ export function createCentralApiServer(): http.Server {
           return sendJSON(res, result.success ? 200 : 500, result);
         }
         if (action === 'clone') {
-          const body = await parseBody(req);
-          const cloned = cloneProfile(profileId, body.name || undefined);
-          return sendJSON(res, 201, { success: true, data: cloned });
+          try {
+            assertCanCreateProfile(1);
+            const body = await parseBody(req);
+            const cloned = cloneProfile(profileId, body.name || undefined);
+            return sendJSON(res, 201, { success: true, data: cloned });
+          } catch (err: any) {
+            return sendJSON(res, 400, { success: false, error: err.message });
+          }
         }
       }
 
@@ -276,16 +287,6 @@ export function createCentralApiServer(): http.Server {
         return sendJSON(res, 200, { success: true, data: getLicenses() });
       }
 
-      if ((pathname === '/api/v2/licenses/mint' || pathname === '/api/v2/licenses' || pathname === '/api/v2/super-admin/licenses/create') && method === 'POST') {
-        const body = await parseBody(req);
-        const newLic = createLicense({
-          customerName: body.customerName || `Client-${Date.now()}`,
-          durationType: (body.durationType || '1_YEAR') as any,
-          maxDevices: parseInt(body.maxDevices, 10) || 5,
-          notes: body.notes || undefined,
-        }, 'WEB_ADMIN');
-        return sendJSON(res, 201, { success: true, data: newLic });
-      }
 
       if (pathname === '/api/v2/licenses/revoke' && method === 'POST') {
         const body = await parseBody(req);

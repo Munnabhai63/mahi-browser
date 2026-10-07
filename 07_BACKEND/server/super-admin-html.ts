@@ -4,7 +4,11 @@
  * Served on http://127.0.0.1:32123/super-admin
  */
 
+import { getMasterAdminSecret, getApiAuthToken } from '../../08_SECURITY/install-secrets.js';
+
 export function getSuperAdminHtml(): string {
+  const masterSecret = getMasterAdminSecret();
+  const apiToken = getApiAuthToken();
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -82,7 +86,7 @@ export function getSuperAdminHtml(): string {
             <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
         </div>
-        <p class="text-[11px] text-slate-500">Default Secret: <code class="text-emerald-700 font-bold mono">mahi_super_admin_2026</code></p>
+        <p class="text-[11px] text-slate-500">Master Secret Key: <code class="text-emerald-700 font-bold mono">\${masterSecret}</code></p>
       </div>
 
       <button onclick="authenticateMaster()" class="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-600/20 transition transform active:scale-98">
@@ -155,15 +159,13 @@ export function getSuperAdminHtml(): string {
             <div>
               <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Plan Tier</label>
               <select id="mint-tier" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all cursor-pointer shadow-sm">
-                <option value="enterprise">Enterprise (Unlimited Everything)</option>
-                <option value="pro" selected>Pro Tier (100 Profiles / 5 Devices)</option>
-                <option value="starter">Starter Tier (20 Profiles / 2 Devices)</option>
-                <option value="free">Free Community</option>
+                <option value="pro" selected>Pro Tier (100 Profiles)</option>
+                <option value="free">Free Tier (15 Profiles)</option>
               </select>
             </div>
             <div>
               <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Profiles</label>
-              <input type="number" id="mint-profiles" value="9999" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-sm">
+              <input type="number" id="mint-profiles" value="100" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-sm">
             </div>
             <div>
               <label class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">Devices</label>
@@ -181,9 +183,9 @@ export function getSuperAdminHtml(): string {
             <input type="text" id="mint-hwid" placeholder="Paste the HWID sent by the student here..." class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 font-mono font-bold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-sm">
           </div>
 
-          <button onclick="mintLicenseKey()" class="w-full justify-center py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-sm shadow-lg shadow-emerald-600/20 transition-all flex items-center transform active:scale-95">
+          <button disabled class="w-full justify-center py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-bold text-sm shadow-lg shadow-emerald-600/20 transition-all flex items-center opacity-60 cursor-not-allowed">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-             Mint Premium Offline Key
+             Use external keygen
           </button>
 
           <div id="minted-result" class="hidden mt-6 bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100 shadow-inner opacity-0 transition-opacity duration-500">
@@ -292,12 +294,12 @@ export function getSuperAdminHtml(): string {
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+            <div class="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 opacity-80">
               <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-slate-900">Bypass Commercial Profile Limit</span>
-                <input type="checkbox" id="ovr-profile-limit" checked class="w-4 h-4 accent-emerald-600">
+                <span class="text-xs font-bold text-slate-900">Commercial Profile Limits Enforced</span>
+                <input type="checkbox" id="ovr-profile-limit" disabled class="w-4 h-4 accent-emerald-600 cursor-not-allowed">
               </div>
-              <p class="text-[11px] text-slate-500">Ignore plan limits and allow unlimited profile creation on this host node.</p>
+              <p class="text-[11px] text-slate-500">Limits (15 Free / 100 Pro) are enforced strictly by freemium-guard & RSA license. Overrides disabled.</p>
             </div>
 
             <div class="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
@@ -342,11 +344,11 @@ export function getSuperAdminHtml(): string {
           <div class="p-5 bg-slate-50 rounded-2xl border border-slate-200 font-mono text-xs space-y-3">
             <div class="flex items-center justify-between border-b border-slate-200 pb-2">
               <span class="text-slate-500">Master Secret Key:</span>
-              <span class="text-emerald-700 font-bold">mahi_super_admin_2026</span>
+              <span class="text-emerald-700 font-bold">\${masterSecret}</span>
             </div>
             <div class="flex items-center justify-between border-b border-slate-200 pb-2">
               <span class="text-slate-500">Default API Auth Header:</span>
-              <span class="text-slate-800 font-bold">Authorization: Bearer mahi_browser_local_api_2024</span>
+              <span class="text-slate-800 font-bold">Authorization: Bearer \${apiToken}</span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-slate-500">Permissions Scope:</span>
@@ -418,8 +420,17 @@ export function getSuperAdminHtml(): string {
 
   <!-- SUPER ADMIN CLIENT SCRIPT -->
   <script>
-    const MASTER_SECRET = 'mahi_super_admin_2026';
     let currentTab = 'license-mint';
+
+    function getAuthHeaders() {
+      const token = sessionStorage.getItem('mahi_api_token') || '\${apiToken}';
+      const secret = sessionStorage.getItem('mahi_admin_secret') || '\${masterSecret}';
+      return {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
+        ...(secret ? { 'X-Admin-Secret': secret } : {}),
+      };
+    }
 
     function showSuperToast(title, message, type = 'success') {
       const c = document.getElementById('super-toast-container');
@@ -448,17 +459,30 @@ export function getSuperAdminHtml(): string {
       input.type = input.type === 'password' ? 'text' : 'password';
     }
 
-    function authenticateMaster() {
+    async function authenticateMaster() {
       const pin = document.getElementById('master-pin').value.trim();
       const err = document.getElementById('auth-error');
-      if (pin === MASTER_SECRET || pin === 'mahi2026' || pin === 'admin123') {
-        document.getElementById('auth-modal').classList.add('hidden');
-        document.getElementById('super-admin-app').classList.remove('hidden');
-        showSuperToast('Master Access Granted', 'Root privileges unlocked.', 'success');
-        loadLicenses();
-        loadMasterFleet();
-      } else {
-        err.innerText = 'Invalid Master Secret Key. Access Denied.';
+      try {
+        const res = await fetch('/api/v2/super-admin/auth/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ secret: pin })
+        });
+        const data = await res.json();
+        if (data.success) {
+          sessionStorage.setItem('mahi_admin_secret', pin);
+          if (data.token) sessionStorage.setItem('mahi_api_token', data.token);
+          document.getElementById('auth-modal').classList.add('hidden');
+          document.getElementById('super-admin-app').classList.remove('hidden');
+          showSuperToast('Master Access Granted', 'Root privileges unlocked.', 'success');
+          loadLicenses();
+          loadMasterFleet();
+        } else {
+          err.innerText = data.error || 'Invalid Master Secret Key. Access Denied.';
+          err.classList.remove('hidden');
+        }
+      } catch (e) {
+        err.innerText = 'Authentication request failed.';
         err.classList.remove('hidden');
       }
     }
@@ -492,66 +516,8 @@ export function getSuperAdminHtml(): string {
       if (tabId === 'db-inspector') inspectTable();
     }
 
-    async function mintLicenseKey() {
-      const btn = document.querySelector('button[onclick="mintLicenseKey()"]');
-      const originalHtml = btn.innerHTML;
-      btn.innerHTML = '<svg class="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Generating...';
-      btn.disabled = true;
-      btn.classList.add('opacity-80', 'cursor-not-allowed');
-
-      const studentName = document.getElementById('mint-student').value || 'Unknown Student';
-      const hwid = document.getElementById('mint-hwid') ? document.getElementById('mint-hwid').value.trim() : '';
-      const tier = document.getElementById('mint-tier').value;
-      const maxProfiles = parseInt(document.getElementById('mint-profiles').value, 10) || 100;
-      const maxDevices = parseInt(document.getElementById('mint-devices').value, 10) || 5;
-      const days = parseInt(document.getElementById('mint-days').value, 10) || 365;
-      
-      if (!hwid) {
-        showSuperToast('Error', 'Please paste the Student HWID first.', 'error');
-        btn.innerHTML = originalHtml;
-        btn.disabled = false;
-        btn.classList.remove('opacity-80', 'cursor-not-allowed');
-        return;
-      }
-
-      try {
-        const res = await fetch('/api/v2/super-admin/licenses/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            customerName: studentName,
-            hwid,
-            tier,
-            maxProfiles,
-            maxDevices,
-            validityDays: days
-          })
-        });
-
-        const json = await res.json();
-        if (json.success && json.data) {
-          const resultBox = document.getElementById('minted-result');
-          resultBox.classList.remove('hidden');
-          // Add a small delay for CSS transition to kick in
-          setTimeout(() => resultBox.classList.remove('opacity-0'), 10);
-          
-          document.getElementById('minted-key-text').innerText = json.data.licenseKey || json.data.keyMasked || json.data.id;
-          
-          // Clear HWID input to prevent accidental duplicates
-          document.getElementById('mint-hwid').value = '';
-          
-          showSuperToast('Success', 'Offline License Key Generated!', 'success');
-          loadLicenses(); // Refresh the table
-        } else {
-          showSuperToast('Failed', json.error || 'Unknown error', 'error');
-        }
-      } catch (err) {
-        showSuperToast('Error', err.message, 'error');
-      } finally {
-        btn.innerHTML = originalHtml;
-        btn.disabled = false;
-        btn.classList.remove('opacity-80', 'cursor-not-allowed');
-      }
+    function mintLicenseKey() {
+      showSuperToast('Notice', 'In-app license minting is disabled. Run ../mahi-keygen/keygen.cjs manually in a terminal.', 'info');
     }
 
     function copyMintedKey() {
@@ -579,7 +545,7 @@ export function getSuperAdminHtml(): string {
       try {
         await fetch('/api/v2/super-admin/licenses/action', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ id, action })
         });
         loadLicenses();
@@ -596,7 +562,7 @@ export function getSuperAdminHtml(): string {
     async function loadLicenses() {
       const tbody = document.getElementById('licenses-tbody');
       try {
-        const res = await fetch('/api/v2/super-admin/licenses/list');
+        const res = await fetch('/api/v2/super-admin/licenses/list', { headers: getAuthHeaders() });
         const json = await res.json();
         if (json.success && json.data) {
           if (json.data.length === 0) {
@@ -645,7 +611,7 @@ export function getSuperAdminHtml(): string {
     async function loadMasterFleet() {
       const tbody = document.getElementById('master-fleet-tbody');
       try {
-        const res = await fetch('/api/v2/fleet/devices');
+        const res = await fetch('/api/v2/fleet/devices', { headers: getAuthHeaders() });
         const json = await res.json();
         if (json.success && json.data) {
           const devices = json.data;
@@ -672,7 +638,7 @@ export function getSuperAdminHtml(): string {
 
     async function revokeMasterDevice(id) {
       if (!confirm('Are you sure you want to FORCE REVOKE this device from the master network?')) return;
-      await fetch('/api/v2/fleet/devices/' + id, { method: 'DELETE' });
+      await fetch('/api/v2/fleet/devices/' + id, { method: 'DELETE', headers: getAuthHeaders() });
       showSuperToast('Device Revoked', 'Hardware access permanently severed.', 'error');
       loadMasterFleet();
     }
@@ -682,7 +648,7 @@ export function getSuperAdminHtml(): string {
       const out = document.getElementById('table-inspector-output');
       out.innerHTML = '<span class="text-slate-400">Querying SQLite table ' + tableName + '...</span>';
       try {
-        const res = await fetch('/api/v2/super-admin/db/table/' + tableName);
+        const res = await fetch('/api/v2/super-admin/db/table/' + tableName, { headers: getAuthHeaders() });
         const json = await res.json();
         if (json.success) {
           out.innerHTML = '<pre class="text-xs text-emerald-400">' + JSON.stringify(json.data, null, 2) + '</pre>';

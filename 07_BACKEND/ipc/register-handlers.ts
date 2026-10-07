@@ -1004,17 +1004,12 @@ export function registerIpcHandlers(): void {
         };
       }
 
-      // If invalid RSA format or failed signature, return specific error
-      if (rsaCheck.error && rsaCheck.error !== 'Invalid license key' && rsaCheck.error !== 'Invalid license format') {
-        return {
-          success: false,
-          status: 'NOT_ACTIVATED',
-          message: rsaCheck.error,
-        };
-      }
-
-      // 2. Fallback to 04_LICENSING DB engine
-      return activateLicense(rawKey, undefined, dto.deviceName, dto.accountId);
+      // Only RSA-2048 verified licenses can activate
+      return {
+        success: false,
+        status: 'NOT_ACTIVATED',
+        message: rsaCheck.error || 'Invalid RSA-2048 license key. A cryptographically signed MAHI- license is required.',
+      };
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -1024,15 +1019,8 @@ export function registerIpcHandlers(): void {
     return getPlanLimitsInfo();
   });
 
-  ipcMain.handle('admin:createLicense', async (_event, dto, adminSecret: string) => {
-    if (!verifyAdminAccess(adminSecret)) {
-      throw new Error('Unauthorized. Admin authentication required to create licenses.');
-    }
-    try {
-      return createLicense(dto, 'OWNER_ADMIN');
-    } catch (err) {
-      throw new Error(sanitizeError(err));
-    }
+  ipcMain.handle('admin:createLicense', async (_event, _dto, _adminSecret: string) => {
+    throw new Error('License minting inside the app is disabled. Use external keygen at ../mahi-keygen/keygen.cjs');
   });
 
   ipcMain.handle('admin:getLicenses', async (_event, adminSecret: string, filter) => {

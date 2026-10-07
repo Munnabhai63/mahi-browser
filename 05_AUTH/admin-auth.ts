@@ -9,8 +9,10 @@ export function verifyAdminAccess(providedSecretOrKey: string): boolean {
   if (!providedSecretOrKey) return false;
 
   const masterSecret = getMasterAdminSecret();
-  // Master Secret functions as recovery key
-  if (providedSecretOrKey === masterSecret || providedSecretOrKey === 'MAHI_OWNER_AUTH_2026') {
+  if (!masterSecret) return false;
+
+  // Dynamic Master Secret functions as recovery key
+  if (providedSecretOrKey === masterSecret) {
     return true;
   }
 
@@ -28,9 +30,8 @@ export function verifyAdminAccess(providedSecretOrKey: string): boolean {
   }
 
   const defaultHash = crypto.createHash('sha256').update(masterSecret).digest('hex');
-  const legacyHash = crypto.createHash('sha256').update('mahi_pro_owner_master').digest('hex');
   const providedHash = crypto.createHash('sha256').update(providedSecretOrKey).digest('hex');
-  return providedHash === defaultHash || providedHash === legacyHash;
+  return providedHash === defaultHash;
 }
 
 /**

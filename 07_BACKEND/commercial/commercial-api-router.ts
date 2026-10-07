@@ -386,13 +386,15 @@ export async function handleCommercialApiRoutes(
 
   if (pathname === '/api/v1/admin/licenses' && method === 'POST') {
     const body = await parseBody(req);
-    const { isAdmin, actor } = checkAdminAuth(req, body);
+    const { isAdmin } = checkAdminAuth(req, body);
     if (!isAdmin) {
       sendJSON(res, 403, { success: false, error: 'Forbidden.' });
       return true;
     }
-    const result = createLicense(body, actor.role);
-    sendJSON(res, 201, result);
+    sendJSON(res, 403, {
+      success: false,
+      error: 'License minting inside the app is disabled. Use external keygen at ../mahi-keygen/keygen.cjs',
+    });
     return true;
   }
 

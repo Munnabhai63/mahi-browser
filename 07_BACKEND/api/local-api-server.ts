@@ -35,7 +35,6 @@ import {
 import { runWorkflow } from '../../09_AUTOMATION/automation-engine.js';
 import { sanitizeError } from '../../08_SECURITY/sanitizer.js';
 import {
-  createLicense,
   getLicenses,
   getLicenseById,
   activateLicense,
@@ -57,35 +56,94 @@ import { getDistributionInfo } from '../../03_HARDWARE/distribution-service.js';
 import { getFolders, createFolder } from '../../02_BROWSER/services/folder-service.js';
 import { getFeatureFlags, updateFeatureFlag } from '../services/feature-flag-service.js';
 import { getFleetDevices, getLiveTelemetry, revokeDevice } from '../services/fleet-service.js';
-import { getApiKeys, generateApiKey, revokeApiKey } from '../services/api-v2-service.js';
+import { getApiKeys, generateApiKey, revokeApiKey, validateApiKey } from '../services/api-v2-service.js';
 import { getActivityLogs } from '../services/audit-service.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { handleCommercialApiRoutes } from '../commercial/commercial-api-router.js';
 import { assertCanCreateProfile } from '../../08_SECURITY/freemium-guard.js';
-import { isValidApiToken } from '../../08_SECURITY/install-secrets.js';
+import { isValidApiToken, isValidAdminWebSecret, getApiAuthToken } from '../../08_SECURITY/install-secrets.js';
 import { verifyLicense } from '../../08_SECURITY/license-service.js';
 
 let apiServer: http.Server | null = null;
 
+const ALLOWED_ORIGIN_PATTERNS = [
+  /^http:\/\/127\.0\.0\.1(:[0-9]+)?$/,
+  /^http:\/\/localhost(:[0-9]+)?$/,
+  /^app:\/\//,
+  /^file:\/\//,
+  /^chrome-extension:\/\//,
+];
+
+function isOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) return false;
+  return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
+}
+
+function getCorsHeaders(req: http.IncomingMessage): Record<string, string> {
+  const origin = req.headers.origin;
+  if (origin && isOriginAllowed(origin)) {
+    return {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-API-Key, X-Admin-Secret',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Credentials': 'true',
+    };
+  }
+  return {};
+}
+
+function isValidHost(host: string | undefined): boolean {
+  if (!host) return false;
+  const hostname = host.split(':')[0].toLowerCase();
+  return hostname === '127.0.0.1' || hostname === 'localhost';
+}
+
+function checkMutatingAuth(req: http.IncomingMessage, parsedUrl: URL, body?: any): boolean {
+  const authHeader = req.headers['authorization'];
+  if (authHeader) {
+    const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (isValidApiToken(bearer)) return true;
+  }
+  const queryToken = parsedUrl.searchParams.get('token');
+  if (queryToken && isValidApiToken(queryToken)) return true;
+
+  const apiKey = (req.headers['x-api-key'] as string) || parsedUrl.searchParams.get('apiKey');
+  if (apiKey) {
+    const keyCheck = validateApiKey(apiKey);
+    if (keyCheck) return true;
+  }
+
+  const adminSecret = (req.headers['x-admin-secret'] as string) || parsedUrl.searchParams.get('adminSecret') || (body && (body.adminSecret || body.secret));
+  if (adminSecret && (verifyAdminAccess(adminSecret) || isValidAdminWebSecret(adminSecret))) {
+    return true;
+  }
+
+  return false;
+}
+
 function sendHTML(res: http.ServerResponse, statusCode: number, html: string) {
+  const req = (res as any).__req as http.IncomingMessage | undefined;
+  const corsHeaders = req ? getCorsHeaders(req) : {};
   res.writeHead(statusCode, {
     'Content-Type': 'text/html; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
+    ...corsHeaders,
   });
   res.end(html);
 }
 
 function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
+  const req = (res as any).__req as http.IncomingMessage | undefined;
+  const corsHeaders = req ? getCorsHeaders(req) : {};
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-API-Key',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    ...corsHeaders,
   });
   res.end(JSON.stringify(data));
 }
 
 function sendFile(res: http.ServerResponse, filePath: string, downloadName: string) {
+  const req = (res as any).__req as http.IncomingMessage | undefined;
+  const corsHeaders = req ? getCorsHeaders(req) : {};
   if (!fs.existsSync(filePath)) {
     sendJSON(res, 404, { success: false, error: 'File not found. Build installers first using npm run dist.' });
     return;
@@ -95,7 +153,7 @@ function sendFile(res: http.ServerResponse, filePath: string, downloadName: stri
     'Content-Type': 'application/octet-stream',
     'Content-Disposition': `attachment; filename="${downloadName}"`,
     'Content-Length': stat.size,
-    'Access-Control-Allow-Origin': '*',
+    ...corsHeaders,
   });
   const stream = fs.createReadStream(filePath);
   stream.pipe(res);
@@ -136,13 +194,19 @@ export function startApiServer(): void {
   const token = settings.advanced.apiAuthToken;
 
   apiServer = http.createServer(async (req, res) => {
+    (res as any).__req = req;
+
+    // Host header validation — blocks DNS rebinding
+    if (!isValidHost(req.headers.host)) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      res.end('Forbidden: Invalid Host header');
+      return;
+    }
+
     // CORS preflight
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-API-Key',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      });
+      const corsHeaders = getCorsHeaders(req);
+      res.writeHead(204, corsHeaders);
       res.end();
       return;
     }
@@ -155,6 +219,18 @@ export function startApiServer(): void {
     // Commercial API Layer (/api/v1/*)
     const handledCommercial = await handleCommercialApiRoutes(req, res, pathname, method, parsedUrl);
     if (handledCommercial) {
+      return;
+    }
+
+    // Super Admin dynamic secret verification endpoint
+    if (pathname === '/api/v2/super-admin/auth/verify' && method === 'POST') {
+      const body = await parseBody(req);
+      const secret = body.secret || body.pin || '';
+      if (verifyAdminAccess(secret) || isValidAdminWebSecret(secret)) {
+        sendJSON(res, 200, { success: true, token: getApiAuthToken() });
+      } else {
+        sendJSON(res, 401, { success: false, error: 'Invalid master secret' });
+      }
       return;
     }
 
@@ -214,8 +290,12 @@ export function startApiServer(): void {
     }
     const flagMatch = pathname.match(/^\/api\/v2\/feature-flags\/([a-zA-Z0-9_-]+)$/);
     if (flagMatch && method === 'PUT') {
-      const flagKey = flagMatch[1];
       const body = await parseBody(req);
+      if (!checkMutatingAuth(req, parsedUrl, body)) {
+        sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
+        return;
+      }
+      const flagKey = flagMatch[1];
       const updated = updateFeatureFlag(flagKey, body);
       sendJSON(res, 200, { success: true, data: updated });
       return;
@@ -232,6 +312,10 @@ export function startApiServer(): void {
     }
     const deviceMatch = pathname.match(/^\/api\/v2\/fleet\/devices\/([a-zA-Z0-9_-]+)$/);
     if (deviceMatch && method === 'DELETE') {
+      if (!checkMutatingAuth(req, parsedUrl)) {
+        sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
+        return;
+      }
       const deviceId = deviceMatch[1];
       const ok = revokeDevice(deviceId);
       sendJSON(res, 200, { success: ok });
@@ -245,6 +329,10 @@ export function startApiServer(): void {
     }
     if (pathname === '/api/v2/api-keys' && method === 'POST') {
       const body = await parseBody(req);
+      if (!checkMutatingAuth(req, parsedUrl, body)) {
+        sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
+        return;
+      }
       const result = generateApiKey(
         body.name || 'API-Key',
         body.userId || 'default-user',
@@ -255,74 +343,22 @@ export function startApiServer(): void {
     }
     const apiKeyMatch = pathname.match(/^\/api\/v2\/api-keys\/([a-zA-Z0-9_-]+)$/);
     if (apiKeyMatch && method === 'DELETE') {
+      if (!checkMutatingAuth(req, parsedUrl)) {
+        sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
+        return;
+      }
       const keyId = apiKeyMatch[1];
       const ok = revokeApiKey(keyId);
       sendJSON(res, 200, { success: ok });
       return;
     }
 
-    // 4. Super Admin Direct License Minting & Management
-    if (pathname === '/api/v2/super-admin/licenses/create' && method === 'POST') {
-      try {
-        const body = await parseBody(req);
-        
-        // Use the real ECDSA offline keygen!
-        const { execSync } = await import('node:child_process');
-        const crypto = await import('node:crypto');
-        const studentName = body.customerName || 'Student';
-        const hwid = body.hwid;
-        const tier = body.tier || 'pro';
-        const duration = body.validityDays || 365;
-        const durationMonths = Math.max(1, Math.floor(duration / 30));
-        
-        if (!hwid) throw new Error("HWID is required for offline keys");
-
-        // Call standalone keygen outside app if available
-        const keygenPath = path.resolve(process.cwd(), '..', 'mahi-keygen', 'keygen.cjs');
-        let generatedKey = '';
-        if (fs.existsSync(keygenPath)) {
-          const result = execSync(`node "${keygenPath}" "${hwid}" ${durationMonths}`).toString();
-          const lines = result.trim().split('\n');
-          generatedKey = lines[lines.length - 1].trim();
-        } else {
-          throw new Error('Keygen service not found. Keygen is developer-only and located outside the app at ../mahi-keygen/');
-        }
-        
-        // Save to SQLite for tracking
-        const db = getDatabase();
-        const expiresAt = new Date(Date.now() + duration * 24 * 60 * 60 * 1000).toISOString();
-        const id = crypto.randomUUID();
-        
-        db.prepare(`
-          INSERT INTO licenses (
-            id, license_key_hash, key_masked, customer_name, account_id,
-            status, duration_type, max_devices, starts_at, expires_at,
-            created_at, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          id,
-          generatedKey,
-          generatedKey,
-          studentName,
-          'offline_admin',
-          'ACTIVE',
-          'CUSTOM',
-          body.maxDevices || 5,
-          new Date().toISOString(),
-          expiresAt,
-          new Date().toISOString(),
-          'ROOT_ADMIN'
-        );
-        
-        sendJSON(res, 201, { success: true, data: { licenseKey: generatedKey } });
-      } catch (err: any) {
-        sendJSON(res, 500, { success: false, error: err.message });
-      }
-      return;
-    }
-    
-    // 4b. Super Admin License List
+    // 4. Super Admin License List
     if (pathname === '/api/v2/super-admin/licenses/list' && method === 'GET') {
+      if (!checkMutatingAuth(req, parsedUrl)) {
+        sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
+        return;
+      }
       try {
         const db = getDatabase();
         const licenses = db.prepare('SELECT * FROM licenses ORDER BY created_at DESC').all();
@@ -333,10 +369,14 @@ export function startApiServer(): void {
       return;
     }
     
-    // 4c. Super Admin License Action (Activate/Disable/Extend/Delete)
+    // 4b. Super Admin License Action (Activate/Disable/Extend/Delete)
     if (pathname === '/api/v2/super-admin/licenses/action' && method === 'POST') {
       try {
         const body = await parseBody(req);
+        if (!checkMutatingAuth(req, parsedUrl, body)) {
+          sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
+          return;
+        }
         const db = getDatabase();
         
         if (body.action === 'delete') {
@@ -359,6 +399,10 @@ export function startApiServer(): void {
     // 5. Super Admin Raw SQLite Table Explorer
     const tableMatch = pathname.match(/^\/api\/v2\/super-admin\/db\/table\/([a-zA-Z0-9_]+)$/);
     if (tableMatch && method === 'GET') {
+      if (!checkMutatingAuth(req, parsedUrl)) {
+        sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
+        return;
+      }
       const tableName = tableMatch[1];
       const allowedTables = ['profiles', 'profile_folders', 'profile_locks', 'fleet_devices', 'feature_flags', 'api_keys_v2', 'proxies', 'activity_logs', 'workspaces', 'licenses'];
       if (!allowedTables.includes(tableName)) {
@@ -423,8 +467,12 @@ export function startApiServer(): void {
     }
     if (pathname === '/api/v2/profiles' && method === 'POST') {
       try {
-        assertCanCreateProfile(1);
         const body = await parseBody(req);
+        if (!checkMutatingAuth(req, parsedUrl, body)) {
+          sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
+          return;
+        }
+        assertCanCreateProfile(1);
         const profile = createProfile(body);
         sendJSON(res, 201, { success: true, data: profile });
       } catch (err: any) {
@@ -434,6 +482,11 @@ export function startApiServer(): void {
     }
     const profileV2Action = pathname.match(/^\/api\/v2\/profiles\/([a-zA-Z0-9_-]+)\/(start|stop|clone)$/);
     if (profileV2Action && method === 'POST') {
+      const body = await parseBody(req);
+      if (!checkMutatingAuth(req, parsedUrl, body)) {
+        sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
+        return;
+      }
       const profileId = profileV2Action[1];
       const action = profileV2Action[2];
       if (action === 'start') {
@@ -449,7 +502,6 @@ export function startApiServer(): void {
       if (action === 'clone') {
         try {
           assertCanCreateProfile(1);
-          const body = await parseBody(req);
           const cloned = cloneProfile(profileId, body.name || undefined);
           sendJSON(res, 201, { success: true, data: cloned });
         } catch (err: any) {
@@ -459,14 +511,10 @@ export function startApiServer(): void {
       }
     }
 
-    // Authenticate Bearer token for Legacy REST endpoints (Header or Query param)
-    const queryToken = parsedUrl.searchParams.get('token');
-    const authHeader = req.headers['authorization'];
-    const bearer = authHeader?.replace(/^Bearer\s+/i, '') || '';
-    const isAuthorized = isValidApiToken(bearer) || isValidApiToken(queryToken);
-
+    // Authenticate Bearer token for Legacy REST endpoints (Header, Query param, API Key, or Admin secret)
+    const isAuthorized = checkMutatingAuth(req, parsedUrl);
     if (!isAuthorized) {
-      sendJSON(res, 401, { error: 'Unauthorized. Invalid or missing Bearer token.' });
+      sendJSON(res, 401, { error: 'Unauthorized. Invalid or missing authentication credentials.' });
       return;
     }
 
@@ -682,15 +730,7 @@ export function startApiServer(): void {
         return sendJSON(res, result.success ? 200 : 400, result);
       }
 
-      // OWNER / ADMIN LICENSING ROUTES (Requires Admin Authorization)
-      if (pathname === '/admin/license/create' && method === 'POST') {
-        const body = await parseBody(req);
-        if (!verifyAdminAccess(body.adminSecret)) {
-          return sendJSON(res, 403, { error: 'Forbidden. Admin authentication required.' });
-        }
-        const result = createLicense(body, 'OWNER_ADMIN');
-        return sendJSON(res, 201, result);
-      }
+
 
       if (pathname === '/admin/licenses' && method === 'GET') {
         const adminSecret = req.headers['x-admin-secret'] as string || parsedUrl.searchParams.get('adminSecret') || '';

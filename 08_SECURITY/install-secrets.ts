@@ -99,19 +99,21 @@ export function getAdminWebSecret(): string {
 }
 
 /**
- * Validates local API tokens while maintaining backward-compatibility for existing clients.
+ * Validates local API tokens strictly against dynamic per-install secret. Fail closed.
  */
 export function isValidApiToken(token: string | null | undefined): boolean {
   if (!token) return false;
   const currentToken = getApiAuthToken();
-  return token === currentToken || token === 'mahi_browser_local_api_2024';
+  if (!currentToken) return false;
+  return token === currentToken;
 }
 
 /**
- * Validates admin web secret while maintaining backward-compatibility.
+ * Validates admin web secret strictly against dynamic per-install secret. Fail closed.
  */
 export function isValidAdminWebSecret(secret: string | null | undefined): boolean {
   if (!secret) return false;
   const currentSecret = getAdminWebSecret();
-  return secret === currentSecret || secret === 'mahi_super_admin_2026';
+  if (!currentSecret) return false;
+  return secret === currentSecret;
 }

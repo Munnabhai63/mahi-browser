@@ -301,8 +301,12 @@ describe('MAHI PRO — Secure Server-Side Licensing System Test Suite', () => {
 
   // 6. RBAC & Admin Authorization
   describe('Owner / Admin RBAC Security', () => {
-    it('should authenticate valid Owner / Admin credentials and reject unauthorized attempts', () => {
-      expect(verifyAdminAccess('MAHI_OWNER_AUTH_2026')).toBe(true);
+    it('should authenticate valid Owner / Admin credentials and reject unauthorized attempts', async () => {
+      const { getMasterAdminSecret } = await import('../../08_SECURITY/install-secrets.js');
+      const dynamicSecret = getMasterAdminSecret();
+      expect(verifyAdminAccess(dynamicSecret)).toBe(true);
+      expect(verifyAdminAccess('MAHI_OWNER_AUTH_2026')).toBe(false);
+      expect(verifyAdminAccess('mahi_pro_owner_master')).toBe(false);
       expect(verifyAdminAccess('invalid_secret_key_123')).toBe(false);
       expect(verifyAdminAccess('')).toBe(false);
     });

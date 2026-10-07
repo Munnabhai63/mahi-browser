@@ -56,15 +56,11 @@ export const AdminFleetDashboard: React.FC<AdminFleetDashboardProps> = ({ onNavi
   const [notes, setNotes] = useState('');
   const [issuedKey, setIssuedKey] = useState<string | null>(null);
 
-  // Auto-login with Master Key if not authenticated
+  // Fetch licenses if authenticated
   useEffect(() => {
-    const initAdmin = async () => {
-      if (!isAdminAuthenticated) {
-        await adminLogin('MAHI_OWNER_AUTH_2026');
-      }
+    if (isAdminAuthenticated) {
       adminFetchLicenses();
-    };
-    initAdmin();
+    }
   }, [isAdminAuthenticated]);
 
   // Calculate Metrics

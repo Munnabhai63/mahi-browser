@@ -11,7 +11,7 @@ export const DEFAULT_COMMERCIAL_PLANS: CommercialPlan[] = [
     priceMonthly: 0,
     priceAnnual: 0,
     limits: {
-      maxProfiles: 5,
+      maxProfiles: 15,
       maxDevices: 1,
       maxConcurrentRunning: 2,
       proxyAccess: true,

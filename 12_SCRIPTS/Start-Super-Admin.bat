@@ -28,10 +28,15 @@ echo.
 echo [3/3] Opening Secret Super Admin Console in browser...
 start http://127.0.0.1:32123/super-admin
 
+set "MASTER_SECRET=Check install-secrets.json"
+if exist ".mahi_data\install-secrets.json" (
+    for /f "usebackq tokens=*" %%A in (`powershell -NoProfile -Command "try { (Get-Content '.mahi_data\install-secrets.json' -Raw | ConvertFrom-Json).masterAdminSecret } catch { 'Check install-secrets.json' }"`) do set "MASTER_SECRET=%%A"
+)
+
 echo.
 echo ===================================================
 echo   Super Admin URL:  http://127.0.0.1:32123/super-admin
-echo   Master Key PIN:   mahi_super_admin_2026
+echo   Master Key PIN:   !MASTER_SECRET!
 echo ===================================================
 echo.
 echo Super Admin console opened successfully in your browser.

@@ -179,6 +179,6 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     developerMode: false,
     apiServerEnabled: true,
     apiPort: 32123,
-    apiAuthToken: 'mahi_browser_local_api_2024',
+    apiAuthToken: '',
   },
 };

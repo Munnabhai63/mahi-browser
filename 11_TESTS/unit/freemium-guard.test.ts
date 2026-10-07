@@ -28,4 +28,40 @@ describe('Freemium Guard & Profile Limits', () => {
       }).toThrow('Free plan limit reached (15 profiles). Activate a license (₹599/year) to create up to 100 profiles.');
     }
   });
+
+  it('should strictly reject legacy SQLite DB license rows without RSA signatures', async () => {
+    const { initializeDatabase } = await import('../../06_DATABASE/schema.js');
+    await initializeDatabase();
+    const { getDatabase } = await import('../../06_DATABASE/connection.js');
+    const db = getDatabase();
+    // Insert an active DB-only license row into SQLite
+    try {
+      db.prepare(`
+        INSERT OR REPLACE INTO licenses (
+          id, license_key_hash, key_masked, customer_name, account_id,
+          status, duration_type, max_devices, starts_at, expires_at, created_at, created_by
+        ) VALUES (
+          'fake-db-lic-id', 'hash123', 'MAHI-TEST-KEY', 'Test User', 'acc_1',
+          'ACTIVE', '1_YEAR', 5, datetime('now'), datetime('now', '+1 year'), datetime('now'), 'ADMIN'
+        )
+      `).run();
+
+      // Ensure that hasValidLicense STILL returns false unless an authentic RSA signature file exists
+      // (This proves the legacy DB bypass is completely killed)
+      const limits = getPlanLimitsInfo();
+      // If no valid RSA key file exists, plan MUST remain Free
+      const fs = await import('node:fs');
+      const path = await import('node:path');
+      const rsaFile = path.join(process.cwd(), '.mahi_data', 'offline-license.key');
+      if (!fs.existsSync(rsaFile)) {
+        expect(hasValidLicense()).toBe(false);
+        expect(limits.isPro).toBe(false);
+        expect(limits.maxProfiles).toBe(15);
+      }
+    } finally {
+      try {
+        db.prepare("DELETE FROM licenses WHERE id = 'fake-db-lic-id'").run();
+      } catch {}
+    }
+  });
 });
