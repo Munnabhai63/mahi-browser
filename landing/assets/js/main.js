@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initPlatformShowcase();
   initInteractiveSelectors();
   initFeatureTryButtons();
+  initLiveChatWidget();
   initFaqAccordion();
   initMouseSpotlights();
   initAuthModal();
@@ -187,6 +188,17 @@ function initLanguageSwitcher() {
       elem3_title: 'Organize accounts with folders, statuses and notes',
       elem3_desc: 'Manage all your accounts from one dashboard, for better control, clarity and speed',
       elem3_btn: 'Try this feature now',
+      supp_badge: "🥇 #1 support in software",
+      supp_247: "24/7",
+      supp_title: "real-time support",
+      supp_desc: "MAHI has the highest rated client support in software. We're here 24 hours a day, every day of the week, including holidays",
+      supp_livechat: "Live-chat support",
+      supp_whatsapp: "WhatsApp support",
+      supp_email: "Email support",
+      supp_facebook: "Facebook (Meta) support",
+      supp_chat_title: "Chat with MAHI",
+      supp_chat_msg: "Hi there 👋<br>How can we help?",
+      supp_chat_input: "Write your question...",
     },
     'Français': {
       nav_use_cases: 'Cas d\'usage',
@@ -239,6 +251,17 @@ function initLanguageSwitcher() {
       elem3_title: 'Organisez vos comptes avec dossiers, statuts et notes',
       elem3_desc: 'Gérez tous vos comptes depuis un tableau de bord unique pour un contrôle, une clarté et une rapidité accrus.',
       elem3_btn: 'Essayer cette fonctionnalité',
+      supp_badge: "🥇 Support n°1 du secteur",
+      supp_247: "24/7",
+      supp_title: "support en temps réel",
+      supp_desc: "MAHI propose le support client le mieux noté. Nous sommes disponibles 24h/24 et 7j/7, y compris les jours fériés.",
+      supp_livechat: "Support par chat en direct",
+      supp_whatsapp: "Support WhatsApp",
+      supp_email: "Support par e-mail",
+      supp_facebook: "Support Facebook (Meta)",
+      supp_chat_title: "Discuter avec MAHI",
+      supp_chat_msg: "Bonjour 👋<br>Comment pouvons-nous vous aider ?",
+      supp_chat_input: "Écrivez votre question...",
     },
     'Русский': {
       nav_use_cases: 'Сценарии',
@@ -291,6 +314,17 @@ function initLanguageSwitcher() {
       elem3_title: 'Организуйте аккаунты с помощью папок, статусов и заметок',
       elem3_desc: 'Управляйте всеми профилями с единого дашборда для лучшего контроля, порядка и скорости.',
       elem3_btn: 'Попробовать эту функцию',
+      supp_badge: "🥇 Поддержка №1 в сфере ПО",
+      supp_247: "24/7",
+      supp_title: "поддержка в реальном времени",
+      supp_desc: "У MAHI самая высокооцененная клиентская поддержка. Мы на связи круглосуточно, каждый день, включая праздники.",
+      supp_livechat: "Онлайн-чат поддержки",
+      supp_whatsapp: "Поддержка в WhatsApp",
+      supp_email: "Поддержка по почте",
+      supp_facebook: "Поддержка Facebook (Meta)",
+      supp_chat_title: "Чат с MAHI",
+      supp_chat_msg: "Здравствуйте 👋<br>Чем мы можем вам помочь?",
+      supp_chat_input: "Напишите ваш вопрос...",
     },
     'Español': {
       nav_use_cases: 'Casos de uso',
@@ -343,6 +377,17 @@ function initLanguageSwitcher() {
       elem3_title: 'Organice cuentas con carpetas, estados y notas',
       elem3_desc: 'Administre todas sus cuentas desde un panel centralizado para mayor control, claridad y rapidez.',
       elem3_btn: 'Probar esta función ahora',
+      supp_badge: "🥇 Soporte n.° 1 en software",
+      supp_247: "24/7",
+      supp_title: "soporte en tiempo real",
+      supp_desc: "MAHI cuenta con el soporte mejor valorado en la industria. Estamos aquí las 24 horas del día, todos los días del año.",
+      supp_livechat: "Soporte por chat en vivo",
+      supp_whatsapp: "Soporte por WhatsApp",
+      supp_email: "Soporte por correo electrónico",
+      supp_facebook: "Soporte por Facebook (Meta)",
+      supp_chat_title: "Chatear con MAHI",
+      supp_chat_msg: "¡Hola! 👋<br>¿Cómo podemos ayudarte?",
+      supp_chat_input: "Escribe tu pregunta...",
     },
     '中文': {
       nav_use_cases: '应用场景',
@@ -447,6 +492,17 @@ function initLanguageSwitcher() {
       elem3_title: 'Konten mit Ordnern, Status und Notizen organisieren',
       elem3_desc: 'Verwalten Sie alle Konten über ein Dashboard für mehr Kontrolle, Übersicht und Geschwindigkeit.',
       elem3_btn: 'Jetzt Funktion testen',
+      supp_badge: "🥇 Nr. 1 Support für Software",
+      supp_247: "24/7",
+      supp_title: "Echtzeit-Support",
+      supp_desc: "MAHI hat den am besten bewerteten Support der Branche. 24 Stunden am Tag für Sie da, auch feiertags.",
+      supp_livechat: "Live-Chat Support",
+      supp_whatsapp: "WhatsApp Support",
+      supp_email: "E-Mail Support",
+      supp_facebook: "Facebook (Meta) Support",
+      supp_chat_title: "Chat mit MAHI",
+      supp_chat_msg: "Hallo 👋<br>Wie können wir Ihnen helfen?",
+      supp_chat_input: "Schreiben Sie Ihre Frage...",
     },
     'Portuguese': {
       nav_use_cases: 'Casos de uso',
@@ -499,6 +555,17 @@ function initLanguageSwitcher() {
       elem3_title: 'Organize contas com pastas, status e notas',
       elem3_desc: 'Gerencie todas as suas contas em um painel unificado com maior controle, clareza e agilidade.',
       elem3_btn: 'Testar este recurso agora',
+      supp_badge: "🥇 Suporte nº 1 em software",
+      supp_247: "24/7",
+      supp_title: "suporte em tempo real",
+      supp_desc: "O MAHI tem o suporte com melhor avaliação da indústria. Estamos aqui 24 horas por dia, 7 dias por semana.",
+      supp_livechat: "Suporte via chat ao vivo",
+      supp_whatsapp: "Suporte via WhatsApp",
+      supp_email: "Suporte por e-mail",
+      supp_facebook: "Suporte no Facebook (Meta)",
+      supp_chat_title: "Conversar com o MAHI",
+      supp_chat_msg: "Olá 👋<br>Como podemos ajudar você?",
+      supp_chat_input: "Digite sua dúvida...",
     },
     '日本': {
       nav_use_cases: '利用シーン',
@@ -551,6 +618,17 @@ function initLanguageSwitcher() {
       elem3_title: 'フォルダ、ステータス、メモ機能で整然と整理',
       elem3_desc: '単一のダッシュボードですべてのアカウントを一元管理し、統制・透明性・スピードを向上。',
       elem3_btn: 'この機能を今すぐ試す',
+      supp_badge: "🥇 ソフトウェア部門 No.1 サポート",
+      supp_247: "24/7",
+      supp_title: "リアルタイムサポート",
+      supp_desc: "MAHIは業界トップクラスの顧客サポートを提供。24時間365日いつでも迅速に対応いたします。",
+      supp_livechat: "ライブチャットサポート",
+      supp_whatsapp: "WhatsAppサポート",
+      supp_email: "メールサポート",
+      supp_facebook: "Facebook (Meta) サポート",
+      supp_chat_title: "MAHIとチャットする",
+      supp_chat_msg: "こんにちは 👋<br>ご用件をお伺いします。",
+      supp_chat_input: "質問を入力してください...",
     },
     'Tiếng Việt': {
       nav_use_cases: 'Ứng dụng',
@@ -603,6 +681,17 @@ function initLanguageSwitcher() {
       elem3_title: 'Quản lý tài khoản khoa học với thư mục, trạng thái và ghi chú',
       elem3_desc: 'Quản lý tập trung trên một bảng điều khiển duy nhất giúp kiểm soát tốt hơn, rõ ràng và nhanh chóng.',
       elem3_btn: 'Dùng thử tính năng này ngay',
+      supp_badge: "🥇 Hỗ trợ phần mềm số 1",
+      supp_247: "24/7",
+      supp_title: "hỗ trợ thời gian thực",
+      supp_desc: "MAHI sở hữu dịch vụ khách hàng được đánh giá cao nhất. Chúng tôi trực tuyến 24/7, kể cả ngày lễ.",
+      supp_livechat: "Hỗ trợ chat trực tiếp",
+      supp_whatsapp: "Hỗ trợ WhatsApp",
+      supp_email: "Hỗ trợ qua Email",
+      supp_facebook: "Hỗ trợ Facebook (Meta)",
+      supp_chat_title: "Trò chuyện cùng MAHI",
+      supp_chat_msg: "Xin chào 👋<br>Chúng tôi có thể giúp gì cho bạn?",
+      supp_chat_input: "Nhập câu hỏi của bạn...",
     },
     'Polski': {
       nav_use_cases: 'Zastosowania',
@@ -655,6 +744,17 @@ function initLanguageSwitcher() {
       elem3_title: 'Organizuj konta za pomocą folderów, statusów i notatek',
       elem3_desc: 'Zarządzaj wszystkimi profilami z jednego panelu dla większej kontroli, przejrzystości i szybkości.',
       elem3_btn: 'Wypróbuj tę funkcję teraz',
+      supp_badge: "🥇 #1 wsparcie w branży",
+      supp_247: "24/7",
+      supp_title: "wsparcie w czasie rzeczywistym",
+      supp_desc: "MAHI ma najwyżej oceniane wsparcie dla klientów. Jesteśmy dostępni 24 godziny na dobę, bez przerw.",
+      supp_livechat: "Wsparcie na żywo przez czat",
+      supp_whatsapp: "Wsparcie WhatsApp",
+      supp_email: "Wsparcie e-mail",
+      supp_facebook: "Wsparcie Facebook (Meta)",
+      supp_chat_title: "Czat z MAHI",
+      supp_chat_msg: "Cześć 👋<br>W czym możemy Ci pomóc?",
+      supp_chat_input: "Wpisz swoje pytanie...",
     }
   };
 
@@ -1247,6 +1347,76 @@ function initPlatformShowcase() {
 /**
  * 3b. Feature Try Buttons
  */
+
+/**
+ * 6b. Live Support Interactive Chat Widget
+ */
+function initLiveChatWidget() {
+  const form = document.getElementById('live-chat-form');
+  const input = document.getElementById('chat-user-input');
+  const container = document.getElementById('chat-messages-container');
+  const liveChatLink = document.getElementById('channel-livechat');
+
+  if (liveChatLink && input) {
+    liveChatLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      input.focus();
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+
+  if (!form || !input || !container) return;
+
+  function escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const query = input.value.trim();
+    if (!query) return;
+
+    // Append user message bubble
+    const userRow = document.createElement('div');
+    userRow.className = 'chat-message-row';
+    userRow.innerHTML = `<div class="chat-user-bubble">${escapeHtml(query)}</div>`;
+    
+    // Insert before typing indicator
+    const typingRow = container.querySelector('.chat-typing-row');
+    if (typingRow) {
+      container.insertBefore(userRow, typingRow);
+    } else {
+      container.appendChild(userRow);
+    }
+    input.value = '';
+
+    // Scroll to bottom of chat
+    container.scrollTop = container.scrollHeight;
+
+    // After 600ms, reply with friendly engineer message
+    setTimeout(() => {
+      const agentRow = document.createElement('div');
+      agentRow.className = 'chat-message-row';
+      agentRow.innerHTML = `
+        <div class="chat-agent-bubble">
+          Thanks for reaching out! Our engineer is active right now. Connect directly on WhatsApp for immediate 1-on-1 assistance:
+          <div style="margin-top: 8px;">
+            <a href="https://wa.me/" class="btn-primary-hero dynamic-whatsapp-link" target="_blank" style="padding: 0.45rem 0.95rem; font-size: 0.82rem; border-radius: 8px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
+              <span>Open WhatsApp &rarr;</span>
+            </a>
+          </div>
+        </div>
+      `;
+      if (typingRow) {
+        container.insertBefore(agentRow, typingRow);
+      } else {
+        container.appendChild(agentRow);
+      }
+      container.scrollTop = container.scrollHeight;
+    }, 650);
+  });
+}
+
 function initFeatureTryButtons() {
   document.querySelectorAll('.btn-feature-try').forEach(btn => {
     btn.addEventListener('click', (e) => {
