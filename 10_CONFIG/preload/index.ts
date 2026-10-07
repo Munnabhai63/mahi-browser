@@ -96,6 +96,8 @@ const api: MahiBrowserAPI = {
 
   // Licensing & MAHI Pro
   getLicenseStatus: () => ipcRenderer.invoke('license:getStatus'),
+  getOnlineLicenseStatus: () => ipcRenderer.invoke('license:getOnlineStatus'),
+  checkOnlineLicenseNow: () => ipcRenderer.invoke('license:checkOnlineNow'),
   activateLicense: (dto) => ipcRenderer.invoke('license:activate', dto),
   getHwid: () => ipcRenderer.invoke('commercial:getHwid'),
   getPlanLimits: () => ipcRenderer.invoke('license:getLimits'),
@@ -208,6 +210,20 @@ const api: MahiBrowserAPI = {
     ipcRenderer.on('updater:statusChanged', handler);
     return () => {
       ipcRenderer.removeListener('updater:statusChanged', handler);
+    };
+  },
+  onLicenseStatusChanged: (callback) => {
+    const handler = (_event: unknown, status: any) => callback(status);
+    ipcRenderer.on('license:statusChanged', handler);
+    return () => {
+      ipcRenderer.removeListener('license:statusChanged', handler);
+    };
+  },
+  onLicenseStatusToast: (callback) => {
+    const handler = (_event: unknown, toast: any) => callback(toast);
+    ipcRenderer.on('license:statusToast', handler);
+    return () => {
+      ipcRenderer.removeListener('license:statusToast', handler);
     };
   },
   onFleetResourceUsage: (callback) => {

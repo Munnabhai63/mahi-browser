@@ -273,6 +273,14 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
         return { isValid: false, status: 'NOT_ACTIVATED' as const, message: 'License server unreachable' };
       }
     },
+    getOnlineLicenseStatus: async () => ({
+      verified: true,
+      revoked: false,
+      graceExpired: false,
+      offlineDaysLeft: 7,
+      statusText: 'Verified ✓'
+    }),
+    checkOnlineLicenseNow: async () => ({ success: true, status: 'active' }),
     activateLicense: async (dto) => {
       try { return await apiPost('/license/activate', dto); } catch (e: any) {
         return { success: false, status: 'NOT_ACTIVATED' as const, message: e.message || 'Activation failed' };
@@ -603,6 +611,8 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     }),
     downloadManagedEngine: async () => ({ success: true, path: 'Default' }),
     onEngineDownloadProgress: () => () => {},
+    onLicenseStatusChanged: () => () => {},
+    onLicenseStatusToast: () => () => {},
   };
 
   (window as any).mahiAPI = fallbackApi;

@@ -2,6 +2,7 @@ import { ipcMain, dialog, BrowserWindow, app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { verifyLicense, getHWID } from '../../08_SECURITY/license-service.js';
+import { isOnlineRevoked, isGraceExpired, getOnlineStatusSummary, checkLicenseStatusOnline } from '../../08_SECURITY/license-status-service.js';
 import { assertCanCreateProfile, getPlanLimitsInfo } from '../../08_SECURITY/freemium-guard.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { setActiveUserId } from '../commercial/session-context.js';
@@ -955,6 +956,36 @@ export function registerIpcHandlers(): void {
         if (rawKey) {
           const check = verifyLicense(rawKey);
           if (check.valid) {
+            if (isOnlineRevoked()) {
+              return {
+                isValid: false,
+                status: 'REVOKED',
+                message: 'License revoked. Support se contact karein.',
+                license: {
+                  id: 'local-rsa-license',
+                  customerName: 'MAHI PRO Subscriber',
+                  keyMasked: 'MAHI-RSA-REVOKED',
+                  expiresAt: check.expiresAt,
+                  maxDevices: 1,
+                  activeDevicesCount: 1,
+                },
+              };
+            }
+            if (isGraceExpired()) {
+              return {
+                isValid: false,
+                status: 'GRACE_EXPIRED',
+                message: 'Internet se connect karein — license verify ke liye',
+                license: {
+                  id: 'local-rsa-license',
+                  customerName: 'MAHI PRO Subscriber',
+                  keyMasked: 'MAHI-RSA-OFFLINE',
+                  expiresAt: check.expiresAt,
+                  maxDevices: 1,
+                  activeDevicesCount: 1,
+                },
+              };
+            }
             return {
               isValid: true,
               status: 'ACTIVE',
@@ -986,6 +1017,22 @@ export function registerIpcHandlers(): void {
         }
       }
       return validateCurrentLicense();
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('license:getOnlineStatus', async () => {
+    try {
+      return getOnlineStatusSummary();
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('license:checkOnlineNow', async () => {
+    try {
+      return await checkLicenseStatusOnline();
     } catch (err) {
       throw new Error(sanitizeError(err));
     }

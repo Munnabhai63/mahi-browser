@@ -188,6 +188,8 @@ export interface MahiBrowserAPI {
 
   // Licensing & MAHI Pro
   getLicenseStatus: () => Promise<LicenseValidationResult>;
+  getOnlineLicenseStatus: () => Promise<{ verified: boolean; revoked: boolean; graceExpired: boolean; offlineDaysLeft: number; statusText: string }>;
+  checkOnlineLicenseNow: () => Promise<{ success: boolean; status?: string; error?: string }>;
   activateLicense: (dto: ActivateLicenseDTO) => Promise<{ success: boolean; status: LicenseStatus; license?: LicenseRecord; message?: string }>;
   getHwid: () => Promise<string>;
   getPlanLimits: () => Promise<{ isPro: boolean; currentCount: number; maxAllowed: number; remaining: number; expiresAt?: string | null }>;
@@ -329,6 +331,8 @@ export interface MahiBrowserAPI {
   onUpdateStatusChanged: (callback: (status: UpdateStatusEvent) => void) => () => void;
   onFleetResourceUsage: (callback: (summary: FleetResourceSummary) => void) => () => void;
   onEngineDownloadProgress: (callback: (status: ManagedEngineStatus) => void) => () => void;
+  onLicenseStatusChanged: (callback: (status: any) => void) => () => void;
+  onLicenseStatusToast: (callback: (toast: { title: string; message: string; type: string }) => void) => () => void;
 }
 
 export interface ManagedEngineStatus {

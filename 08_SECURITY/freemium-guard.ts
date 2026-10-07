@@ -3,6 +3,7 @@ import path from 'node:path';
 import { app } from 'electron';
 import { FREE_PROFILE_LIMIT, PRO_PROFILE_LIMIT } from '../10_CONFIG/freemium-limits.js';
 import { verifyLicense } from './license-service.js';
+import { isOnlineRevoked, isGraceExpired } from './license-status-service.js';
 import { getDatabase } from '../06_DATABASE/connection.js';
 
 function getUserDataPath(): string {
@@ -23,9 +24,12 @@ function getUserDataPath(): string {
 /**
  * Returns true if the device has an authentic, unexpired RSA-signed MAHI- license.
  * The ONLY path to PRO is an RSA-signed license verified with the public key.
- * If expired, missing or invalid, returns false so limits fall back to FREE tier.
+ * If expired, missing, revoked, or grace-expired, returns false so limits fall back to FREE tier.
  */
 export function hasValidLicense(): boolean {
+  if (isOnlineRevoked() || isGraceExpired()) {
+    return false;
+  }
   // 1. Check RSA offline-license.key
   try {
     const userDataDir = getUserDataPath();

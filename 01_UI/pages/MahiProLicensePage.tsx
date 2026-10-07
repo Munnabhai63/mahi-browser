@@ -94,12 +94,27 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
   // Filter
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [onlineStatus, setOnlineStatus] = useState<{ verified: boolean; revoked: boolean; graceExpired: boolean; offlineDaysLeft: number; statusText: string } | null>(null);
 
   useEffect(() => {
     fetchCurrentStatus();
     if (window.mahiAPI?.getHwid) {
       window.mahiAPI.getHwid().then((id: string) => setHwid(id)).catch(() => {});
     }
+    if (window.mahiAPI?.getOnlineLicenseStatus) {
+      window.mahiAPI.getOnlineLicenseStatus().then(st => setOnlineStatus(st)).catch(() => {});
+    }
+    const unsubChanged = window.mahiAPI?.onLicenseStatusChanged?.((st: any) => {
+      setOnlineStatus(st);
+      fetchCurrentStatus();
+    });
+    const unsubToast = window.mahiAPI?.onLicenseStatusToast?.((toastData: any) => {
+      showToast(toastData);
+    });
+    return () => {
+      unsubChanged?.();
+      unsubToast?.();
+    };
   }, []);
 
   const handleActivate = async () => {
@@ -345,6 +360,19 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
                   ) : (
                     <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-500">
                       NOT ACTIVATED
+                    </span>
+                  )}
+                  {onlineStatus && isProActive && (
+                    <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5 ml-2">
+                      <span>• Cloud Status:</span>
+                      <strong className={
+                        onlineStatus.revoked ? 'text-rose-500 font-bold' :
+                        onlineStatus.graceExpired ? 'text-amber-500 font-bold' :
+                        onlineStatus.verified ? 'text-emerald-500 dark:text-emerald-400 font-bold' :
+                        'text-slate-400'
+                      }>
+                        {onlineStatus.statusText}
+                      </strong>
                     </span>
                   )}
                 </div>
