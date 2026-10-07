@@ -185,7 +185,7 @@ export function getSuperAdminHtml(): string {
 
           <button disabled class="w-full justify-center py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-bold text-sm shadow-lg shadow-emerald-600/20 transition-all flex items-center opacity-60 cursor-not-allowed">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-             Use external keygen
+             Disabled &mdash; Contact Support
           </button>
 
           <div id="minted-result" class="hidden mt-6 bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100 shadow-inner opacity-0 transition-opacity duration-500">
@@ -517,7 +517,7 @@ export function getSuperAdminHtml(): string {
     }
 
     function mintLicenseKey() {
-      showSuperToast('Notice', 'In-app license minting is disabled. Run ../mahi-keygen/keygen.cjs manually in a terminal.', 'info');
+      showSuperToast('Notice', 'License minting is disabled in the app. Contact support.', 'info');
     }
 
     function copyMintedKey() {

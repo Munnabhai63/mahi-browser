@@ -1028,7 +1028,7 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('admin:createLicense', async (_event, _dto, _adminSecret: string) => {
-    throw new Error('License minting inside the app is disabled. Use external keygen at ../mahi-keygen/keygen.cjs');
+    throw new Error('License minting is disabled in the app. Contact support.');
   });
 
   ipcMain.handle('admin:getLicenses', async (_event, adminSecret: string, filter) => {

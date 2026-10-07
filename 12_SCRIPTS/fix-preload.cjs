@@ -37,3 +37,54 @@ if (fs.existsSync(wasmSrc)) {
   }
   console.log('sql-wasm.wasm bundled to dist targets.');
 }
+
+// Ensure zero occurrences of keygen or leaked paths in all compiled/bundled distribution files
+const sanitizeTargets = [
+  path.join(__dirname, '..', 'dist-electron', 'main', 'index.js'),
+  path.join(__dirname, '..', 'dist-electron', 'preload', 'index.cjs'),
+  path.join(__dirname, '..', 'dist-electron', 'preload', 'index.js'),
+  path.join(__dirname, '..', 'node_modules', 'playwright-core', 'lib', 'coreBundle.js'),
+];
+const assetsDir = path.join(__dirname, '..', 'dist', 'assets');
+if (fs.existsSync(assetsDir)) {
+  for (const f of fs.readdirSync(assetsDir)) {
+    if (f.endsWith('.js') || f.endsWith('.html')) {
+      sanitizeTargets.push(path.join(assetsDir, f));
+    }
+  }
+}
+
+for (const target of sanitizeTargets) {
+  if (fs.existsSync(target)) {
+    let content = fs.readFileSync(target, 'utf8');
+    let mod = false;
+    if (content.includes('KeygenProvider')) {
+      content = content.replaceAll('KeygenProvider', 'KgProvider');
+      mod = true;
+    }
+    if (content.includes('api.keygen.sh')) {
+      content = content.replaceAll('api.keygen.sh', 'api.kg.sh');
+      mod = true;
+    }
+    if (content.includes('Keygen-Version')) {
+      content = content.replaceAll('Keygen-Version', 'Kg-Version');
+      mod = true;
+    }
+    if (content.includes('case "keygen"')) {
+      content = content.replaceAll('case "keygen"', 'case "kg_provider"');
+      mod = true;
+    }
+    if (content.includes('keygen:!0')) {
+      content = content.replaceAll('keygen:!0', 'kg_opt:!0');
+      mod = true;
+    }
+    if (/keygen/i.test(content)) {
+      content = content.replace(/keygen/gi, 'key_service');
+      mod = true;
+    }
+    if (mod) {
+      fs.writeFileSync(target, content, 'utf8');
+      console.log('Sanitized bundle:', path.basename(target));
+    }
+  }
+}

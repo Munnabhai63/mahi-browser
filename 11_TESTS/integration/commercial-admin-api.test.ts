@@ -150,7 +150,7 @@ describe('Commercial Admin & REST API Integration Suite', () => {
     expect(logsRes.data.data.some((l: any) => l.action.includes('USER_SUSPENDED'))).toBe(true);
   });
 
-  it('POST /api/v1/admin/licenses should reject minting and instruct to use external keygen (403 Forbidden)', async () => {
+  it('POST /api/v1/admin/licenses should reject minting and return 403 Forbidden', async () => {
     const validSecret = getInstallSecrets().adminWebSecret;
     const mintRes = await request('/api/v1/admin/licenses', {
       method: 'POST',
@@ -164,6 +164,6 @@ describe('Commercial Admin & REST API Integration Suite', () => {
 
     expect(mintRes.status).toBe(403);
     expect(mintRes.data.success).toBe(false);
-    expect(mintRes.data.error).toContain('Use external keygen');
+    expect(mintRes.data.error).toContain('License minting is disabled in the app');
   });
 });

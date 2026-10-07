@@ -393,7 +393,7 @@ export async function handleCommercialApiRoutes(
     }
     sendJSON(res, 403, {
       success: false,
-      error: 'License minting inside the app is disabled. Use external keygen at ../mahi-keygen/keygen.cjs',
+      error: 'License minting is disabled in the app. Contact support.',
     });
     return true;
   }

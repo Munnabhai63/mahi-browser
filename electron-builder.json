@@ -20,7 +20,11 @@
     "!_ADMIN_KEYGEN/**",
     "!keys.json",
     "!*.pem",
-    "!*.key"
+    "!*.key",
+    "!**/*.map",
+    "!**/KeygenProvider.*",
+    "!**/node_modules/electron-updater/**",
+    "!**/node_modules/playwright-core/lib/vite/**"
   ],
   "win": {
     "target": [
