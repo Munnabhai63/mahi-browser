@@ -199,6 +199,7 @@ function initLanguageSwitcher() {
       supp_chat_title: "Chat with MAHI",
       supp_chat_msg: "Hi there 👋<br>How can we help?",
       supp_chat_input: "Write your question...",
+      plat_title: "Ideal for managing accounts<br>across all services"
     },
     'Français': {
       nav_use_cases: 'Cas d\'usage',
@@ -262,6 +263,7 @@ function initLanguageSwitcher() {
       supp_chat_title: "Discuter avec MAHI",
       supp_chat_msg: "Bonjour 👋<br>Comment pouvons-nous vous aider ?",
       supp_chat_input: "Écrivez votre question...",
+      plat_title: "Idéal pour gérer des comptes<br>sur tous les services"
     },
     'Русский': {
       nav_use_cases: 'Сценарии',
@@ -325,6 +327,7 @@ function initLanguageSwitcher() {
       supp_chat_title: "Чат с MAHI",
       supp_chat_msg: "Здравствуйте 👋<br>Чем мы можем вам помочь?",
       supp_chat_input: "Напишите ваш вопрос...",
+      plat_title: "Идеально для управления аккаунтами<br>во всех сервисах"
     },
     'Español': {
       nav_use_cases: 'Casos de uso',
@@ -388,6 +391,7 @@ function initLanguageSwitcher() {
       supp_chat_title: "Chatear con MAHI",
       supp_chat_msg: "¡Hola! 👋<br>¿Cómo podemos ayudarte?",
       supp_chat_input: "Escribe tu pregunta...",
+      plat_title: "Ideal para gestionar cuentas<br>en todos los servicios"
     },
     '中文': {
       nav_use_cases: '应用场景',
@@ -503,6 +507,7 @@ function initLanguageSwitcher() {
       supp_chat_title: "Chat mit MAHI",
       supp_chat_msg: "Hallo 👋<br>Wie können wir Ihnen helfen?",
       supp_chat_input: "Schreiben Sie Ihre Frage...",
+      plat_title: "Ideal für die Verwaltung von Konten<br>auf allen Diensten"
     },
     'Portuguese': {
       nav_use_cases: 'Casos de uso',
@@ -566,6 +571,7 @@ function initLanguageSwitcher() {
       supp_chat_title: "Conversar com o MAHI",
       supp_chat_msg: "Olá 👋<br>Como podemos ajudar você?",
       supp_chat_input: "Digite sua dúvida...",
+      plat_title: "Ideal para gerenciar contas<br>em todos os serviços"
     },
     '日本': {
       nav_use_cases: '利用シーン',
@@ -629,6 +635,7 @@ function initLanguageSwitcher() {
       supp_chat_title: "MAHIとチャットする",
       supp_chat_msg: "こんにちは 👋<br>ご用件をお伺いします。",
       supp_chat_input: "質問を入力してください...",
+      plat_title: "あらゆるサービスで複数のアカウントを管理するのに最適"
     },
     'Tiếng Việt': {
       nav_use_cases: 'Ứng dụng',
@@ -692,6 +699,7 @@ function initLanguageSwitcher() {
       supp_chat_title: "Trò chuyện cùng MAHI",
       supp_chat_msg: "Xin chào 👋<br>Chúng tôi có thể giúp gì cho bạn?",
       supp_chat_input: "Nhập câu hỏi của bạn...",
+      plat_title: "Lý tưởng để quản lý tài khoản<br>trên mọi nền tảng"
     },
     'Polski': {
       nav_use_cases: 'Zastosowania',
@@ -755,6 +763,7 @@ function initLanguageSwitcher() {
       supp_chat_title: "Czat z MAHI",
       supp_chat_msg: "Cześć 👋<br>W czym możemy Ci pomóc?",
       supp_chat_input: "Wpisz swoje pytanie...",
+      plat_title: "Idealne do zarządzania kontami<br>we wszystkich usługach"
     }
   };
 
