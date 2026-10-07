@@ -1147,104 +1147,68 @@
     </section>
 
     <!-- ==========================================================================
-         12. FAQ ACCORDION (Clean Horizontal Rows)
+         12. FAQ BENCHMARK (2-Column Tabular Matrix)
          ========================================================================== -->
-    <section class="faq-section" id="faq">
+    <section class="faq-benchmark-section" id="faq">
       <div class="container">
-        <div class="section-head-center">
-          <span class="hero-badge-pill">Got Questions?</span>
-          <h2>Frequently Asked Questions</h2>
-          <p>Clear, honest answers about MAHI Browser, its architecture, and pricing.</p>
-        </div>
+        <div class="faq-benchmark-wrapper">
+          
+          <h2 class="faq-benchmark-title" data-i18n="faq_title">
+            Frequently asked questions related to<br>antidetect browser
+          </h2>
 
-        <div class="faq-rows-container">
-          <!-- Question 1 -->
-          <div class="faq-row-item">
-            <button class="faq-trigger-btn" aria-expanded="false">
-              <span>What is MAHI Browser?</span>
-              <span class="faq-icon-arrow">▼</span>
-            </button>
-            <div class="faq-content-body">
-              <p>MAHI Browser is an antidetect browser designed for managing multiple online accounts on a single PC. It replaces virtual machines by providing isolated browser containers, each with its own independent Canvas, WebGL, AudioContext, proxy, cookies, and hardware fingerprint.</p>
+          <div class="faq-benchmark-list">
+            
+            <!-- Row 1 -->
+            <div class="faq-benchmark-row">
+              <div class="faq-benchmark-q" data-i18n="faq_q1">What is MAHI?</div>
+              <div class="faq-benchmark-a" data-i18n="faq_a1">
+                MAHI is an antidetect browser, enabling seamless management of multiple accounts across various platforms without bans.
+              </div>
             </div>
+
+            <!-- Row 2 -->
+            <div class="faq-benchmark-row">
+              <div class="faq-benchmark-q" data-i18n="faq_q2">How many accounts can I create with MAHI?</div>
+              <div class="faq-benchmark-a" data-i18n="faq_a2">
+                MAHI can manage thousands of accounts, making it suitable for large-scale operations.
+              </div>
+            </div>
+
+            <!-- Row 3 -->
+            <div class="faq-benchmark-row">
+              <div class="faq-benchmark-q" data-i18n="faq_q3">How does MAHI ensure my accounts won't get banned?</div>
+              <div class="faq-benchmark-a" data-i18n="faq_a3">
+                MAHI reduces ban risks by masking your digital fingerprint and location, making each account appear unique and unlinked.
+              </div>
+            </div>
+
+            <!-- Row 4 -->
+            <div class="faq-benchmark-row">
+              <div class="faq-benchmark-q" data-i18n="faq_q4">What is a browser fingerprint?</div>
+              <div class="faq-benchmark-a" data-i18n="faq_a4">
+                A browser fingerprint is a unique set of identifiable data a website gathers about your device and browser. MAHI allows you to modify these.
+              </div>
+            </div>
+
+            <!-- Row 5 -->
+            <div class="faq-benchmark-row">
+              <div class="faq-benchmark-q" data-i18n="faq_q5">Is my data safe with MAHI?</div>
+              <div class="faq-benchmark-a" data-i18n="faq_a5">
+                Yes, MAHI uses AWS for data storage, ensuring your data is secure and private.
+              </div>
+            </div>
+
+            <!-- Row 6 -->
+            <div class="faq-benchmark-row">
+              <div class="faq-benchmark-q" data-i18n="faq_q6">How is MAHI different from traditional browsers?</div>
+              <div class="faq-benchmark-a" data-i18n="faq_a6">
+                MAHI is built for multi-account management, offering unique features like fingerprint modification, custom proxies, and bulk settings management.
+              </div>
+            </div>
+
           </div>
 
-          <!-- Question 2 -->
-          <div class="faq-row-item">
-            <button class="faq-trigger-btn" aria-expanded="false">
-              <span>Is it really free?</span>
-              <span class="faq-icon-arrow">▼</span>
-            </button>
-            <div class="faq-content-body">
-              <p>Yes. The Free plan includes 15 browser profiles with unlimited usage, all core fingerprint spoofing features, proxy support, and local storage forever. The PRO plan upgrades your capacity to 100 profiles and unlocks AES-256-GCM encrypted cloud sync with priority support.</p>
-            </div>
-          </div>
-
-          <!-- Question 3 -->
-          <div class="faq-row-item">
-            <button class="faq-trigger-btn" aria-expanded="false">
-              <span>How is it different from a normal browser or virtual machines?</span>
-              <span class="faq-icon-arrow">▼</span>
-            </button>
-            <div class="faq-content-body">
-              <p>Normal browsers share your hardware identity (GPU, audio hash, screen metrics) across all open windows and incognito tabs, allowing websites to easily link your accounts. Virtual machines isolate hardware but consume 2–4 GB of RAM each. MAHI Browser runs on a lightweight Chromium engine that spoofs hardware parameters per profile with minimal RAM overhead.</p>
-            </div>
-          </div>
-
-          <!-- Question 4 -->
-          <div class="faq-row-item">
-            <button class="faq-trigger-btn" aria-expanded="false">
-              <span>How do payments work?</span>
-              <span class="faq-icon-arrow">▼</span>
-            </button>
-            <div class="faq-content-body">
-              <p>We accept payments via UPI (Google Pay, PhonePe, Paytm) and USDT (TRC20). Simply contact us on WhatsApp using the button on the site. Activation is processed manually within minutes. Each subscription covers 1 active device at a time, and you can switch devices whenever needed.</p>
-            </div>
-          </div>
-
-          <!-- Question 5 -->
-          <div class="faq-row-item">
-            <button class="faq-trigger-btn" aria-expanded="false">
-              <span>Is my data safe?</span>
-              <span class="faq-icon-arrow">▼</span>
-            </button>
-            <div class="faq-content-body">
-              <p>Your profiles, browsing data, and cookies are stored 100% locally on your machine. When you use cloud sync on PRO, profile archives are encrypted on your PC using AES-256-GCM before upload. The server only stores ciphertext blobs — neither our team nor anyone else can read your data.</p>
-            </div>
-          </div>
-
-          <!-- Question 6 -->
-          <div class="faq-row-item">
-            <button class="faq-trigger-btn" aria-expanded="false">
-              <span>Why does Windows show a SmartScreen warning during installation?</span>
-              <span class="faq-icon-arrow">▼</span>
-            </button>
-            <div class="faq-content-body">
-              <p>Because MAHI Browser is a newly released application and currently uses an unsigned installer. Windows SmartScreen displays a warning on newly released software until it builds reputation. To install: click <strong>"More info"</strong> and then click <strong>"Run anyway"</strong>. Commercial EV code signing is planned for future releases.</p>
-            </div>
-          </div>
-
-          <!-- Question 7 -->
-          <div class="faq-row-item">
-            <button class="faq-trigger-btn" aria-expanded="false">
-              <span>Why won't Netflix or Prime Video play in MAHI Browser?</span>
-              <span class="faq-icon-arrow">▼</span>
-            </button>
-            <div class="faq-content-body">
-              <p>MAHI Browser is built on Chromium for Testing to provide deep fingerprint customization. Google does not distribute proprietary Widevine DRM components with Chromium for Testing builds. MAHI is purpose-built for multi-accounting, marketing, and scraping — not for DRM-protected streaming services.</p>
-            </div>
-          </div>
-
-          <!-- Question 8 -->
-          <div class="faq-row-item">
-            <button class="faq-trigger-btn" aria-expanded="false">
-              <span>Which operating systems are supported?</span>
-              <span class="faq-icon-arrow">▼</span>
-            </button>
-            <div class="faq-content-body">
-              <p>MAHI Browser currently supports <strong>Windows 10 and Windows 11 (64-bit)</strong>. Native versions for macOS (Apple Silicon &amp; Intel) and Linux are under active development and will be released in future updates.</p>
-            </div>
-          </div>
         </div>
       </div>
     </section>

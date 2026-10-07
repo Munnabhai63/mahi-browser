@@ -224,7 +224,21 @@ function initLanguageSwitcher() {
       iceberg_c11_title: "Selenium and Puppeteer integration",
       iceberg_c11_desc: "Skip complex third-party setups and enjoy a smooth experience for all your automation tasks.",
       iceberg_c12_title: "High performance API",
-      iceberg_c12_desc: "Our API allows 1000 RPM with sandbox access for full feature integration and customization."
+      iceberg_c12_desc: "Our API allows 1000 RPM with sandbox access for full feature integration and customization.",
+      faq_title: "Frequently asked questions related to<br>antidetect browser",
+      faq_q1: "What is MAHI?",
+      faq_a1: "MAHI is an antidetect browser, enabling seamless management of multiple accounts across various platforms without bans.",
+      faq_q2: "How many accounts can I create with MAHI?",
+      faq_a2: "MAHI can manage thousands of accounts, making it suitable for large-scale operations.",
+      faq_q3: "How does MAHI ensure my accounts won't get banned?",
+      faq_a3: "MAHI reduces ban risks by masking your digital fingerprint and location, making each account appear unique and unlinked.",
+      faq_q4: "What is a browser fingerprint?",
+      faq_a4: "A browser fingerprint is a unique set of identifiable data a website gathers about your device and browser. MAHI allows you to modify these.",
+      faq_q5: "Is my data safe with MAHI?",
+      faq_a5: "Yes, MAHI uses AWS for data storage, ensuring your data is secure and private.",
+      faq_q6: "How is MAHI different from traditional browsers?",
+      faq_a6: "MAHI is built for multi-account management, offering unique features like fingerprint modification, custom proxies, and bulk settings management."
+
 
     },
     'Français': {
@@ -314,7 +328,21 @@ function initLanguageSwitcher() {
       iceberg_c11_title: "Intégration Selenium et Puppeteer",
       iceberg_c11_desc: "Évitez les configurations tierces complexes et profitez d'une expérience fluide pour toutes vos automatisations.",
       iceberg_c12_title: "API haute performance",
-      iceberg_c12_desc: "Notre API autorise 1000 RPM avec accès bac à sable pour une intégration et personnalisation complètes."
+      iceberg_c12_desc: "Notre API autorise 1000 RPM avec accès bac à sable pour une intégration et personnalisation complètes.",
+      faq_title: "Foire aux questions sur<br>le navigateur antidétecteur",
+      faq_q1: "Qu'est-ce que MAHI ?",
+      faq_a1: "MAHI est un navigateur antidétecteur permettant une gestion fluide de plusieurs comptes sur diverses plateformes sans bannissements.",
+      faq_q2: "Combien de comptes puis-je créer avec MAHI ?",
+      faq_a2: "MAHI peut gérer des milliers de comptes, ce qui le rend adapté aux opérations à grande échelle.",
+      faq_q3: "Comment MAHI garantit-il que mes comptes ne seront pas bannis ?",
+      faq_a3: "MAHI réduit les risques de blocage en masquant votre empreinte numérique et votre localisation, rendant chaque compte unique et dissocié.",
+      faq_q4: "Qu'est-ce qu'une empreinte de navigateur ?",
+      faq_a4: "Une empreinte de navigateur est un ensemble unique de données identifiables collectées sur votre appareil. MAHI vous permet de les modifier.",
+      faq_q5: "Mes données sont-elles sécurisées avec MAHI ?",
+      faq_a5: "Oui, MAHI utilise AWS pour le stockage des données, garantissant une sécurité et une confidentialité optimales.",
+      faq_q6: "En quoi MAHI est-il différent des navigateurs traditionnels ?",
+      faq_a6: "MAHI est conçu pour le multicompte, offrant la modification d'empreintes, des proxys personnalisés et une gestion en masse."
+
 
     },
     'Русский': {
@@ -404,7 +432,21 @@ function initLanguageSwitcher() {
       iceberg_c11_title: "Интеграция с Selenium и Puppeteer",
       iceberg_c11_desc: "Забудьте о сложных сторонних настройках и наслаждайтесь удобной автоматизацией задач.",
       iceberg_c12_title: "Высокопроизводительный API",
-      iceberg_c12_desc: "Наш API поддерживает 1000 RPM с песочницей для полной интеграции и гибкой кастомизации."
+      iceberg_c12_desc: "Наш API поддерживает 1000 RPM с песочницей для полной интеграции и гибкой кастомизации.",
+      faq_title: "Часто задаваемые вопросы<br>об антидетект-браузере",
+      faq_q1: "Что такое MAHI?",
+      faq_a1: "MAHI — это антидетект-браузер, позволяющий комфортно управлять множеством аккаунтов на различных платформах без риска блокировок.",
+      faq_q2: "Сколько аккаунтов можно создать в MAHI?",
+      faq_a2: "В MAHI можно управлять тысячами аккаунтов, что идеально подходит для масштабных задач.",
+      faq_q3: "Как MAHI предотвращает блокировки аккаунтов?",
+      faq_a3: "MAHI маскирует цифровой отпечаток и локацию, благодаря чему каждый аккаунт выглядит уникальным и не связанным с другими.",
+      faq_q4: "Что такое цифровой отпечаток браузера?",
+      faq_a4: "Отпечаток браузера — это уникальный набор параметров вашего устройства и браузера. MAHI позволяет полностью управлять ими.",
+      faq_q5: "Безопасны ли мои данные в MAHI?",
+      faq_a5: "Да, MAHI использует инфраструктуру AWS для хранения данных, гарантируя безопасность и конфиденциальность.",
+      faq_q6: "Чем MAHI отличается от обычных браузеров?",
+      faq_a6: "MAHI создан специально для мультиаккаунтинга и предлагает подмену фингерпринтов, настройку прокси и массовое управление."
+
 
     },
     'Español': {
@@ -494,7 +536,21 @@ function initLanguageSwitcher() {
       iceberg_c11_title: "Integración con Selenium y Puppeteer",
       iceberg_c11_desc: "Evite complejas configuraciones de terceros y disfrute de una automatización sin complicaciones.",
       iceberg_c12_title: "API de alto rendimiento",
-      iceberg_c12_desc: "Nuestra API permite 1000 RPM con acceso a sandbox para integración total y personalización."
+      iceberg_c12_desc: "Nuestra API permite 1000 RPM con acceso a sandbox para integración total y personalización.",
+      faq_title: "Preguntas frecuentes sobre<br>el navegador antidetect",
+      faq_q1: "¿Qué es MAHI?",
+      faq_a1: "MAHI es un navegador antidetect que permite gestionar múltiples cuentas en varias plataformas sin sufrir bloqueos.",
+      faq_q2: "¿Cuántas cuentas puedo crear con MAHI?",
+      faq_a2: "MAHI puede administrar miles de cuentas, lo que lo hace perfecto para operaciones a gran escala.",
+      faq_q3: "¿Cómo garantiza MAHI que mis cuentas no serán baneadas?",
+      faq_a3: "MAHI reduce los riesgos de baneo enmascarando su huella digital y ubicación, haciendo que cada cuenta sea única e independiente.",
+      faq_q4: "¿Qué es la huella digital del navegador?",
+      faq_a4: "Es un conjunto de datos identificables recopilados sobre su dispositivo. MAHI le permite modificarlos por completo.",
+      faq_q5: "¿Mis datos están seguros con MAHI?",
+      faq_a5: "Sí, MAHI utiliza AWS para el almacenamiento, garantizando que su información permanezca segura y privada.",
+      faq_q6: "¿En qué se diferencia MAHI de los navegadores tradicionales?",
+      faq_a6: "Está diseñado para la gestión multicuentas, con funciones exclusivas como alteración de huellas, proxies personalizados y gestión masiva."
+
 
     },
     '中文': {
@@ -584,7 +640,21 @@ function initLanguageSwitcher() {
       iceberg_c11_title: "深度支持 Selenium 与 Puppeteer",
       iceberg_c11_desc: "省去繁琐的第三方配置，轻松开展各项自动化任务。",
       iceberg_c12_title: "高性能自动化 API",
-      iceberg_c12_desc: "API 支持 1000 RPM 及沙盒环境，便于全功能深度集成与灵活定制。"
+      iceberg_c12_desc: "API 支持 1000 RPM 及沙盒环境，便于全功能深度集成与灵活定制。",
+      faq_title: "关于防关联浏览器的<br>常见问题解答",
+      faq_q1: "什么是 MAHI？",
+      faq_a1: "MAHI 是一款专业的防关联指纹浏览器，支持在各大平台无缝管理多个账号且避免被关联封禁。",
+      faq_q2: "使用 MAHI 可以创建多少个账号？",
+      faq_a2: "MAHI 支持管理数以千计的独立账号，完全满足大规模团队与矩阵化运营的需求。",
+      faq_q3: "MAHI 如何防止我的账号被封禁？",
+      faq_a3: "MAHI 通过伪装并隔离设备的数字指纹与地理位置，使每个账号都呈现为独立且互不关联的真实设备。",
+      faq_q4: "什么是浏览器指纹？",
+      faq_a4: "浏览器指纹是网站收集的关于您设备与软硬件环境的独特标识数据。MAHI 允许您自定义并修改所有指纹参数。",
+      faq_q5: "我的数据存放在 MAHI 安全吗？",
+      faq_a5: "绝对安全。MAHI 使用 AWS 云端安全存储，确保您的资产数据得到最高级别的隐私保护与加密。",
+      faq_q6: "MAHI 与普通浏览器有什么区别？",
+      faq_a6: "MAHI 专为多账号矩阵管理而生，提供指纹环境深度隔离、独立代理绑定以及高效的批量配置管理功能。"
+
     },
     'Deutsch': {
       nav_use_cases: 'Anwendungsfälle',
@@ -673,7 +743,21 @@ function initLanguageSwitcher() {
       iceberg_c11_title: "Selenium- & Puppeteer-Integration",
       iceberg_c11_desc: "Sparen Sie sich komplexe Drittanbieter-Setups und genießen Sie reibungslose Automatisierung.",
       iceberg_c12_title: "Hochleistungs-API",
-      iceberg_c12_desc: "Unsere API erlaubt 1000 RPM mit Sandbox-Zugriff für maximale Integration."
+      iceberg_c12_desc: "Unsere API erlaubt 1000 RPM mit Sandbox-Zugriff für maximale Integration.",
+      faq_title: "Häufig gestellte Fragen zum<br>Antidetect-Browser",
+      faq_q1: "Was ist MAHI?",
+      faq_a1: "MAHI ist ein Antidetect-Browser für das nahtlose Verwalten mehrerer Konten auf verschiedenen Plattformen ohne Sperrungen.",
+      faq_q2: "Wie viele Konten kann ich mit MAHI erstellen?",
+      faq_a2: "MAHI kann Tausende von Konten verwalten und ist optimal für groß angelegte Operationen geeignet.",
+      faq_q3: "Wie schützt MAHI meine Konten vor Sperren?",
+      faq_a3: "MAHI maskiert Ihren digitalen Fingerabdruck und Standort, sodass jedes Konto vollkommen einzigartig und getrennt erscheint.",
+      faq_q4: "Was ist ein Browser-Fingerabdruck?",
+      faq_a4: "Ein Browser-Fingerabdruck ist eine eindeutige Datensammlung über Ihr Gerät. MAHI ermöglicht es Ihnen, diese Parameter anzupassen.",
+      faq_q5: "Sind meine Daten bei MAHI sicher?",
+      faq_a5: "Ja, MAHI nutzt AWS zur Datenspeicherung, um höchste Sicherheit und Datenschutz zu gewährleisten.",
+      faq_q6: "Wie unterscheidet sich MAHI von herkömmlichen Browsern?",
+      faq_a6: "MAHI wurde speziell für Multi-Accounting entwickelt und bietet Fingerabdruckanpassung, eigene Proxys und Massenverwaltung."
+
     },
     'Portuguese': {
       nav_use_cases: 'Casos de uso',
@@ -762,7 +846,21 @@ function initLanguageSwitcher() {
       iceberg_c11_title: "Integração Selenium e Puppeteer",
       iceberg_c11_desc: "Esqueça configurações complicadas de terceiros e aproveite automação suave para todas as tarefas.",
       iceberg_c12_title: "API de alta performance",
-      iceberg_c12_desc: "Nossa API suporta 1000 RPM com sandbox para integração e personalização completas."
+      iceberg_c12_desc: "Nossa API suporta 1000 RPM com sandbox para integração e personalização completas.",
+      faq_title: "Perguntas frequentes sobre<br>o navegador antidetect",
+      faq_q1: "O que é o MAHI?",
+      faq_a1: "MAHI é um navegador antidetect que permite gerenciar com facilidade múltiplas contas em várias plataformas sem bloqueios.",
+      faq_q2: "Quantas contas posso criar com o MAHI?",
+      faq_a2: "O MAHI pode gerenciar milhares de contas, sendo ideal para operações em grande escala.",
+      faq_q3: "Como o MAHI garante que minhas contas não serão banidas?",
+      faq_a3: "O MAHI reduz o risco de banimentos mascarando sua impressão digital e localização, tornando cada conta única e isolada.",
+      faq_q4: "O que é uma impressão digital do navegador?",
+      faq_a4: "É um conjunto de dados identificáveis que os sites coletam sobre seu aparelho. O MAHI permite modificar todos eles.",
+      faq_q5: "Meus dados estão seguros com o MAHI?",
+      faq_a5: "Sim, o MAHI utiliza a nuvem da AWS para armazenamento de dados, garantindo máxima segurança e privacidade.",
+      faq_q6: "Como o MAHI se diferencia dos navegadores comuns?",
+      faq_a6: "Ele foi desenvolvido para gerenciamento de múltiplas contas, com modificação de fingerprints, proxies e configurações em lote."
+
 
     },
     '日本': {
@@ -852,7 +950,21 @@ function initLanguageSwitcher() {
       iceberg_c11_title: "Selenium & Puppeteer連携",
       iceberg_c11_desc: "面倒な外部設定不要で、あらゆる自動化タスクをスムーズに実行可能です。",
       iceberg_c12_title: "高性能API",
-      iceberg_c12_desc: "1000 RPM対応のAPIとサンドボックス環境で柔軟な機能統合とカスタマイズを実現。"
+      iceberg_c12_desc: "1000 RPM対応のAPIとサンドボックス環境で柔軟な機能統合とカスタマイズを実現。",
+      faq_title: "アンチディテクトブラウザに関する<br>よくある質問",
+      faq_q1: "MAHIとは何ですか？",
+      faq_a1: "MAHIは、アカウント凍結のリスクなしに複数アカウントを安全に一元管理できるアンチディテクトブラウザです。",
+      faq_q2: "MAHIで作成できるアカウント数は？",
+      faq_a2: "MAHIは数千のアカウントを管理可能で、大規模なビジネス運用にも最適です。",
+      faq_q3: "アカウントのBANをどのように防ぎますか？",
+      faq_a3: "デジタル指紋と位置情報を高度に偽装し、各アカウントが完全に独立した別人物として認識されるようにします。",
+      faq_q4: "ブラウザフィンガープリントとは何ですか？",
+      faq_a4: "Webサイトがお使いの端末やブラウザから収集する識別データのセットです。MAHIではこれらを自由に変更できます。",
+      faq_q5: "MAHIにおけるデータセキュリティは安全ですか？",
+      faq_a5: "はい、MAHIはAWSクラウドストレージを採用し、お客様のデータとプライバシーを厳格に保護しています。",
+      faq_q6: "従来のブラウザとの違いは何ですか？",
+      faq_a6: "複数アカウントの管理に特化しており、フィンガープリント偽装、プロキシ設定、一括管理機能を標準搭載しています。"
+
 
     },
     'Tiếng Việt': {
@@ -942,7 +1054,21 @@ function initLanguageSwitcher() {
       iceberg_c11_title: "Tích hợp Selenium & Puppeteer",
       iceberg_c11_desc: "Bỏ qua các bước cài đặt bên thứ ba rườm rà, tự động hóa mượt mà ngay lập tức.",
       iceberg_c12_title: "API hiệu năng vượt trội",
-      iceberg_c12_desc: "API hỗ trợ 1000 RPM cùng môi trường sandbox giúp tích hợp tối đa và tùy biến."
+      iceberg_c12_desc: "API hỗ trợ 1000 RPM cùng môi trường sandbox giúp tích hợp tối đa và tùy biến.",
+      faq_title: "Các câu hỏi thường gặp về<br>trình duyệt antidetect",
+      faq_q1: "MAHI là gì?",
+      faq_a1: "MAHI là trình duyệt antidetect giúp quản lý đồng thời nhiều tài khoản trên nhiều nền tảng mà không lo bị khóa.",
+      faq_q2: "Tôi có thể tạo bao nhiêu tài khoản với MAHI?",
+      faq_a2: "MAHI có khả năng quản lý hàng nghìn tài khoản, phù hợp cho mọi nhu cầu vận hành quy mô lớn.",
+      faq_q3: "MAHI giúp tài khoản không bị khóa bằng cách nào?",
+      faq_a3: "MAHI ẩn danh dấu vân tay số và vị trí địa lý, khiến mỗi tài khoản trông như một thiết bị hoàn toàn riêng biệt.",
+      faq_q4: "Dấu vân tay trình duyệt là gì?",
+      faq_a4: "Là tập hợp các thông số nhận dạng thiết bị mà các trang web thu thập. MAHI cho phép bạn tùy chỉnh mọi thông số này.",
+      faq_q5: "Dữ liệu của tôi có an toàn trên MAHI không?",
+      faq_a5: "Có, MAHI sử dụng hệ thống máy chủ AWS an toàn, đảm bảo tính bảo mật và riêng tư tuyệt đối cho dữ liệu.",
+      faq_q6: "MAHI khác gì so với trình duyệt thông thường?",
+      faq_a6: "Được tối ưu riêng cho nuôi nhiều tài khoản, tích hợp giả lập vân tay máy tính, gắn proxy linh hoạt và quản lý hàng loạt."
+
 
     },
     'Polski': {
@@ -1032,7 +1158,21 @@ function initLanguageSwitcher() {
       iceberg_c11_title: "Integracja z Selenium i Puppeteer",
       iceberg_c11_desc: "Pomiń skomplikowaną konfigurację zewnętrzną i ciesz się płynną automatyzacją zadań.",
       iceberg_c12_title: "Wysokowydajne API",
-      iceberg_c12_desc: "Nasze API obsługuje 1000 RPM z dostępem do piaskownicy dla pełnej integracji."
+      iceberg_c12_desc: "Nasze API obsługuje 1000 RPM z dostępem do piaskownicy dla pełnej integracji.",
+      faq_title: "Często zadawane pytania dotyczące<br>przeglądarki antidetect",
+      faq_q1: "Czym jest MAHI?",
+      faq_a1: "MAHI to przeglądarka antidetect umożliwiająca bezproblemowe zarządzanie wieloma kontami bez ryzyka blokad.",
+      faq_q2: "Ile kont mogę utworzyć za pomocą MAHI?",
+      faq_a2: "MAHI pozwala zarządzać tysiącami kont, dzięki czemu doskonale sprawdza się przy działaniach na dużą skalę.",
+      faq_q3: "Jak MAHI zapobiega blokowaniu kont?",
+      faq_a3: "MAHI maskuje cyfrowy odcisk palca i lokalizację, sprawiając, że każde konto wygląda na unikalne i niezależne.",
+      faq_q4: "Czym jest cyfrowy odcisk palca przeglądarki?",
+      faq_a4: "To unikalny zestaw parametrów urządzenia zbieranych przez strony internetowe. MAHI pozwala je w pełni modyfikować.",
+      faq_q5: "Czy moje dane są bezpieczne w MAHI?",
+      faq_a5: "Tak, MAHI korzysta z bezpiecznej infrastruktury AWS, gwarantując pełne bezpieczeństwo i prywatność danych.",
+      faq_q6: "Czym MAHI różni się od tradycyjnych przeglądarek?",
+      faq_a6: "Została stworzona do obsługi wielu kont, oferując modyfikację fingerprintów, dedykowane proxy i masowe zarządzanie."
+
 
     }
   };
