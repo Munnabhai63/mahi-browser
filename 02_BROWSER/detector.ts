@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { BrowserEngine } from '../10_CONFIG/shared/types/profile.js';
+import { isManagedEngineInstalled, getManagedEngineExecutablePath } from './managed-engine.js';
 
 export interface DetectedBrowser {
   name: string;
@@ -91,6 +92,10 @@ export function detectSystemBrowsers(): DetectedBrowser[] {
 export function resolveExecutablePath(engine: BrowserEngine, customPath?: string): string {
   if (customPath && fs.existsSync(customPath)) {
     return customPath;
+  }
+
+  if (isManagedEngineInstalled()) {
+    return getManagedEngineExecutablePath();
   }
 
   const detected = detectSystemBrowsers();

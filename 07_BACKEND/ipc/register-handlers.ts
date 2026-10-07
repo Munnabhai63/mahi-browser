@@ -83,6 +83,14 @@ import {
 } from '../../09_AUTOMATION/automation-engine.js';
 import { RPA_TEMPLATES } from '../../10_CONFIG/shared/constants/automation-templates.js';
 import { synchronizerHub } from '../../09_AUTOMATION/sync-hub.js';
+import {
+  isManagedEngineInstalled,
+  getManagedEngineExecutablePath,
+  ensureManagedEngineInstalled,
+  getManagedEngineCurrentProgress,
+  addManagedEngineProgressListener,
+} from '../../02_BROWSER/managed-engine.js';
+import { MANAGED_ENGINE_VERSION } from '../../10_CONFIG/engine-config.js';
 
 
 import {
@@ -1590,11 +1598,45 @@ export function registerIpcHandlers(): void {
     }
   });
 
+  // Managed Browser Engine Handlers
+  ipcMain.handle('engine:getStatus', async () => {
+    const installed = isManagedEngineInstalled();
+    const currentProg = getManagedEngineCurrentProgress();
+    return {
+      installed,
+      version: MANAGED_ENGINE_VERSION,
+      path: getManagedEngineExecutablePath(),
+      stage: currentProg.stage,
+      percent: currentProg.percent,
+      downloadedBytes: currentProg.downloadedBytes,
+      totalBytes: currentProg.totalBytes,
+      error: currentProg.error,
+    };
+  });
 
+  ipcMain.handle('engine:download', async () => {
+    try {
+      const exe = await ensureManagedEngineInstalled();
+      return { success: true, path: exe };
+    } catch (err: any) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
 
+  // Wire event emitters from processManager, audit logger, and engine downloader to renderer windows
+  addManagedEngineProgressListener((progress) => {
+    const statusPayload = {
+      installed: isManagedEngineInstalled(),
+      path: getManagedEngineExecutablePath(),
+      ...progress,
+    };
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('engine:downloadProgress', statusPayload);
+      }
+    }
+  });
 
-
-  // Wire event emitters from processManager and audit logger to renderer windows
   processManager.onStatusChange((event) => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {

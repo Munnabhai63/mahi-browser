@@ -592,6 +592,17 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     onActivityLogAdded: () => () => {},
     onUpdateStatusChanged: () => () => {},
     onFleetResourceUsage: () => () => {},
+    getManagedEngineStatus: async () => ({
+      installed: true,
+      version: '138.0.7204.183',
+      path: 'Default',
+      stage: 'READY' as const,
+      percent: 100,
+      downloadedBytes: 0,
+      totalBytes: 0,
+    }),
+    downloadManagedEngine: async () => ({ success: true, path: 'Default' }),
+    onEngineDownloadProgress: () => () => {},
   };
 
   (window as any).mahiAPI = fallbackApi;

@@ -256,6 +256,15 @@ const api = {
   commercialRevokeDevice: (deviceId, userId) => ipcRenderer.invoke('commercial:revokeDevice', deviceId, userId),
   commercialGetPlans: () => ipcRenderer.invoke('commercial:getPlans'),
   commercialActivateKey: (userId, rawKey) => ipcRenderer.invoke('commercial:activateKey', userId, rawKey),
+
+  // Managed Browser Engine
+  getManagedEngineStatus: () => ipcRenderer.invoke('engine:getStatus'),
+  downloadManagedEngine: () => ipcRenderer.invoke('engine:download'),
+  onEngineDownloadProgress: (callback) => {
+    const handler = (_event, status) => callback(status);
+    ipcRenderer.on('engine:downloadProgress', handler);
+    return () => ipcRenderer.removeListener('engine:downloadProgress', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('mahiAPI', api);

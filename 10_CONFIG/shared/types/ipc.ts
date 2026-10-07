@@ -319,11 +319,27 @@ export interface MahiBrowserAPI {
   commercialGetPlans: () => Promise<any>;
   commercialActivateKey: (userId: string, rawKey: string) => Promise<any>;
 
+  // Managed Browser Engine
+  getManagedEngineStatus: () => Promise<ManagedEngineStatus>;
+  downloadManagedEngine: () => Promise<{ success: boolean; path?: string; error?: string }>;
+
   // Event Listeners
   onProfileStatusChanged: (callback: (data: { profileId: string; status: string; pid?: number; error?: string }) => void) => () => void;
   onActivityLogAdded: (callback: (log: ActivityLogItem) => void) => () => void;
   onUpdateStatusChanged: (callback: (status: UpdateStatusEvent) => void) => () => void;
   onFleetResourceUsage: (callback: (summary: FleetResourceSummary) => void) => () => void;
+  onEngineDownloadProgress: (callback: (status: ManagedEngineStatus) => void) => () => void;
+}
+
+export interface ManagedEngineStatus {
+  installed: boolean;
+  version: string;
+  path: string;
+  stage: 'IDLE' | 'CHECKING' | 'DOWNLOADING' | 'VERIFYING' | 'EXTRACTING' | 'READY' | 'ERROR';
+  percent: number;
+  downloadedBytes: number;
+  totalBytes: number;
+  error?: string;
 }
 
 declare global {

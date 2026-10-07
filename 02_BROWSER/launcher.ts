@@ -3,6 +3,12 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { Profile } from '../10_CONFIG/shared/types/profile.js';
 import { resolveExecutablePath } from './detector.js';
+import {
+  isManagedEngineInstalled,
+  getManagedEngineExecutablePath,
+  ensureManagedEngineInstalled,
+} from './managed-engine.js';
+import { MANAGED_ENGINE_VERSION } from '../10_CONFIG/engine-config.js';
 import { getProxyById, getDecryptedProxyCredentials, testAndSaveProxyStatus } from './services/proxy-service.js';
 import { getExtensions } from './services/extension-service.js';
 import { createProxyTunnel, ProxyTunnelHandle } from './proxy-tunnel.js';
@@ -1090,21 +1096,33 @@ export async function launchBrowser(profile: Profile): Promise<LaunchedProcessIn
 
   try {
     // -------------------------------------------------------------
-    // Step 1: Resolve Browser Executable Path
+    // Step 1: Resolve Browser Executable Path (Managed Version-Pinned Engine)
     // -------------------------------------------------------------
-    const engine = profile.settings?.browser?.engine || 'chrome';
-    const customPath = profile.settings?.browser?.customExecutablePath;
-    debugLog(`[Launcher Step 1/7] Resolving executable for engine: "${engine}" (Custom path: ${customPath || 'None'})...`);
+    debugLog(`[Launcher Step 1/7] Resolving managed version-pinned browser engine (${MANAGED_ENGINE_VERSION})...`);
     
-    const executablePath = resolveExecutablePath(engine, customPath);
-    debugLog(`[Launcher Step 1/7] Resolved path: "${executablePath}"`);
+    let executablePath: string;
+    if (isManagedEngineInstalled()) {
+      executablePath = getManagedEngineExecutablePath();
+      debugLog(`[Launcher Step 1/7] Managed engine located: "${executablePath}"`);
+    } else {
+      debugLog(`[Launcher Step 1/7] Managed engine missing. Initiating download from Google CDN...`);
+      try {
+        executablePath = await ensureManagedEngineInstalled();
+        debugLog(`[Launcher Step 1/7] Managed engine downloaded and verified: "${executablePath}"`);
+      } catch (dlErr: any) {
+        const errorDetails = dlErr instanceof Error ? dlErr.message : String(dlErr);
+        const errMsg = `Managed browser engine (${MANAGED_ENGINE_VERSION}) download failed: ${errorDetails}. Please check your connection or disk space and click Retry.`;
+        debugLog(`[Launcher Step 1/7 ERROR] ${errMsg}`);
+        throw new Error(errMsg);
+      }
+    }
 
     // -------------------------------------------------------------
     // Step 2: Validate Executable Existence & Access
     // -------------------------------------------------------------
     debugLog(`[Launcher Step 2/7] Verifying browser executable existence...`);
     if (!executablePath || !fs.existsSync(executablePath)) {
-      const errMsg = `Browser executable not found at: "${executablePath || 'undefined'}". Please install Google Chrome or Microsoft Edge, or configure a valid browser path in settings.`;
+      const errMsg = `Browser executable not found at: "${executablePath || 'undefined'}". Click Retry to download the managed engine.`;
       debugLog(`[Launcher Step 2/7 ERROR] ${errMsg}`);
       throw new Error(errMsg);
     }

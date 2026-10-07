@@ -55,7 +55,7 @@
 ### Prerequisites
 - Node.js >= 20.0.0 (Node 22 or 24 recommended)
 - npm >= 9.0.0
-- Google Chrome, Microsoft Edge, or Chromium installed on your OS
+- Internet connection for initial managed engine download (~170MB, one-time)
 
 ### 1. Clone & Install Dependencies
 ```bash
@@ -78,6 +78,32 @@ npm test
 ```bash
 npm run build
 ```
+
+---
+
+## 🌐 Managed Browser Engine (Anti-Detect Architecture)
+
+MAHI BROWSER uses a **dedicated, version-pinned Chromium engine ("Chrome for Testing")** downloaded directly from Google's official public CDN. It does not depend on the user's host Chrome or Edge installation.
+
+### Key Benefits
+- **Zero Fingerprint Drift**: Every profile on every machine runs on the exact same Chromium binary version, preventing OS browser update discrepancies from breaking stealth flags.
+- **User-Agent Baseline Consistency**: The browser's default user-agent string strictly matches the engine version (`138.0.7204.183`), ensuring JavaScript feature availability (`navigator`, DOM APIs) perfectly aligns with the reported user agent.
+- **Fail-Safe Integrity**: Binary downloads are validated against official Google SHA-256 checksums and unpacked atomically.
+
+### Engine Storage Location
+- Path: `<userData>/engines/<VERSION>/chrome-win64/chrome.exe`
+- Pre-flight check: Requires at least 1 GB free disk space prior to download.
+
+### Version Bump Procedure
+To update the pinned engine version:
+1. Open [`10_CONFIG/engine-config.ts`](file:///c:/Users/munaf/Desktop/mahai%20brouser/10_CONFIG/engine-config.ts).
+2. Change `MANAGED_ENGINE_VERSION` (and update `MANAGED_ENGINE_SHA256` from [Google CfT Manifest](https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json)).
+3. Rebuild and release: `npm run build && npm run dist`.
+4. Client behavior: Every client automatically downloads the newly pinned engine on their next profile launch. Deprecated older engine folders are automatically purged via `cleanOldEngineVersions` to preserve disk space.
+
+### Media Codec & DRM (Widevine) Status
+- **Standard Video & Audio**: Supported natively (YouTube VP9/AV1/Opus/WebM).
+- **DRM-Protected Streams (Widevine)**: Chrome for Testing official Google binaries **do not include proprietary Widevine CDM licenses** by Google policy. Streaming DRM media requiring Widevine Level 1/3 (such as Netflix, Amazon Prime Video, or Spotify Web Player) will not play protected streams out of the box in Chrome for Testing.
 
 ---
 

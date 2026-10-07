@@ -1,27 +1,30 @@
 import { ProfileSettings, AppSettings } from '../types/index.js';
+import { MANAGED_ENGINE_VERSION } from '../../engine-config.js';
+
+const majorVersion = MANAGED_ENGINE_VERSION.split('.')[0] || '138';
 
 export const DEFAULT_USER_AGENTS = [
   {
-    label: 'Chrome 131 on Windows 11 (64-bit)',
-    value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    label: `Chrome ${majorVersion} on Windows 11 (64-bit)`,
+    value: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${MANAGED_ENGINE_VERSION} Safari/537.36`,
     platform: 'Win32',
     os: 'Windows 11',
   },
   {
-    label: 'Chrome 131 on macOS Sequoia',
-    value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    label: `Chrome ${majorVersion} on macOS Sequoia`,
+    value: `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${MANAGED_ENGINE_VERSION} Safari/537.36`,
     platform: 'MacIntel',
     os: 'macOS',
   },
   {
-    label: 'Edge 131 on Windows 11 (64-bit)',
-    value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0',
+    label: `Edge ${majorVersion} on Windows 11 (64-bit)`,
+    value: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${MANAGED_ENGINE_VERSION} Safari/537.36 Edg/${MANAGED_ENGINE_VERSION}`,
     platform: 'Win32',
     os: 'Windows 11',
   },
   {
-    label: 'Chrome 130 on Linux x86_64',
-    value: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    label: `Chrome ${majorVersion} on Linux x86_64`,
+    value: `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${MANAGED_ENGINE_VERSION} Safari/537.36`,
     platform: 'Linux x86_64',
     os: 'Linux',
   },
@@ -66,7 +69,7 @@ export function getDefaultProfileSettings(_os?: 'windows' | 'mac' | 'linux' | st
   return {
     browser: {
       engine: 'chrome',
-      version: '131.0.0.0',
+      version: MANAGED_ENGINE_VERSION,
       userAgent: DEFAULT_USER_AGENTS[0].value,
       startupUrl: 'https://www.google.com',
       homepage: 'https://www.google.com',
@@ -115,7 +118,7 @@ export function generateConsistentEnvironmentSettings(): ProfileSettings {
   return {
     browser: {
       engine: 'chrome',
-      version: '131.0.0.0',
+      version: MANAGED_ENGINE_VERSION,
       userAgent: selectedUA.value,
       startupUrl: 'https://www.google.com',
       homepage: 'https://www.google.com',

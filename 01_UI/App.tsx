@@ -8,6 +8,7 @@ import { ToastContainer } from './components/ToastContainer.js';
 import { AppLockModal } from './components/AppLockModal.js';
 import { WelcomeWizardModal } from './components/WelcomeWizardModal.js';
 import { UpdateModal } from './components/UpdateModal.js';
+import { EngineDownloadModal } from './components/EngineDownloadModal.js';
 import { CommercialUserModal } from './components/CommercialUserModal.js';
 import { useAccountStore } from './stores/useAccountStore.js';
 
@@ -274,6 +275,7 @@ export const App: React.FC = () => {
       {/* Global Modals & Notifications */}
       <WelcomeWizardModal onNavigate={setCurrentPage} />
       <UpdateModal />
+      <EngineDownloadModal />
       <CommandPaletteModal
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}

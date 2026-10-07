@@ -12,6 +12,7 @@ import {
 } from '../10_CONFIG/shared/types/automation.js';
 import { getProfileById } from '../02_BROWSER/services/profile-service.js';
 import { resolveExecutablePath } from '../02_BROWSER/detector.js';
+import { isManagedEngineInstalled, getManagedEngineExecutablePath } from '../02_BROWSER/managed-engine.js';
 import { getProxyById, getDecryptedProxyCredentials } from '../02_BROWSER/services/proxy-service.js';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { getProfileDebugPort, markCleanExit } from '../02_BROWSER/launcher.js';
@@ -220,10 +221,12 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
   logActivity('AUTOMATION', 'INFO', 'Start Workflow', `Running workflow "${workflow.name}" on "${profile.name}"`, profile.id, profile.name);
 
   // Configure Playwright options
-  const executablePath = resolveExecutablePath(
-    profile.settings.browser.engine,
-    profile.settings.browser.customExecutablePath
-  );
+  const executablePath = isManagedEngineInstalled()
+    ? getManagedEngineExecutablePath()
+    : resolveExecutablePath(
+        profile.settings.browser.engine,
+        profile.settings.browser.customExecutablePath
+      );
 
   let proxyConfig: { server: string; username?: string; password?: string } | undefined = undefined;
   if (!profile.settings.network.directConnection && profile.settings.network.proxyId) {
