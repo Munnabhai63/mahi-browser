@@ -2909,105 +2909,248 @@ button {
 }
 
 /* ==========================================================================
-   13. FOOTER & OS DOWNLOAD STRIP
+   13. FOOTER BENCHMARK (Top Bar, 5 Navigation Columns, Download Bar, Legal)
    ========================================================================== */
 .footer-wrap-outer {
-  background: var(--bg-obsidian);
-  color: var(--text-dark-muted);
-  padding: 5rem 0 2rem;
-  border-top: 1px solid var(--border-hairline);
+  background: #191a23;
+  color: #94a3b8;
+  padding: clamp(4.5rem, 6vw, 6rem) 0 2.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.footer-nav-grid {
-  display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr 1fr;
-  gap: 3rem;
-  margin-bottom: 3.5rem;
+.footer-container-inner {
+  max-width: 1060px;
+  margin: 0 auto;
 }
 
-.footer-brand-bio p {
-  margin-top: 1rem;
-  font-size: 0.9rem;
-  line-height: 1.6;
-  max-width: 320px;
-}
-
-.footer-column-box h5 {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--text-dark-h);
-  margin-bottom: 1.25rem;
-}
-
-.footer-links-stack {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  font-size: 0.9rem;
-}
-
-.footer-links-stack a:hover {
-  color: var(--text-dark-h);
-}
-
-/* Footer OS Download Strip */
-.footer-download-bar {
+/* Top Bar: Brand & Follow us */
+.footer-top-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
+  padding-bottom: 2.2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 3.2rem;
+}
+
+.footer-brand-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.footer-brand-logo-img {
+  width: 32px;
+  height: 32px;
+  display: block;
+}
+
+.footer-brand-text {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+.footer-social-wrap {
+  display: flex;
+  align-items: center;
   gap: 1.25rem;
-  padding: 1.75rem 0;
-  border-top: 1px solid var(--border-hairline);
-  border-bottom: 1px solid var(--border-hairline);
+}
+
+.footer-follow-label {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.footer-social-icons {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.footer-social-btn {
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.footer-social-btn:hover {
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+/* Main Navigation 5-Column Grid */
+.footer-benchmark-columns {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: clamp(1.5rem, 2.8vw, 3rem);
+  margin-bottom: 3.5rem;
+}
+
+.footer-col-heading {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 1.25rem;
+  letter-spacing: -0.01em;
+}
+
+.footer-subheading {
+  margin-top: 2.2rem;
+}
+
+.footer-col-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.footer-col-list a {
+  font-size: 0.825rem;
+  color: #94a3b8;
+  text-decoration: none;
+  transition: color 0.2s ease;
+  line-height: 1.45;
+}
+
+.footer-col-list a:hover {
+  color: #ffffff;
+}
+
+/* Download Platform Action Bar */
+.footer-dl-platform-strip {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1.8rem 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   margin-bottom: 2rem;
 }
 
-.footer-os-btn-group {
+.footer-dl-caption {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-right: 0.5rem;
+}
+
+.footer-dl-pills-wrap {
   display: flex;
   align-items: center;
   gap: 0.65rem;
   flex-wrap: wrap;
 }
 
-.footer-os-pill {
+.footer-os-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-md);
-  padding: 0.45rem 0.85rem;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 0.42rem 0.85rem;
   font-size: 0.825rem;
   font-weight: 600;
   color: #f1f5f9;
-  transition: var(--transition-fast);
+  text-decoration: none;
+  transition: all 0.2s ease;
 }
 
-.footer-os-pill:hover {
-  border-color: var(--emerald-500);
-}
-
-.footer-os-pill.disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.os-coming-badge {
-  font-size: 0.7rem;
+.footer-os-badge:hover {
   background: rgba(255, 255, 255, 0.08);
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-  color: #94a3b8;
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  transform: translateY(-1px);
 }
 
-.footer-legal-bottom {
+.footer-os-store {
+  padding: 0.35rem 0.85rem;
+}
+
+.store-badge-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+  text-align: left;
+}
+
+.store-badge-text small {
+  font-size: 0.58rem;
+  color: #94a3b8;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.store-badge-text strong {
+  font-size: 0.78rem;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+/* Legal & Copyright Bottom Strip */
+.footer-bottom-legal-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.85rem;
+  font-size: 0.825rem;
   color: #64748b;
+  padding-top: 1rem;
+}
+
+.footer-legal-copy {
+  color: #64748b;
+}
+
+.footer-legal-links {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.footer-legal-links a {
+  color: #64748b;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.footer-legal-links a:hover {
+  color: #94a3b8;
+}
+
+@media (max-width: 992px) {
+  .footer-benchmark-columns {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+  }
+  .footer-dl-platform-strip {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .footer-top-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1.25rem;
+  }
+  .footer-benchmark-columns {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2rem 1.5rem;
+  }
+  .footer-bottom-legal-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
 }
 
 /* Floating WhatsApp Button */
