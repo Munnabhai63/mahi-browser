@@ -279,134 +279,158 @@
     </div>
   </section>
 
-  <!-- Ambient Hero Background Grid & Light Beam for Below Sections -->
-  <div class="hero-ambient-wrap">
-    <div class="perspective-grid" aria-hidden="true"></div>
-    <div class="directional-light-beam" aria-hidden="true"></div>
+  <!-- ==========================================================================
+       2. MANAGE ALL YOUR ACCOUNTS SAFELY FROM ONE DEVICE (PHOTO SPEC)
+       ========================================================================== -->
+  <section class="accounts-showcase-section" id="how-it-works">
+    <div class="container accounts-showcase-container">
+      
+      <!-- Section Header -->
+      <div class="showcase-header-clean">
+        <h2 class="showcase-title-clean" data-i18n="showcase_title">
+          Manage all your accounts safely<br>from one device
+        </h2>
+        <p class="showcase-sub-clean" data-i18n="showcase_sub">
+          Log into multiple accounts on a single device, just like a regular browser,<br class="hide-mobile"> without triggering unexpected suspicion checks
+        </p>
+      </div>
 
-        <!-- ==========================================================================
-             3. HERO PRODUCT SHOWCASE & REAL BROWSER MOCKUP
-             ========================================================================== -->
-        <div class="hero-showcase-container" id="how-it-works">
-          <!-- Floating Service Badges on top -->
-          <div class="floating-services-bar" aria-hidden="true">
-            <span style="font-size: 0.825rem; font-weight: 600; color: #94a3b8; margin-right: 0.5rem;">On any website:</span>
-            <div class="service-pill-item" title="Facebook">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+      <!-- Main Showcase Frame -->
+      <div class="showcase-display-box">
+        
+        <!-- Platform Switcher Header -->
+        <div class="platform-switcher-wrap">
+          <div class="platform-switcher-pill" role="tablist" aria-label="Select website platform">
+            <button type="button" class="platform-switch-btn" data-platform="facebook" role="tab" aria-selected="false" title="Facebook">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+            </button>
+            <button type="button" class="platform-switch-btn" data-platform="amazon" role="tab" aria-selected="false" title="Amazon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="#ff9900"><path d="M13.958 10.09c0 1.25-.04 2.33-.87 3.32-.67.79-1.58 1.24-2.58 1.24-1.37 0-2.16-.99-2.16-2.45 0-2.88 2.54-3.37 5.61-3.37v1.26zm3.5 8.41c-.24.2-.61.22-.88.06-1.22-.76-1.44-1.12-2.12-2.12-2.03 1.94-3.48 2.45-6.1 2.45-3.07 0-5.46-1.9-5.46-5.41 0-2.75 1.54-4.83 3.8-5.78 1.96-.82 4.7-.97 6.76-1.21v-.47c0-.82-.07-1.81-.59-2.49-.46-.6-1.25-.86-2.01-.86-1.4 0-2.63.73-2.97 2.18-.06.27-.25.5-.53.51l-3.37-.36c-.25-.05-.51-.23-.44-.57.77-3.69 4.07-4.82 7.37-4.82 1.89 0 4.36.49 5.86 1.87 1.9 1.74 1.72 4.05 1.72 6.47v5.89c0 1.8.76 2.59 1.48 3.56.24.33.27.71.05.95l-2.58 1.93z"/></svg>
+            </button>
+            <button type="button" class="platform-switch-btn" data-platform="linkedin" role="tab" aria-selected="false" title="LinkedIn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="#0a66c2"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+            </button>
+            <button type="button" class="platform-switch-btn" data-platform="ebay" role="tab" aria-selected="false" title="eBay">
+              <span style="font-weight: 800; font-size: 0.95rem; letter-spacing: -0.02em;"><span style="color:#e53238">e</span><span style="color:#0064d2">b</span><span style="color:#f5af02">a</span><span style="color:#86b817">y</span></span>
+            </button>
+            <button type="button" class="platform-switch-btn active" data-platform="gmail" role="tab" aria-selected="true" title="Gmail">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2 5.5V18.5C2 19.33 2.67 20 3.5 20H6V11L12 15.5L18 11V20H20.5C21.33 20 22 19.33 22 18.5V5.5C22 4.12 20.4 3.32 19.3 4.15L12 9.62L4.7 4.15C3.6 3.32 2 4.12 2 5.5Z" fill="#ea4335"/><path d="M18 11V20H20.5C21.33 20 22 19.33 22 18.5V5.5L18 11Z" fill="#4285f4"/><path d="M2 18.5C2 19.33 2.67 20 3.5 20H6V11L2 5.5V18.5Z" fill="#34a853"/><path d="M19.3 4.15L18 11L12 15.5L18 20H20.5C21.33 20 22 19.33 22 18.5V5.5C22 4.12 20.4 3.32 19.3 4.15Z" fill="#fbbc05"/></svg>
+            </button>
+          </div>
+          <div class="platform-switcher-label" data-i18n="showcase_on_any_site">On any website!</div>
+        </div>
+
+        <!-- The Browser Window Mockup -->
+        <div class="mockup-browser-window">
+          
+          <!-- Browser Top Chrome & Tabs -->
+          <div class="mockup-chrome-header">
+            <div class="mockup-traffic-dots">
+              <span class="mockup-dot dot-close"></span>
+              <span class="mockup-dot dot-min"></span>
+              <span class="mockup-dot dot-max"></span>
             </div>
-            <div class="service-pill-item" title="Amazon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="#ff9900"><path d="M13.958 10.09c0 1.25-.04 2.33-.87 3.32-.67.79-1.58 1.24-2.58 1.24-1.37 0-2.16-.99-2.16-2.45 0-2.88 2.54-3.37 5.61-3.37v1.26zm3.5 8.41c-.24.2-.61.22-.88.06-1.22-.76-1.44-1.12-2.12-2.12-2.03 1.94-3.48 2.45-6.1 2.45-3.07 0-5.46-1.9-5.46-5.41 0-2.75 1.54-4.83 3.8-5.78 1.96-.82 4.7-.97 6.76-1.21v-.47c0-.82-.07-1.81-.59-2.49-.46-.6-1.25-.86-2.01-.86-1.4 0-2.63.73-2.97 2.18-.06.27-.25.5-.53.51l-3.37-.36c-.25-.05-.51-.23-.44-.57.77-3.69 4.07-4.82 7.37-4.82 1.89 0 4.36.49 5.86 1.87 1.9 1.74 1.72 4.05 1.72 6.47v5.89c0 1.8.76 2.59 1.48 3.56.24.33.27.71.05.95l-2.58 1.93z"/></svg>
-            </div>
-            <div class="service-pill-item" title="LinkedIn">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="#0a66c2"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
-            </div>
-            <div class="service-pill-item" title="eBay">
-              <span style="font-weight: 800; font-size: 0.85rem; color: #e53238;">ebay</span>
-            </div>
-            <div class="service-pill-item" title="Gmail">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="#ea4335"><path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.146C21.69 2.28 24 3.434 24 5.457z"/></svg>
+            
+            <div class="mockup-tabs-list" id="mockup-tabs-list">
+              <!-- Tab 1 (Active) -->
+              <div class="mockup-tab-pill active" data-tab-index="1">
+                <span class="mockup-tab-icon" id="tab-icon-1"></span>
+                <span class="mockup-tab-name" id="tab-name-1">Gmail profile 1</span>
+                <span class="mockup-tab-close">×</span>
+              </div>
+              <!-- Tab 2 -->
+              <div class="mockup-tab-pill" data-tab-index="2">
+                <span class="mockup-tab-icon" id="tab-icon-2"></span>
+                <span class="mockup-tab-name" id="tab-name-2">Gmail profile 2</span>
+                <span class="mockup-tab-close">×</span>
+              </div>
+              <!-- Tab 3 -->
+              <div class="mockup-tab-pill" data-tab-index="3">
+                <span class="mockup-tab-icon" id="tab-icon-3"></span>
+                <span class="mockup-tab-name" id="tab-name-3">Gmail profile 3</span>
+                <span class="mockup-tab-close">×</span>
+              </div>
+              <button type="button" class="mockup-add-tab-btn" aria-label="Open new profile tab">+</button>
             </div>
           </div>
 
-          <!-- Double-Bezel Browser Frame Shell -->
-          <div class="browser-showcase-shell">
-            <div class="browser-showcase-inner">
-              <!-- Real Chromium Browser Tabs Frame -->
-              <img src="assets/img/ui/ui_browser_tabs_frame.png" alt="MAHI Browser Multi-Profile Tabs" class="browser-tabs-img">
-
-              <!-- Live Cockpit View -->
-              <div class="browser-cockpit-view">
-                <div class="cockpit-header">
-                  <div>
-                    <h4>Isolated Campaign Dashboard</h4>
-                    <p>Live metrics from isolated container #49102</p>
-                  </div>
-                  <span class="badge-pill-status badge-active">● US-East Proxy (142.250.190.46)</span>
-                </div>
-
-                <div class="cockpit-stats-grid">
-                  <div class="cockpit-stat-card">
-                    <div class="stat-title">Active Profiles</div>
-                    <div class="stat-value">14 Running</div>
-                  </div>
-                  <div class="cockpit-stat-card">
-                    <div class="stat-title">Hardware Identity</div>
-                    <div class="stat-value">Win32 / RTX 3070</div>
-                  </div>
-                  <div class="cockpit-stat-card">
-                    <div class="stat-title">Audio Noise Injection</div>
-                    <div class="stat-value">Active (Δ +0.0018)</div>
-                  </div>
-                </div>
-
-                <div class="cockpit-table-list">
-                  <div class="cockpit-row">
-                    <strong>🛒 Amazon_Scale_US</strong>
-                    <span class="badge-pill-status badge-active">Active</span>
-                    <span style="color: #64748b;">Residential US IP</span>
-                  </div>
-                  <div class="cockpit-row">
-                    <strong>📱 TikTok_Warmup_04</strong>
-                    <span class="badge-pill-status badge-ready">Warming Up</span>
-                    <span style="color: #64748b;">4G Mobile UK IP</span>
-                  </div>
-                  <div class="cockpit-row">
-                    <strong>💼 LinkedIn_Outreach_HQ</strong>
-                    <span class="badge-pill-status badge-active">Active</span>
-                    <span style="color: #64748b;">Datacenter DE IP</span>
-                  </div>
-                </div>
-              </div>
+          <!-- Address Bar / Status Row -->
+          <div class="mockup-address-bar">
+            <div class="mockup-url-box">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+              <span class="mockup-url-text" id="mockup-url-text">https://mail.google.com/mail/u/0/</span>
+            </div>
+            <div class="mockup-proxy-status">
+              <span class="status-pulse-dot"></span>
+              <span id="mockup-proxy-text">US-East Proxy · 38ms · Canvas Masked</span>
             </div>
           </div>
 
-          <!-- 3 Double-Bezel Benefit Cards Below Showcase -->
-          <div class="benefit-cards-matrix">
-            <div class="benefit-shell">
-              <div class="benefit-core">
-                <div class="benefit-icon-box">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                    <polyline points="9 12 11 14 15 10"></polyline>
-                  </svg>
-                </div>
-                <h3>No bans or suspicious logins</h3>
-                <p>Websites detect each profile as a completely distinct physical machine with separate Canvas, WebGL, AudioContext, and User-Agent parameters.</p>
-              </div>
-            </div>
-
-            <div class="benefit-shell">
-              <div class="benefit-core">
-                <div class="benefit-icon-box">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="2" y1="12" x2="22" y2="12"></line>
-                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-                  </svg>
-                </div>
-                <h3>Access from any location</h3>
-                <p>Assign individual HTTP, HTTPS, or SOCKS5 proxies to each profile. Auto-match timezones and geolocation coordinates to proxy IP locations.</p>
-              </div>
-            </div>
-
-            <div class="benefit-shell">
-              <div class="benefit-core">
-                <div class="benefit-icon-box">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                  </svg>
-                </div>
-                <h3>Encrypted cloud sync</h3>
-                <p>Back up profiles safely using client-side AES-256-GCM encryption. Restore your profiles, cookies, and tabs seamlessly on any new Windows machine.</p>
-              </div>
-            </div>
+          <!-- Dynamic Viewport Content -->
+          <div class="mockup-viewport-content" id="mockup-viewport-content">
+            <!-- Dynamically populated via JavaScript -->
           </div>
+
+        </div>
+
+        <!-- 3 Benefit Cards Below Showcase (Photo #2 Spec) -->
+        <div class="showcase-benefit-cards">
+          
+          <!-- Card 1 -->
+          <div class="benefit-card-clean" data-benefit="bans">
+            <div class="benefit-card-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+                <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+                <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+                <path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path>
+                <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
+                <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                <line x1="12" y1="20" x2="12.01" y2="20"></line>
+              </svg>
+            </div>
+            <h3 class="benefit-card-title" data-i18n="benefit_card_1_title">
+              No bans or suspicious<br>logins on <strong>any site</strong>
+            </h3>
+          </div>
+
+          <!-- Card 2 -->
+          <div class="benefit-card-clean" data-benefit="location">
+            <div class="benefit-card-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                <polygon points="12,12 18,15 15,18" fill="currentColor"></polygon>
+              </svg>
+            </div>
+            <h3 class="benefit-card-title" data-i18n="benefit_card_2_title">
+              Access accounts<br><strong>from any location</strong>
+            </h3>
+          </div>
+
+          <!-- Card 3 -->
+          <div class="benefit-card-clean" data-benefit="team">
+            <div class="benefit-card-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="14" height="10" rx="2"></rect>
+                <line x1="9" y1="13" x2="9" y2="17"></line>
+                <line x1="5" y1="17" x2="13" y2="17"></line>
+                <rect x="15" y="8" width="7" height="13" rx="2"></rect>
+                <line x1="18.5" y1="18" x2="18.51" y2="18"></line>
+              </svg>
+            </div>
+            <h3 class="benefit-card-title" data-i18n="benefit_card_3_title">
+              Share accounts easily<br>with <strong>any team member</strong>
+            </h3>
+          </div>
+
         </div>
 
       </div>
-    </section>
-  </div>
+
+    </div>
+  </section>
 
   <main id="main-content">
 

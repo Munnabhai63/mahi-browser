@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initLanguageSwitcher();
   initMobileDrawer();
   initRotatingHeroWord();
+  initPlatformShowcase();
   initInteractiveSelectors();
   initFaqAccordion();
   initMouseSpotlights();
@@ -23,9 +24,14 @@ document.addEventListener('DOMContentLoaded', () => {
 /**
  * Global Toast Notification Helper
  */
-function showToast(message, type = 'success', duration = 3500) {
+function showToast(message, type = 'success', duration = 3000) {
   const container = document.getElementById('toast-container');
   if (!container) return;
+
+  // Keep max 2 active toasts to prevent stacking clutter
+  while (container.children.length >= 2) {
+    container.removeChild(container.firstChild);
+  }
 
   const toast = document.createElement('div');
   toast.className = `toast-item toast-${type}`;
@@ -144,7 +150,16 @@ function initLanguageSwitcher() {
       cta_book_demo: 'Book a demo',
       micro_no_card: 'No card required',
       avail_label: 'Available on all platforms:',
-      social_proof_title: 'Trusted by top<br>professionals'
+      social_proof_title: 'Trusted by top<br>professionals',
+      showcase_title: 'Manage all your accounts safely<br>from one device',
+      showcase_sub: 'Log into multiple accounts on a single device, just like a regular browser,<br class="hide-mobile"> without triggering unexpected suspicion checks',
+      showcase_on_any_site: 'On any website!',
+      benefit_card_1_title: 'No bans or suspicious logins on <strong>any site</strong>',
+      benefit_card_1_sub: 'Independent Canvas 2D, WebGL, and AudioContext signatures ensure algorithms treat each profile as a completely separate device.',
+      benefit_card_2_title: 'Access accounts <strong>from any location</strong>',
+      benefit_card_2_sub: 'Bind residential, mobile, or datacenter proxies with automatic timezone, WebRTC, and geolocation alignment.',
+      benefit_card_3_title: 'Share accounts easily with <strong>any team member</strong>',
+      benefit_card_3_sub: 'Encrypted cloud synchronization lets coworkers access profiles without sharing raw passwords or triggering MFA locks.'
     },
     'Français': {
       nav_use_cases: 'Cas d\'usage',
@@ -161,7 +176,16 @@ function initLanguageSwitcher() {
       cta_book_demo: 'Demander une démo',
       micro_no_card: 'Aucune carte requise',
       avail_label: 'Disponible sur toutes les plateformes :',
-      social_proof_title: 'Recommandé par les<br>meilleurs experts'
+      social_proof_title: 'Recommandé par les<br>meilleurs experts',
+      showcase_title: 'Gérez tous vos comptes en toute sécurité<br>depuis un seul appareil',
+      showcase_sub: 'Connectez-vous à plusieurs comptes sur un seul appareil sans déclencher de vérifications de sécurité inattendues.',
+      showcase_on_any_site: 'Sur n\'importe quel site web !',
+      benefit_card_1_title: 'Aucun bannissement ni connexion suspecte sur <strong>aucun site</strong>',
+      benefit_card_1_sub: 'Les signatures indépendantes garantissent que chaque profil est considéré comme un appareil distinct.',
+      benefit_card_2_title: 'Accédez à vos comptes <strong>depuis n\'importe où</strong>',
+      benefit_card_2_sub: 'Liez des proxys résidentiels ou mobiles avec synchronisation automatique du fuseau horaire.',
+      benefit_card_3_title: 'Partagez vos comptes facilement avec <strong>votre équipe</strong>',
+      benefit_card_3_sub: 'La synchronisation cloud chiffrée permet un accès d\'équipe instantané sans partager de mots de passe.'
     },
     'Русский': {
       nav_use_cases: 'Сценарии',
@@ -178,7 +202,16 @@ function initLanguageSwitcher() {
       cta_book_demo: 'Заказать демо',
       micro_no_card: 'Кредитная карта не требуется',
       avail_label: 'Доступно на всех платформах:',
-      social_proof_title: 'Выбор ведущих<br>профессионалов'
+      social_proof_title: 'Выбор ведущих<br>профессионалов',
+      showcase_title: 'Безопасное управление всеми аккаунтами<br>на одном устройстве',
+      showcase_sub: 'Входите во множество аккаунтов на одном ПК без риска блокировок и подозрительных проверок.',
+      showcase_on_any_site: 'На любом веб-сайте!',
+      benefit_card_1_title: 'Без банов и подозрений на <strong>любых сайтах</strong>',
+      benefit_card_1_sub: 'Уникальные отпечатки Canvas, WebGL и аудио гарантируют полную независимость профилей.',
+      benefit_card_2_title: 'Доступ к аккаунтам <strong>из любой точки мира</strong>',
+      benefit_card_2_sub: 'Подключение резидентских и мобильных прокси с автоматической подстройкой таймзоны и WebRTC.',
+      benefit_card_3_title: 'Удобный шеринг аккаунтов с <strong>командой</strong>',
+      benefit_card_3_sub: 'Синхронизация профилей в зашифрованном облаке без передачи паролей и триггеров 2FA.'
     },
     'Español': {
       nav_use_cases: 'Casos de uso',
@@ -195,7 +228,16 @@ function initLanguageSwitcher() {
       cta_book_demo: 'Solicitar demo',
       micro_no_card: 'Sin tarjeta de crédito',
       avail_label: 'Disponible en todas las plataformas:',
-      social_proof_title: 'Elegido por los mejores<br>profesionales'
+      social_proof_title: 'Elegido por los mejores<br>profesionales',
+      showcase_title: 'Gestione todas sus cuentas de forma segura<br>desde un solo dispositivo',
+      showcase_sub: 'Inicie sesión en varias cuentas en un solo dispositivo sin activar bloqueos ni comprobaciones de seguridad.',
+      showcase_on_any_site: '¡En cualquier sitio web!',
+      benefit_card_1_title: 'Sin baneos ni sospechas en <strong>ningún sitio</strong>',
+      benefit_card_1_sub: 'Huellas independientes de Canvas y WebGL para que los sitios vean cada perfil como un equipo nuevo.',
+      benefit_card_2_title: 'Acceda a sus cuentas <strong>desde cualquier ubicación</strong>',
+      benefit_card_2_sub: 'Asigne proxies residenciales y móviles con alineación automática de zona horaria y WebRTC.',
+      benefit_card_3_title: 'Comparta cuentas fácilmente con <strong>su equipo</strong>',
+      benefit_card_3_sub: 'Sincronización segura en la nube para trabajar en equipo sin compartir contraseñas maestras.'
     },
     '中文': {
       nav_use_cases: '应用场景',
@@ -212,7 +254,16 @@ function initLanguageSwitcher() {
       cta_book_demo: '预约专家演示',
       micro_no_card: '无需信用卡即可体验',
       avail_label: '全平台客户端支持：',
-      social_proof_title: '全球出海团队与<br>专业人士信赖'
+      social_proof_title: '全球出海团队与<br>专业人士信赖',
+      showcase_title: '一台设备安全管理<br>所有多平台账号',
+      showcase_sub: '如同普通浏览器一样在单台设备上运行多账号，彻底告别意外风控与关联封禁。',
+      showcase_on_any_site: '支持任意主流网站与平台！',
+      benefit_card_1_title: '在<strong>任意平台</strong>均无封号或异常登录风险',
+      benefit_card_1_sub: '独立的 Canvas、WebGL 与音频特征码，平台算法将每个环境识别为纯净独立设备。',
+      benefit_card_2_title: '<strong>随时随地</strong>自由访问任意地理位置账号',
+      benefit_card_2_sub: '无缝绑定住宅代理与移动代理，时区、WebRTC 与语言头全自动对齐。',
+      benefit_card_3_title: '与<strong>任意团队成员</strong>一键快速共享账号配置',
+      benefit_card_3_sub: '加密云端同步环境与 Cookie，无需透露登录明文密码即可团队协同作业。'
     },
     'Deutsch': {
       nav_use_cases: 'Anwendungsfälle',
@@ -229,7 +280,16 @@ function initLanguageSwitcher() {
       cta_book_demo: 'Demo buchen',
       micro_no_card: 'Keine Kreditkarte erforderlich',
       avail_label: 'Verfügbar auf allen Plattformen:',
-      social_proof_title: 'Vertraut von führenden<br>Profis'
+      social_proof_title: 'Vertraut von führenden<br>Profis',
+      showcase_title: 'Verwalten Sie alle Ihre Konten sicher<br>von einem einzigen Gerät',
+      showcase_sub: 'Melden Sie sich auf einem Gerät bei mehreren Konten an, ohne Sicherheitsprüfungen auszulösen.',
+      showcase_on_any_site: 'Auf jeder Website!',
+      benefit_card_1_title: 'Keine Sperren oder verdächtige Logins auf <strong>jeder Website</strong>',
+      benefit_card_1_sub: 'Unabhängige Browser-Fingerabdrücke garantieren eine vollständige Profil-Isolation.',
+      benefit_card_2_title: 'Zugriff auf Konten <strong>von jedem Standort</strong>',
+      benefit_card_2_sub: 'Wohn- und Mobil-Proxys binden mit automatischer Zeitzonen- und WebRTC-Ausrichtung.',
+      benefit_card_3_title: 'Teilen Sie Konten einfach mit <strong>Ihrem Team</strong>',
+      benefit_card_3_sub: 'Verschlüsselte Cloud-Synchronisierung ohne Weitergabe vertraulicher Passwörter.'
     },
     'Portuguese': {
       nav_use_cases: 'Casos de uso',
@@ -246,7 +306,16 @@ function initLanguageSwitcher() {
       cta_book_demo: 'Agendar demonstração',
       micro_no_card: 'Sem cartão de crédito',
       avail_label: 'Disponível em todas as plataformas:',
-      social_proof_title: 'A escolha dos melhores<br>profissionais'
+      social_proof_title: 'A escolha dos melhores<br>profissionais',
+      showcase_title: 'Gerencie todas as suas contas com segurança<br>em um único dispositivo',
+      showcase_sub: 'Faça login em várias contas em um único dispositivo sem disparar verificações inesperadas de segurança.',
+      showcase_on_any_site: 'Em qualquer site!',
+      benefit_card_1_title: 'Sem bloqueios ou logins suspeitos em <strong>qualquer site</strong>',
+      benefit_card_1_sub: 'Assinaturas Canvas e WebGL independentes garantem que cada perfil pareça um dispositivo separado.',
+      benefit_card_2_title: 'Acesse contas <strong>de qualquer local</strong>',
+      benefit_card_2_sub: 'Vincule proxies residenciais ou móveis com ajuste automático de fuso horário e WebRTC.',
+      benefit_card_3_title: 'Compartilhe contas facilmente com <strong>sua equipe</strong>',
+      benefit_card_3_sub: 'Sincronização na nuvem criptografada para acesso colaborativo seguro sem compartilhar senhas.'
     },
     '日本': {
       nav_use_cases: '利用シーン',
@@ -263,7 +332,16 @@ function initLanguageSwitcher() {
       cta_book_demo: 'デモを予約する',
       micro_no_card: 'クレジットカード不要',
       avail_label: '全プラットフォーム対応：',
-      social_proof_title: '世界のプロフェッショナルが<br>選ぶ信頼性'
+      social_proof_title: '世界のプロフェッショナルが<br>選ぶ信頼性',
+      showcase_title: '1台のデバイスですべての<br>アカウントを安全に一元管理',
+      showcase_sub: '通常ブラウザと同じ操作感で複数アカウントを同時起動。不審なセキュリティチェックや凍結を回避。',
+      showcase_on_any_site: 'あらゆるWebサイトに対応！',
+      benefit_card_1_title: '<strong>あらゆるサイト</strong>でBANや不審ログイン警告をゼロに',
+      benefit_card_1_sub: '独立したCanvas、WebGL、AudioContext指紋により、アルゴリズムは各プロファイルを別端末と認識。',
+      benefit_card_2_title: '<strong>世界中のどこからでも</strong>自由にアカウントへアクセス',
+      benefit_card_2_sub: '住宅・モバイルプロキシと自動タイムゾーン・WebRTC連携で位置偽装を完璧にシミュレート。',
+      benefit_card_3_title: '<strong>チームメンバー全員</strong>とワンクリックで安全に共有',
+      benefit_card_3_sub: 'パスワードを開示することなく、暗号化クラウドで安全にセッションとプロファイルを共有可能。'
     },
     'Tiếng Việt': {
       nav_use_cases: 'Ứng dụng',
@@ -280,7 +358,16 @@ function initLanguageSwitcher() {
       cta_book_demo: 'Đặt lịch xem Demo',
       micro_no_card: 'Không cần thẻ tín dụng',
       avail_label: 'Hỗ trợ trên mọi nền tảng:',
-      social_proof_title: 'Được tin cậy bởi các<br>chuyên gia hàng đầu'
+      social_proof_title: 'Được tin cậy bởi các<br>chuyên gia hàng đầu',
+      showcase_title: 'Quản lý an toàn tất cả tài khoản<br>trên cùng một thiết bị',
+      showcase_sub: 'Đăng nhập nhiều tài khoản trên một thiết bị như trình duyệt thông thường, không lo checkpoint bất thường.',
+      showcase_on_any_site: 'Trên mọi trang web!',
+      benefit_card_1_title: 'Không khoá tài khoản hay cảnh báo trên <strong>mọi nền tảng</strong>',
+      benefit_card_1_sub: 'Vân tay số Canvas và WebGL độc lập đảm bảo mỗi hồ sơ là một thiết bị vật lý hoàn toàn riêng biệt.',
+      benefit_card_2_title: 'Truy cập tài khoản <strong>từ mọi vị trí địa lý</strong>',
+      benefit_card_2_sub: 'Gán proxy dân cư, proxy di động với tính năng tự động đồng bộ múi giờ và WebRTC chuẩn xác.',
+      benefit_card_3_title: 'Chia sẻ tài khoản dễ dàng cho <strong>thành viên nhóm</strong>',
+      benefit_card_3_sub: 'Đồng bộ hóa đám mây mã hóa giúp làm việc nhóm an toàn mà không cần chia sẻ mật khẩu gốc.'
     },
     'Polski': {
       nav_use_cases: 'Zastosowania',
@@ -297,7 +384,16 @@ function initLanguageSwitcher() {
       cta_book_demo: 'Zamów demo',
       micro_no_card: 'Karta kredytowa niewymagana',
       avail_label: 'Dostępne na wszystkich platformach:',
-      social_proof_title: 'Zaufany wybór najlepszych<br>specjalistów'
+      social_proof_title: 'Zaufany wybór najlepszych<br>specjalistów',
+      showcase_title: 'Bezpiecznie zarządzaj wszystkimi kontami<br>z jednego urządzenia',
+      showcase_sub: 'Loguj się do wielu kont na jednym urządzeniu bez wywoływania podejrzanych kontroli bezpieczeństwa.',
+      showcase_on_any_site: 'Na dowolnej stronie internetowej!',
+      benefit_card_1_title: 'Brak banów i podejrzanych logowań na <strong>dowolnej witrynie</strong>',
+      benefit_card_1_sub: 'Niezależne odciski Canvas i WebGL sprawiają, że profile są traktowane jako osobne komputery.',
+      benefit_card_2_title: 'Dostęp do kont <strong>z dowolnej lokalizacji</strong>',
+      benefit_card_2_sub: 'Wiązanie proxy rezydencyjnych i mobilnych z automatyczną synchronizacją strefy czasowej i WebRTC.',
+      benefit_card_3_title: 'Łatwo udostępniaj konta <strong>członkom zespołu</strong>',
+      benefit_card_3_sub: 'Zaszyfrowana synchronizacja w chmurze umożliwia bezpieczną współpracę bez ujawniania haseł.'
     }
   };
 
@@ -438,6 +534,445 @@ function initRotatingHeroWord() {
       el.style.transform = 'translateY(0)';
     }, 200);
   }, 2700);
+}
+
+/**
+ * 2c. Real-Working Multi-Account Platform Showcase Engine
+ * Handles real-time platform switching (Gmail, Facebook, Amazon, LinkedIn, eBay)
+ * Updates browser tabs, URL bar, proxy latency chips, and dashboard feeds.
+ */
+function initPlatformShowcase() {
+  const platformButtons = document.querySelectorAll('.platform-switch-btn');
+  const tabsList = document.querySelectorAll('.mockup-tab-pill');
+  const addTabBtn = document.querySelector('.mockup-add-tab-btn');
+  const benefitCards = document.querySelectorAll('.benefit-card-clean');
+  const urlEl = document.getElementById('mockup-url-text');
+  const proxyEl = document.getElementById('mockup-proxy-text');
+  const viewportEl = document.getElementById('mockup-viewport-content');
+
+  if (!viewportEl) return;
+
+  const platformData = {
+    gmail: {
+      name: 'Gmail',
+      icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M2 5.5V18.5C2 19.33 2.67 20 3.5 20H6V11L12 15.5L18 11V20H20.5C21.33 20 22 19.33 22 18.5V5.5C22 4.12 20.4 3.32 19.3 4.15L12 9.62L4.7 4.15C3.6 3.32 2 4.12 2 5.5Z" fill="#ea4335"/><path d="M18 11V20H20.5C21.33 20 22 19.33 22 18.5V5.5L18 11Z" fill="#4285f4"/><path d="M2 18.5C2 19.33 2.67 20 3.5 20H6V11L2 5.5V18.5Z" fill="#34a853"/><path d="M19.3 4.15L18 11L12 15.5L18 20H20.5C21.33 20 22 19.33 22 18.5V5.5C22 4.12 20.4 3.32 19.3 4.15Z" fill="#fbbc05"/></svg>`,
+      url: 'https://mail.google.com/mail/u/0/#inbox',
+      proxy: 'US-East Residential · 38ms · Canvas Masked',
+      tabPrefix: 'Gmail profile',
+      profiles: [
+        {
+          badge: 'Primary Google Workspace · Admin Profile',
+          title: 'Unified Corporate Inbox & Security Center',
+          metric1: { label: 'Unread (Priority)', val: '4 messages' },
+          metric2: { label: 'Security Health', val: '100% Secure' },
+          metric3: { label: 'Session Status', val: 'Active & Valid' },
+          items: [
+            { tag: 'PRIMARY', tagColor: 'green', title: 'Google Workspace Billing - Monthly Statement', detail: 'From: workspace-noreply@google.com · Paid: $120.00' },
+            { tag: 'PAYMENT', tagColor: 'green', title: 'Stripe Notification: Payout of $4,820.00 on the way', detail: 'From: notifications@stripe.com · Bank transfer in transit' },
+            { tag: 'CLOUD', tagColor: 'blue', title: 'Google Cloud Platform: All 12 VM instances healthy', detail: 'From: cloud-alerts@google.com · CPU load: 18% avg' }
+          ]
+        },
+        {
+          badge: 'Agency Operations Hub · Client Ops Mail',
+          title: 'Client Communications & Project Delivery',
+          metric1: { label: 'Active Threads', val: '12 open' },
+          metric2: { label: 'Delivery Rate', val: '99.4%' },
+          metric3: { label: 'Proxy IP', val: '185.220.101.4' },
+          items: [
+            { tag: 'CLIENT', tagColor: 'blue', title: 'E-commerce Brand X: Contract signed & approved', detail: 'From: david@brandx.com · Attached: Executed_Agreement.pdf' },
+            { tag: 'SLACK', tagColor: 'blue', title: '14 new notifications in #enterprise-onboarding', detail: 'From: notification@slack.com · Team activity summary' },
+            { tag: 'SECURITY', tagColor: 'green', title: '2-Step Verification Completed Successfully', detail: 'Zero suspicious access triggers from local session' }
+          ]
+        },
+        {
+          badge: 'Outreach & Lead Gen · Warmup Node #3',
+          title: 'Automated Email Warmup & Cold Outreach',
+          metric1: { label: 'Inbox Placement', val: '98.8%' },
+          metric2: { label: 'Warmup Score', val: '100 / 100' },
+          metric3: { label: 'Sent Today', val: '40 / 40' },
+          items: [
+            { tag: 'WARMUP', tagColor: 'green', title: 'Mailreach Warmup Engine: Daily cycle complete', detail: '100% emails landed in primary folder · Zero spam folder flags' },
+            { tag: 'REPLY', tagColor: 'green', title: 'Interested in Agency Growth Services - Quick Call?', detail: 'From: michael@growthagency.io · Requesting 15 min demo' },
+            { tag: 'CALENDAR', tagColor: 'blue', title: 'Google Calendar: Discovery Call tomorrow at 2 PM', detail: 'Calendar invite confirmed with prospect' }
+          ]
+        }
+      ]
+    },
+    facebook: {
+      name: 'Facebook',
+      icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>`,
+      url: 'https://business.facebook.com/adsmanager/campaigns',
+      proxy: 'UK-Mobile 4G · 34ms · Independent Canvas 2D',
+      tabPrefix: 'Facebook profile',
+      profiles: [
+        {
+          badge: 'Meta Ads Manager · Main BM',
+          title: 'Campaigns Overview (Active Agency Profile)',
+          metric1: { label: 'Spend (Today)', val: '$1,420.50' },
+          metric2: { label: 'Avg ROAS', val: '4.32x' },
+          metric3: { label: 'Purchases', val: '184 conv' },
+          items: [
+            { tag: 'ACTIVE', tagColor: 'green', title: 'Scale US - Broad Advantage+ Audience', detail: 'Budget: $500/day · Impressions: 42.1K · CTR: 3.4%' },
+            { tag: 'ACTIVE', tagColor: 'green', title: 'Retargeting 30d Viewers - Dynamic Catalog', detail: 'Budget: $250/day · Frequency: 1.8 · Cost per Purchase: $14.20' },
+            { tag: 'LEARNING', tagColor: 'blue', title: 'UK Creative Hook Test - Video Angle 3', detail: 'Budget: $100/day · Hook Rate: 46% · Zero bans flagged' }
+          ]
+        },
+        {
+          badge: 'Meta Ads Manager · Backup BM',
+          title: 'Agency Backup & Client Retargeting',
+          metric1: { label: 'Daily Cap', val: '$5,000' },
+          metric2: { label: 'Page Health', val: '100% Good' },
+          metric3: { label: 'Warmup Score', val: '99/100' },
+          items: [
+            { tag: 'ACTIVE', tagColor: 'green', title: 'Local UK Lead Generation - High Intent', detail: 'Leads: 84 · CPL: £4.20 · All instant forms verified' },
+            { tag: 'SCHEDULED', tagColor: 'blue', title: 'Q4 Black Friday Early Bird Teaser', detail: 'Launching in 24h · Isolated browser cookies synced' },
+            { tag: 'CLEAN', tagColor: 'green', title: 'Payment Profile - Primary Card Verified', detail: 'Billing threshold reached · Zero verification flags' }
+          ]
+        },
+        {
+          badge: 'Meta Ads Manager · Creative Farm',
+          title: 'Creative Testing & UGC Sandbox',
+          metric1: { label: 'Ads Testing', val: '18 variants' },
+          metric2: { label: 'Top Winner', val: 'Video_V4' },
+          metric3: { label: 'Proxy Node', val: 'London 4G' },
+          items: [
+            { tag: 'TESTING', tagColor: 'blue', title: 'UGC Split Test #12 - Founders Story', detail: 'Thumbstop: 52% · Outbound CTR: 4.1%' },
+            { tag: 'ACTIVE', tagColor: 'green', title: 'High Budget Duplication Winner Set', detail: 'Scaling $300/day · WebRTC protected via proxy' },
+            { tag: 'SAFE', tagColor: 'green', title: 'Browser Fingerprint Consistency Check', detail: 'AudioContext + WebGL matches native macOS Big Sur' }
+          ]
+        }
+      ]
+    },
+    amazon: {
+      name: 'Amazon',
+      icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="#ff9900"><path d="M13.958 10.09c0 1.25-.04 2.33-.87 3.32-.67.79-1.58 1.24-2.58 1.24-1.37 0-2.16-.99-2.16-2.45 0-2.88 2.54-3.37 5.61-3.37v1.26zm3.5 8.41c-.24.2-.61.22-.88.06-1.22-.76-1.44-1.12-2.12-2.12-2.03 1.94-3.48 2.45-6.1 2.45-3.07 0-5.46-1.9-5.46-5.41 0-2.75 1.54-4.83 3.8-5.78 1.96-.82 4.7-.97 6.76-1.21v-.47c0-.82-.07-1.81-.59-2.49-.46-.6-1.25-.86-2.01-.86-1.4 0-2.63.73-2.97 2.18-.06.27-.25.5-.53.51l-3.37-.36c-.25-.05-.51-.23-.44-.57.77-3.69 4.07-4.82 7.37-4.82 1.89 0 4.36.49 5.86 1.87 1.9 1.74 1.72 4.05 1.72 6.47v5.89c0 1.8.76 2.59 1.48 3.56.24.33.27.71.05.95l-2.58 1.93z"/></svg>`,
+      url: 'https://sellercentral.amazon.com/inventory',
+      proxy: 'US-Residential Proxy · 41ms · Protected WebRTC',
+      tabPrefix: 'Amazon profile',
+      profiles: [
+        {
+          badge: 'Seller Central · Primary US Brand',
+          title: 'Storefront Dashboard & FBA Performance',
+          metric1: { label: 'Today’s Sales', val: '$14,920' },
+          metric2: { label: 'Buy Box Win', val: '94.2%' },
+          metric3: { label: 'Account Health', val: '1000 / Healthy' },
+          items: [
+            { tag: 'FBA IN STOCK', tagColor: 'green', title: 'Ergonomic Office Chair - Model Pro X', detail: 'Units: 1,420 · Days of supply: 38 · 0 stranded inventory' },
+            { tag: 'BUY BOX WON', tagColor: 'green', title: 'Wireless ANC Headphones - Matte Black', detail: 'Current price: $149.99 · Buy box captured 98%' },
+            { tag: 'PPC CAMPAIGN', tagColor: 'blue', title: 'Exact Match Sponsored Products Q4', detail: 'ACoS: 16.4% · Sales: $4,850 · ROAS: 6.1x' }
+          ]
+        },
+        {
+          badge: 'Seller Central · European Unified Store',
+          title: 'Pan-EU FBA Multi-Marketplace Hub',
+          metric1: { label: 'EU Revenue', val: '€8,430' },
+          metric2: { label: 'VAT Status', val: 'Verified' },
+          metric3: { label: 'IP Isolation', val: 'Frankfurt Res' },
+          items: [
+            { tag: 'DISPATCHED', tagColor: 'green', title: 'Pan-EU Inventory Distribution - Germany Center', detail: '210 orders shipped today · Zero transit delays' },
+            { tag: 'PRICING', tagColor: 'blue', title: 'Automated Repricer - Amazon.de & Amazon.fr', detail: 'Optimized minimum margins maintained across catalog' },
+            { tag: 'TRANSFER', tagColor: 'green', title: 'Bi-Weekly Disbursement Scheduled', detail: '€8,430 bank payout queued without velocity hold' }
+          ]
+        },
+        {
+          badge: 'Seller Central · Secondary Private Label',
+          title: 'Private Label Brand Registry 2.0',
+          metric1: { label: 'A+ Content', val: 'Active' },
+          metric2: { label: 'Hijack Alert', val: '0 Threats' },
+          metric3: { label: 'Review Score', val: '4.9 ★' },
+          items: [
+            { tag: 'BRAND RANK', tagColor: 'green', title: 'Organic Search Rank #1 - Primary Category Keyword', detail: 'Conversion rate: 24.8% · High velocity listing' },
+            { tag: 'PROTECTED', tagColor: 'green', title: 'Brand Gating & Anti-Counterfeit Guard', detail: 'Zero unauthorized sellers on ASIN B09XYZ441' },
+            { tag: 'REVIEWS', tagColor: 'green', title: 'Vine Voice Early Reviewer Program', detail: '28 authentic reviews captured with 4.9 average rating' }
+          ]
+        }
+      ]
+    },
+    linkedin: {
+      name: 'LinkedIn',
+      icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="#0a66c2"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>`,
+      url: 'https://www.linkedin.com/sales/lead-lists',
+      proxy: 'DE-Datacenter IP · 28ms · TLS Greased',
+      tabPrefix: 'LinkedIn profile',
+      profiles: [
+        {
+          badge: 'Sales Navigator · Enterprise SDR Lead',
+          title: 'Prospecting & High-Value B2B Outreach',
+          metric1: { label: 'SSI Score', val: '88 / 100' },
+          metric2: { label: 'InMail Acceptance', val: '46.5%' },
+          metric3: { label: 'Warm Warmups', val: 'Active' },
+          items: [
+            { tag: 'RESPONDED', tagColor: 'green', title: 'VP of Technology at Fortune 500 Enterprise', detail: 'Interested in MAHI Browser deployment for 30 remote engineers' },
+            { tag: 'CONNECTED', tagColor: 'blue', title: 'Head of Growth - High Scale E-Commerce Agency', detail: 'Accepted connection: "Let’s schedule a call this Thursday"' },
+            { tag: 'SAVED LEAD', tagColor: 'green', title: 'Lead List: Top 500 Shopify Plus Agency Owners', detail: '142 verified decision makers with active profiles' }
+          ]
+        },
+        {
+          badge: 'Recruiter Corporate · Tech Talent Hub',
+          title: 'Executive & Senior Engineering Recruitment',
+          metric1: { label: 'Active Pipeline', val: '48 cand.' },
+          metric2: { label: 'InMail Balance', val: '120 credits' },
+          metric3: { label: 'Proxy Node', val: 'Berlin DC' },
+          items: [
+            { tag: 'INTERVIEW', tagColor: 'green', title: 'Lead Distributed Systems Engineer (Golang/Rust)', detail: 'Confirmed availability for round 2 technical assessment' },
+            { tag: 'SOURCING', tagColor: 'blue', title: 'Project: Staff Frontend Architect (Remote)', detail: '18 high-match candidates imported to recruiting pipeline' },
+            { tag: 'VERIFIED', tagColor: 'green', title: 'LinkedIn Recruiter Corporate Seat Verified', detail: 'Clean browser session · Zero restriction warnings' }
+          ]
+        },
+        {
+          badge: 'Founder Brand · Thought Leadership Account',
+          title: 'Content Syndication & Founder Distribution',
+          metric1: { label: 'Weekly Views', val: '84,200' },
+          metric2: { label: 'Engagement', val: '6.4%' },
+          metric3: { label: 'Followers', val: '24.1K' },
+          items: [
+            { tag: 'VIRAL', tagColor: 'green', title: 'Post: How Modern Antidetect Browsers Beat Fingerprinting', detail: '720 reactions · 94 comments · 112 reposts' },
+            { tag: 'DM INBOX', tagColor: 'blue', title: 'Inbound Partnership Request - Proxy Infrastructure', detail: 'Proposing direct API integration with MAHI Browser' },
+            { tag: 'HEALTH', tagColor: 'green', title: 'Profile Health: Pristine Algorithmic Distribution', detail: 'Zero reach throttling · Normal human interaction pattern' }
+          ]
+        }
+      ]
+    },
+    ebay: {
+      name: 'eBay',
+      icon: `<span style="font-weight: 800; font-size: 0.75rem; letter-spacing: -0.02em;"><span style="color:#e53238">e</span><span style="color:#0064d2">b</span><span style="color:#f5af02">a</span><span style="color:#86b817">y</span></span>`,
+      url: 'https://www.ebay.com/sh/ovw',
+      proxy: 'US-Residential IP · 39ms · Isolated Storage',
+      tabPrefix: 'eBay profile',
+      profiles: [
+        {
+          badge: 'Seller Hub · Top Rated Plus Storefront',
+          title: 'High-Volume Consumer Electronics & Collectibles',
+          metric1: { label: '30-Day Sales', val: '$68,450' },
+          metric2: { label: 'Feedback', val: '99.8% (2.4k)' },
+          metric3: { label: 'Selling Limit', val: '$500,000' },
+          items: [
+            { tag: 'READY TO SHIP', tagColor: 'green', title: 'Sony Alpha A7 IV Camera Body - Priority Mail', detail: 'Paid: $2,150.00 · Tracking label generated · Ship by today' },
+            { tag: 'OFFER ACCEPTED', tagColor: 'blue', title: 'MacBook Pro 16" M2 Max - Counter Offer $2,400', detail: 'Buyer paid instantly · Clean escrow hold cleared' },
+            { tag: 'TOP RATED', tagColor: 'green', title: 'eBay Top Rated Plus Seller Discount Applied', detail: '10% final value fee reduction on qualifying listings' }
+          ]
+        },
+        {
+          badge: 'Seller Hub · Secondary Niche Store',
+          title: 'Certified Refurbished & Open-Box Goods',
+          metric1: { label: 'Today Orders', val: '38 items' },
+          metric2: { label: 'Defect Rate', val: '0.00%' },
+          metric3: { label: 'Bank Payout', val: '$4,120.00' },
+          items: [
+            { tag: 'PAID', tagColor: 'green', title: 'Bose QuietComfort 45 Over-Ear Headphones', detail: 'Sold via Promoted Listings (ROAS: 7.2x) · 2 units left' },
+            { tag: 'ACTIVE', tagColor: 'green', title: 'Promoted Listings Advanced Campaign', detail: 'Ad spend: $84.00 · Attributed sales: $940.00' },
+            { tag: 'CLEAN', tagColor: 'green', title: 'Managed Payments Disbursement Initiated', detail: 'Direct deposit to isolated business bank account' }
+          ]
+        },
+        {
+          badge: 'Seller Hub · Vintage & Trading Cards Store',
+          title: 'Rare Memorabilia & High-Ticket Auctions',
+          metric1: { label: 'Active Bids', val: '$18,900' },
+          metric2: { label: 'Watchers', val: '412 users' },
+          metric3: { label: 'Fingerprint', val: 'Dedicated OS' },
+          items: [
+            { tag: 'AUCTION ENDING', tagColor: 'blue', title: '1999 Pokemon 1st Edition Charizard PSA 9', detail: 'Current bid: $6,450.00 · 3 hours remaining · 84 watchers' },
+            { tag: 'OFFERS SENT', tagColor: 'blue', title: 'Special 10% Discount to 24 Interested Watchers', detail: 'Automated buyer conversion rule running cleanly' },
+            { tag: 'SAFE', tagColor: 'green', title: 'Isolated Cookie & LocalStorage State Verified', detail: 'Zero linkage with store #1 or store #2' }
+          ]
+        }
+      ]
+    }
+  };
+
+  let currentPlatform = 'gmail';
+  let currentTabIndex = 1;
+
+  function renderPlatform(platformKey, tabIndex = 1) {
+    const data = platformData[platformKey] || platformData.gmail;
+    currentPlatform = platformKey;
+    currentTabIndex = tabIndex;
+
+    // 1. Update Platform Switcher Active Button
+    platformButtons.forEach(btn => {
+      const p = btn.getAttribute('data-platform');
+      if (p === platformKey) {
+        btn.classList.add('active');
+        btn.setAttribute('aria-selected', 'true');
+      } else {
+        btn.classList.remove('active');
+        btn.setAttribute('aria-selected', 'false');
+      }
+    });
+
+    // 2. Update Browser Tabs (1, 2, 3)
+    for (let i = 1; i <= 3; i++) {
+      const iconEl = document.getElementById(`tab-icon-${i}`);
+      const nameEl = document.getElementById(`tab-name-${i}`);
+      if (iconEl) iconEl.innerHTML = data.icon;
+      if (nameEl) nameEl.textContent = `${data.tabPrefix} ${i}`;
+    }
+
+    // 3. Highlight Active Tab
+    tabsList.forEach(tab => {
+      const idx = parseInt(tab.getAttribute('data-tab-index')) || 1;
+      if (idx === currentTabIndex) {
+        tab.classList.add('active');
+      } else {
+        tab.classList.remove('active');
+      }
+    });
+
+    // 4. Update Address Bar URL and Proxy
+    if (urlEl) urlEl.textContent = data.url;
+    if (proxyEl) proxyEl.textContent = data.proxy;
+
+    // 5. Render Viewport Content
+    const profile = data.profiles[currentTabIndex - 1] || data.profiles[0];
+    viewportEl.innerHTML = `
+      <div class="viewport-layout-grid">
+        <!-- Sidebar Navigation -->
+        <div class="viewport-sidebar">
+          <div class="sidebar-user-pill">
+            <div class="sidebar-avatar">${escapeHtml(data.name[0])}</div>
+            <div class="sidebar-user-info">
+              <strong>${escapeHtml(data.tabPrefix)} ${currentTabIndex}</strong>
+              <span>Active Session</span>
+            </div>
+          </div>
+          <div class="sidebar-nav-item active" data-nav="overview">
+            <span>📊 Overview</span>
+          </div>
+          <div class="sidebar-nav-item" data-nav="feeds">
+            <span>⚡ Live Feeds</span>
+          </div>
+          <div class="sidebar-nav-item" data-nav="fingerprint">
+            <span>🛡️ Fingerprint</span>
+          </div>
+          <div class="sidebar-nav-item" data-nav="settings">
+            <span>⚙️ Settings</span>
+          </div>
+        </div>
+
+        <!-- Main Feed Pane -->
+        <div class="viewport-main-pane">
+          <div class="viewport-feed-header">
+            <div>
+              <span class="viewport-feed-badge">${escapeHtml(profile.badge)}</span>
+              <h4 class="viewport-feed-title">${escapeHtml(profile.title)}</h4>
+            </div>
+            <div class="viewport-metrics-row">
+              <div class="metric-pill">
+                <span class="metric-label">${escapeHtml(profile.metric1.label)}</span>
+                <strong class="metric-val">${escapeHtml(profile.metric1.val)}</strong>
+              </div>
+              <div class="metric-pill">
+                <span class="metric-label">${escapeHtml(profile.metric2.label)}</span>
+                <strong class="metric-val">${escapeHtml(profile.metric2.val)}</strong>
+              </div>
+              <div class="metric-pill">
+                <span class="metric-label">${escapeHtml(profile.metric3.label)}</span>
+                <strong class="metric-val">${escapeHtml(profile.metric3.val)}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="viewport-feed-list">
+            ${profile.items.map(item => `
+              <div class="viewport-feed-card">
+                <div class="feed-tag tag-${escapeHtml(item.tagColor)}">${escapeHtml(item.tag)}</div>
+                <div class="feed-content">
+                  <strong>${escapeHtml(item.title)}</strong>
+                  <p>${escapeHtml(item.detail)}</p>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    // 6. Synchronize active benefit card below
+    const platformToBenefit = {
+      gmail: 'bans',
+      facebook: 'bans',
+      amazon: 'location',
+      ebay: 'location',
+      linkedin: 'team'
+    };
+    const activeBenefit = platformToBenefit[platformKey] || 'bans';
+    benefitCards.forEach(card => {
+      if (card.getAttribute('data-benefit') === activeBenefit) {
+        card.classList.add('active');
+      } else {
+        card.classList.remove('active');
+      }
+    });
+
+    // Wire internal sidebar item clicks
+    viewportEl.querySelectorAll('.sidebar-nav-item').forEach(navItem => {
+      navItem.addEventListener('click', () => {
+        viewportEl.querySelectorAll('.sidebar-nav-item').forEach(n => n.classList.remove('active'));
+        navItem.classList.add('active');
+        const navName = navItem.textContent.trim();
+        showToast(`${data.name} Profile ${currentTabIndex}: Navigated to ${navName}`, 'success', 2200);
+      });
+    });
+  }
+
+  // Bind Platform Button Click Handlers
+  platformButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const platformKey = btn.getAttribute('data-platform');
+      if (platformKey && platformData[platformKey]) {
+        renderPlatform(platformKey, 1);
+        showToast(`Switched active profile: ${platformData[platformKey].name} (Profile 1)`, 'success', 2500);
+      }
+    });
+  });
+
+  // Bind Browser Tab Pill Click Handlers
+  tabsList.forEach(tab => {
+    tab.addEventListener('click', (e) => {
+      if (e.target.classList.contains('mockup-tab-close')) {
+        e.stopPropagation();
+        showToast('Profile tab archived cleanly. Encryption key preserved.', 'success', 2500);
+        return;
+      }
+      const idx = parseInt(tab.getAttribute('data-tab-index')) || 1;
+      renderPlatform(currentPlatform, idx);
+      const data = platformData[currentPlatform];
+      showToast(`Switched tab: ${data.name} Profile ${idx}`, 'success', 2200);
+    });
+  });
+
+  // Bind Add Tab Button Click
+  if (addTabBtn) {
+    addTabBtn.addEventListener('click', () => {
+      showToast('New isolated profile instance launched! Independent fingerprint generated.', 'success', 3000);
+    });
+  }
+
+  // Bind Benefit Cards Below (Bidirectional selection)
+  benefitCards.forEach(card => {
+    card.addEventListener('click', () => {
+      benefitCards.forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      const benefitType = card.getAttribute('data-benefit');
+      const benefitToPlatform = {
+        'bans': 'gmail',
+        'location': 'amazon',
+        'team': 'linkedin'
+      };
+      if (benefitToPlatform[benefitType]) {
+        renderPlatform(benefitToPlatform[benefitType], 1);
+      }
+      const messages = {
+        'bans': 'No Bans: Independent Canvas 2D, WebGL & AudioContext noise active for profiles.',
+        'location': 'Any Location: Residential proxy binding with automatic timezone & WebRTC sync.',
+        'team': 'Team Sharing: Encrypted cloud synchronization active without sharing passwords.'
+      };
+      showToast(messages[benefitType] || 'Feature highlighted', 'success', 3000);
+    });
+  });
+
+  // Initialize with Gmail (matching default markup)
+  renderPlatform('gmail', 1);
 }
 
 /**

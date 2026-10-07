@@ -1,0 +1,23 @@
+{
+  "price_inr": 599,
+  "price_usd_trc20": 7,
+  "whatsapp_number": "+91 99999 99999",
+  "email": "support@mahibrowser.com",
+  "testimonials": [
+    {
+      "author": "Alex Rivera",
+      "role": "Media Buyer & Agency Founder",
+      "text": "MAHI Browser enabled our team to run 120+ Facebook & Google ad accounts simultaneously without a single unexpected suspension."
+    },
+    {
+      "author": "Elena Rostova",
+      "role": "Top Rated eBay & Amazon Seller",
+      "text": "Managing separate storefronts with distinct residential proxies has never been this smooth. Profile switching is lightning fast."
+    },
+    {
+      "author": "David Chen",
+      "role": "Growth Lead @ EcomScale",
+      "text": "The antidetect fingerprint engine passes Pixelscan and CreepJS 100% cleanly. Best browser for multi-accounting."
+    }
+  ]
+}
