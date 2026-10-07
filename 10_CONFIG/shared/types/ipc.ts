@@ -326,6 +326,19 @@ export interface MahiBrowserAPI {
   getManagedEngineStatus: () => Promise<ManagedEngineStatus>;
   downloadManagedEngine: () => Promise<{ success: boolean; path?: string; error?: string }>;
 
+  // Cloud Profile Sync (GoLogin-style)
+  getCloudSyncAllowed: () => Promise<{ allowed: boolean; reason?: string }>;
+  getCloudSyncUsage: () => Promise<any>;
+  getCloudSyncList: () => Promise<any[]>;
+  uploadProfileToCloud: (profileId: string) => Promise<{ success: boolean; cloudProfile: any }>;
+  downloadAndRestoreProfile: (cloudProfileId: string, options?: any) => Promise<any>;
+  deleteCloudProfile: (cloudProfileId: string) => Promise<boolean>;
+  getCloudSyncConfig: () => Promise<any>;
+  setCloudSyncConfig: (config: any) => Promise<any>;
+  syncAllProfiles: () => Promise<void>;
+  getAllProfilesSyncStatus: () => Promise<Record<string, string>>;
+  onSyncProgress: (callback: (event: any) => void) => () => void;
+
   // Event Listeners
   onProfileStatusChanged: (callback: (data: { profileId: string; status: string; pid?: number; error?: string }) => void) => () => void;
   onActivityLogAdded: (callback: (log: ActivityLogItem) => void) => () => void;

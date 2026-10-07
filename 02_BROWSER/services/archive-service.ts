@@ -11,7 +11,7 @@ import {
   MahiProfileArchiveData,
 } from '../../10_CONFIG/shared/types/archive.js';
 import { Profile } from '../../10_CONFIG/shared/types/profile.js';
-import { getProfileById, createProfile } from './profile-service.js';
+import { getProfileById, createProfile, getProfileStoragePath } from './profile-service.js';
 import { getCookies, importCookies } from './cookie-service.js';
 import { getHistory } from './history-service.js';
 import { getExtensions, installExtension } from './extension-service.js';
@@ -27,6 +27,80 @@ interface RawArchiveFileStructure {
   isEncrypted: boolean;
   saltHex?: string;
   payload: string; // Base64 JSON or encrypted ciphertext
+}
+
+const EXCLUDED_DIRS = new Set([
+  'cache',
+  'code cache',
+  'gpucache',
+  'dawngraphitecache',
+  'dawnwebgpucache',
+  'blob_storage',
+  'cachestorage',
+  'scriptcache',
+  'crashpad',
+  '.tmp'
+]);
+
+export function collectEssentialStorageFiles(profileId: string): Record<string, string> {
+  const baseDir = getProfileStoragePath(profileId);
+  const filesMap: Record<string, string> = {};
+
+  if (!fs.existsSync(baseDir)) return filesMap;
+
+  let totalBytes = 0;
+  const MAX_STORAGE_BYTES = 180 * 1024 * 1024; // 180MB
+
+  function scan(currentDir: string) {
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+      const lowerName = entry.name.toLowerCase();
+
+      if (entry.isDirectory()) {
+        if (EXCLUDED_DIRS.has(lowerName)) {
+          continue; // Exclude browser caches
+        }
+        scan(fullPath);
+      } else if (entry.isFile()) {
+        if (lowerName.endsWith('.tmp') || lowerName.endsWith('.lock')) {
+          continue;
+        }
+        try {
+          const stat = fs.statSync(fullPath);
+          if (totalBytes + stat.size > MAX_STORAGE_BYTES) {
+            continue;
+          }
+          const content = fs.readFileSync(fullPath);
+          totalBytes += stat.size;
+          filesMap[relPath] = content.toString('base64');
+        } catch {}
+      }
+    }
+  }
+
+  try {
+    scan(baseDir);
+  } catch {}
+
+  return filesMap;
+}
+
+export function restoreStorageFiles(profileId: string, filesMap: Record<string, string>): void {
+  const baseDir = getProfileStoragePath(profileId);
+  for (const [relPath, b64Data] of Object.entries(filesMap)) {
+    try {
+      const targetPath = path.join(baseDir, relPath);
+      const parentDir = path.dirname(targetPath);
+      if (!fs.existsSync(parentDir)) {
+        fs.mkdirSync(parentDir, { recursive: true });
+      }
+      fs.writeFileSync(targetPath, Buffer.from(b64Data, 'base64'));
+    } catch (err) {
+      console.warn(`[ArchiveService] Failed to restore file ${relPath}:`, err);
+    }
+  }
 }
 
 export function exportProfileToArchive(options: ExportProfileOptions): { success: boolean; filePath: string } {
@@ -52,6 +126,10 @@ export function exportProfileToArchive(options: ExportProfileOptions): { success
 
   if (options.includeExtensions) {
     archiveData.extensions = getExtensions(profile.id);
+  }
+
+  if (options.includeStorage) {
+    archiveData.storageFiles = collectEssentialStorageFiles(profile.id);
   }
 
   const jsonStr = JSON.stringify(archiveData);
@@ -267,6 +345,11 @@ export function importProfileFromArchive(options: ImportProfileOptions) {
         // ignore
       }
     }
+  }
+
+  // Import storage files if present (preferences, cookies, localStorage, etc.)
+  if (archiveData.storageFiles && Object.keys(archiveData.storageFiles).length > 0) {
+    restoreStorageFiles(newProfile.id, archiveData.storageFiles);
   }
 
   logActivity('PROFILE', 'SUCCESS', 'Import Profile', `Imported profile archive into "${profileName}"`, newProfile.id, profileName);

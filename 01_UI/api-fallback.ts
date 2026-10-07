@@ -614,6 +614,19 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     onEngineDownloadProgress: () => () => {},
     onLicenseStatusChanged: () => () => {},
     onLicenseStatusToast: () => () => {},
+
+    // Cloud Profile Sync (GoLogin-style)
+    getCloudSyncAllowed: async () => ({ allowed: true }),
+    getCloudSyncUsage: async () => ({ used_bytes: 0, total_bytes: 1073741824, used_mb: 0, total_mb: 1024, profile_count: 0, quota_percent: 0 }),
+    getCloudSyncList: async () => [],
+    uploadProfileToCloud: async () => ({ success: true, cloudProfile: { id: 'test', name: 'test' } }),
+    downloadAndRestoreProfile: async () => ({ id: 'restored', name: 'Restored Profile' }),
+    deleteCloudProfile: async () => true,
+    getCloudSyncConfig: async () => ({ autoSync: true, syncPassphrase: 'mahi-cloud-sync' }),
+    setCloudSyncConfig: async (cfg: any) => cfg,
+    syncAllProfiles: async () => {},
+    getAllProfilesSyncStatus: async () => ({}),
+    onSyncProgress: () => () => {},
   };
 
   (window as any).mahiAPI = fallbackApi;

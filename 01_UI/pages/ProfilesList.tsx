@@ -22,6 +22,8 @@ import {
   ArrowUpDown,
   Activity,
   Zap,
+  Cloud,
+  UploadCloud,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useProxyStore } from '../stores/useProxyStore.js';
@@ -34,6 +36,7 @@ import { ProxyConfigModal } from '../components/ProxyConfigModal.js';
 import { CountryFlag, getFlagEmoji, getCountryNameFromCode } from '../components/CountryFlag.js';
 import { UniversalBulkImportModal } from '../components/UniversalBulkImportModal.js';
 import { SynchronizerModal } from '../components/SynchronizerModal.js';
+import { CloudSyncSection } from '../components/CloudSyncSection.js';
 
 interface ProfilesListProps {
   onNavigate: (page: NavigationPage) => void;
@@ -73,6 +76,13 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
   const [isUniversalImportOpen, setIsUniversalImportOpen] = useState(false);
   const [isSynchronizerModalOpen, setIsSynchronizerModalOpen] = useState(false);
   const [activeFolderTab, setActiveFolderTab] = useState<string>('ALL');
+  const [syncStatuses, setSyncStatuses] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (window.mahiAPI?.getAllProfilesSyncStatus) {
+      window.mahiAPI.getAllProfilesSyncStatus().then(setSyncStatuses).catch(() => {});
+    }
+  }, [profiles]);
 
   // Staggered Batch Launch State
   const [isStaggerLaunchModalOpen, setIsStaggerLaunchModalOpen] = useState(false);
@@ -930,6 +940,19 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
           >
             •••
           </button>
+
+          {/* Cloud Sync Tab */}
+          <button
+            onClick={() => setActiveFolderTab('CLOUD_SYNC')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
+              activeFolderTab === 'CLOUD_SYNC'
+                ? 'bg-teal-600 text-white font-semibold shadow-xs'
+                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-850'
+            }`}
+          >
+            <Cloud className="w-3.5 h-3.5" />
+            <span>Cloud Sync</span>
+          </button>
         </div>
 
         {/* Right: Search & Action Buttons */}
@@ -1103,7 +1126,12 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
 
 
 
-      {/* Main GoLogin-Style Table */}
+      {/* Main View: GoLogin-Style Table or Cloud Sync Section */}
+      {activeFolderTab === 'CLOUD_SYNC' ? (
+        <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950">
+          <CloudSyncSection onNavigate={onNavigate} onProfileRestored={fetchProfiles} />
+        </div>
+      ) : (
       <div className="flex-1 overflow-auto bg-white dark:bg-slate-900">
         {filteredProfiles.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center p-12 text-center">
@@ -1239,6 +1267,15 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
                             }`}
                           />
                           <span>{isRunning ? 'running' : isStarting ? 'starting' : 'ready'}</span>
+                          {syncStatuses[p.id] === 'SYNCED' ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-0.5" title="Synced to Cloud">
+                              ☁️ Synced
+                            </span>
+                          ) : syncStatuses[p.id] === 'PENDING' ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-0.5" title="Pending Cloud Backup">
+                              ☁️ Pending
+                            </span>
+                          ) : null}
                           {isRunning && fleetResources[p.id] && (
                             <span 
                               className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 shrink-0 shadow-sm"
@@ -1360,6 +1397,26 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
                           <Shield className="w-3.5 h-3.5" />
                         </button>
 
+                        <button
+                          onClick={async () => {
+                            try {
+                              showToast({ type: 'info', title: 'Cloud Sync', message: `Backing up "${p.name}" to cloud...` });
+                              await window.mahiAPI.uploadProfileToCloud(p.id);
+                              showToast({ type: 'success', title: 'Cloud Sync', message: `"${p.name}" backed up successfully.` });
+                              if (window.mahiAPI?.getAllProfilesSyncStatus) {
+                                const st = await window.mahiAPI.getAllProfilesSyncStatus();
+                                setSyncStatuses(st);
+                              }
+                            } catch (err: any) {
+                              showToast({ type: 'error', title: 'Sync Failed', message: err.message });
+                            }
+                          }}
+                          className="p-1.5 hover:bg-teal-500/10 rounded-lg text-teal-600 dark:text-teal-400 transition-colors"
+                          title="Backup Profile to Cloud"
+                        >
+                          <UploadCloud className="w-3.5 h-3.5" />
+                        </button>
+
 
                         <button
                           onClick={() => {
@@ -1405,6 +1462,7 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
           </table>
         )}
       </div>
+      )}
 
       {/* Dedicated Proxy Configuration Modal */}
       {proxyModalProfile && (

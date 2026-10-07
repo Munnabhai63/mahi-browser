@@ -21,6 +21,12 @@ export const MANAGED_ENGINE_SHA256 = '10a9fa695a9e4c05b336aebdc553f92c2351b2e9b9
 export const MANAGED_ENGINE_DOWNLOAD_URL = `https://storage.googleapis.com/chrome-for-testing-public/${MANAGED_ENGINE_VERSION}/win64/chrome-win64.zip`;
 
 /**
+ * Authoritative VPS Engine Mirror URL.
+ * Used as fallback if official Google CDN is blocked, unavailable, or version removed.
+ */
+export const MANAGED_ENGINE_FALLBACK_URL = 'https://mahibrowser.com/engine/chrome-138.zip';
+
+/**
  * Official Google Chrome for Testing Manifest listing all known-good versions & downloads.
  */
 export const GOOGLE_CFT_MANIFEST_URL = 'https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json';

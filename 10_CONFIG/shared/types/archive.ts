@@ -11,6 +11,7 @@ export interface MahiProfileArchiveData {
   cookies?: CookieItem[];
   history?: HistoryItem[];
   extensions?: ExtensionItem[];
+  storageFiles?: Record<string, string>; // Essential storage files (Preferences, Local Storage, Cookies), caches excluded
 }
 
 export interface ExportProfileOptions {
@@ -20,6 +21,7 @@ export interface ExportProfileOptions {
   includeHistory: boolean;
   includeExtensions: boolean;
   includeBrowserSettings: boolean;
+  includeStorage?: boolean;
   password?: string;
 }
 

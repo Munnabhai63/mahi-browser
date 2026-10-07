@@ -9,6 +9,7 @@ import {
   MANAGED_ENGINE_VERSION,
   MANAGED_ENGINE_SHA256,
   MANAGED_ENGINE_DOWNLOAD_URL,
+  MANAGED_ENGINE_FALLBACK_URL,
   GOOGLE_CFT_MANIFEST_URL,
   MANAGED_ENGINE_REQUIRED_DISK_SPACE_BYTES,
 } from '../10_CONFIG/engine-config.js';
@@ -367,23 +368,38 @@ export async function ensureManagedEngineInstalled(options?: {
         }
       }
 
-      // Step 4: Download Chrome for Testing win64 zip
+      // Step 4: Download Chrome for Testing win64 zip with mirror fallback
       debugLog(`[ManagedEngine] Downloading Chrome for Testing ${version} from: ${downloadUrl}`);
       broadcastProgress({ stage: 'DOWNLOADING', percent: 0, downloadedBytes: 0, totalBytes: 172647459 });
 
-      const computedSha256 = await downloadFileWithProgress(
-        downloadUrl,
-        tempZipPath,
-        (downloaded, total) => {
-          const percent = Math.min(100, Math.round((downloaded / total) * 100));
-          broadcastProgress({
-            stage: 'DOWNLOADING',
-            percent,
-            downloadedBytes: downloaded,
-            totalBytes: total,
-          });
+      const progressCallback = (downloaded: number, total: number) => {
+        const percent = Math.min(100, Math.round((downloaded / total) * 100));
+        broadcastProgress({
+          stage: 'DOWNLOADING',
+          percent,
+          downloadedBytes: downloaded,
+          totalBytes: total,
+        });
+      };
+
+      let computedSha256 = '';
+      try {
+        computedSha256 = await downloadFileWithProgress(
+          downloadUrl,
+          tempZipPath,
+          progressCallback
+        );
+      } catch (primaryErr: any) {
+        debugLog(`[ManagedEngine] Primary download failed: ${primaryErr?.message}. Falling back to mirror: ${MANAGED_ENGINE_FALLBACK_URL}`);
+        if (fs.existsSync(tempZipPath)) {
+          try { fs.unlinkSync(tempZipPath); } catch {}
         }
-      );
+        computedSha256 = await downloadFileWithProgress(
+          MANAGED_ENGINE_FALLBACK_URL,
+          tempZipPath,
+          progressCallback
+        );
+      }
 
       // Step 5: Verify SHA-256 Checksum
       broadcastProgress({ stage: 'VERIFYING', percent: 100 });

@@ -282,6 +282,23 @@ const api: MahiBrowserAPI = {
     ipcRenderer.on('engine:downloadProgress', handler);
     return () => ipcRenderer.removeListener('engine:downloadProgress', handler);
   },
+
+  // Cloud Profile Sync (GoLogin-style)
+  getCloudSyncAllowed: () => ipcRenderer.invoke('sync:isAllowed'),
+  getCloudSyncUsage: () => ipcRenderer.invoke('sync:getUsage'),
+  getCloudSyncList: () => ipcRenderer.invoke('sync:list'),
+  uploadProfileToCloud: (profileId: string) => ipcRenderer.invoke('sync:upload', profileId),
+  downloadAndRestoreProfile: (cloudProfileId: string, options?: any) => ipcRenderer.invoke('sync:restore', cloudProfileId, options),
+  deleteCloudProfile: (cloudProfileId: string) => ipcRenderer.invoke('sync:delete', cloudProfileId),
+  getCloudSyncConfig: () => ipcRenderer.invoke('sync:getConfig'),
+  setCloudSyncConfig: (config: any) => ipcRenderer.invoke('sync:setConfig', config),
+  syncAllProfiles: () => ipcRenderer.invoke('sync:syncAll'),
+  getAllProfilesSyncStatus: () => ipcRenderer.invoke('sync:getAllStatuses'),
+  onSyncProgress: (callback) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('sync:progress', handler);
+    return () => ipcRenderer.removeListener('sync:progress', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('mahiAPI', api);

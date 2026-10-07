@@ -39,6 +39,19 @@ import {
   fixDesktopShortcuts,
   createProfileShortcut,
 } from '../../03_HARDWARE/distribution-service.js';
+import {
+  isCloudSyncAllowed,
+  getCloudSyncUsage,
+  getCloudSyncList,
+  uploadProfileToCloud,
+  downloadAndRestoreProfile,
+  deleteCloudProfile,
+  getSyncConfig,
+  setSyncConfig,
+  syncAllProfiles,
+  getAllProfilesSyncStatus,
+  initCloudSync,
+} from '../../08_SECURITY/cloud-sync-service.js';
 
 
 
@@ -1678,6 +1691,21 @@ export function registerIpcHandlers(): void {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
+
+  // Cloud Profile Sync Handlers (GoLogin-style)
+  ipcMain.handle('sync:isAllowed', async () => isCloudSyncAllowed());
+  ipcMain.handle('sync:getUsage', async () => getCloudSyncUsage());
+  ipcMain.handle('sync:list', async () => getCloudSyncList());
+  ipcMain.handle('sync:upload', async (_e, profileId: string) => uploadProfileToCloud(profileId));
+  ipcMain.handle('sync:restore', async (_e, cloudProfileId: string, options?: any) => downloadAndRestoreProfile(cloudProfileId, options));
+  ipcMain.handle('sync:delete', async (_e, cloudProfileId: string) => deleteCloudProfile(cloudProfileId));
+  ipcMain.handle('sync:getConfig', async () => getSyncConfig());
+  ipcMain.handle('sync:setConfig', async (_e, config: any) => setSyncConfig(config));
+  ipcMain.handle('sync:syncAll', async () => syncAllProfiles());
+  ipcMain.handle('sync:getAllStatuses', async () => getAllProfilesSyncStatus());
+
+  // Initialize startup cloud sync queue resumption
+  initCloudSync();
 
   // Wire event emitters from processManager, audit logger, and engine downloader to renderer windows
   addManagedEngineProgressListener((progress) => {

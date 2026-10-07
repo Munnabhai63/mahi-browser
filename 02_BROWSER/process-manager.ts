@@ -122,6 +122,15 @@ class ProcessManager {
     } else {
       this.notifyStatus(profileId, 'STOPPED');
       logActivity('PROFILE', 'INFO', 'Stop Browser', `Profile "${entry.profileName}" closed cleanly`, profileId, entry.profileName);
+
+      // Auto-Sync Hook on profile close
+      try {
+        import('../08_SECURITY/cloud-sync-service.js').then(({ enqueueSync, getSyncConfig }) => {
+          if (getSyncConfig().autoSync) {
+            enqueueSync(profileId);
+          }
+        }).catch(() => {});
+      } catch {}
     }
 
     // Auto-stop synchronizer if active profiles drop below 2 or master profile closed

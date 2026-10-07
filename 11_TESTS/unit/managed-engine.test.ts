@@ -6,6 +6,7 @@ import {
   MANAGED_ENGINE_VERSION,
   MANAGED_ENGINE_SHA256,
   MANAGED_ENGINE_DOWNLOAD_URL,
+  MANAGED_ENGINE_FALLBACK_URL,
   GOOGLE_CFT_MANIFEST_URL,
   MANAGED_ENGINE_REQUIRED_DISK_SPACE_BYTES,
 } from '../../10_CONFIG/engine-config.js';
@@ -30,10 +31,11 @@ describe('Managed Version-Pinned Browser Engine Suite', () => {
     try { fs.rmSync(testMockDir, { recursive: true, force: true }); } catch {}
   });
 
-  it('should have a pinned, immutable engine version and valid Google CDN URLs', () => {
+  it('should have a pinned, immutable engine version and valid Google CDN and mirror URLs', () => {
     expect(MANAGED_ENGINE_VERSION).toBe('138.0.7204.183');
     expect(MANAGED_ENGINE_SHA256).toBe('10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68');
     expect(MANAGED_ENGINE_DOWNLOAD_URL).toContain('storage.googleapis.com/chrome-for-testing-public/138.0.7204.183/win64/chrome-win64.zip');
+    expect(MANAGED_ENGINE_FALLBACK_URL).toBe('https://mahibrowser.com/engine/chrome-138.zip');
     expect(GOOGLE_CFT_MANIFEST_URL).toBe('https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json');
     expect(MANAGED_ENGINE_REQUIRED_DISK_SPACE_BYTES).toBe(1024 * 1024 * 1024);
   });
