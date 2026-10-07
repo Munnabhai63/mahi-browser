@@ -452,10 +452,10 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
 
 
     // Auto-Updater
-    checkForUpdates: async () => ({ state: 'NOT_AVAILABLE', currentVersion: '1.0.0' }),
+    checkForUpdates: async () => ({ state: 'NOT_AVAILABLE', currentVersion: '1.1.1' }),
     downloadUpdate: async () => true,
     installUpdate: async () => true,
-    getUpdateStatus: async () => ({ state: 'IDLE', currentVersion: '1.0.0' }),
+    getUpdateStatus: async () => ({ state: 'IDLE', currentVersion: '1.1.1' }),
 
     // Resource Monitoring & Memory Optimizer
     getFleetResources: async () => ({ totalMemoryMB: 0, totalCpuPercent: 0, activeProfilesCount: 0, profiles: {} }),
@@ -479,7 +479,7 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     updateFeatureFlag: async () => null,
     checkFeatureFlag: async () => true,
     getFleetDevices: async () => [],
-    getFleetTelemetry: async () => ({ deviceId: 'local', deviceName: 'Local Machine', status: 'IDLE', activeProfilesCount: 0, runningProfilePids: [], cpuUsagePercent: 10, memoryUsageMb: 1024, diskFreeMb: 50000, uptimeSeconds: 3600, clientVersion: '1.0.0', syncState: 'SYNCED', timestamp: new Date().toISOString() }),
+    getFleetTelemetry: async () => ({ deviceId: 'local', deviceName: 'Local Machine', status: 'IDLE', activeProfilesCount: 0, runningProfilePids: [], cpuUsagePercent: 10, memoryUsageMb: 1024, diskFreeMb: 50000, uptimeSeconds: 3600, clientVersion: '1.1.1', syncState: 'SYNCED', timestamp: new Date().toISOString() }),
     revokeDevice: async () => true,
 
     // V2 Platform: API Keys
@@ -500,13 +500,13 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
           networkDownloadUrls: ['http://127.0.0.1:32123/download'],
           setupAvailable: true,
           portableAvailable: true,
-          setupFileName: 'MAHI BROWSER-1.0.0-Setup.exe',
-          portableFileName: 'MAHI BROWSER-1.0.0-Portable.exe',
-          setupPath: 'release/MAHI BROWSER-1.0.0-Setup.exe',
-          portablePath: 'release/MAHI BROWSER-1.0.0-Portable.exe',
+          setupFileName: 'MAHI BROWSER-1.1.1-Setup.exe',
+          portableFileName: 'MAHI BROWSER-1.1.1-Portable.exe',
+          setupPath: 'release/MAHI BROWSER-1.1.1-Setup.exe',
+          portablePath: 'release/MAHI BROWSER-1.1.1-Portable.exe',
           setupSizeMB: 92.1,
           portableSizeMB: 91.9,
-          version: '1.0.0',
+          version: '1.1.1',
         };
       }
     },

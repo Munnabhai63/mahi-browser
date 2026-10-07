@@ -375,7 +375,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  Start 7-Day PRO Trial
+                  Sign Up (7-Day Trial)
                 </button>
                 <button
                   type="button"

@@ -38,7 +38,8 @@
       }
     ],
     "icon": "13_ASSETS/resources/icon.ico",
-    "artifactName": "${productName}-${version}-Setup.${ext}"
+    "artifactName": "${productName}-${version}-Setup.${ext}",
+    "signExecutable": false
   },
   "nsis": {
     "oneClick": false,
@@ -66,6 +67,10 @@
     {
       "from": "13_ASSETS/resources/splash.html",
       "to": "splash.html"
+    },
+    {
+      "from": "13_ASSETS/resources/icon.png",
+      "to": "icon.png"
     }
   ]
 }

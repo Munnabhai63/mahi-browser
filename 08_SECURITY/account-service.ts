@@ -73,17 +73,62 @@ function getUserDataPath(): string {
   return path.join(process.cwd(), '.mahi_data');
 }
 
+export const ACCOUNT_SERVICE_MODULE = 'account-service';
+console.log('[account-service] Account & subscription module initialized');
+
 function getSessionFilePath(): string {
   return path.join(getUserDataPath(), 'account-session.enc');
 }
 
 function getStatusCacheFilePath(): string {
-  return path.join(getUserDataPath(), 'account-status-cache.json');
+  return path.join(getUserDataPath(), 'account-status-cache.enc');
 }
 
 // ============================================================================
-// ENCRYPTED TOKEN & SYNC_KEY STORAGE (safeStorage / AES-256-GCM fallback)
+// ENCRYPTED STORAGE HELPERS (safeStorage / AES-256-GCM fallback)
 // ============================================================================
+function encryptPayload(plainText: string): Buffer {
+  try {
+    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+      return safeStorage.encryptString(plainText);
+    }
+  } catch (err: any) {
+    console.warn('[AccountService] safeStorage failed, using machine AES fallback:', err?.message);
+  }
+
+  // Fallback: AES-256-GCM keyed by hardware ID (never plaintext on disk)
+  const key = crypto.createHash('sha256').update(getHWID() + 'mahi-account-enc-2026').digest();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ciphertext = Buffer.concat([cipher.update(plainText, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([Buffer.from('AESGCM:'), iv, tag, ciphertext]);
+}
+
+function decryptPayload(rawBuffer: Buffer): string | null {
+  // Try safeStorage first
+  if (safeStorage && safeStorage.isEncryptionAvailable() && !rawBuffer.subarray(0, 7).equals(Buffer.from('AESGCM:'))) {
+    try {
+      return safeStorage.decryptString(rawBuffer);
+    } catch {}
+  }
+
+  // Try AES-GCM fallback
+  if (rawBuffer.subarray(0, 7).equals(Buffer.from('AESGCM:'))) {
+    try {
+      const iv = rawBuffer.subarray(7, 19);
+      const tag = rawBuffer.subarray(19, 35);
+      const ciphertext = rawBuffer.subarray(35);
+      const key = crypto.createHash('sha256').update(getHWID() + 'mahi-account-enc-2026').digest();
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+      decipher.setAuthTag(tag);
+      return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+    } catch {}
+  }
+
+  return null;
+}
+
 export function saveEncryptedSession(session: AccountSession): void {
   currentSession = session;
   const jsonStr = JSON.stringify(session);
@@ -92,24 +137,8 @@ export function saveEncryptedSession(session: AccountSession): void {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   try {
-    if (safeStorage && safeStorage.isEncryptionAvailable()) {
-      const encrypted = safeStorage.encryptString(jsonStr);
-      fs.writeFileSync(filePath, encrypted);
-      return;
-    }
-  } catch (err: any) {
-    console.warn('[AccountService] safeStorage failed, using machine AES fallback:', err?.message);
-  }
-
-  // Fallback: AES-256-GCM keyed by hardware ID (never plaintext on disk)
-  try {
-    const key = crypto.createHash('sha256').update(getHWID() + 'mahi-account-enc-2026').digest();
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-    const ciphertext = Buffer.concat([cipher.update(jsonStr, 'utf8'), cipher.final()]);
-    const tag = cipher.getAuthTag();
-    const packed = Buffer.concat([Buffer.from('AESGCM:'), iv, tag, ciphertext]);
-    fs.writeFileSync(filePath, packed);
+    const encrypted = encryptPayload(jsonStr);
+    fs.writeFileSync(filePath, encrypted);
   } catch (err: any) {
     console.error('[AccountService] Failed to persist encrypted session:', err?.message);
   }
@@ -123,25 +152,8 @@ export function loadEncryptedSession(): AccountSession | null {
 
   try {
     const rawBuffer = fs.readFileSync(filePath);
-
-    // Try safeStorage first
-    if (safeStorage && safeStorage.isEncryptionAvailable() && !rawBuffer.subarray(0, 7).equals(Buffer.from('AESGCM:'))) {
-      try {
-        const decryptedStr = safeStorage.decryptString(rawBuffer);
-        currentSession = JSON.parse(decryptedStr);
-        return currentSession;
-      } catch {}
-    }
-
-    // Try AES-GCM fallback
-    if (rawBuffer.subarray(0, 7).equals(Buffer.from('AESGCM:'))) {
-      const iv = rawBuffer.subarray(7, 19);
-      const tag = rawBuffer.subarray(19, 35);
-      const ciphertext = rawBuffer.subarray(35);
-      const key = crypto.createHash('sha256').update(getHWID() + 'mahi-account-enc-2026').digest();
-      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-      decipher.setAuthTag(tag);
-      const decryptedStr = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+    const decryptedStr = decryptPayload(rawBuffer);
+    if (decryptedStr) {
       currentSession = JSON.parse(decryptedStr);
       return currentSession;
     }
@@ -162,16 +174,30 @@ export function clearEncryptedSession(): void {
   if (fs.existsSync(cachePath)) {
     try { fs.unlinkSync(cachePath); } catch {}
   }
+  const legacyCachePath = path.join(getUserDataPath(), 'account-status-cache.json');
+  if (fs.existsSync(legacyCachePath)) {
+    try { fs.unlinkSync(legacyCachePath); } catch {}
+  }
 }
 
 // ============================================================================
-// SIGNED STATUS CACHE & RSA VERIFICATION
+// SIGNED STATUS CACHE & RSA VERIFICATION (Always Encrypted on Disk)
 // ============================================================================
 export function readCachedStatus(): CachedAccountStatus | null {
   try {
+    // Delete legacy plaintext json cache if present
+    const legacyPath = path.join(getUserDataPath(), 'account-status-cache.json');
+    if (fs.existsSync(legacyPath)) {
+      try { fs.unlinkSync(legacyPath); } catch {}
+    }
+
     const p = getStatusCacheFilePath();
     if (fs.existsSync(p)) {
-      return JSON.parse(fs.readFileSync(p, 'utf8'));
+      const rawBuffer = fs.readFileSync(p);
+      const decryptedStr = decryptPayload(rawBuffer);
+      if (decryptedStr) {
+        return JSON.parse(decryptedStr);
+      }
     }
   } catch {}
   return null;
@@ -179,9 +205,22 @@ export function readCachedStatus(): CachedAccountStatus | null {
 
 export function writeCachedStatus(status: CachedAccountStatus): void {
   try {
+    // Delete legacy plaintext json cache if present
+    const legacyPath = path.join(getUserDataPath(), 'account-status-cache.json');
+    if (fs.existsSync(legacyPath)) {
+      try { fs.unlinkSync(legacyPath); } catch {}
+    }
+
     const p = getStatusCacheFilePath();
-    fs.writeFileSync(p, JSON.stringify(status, null, 2), 'utf8');
-  } catch {}
+    const dir = path.dirname(p);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+    const jsonStr = JSON.stringify(status);
+    const encrypted = encryptPayload(jsonStr);
+    fs.writeFileSync(p, encrypted);
+  } catch (err: any) {
+    console.error('[AccountService] Failed to write encrypted status cache:', err?.message);
+  }
 }
 
 export function verifyAccountStatusSignature(
@@ -362,8 +401,11 @@ export async function fetchAndCacheStatus(): Promise<CachedAccountStatus | null>
   if (!session?.token) return null;
 
   const hwid = getHWID();
-  const res = await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/status?token=${encodeURIComponent(session.token)}&hwid=${encodeURIComponent(hwid)}`, {
-    method: 'GET'
+  const res = await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/status?hwid=${encodeURIComponent(hwid)}`, {
+    method: 'GET',
+    headers: {
+      'x-mahi-token': session.token
+    }
   });
 
   if (res.statusCode === 401 || res.statusCode === 403) {
