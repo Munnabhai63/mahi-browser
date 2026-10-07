@@ -26,104 +26,117 @@
 </head>
 <body>
 
-  <!-- 1. SPOTLIGHT NAVBAR -->
+  <!-- ==========================================================================
+       1. FLOATING GLASS ISLAND NAVBAR (Detached Pill)
+       ========================================================================== -->
   <header class="navbar-wrapper">
-    <div class="container">
-      <nav class="navbar" aria-label="Main Navigation">
-        <a href="#" class="brand-logo" aria-label="MAHI Browser Home">
-          <img src="assets/img/logo.png" alt="MAHI Browser Logo" width="36" height="36" class="brand-icon">
-          <span>MAHI BROWSER</span>
-        </a>
+    <nav class="navbar-island" aria-label="Main Navigation">
+      <a href="#" class="brand-logo" aria-label="MAHI Browser Home">
+        <img src="assets/img/logo.png" alt="MAHI Browser Logo" width="28" height="28">
+        <span>MAHI BROWSER</span>
+        <span class="brand-dot"></span>
+      </a>
 
-        <div class="nav-links">
-          <a href="#features">Features</a>
-          <a href="#how-it-works">How It Works</a>
-          <a href="#pricing">Pricing</a>
-          <a href="#faq">FAQ</a>
-        </div>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
+      </div>
 
-        <div class="nav-actions">
-          <a href="/download/MAHI-Setup.exe" class="btn btn-primary" download>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <div class="nav-actions">
+        <a href="/download/MAHI-Setup.exe" class="btn-nested-cta" download>
+          <span>Download for Windows</span>
+          <span class="btn-icon-bubble">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
               <line x1="12" y1="15" x2="12" y2="3"></line>
             </svg>
-            <span>Download for Windows</span>
-          </a>
-        </div>
+          </span>
+        </a>
+      </div>
 
-        <button class="mobile-menu-btn" aria-label="Toggle navigation menu">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
-          </svg>
-        </button>
-      </nav>
-    </div>
+      <button class="mobile-menu-btn" aria-label="Open mobile menu">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+    </nav>
   </header>
 
-  <!-- Mobile Drawer -->
-  <div class="drawer-overlay" aria-hidden="true"></div>
-  <aside class="mobile-drawer" aria-label="Mobile Navigation Drawer">
-    <div class="drawer-header">
+  <!-- Mobile Drawer Overlay & Panel -->
+  <div class="mobile-drawer-overlay" aria-hidden="true"></div>
+  <aside class="mobile-drawer-panel" aria-label="Mobile Navigation">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
       <div class="brand-logo">
-        <img src="assets/img/logo.png" alt="" width="28" height="28">
+        <img src="assets/img/logo.png" alt="" width="26" height="26">
         <span>MAHI</span>
       </div>
-      <button class="drawer-close-btn" aria-label="Close navigation menu" style="color: #94a3b8; font-size: 1.5rem;">✕</button>
+      <button class="drawer-close-btn" aria-label="Close menu" style="color: #94a3b8; font-size: 1.5rem;">✕</button>
     </div>
-    <div class="drawer-links">
+    <div style="display: flex; flex-direction: column; gap: 1.25rem; font-size: 1.1rem; font-weight: 600; color: #f8fafc; margin-top: 1.5rem;">
       <a href="#features">Features</a>
       <a href="#how-it-works">How It Works</a>
       <a href="#pricing">Pricing</a>
       <a href="#faq">FAQ</a>
       <a href="https://wa.me/" class="dynamic-whatsapp-link" target="_blank" rel="noopener">WhatsApp Support</a>
     </div>
-    <div style="margin-top: auto; padding-top: 1.5rem;">
-      <a href="/download/MAHI-Setup.exe" class="btn btn-primary" style="width: 100%; justify-content: center;" download>
-        Download for Windows
+    <div style="margin-top: auto;">
+      <a href="/download/MAHI-Setup.exe" class="btn-nested-cta" style="width: 100%; justify-content: center;" download>
+        <span>Download for Windows</span>
       </a>
     </div>
   </aside>
 
-  <main id="main-content">
+  <!-- Ambient Hero Background Grid & Light Beam -->
+  <div class="hero-ambient-wrap">
+    <div class="perspective-grid" aria-hidden="true"></div>
+    <div class="directional-light-beam" aria-hidden="true"></div>
 
-    <!-- 2. HERO SECTION -->
+    <!-- ==========================================================================
+         2. HERO SECTION
+         ========================================================================== -->
     <section class="hero-section">
       <div class="container hero-content">
-        <div class="hero-badge">
-          <span class="pulse-dot"></span>
+        <!-- Eyebrow Pill -->
+        <div class="hero-badge-pill">
+          <span class="pulse-indicator"></span>
           <span>Antidetect browser for multi-accounting &amp; privacy</span>
         </div>
 
+        <!-- Oversized Display H1 -->
         <h1 class="hero-title">
-          Antidetect browser to manage all your accounts <span class="shimmer-text">safely</span>
+          Antidetect browser to manage all your accounts <span class="shimmer-emerald">safely</span>
         </h1>
 
+        <!-- Subtitle -->
         <p class="hero-sub">
-          Run multiple accounts on one device — unique fingerprints, no bans, and no suspicious-login checks. Each profile runs in a completely isolated environment.
+          Run multiple accounts on one device — unique fingerprints, no bans, and no suspicious-login checks. Every profile operates in a fully isolated container.
         </p>
 
-        <div class="hero-ctas">
-          <a href="/download/MAHI-Setup.exe" class="btn btn-primary btn-lg" download>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <!-- CTAs -->
+        <div class="hero-cta-group">
+          <a href="/download/MAHI-Setup.exe" class="btn-primary-hero" download>
+            <span>Start Free — 15 Profiles</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
               <line x1="12" y1="15" x2="12" y2="3"></line>
             </svg>
-            <span>Start Free — 15 Profiles</span>
           </a>
 
-          <a href="https://wa.me/" class="btn btn-secondary btn-lg dynamic-whatsapp-link" target="_blank" rel="noopener">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <a href="https://wa.me/" class="btn-secondary-hero dynamic-whatsapp-link" target="_blank" rel="noopener">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
             </svg>
             <span>Talk to us on WhatsApp</span>
           </a>
         </div>
 
+        <!-- Microcopy -->
         <div class="hero-microcopy">
           <span>Free forever plan</span>
           <span>·</span>
@@ -132,337 +145,139 @@
           <span>No credit card required</span>
         </div>
 
-        <div class="hero-os-pills">
-          <span class="os-pill active">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <!-- OS & Engine Pills -->
+        <div class="hero-platform-strip">
+          <span class="os-pill-badge active">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
               <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.551H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-13.051-1.802"/>
             </svg>
             Windows 10 / 11 (64-bit)
           </span>
-          <span class="os-pill">macOS &amp; Linux coming soon</span>
+          <span class="os-pill-badge">macOS &amp; Linux coming soon</span>
         </div>
 
-        <p class="hero-engine-note">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <p class="hero-engine-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
           </svg>
           Chromium engine included — SHA-256 verified, no Chrome install needed.
         </p>
-      </div>
-    </section>
 
-    <!-- 3. VALUE PITCH & BROWSER MOCKUP -->
-    <section class="value-pitch-section" id="how-it-works">
-      <div class="container">
-        <div class="section-title">
-          <h2>Manage all your accounts safely from one device</h2>
-          <p>Each profile operates in a fully isolated container with its own cookies, cache, local storage, and physical device signatures.</p>
-        </div>
-
-        <!-- 4. REALISTIC BROWSER MOCKUP -->
-        <div class="browser-mockup-frame">
-          <div class="browser-mockup-header">
-            <div class="window-controls">
-              <span class="control-dot dot-red"></span>
-              <span class="control-dot dot-yellow"></span>
-              <span class="control-dot dot-green"></span>
+        <!-- ==========================================================================
+             3. HERO PRODUCT SHOWCASE & REAL BROWSER MOCKUP
+             ========================================================================== -->
+        <div class="hero-showcase-container" id="how-it-works">
+          <!-- Floating Service Badges on top -->
+          <div class="floating-services-bar" aria-hidden="true">
+            <span style="font-size: 0.825rem; font-weight: 600; color: #94a3b8; margin-right: 0.5rem;">On any website:</span>
+            <div class="service-pill-item" title="Facebook">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877f2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
             </div>
-
-            <div class="browser-tabs">
-              <div class="browser-tab active">
-                <span class="tab-favicon fb-icon">f</span>
-                <span class="tab-title">Facebook Ads #1</span>
-              </div>
-              <div class="browser-tab">
-                <span class="tab-favicon amz-icon">a</span>
-                <span class="tab-title">Amazon Seller</span>
-              </div>
-              <div class="browser-tab">
-                <span class="tab-favicon ebay-icon">e</span>
-                <span class="tab-title">eBay Store US</span>
-              </div>
-              <div class="browser-tab">
-                <span class="tab-favicon gmail-icon">G</span>
-                <span class="tab-title">Google Workspace</span>
-              </div>
+            <div class="service-pill-item" title="Amazon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#ff9900"><path d="M13.958 10.09c0 1.25-.04 2.33-.87 3.32-.67.79-1.58 1.24-2.58 1.24-1.37 0-2.16-.99-2.16-2.45 0-2.88 2.54-3.37 5.61-3.37v1.26zm3.5 8.41c-.24.2-.61.22-.88.06-1.22-.76-1.44-1.12-2.12-2.12-2.03 1.94-3.48 2.45-6.1 2.45-3.07 0-5.46-1.9-5.46-5.41 0-2.75 1.54-4.83 3.8-5.78 1.96-.82 4.7-.97 6.76-1.21v-.47c0-.82-.07-1.81-.59-2.49-.46-.6-1.25-.86-2.01-.86-1.4 0-2.63.73-2.97 2.18-.06.27-.25.5-.53.51l-3.37-.36c-.25-.05-.51-.23-.44-.57.77-3.69 4.07-4.82 7.37-4.82 1.89 0 4.36.49 5.86 1.87 1.9 1.74 1.72 4.05 1.72 6.47v5.89c0 1.8.76 2.59 1.48 3.56.24.33.27.71.05.95l-2.58 1.93z"/></svg>
+            </div>
+            <div class="service-pill-item" title="LinkedIn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#0a66c2"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+            </div>
+            <div class="service-pill-item" title="eBay">
+              <span style="font-weight: 800; font-size: 0.85rem; color: #e53238;">ebay</span>
+            </div>
+            <div class="service-pill-item" title="Gmail">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#ea4335"><path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.146C21.69 2.28 24 3.434 24 5.457z"/></svg>
             </div>
           </div>
 
-          <div class="browser-omnibox-bar">
-            <div class="browser-nav-icons">
-              <span>←</span>
-              <span>→</span>
-              <span>↻</span>
-            </div>
-            <div class="omnibox-input">
-              <span class="omnibox-lock">🔒</span>
-              <span class="omnibox-url">https://business.facebook.com/adsmanager/manage</span>
-              <span class="profile-badge-pill">Profile: FB_AGENCY_01 (US Residential Proxy)</span>
-            </div>
-          </div>
+          <!-- Double-Bezel Browser Frame Shell -->
+          <div class="browser-showcase-shell">
+            <div class="browser-showcase-inner">
+              <!-- Real Chromium Browser Tabs Frame -->
+              <img src="assets/img/ui/ui_browser_tabs_frame.png" alt="MAHI Browser Multi-Profile Tabs" class="browser-tabs-img">
 
-          <div class="browser-mockup-body">
-            <div class="mockup-content-grid">
-              <div class="mockup-sidebar">
-                <div class="mockup-line" style="width: 70%;"></div>
-                <div class="mockup-line" style="width: 85%;"></div>
-                <div class="mockup-line" style="width: 60%;"></div>
-                <div class="mockup-line" style="width: 75%;"></div>
-              </div>
-              <div class="mockup-main-area">
-                <div class="mockup-card-header">
+              <!-- Live Cockpit View -->
+              <div class="browser-cockpit-view">
+                <div class="cockpit-header">
                   <div>
-                    <h4>Campaign Performance Overview</h4>
-                    <p>Live metrics from isolated session #49102</p>
+                    <h4>Isolated Campaign Dashboard</h4>
+                    <p>Live metrics from isolated container #49102</p>
                   </div>
-                  <span class="status-badge-green">● Connected (US-East IP: 142.250.190.46)</span>
+                  <span class="badge-pill-status badge-active">● US-East Proxy (142.250.190.46)</span>
                 </div>
-                <div class="mockup-stats-row">
-                  <div class="mockup-stat-box">
-                    <span class="stat-label">Active Campaigns</span>
-                    <span class="stat-val">14</span>
+
+                <div class="cockpit-stats-grid">
+                  <div class="cockpit-stat-card">
+                    <div class="stat-title">Active Profiles</div>
+                    <div class="stat-value">14 Running</div>
                   </div>
-                  <div class="mockup-stat-box">
-                    <span class="stat-label">Device Signature</span>
-                    <span class="stat-val">Win32 / RTX 3070</span>
+                  <div class="cockpit-stat-card">
+                    <div class="stat-title">Hardware Identity</div>
+                    <div class="stat-value">Win32 / RTX 3070</div>
                   </div>
-                  <div class="mockup-stat-box">
-                    <span class="stat-label">Audio Noise Mask</span>
-                    <span class="stat-val">Active (Δ +0.0018)</span>
+                  <div class="cockpit-stat-card">
+                    <div class="stat-title">Audio Noise Injection</div>
+                    <div class="stat-value">Active (Δ +0.0018)</div>
                   </div>
                 </div>
-                <div class="mockup-table-preview">
-                  <div class="table-preview-row"><span>eCom_Scale_US</span><span class="badge-success">Active</span><span>$1,420 spent</span></div>
-                  <div class="table-preview-row"><span>Retargeting_Q4</span><span class="badge-success">Active</span><span>$890 spent</span></div>
-                  <div class="table-preview-row"><span>Holiday_Sale_2026</span><span class="badge-neutral">Scheduled</span><span>$0 spent</span></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        <!-- 3 Benefit Cards under Mockup -->
-        <div class="benefit-cards-grid">
-          <div class="benefit-card">
-            <div class="card-icon-box">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                <polyline points="9 12 11 14 15 10"></polyline>
-              </svg>
-            </div>
-            <h3>No bans or suspicious logins</h3>
-            <p>Websites detect each profile as a completely distinct physical machine with separate Canvas, WebGL, AudioContext, and User-Agent parameters.</p>
-          </div>
-
-          <div class="benefit-card">
-            <div class="card-icon-box">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="2" y1="12" x2="22" y2="12"></line>
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-              </svg>
-            </div>
-            <h3>Access from any location</h3>
-            <p>Assign individual HTTP, HTTPS, or SOCKS5 proxies to each profile. Auto-match timezones and geolocation coordinates to proxy IP locations.</p>
-          </div>
-
-          <div class="benefit-card">
-            <div class="card-icon-box">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-              </svg>
-            </div>
-            <h3>Encrypted cloud sync</h3>
-            <p>Back up profiles safely using client-side AES-256-GCM encryption. Restore your profiles, cookies, and tabs seamlessly on any new Windows machine.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 5. DARK BIOMETRIC FINGERPRINT SECTION -->
-    <section class="fingerprint-section" id="features">
-      <div class="container">
-        <div class="fingerprint-split">
-          <div class="fingerprint-text-col">
-            <span class="badge-emerald">Advanced Spoofing Engine</span>
-            <h2>MAHI creates a unique digital identity for each account</h2>
-            <p>Anti-fraud tracking algorithms analyze over 50 hardware and browser parameters to identify your PC. MAHI injects subtle, natural mathematical noise into each profile's runtime environment.</p>
-
-            <div class="check-pills-list">
-              <div class="check-pill-item">
-                <div class="check-icon">✓</div>
-                <div>
-                  <strong>Websites see each profile as a completely different person</strong>
-                  <p>Independent Canvas 2D hashes, WebGL vendor strings, and AudioContext signatures.</p>
-                </div>
-              </div>
-
-              <div class="check-pill-item">
-                <div class="check-icon">✓</div>
-                <div>
-                  <strong>Pinned, SHA-256 verified Chromium engine</strong>
-                  <p>Ships with pinned Chromium 138 for authentic browser engine behavior and zero fingerprint drift.</p>
-                </div>
-              </div>
-
-              <div class="check-pill-item">
-                <div class="check-icon">✓</div>
-                <div>
-                  <strong>Far lighter than virtual machines</strong>
-                  <p>Open dozens of profiles simultaneously without burning 4GB of RAM per instance like slow virtual machines.</p>
+                <div class="cockpit-table-list">
+                  <div class="cockpit-row">
+                    <strong>🛒 Amazon_Scale_US</strong>
+                    <span class="badge-pill-status badge-active">Active</span>
+                    <span style="color: #64748b;">Residential US IP</span>
+                  </div>
+                  <div class="cockpit-row">
+                    <strong>📱 TikTok_Warmup_04</strong>
+                    <span class="badge-pill-status badge-ready">Warming Up</span>
+                    <span style="color: #64748b;">4G Mobile UK IP</span>
+                  </div>
+                  <div class="cockpit-row">
+                    <strong>💼 LinkedIn_Outreach_HQ</strong>
+                    <span class="badge-pill-status badge-active">Active</span>
+                    <span style="color: #64748b;">Datacenter DE IP</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Neon Fingerprint Visualization -->
-          <div class="fingerprint-visual-col">
-            <div class="neon-biometric-canvas">
-              <svg class="neon-fingerprint-svg" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M120 20 C60 20 20 60 20 120 C20 180 60 220 120 220" stroke="#10b981" stroke-width="2.5" stroke-dasharray="6 4" opacity="0.6"/>
-                <path d="M120 40 C75 40 40 75 40 120 C40 165 75 200 120 200" stroke="#34d399" stroke-width="2" opacity="0.8"/>
-                <path d="M120 60 C85 60 60 85 60 120 C60 155 85 180 120 180" stroke="#00a87e" stroke-width="2.5"/>
-                <path d="M120 80 C100 80 80 95 80 120 C80 145 100 160 120 160" stroke="#10b981" stroke-width="2"/>
-                <path d="M120 100 C110 100 100 110 100 120 C100 130 110 140 120 140" stroke="#6ee7b7" stroke-width="2.5"/>
-                <circle cx="120" cy="120" r="6" fill="#10b981"/>
-              </svg>
-
-              <!-- Glowing Parameter Badges -->
-              <div class="param-badge badge-canvas"><span>🎨</span> Canvas 2D Hash</div>
-              <div class="param-badge badge-webgl"><span>🎮</span> WebGL Renderer</div>
-              <div class="param-badge badge-audio"><span>🔊</span> AudioContext Noise</div>
-              <div class="param-badge badge-ua"><span>💻</span> User-Agent / Platform</div>
-              <div class="param-badge badge-geo"><span>📍</span> Geolocation (Lat/Lon)</div>
-              <div class="param-badge badge-tz"><span>🕒</span> Timezone &amp; Locale</div>
-              <div class="param-badge badge-fonts"><span>🔤</span> System Fonts Mask</div>
-              <div class="param-badge badge-webrtc"><span>🛡️</span> WebRTC Leak Shield</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 6. FEATURE SPLITS (Alternating) -->
-    <section class="feature-splits-wrapper">
-      <div class="container">
-
-        <!-- Split A: Proxies -->
-        <div class="feature-split-layout">
-          <div class="split-info">
-            <span class="badge-emerald-subtle">Network Control</span>
-            <h3>Per-Profile Dedicated Proxies &amp; Geographic Matching</h3>
-            <p>Route every browser profile through its own dedicated residential, mobile, or datacenter proxy. Supports HTTP, HTTPS, and SOCKS5 authentication with credentials.</p>
-            <ul class="feature-bullets">
-              <li>Integrated real-time proxy latency tester before browser launch</li>
-              <li>Automatic timezone and system locale alignment with proxy exit IP</li>
-              <li>Full WebRTC IP leak prevention ensures your home IP remains invisible</li>
-            </ul>
-          </div>
-          <div class="split-mockup">
-            <div class="ui-table-card">
-              <div class="ui-table-header">
-                <strong>Configured Proxies</strong>
-                <span class="badge-status">4 Active</span>
-              </div>
-              <div class="ui-table-row">
-                <div class="flag-col">🇺🇸 US-Resi-01</div>
-                <div>104.28.19.42:8080</div>
-                <div class="latency-col">34ms</div>
-                <div class="status-col">● Online</div>
-              </div>
-              <div class="ui-table-row">
-                <div class="flag-col">🇬🇧 UK-Mobile-4G</div>
-                <div>185.199.108.153:9050</div>
-                <div class="latency-col">58ms</div>
-                <div class="status-col">● Online</div>
-              </div>
-              <div class="ui-table-row">
-                <div class="flag-col">🇩🇪 DE-Frankfurt</div>
-                <div>142.250.180.206:8080</div>
-                <div class="latency-col">42ms</div>
-                <div class="status-col">● Online</div>
-              </div>
-              <div class="ui-table-row">
-                <div class="flag-col">🇫🇷 FR-Paris-DC</div>
-                <div>51.159.21.38:1080</div>
-                <div class="latency-col">61ms</div>
-                <div class="status-col">● Online</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Split B: Cloud Sync -->
-        <div class="feature-split-layout reversed">
-          <div class="split-info">
-            <span class="badge-emerald-subtle">Zero-Knowledge Storage</span>
-            <h3>Sync Profiles Across Machines — Client-Side Encrypted</h3>
-            <p>Moving to a new PC or setting up a secondary workstation? Back up your profiles to the cloud with client-side AES-256-GCM encryption. Even with direct server access, nobody can read your cookies or account data.</p>
-            <ul class="feature-bullets">
-              <li>End-to-end encryption key derived from your account credentials</li>
-              <li>Preserves open tabs, active sessions, cookies, and local storage</li>
-              <li>Generous 200MB per-profile storage quota on PRO subscription</li>
-            </ul>
-          </div>
-          <div class="split-mockup">
-            <div class="ui-sync-card">
-              <div class="sync-card-header">
-                <div class="sync-status-icon">
+          <!-- 3 Double-Bezel Benefit Cards Below Showcase -->
+          <div class="benefit-cards-matrix">
+            <div class="benefit-shell">
+              <div class="benefit-core">
+                <div class="benefit-icon-box">
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="20 6 9 17 4 12"></polyline>
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    <polyline points="9 12 11 14 15 10"></polyline>
                   </svg>
                 </div>
-                <div>
-                  <strong>Cloud Backup Verified</strong>
-                  <p>AES-256-GCM Ciphertext Blob</p>
-                </div>
-              </div>
-              <div class="sync-details-box">
-                <div class="sync-item"><span>Encryption:</span> <strong>AES-256-GCM</strong></div>
-                <div class="sync-item"><span>Payload:</span> <strong>Cookies, Storage, Tabs</strong></div>
-                <div class="sync-item"><span>Cloud Hash:</span> <code>e3b0c442...98fc</code></div>
-                <div class="sync-item"><span>Status:</span> <span class="badge-status-ready">Ready to Restore</span></div>
+                <h3>No bans or suspicious logins</h3>
+                <p>Websites detect each profile as a completely distinct physical machine with separate Canvas, WebGL, AudioContext, and User-Agent parameters.</p>
               </div>
             </div>
-          </div>
-        </div>
 
-        <!-- Split C: Organization -->
-        <div class="feature-split-layout">
-          <div class="split-info">
-            <span class="badge-emerald-subtle">Workflow Efficiency</span>
-            <h3>Stay Organized Across Hundreds of Profiles</h3>
-            <p>Manage large arrays of accounts without confusion. Group profiles into custom folders, assign color-coded tags, track warmup statuses, and keep internal notes.</p>
-            <ul class="feature-bullets">
-              <li>Tags for lifecycle stages: "Warming Up", "Active", "Verified", "Suspended"</li>
-              <li>Custom folders for clients, niches, and marketing campaigns</li>
-              <li>Bulk actions: export cookies, launch multiple profiles, or clone configurations</li>
-            </ul>
-          </div>
-          <div class="split-mockup">
-            <div class="ui-table-card">
-              <div class="ui-table-header">
-                <strong>Profile Manager</strong>
-                <span class="badge-status">15 of 100 Profiles</span>
+            <div class="benefit-shell">
+              <div class="benefit-core">
+                <div class="benefit-icon-box">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="2" y1="12" x2="22" y2="12"></line>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                  </svg>
+                </div>
+                <h3>Access from any location</h3>
+                <p>Assign individual HTTP, HTTPS, or SOCKS5 proxies to each profile. Auto-match timezones and geolocation coordinates to proxy IP locations.</p>
               </div>
-              <div class="ui-table-row">
-                <div class="profile-name-col">🛒 Amazon_Store_Alpha</div>
-                <div><span class="tag tag-ready">Ready</span></div>
-                <div class="folder-col">E-Commerce</div>
-                <div><button class="btn-table-launch">Launch</button></div>
-              </div>
-              <div class="ui-table-row">
-                <div class="profile-name-col">📱 TikTok_Influencer_04</div>
-                <div><span class="tag tag-warmup">Warming Up</span></div>
-                <div class="folder-col">Social Media</div>
-                <div><button class="btn-table-launch">Launch</button></div>
-              </div>
-              <div class="ui-table-row">
-                <div class="profile-name-col">💼 LinkedIn_LeadGen_02</div>
-                <div><span class="tag tag-active">Active</span></div>
-                <div class="folder-col">Outreach</div>
-                <div><button class="btn-table-launch">Launch</button></div>
+            </div>
+
+            <div class="benefit-shell">
+              <div class="benefit-core">
+                <div class="benefit-icon-box">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                  </svg>
+                </div>
+                <h3>Encrypted cloud sync</h3>
+                <p>Back up profiles safely using client-side AES-256-GCM encryption. Restore your profiles, cookies, and tabs seamlessly on any new Windows machine.</p>
               </div>
             </div>
           </div>
@@ -470,161 +285,531 @@
 
       </div>
     </section>
+  </div>
 
-    <!-- 7. HONEST SUPPORT SECTION -->
+  <main id="main-content">
+
+    <!-- ==========================================================================
+         4. DARK BIOMETRIC FINGERPRINT SECTION
+         ========================================================================== -->
+    <section class="fingerprint-section" id="features">
+      <div class="container">
+        <div class="fingerprint-grid-split">
+          <div class="fingerprint-info-side">
+            <span class="hero-badge-pill">Advanced Spoofing Engine</span>
+            <h2>MAHI creates a unique digital identity for each account</h2>
+            <p class="lead">
+              Anti-fraud tracking algorithms analyze over 50 hardware and browser parameters to identify your PC. MAHI injects subtle, natural mathematical noise into each profile's runtime environment.
+            </p>
+
+            <div class="selector-cards-stack">
+              <div class="selector-card active">
+                <h4><span>🛡️</span> Websites see each profile as a unique person</h4>
+                <p>Without MAHI, websites link all your accounts to the same hardware fingerprint. MAHI ensures independent Canvas 2D hashes, WebGL vendor strings, and AudioContext signatures.</p>
+              </div>
+
+              <div class="selector-card">
+                <h4><span>⚡</span> Pinned, SHA-256 verified Chromium engine</h4>
+                <p>Ships with pinned Chromium 138 for authentic browser engine behavior and zero fingerprint drift. No external Chrome or Edge dependencies required.</p>
+              </div>
+
+              <div class="selector-card">
+                <h4><span>🚀</span> Far lighter than virtual machines</h4>
+                <p>Virtual machines burn 2-4GB of RAM per instance. MAHI runs lightweight browser profiles with native speed and minimal memory overhead.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Real Biometric Fingerprint Visual -->
+          <div class="fingerprint-visual-frame">
+            <img src="assets/img/ui/ui_fingerprint_graphic.png" alt="Biometric Fingerprint Parameters" class="fingerprint-visual-img">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         5. ASYMMETRIC FEATURE SPLITS (With Real Product Screenshots)
+         ========================================================================== -->
+    <section class="feature-split-section">
+      <div class="container">
+
+        <!-- Split A: Proxies with Real UI Dropdown -->
+        <div class="split-layout-row">
+          <div class="split-text-block">
+            <span class="hero-badge-pill">Network Control</span>
+            <h3>Per-Profile Dedicated Proxies &amp; Geographic Matching</h3>
+            <p>
+              Route every browser profile through its own dedicated residential, mobile, or datacenter proxy. Full support for HTTP, HTTPS, and SOCKS5 authentication with credentials.
+            </p>
+            <ul class="feature-check-list">
+              <li>
+                <span class="check-bullet-icon">✓</span>
+                <span>Integrated real-time proxy latency tester before browser launch</span>
+              </li>
+              <li>
+                <span class="check-bullet-icon">✓</span>
+                <span>Automatic timezone and system locale alignment with proxy exit IP</span>
+              </li>
+              <li>
+                <span class="check-bullet-icon">✓</span>
+                <span>Full WebRTC IP leak prevention ensures your home IP remains invisible</span>
+              </li>
+            </ul>
+            <a href="/download/MAHI-Setup.exe" class="btn-primary-hero" download>Try this feature now</a>
+          </div>
+
+          <div class="window-app-mockup">
+            <div class="window-titlebar">
+              <div class="window-dots">
+                <span class="dot dot-close"></span>
+                <span class="dot dot-min"></span>
+                <span class="dot dot-max"></span>
+              </div>
+              <span class="window-caption">MAHI Proxy &amp; Geolocation Manager</span>
+            </div>
+            <div class="window-viewport">
+              <img src="assets/img/ui/ui_proxy_window.png" alt="MAHI Proxy Location Dropdown" width="700" height="520">
+            </div>
+          </div>
+        </div>
+
+        <!-- Split B: Cloud Sync (AES-256-GCM Zero-Knowledge) -->
+        <div class="split-layout-row reversed">
+          <div class="zero-knowledge-card">
+            <div class="zk-header">
+              <div class="zk-shield-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+              </div>
+              <div>
+                <strong style="color: #f8fafc; font-size: 1.1rem;">Zero-Knowledge Cloud Sync</strong>
+                <p style="font-size: 0.85rem; color: #94a3b8;">Client-Side AES-256-GCM Encryption</p>
+              </div>
+            </div>
+
+            <div class="zk-row">
+              <span style="color: #94a3b8;">Encryption Standard:</span>
+              <strong style="color: #34d399;">AES-256-GCM Authenticated</strong>
+            </div>
+            <div class="zk-row">
+              <span style="color: #94a3b8;">Key Derivation:</span>
+              <strong style="color: #f8fafc;">PBKDF2 (100,000 iterations)</strong>
+            </div>
+            <div class="zk-row">
+              <span style="color: #94a3b8;">Payload Preserved:</span>
+              <strong style="color: #f8fafc;">Cookies, Storage, Open Tabs</strong>
+            </div>
+            <div class="zk-row">
+              <span style="color: #94a3b8;">Storage Quota:</span>
+              <strong style="color: #34d399;">200MB per profile on PRO</strong>
+            </div>
+            <div class="zk-row">
+              <span style="color: #94a3b8;">Server Visibility:</span>
+              <strong style="color: #f87171;">0% (Ciphertext only, zero plaintext)</strong>
+            </div>
+          </div>
+
+          <div class="split-text-block">
+            <span class="hero-badge-pill">Zero-Knowledge Storage</span>
+            <h3>Sync Profiles Across Machines — Client-Side Encrypted</h3>
+            <p>
+              Moving to a new PC or setting up a secondary workstation? Back up your profiles to the cloud with client-side AES-256-GCM encryption. Even with direct server root access, nobody can read your cookies or account data.
+            </p>
+            <ul class="feature-check-list">
+              <li>
+                <span class="check-bullet-icon">✓</span>
+                <span>End-to-end encryption key derived solely from your local credentials</span>
+              </li>
+              <li>
+                <span class="check-bullet-icon">✓</span>
+                <span>Seamless one-click restore on any new Windows 10 or 11 workstation</span>
+              </li>
+              <li>
+                <span class="check-bullet-icon">✓</span>
+                <span>Protects session tokens, localStorage states, and active logins</span>
+              </li>
+            </ul>
+            <a href="/download/MAHI-Setup.exe" class="btn-primary-hero" download>Start Free Trial</a>
+          </div>
+        </div>
+
+        <!-- Split C: Organization with Real UI Folders -->
+        <div class="split-layout-row">
+          <div class="split-text-block">
+            <span class="hero-badge-pill">Workflow Efficiency</span>
+            <h3>Stay Organized Across Hundreds of Profiles</h3>
+            <p>
+              Manage large arrays of accounts without confusion. Group profiles into custom folders, assign color-coded tags, track warmup statuses, and keep internal notes.
+            </p>
+            <ul class="feature-check-list">
+              <li>
+                <span class="check-bullet-icon">✓</span>
+                <span>Tags for lifecycle stages: "Warming Up", "Ready", "$10000 Revenue", "Suspended"</span>
+              </li>
+              <li>
+                <span class="check-bullet-icon">✓</span>
+                <span>Custom folders for clients, niches, and affiliate marketing campaigns</span>
+              </li>
+              <li>
+                <span class="check-bullet-icon">✓</span>
+                <span>Bulk actions: export cookies, launch multiple profiles, or clone configurations</span>
+              </li>
+            </ul>
+            <a href="/download/MAHI-Setup.exe" class="btn-primary-hero" download>Explore Dashboard</a>
+          </div>
+
+          <div class="window-app-mockup">
+            <div class="window-titlebar">
+              <div class="window-dots">
+                <span class="dot dot-close"></span>
+                <span class="dot dot-min"></span>
+                <span class="dot dot-max"></span>
+              </div>
+              <span class="window-caption">MAHI Profile Organization &amp; Lifecycle Tags</span>
+            </div>
+            <div class="window-viewport">
+              <img src="assets/img/ui/ui_organization_window.png" alt="MAHI Profile Manager Folders and Statuses" width="700" height="590">
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         6. DIRECT DEVELOPER SUPPORT SECTION
+         ========================================================================== -->
     <section class="support-section">
       <div class="container">
-        <div class="section-title">
-          <h2>Direct support from the developer</h2>
-          <p>No canned bots or outsourced call centers. Get genuine assistance directly from the engineers who built MAHI Browser.</p>
-        </div>
+        <div class="support-split-grid">
+          <div style="text-align: left;">
+            <span class="hero-badge-pill">#1 Direct Support</span>
+            <h2 style="font-size: var(--fs-h2); font-weight: 800; color: #f8fafc; margin: 0.75rem 0 1.25rem;">
+              Direct support from the developer
+            </h2>
+            <p style="font-size: 1rem; color: #94a3b8; line-height: 1.65;">
+              No automated bots or outsourced call centers. Get genuine assistance directly from the engineers who built MAHI Browser. Fast activation, license assistance, and technical advice.
+            </p>
 
-        <div class="support-cards-grid">
-          <a href="https://wa.me/" class="support-card dynamic-whatsapp-link" target="_blank" rel="noopener">
-            <div class="support-icon whatsapp-bg">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-              </svg>
-            </div>
-            <h3>WhatsApp Direct</h3>
-            <p>Fast activation, license inquiries, and quick technical guidance.</p>
-            <span class="support-link-text dynamic-whatsapp-text">+91-9876543210</span>
-          </a>
+            <div class="support-cards-row">
+              <a href="https://wa.me/" class="support-channel-card dynamic-whatsapp-link" target="_blank" rel="noopener">
+                <h4>WhatsApp Direct</h4>
+                <p>Fast activation, license inquiries, and instant guidance.</p>
+                <span class="support-link-action dynamic-whatsapp-text">+91-9876543210 &rarr;</span>
+              </a>
 
-          <a href="mailto:support@mahibrowser.com" class="support-card dynamic-email-link">
-            <div class="support-icon email-bg">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                <polyline points="22,6 12,13 2,6"></polyline>
-              </svg>
+              <a href="mailto:support@mahibrowser.com" class="support-channel-card dynamic-email-link">
+                <h4>Email Assistance</h4>
+                <p>Detailed technical troubleshooting and bug reports.</p>
+                <span class="support-link-action dynamic-email-text">support@mahibrowser.com &rarr;</span>
+              </a>
             </div>
-            <h3>Email Assistance</h3>
-            <p>Detailed technical troubleshooting, bug reports, and invoices.</p>
-            <span class="support-link-text dynamic-email-text">support@mahibrowser.com</span>
-          </a>
+          </div>
+
+          <!-- Native Live Interactive Support Widget -->
+          <div class="support-chat-card">
+            <div class="support-chat-header">
+              <div class="dev-avatar-wrap">
+                <span>M</span>
+                <span class="dev-online-dot"></span>
+              </div>
+              <div class="dev-meta-info">
+                <h5>MAHI Developer Support</h5>
+                <span>● Online — Direct Engineer Response</span>
+              </div>
+            </div>
+
+            <div class="support-messages-stream">
+              <div class="chat-bubble user-bubble">
+                <p>Can I run 20 Facebook &amp; Amazon profiles with residential proxies on Windows 11?</p>
+                <span class="chat-bubble-time">10:42 AM</span>
+              </div>
+
+              <div class="chat-bubble dev-bubble">
+                <p>Yes! Every profile operates in a fully isolated container with unique Canvas, WebGL, and AudioContext fingerprints. No cross-leaks.</p>
+                <span class="chat-bubble-time">10:43 AM · Verified</span>
+              </div>
+            </div>
+
+            <div class="chat-quick-action">
+              <a href="https://wa.me/" class="btn-primary-hero dynamic-whatsapp-link" style="width: 100%; justify-content: center; padding: 0.65rem 1rem; font-size: 0.9rem;" target="_blank" rel="noopener">
+                <span>Message Developer on WhatsApp &rarr;</span>
+              </a>
+            </div>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- 8. PLATFORM GRID -->
+    <!-- ==========================================================================
+         7. PLATFORM GRID (16 Frosted Brand Tiles)
+         ========================================================================== -->
     <section class="platform-section">
       <div class="container">
-        <div class="section-title">
-          <h2>Works with every major platform</h2>
-          <p>Seamlessly bypass multi-accounting detection across e-commerce marketplaces, social networks, and advertising portals.</p>
+        <div class="section-head-center">
+          <span class="hero-badge-pill">Universal Compatibility</span>
+          <h2>Ideal for managing accounts across all services</h2>
+          <p>Seamlessly run multi-accounting campaigns on every major platform without cross-profile detection.</p>
         </div>
 
-        <div class="platform-grid">
-          <div class="platform-card"><span class="platform-icon">f</span> Facebook</div>
-          <div class="platform-card"><span class="platform-icon">a</span> Amazon</div>
-          <div class="platform-card"><span class="platform-icon">e</span> eBay</div>
-          <div class="platform-card"><span class="platform-icon">in</span> LinkedIn</div>
-          <div class="platform-card"><span class="platform-icon">r</span> Reddit</div>
-          <div class="platform-card"><span class="platform-icon">ig</span> Instagram</div>
-          <div class="platform-card"><span class="platform-icon">tt</span> TikTok</div>
-          <div class="platform-card"><span class="platform-icon">d</span> Discord</div>
-          <div class="platform-card"><span class="platform-icon">M</span> Gmail</div>
-          <div class="platform-card"><span class="platform-icon">G</span> Google Ads</div>
-          <div class="platform-card"><span class="platform-icon">E</span> Etsy</div>
-          <div class="platform-card"><span class="platform-icon">P</span> Pinterest</div>
-          <div class="platform-card"><span class="platform-icon">𝕏</span> X (Twitter)</div>
-          <div class="platform-card"><span class="platform-icon">⌂</span> Airbnb</div>
-          <div class="platform-card"><span class="platform-icon">▶</span> YouTube</div>
-          <div class="platform-card"><span class="platform-icon">♫</span> Spotify</div>
+        <div class="platform-tiles-grid">
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #1877f2;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">Facebook</div>
+              <div class="platform-tile-cat">Social &amp; Ads</div>
+            </div>
+          </div>
+
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #ff9900;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M13.923 15.65c-.27 0-.52-.07-.74-.2l-2.03-1.18c-.41-.24-.65-.68-.65-1.16V8.37c0-.75.61-1.37 1.37-1.37s1.37.61 1.37 1.37v3.96l1.41.82c.65.38.87 1.21.49 1.86-.27.46-.75.64-1.22.64zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm6.93 14.88c-.37.33-.87.4-1.28.19-2.2-1.15-4.46-1.57-7.65-1.57-3.19 0-5.45.42-7.65 1.57-.41.21-.91.14-1.28-.19-.44-.39-.47-1.07-.07-1.5 2.45-2.65 6.27-3.08 9-3.08s6.55.43 9 3.08c.4.43.37 1.11-.07 1.5z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">Amazon</div>
+              <div class="platform-tile-cat">E-Commerce</div>
+            </div>
+          </div>
+
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #e53238;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M7.74 13.91c-.24.58-.69.89-1.31.89-.98 0-1.56-.81-1.56-2.18 0-1.52.65-2.28 1.63-2.28.61 0 1.05.32 1.27.9l1.7-.85C8.89 9.17 7.82 8.5 6.47 8.5 4.09 8.5 2.6 10.15 2.6 12.63c0 2.38 1.48 4.07 3.84 4.07 1.42 0 2.53-.73 3.04-1.99l-1.74-.8zM14.65 13.7c0-1.42-.87-2.11-2.22-2.11-.79 0-1.44.35-1.78.96v-3.8H8.8v7.75h1.85v-.91c.33.61.98.96 1.78.96 1.35 0 2.22-.69 2.22-2.85zm-1.85.1c0 .85-.43 1.3-1.07 1.3-.64 0-1.07-.45-1.07-1.3 0-.85.43-1.3 1.07-1.3.64 0 1.07.45 1.07 1.3zM21.4 12.55h-4.32c.11.83.69 1.3 1.52 1.3.56 0 .98-.24 1.25-.65l1.45.83c-.56.88-1.52 1.42-2.7 1.42-1.95 0-3.32-1.42-3.32-3.52 0-2.06 1.37-3.52 3.28-3.52 1.95 0 3.12 1.42 3.12 3.42 0 .27-.04.53-.1.72h-.18zm-4.27-1.3h2.64c-.11-.74-.6-1.18-1.32-1.18-.72 0-1.21.44-1.32 1.18z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">eBay</div>
+              <div class="platform-tile-cat">Store Management</div>
+            </div>
+          </div>
+
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #0a66c2;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">LinkedIn</div>
+              <div class="platform-tile-cat">Outreach &amp; Leads</div>
+            </div>
+          </div>
+
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #ff0050;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.24 1.07-.14 1.61.24 1.64 1.82 2.89 3.46 2.84 1.25-.01 2.44-.75 2.97-1.9.3-1.13.28-2.33.28-3.49V.02z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">TikTok</div>
+              <div class="platform-tile-cat">Growth Marketing</div>
+            </div>
+          </div>
+
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #4285f4;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">Google Ads</div>
+              <div class="platform-tile-cat">PPC Campaigns</div>
+            </div>
+          </div>
+
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #ff4500;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12c0 3.314 1.343 6.314 3.515 8.485l-2.286 2.286A.75.75 0 0 0 1.76 24H12c6.627 0 12-5.373 12-12S18.627 0 12 0zm5.385 14.86c-.46.46-1.12.74-1.885.74-.766 0-1.425-.28-1.885-.74a.75.75 0 0 1 1.06-1.06c.184.184.453.3.825.3.372 0 .64-.116.825-.3a.75.75 0 0 1 1.06 1.06zm-7.77-1.86a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm6.77 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">Reddit</div>
+              <div class="platform-tile-cat">Karma &amp; Communities</div>
+            </div>
+          </div>
+
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #5865f2;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.893.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">Discord</div>
+              <div class="platform-tile-cat">Community Ops</div>
+            </div>
+          </div>
+
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #ea4335;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.272H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L12 9.49l8.073-5.997C21.69 2.279 24 3.434 24 5.457z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">Gmail</div>
+              <div class="platform-tile-cat">Email Automation</div>
+            </div>
+          </div>
+
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #f16521;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm-1.85 17.5c-3.18 0-4.65-2.02-4.65-5.5 0-3.63 1.76-5.5 4.74-5.5 2.57 0 4.14 1.48 4.29 3.86h-2.14c-.16-1.19-.88-1.88-2.15-1.88-1.74 0-2.48 1.44-2.48 3.52 0 2.19.78 3.52 2.45 3.52 1.25 0 2.01-.73 2.18-1.9h2.14c-.17 2.4-1.77 3.88-4.38 3.88z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">Etsy</div>
+              <div class="platform-tile-cat">Store Portfolios</div>
+            </div>
+          </div>
+
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #bd081c;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738.098.119.112.224.083.345-.09.375-.291 1.199-.334 1.38-.057.24-.19.291-.439.175-1.644-.766-2.67-3.169-2.67-5.1 0-4.153 3.018-7.967 8.702-7.967 4.568 0 8.12 3.255 8.12 7.607 0 4.539-2.861 8.192-6.832 8.192-1.334 0-2.588-.693-3.017-1.51l-.824 3.143c-.297 1.147-1.102 2.584-1.641 3.456C9.919 23.864 10.941 24 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">Pinterest</div>
+              <div class="platform-tile-cat">Visual Traffic</div>
+            </div>
+          </div>
+
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #0668e1;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.989C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">Meta Business</div>
+              <div class="platform-tile-cat">Ads Manager</div>
+            </div>
+          </div>
+
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #f8fafc;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">X (Twitter)</div>
+              <div class="platform-tile-cat">Brand Engagement</div>
+            </div>
+          </div>
+
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #ff5a5f;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm1.75 17.8c-.85 0-1.55-.65-1.75-1.45-.6 1-1.55 1.45-2.7 1.45-1.85 0-3.3-1.45-3.3-3.3 0-1.2.65-2.3 1.7-2.85l3.3-1.75c.65-.35 1-.95 1-1.7 0-1.05-.85-1.9-1.9-1.9-1 0-1.85.8-1.9 1.8h-1.8c.05-2 1.7-3.6 3.7-3.6 2.05 0 3.7 1.65 3.7 3.7 0 1.2-.6 2.3-1.65 2.85l-3.3 1.75c-.7.35-1.05.95-1.05 1.7 0 1.05.85 1.9 1.9 1.9 1 0 1.8-.75 1.9-1.75.1-.9.8-1.55 1.7-1.55.95 0 1.75.75 1.75 1.7 0 1.9-1.5 3.4-3.4 3.4z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">Airbnb</div>
+              <div class="platform-tile-cat">Host Profiles</div>
+            </div>
+          </div>
+
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #ff0000;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">YouTube</div>
+              <div class="platform-tile-cat">Channel Ops</div>
+            </div>
+          </div>
+
+          <div class="platform-tile">
+            <span class="platform-tile-icon" style="color: #10b981;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.93V19h-2v-2.07c-1.72-.39-3-1.86-3-3.68 0-.55.45-1 1-1s1 .45 1 1c0 1.1 1.05 2 2.33 2 1.28 0 2.33-.9 2.33-2 0-.96-.7-1.63-1.89-2.07l-1.07-.4c-1.92-.71-3.04-1.93-3.04-3.53 0-1.74 1.23-3.17 2.91-3.61V5h2v2.05c1.6.37 2.76 1.75 2.76 3.45 0 .55-.45 1-1 1s-1-.45-1-1c0-1-.87-1.8-2.09-1.8-1.22 0-2.09.8-2.09 1.8 0 .86.64 1.45 1.7 1.84l1.09.41c2.1.77 3.29 2.06 3.29 3.75 0 1.82-1.28 3.28-3.04 3.68z"/></svg>
+            </span>
+            <div>
+              <div class="platform-tile-name">CoinList / Crypto</div>
+              <div class="platform-tile-cat">Token Airdrops</div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- 9. 12-FEATURE BENTO GRID -->
+    <!-- ==========================================================================
+         8. 12-FEATURE DARK BENTO MATRIX
+         ========================================================================== -->
     <section class="bento-section">
       <div class="container">
-        <div class="section-title light-text">
-          <span class="badge-emerald">Built for Power Users</span>
+        <div class="section-head-center">
+          <span class="hero-badge-pill">Built for Power Users</span>
           <h2>That's just the tip of the iceberg</h2>
-          <p>Every feature in MAHI Browser is engineered natively for stability, privacy, and speed.</p>
+          <p>Every feature in MAHI Browser is engineered natively for stability, hardware isolation, and speed.</p>
         </div>
 
-        <div class="bento-grid">
+        <div class="bento-matrix-grid">
           <!-- Card 1 -->
-          <div class="bento-card">
-            <div class="bento-icon">⚡</div>
+          <div class="bento-cell">
+            <span class="bento-icon-tag">⚡</span>
             <h4>Up to 100 Profiles</h4>
             <p>Store 15 profiles free forever, or upgrade to PRO for 100 concurrent profiles with full hardware isolation.</p>
           </div>
 
           <!-- Card 2 -->
-          <div class="bento-card">
-            <div class="bento-icon">🔒</div>
+          <div class="bento-cell">
+            <span class="bento-icon-tag">🔒</span>
             <h4>AES-256-GCM Cloud Sync</h4>
             <p>Safely synchronize profiles across multiple Windows machines with client-side zero-knowledge encryption.</p>
           </div>
 
           <!-- Card 3 -->
-          <div class="bento-card">
-            <div class="bento-icon">🌐</div>
+          <div class="bento-cell">
+            <span class="bento-icon-tag">🌐</span>
             <h4>Per-Profile Proxies</h4>
             <p>Assign HTTP, HTTPS, or SOCKS5 proxies per profile with auto-timezone and geolocation coordination.</p>
           </div>
 
           <!-- Card 4 -->
-          <div class="bento-card">
-            <div class="bento-icon">🎭</div>
+          <div class="bento-cell">
+            <span class="bento-icon-tag">🎭</span>
             <h4>Hardware Spoofing</h4>
             <p>Spoof Canvas 2D, WebGL, AudioContext, System Fonts, and Screen Resolution with natural mathematical noise.</p>
           </div>
 
           <!-- Card 5 -->
-          <div class="bento-card">
-            <div class="bento-icon">🤖</div>
+          <div class="bento-cell">
+            <span class="bento-icon-tag">🤖</span>
             <h4>Automation API</h4>
             <p>Connect Puppeteer, Playwright, or Selenium via standard Chrome DevTools Protocol (CDP) debugging ports.</p>
           </div>
 
           <!-- Card 6 -->
-          <div class="bento-card">
-            <div class="bento-icon">🔌</div>
+          <div class="bento-cell">
+            <span class="bento-icon-tag">🔌</span>
             <h4>Local REST API (50789)</h4>
             <p>Control profiles, automate browser launches, and check status programmatically via local HTTP endpoints.</p>
           </div>
 
           <!-- Card 7 -->
-          <div class="bento-card">
-            <div class="bento-icon">🍪</div>
+          <div class="bento-cell">
+            <span class="bento-icon-tag">🍪</span>
             <h4>Cookie Import &amp; Export</h4>
             <p>Import and export sessions easily using industry-standard JSON and Netscape cookie formats.</p>
           </div>
 
           <!-- Card 8 -->
-          <div class="bento-card">
-            <div class="bento-icon">📦</div>
+          <div class="bento-cell">
+            <span class="bento-icon-tag">📦</span>
             <h4>Bulk Operations</h4>
             <p>Select multiple profiles to delete, clone, or assign tags and proxy configurations in a single click.</p>
           </div>
 
           <!-- Card 9 -->
-          <div class="bento-card">
-            <div class="bento-icon">📁</div>
+          <div class="bento-cell">
+            <span class="bento-icon-tag">📁</span>
             <h4>Folders, Tags &amp; Notes</h4>
             <p>Organize profiles into folders, color-coded status badges ("Ready", "Warmup"), and add private notes.</p>
           </div>
 
           <!-- Card 10 -->
-          <div class="bento-card">
-            <div class="bento-icon">📋</div>
+          <div class="bento-cell">
+            <span class="bento-icon-tag">📋</span>
             <h4>One-Click Profile Clone</h4>
             <p>Instantly duplicate any profile's fingerprint and configuration while regenerating unique hardware seeds.</p>
           </div>
 
           <!-- Card 11 -->
-          <div class="bento-card">
-            <div class="bento-icon">🛡️</div>
+          <div class="bento-cell">
+            <span class="bento-icon-tag">🛡️</span>
             <h4>Pinned Chromium 138</h4>
             <p>Includes SHA-256 verified Chromium 138 engine binaries. No system Chrome dependency or unexpected updates.</p>
           </div>
 
           <!-- Card 12 -->
-          <div class="bento-card">
-            <div class="bento-icon">💾</div>
+          <div class="bento-cell">
+            <span class="bento-icon-tag">💾</span>
             <h4>Local-First Architecture</h4>
             <p>Profiles and cache are stored 100% on your local machine. Operates flawlessly even without an internet connection.</p>
           </div>
@@ -632,51 +817,50 @@
       </div>
     </section>
 
-    <!-- 10. PRICING SECTION -->
+    <!-- ==========================================================================
+         9. PRICING SECTION
+         ========================================================================== -->
     <section class="pricing-section" id="pricing">
       <div class="container">
-        <div class="section-title">
+        <div class="section-head-center">
+          <span class="hero-badge-pill">Transparent Pricing</span>
           <h2>Simple, transparent pricing</h2>
           <p>Get started completely free. Upgrade to PRO whenever you are ready to scale your operations.</p>
         </div>
 
-        <div class="pricing-grid">
+        <div class="pricing-cards-container">
           <!-- Free Plan -->
-          <div class="pricing-card">
-            <div class="pricing-badge-plan">Starter</div>
-            <h3>Free Plan</h3>
-            <p class="pricing-desc">Perfect for testing, personal anonymity, and managing up to 15 accounts.</p>
-            <div class="pricing-price">
-              <span class="price-num">₹0</span>
-              <span class="price-period">/ forever</span>
+          <div class="pricing-tier-card">
+            <div class="tier-name">Free Plan</div>
+            <p class="tier-desc">Perfect for testing, personal anonymity, and managing up to 15 accounts.</p>
+            <div class="tier-price-row">
+              <span class="tier-price-val">₹0</span>
+              <span class="tier-price-period">/ forever</span>
             </div>
-            <ul class="pricing-features">
+            <div style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 1.5rem;">No credit card required</div>
+            <ul class="tier-features-list">
               <li>✓ <strong>15 Browser Profiles</strong> forever</li>
               <li>✓ Full fingerprint spoofing engine</li>
               <li>✓ Per-profile proxies (HTTP/SOCKS5)</li>
               <li>✓ Local REST API &amp; CDP automation</li>
               <li>✓ Cookie import &amp; export (JSON)</li>
               <li>✓ 100% Local-first data storage</li>
-              <li>✗ Cloud profile backup &amp; sync</li>
+              <li class="dimmed">✗ Cloud profile backup &amp; sync</li>
             </ul>
-            <a href="/download/MAHI-Setup.exe" class="btn btn-secondary btn-block" download>
-              Download Free Version
-            </a>
+            <a href="/download/MAHI-Setup.exe" class="btn-tier-cta btn-free" download>Download Free Version</a>
           </div>
 
           <!-- PRO Plan -->
-          <div class="pricing-card highlighted">
-            <div class="popular-ribbon">Most Popular</div>
-            <div class="pricing-badge-plan">Professional</div>
-            <h3>PRO Plan</h3>
-            <p class="pricing-desc">Designed for e-commerce sellers, marketing agencies, and professional operators.</p>
-            <div class="pricing-price">
-              <span class="price-num dynamic-price-inr">₹599</span>
-              <span class="price-currency-alt">(or <span class="dynamic-price-usd">$7</span> USDT)</span>
-              <span class="price-period">/ year</span>
+          <div class="pricing-tier-card pro-highlight">
+            <div class="popular-ribbon-tag">Most Popular</div>
+            <div class="tier-name">PRO Plan</div>
+            <p class="tier-desc">Designed for e-commerce sellers, marketing agencies, and professional operators.</p>
+            <div class="tier-price-row">
+              <span class="tier-price-val dynamic-price-inr">₹599</span>
+              <span class="tier-price-period">(or <span class="dynamic-price-usd">$7</span> USDT) / year</span>
             </div>
-            <div class="trial-note">Includes 7-day free trial on signup</div>
-            <ul class="pricing-features">
+            <div class="trial-highlight-note">⚡ Includes 7-day free trial on signup</div>
+            <ul class="tier-features-list">
               <li>✓ <strong>100 Browser Profiles</strong></li>
               <li>✓ <strong>AES-256-GCM Encrypted Cloud Sync</strong></li>
               <li>✓ 200MB cloud storage quota per profile</li>
@@ -685,10 +869,8 @@
               <li>✓ Automation API (Puppeteer, Playwright)</li>
               <li>✓ Priority developer support via WhatsApp</li>
             </ul>
-            <a href="https://wa.me/" class="btn btn-primary btn-block dynamic-whatsapp-link" target="_blank" rel="noopener">
-              Get PRO via WhatsApp
-            </a>
-            <p class="payment-disclaimer">
+            <a href="https://wa.me/" class="btn-tier-cta btn-pro dynamic-whatsapp-link" target="_blank" rel="noopener">Get PRO via WhatsApp</a>
+            <p style="font-size: 0.78rem; color: #94a3b8; margin-top: 1rem; line-height: 1.4;">
               Pay via UPI or USDT TRC20 — instant manual activation within minutes on WhatsApp.
             </p>
           </div>
@@ -696,156 +878,145 @@
       </div>
     </section>
 
-    <!-- 11. CTA BANNER -->
-    <section class="cta-banner-section">
+    <!-- ==========================================================================
+         10. CTA BANNER (Radiant Emerald with 3D Floating Cards)
+         ========================================================================== -->
+    <section class="cta-banner-wrapper">
       <div class="container">
-        <div class="cta-banner-content">
-          <div class="cta-text">
-            <h2>Ready to run all your accounts from one device?</h2>
+        <div class="cta-banner-grid">
+          <div class="cta-banner-text">
+            <h2>Ready to run accounts from one device?</h2>
             <p>Download MAHI Browser today. 15 profiles free forever, no credit card required.</p>
-            <div class="cta-btn-row">
-              <a href="/download/MAHI-Setup.exe" class="btn btn-white btn-lg" download>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="7 10 12 15 17 10"></polyline>
-                  <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
-                <span>Download Free — 15 Profiles</span>
+            <div class="cta-banner-actions">
+              <a href="/download/MAHI-Setup.exe" class="btn-white-pill" download>
+                Start Free — 15 Profiles
               </a>
-              <a href="https://wa.me/" class="btn btn-outline-white btn-lg dynamic-whatsapp-link" target="_blank" rel="noopener">
+              <a href="https://wa.me/" class="btn-outline-pill dynamic-whatsapp-link" target="_blank" rel="noopener">
                 Talk on WhatsApp
               </a>
             </div>
           </div>
 
-          <!-- 3D Angled Profile Cards Mockup -->
-          <div class="cta-floating-cards" aria-hidden="true">
-            <div class="floating-profile-card card-1">
-              <span class="badge-dot-green">●</span>
-              <strong>Amazon_Seller_US</strong>
-              <small>104.28.19.42</small>
-            </div>
-            <div class="floating-profile-card card-2">
-              <span class="badge-dot-green">●</span>
-              <strong>Facebook_Agency_EU</strong>
-              <small>185.199.108.153</small>
-            </div>
-            <div class="floating-profile-card card-3">
-              <span class="badge-dot-green">●</span>
-              <strong>Google_Workspace_HQ</strong>
-              <small>142.250.180.206</small>
-            </div>
+          <!-- 3D Angled Floating Profile Cards Visual -->
+          <div class="cta-cards-visual-side" aria-hidden="true">
+            <img src="assets/img/ui/ui_cta_cards.png" alt="" class="cta-cards-img">
           </div>
         </div>
       </div>
     </section>
 
-    <!-- 12. TESTIMONIALS (Hidden by default; renders masonry dynamically if content.json has testimonials) -->
+    <!-- ==========================================================================
+         11. TESTIMONIALS (Masonry — Hidden until populated)
+         ========================================================================== -->
     <section class="testimonials-section" id="testimonials-section">
       <div class="container">
-        <div class="testimonials-header">
+        <div class="section-head-center">
+          <span class="hero-badge-pill">Verified Feedback</span>
           <h2>User Reviews</h2>
           <p>Real feedback from beta testers and active multi-accounting operators.</p>
         </div>
-        <div class="testimonials-masonry" id="testimonials-container">
+        <div class="testimonials-masonry-grid" id="testimonials-container">
           <!-- Populated dynamically by main.js only when content.json has verified reviews -->
         </div>
       </div>
     </section>
 
-    <!-- 13. FAQ ACCORDION -->
+    <!-- ==========================================================================
+         12. FAQ ACCORDION (Clean Horizontal Rows)
+         ========================================================================== -->
     <section class="faq-section" id="faq">
       <div class="container">
-        <div class="faq-header">
+        <div class="section-head-center">
+          <span class="hero-badge-pill">Got Questions?</span>
           <h2>Frequently Asked Questions</h2>
           <p>Clear, honest answers about MAHI Browser, its architecture, and pricing.</p>
         </div>
 
-        <div class="faq-accordion">
-          <!-- Item 1 -->
-          <div class="faq-item">
-            <button class="faq-question" aria-expanded="false">
+        <div class="faq-rows-container">
+          <!-- Question 1 -->
+          <div class="faq-row-item">
+            <button class="faq-trigger-btn" aria-expanded="false">
               <span>What is MAHI Browser?</span>
-              <span class="faq-icon-toggle">▼</span>
+              <span class="faq-icon-arrow">▼</span>
             </button>
-            <div class="faq-answer">
+            <div class="faq-content-body">
               <p>MAHI Browser is an antidetect browser designed for managing multiple online accounts on a single PC. It replaces virtual machines by providing isolated browser containers, each with its own independent Canvas, WebGL, AudioContext, proxy, cookies, and hardware fingerprint.</p>
             </div>
           </div>
 
-          <!-- Item 2 -->
-          <div class="faq-item">
-            <button class="faq-question" aria-expanded="false">
+          <!-- Question 2 -->
+          <div class="faq-row-item">
+            <button class="faq-trigger-btn" aria-expanded="false">
               <span>Is it really free?</span>
-              <span class="faq-icon-toggle">▼</span>
+              <span class="faq-icon-arrow">▼</span>
             </button>
-            <div class="faq-answer">
+            <div class="faq-content-body">
               <p>Yes. The Free plan includes 15 browser profiles with unlimited usage, all core fingerprint spoofing features, proxy support, and local storage forever. The PRO plan upgrades your capacity to 100 profiles and unlocks AES-256-GCM encrypted cloud sync with priority support.</p>
             </div>
           </div>
 
-          <!-- Item 3 -->
-          <div class="faq-item">
-            <button class="faq-question" aria-expanded="false">
+          <!-- Question 3 -->
+          <div class="faq-row-item">
+            <button class="faq-trigger-btn" aria-expanded="false">
               <span>How is it different from a normal browser or virtual machines?</span>
-              <span class="faq-icon-toggle">▼</span>
+              <span class="faq-icon-arrow">▼</span>
             </button>
-            <div class="faq-answer">
+            <div class="faq-content-body">
               <p>Normal browsers share your hardware identity (GPU, audio hash, screen metrics) across all open windows and incognito tabs, allowing websites to easily link your accounts. Virtual machines isolate hardware but consume 2–4 GB of RAM each. MAHI Browser runs on a lightweight Chromium engine that spoofs hardware parameters per profile with minimal RAM overhead.</p>
             </div>
           </div>
 
-          <!-- Item 4 -->
-          <div class="faq-item">
-            <button class="faq-question" aria-expanded="false">
+          <!-- Question 4 -->
+          <div class="faq-row-item">
+            <button class="faq-trigger-btn" aria-expanded="false">
               <span>How do payments work?</span>
-              <span class="faq-icon-toggle">▼</span>
+              <span class="faq-icon-arrow">▼</span>
             </button>
-            <div class="faq-answer">
+            <div class="faq-content-body">
               <p>We accept payments via UPI (Google Pay, PhonePe, Paytm) and USDT (TRC20). Simply contact us on WhatsApp using the button on the site. Activation is processed manually within minutes. Each subscription covers 1 active device at a time, and you can switch devices whenever needed.</p>
             </div>
           </div>
 
-          <!-- Item 5 -->
-          <div class="faq-item">
-            <button class="faq-question" aria-expanded="false">
+          <!-- Question 5 -->
+          <div class="faq-row-item">
+            <button class="faq-trigger-btn" aria-expanded="false">
               <span>Is my data safe?</span>
-              <span class="faq-icon-toggle">▼</span>
+              <span class="faq-icon-arrow">▼</span>
             </button>
-            <div class="faq-answer">
+            <div class="faq-content-body">
               <p>Your profiles, browsing data, and cookies are stored 100% locally on your machine. When you use cloud sync on PRO, profile archives are encrypted on your PC using AES-256-GCM before upload. The server only stores ciphertext blobs — neither our team nor anyone else can read your data.</p>
             </div>
           </div>
 
-          <!-- Item 6 -->
-          <div class="faq-item">
-            <button class="faq-question" aria-expanded="false">
+          <!-- Question 6 -->
+          <div class="faq-row-item">
+            <button class="faq-trigger-btn" aria-expanded="false">
               <span>Why does Windows show a SmartScreen warning during installation?</span>
-              <span class="faq-icon-toggle">▼</span>
+              <span class="faq-icon-arrow">▼</span>
             </button>
-            <div class="faq-answer">
+            <div class="faq-content-body">
               <p>Because MAHI Browser is a newly released application and currently uses an unsigned installer. Windows SmartScreen displays a warning on newly released software until it builds reputation. To install: click <strong>"More info"</strong> and then click <strong>"Run anyway"</strong>. Commercial EV code signing is planned for future releases.</p>
             </div>
           </div>
 
-          <!-- Item 7 -->
-          <div class="faq-item">
-            <button class="faq-question" aria-expanded="false">
+          <!-- Question 7 -->
+          <div class="faq-row-item">
+            <button class="faq-trigger-btn" aria-expanded="false">
               <span>Why won't Netflix or Prime Video play in MAHI Browser?</span>
-              <span class="faq-icon-toggle">▼</span>
+              <span class="faq-icon-arrow">▼</span>
             </button>
-            <div class="faq-answer">
+            <div class="faq-content-body">
               <p>MAHI Browser is built on Chromium for Testing to provide deep fingerprint customization. Google does not distribute proprietary Widevine DRM components with Chromium for Testing builds. MAHI is purpose-built for multi-accounting, marketing, and scraping — not for DRM-protected streaming services.</p>
             </div>
           </div>
 
-          <!-- Item 8 -->
-          <div class="faq-item">
-            <button class="faq-question" aria-expanded="false">
+          <!-- Question 8 -->
+          <div class="faq-row-item">
+            <button class="faq-trigger-btn" aria-expanded="false">
               <span>Which operating systems are supported?</span>
-              <span class="faq-icon-toggle">▼</span>
+              <span class="faq-icon-arrow">▼</span>
             </button>
-            <div class="faq-answer">
+            <div class="faq-content-body">
               <p>MAHI Browser currently supports <strong>Windows 10 and Windows 11 (64-bit)</strong>. Native versions for macOS (Apple Silicon &amp; Intel) and Linux are under active development and will be released in future updates.</p>
             </div>
           </div>
@@ -855,23 +1026,26 @@
 
   </main>
 
-  <!-- 14. FOOTER -->
-  <footer class="footer-wrapper">
+  <!-- ==========================================================================
+       13. FOOTER & OS DOWNLOAD STRIP
+       ========================================================================== -->
+  <footer class="footer-wrap-outer">
     <div class="container">
-      <div class="footer-top">
-        <div class="footer-brand">
+      <div class="footer-nav-grid">
+        <div class="footer-brand-bio">
           <div class="brand-logo" style="color: #f8fafc;">
-            <img src="assets/img/logo.png" alt="MAHI Browser" width="32" height="32">
+            <img src="assets/img/logo.png" alt="MAHI Browser" width="30" height="30">
             <span>MAHI BROWSER</span>
+            <span class="brand-dot"></span>
           </div>
           <p>
             The antidetect browser built for e-commerce sellers, marketing teams, and privacy specialists. Isolated profiles, unique fingerprints, and encrypted cloud sync.
           </p>
         </div>
 
-        <div class="footer-col">
+        <div class="footer-column-box">
           <h5>Product</h5>
-          <ul class="footer-links">
+          <ul class="footer-links-stack">
             <li><a href="#features">All Features</a></li>
             <li><a href="#pricing">Pricing</a></li>
             <li><a href="/download/MAHI-Setup.exe" download>Download for Windows</a></li>
@@ -879,9 +1053,9 @@
           </ul>
         </div>
 
-        <div class="footer-col">
+        <div class="footer-column-box">
           <h5>Resources &amp; Support</h5>
-          <ul class="footer-links">
+          <ul class="footer-links-stack">
             <li><a href="https://wa.me/" class="dynamic-whatsapp-link" target="_blank" rel="noopener">WhatsApp Support</a></li>
             <li><a href="mailto:support@mahibrowser.com" class="dynamic-email-link">Email Support</a></li>
             <li><a href="#features">Fingerprint Engine</a></li>
@@ -889,9 +1063,9 @@
           </ul>
         </div>
 
-        <div class="footer-col">
+        <div class="footer-column-box">
           <h5>Legal</h5>
-          <ul class="footer-links">
+          <ul class="footer-links-stack">
             <li><a href="privacy.html">Privacy Policy</a></li>
             <li><a href="terms.html">Terms of Service</a></li>
             <li><a href="privacy.html#data-security">Security &amp; Encryption</a></li>
@@ -900,42 +1074,42 @@
       </div>
 
       <!-- Footer OS Download Strip -->
-      <div class="footer-download-strip">
-        <span class="footer-download-label">Download MAHI for:</span>
-        <div class="footer-os-buttons">
-          <a href="/download/MAHI-Setup.exe" class="footer-os-btn" download>
+      <div class="footer-download-bar">
+        <span style="font-weight: 700; color: #f8fafc; font-size: 0.95rem;">Download MAHI for:</span>
+        <div class="footer-os-btn-group">
+          <a href="/download/MAHI-Setup.exe" class="footer-os-pill" download>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.551H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-13.051-1.802"/>
             </svg>
             <span>Windows (64-bit)</span>
           </a>
-          <span class="footer-os-btn disabled">
+          <span class="footer-os-pill disabled">
             <span>Mac (Apple Silicon)</span>
-            <span class="os-tag">Coming Soon</span>
+            <span class="os-coming-badge">Coming Soon</span>
           </span>
-          <span class="footer-os-btn disabled">
+          <span class="footer-os-pill disabled">
             <span>Mac (Intel)</span>
-            <span class="os-tag">Coming Soon</span>
+            <span class="os-coming-badge">Coming Soon</span>
           </span>
-          <span class="footer-os-btn disabled">
+          <span class="footer-os-pill disabled">
             <span>Linux (x86_64)</span>
-            <span class="os-tag">Coming Soon</span>
+            <span class="os-coming-badge">Coming Soon</span>
           </span>
         </div>
       </div>
 
-      <div class="footer-bottom">
+      <div class="footer-legal-bottom">
         <div>&copy; 2026 MAHI Browser. All Rights Reserved.</div>
         <div style="display: flex; gap: 1.5rem;">
-          <a href="privacy.html">Privacy</a>
+          <a href="privacy.html">Privacy Policy</a>
           <a href="terms.html">Terms of Service</a>
         </div>
       </div>
     </div>
   </footer>
 
-  <!-- Floating WhatsApp Widget -->
-  <a href="https://wa.me/" class="floating-whatsapp dynamic-whatsapp-link" target="_blank" rel="noopener" aria-label="Chat with MAHI support on WhatsApp">
+  <!-- Floating WhatsApp Widget Bubble -->
+  <a href="https://wa.me/" class="floating-whatsapp-bubble dynamic-whatsapp-link" target="_blank" rel="noopener" aria-label="Chat with MAHI support on WhatsApp">
     <svg viewBox="0 0 24 24" fill="currentColor" width="28" height="28">
       <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.04 14.69 2 12.04 2M12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.59 20.15 12.04 20.15C10.56 20.15 9.11 19.76 7.85 19L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 14.99 3.8 13.47 3.8 11.91C3.81 7.37 7.5 3.67 12.05 3.67M9.04 7.42C8.86 7.42 8.57 7.49 8.32 7.76C8.07 8.03 7.37 8.68 7.37 10.03C7.37 11.38 8.35 12.69 8.49 12.87C8.63 13.06 10.42 15.82 13.16 17C15.9 18.18 15.9 17.78 16.39 17.74C16.88 17.7 17.97 17.1 18.2 16.45C18.43 15.8 18.43 15.24 18.36 15.13C18.29 15.02 18.1 14.96 17.82 14.82C17.54 14.68 16.19 14.02 15.94 13.93C15.69 13.84 15.5 13.79 15.32 14.07C15.13 14.35 14.61 14.96 14.45 15.15C14.29 15.33 14.13 15.36 13.85 15.22C13.57 15.08 12.67 14.78 11.61 13.83C10.78 13.09 10.22 12.18 10.06 11.9C9.9 11.62 10.04 11.47 10.18 11.33C10.31 11.2 10.47 10.99 10.61 10.83C10.75 10.67 10.8 10.55 10.89 10.37C10.98 10.19 10.94 10.03 10.87 9.89C10.8 9.75 10.25 8.39 10.02 7.83C9.79 7.29 9.56 7.37 9.39 7.36C9.23 7.35 9.04 7.42 9.04 7.42Z"/>
     </svg>
