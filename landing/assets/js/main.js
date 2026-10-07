@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initRotatingHeroWord();
   initPlatformShowcase();
   initInteractiveSelectors();
+  initFeatureTryButtons();
   initFaqAccordion();
   initMouseSpotlights();
   initAuthModal();
@@ -175,6 +176,17 @@ function initLanguageSwitcher() {
       fp_node_cookies: 'Cookies',
       fp_node_timezone: 'Timezone',
       fp_node_ua: 'User Agent',
+      sol_eyebrow: 'Antidetect & proxy in one solution:',
+      sol_title: 'MAHI — like a regular <img src="assets/img/ui/chrome-logo.svg" alt="Chrome" class="chrome-heading-logo" width="40" height="40"> browser with tools for multiple accounts',
+      elem1_title: 'Create unique profile and choose location',
+      elem1_desc: 'Use built-in MAHI proxies to set account location. Or add your own proxy in 1-click',
+      elem1_btn: 'Try this feature now',
+      elem2_title: 'Share account access with your team',
+      elem2_desc: 'Let a team member continue your account session on a different device, anywhere in the world',
+      elem2_btn: 'Try this feature now',
+      elem3_title: 'Organize accounts with folders, statuses and notes',
+      elem3_desc: 'Manage all your accounts from one dashboard, for better control, clarity and speed',
+      elem3_btn: 'Try this feature now',
     },
     'Français': {
       nav_use_cases: 'Cas d\'usage',
@@ -216,6 +228,17 @@ function initLanguageSwitcher() {
       fp_node_cookies: 'Cookies',
       fp_node_timezone: 'Fuseau horaire',
       fp_node_ua: 'User Agent',
+      sol_eyebrow: 'Antidétection et proxy en une seule solution :',
+      sol_title: 'MAHI — comme un navigateur <img src="assets/img/ui/chrome-logo.svg" alt="Chrome" class="chrome-heading-logo" width="40" height="40"> ordinaire avec des outils pour multicomptes',
+      elem1_title: 'Créez un profil unique et choisissez votre localisation',
+      elem1_desc: 'Utilisez les proxys intégrés de MAHI pour définir l\'emplacement. Ou ajoutez votre propre proxy en 1 clic.',
+      elem1_btn: 'Essayer cette fonctionnalité',
+      elem2_title: 'Partagez l\'accès aux comptes avec votre équipe',
+      elem2_desc: 'Permettez à vos collaborateurs de poursuivre une session sur un autre appareil, partout dans le monde.',
+      elem2_btn: 'Essayer cette fonctionnalité',
+      elem3_title: 'Organisez vos comptes avec dossiers, statuts et notes',
+      elem3_desc: 'Gérez tous vos comptes depuis un tableau de bord unique pour un contrôle, une clarté et une rapidité accrus.',
+      elem3_btn: 'Essayer cette fonctionnalité',
     },
     'Русский': {
       nav_use_cases: 'Сценарии',
@@ -257,6 +280,17 @@ function initLanguageSwitcher() {
       fp_node_cookies: 'Куки',
       fp_node_timezone: 'Часовой пояс',
       fp_node_ua: 'User Agent',
+      sol_eyebrow: 'Антидетект и прокси в одном решении:',
+      sol_title: 'MAHI — как обычный браузер <img src="assets/img/ui/chrome-logo.svg" alt="Chrome" class="chrome-heading-logo" width="40" height="40"> с инструментами для мультиаккаунтинга',
+      elem1_title: 'Создайте уникальный профиль и выберите локацию',
+      elem1_desc: 'Используйте встроенные прокси MAHI для смены геолокации или добавьте свои в 1 клик.',
+      elem1_btn: 'Попробовать эту функцию',
+      elem2_title: 'Делитесь доступом к аккаунтам со своей командой',
+      elem2_desc: 'Позвольте члену команды продолжить вашу сессию на другом компьютере в любой точке мира.',
+      elem2_btn: 'Попробовать эту функцию',
+      elem3_title: 'Организуйте аккаунты с помощью папок, статусов и заметок',
+      elem3_desc: 'Управляйте всеми профилями с единого дашборда для лучшего контроля, порядка и скорости.',
+      elem3_btn: 'Попробовать эту функцию',
     },
     'Español': {
       nav_use_cases: 'Casos de uso',
@@ -298,6 +332,17 @@ function initLanguageSwitcher() {
       fp_node_cookies: 'Cookies',
       fp_node_timezone: 'Zona horaria',
       fp_node_ua: 'User Agent',
+      sol_eyebrow: 'Antidetect y proxy en una sola solución:',
+      sol_title: 'MAHI — como un navegador <img src="assets/img/ui/chrome-logo.svg" alt="Chrome" class="chrome-heading-logo" width="40" height="40"> común con herramientas para múltiples cuentas',
+      elem1_title: 'Cree un perfil único y elija su ubicación',
+      elem1_desc: 'Use los proxies integrados de MAHI para fijar la ubicación, o agregue su propio proxy en 1 clic.',
+      elem1_btn: 'Probar esta función ahora',
+      elem2_title: 'Comparta el acceso a cuentas con su equipo',
+      elem2_desc: 'Permita que un miembro del equipo continúe la sesión en otro dispositivo en cualquier parte del mundo.',
+      elem2_btn: 'Probar esta función ahora',
+      elem3_title: 'Organice cuentas con carpetas, estados y notas',
+      elem3_desc: 'Administre todas sus cuentas desde un panel centralizado para mayor control, claridad y rapidez.',
+      elem3_btn: 'Probar esta función ahora',
     },
     '中文': {
       nav_use_cases: '应用场景',
@@ -339,6 +384,17 @@ function initLanguageSwitcher() {
       fp_node_cookies: 'Cookie 隔离',
       fp_node_timezone: '系统时区',
       fp_node_ua: '用户代理 (UA)',
+      sol_eyebrow: '防关联与代理一站式解决方案：',
+      sol_title: 'MAHI — 宛如集成多账号运营工具的常规 <img src="assets/img/ui/chrome-logo.svg" alt="Chrome" class="chrome-heading-logo" width="40" height="40"> 浏览器',
+      elem1_title: '秒创独立环境并自由指定地理位置',
+      elem1_desc: '直接使用 MAHI 内置优质代理设定环境定位，或一键绑定您自备的任意代理IP。',
+      elem1_btn: '立即体验此功能',
+      elem2_title: '与团队成员安全共享多平台账号',
+      elem2_desc: '让团队成员在全球任何设备上无缝接续当前账号会话，免去重复输密与风控风险。',
+      elem2_btn: '立即体验此功能',
+      elem3_title: '通过文件夹、生命周期状态和备注高效管理',
+      elem3_desc: '在统一的管理后台中掌控所有资产，提高运营清晰度、执行控制力与工作效率。',
+      elem3_btn: '立即体验此功能',
     },
     'Deutsch': {
       nav_use_cases: 'Anwendungsfälle',
@@ -380,6 +436,17 @@ function initLanguageSwitcher() {
       fp_node_cookies: 'Cookies',
       fp_node_timezone: 'Zeitzone',
       fp_node_ua: 'User Agent',
+      sol_eyebrow: 'Antidetect & Proxy in einer Gesamtlösung:',
+      sol_title: 'MAHI — wie ein normaler <img src="assets/img/ui/chrome-logo.svg" alt="Chrome" class="chrome-heading-logo" width="40" height="40"> Browser mit Tools für mehrere Konten',
+      elem1_title: 'Einzigartiges Profil erstellen und Standort wählen',
+      elem1_desc: 'Nutzen Sie integrierte MAHI-Proxys für den Standort oder fügen Sie eigene Proxys mit 1 Klick hinzu.',
+      elem1_btn: 'Jetzt Funktion testen',
+      elem2_title: 'Kontozugriff im Team teilen',
+      elem2_desc: 'Lassen Sie Teammitglieder Ihre Kontositzung auf einem anderen Gerät weltweit nahtlos fortsetzen.',
+      elem2_btn: 'Jetzt Funktion testen',
+      elem3_title: 'Konten mit Ordnern, Status und Notizen organisieren',
+      elem3_desc: 'Verwalten Sie alle Konten über ein Dashboard für mehr Kontrolle, Übersicht und Geschwindigkeit.',
+      elem3_btn: 'Jetzt Funktion testen',
     },
     'Portuguese': {
       nav_use_cases: 'Casos de uso',
@@ -421,6 +488,17 @@ function initLanguageSwitcher() {
       fp_node_cookies: 'Cookies',
       fp_node_timezone: 'Fuso horário',
       fp_node_ua: 'User Agent',
+      sol_eyebrow: 'Antidetect e proxy em uma única solução:',
+      sol_title: 'MAHI — como um navegador <img src="assets/img/ui/chrome-logo.svg" alt="Chrome" class="chrome-heading-logo" width="40" height="40"> comum com ferramentas para várias contas',
+      elem1_title: 'Crie um perfil único e escolha a localização',
+      elem1_desc: 'Use os proxies integrados do MAHI para definir a localização ou adicione seu próprio proxy em 1 clique.',
+      elem1_btn: 'Testar este recurso agora',
+      elem2_title: 'Compartilhe acesso com sua equipe',
+      elem2_desc: 'Permita que um colega continue sua sessão em outro computador, em qualquer lugar do mundo.',
+      elem2_btn: 'Testar este recurso agora',
+      elem3_title: 'Organize contas com pastas, status e notas',
+      elem3_desc: 'Gerencie todas as suas contas em um painel unificado com maior controle, clareza e agilidade.',
+      elem3_btn: 'Testar este recurso agora',
     },
     '日本': {
       nav_use_cases: '利用シーン',
@@ -462,6 +540,17 @@ function initLanguageSwitcher() {
       fp_node_cookies: 'Cookie分離',
       fp_node_timezone: 'タイムゾーン',
       fp_node_ua: 'ユーザーエージェント',
+      sol_eyebrow: 'アンチディテクトとプロキシを一体化した統合ソリューション：',
+      sol_title: 'MAHI — 通常の <img src="assets/img/ui/chrome-logo.svg" alt="Chrome" class="chrome-heading-logo" width="40" height="40"> ブラウザと同じ感覚で扱えるマルチアカウント管理基盤',
+      elem1_title: '独自プロファイルの作成とロケーション設定',
+      elem1_desc: 'MAHI内蔵プロキシで位置情報を即座に設定。独自のプロキシも1クリックで紐付け可能。',
+      elem1_btn: 'この機能を今すぐ試す',
+      elem2_title: 'チームメンバーとアカウントセッションを安全共有',
+      elem2_desc: '世界中のどこからでも別のPC端末で安全にアカウントセッションを引き継ぎ可能。',
+      elem2_btn: 'この機能を今すぐ試す',
+      elem3_title: 'フォルダ、ステータス、メモ機能で整然と整理',
+      elem3_desc: '単一のダッシュボードですべてのアカウントを一元管理し、統制・透明性・スピードを向上。',
+      elem3_btn: 'この機能を今すぐ試す',
     },
     'Tiếng Việt': {
       nav_use_cases: 'Ứng dụng',
@@ -503,6 +592,17 @@ function initLanguageSwitcher() {
       fp_node_cookies: 'Cookies',
       fp_node_timezone: 'Múi giờ',
       fp_node_ua: 'User Agent',
+      sol_eyebrow: 'Giải pháp antidetect & proxy tất cả trong một:',
+      sol_title: 'MAHI — như trình duyệt <img src="assets/img/ui/chrome-logo.svg" alt="Chrome" class="chrome-heading-logo" width="40" height="40"> thông thường tích hợp công cụ đa tài khoản',
+      elem1_title: 'Tạo hồ sơ độc lập và chọn vị trí địa lý',
+      elem1_desc: 'Sử dụng proxy tích hợp sẵn của MAHI để đổi vị trí, hoặc thêm proxy riêng chỉ với 1 cú nhấp chuột.',
+      elem1_btn: 'Dùng thử tính năng này ngay',
+      elem2_title: 'Chia sẻ quyền truy cập tài khoản cho nhóm',
+      elem2_desc: 'Cho phép thành viên nhóm tiếp tục phiên làm việc trên thiết bị khác ở bất kỳ đâu trên thế giới.',
+      elem2_btn: 'Dùng thử tính năng này ngay',
+      elem3_title: 'Quản lý tài khoản khoa học với thư mục, trạng thái và ghi chú',
+      elem3_desc: 'Quản lý tập trung trên một bảng điều khiển duy nhất giúp kiểm soát tốt hơn, rõ ràng và nhanh chóng.',
+      elem3_btn: 'Dùng thử tính năng này ngay',
     },
     'Polski': {
       nav_use_cases: 'Zastosowania',
@@ -544,6 +644,17 @@ function initLanguageSwitcher() {
       fp_node_cookies: 'Pliki cookie',
       fp_node_timezone: 'Strefa czasowa',
       fp_node_ua: 'User Agent',
+      sol_eyebrow: 'Antidetect i proxy w jednym rozwiązaniu:',
+      sol_title: 'MAHI — jak zwykła przeglądarka <img src="assets/img/ui/chrome-logo.svg" alt="Chrome" class="chrome-heading-logo" width="40" height="40"> z narzędziami do wielu kont',
+      elem1_title: 'Stwórz unikalny profil i wybierz lokalizację',
+      elem1_desc: 'Używaj wbudowanych proxy MAHI, aby ustawić lokalizację, lub dodaj własne proxy jednym kliknięciem.',
+      elem1_btn: 'Wypróbuj tę funkcję teraz',
+      elem2_title: 'Udostępniaj dostęp do kont swojemu zespołowi',
+      elem2_desc: 'Pozwól członkom zespołu kontynuować sesję na innym urządzeniu w dowolnym miejscu na świecie.',
+      elem2_btn: 'Wypróbuj tę funkcję teraz',
+      elem3_title: 'Organizuj konta za pomocą folderów, statusów i notatek',
+      elem3_desc: 'Zarządzaj wszystkimi profilami z jednego panelu dla większej kontroli, przejrzystości i szybkości.',
+      elem3_btn: 'Wypróbuj tę funkcję teraz',
     }
   };
 
@@ -1132,6 +1243,24 @@ function initPlatformShowcase() {
  * 3. 3D Biometric Fingerprint Engine & Interactive Selector Stack
  * Benchmark: GoLogin 3D Parallax Perspective & Bidirectional Card Sync
  */
+
+/**
+ * 3b. Feature Try Buttons
+ */
+function initFeatureTryButtons() {
+  document.querySelectorAll('.btn-feature-try').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const modal = document.getElementById('modal-download');
+      if (modal) {
+        modal.classList.add('is-open');
+        document.body.style.overflow = 'hidden';
+      }
+      showToast('Starting your 7-day free trial of MAHI Browser', 'success');
+    });
+  });
+}
+
 function initInteractiveSelectors() {
   const cards = document.querySelectorAll('.selector-card');
   const stage = document.getElementById('fingerprint-3d-stage');
