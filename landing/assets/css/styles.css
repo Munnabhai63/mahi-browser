@@ -1463,20 +1463,32 @@ button {
 }
 
 /* ==========================================================================
-   4. DARK BIOMETRIC FINGERPRINT SECTION
+   4. DARK BIOMETRIC FINGERPRINT SECTION (3D Benchmark Spec)
    ========================================================================== */
 .fingerprint-section {
-  padding: var(--section-py) 0;
-  background: var(--bg-obsidian);
+  padding: clamp(4.5rem, 7vw, 6.5rem) 0;
+  background: #191a23;
   position: relative;
   overflow: hidden;
-  border-top: 1px solid var(--border-hairline);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.fingerprint-ambient-glow {
+  position: absolute;
+  top: 35%;
+  right: 18%;
+  width: 440px;
+  height: 440px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 242, 254, 0.05) 0%, rgba(16, 185, 129, 0.02) 50%, transparent 70%);
+  filter: blur(60px);
+  pointer-events: none;
 }
 
 .fingerprint-grid-split {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: clamp(2rem, 5vw, 4.5rem);
+  grid-template-columns: 1.05fr 1fr;
+  gap: clamp(2rem, 5vw, 4rem);
   align-items: center;
 }
 
@@ -1484,83 +1496,290 @@ button {
   text-align: left;
 }
 
-.fingerprint-info-side h2 {
-  font-size: var(--fs-h2);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  color: var(--text-dark-h);
-  line-height: 1.15;
-  margin: 1rem 0 1.25rem;
+.fingerprint-clean-title {
+  font-size: clamp(1.85rem, 2.7vw, 2.35rem);
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+  line-height: 1.22;
+  margin-bottom: 1.15rem;
 }
 
-.fingerprint-info-side p.lead {
-  font-size: 1.05rem;
-  line-height: 1.65;
-  color: var(--text-dark-body);
+.fingerprint-lead-clean {
+  font-size: 0.92rem;
+  line-height: 1.58;
+  color: #94a3b8;
   margin-bottom: 2rem;
+  max-width: 480px;
 }
 
-/* Interactive Selector Cards */
+/* Interactive Selector Cards Stack */
 .selector-cards-stack {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.5rem;
+  max-width: 480px;
 }
 
 .selector-card {
-  padding: 1.25rem 1.5rem;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-lg);
+  padding: 0.85rem 1.15rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
   cursor: pointer;
-  transition: var(--transition-base);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   text-align: left;
 }
 
-.selector-card:hover, .selector-card.active {
-  background: rgba(15, 23, 42, 0.9);
-  border-color: rgba(16, 185, 129, 0.5);
-  box-shadow: 0 4px 20px -3px rgba(16, 185, 129, 0.15);
-  transform: translateX(4px);
+.selector-card:hover {
+  background: rgba(255, 255, 255, 0.025);
 }
 
-.selector-card h4 {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text-dark-h);
-  margin-bottom: 0.35rem;
+.selector-card.active {
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.selector-card-header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
-.selector-card p {
-  font-size: 0.875rem;
-  color: var(--text-dark-body);
-  line-height: 1.5;
-}
-
-/* Biometric Graphic Visual Side */
-.fingerprint-visual-frame {
-  position: relative;
+.selector-card-icon {
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
-  background: radial-gradient(circle at center, rgba(16, 185, 129, 0.12) 0%, transparent 70%);
+  color: #94a3b8;
+  transition: color 0.2s ease;
+  flex-shrink: 0;
 }
 
-.fingerprint-visual-img {
-  max-width: 320px;
+.selector-card.active .selector-card-icon {
+  color: #f1f5f9;
+}
+
+.selector-card-title {
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: #cbd5e1;
+  transition: color 0.2s ease;
+}
+
+.selector-card.active .selector-card-title {
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.selector-card-body {
+  display: none;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #8f9cae;
+  margin: 0.45rem 0 0 2rem;
+}
+
+.selector-card.active .selector-card-body {
+  display: block;
+  animation: fadeInDown 0.22s ease;
+}
+
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 3D Fingerprint Stage */
+.fingerprint-3d-stage {
+  perspective: 1200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.fingerprint-3d-card {
+  position: relative;
   width: 100%;
-  height: auto;
-  border-radius: var(--radius-xl);
-  filter: drop-shadow(0 0 35px rgba(16, 185, 129, 0.25));
-  transition: transform 0.4s ease;
+  max-width: 440px;
+  height: 500px;
+  transform-style: preserve-3d;
+  transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.fingerprint-visual-frame:hover .fingerprint-visual-img {
-  transform: scale(1.02);
+.fp-glow-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 280px;
+  height: 340px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0, 242, 254, 0.12) 0%, rgba(56, 189, 248, 0.04) 45%, transparent 70%);
+  filter: blur(25px);
+  pointer-events: none;
+}
+
+.fp-graphic-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fp-graphic-img {
+  max-width: 330px;
+  width: 88%;
+  height: auto;
+  filter: drop-shadow(0 0 25px rgba(0, 242, 254, 0.16));
+  transform: translateZ(15px);
+  user-select: none;
+  pointer-events: none;
+}
+
+.fp-ridge-arcs {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) translateZ(18px);
+  width: 88%;
+  max-width: 330px;
+  height: auto;
+  aspect-ratio: 320 / 380;
+  pointer-events: none;
+  filter: drop-shadow(0 0 6px #ffffff) drop-shadow(0 0 12px #00f2fe);
+  animation: ridgePulse 4s ease-in-out infinite alternate;
+}
+
+@keyframes ridgePulse {
+  0% { opacity: 0.8; filter: drop-shadow(0 0 4px #ffffff) drop-shadow(0 0 8px #00f2fe); }
+  100% { opacity: 1; filter: drop-shadow(0 0 8px #ffffff) drop-shadow(0 0 16px rgba(0, 242, 254, 0.8)); }
+}
+
+/* Floating 3D Badge Pills */
+.fp-floating-badge {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(30, 35, 48, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 0.35rem 0.85rem;
+  border-radius: 9999px;
+  color: #e2e8f0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transform: translateZ(40px);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  z-index: 5;
+}
+
+.fp-floating-badge.dot-right {
+  flex-direction: row-reverse;
+}
+
+.fp-floating-badge:hover,
+.fp-floating-badge.active {
+  background: rgba(36, 42, 58, 0.95);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45), 0 0 14px rgba(0, 242, 254, 0.25);
+  transform: translateZ(55px) scale(1.05);
+}
+
+.fp-node-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00f2fe;
+  box-shadow: 0 0 8px #00f2fe;
+  position: relative;
+  flex-shrink: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.fp-floating-badge.active .fp-node-pulse {
+  background: #00f5d4;
+  transform: scale(1.25);
+  box-shadow: 0 0 10px #00f5d4, 0 0 20px rgba(0, 245, 212, 0.7);
+}
+
+.fp-node-pulse::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  right: -4px;
+  bottom: -4px;
+  border-radius: 50%;
+  border: 1.5px solid #00f2fe;
+  animation: pulseRing 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+@keyframes pulseRing {
+  0% { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+.fp-badge-text {
+  white-space: nowrap;
+}
+
+/* Badge Absolute Coordinates (Matching Benchmark Image) */
+.badge-lang {
+  top: 7%;
+  left: 58%;
+}
+
+.badge-fonts {
+  top: 18%;
+  left: 11%;
+}
+
+.badge-geo {
+  top: 37%;
+  left: 38%;
+}
+
+.badge-platform {
+  top: 47%;
+  left: 66%;
+}
+
+.badge-cookies {
+  top: 54%;
+  left: 12%;
+}
+
+.badge-timezone {
+  top: 65%;
+  left: 57%;
+}
+
+.badge-ua {
+  top: 77%;
+  left: 20%;
+}
+
+@media (max-width: 992px) {
+  .fingerprint-grid-split {
+    grid-template-columns: 1fr;
+  }
+  .fingerprint-3d-stage {
+    margin-top: 2rem;
+  }
 }
 
 /* ==========================================================================

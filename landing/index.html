@@ -435,40 +435,142 @@
   <main id="main-content">
 
     <!-- ==========================================================================
-         4. DARK BIOMETRIC FINGERPRINT SECTION
+         4. DARK BIOMETRIC FINGERPRINT SECTION (3D Benchmark)
          ========================================================================== -->
     <section class="fingerprint-section" id="features">
+      <div class="fingerprint-ambient-glow" aria-hidden="true"></div>
       <div class="container">
         <div class="fingerprint-grid-split">
+          
+          <!-- Left Column: Copy & Interactive Selector Cards -->
           <div class="fingerprint-info-side">
-            <span class="hero-badge-pill">Advanced Spoofing Engine</span>
-            <h2>MAHI creates a unique digital identity for each account</h2>
-            <p class="lead">
-              Anti-fraud tracking algorithms analyze over 50 hardware and browser parameters to identify your PC. MAHI injects subtle, natural mathematical noise into each profile's runtime environment.
+            <h2 class="fingerprint-clean-title" data-i18n="fp_title">
+              Anti detect browser MAHI<br>creates a unique digital<br>identity for each account
+            </h2>
+            <p class="fingerprint-lead-clean" data-i18n="fp_desc">
+              Any measures you take to protect your accounts should allow sites to recognize you as a regular customer, but with a twist. To do this, they need to spoof a different device, location, software, and other nuances of the digital fingerprint. All these features can be easily customized using our antidetect browser.
             </p>
 
             <div class="selector-cards-stack">
-              <div class="selector-card active">
-                <h4><span>🛡️</span> Websites see each profile as a unique person</h4>
-                <p>Without MAHI, websites link all your accounts to the same hardware fingerprint. MAHI ensures independent Canvas 2D hashes, WebGL vendor strings, and AudioContext signatures.</p>
+              <!-- Card 1 (Active by default) -->
+              <div class="selector-card active" data-card="1">
+                <div class="selector-card-header">
+                  <span class="selector-card-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="2" y1="12" x2="22" y2="12"></line>
+                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                    </svg>
+                  </span>
+                  <strong class="selector-card-title" data-i18n="fp_card_1_title">Websites will see each of your accounts as a unique person</strong>
+                </div>
+                <p class="selector-card-body" data-i18n="fp_card_1_desc">
+                  Without MAHI, a website links all your accounts to the same fingerprint = person. If one account is flagged, the others are at risk too.
+                </p>
               </div>
 
-              <div class="selector-card">
-                <h4><span>⚡</span> Pinned, SHA-256 verified Chromium engine</h4>
-                <p>Ships with pinned Chromium 138 for authentic browser engine behavior and zero fingerprint drift. No external Chrome or Edge dependencies required.</p>
+              <!-- Card 2 -->
+              <div class="selector-card" data-card="2">
+                <div class="selector-card-header">
+                  <span class="selector-card-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="2" y="3" width="20" height="18" rx="3"></rect>
+                      <line x1="2" y1="8" x2="22" y2="8"></line>
+                      <line x1="6" y1="5.5" x2="6.01" y2="5.5"></line>
+                      <line x1="9" y1="5.5" x2="9.01" y2="5.5"></line>
+                    </svg>
+                  </span>
+                  <strong class="selector-card-title" data-i18n="fp_card_2_title">It's like secured Chrome browser</strong>
+                </div>
+                <p class="selector-card-body" data-i18n="fp_card_2_desc">
+                  Runs authentic Chromium engine with isolated cookie stores, local storage, and extensions without tedious setup.
+                </p>
               </div>
 
-              <div class="selector-card">
-                <h4><span>🚀</span> Far lighter than virtual machines</h4>
-                <p>Virtual machines burn 2-4GB of RAM per instance. MAHI runs lightweight browser profiles with native speed and minimal memory overhead.</p>
+              <!-- Card 3 -->
+              <div class="selector-card" data-card="3">
+                <div class="selector-card-header">
+                  <span class="selector-card-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+                      <line x1="8" y1="21" x2="16" y2="21"></line>
+                      <line x1="12" y1="17" x2="12" y2="21"></line>
+                    </svg>
+                  </span>
+                  <strong class="selector-card-title" data-i18n="fp_card_3_title">Or like a Virtual Machine, but 12x cheaper and faster</strong>
+                </div>
+                <p class="selector-card-body" data-i18n="fp_card_3_desc">
+                  Zero virtualization lag. Each profile launches in under 1 second using minimal CPU and RAM compared to hefty VMs.
+                </p>
               </div>
             </div>
           </div>
 
-          <!-- Real Biometric Fingerprint Visual -->
-          <div class="fingerprint-visual-frame">
-            <img src="assets/img/ui/ui_fingerprint_graphic.png" alt="Biometric Fingerprint Parameters" class="fingerprint-visual-img">
+          <!-- Right Column: 3D Fingerprint Stage with Floating Nodes -->
+          <div class="fingerprint-3d-stage" id="fingerprint-3d-stage">
+            <div class="fingerprint-3d-card" id="fingerprint-3d-card">
+              
+              <!-- Glowing Radial Backdrop -->
+              <div class="fp-glow-core" aria-hidden="true"></div>
+
+              <!-- 3D Fingerprint Graphic -->
+              <div class="fp-graphic-wrap">
+                <img src="assets/img/ui/fingerprint_3d_clean.png" alt="3D Digital Fingerprint Biometrics" class="fp-graphic-img">
+                <svg class="fp-ridge-arcs" viewBox="0 0 320 380" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <!-- Top inner ridge arc -->
+                  <path d="M 142 98 C 160 92 188 96 204 110" stroke="#f8fafc" stroke-width="2.8" stroke-linecap="round" />
+                  <!-- Bottom right ridge arc -->
+                  <path d="M 218 200 C 230 225 222 258 192 284" stroke="#f8fafc" stroke-width="2.8" stroke-linecap="round" />
+                </svg>
+              </div>
+
+              <!-- 7 Floating Badges & Glowing Nodes -->
+              
+              <!-- 1. System fonts (top left, dot on right touching ridge) -->
+              <div class="fp-floating-badge badge-fonts dot-right" data-node="fonts">
+                <span class="fp-node-pulse"></span>
+                <span class="fp-badge-text" data-i18n="fp_node_fonts">System fonts</span>
+              </div>
+
+              <!-- 2. Language (top right, dot on left touching ridge) -->
+              <div class="fp-floating-badge badge-lang" data-node="lang">
+                <span class="fp-node-pulse"></span>
+                <span class="fp-badge-text" data-i18n="fp_node_lang">Language</span>
+              </div>
+
+              <!-- 3. Geolocation (center core) -->
+              <div class="fp-floating-badge badge-geo" data-node="geo">
+                <span class="fp-node-pulse"></span>
+                <span class="fp-badge-text" data-i18n="fp_node_geo">Geolocation</span>
+              </div>
+
+              <!-- 4. Platform (mid right) -->
+              <div class="fp-floating-badge badge-platform" data-node="platform">
+                <span class="fp-node-pulse"></span>
+                <span class="fp-badge-text" data-i18n="fp_node_platform">Platform</span>
+              </div>
+
+              <!-- 5. Cookies (lower left, dot on right touching ridge) -->
+              <div class="fp-floating-badge badge-cookies dot-right" data-node="cookies">
+                <span class="fp-node-pulse"></span>
+                <span class="fp-badge-text" data-i18n="fp_node_cookies">Cookies</span>
+              </div>
+
+              <!-- 6. Timezone (lower right) -->
+              <div class="fp-floating-badge badge-timezone" data-node="timezone">
+                <span class="fp-node-pulse"></span>
+                <span class="fp-badge-text" data-i18n="fp_node_timezone">Timezone</span>
+              </div>
+
+              <!-- 7. User Agent (bottom center, dot on right touching ridge) -->
+              <div class="fp-floating-badge badge-ua dot-right" data-node="ua">
+                <span class="fp-node-pulse"></span>
+                <span class="fp-badge-text" data-i18n="fp_node_ua">User Agent</span>
+              </div>
+
+            </div>
           </div>
+
         </div>
       </div>
     </section>

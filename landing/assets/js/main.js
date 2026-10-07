@@ -159,7 +159,22 @@ function initLanguageSwitcher() {
       benefit_card_2_title: 'Access accounts <strong>from any location</strong>',
       benefit_card_2_sub: 'Bind residential, mobile, or datacenter proxies with automatic timezone, WebRTC, and geolocation alignment.',
       benefit_card_3_title: 'Share accounts easily with <strong>any team member</strong>',
-      benefit_card_3_sub: 'Encrypted cloud synchronization lets coworkers access profiles without sharing raw passwords or triggering MFA locks.'
+      benefit_card_3_sub: 'Encrypted cloud synchronization lets coworkers access profiles without sharing raw passwords or triggering MFA locks.',
+      fp_title: 'Anti detect browser MAHI<br>creates a unique digital<br>identity for each account',
+      fp_desc: 'Any measures you take to protect your accounts should allow sites to recognize you as a regular customer, but with a twist. To do this, they need to spoof a different device, location, software, and other nuances of the digital fingerprint. All these features can be easily customized using our antidetect browser.',
+      fp_card_1_title: 'Websites will see each of your accounts as a unique person',
+      fp_card_1_desc: 'Without MAHI, a website links all your accounts to the same fingerprint = person. If one account is flagged, the others are at risk too.',
+      fp_card_2_title: 'It\'s like secured Chrome browser',
+      fp_card_2_desc: 'Runs authentic Chromium engine with isolated cookie stores, local storage, and extensions without tedious setup.',
+      fp_card_3_title: 'Or like a Virtual Machine, but 12x cheaper and faster',
+      fp_card_3_desc: 'Zero virtualization lag. Each profile launches in under 1 second using minimal CPU and RAM compared to hefty VMs.',
+      fp_node_lang: 'Language',
+      fp_node_fonts: 'System fonts',
+      fp_node_geo: 'Geolocation',
+      fp_node_platform: 'Platform',
+      fp_node_cookies: 'Cookies',
+      fp_node_timezone: 'Timezone',
+      fp_node_ua: 'User Agent',
     },
     'Français': {
       nav_use_cases: 'Cas d\'usage',
@@ -185,7 +200,22 @@ function initLanguageSwitcher() {
       benefit_card_2_title: 'Accédez à vos comptes <strong>depuis n\'importe où</strong>',
       benefit_card_2_sub: 'Liez des proxys résidentiels ou mobiles avec synchronisation automatique du fuseau horaire.',
       benefit_card_3_title: 'Partagez vos comptes facilement avec <strong>votre équipe</strong>',
-      benefit_card_3_sub: 'La synchronisation cloud chiffrée permet un accès d\'équipe instantané sans partager de mots de passe.'
+      benefit_card_3_sub: 'La synchronisation cloud chiffrée permet un accès d\'équipe instantané sans partager de mots de passe.',
+      fp_title: 'Le navigateur antidétecteur MAHI<br>crée une identité numérique<br>unique pour chaque compte',
+      fp_desc: 'Toute mesure pour protéger vos comptes doit permettre aux sites de vous reconnaître comme un utilisateur légitime, mais avec subtilité : modifier l\'appareil, l\'emplacement, les polices et tous les paramètres de votre empreinte numérique.',
+      fp_card_1_title: 'Les sites considèrent chacun de vos comptes comme une personne distincte',
+      fp_card_1_desc: 'Sans MAHI, un site relie tous vos comptes à une même empreinte. Si un compte est banni, les autres sont en danger.',
+      fp_card_2_title: 'Comme un navigateur Chrome ultra sécurisé',
+      fp_card_2_desc: 'Moteur Chromium authentique avec bac à sable de cookies et stockage complètement isolé.',
+      fp_card_3_title: 'Comme une machine virtuelle, mais 12x plus rapide et économique',
+      fp_card_3_desc: 'Zéro latence de virtualisation. Démarrage instantané en moins d\'une seconde avec une utilisation minimale de RAM.',
+      fp_node_lang: 'Langue',
+      fp_node_fonts: 'Polices système',
+      fp_node_geo: 'Géolocalisation',
+      fp_node_platform: 'Plateforme',
+      fp_node_cookies: 'Cookies',
+      fp_node_timezone: 'Fuseau horaire',
+      fp_node_ua: 'User Agent',
     },
     'Русский': {
       nav_use_cases: 'Сценарии',
@@ -211,7 +241,22 @@ function initLanguageSwitcher() {
       benefit_card_2_title: 'Доступ к аккаунтам <strong>из любой точки мира</strong>',
       benefit_card_2_sub: 'Подключение резидентских и мобильных прокси с автоматической подстройкой таймзоны и WebRTC.',
       benefit_card_3_title: 'Удобный шеринг аккаунтов с <strong>командой</strong>',
-      benefit_card_3_sub: 'Синхронизация профилей в зашифрованном облаке без передачи паролей и триггеров 2FA.'
+      benefit_card_3_sub: 'Синхронизация профилей в зашифрованном облаке без передачи паролей и триггеров 2FA.',
+      fp_title: 'Антидетект браузер MAHI<br>создает уникальный цифровой<br>отпечаток для каждого аккаунта',
+      fp_desc: 'Любые меры по защите аккаунтов должны убеждать сайты в том, что вы обычный пользователь. Для этого нужно эмулировать другое устройство, локацию, шрифты и десятки параметров браузера.',
+      fp_card_1_title: 'Сайты видят каждый ваш аккаунт как отдельного человека',
+      fp_card_1_desc: 'Без MAHI сайты связывают все ваши учетные записи в один отпечаток. Если заблокируют один, пострадают и остальные.',
+      fp_card_2_title: 'Как защищенный браузер Chrome',
+      fp_card_2_desc: 'Чистый движок Chromium с изолированными хранилищами cookie, local storage и сессиями.',
+      fp_card_3_title: 'Как виртуальная машина, но в 12 раз дешевле и быстрее',
+      fp_card_3_desc: 'Без лагов и задержек виртуализации. Профиль запускается за секунду и почти не нагружает процессор и память.',
+      fp_node_lang: 'Язык',
+      fp_node_fonts: 'Системные шрифты',
+      fp_node_geo: 'Геолокация',
+      fp_node_platform: 'Платформа',
+      fp_node_cookies: 'Куки',
+      fp_node_timezone: 'Часовой пояс',
+      fp_node_ua: 'User Agent',
     },
     'Español': {
       nav_use_cases: 'Casos de uso',
@@ -237,7 +282,22 @@ function initLanguageSwitcher() {
       benefit_card_2_title: 'Acceda a sus cuentas <strong>desde cualquier ubicación</strong>',
       benefit_card_2_sub: 'Asigne proxies residenciales y móviles con alineación automática de zona horaria y WebRTC.',
       benefit_card_3_title: 'Comparta cuentas fácilmente con <strong>su equipo</strong>',
-      benefit_card_3_sub: 'Sincronización segura en la nube para trabajar en equipo sin compartir contraseñas maestras.'
+      benefit_card_3_sub: 'Sincronización segura en la nube para trabajar en equipo sin compartir contraseñas maestras.',
+      fp_title: 'El navegador antidetect MAHI<br>crea una identidad digital<br>única para cada cuenta',
+      fp_desc: 'Para proteger sus cuentas, los sitios deben reconocerlo como un cliente legítimo, pero cambiando de dispositivo, ubicación, software y todos los matices de la huella digital.',
+      fp_card_1_title: 'Los sitios web verán cada cuenta como una persona única',
+      fp_card_1_desc: 'Sin MAHI, los sitios vinculan todas sus cuentas a la misma huella digital. Si una es marcada, todas corren peligro.',
+      fp_card_2_title: 'Como un navegador Chrome ultraseguro',
+      fp_card_2_desc: 'Motor Chromium auténtico con almacenamiento de cookies aislado y sin configuraciones tediosas.',
+      fp_card_3_title: 'O como una máquina virtual, pero 12 veces más rápida y barata',
+      fp_card_3_desc: 'Sin retrasos de virtualización. Cada perfil se abre en menos de 1 segundo con mínimo consumo de RAM.',
+      fp_node_lang: 'Idioma',
+      fp_node_fonts: 'Fuentes del sistema',
+      fp_node_geo: 'Geolocalización',
+      fp_node_platform: 'Plataforma',
+      fp_node_cookies: 'Cookies',
+      fp_node_timezone: 'Zona horaria',
+      fp_node_ua: 'User Agent',
     },
     '中文': {
       nav_use_cases: '应用场景',
@@ -263,7 +323,22 @@ function initLanguageSwitcher() {
       benefit_card_2_title: '<strong>随时随地</strong>自由访问任意地理位置账号',
       benefit_card_2_sub: '无缝绑定住宅代理与移动代理，时区、WebRTC 与语言头全自动对齐。',
       benefit_card_3_title: '与<strong>任意团队成员</strong>一键快速共享账号配置',
-      benefit_card_3_sub: '加密云端同步环境与 Cookie，无需透露登录明文密码即可团队协同作业。'
+      benefit_card_3_sub: '加密云端同步环境与 Cookie，无需透露登录明文密码即可团队协同作业。',
+      fp_title: '防关联指纹浏览器 MAHI<br>为每个多开账号创建<br>独一无二的数字身份',
+      fp_desc: '保护账号安全的关键，在于让目标网站将您识别为完全独立的普通访客。MAHI 能够精准伪装设备指纹、地理位置、操作系统、字体及数十项软硬件底层参数。',
+      fp_card_1_title: '各大网站会将您的每个账号视作不同的真实用户',
+      fp_card_1_desc: '如果不使用 MAHI，平台风控会将多账号关联至同一台电脑。只要一个账号被封，其余账号全部面临连带风险。',
+      fp_card_2_title: '宛如高度安全、原生隔离的 Chrome 浏览器',
+      fp_card_2_desc: '搭载经过底层安全加固的原生 Chromium 内核，Cookie、Local Storage 与插件环境完全独立沙箱化。',
+      fp_card_3_title: '媲美云虚拟机与 VPS，但速度快 12 倍、成本低 90%',
+      fp_card_3_desc: '告别虚拟机的卡顿与高昂月租。1秒极速秒开独立配置文件，内存与 CPU 占用仅为传统虚拟机的微小片段。',
+      fp_node_lang: '语言设置',
+      fp_node_fonts: '系统字体',
+      fp_node_geo: '地理定位',
+      fp_node_platform: '操作系统',
+      fp_node_cookies: 'Cookie 隔离',
+      fp_node_timezone: '系统时区',
+      fp_node_ua: '用户代理 (UA)',
     },
     'Deutsch': {
       nav_use_cases: 'Anwendungsfälle',
@@ -289,7 +364,22 @@ function initLanguageSwitcher() {
       benefit_card_2_title: 'Zugriff auf Konten <strong>von jedem Standort</strong>',
       benefit_card_2_sub: 'Wohn- und Mobil-Proxys binden mit automatischer Zeitzonen- und WebRTC-Ausrichtung.',
       benefit_card_3_title: 'Teilen Sie Konten einfach mit <strong>Ihrem Team</strong>',
-      benefit_card_3_sub: 'Verschlüsselte Cloud-Synchronisierung ohne Weitergabe vertraulicher Passwörter.'
+      benefit_card_3_sub: 'Verschlüsselte Cloud-Synchronisierung ohne Weitergabe vertraulicher Passwörter.',
+      fp_title: 'Antidetect-Browser MAHI<br>erstellt eine einzigartige digitale<br>Identität für jedes Konto',
+      fp_desc: 'Um Ihre Konten zu schützen, müssen Websites Sie als gewöhnlichen Besucher einstufen, jedoch mit authentisch maskierten Merkmalen: Gerät, Standort, Software und Fingerabdruck-Details.',
+      fp_card_1_title: 'Websites sehen jedes Ihrer Konten als eigenständige Person',
+      fp_card_1_desc: 'Ohne MAHI verknüpfen Websites alle Ihre Konten mit demselben Hardware-Fingerabdruck. Wird ein Konto gesperrt, sind alle in Gefahr.',
+      fp_card_2_title: 'Wie ein hochsicherer Chrome-Browser',
+      fp_card_2_desc: 'Echte Chromium-Engine mit isolierten Cookie-Speichern, lokalem Speicher und Erweiterungen ohne Aufwand.',
+      fp_card_3_title: 'Wie eine virtuelle Maschine, aber 12-mal schneller und günstiger',
+      fp_card_3_desc: 'Keine Virtualisierungsverzögerung. Profile starten in unter 1 Sekunde mit minimalem CPU- und RAM-Bedarf.',
+      fp_node_lang: 'Sprache',
+      fp_node_fonts: 'Systemschriften',
+      fp_node_geo: 'Geolokalisierung',
+      fp_node_platform: 'Plattform',
+      fp_node_cookies: 'Cookies',
+      fp_node_timezone: 'Zeitzone',
+      fp_node_ua: 'User Agent',
     },
     'Portuguese': {
       nav_use_cases: 'Casos de uso',
@@ -315,7 +405,22 @@ function initLanguageSwitcher() {
       benefit_card_2_title: 'Acesse contas <strong>de qualquer local</strong>',
       benefit_card_2_sub: 'Vincule proxies residenciais ou móveis com ajuste automático de fuso horário e WebRTC.',
       benefit_card_3_title: 'Compartilhe contas facilmente com <strong>sua equipe</strong>',
-      benefit_card_3_sub: 'Sincronização na nuvem criptografada para acesso colaborativo seguro sem compartilhar senhas.'
+      benefit_card_3_sub: 'Sincronização na nuvem criptografada para acesso colaborativo seguro sem compartilhar senhas.',
+      fp_title: 'O navegador antidetect MAHI<br>cria uma identidade digital<br>única para cada conta',
+      fp_desc: 'Para proteger suas contas, os sites precisam reconhecê-lo como um usuário legítimo, mas com dispositivos, locais, fontes e nuances de fingerprint totalmente customizados.',
+      fp_card_1_title: 'Os sites verão cada uma de suas contas como uma pessoa diferente',
+      fp_card_1_desc: 'Sem o MAHI, os sites vinculam todas as suas contas ao mesmo fingerprint. Se uma conta cair, as outras também correm perigo.',
+      fp_card_2_title: 'Como um navegador Chrome ultra seguro',
+      fp_card_2_desc: 'Motor Chromium autêntico com armazenamento isolado de cookies, cache e extensões sem configurações chatas.',
+      fp_card_3_title: 'Ou como uma Máquina Virtual, mas 12x mais rápida e econômica',
+      fp_card_3_desc: 'Zero lentidão de virtualização. Cada perfil inicializa em menos de 1 segundo consumindo o mínimo de memória.',
+      fp_node_lang: 'Idioma',
+      fp_node_fonts: 'Fontes do sistema',
+      fp_node_geo: 'Geolocalização',
+      fp_node_platform: 'Plataforma',
+      fp_node_cookies: 'Cookies',
+      fp_node_timezone: 'Fuso horário',
+      fp_node_ua: 'User Agent',
     },
     '日本': {
       nav_use_cases: '利用シーン',
@@ -341,7 +446,22 @@ function initLanguageSwitcher() {
       benefit_card_2_title: '<strong>世界中のどこからでも</strong>自由にアカウントへアクセス',
       benefit_card_2_sub: '住宅・モバイルプロキシと自動タイムゾーン・WebRTC連携で位置偽装を完璧にシミュレート。',
       benefit_card_3_title: '<strong>チームメンバー全員</strong>とワンクリックで安全に共有',
-      benefit_card_3_sub: 'パスワードを開示することなく、暗号化クラウドで安全にセッションとプロファイルを共有可能。'
+      benefit_card_3_sub: 'パスワードを開示することなく、暗号化クラウドで安全にセッションとプロファイルを共有可能。',
+      fp_title: 'アンチディテクトブラウザ MAHI<br>アカウントごとに独自の<br>デジタルIDを自動生成',
+      fp_desc: 'アカウントを保護するには、Webサイトに正規ユーザーとして認識させつつ、デバイス、位置情報、OS、フォントなどのフィンガープリントを高精度に偽装する必要があります。',
+      fp_card_1_title: 'Webサイトは各アカウントを別人の独立デバイスとして認識',
+      fp_card_1_desc: 'MAHIを使用しない場合、同一指紋によって複数アカウントが芋づる式に関連付けられ、連鎖凍結のリスクが生じます。',
+      fp_card_2_title: '最高峰のセキュリティを備えたChromeブラウザ',
+      fp_card_2_desc: '完全隔離されたCookieストアとストレージを備えた純正Chromiumエンジンで即座に動作。',
+      fp_card_3_title: '仮想マシン(VM)同等の隔離性で、12倍高速かつ低コスト',
+      fp_card_3_desc: 'VM特有の起動ラグはゼロ。わずか1秒未満でプロファイルが起動し、CPUとメモリ消費を極限まで削減。',
+      fp_node_lang: '言語設定',
+      fp_node_fonts: 'システムフォント',
+      fp_node_geo: '位置情報 (GPS)',
+      fp_node_platform: 'プラットフォーム',
+      fp_node_cookies: 'Cookie分離',
+      fp_node_timezone: 'タイムゾーン',
+      fp_node_ua: 'ユーザーエージェント',
     },
     'Tiếng Việt': {
       nav_use_cases: 'Ứng dụng',
@@ -367,7 +487,22 @@ function initLanguageSwitcher() {
       benefit_card_2_title: 'Truy cập tài khoản <strong>từ mọi vị trí địa lý</strong>',
       benefit_card_2_sub: 'Gán proxy dân cư, proxy di động với tính năng tự động đồng bộ múi giờ và WebRTC chuẩn xác.',
       benefit_card_3_title: 'Chia sẻ tài khoản dễ dàng cho <strong>thành viên nhóm</strong>',
-      benefit_card_3_sub: 'Đồng bộ hóa đám mây mã hóa giúp làm việc nhóm an toàn mà không cần chia sẻ mật khẩu gốc.'
+      benefit_card_3_sub: 'Đồng bộ hóa đám mây mã hóa giúp làm việc nhóm an toàn mà không cần chia sẻ mật khẩu gốc.',
+      fp_title: 'Trình duyệt antidetect MAHI<br>tạo danh tính kỹ thuật số<br>độc lập cho từng tài khoản',
+      fp_desc: 'Để bảo vệ tài khoản, các nền tảng phải nhận diện bạn như một người dùng thông thường thông qua việc thay đổi thiết bị, vị trí địa lý, phần mềm và từng thông số vân tay số tinh tế.',
+      fp_card_1_title: 'Các trang web sẽ coi mỗi tài khoản là một cá nhân hoàn toàn độc lập',
+      fp_card_1_desc: 'Nếu không có MAHI, các trang web sẽ liên kết toàn bộ tài khoản của bạn vào một dấu vân tay thiết bị duy nhất, dẫn đến nguy cơ khoá hàng loạt.',
+      fp_card_2_title: 'Hoạt động như trình duyệt Chrome bảo mật cao',
+      fp_card_2_desc: 'Sử dụng nhân Chromium chuẩn với bộ nhớ cookie, local storage và tiện ích mở rộng cách ly tuyệt đối.',
+      fp_card_3_title: 'Tương tự Máy ảo (VM), nhưng nhanh hơn 12 lần và tiết kiệm tối đa chi phí',
+      fp_card_3_desc: 'Không lo giật lag của máy ảo. Mỗi hồ sơ khởi động dưới 1 giây với dung lượng RAM và CPU tiêu thụ tối thiểu.',
+      fp_node_lang: 'Ngôn ngữ',
+      fp_node_fonts: 'Phông chữ hệ thống',
+      fp_node_geo: 'Vị trí địa lý',
+      fp_node_platform: 'Nền tảng',
+      fp_node_cookies: 'Cookies',
+      fp_node_timezone: 'Múi giờ',
+      fp_node_ua: 'User Agent',
     },
     'Polski': {
       nav_use_cases: 'Zastosowania',
@@ -393,7 +528,22 @@ function initLanguageSwitcher() {
       benefit_card_2_title: 'Dostęp do kont <strong>z dowolnej lokalizacji</strong>',
       benefit_card_2_sub: 'Wiązanie proxy rezydencyjnych i mobilnych z automatyczną synchronizacją strefy czasowej i WebRTC.',
       benefit_card_3_title: 'Łatwo udostępniaj konta <strong>członkom zespołu</strong>',
-      benefit_card_3_sub: 'Zaszyfrowana synchronizacja w chmurze umożliwia bezpieczną współpracę bez ujawniania haseł.'
+      benefit_card_3_sub: 'Zaszyfrowana synchronizacja w chmurze umożliwia bezpieczną współpracę bez ujawniania haseł.',
+      fp_title: 'Przeglądarka antidetect MAHI<br>tworzy unikalną cyfrową<br>tożsamość dla każdego konta',
+      fp_desc: 'Ochrona kont wymaga, aby witryny rozpoznawały Cię jako zwykłego użytkownika, precyzyjnie maskując urządzenie, lokalizację, oprogramowanie i niuanse odcisku palca.',
+      fp_card_1_title: 'Witryny widzą każde z Twoich kont jako unikalną osobę',
+      fp_card_1_desc: 'Bez MAHI witryna łączy wszystkie Twoje konta w jeden odcisk palca. Jeśli jedno konto zostanie oznaczone, pozostałe są zagrożone.',
+      fp_card_2_title: 'Działa jak bezpieczna przeglądarka Chrome',
+      fp_card_2_desc: 'Autentyczny silnik Chromium z odizolowanymi magazynami plików cookie, pamięcią lokalną i rozszerzeniami.',
+      fp_card_3_title: 'Jak maszyna wirtualna, ale 12x tańsza i szybsza',
+      fp_card_3_desc: 'Zero opóźnień wirtualizacji. Każdy profil uruchamia się w ułamku sekundy, zużywając ułamek pamięci RAM.',
+      fp_node_lang: 'Język',
+      fp_node_fonts: 'Czcionki systemowe',
+      fp_node_geo: 'Geolokalizacja',
+      fp_node_platform: 'Platforma',
+      fp_node_cookies: 'Pliki cookie',
+      fp_node_timezone: 'Strefa czasowa',
+      fp_node_ua: 'User Agent',
     }
   };
 
@@ -978,14 +1128,122 @@ function initPlatformShowcase() {
 /**
  * 3. Fingerprint Section Interactive Selector Cards
  */
+/**
+ * 3. 3D Biometric Fingerprint Engine & Interactive Selector Stack
+ * Benchmark: GoLogin 3D Parallax Perspective & Bidirectional Card Sync
+ */
 function initInteractiveSelectors() {
   const cards = document.querySelectorAll('.selector-card');
+  const stage = document.getElementById('fingerprint-3d-stage');
+  const card3D = document.getElementById('fingerprint-3d-card');
+  const badges = document.querySelectorAll('.fp-floating-badge');
+
+  // Node highlight mapping per selector card
+  const cardNodeMapping = {
+    '1': ['cookies', 'geo', 'ua'],
+    '2': ['platform', 'fonts', 'lang'],
+    '3': ['timezone', 'geo', 'platform']
+  };
+
+  function highlightNodes(nodeList) {
+    badges.forEach(b => {
+      const nodeKey = b.getAttribute('data-node');
+      if (nodeList.includes(nodeKey)) {
+        b.classList.add('active');
+      } else {
+        b.classList.remove('active');
+      }
+    });
+  }
+
+  // 1. Selector Cards Click Handlers
   cards.forEach(card => {
     card.addEventListener('click', () => {
       cards.forEach(c => c.classList.remove('active'));
       card.classList.add('active');
+      const cardId = card.getAttribute('data-card') || '1';
+      if (cardNodeMapping[cardId]) {
+        highlightNodes(cardNodeMapping[cardId]);
+      }
     });
   });
+
+  // 2. Floating Badge Click Handlers
+  const badgeMessages = {
+    'lang': 'Language: Spoofs Accept-Language & navigator.languages to match proxy IP.',
+    'fonts': 'System Fonts: Masks font enumeration via CSS @font-face & Canvas measurement.',
+    'geo': 'Geolocation: Injects authentic GPS coordinates matching proxy exit node.',
+    'platform': 'Platform: Spoofs OS architecture & navigator.platform (Win32/MacIntel).',
+    'cookies': 'Cookies: Encrypted LocalStorage sandbox per profile partition.',
+    'timezone': 'Timezone: Automatic Intl.DateTimeFormat & system clock alignment.',
+    'ua': 'User Agent: Latest Chromium user-agent and client-hint SEC-CH-UA headers.'
+  };
+
+  badges.forEach(badge => {
+    badge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      badges.forEach(b => b.classList.remove('active'));
+      badge.classList.add('active');
+      const nodeKey = badge.getAttribute('data-node');
+      showToast(badgeMessages[nodeKey] || 'Fingerprint parameter verified', 'success', 2800);
+    });
+  });
+
+  // 3. Smooth 3D Mouse Parallax Gyro Engine
+  if (stage && card3D) {
+    let currentX = 6;
+    let currentY = -4;
+    let targetX = 6;
+    let targetY = -4;
+    let isHovering = false;
+    let rafId = null;
+
+    function render3DLoop() {
+      // Smooth linear interpolation (lerp)
+      currentX += (targetX - currentX) * 0.08;
+      currentY += (targetY - currentY) * 0.08;
+
+      card3D.style.transform = `perspective(1200px) rotateX(${currentX.toFixed(2)}deg) rotateY(${currentY.toFixed(2)}deg) scale3d(1.02, 1.02, 1.02)`;
+
+      if (isHovering || Math.abs(targetX - currentX) > 0.05 || Math.abs(targetY - currentY) > 0.05) {
+        rafId = requestAnimationFrame(render3DLoop);
+      } else {
+        rafId = null;
+      }
+    }
+
+    stage.addEventListener('mousemove', (e) => {
+      const rect = stage.getBoundingClientRect();
+      const xRatio = (e.clientX - rect.left) / rect.width - 0.5;
+      const yRatio = (e.clientY - rect.top) / rect.height - 0.5;
+
+      // Realistic 3D tilt angles
+      targetX = -yRatio * 22;
+      targetY = xRatio * 26;
+
+      if (!rafId) {
+        isHovering = true;
+        rafId = requestAnimationFrame(render3DLoop);
+      }
+    });
+
+    stage.addEventListener('mouseenter', () => {
+      isHovering = true;
+      if (!rafId) rafId = requestAnimationFrame(render3DLoop);
+    });
+
+    stage.addEventListener('mouseleave', () => {
+      isHovering = false;
+      targetX = 6;
+      targetY = -4;
+    });
+
+    // Start with subtle isometric perspective
+    render3DLoop();
+  }
+
+  // Initial highlight for Card 1
+  highlightNodes(['cookies', 'geo', 'ua']);
 }
 
 /**
