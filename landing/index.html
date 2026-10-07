@@ -27,141 +27,262 @@
 <body>
 
   <!-- ==========================================================================
-       1. FLOATING GLASS ISLAND NAVBAR (Detached Pill)
+       1. CLEAN WHITE NAVBAR (Photo #1 Benchmark)
        ========================================================================== -->
-  <header class="navbar-wrapper">
-    <nav class="navbar-island" aria-label="Main Navigation">
-      <a href="#" class="brand-logo" aria-label="MAHI Browser Home">
-        <img src="assets/img/logo.png" alt="MAHI Browser Logo" width="28" height="28">
-        <span>MAHI BROWSER</span>
-        <span class="brand-dot"></span>
-      </a>
-
-      <div class="nav-links">
-        <a href="#features">Features</a>
-        <a href="#how-it-works">How It Works</a>
-        <a href="#pricing">Pricing</a>
-        <a href="#faq">FAQ</a>
-      </div>
-
-      <div class="nav-actions">
-        <a href="/download/MAHI-Setup.exe" class="btn-nested-cta" download>
-          <span>Download for Windows</span>
-          <span class="btn-icon-bubble">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-          </span>
+  <header class="navbar-wrapper-clean">
+    <div class="navbar-container-clean">
+      <div class="navbar-left-group">
+        <a href="#" class="brand-logo-clean" aria-label="MAHI Browser Home">
+          <img src="assets/img/logo.png" alt="MAHI Browser Logo" width="28" height="28">
+          <span class="brand-name-clean">MAHI</span>
         </a>
+
+        <nav class="nav-links-clean" aria-label="Main Navigation">
+          <a href="#how-it-works" class="nav-item-clean" data-i18n="nav_use_cases">Use Cases</a>
+          <a href="#features" class="nav-item-clean" data-i18n="nav_features">Features</a>
+
+          <!-- Resources Dropdown (Photo #2 Spec) -->
+          <div class="nav-dropdown" id="dropdown-resources">
+            <button class="nav-item-clean dropdown-toggle" type="button" aria-expanded="false" aria-haspopup="true">
+              <span data-i18n="nav_resources">Resources</span> <span class="nav-caret">▾</span>
+            </button>
+            <div class="dropdown-menu-clean" role="menu">
+              <a href="#blog" class="dropdown-item-clean" data-resource="blog" role="menuitem">Blog</a>
+              <a href="#testimonials-section" class="dropdown-item-clean" data-resource="case-studies" role="menuitem">Case Studies</a>
+              <a href="#features" class="dropdown-item-clean" data-resource="best-vpn" role="menuitem">Best VPN</a>
+              <a href="#features" class="dropdown-item-clean" data-resource="best-proxy" role="menuitem">Best Proxy</a>
+              <a href="#how-it-works" class="dropdown-item-clean" data-resource="best-affiliate" role="menuitem">Best Affiliate Networks</a>
+              <a href="#features" class="dropdown-item-clean" data-resource="proxy-tools" role="menuitem">Proxy Tools</a>
+              <a href="#features" class="dropdown-item-clean" data-resource="fingerprint-test" role="menuitem">Browser fingerprint test</a>
+              <a href="#how-it-works" class="dropdown-item-clean" data-resource="crypto-airdrops" role="menuitem">Crypto Airdrops</a>
+              <a href="#pricing" class="dropdown-item-clean" data-resource="free-tools" role="menuitem">Free Tools</a>
+              <a href="#comparison" class="dropdown-item-clean" data-resource="alternatives" role="menuitem">Browser Alternatives</a>
+              <a href="#features" class="dropdown-item-clean" data-resource="mcp" role="menuitem">Browser MCP</a>
+            </div>
+          </div>
+
+          <a href="#pricing" class="nav-item-clean" data-i18n="nav_pricing">Pricing</a>
+
+          <!-- Products Dropdown (Photo #3 Spec) -->
+          <div class="nav-dropdown" id="dropdown-products">
+            <button class="nav-item-clean dropdown-toggle" type="button" aria-expanded="false" aria-haspopup="true">
+              <span data-i18n="nav_products">Products</span> <span class="nav-caret">▾</span>
+            </button>
+            <div class="dropdown-menu-clean" role="menu">
+              <a href="#features" class="dropdown-item-clean" data-product="cloud-browser" role="menuitem">Cloud Browser</a>
+              <a href="#features" class="dropdown-item-clean" data-product="cloud-android" role="menuitem">Cloud Android</a>
+              <a href="#features" class="dropdown-item-clean" data-product="web-unlocker" role="menuitem">Web Unlocker</a>
+              <a href="#features" class="dropdown-item-clean" data-product="ai-assistant" role="menuitem">AI Assistant</a>
+            </div>
+          </div>
+        </nav>
       </div>
 
-      <button class="mobile-menu-btn" aria-label="Open mobile menu">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="3" y1="12" x2="21" y2="12"></line>
-          <line x1="3" y1="6" x2="21" y2="6"></line>
-          <line x1="3" y1="18" x2="21" y2="18"></line>
-        </svg>
-      </button>
-    </nav>
+      <div class="nav-actions-clean">
+        <!-- Language Dropdown (Photo #4 Spec) -->
+        <div class="nav-dropdown lang-dropdown" id="dropdown-lang">
+          <button class="nav-item-clean dropdown-toggle" id="lang-current-label" type="button" aria-expanded="false" aria-haspopup="true">
+            <span id="current-lang-text">English</span> <span class="nav-caret">▾</span>
+          </button>
+          <div class="dropdown-menu-clean dropdown-menu-right" role="menu">
+            <a href="#" class="dropdown-item-clean active" data-lang="English" role="menuitem">English</a>
+            <a href="#" class="dropdown-item-clean" data-lang="Français" role="menuitem">Français</a>
+            <a href="#" class="dropdown-item-clean" data-lang="Русский" role="menuitem">Русский</a>
+            <a href="#" class="dropdown-item-clean" data-lang="Español" role="menuitem">Español</a>
+            <a href="#" class="dropdown-item-clean" data-lang="中文" role="menuitem">中文</a>
+            <a href="#" class="dropdown-item-clean" data-lang="Deutsch" role="menuitem">Deutsch</a>
+            <a href="#" class="dropdown-item-clean" data-lang="Portuguese" role="menuitem">Portuguese</a>
+            <a href="#" class="dropdown-item-clean" data-lang="日本" role="menuitem">日本</a>
+            <a href="#" class="dropdown-item-clean" data-lang="Tiếng Việt" role="menuitem">Tiếng Việt</a>
+            <a href="#" class="dropdown-item-clean" data-lang="Polski" role="menuitem">Polski</a>
+          </div>
+        </div>
+
+        <button type="button" class="nav-signin-clean" id="nav-btn-signin" data-i18n="nav_signin" style="background: none; border: none; cursor: pointer; font-family: inherit;">Sign in</button>
+        <a href="/download/MAHI-Setup.exe" class="btn-trial-clean btn-download-trigger" download>
+          <span data-i18n="nav_trial">7-day Trial</span>
+        </a>
+        <button class="mobile-menu-btn-clean" aria-label="Open mobile menu">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
   </header>
 
   <!-- Mobile Drawer Overlay & Panel -->
   <div class="mobile-drawer-overlay" aria-hidden="true"></div>
   <aside class="mobile-drawer-panel" aria-label="Mobile Navigation">
     <div style="display: flex; align-items: center; justify-content: space-between;">
-      <div class="brand-logo">
+      <div class="brand-logo-clean">
         <img src="assets/img/logo.png" alt="" width="26" height="26">
-        <span>MAHI</span>
+        <span class="brand-name-clean">MAHI</span>
       </div>
       <button class="drawer-close-btn" aria-label="Close menu" style="color: #94a3b8; font-size: 1.5rem;">✕</button>
     </div>
     <div style="display: flex; flex-direction: column; gap: 1.25rem; font-size: 1.1rem; font-weight: 600; color: #f8fafc; margin-top: 1.5rem;">
+      <a href="#how-it-works">Use Cases</a>
       <a href="#features">Features</a>
-      <a href="#how-it-works">How It Works</a>
       <a href="#pricing">Pricing</a>
       <a href="#faq">FAQ</a>
       <a href="https://wa.me/" class="dynamic-whatsapp-link" target="_blank" rel="noopener">WhatsApp Support</a>
     </div>
     <div style="margin-top: auto;">
-      <a href="/download/MAHI-Setup.exe" class="btn-nested-cta" style="width: 100%; justify-content: center;" download>
-        <span>Download for Windows</span>
+      <a href="/download/MAHI-Setup.exe" class="btn-trial-clean" style="width: 100%; justify-content: center;" download>
+        <span>Start Free 7-Day Trial</span>
       </a>
     </div>
   </aside>
 
-  <!-- Ambient Hero Background Grid & Light Beam -->
+  <!-- ==========================================================================
+       2. CLEAN HERO SECTION (Photo #1 Benchmark)
+       ========================================================================== -->
+  <section class="hero-clean-section">
+    <div class="hero-clean-ambient" aria-hidden="true"></div>
+    <div class="container hero-clean-content">
+      
+      <!-- Headline with Animated Rotating Keyword -->
+      <h1 class="hero-clean-title">
+        <span data-i18n="hero_title_p1">Antidetect browser to manage</span><br>
+        <span class="rotating-word-wrapper">
+          <span class="rotating-word-active" id="hero-rotating-word"><span style="letter-spacing:-0.02em;"><span style="color:#e53238">e</span><span style="color:#0064d2">b</span><span style="color:#f5af02">a</span><span style="color:#86b817">y</span></span></span>
+        </span> <span data-i18n="hero_title_p2">accounts</span>
+      </h1>
+
+      <!-- Subtitle Description -->
+      <p class="hero-clean-sub" data-i18n="hero_sub">
+        Anti-detect browser for managing multiple accounts on a single device without the hassle of receiving blocked access or dealing with tedious transferring of passwords.
+      </p>
+
+      <!-- CTA Row -->
+      <div class="hero-clean-ctas">
+        <a href="/download/MAHI-Setup.exe" class="btn-clean-primary btn-download-trigger" download>
+          <span data-i18n="cta_start_trial">Start Free 7-Day Trial</span>
+        </a>
+
+        <a href="https://wa.me/919999999999?text=Hello%20MAHI%20Browser%20Team%2C%20I%20would%20like%20to%20book%20a%20live%20demo%20for%20my%20team" class="btn-clean-secondary dynamic-whatsapp-link" target="_blank" rel="noopener">
+          <span data-i18n="cta_book_demo">Book a demo</span>
+          <div class="team-avatars-cluster" aria-hidden="true">
+            <img src="assets/img/avatars/avatar_1.svg" alt="Support Specialist" class="cluster-avatar">
+            <img src="assets/img/avatars/avatar_2.svg" alt="Lead Engineer" class="cluster-avatar">
+            <img src="assets/img/avatars/avatar_3.svg" alt="Product Manager" class="cluster-avatar">
+          </div>
+        </a>
+      </div>
+
+      <!-- Microcopy -->
+      <div class="hero-clean-microcopy" data-i18n="micro_no_card">
+        No card required
+      </div>
+
+      <!-- Platform Availability -->
+      <div class="platform-availability-block">
+        <div class="platform-avail-label" data-i18n="avail_label">Available on all platforms:</div>
+        <div class="platform-os-circles">
+          <!-- macOS -->
+          <span class="os-circle-btn" title="macOS">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.38c.62-.75 1.04-1.8 0.92-2.85-.9.04-1.99.6-2.63 1.35-.57.65-1.07 1.72-.94 2.74 1.01.08 2.03-.49 2.65-1.24z"/>
+            </svg>
+          </span>
+          <!-- Windows -->
+          <span class="os-circle-btn active" title="Windows 10 / 11">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.551H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-13.051-1.802"/>
+            </svg>
+          </span>
+          <!-- Linux -->
+          <span class="os-circle-btn" title="Linux">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12.002 0c-3.14 0-5.69 2.55-5.69 5.69 0 .86.2 1.68.55 2.42-1.74.88-2.95 2.69-2.95 4.77 0 1.28.45 2.46 1.21 3.4-.64 1.21-.99 2.59-.99 4.06 0 1.74.5 3.36 1.38 4.75.4.63 1.15.91 1.84.66.7-.25 1.1-.96.95-1.69-.64-1.12-.99-2.4-.99-3.72 0-2.22 1.01-4.21 2.59-5.52.71 1.04 1.86 1.74 3.19 1.74s2.48-.7 3.19-1.74c1.58 1.31 2.59 3.3 2.59 5.52 0 1.32-.35 2.6-.99 3.72-.15.73.25 1.44.95 1.69.69.25 1.44-.03 1.84-.66.88-1.39 1.38-3.01 1.38-4.75 0-1.47-.35-2.85-.99-4.06.76-.94 1.21-2.12 1.21-3.4 0-2.08-1.21-3.89-2.95-4.77.35-.74.55-1.56.55-2.42C17.692 2.55 15.142 0 12.002 0z"/>
+            </svg>
+          </span>
+          <!-- Web -->
+          <span class="os-circle-btn" title="Web Cloud App">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+            </svg>
+          </span>
+        </div>
+
+        <!-- Store Badges Row -->
+        <div class="platform-store-badges">
+          <a href="#" class="store-badge-pill" aria-label="Get it on Google Play">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3.609 1.814L13.793 12 3.61 22.186a1.597 1.597 0 0 1-.61-.95V2.764c0-.38.22-.73.61-.95zm11.24 11.24l2.58 2.58-12.87 7.43 10.29-10.01zm0-2.11L4.56 0.934l12.87 7.43-2.58 2.58zm1.06 1.06l3.52 2.03c1.02.59 1.02 1.55 0 2.14l-3.52 2.03-2.43-2.43 2.43-2.43-.001.66z"/>
+            </svg>
+            <div class="store-badge-text">
+              <span class="badge-sub">GET IT ON</span>
+              <span class="badge-title">Google Play</span>
+            </div>
+          </a>
+
+          <a href="#" class="store-badge-pill" aria-label="Download on the App Store">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.38c.62-.75 1.04-1.8 0.92-2.85-.9.04-1.99.6-2.63 1.35-.57.65-1.07 1.72-.94 2.74 1.01.08 2.03-.49 2.65-1.24z"/>
+            </svg>
+            <div class="store-badge-text">
+              <span class="badge-sub">Download on the</span>
+              <span class="badge-title">App Store</span>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <!-- ======================================================================
+           3. SOCIAL PROOF / REVIEWS BAND ("Trusted by top professionals")
+           ====================================================================== -->
+      <div class="trusted-reviews-band">
+        <div class="reviews-band-left">
+          <h2 data-i18n="social_proof_title">Trusted by top<br>professionals</h2>
+        </div>
+
+        <div class="reviews-cards-group">
+          <!-- G2 Card -->
+          <div class="review-score-card">
+            <div class="g2-logo" aria-hidden="true">
+              <span>G</span>
+            </div>
+            <div class="review-details">
+              <div class="review-stars-row">
+                ★★★★★
+                <strong class="score-val">4.8 / 5</strong>
+              </div>
+              <div class="review-count">70 reviews</div>
+            </div>
+          </div>
+
+          <!-- Capterra Card -->
+          <div class="review-score-card">
+            <div class="capterra-logo" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="#0052cc">
+                <path d="M12 2L2 22h20L12 2z"/>
+              </svg>
+              <span class="capterra-name">Capterra</span>
+            </div>
+            <div class="review-details">
+              <div class="review-stars-row">
+                ★★★★★
+                <strong class="score-val">4.6 / 5</strong>
+              </div>
+              <div class="review-count">111 reviews</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Ambient Hero Background Grid & Light Beam for Below Sections -->
   <div class="hero-ambient-wrap">
     <div class="perspective-grid" aria-hidden="true"></div>
     <div class="directional-light-beam" aria-hidden="true"></div>
-
-    <!-- ==========================================================================
-         2. HERO SECTION
-         ========================================================================== -->
-    <section class="hero-section">
-      <div class="container hero-content">
-        <!-- Eyebrow Pill -->
-        <div class="hero-badge-pill">
-          <span class="pulse-indicator"></span>
-          <span>Antidetect browser for multi-accounting &amp; privacy</span>
-        </div>
-
-        <!-- Oversized Display H1 -->
-        <h1 class="hero-title">
-          Antidetect browser to manage all your accounts <span class="shimmer-emerald">safely</span>
-        </h1>
-
-        <!-- Subtitle -->
-        <p class="hero-sub">
-          Run multiple accounts on one device — unique fingerprints, no bans, and no suspicious-login checks. Every profile operates in a fully isolated container.
-        </p>
-
-        <!-- CTAs -->
-        <div class="hero-cta-group">
-          <a href="/download/MAHI-Setup.exe" class="btn-primary-hero" download>
-            <span>Start Free — 15 Profiles</span>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-          </a>
-
-          <a href="https://wa.me/" class="btn-secondary-hero dynamic-whatsapp-link" target="_blank" rel="noopener">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-            </svg>
-            <span>Talk to us on WhatsApp</span>
-          </a>
-        </div>
-
-        <!-- Microcopy -->
-        <div class="hero-microcopy">
-          <span>Free forever plan</span>
-          <span>·</span>
-          <span>7-day PRO trial</span>
-          <span>·</span>
-          <span>No credit card required</span>
-        </div>
-
-        <!-- OS & Engine Pills -->
-        <div class="hero-platform-strip">
-          <span class="os-pill-badge active">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.551H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-13.051-1.802"/>
-            </svg>
-            Windows 10 / 11 (64-bit)
-          </span>
-          <span class="os-pill-badge">macOS &amp; Linux coming soon</span>
-        </div>
-
-        <p class="hero-engine-badge">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-          </svg>
-          Chromium engine included — SHA-256 verified, no Chrome install needed.
-        </p>
 
         <!-- ==========================================================================
              3. HERO PRODUCT SHOWCASE & REAL BROWSER MOCKUP
@@ -1114,6 +1235,76 @@
       <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.04 14.69 2 12.04 2M12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.59 20.15 12.04 20.15C10.56 20.15 9.11 19.76 7.85 19L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 14.99 3.8 13.47 3.8 11.91C3.81 7.37 7.5 3.67 12.05 3.67M9.04 7.42C8.86 7.42 8.57 7.49 8.32 7.76C8.07 8.03 7.37 8.68 7.37 10.03C7.37 11.38 8.35 12.69 8.49 12.87C8.63 13.06 10.42 15.82 13.16 17C15.9 18.18 15.9 17.78 16.39 17.74C16.88 17.7 17.97 17.1 18.2 16.45C18.43 15.8 18.43 15.24 18.36 15.13C18.29 15.02 18.1 14.96 17.82 14.82C17.54 14.68 16.19 14.02 15.94 13.93C15.69 13.84 15.5 13.79 15.32 14.07C15.13 14.35 14.61 14.96 14.45 15.15C14.29 15.33 14.13 15.36 13.85 15.22C13.57 15.08 12.67 14.78 11.61 13.83C10.78 13.09 10.22 12.18 10.06 11.9C9.9 11.62 10.04 11.47 10.18 11.33C10.31 11.2 10.47 10.99 10.61 10.83C10.75 10.67 10.8 10.55 10.89 10.37C10.98 10.19 10.94 10.03 10.87 9.89C10.8 9.75 10.25 8.39 10.02 7.83C9.79 7.29 9.56 7.37 9.39 7.36C9.23 7.35 9.04 7.42 9.04 7.42Z"/>
     </svg>
   </a>
+
+  <!-- ==========================================================================
+       REAL WORKING AUTH MODAL (Sign In / Register)
+       ========================================================================== -->
+  <div class="modal-backdrop-clean" id="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+    <div class="modal-dialog-clean">
+      <div class="modal-header-clean">
+        <div class="modal-brand-header">
+          <img src="assets/img/logo.png" alt="" width="26" height="26">
+          <span style="font-weight: 800; font-size: 1.15rem; color: #0f172a;">MAHI Cloud</span>
+        </div>
+        <button class="modal-close-btn" id="auth-modal-close" aria-label="Close dialog">✕</button>
+      </div>
+      <div class="modal-body-clean">
+        <div class="auth-tabs-row">
+          <button type="button" class="auth-tab-btn active" id="tab-btn-signin">Sign In</button>
+          <button type="button" class="auth-tab-btn" id="tab-btn-signup">Create Account</button>
+        </div>
+
+        <form id="auth-form" onsubmit="event.preventDefault(); window.handleAuthSubmit();">
+          <div class="auth-form-group">
+            <label class="auth-form-label" for="auth-email">Email Address</label>
+            <input class="auth-form-input" type="email" id="auth-email" placeholder="name@company.com" required>
+          </div>
+          <div class="auth-form-group">
+            <label class="auth-form-label" for="auth-password">Password</label>
+            <input class="auth-form-input" type="password" id="auth-password" placeholder="••••••••••••" required>
+          </div>
+
+          <div class="auth-form-footer">
+            <label class="auth-remember-row">
+              <input type="checkbox" id="auth-remember" checked>
+              <span>Remember me</span>
+            </label>
+            <a href="#reset" id="auth-forgot-link" style="color: #00a87e; text-decoration: none; font-weight: 500;">Forgot password?</a>
+          </div>
+
+          <button type="submit" class="auth-submit-btn" id="auth-submit-btn">
+            <span>Sign In to Dashboard</span>
+          </button>
+        </form>
+
+        <div class="auth-demo-instant">
+          <span>Need a quick test?</span>
+          <button type="button" class="auth-demo-link" id="auth-demo-autofill">Instant Demo Login</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       REAL WORKING RESOURCE / FEATURE GUIDE MODAL
+       ========================================================================== -->
+  <div class="modal-backdrop-clean" id="resource-modal" role="dialog" aria-modal="true" aria-labelledby="resource-modal-title">
+    <div class="modal-dialog-clean modal-dialog-lg">
+      <div class="modal-header-clean">
+        <div class="modal-brand-header">
+          <span class="resource-badge-tag" id="resource-modal-category">Guide</span>
+          <h3 id="resource-modal-title" style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #0f172a;">Feature Overview</h3>
+        </div>
+        <button class="modal-close-btn" id="resource-modal-close" aria-label="Close dialog">✕</button>
+      </div>
+      <div class="modal-body-clean" id="resource-modal-content">
+        <!-- Injected dynamically via JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
   <script src="assets/js/main.js"></script>
 </body>
