@@ -10,7 +10,7 @@
   "publish": [
     {
       "provider": "generic",
-      "url": "https://updates.mahibrowser.com/download/"
+      "url": "https://mahibrowser.com/update/"
     }
   ],
   "files": [

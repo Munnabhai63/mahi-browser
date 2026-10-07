@@ -1,6 +1,6 @@
 {
   "name": "mahi-browser",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Professional Multi-Profile Browser Manager",
   "main": "dist-electron/main/index.js",
