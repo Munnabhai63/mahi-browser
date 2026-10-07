@@ -2463,56 +2463,105 @@ button {
 }
 
 /* ==========================================================================
-   8. 12-FEATURE DARK BENTO MATRIX
+   8. 12-FEATURE DARK MATRIX BENCHMARK ("That's just the tip of the iceberg")
    ========================================================================== */
-.bento-section {
-  padding: var(--section-py) 0;
-  background: var(--bg-obsidian);
-  border-top: 1px solid var(--border-hairline);
-}
-
-.bento-matrix-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1.25rem;
-}
-
-.bento-cell {
-  background: rgba(15, 23, 42, 0.55);
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-lg);
-  padding: 1.5rem;
-  text-align: left;
-  transition: var(--transition-base);
+.iceberg-section {
+  padding: clamp(5rem, 8vw, 7.5rem) 0 clamp(5rem, 8vw, 7.5rem);
+  background: #191a23;
+  color: #f8fafc;
   position: relative;
-  overflow: hidden;
 }
 
-.bento-cell:hover {
-  background: rgba(15, 23, 42, 0.9);
-  border-color: rgba(16, 185, 129, 0.4);
-  transform: translateY(-2px);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+.iceberg-title {
+  font-size: clamp(2rem, 3.2vw, 2.75rem);
+  font-weight: 800;
+  color: #ffffff;
+  text-align: center;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+  margin: 0 auto clamp(3.2rem, 5vw, 4.5rem);
 }
 
-.bento-icon-tag {
-  font-size: 1.5rem;
-  margin-bottom: 1rem;
-  display: inline-block;
+.iceberg-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(1.15rem, 1.8vw, 1.6rem);
+  max-width: 1060px;
+  margin: 0 auto;
 }
 
-.bento-cell h4 {
+.iceberg-card {
+  background: rgba(255, 255, 255, 0.042);
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  border-radius: 16px;
+  padding: 1.75rem 1.65rem;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+}
+
+.iceberg-card:hover {
+  background: rgba(255, 255, 255, 0.068);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.5);
+}
+
+.iceberg-card-icon {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.iceberg-card-icon img {
+  width: 28px;
+  height: 28px;
+  display: block;
+  opacity: 0.95;
+}
+
+.iceberg-card-title {
   font-size: 1.05rem;
   font-weight: 700;
-  color: var(--text-dark-h);
-  margin-bottom: 0.5rem;
+  color: #ffffff;
+  margin-bottom: 0.65rem;
   letter-spacing: -0.01em;
+  line-height: 1.35;
 }
 
-.bento-cell p {
-  font-size: 0.875rem;
-  color: var(--text-dark-body);
-  line-height: 1.55;
+.iceberg-card-desc {
+  font-size: 0.835rem;
+  line-height: 1.6;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.iceberg-link-highlight {
+  color: #00b87c;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 992px) {
+  .iceberg-grid {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: 680px;
+  }
+}
+
+@media (max-width: 600px) {
+  .iceberg-grid {
+    grid-template-columns: 1fr;
+    max-width: 360px;
+  }
+  .iceberg-card {
+    padding: 1.35rem 1.35rem;
+  }
 }
 
 /* ==========================================================================
