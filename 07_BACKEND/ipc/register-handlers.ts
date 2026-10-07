@@ -5,6 +5,17 @@ import { verifyLicense, getHWID } from '../../08_SECURITY/license-service.js';
 import { isOnlineRevoked, isGraceExpired, getOnlineStatusSummary, checkLicenseStatusOnline } from '../../08_SECURITY/license-status-service.js';
 import { assertCanCreateProfile, getPlanLimitsInfo } from '../../08_SECURITY/freemium-guard.js';
 import { getDynamicPrice, fetchDynamicPrice } from '../../08_SECURITY/price-service.js';
+import {
+  signup as accountSignup,
+  login as accountLogin,
+  logout as accountLogout,
+  fetchAndCacheStatus as accountFetchStatus,
+  switchDevice as accountSwitchDevice,
+  getPaymentInfo as accountGetPaymentInfo,
+  getAccountSession,
+  getAccountPlanLimits,
+  startAccountStatusScheduler
+} from '../../08_SECURITY/account-service.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { setActiveUserId } from '../commercial/session-context.js';
 import {
@@ -1697,15 +1708,45 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('sync:getUsage', async () => getCloudSyncUsage());
   ipcMain.handle('sync:list', async () => getCloudSyncList());
   ipcMain.handle('sync:upload', async (_e, profileId: string) => uploadProfileToCloud(profileId));
-  ipcMain.handle('sync:restore', async (_e, cloudProfileId: string, options?: any) => downloadAndRestoreProfile(cloudProfileId, options));
+  ipcMain.handle('sync:restore', async (_e, cloudProfileId: string, options?: any) => {
+    assertCanCreateProfile(1);
+    return downloadAndRestoreProfile(cloudProfileId, options);
+  });
   ipcMain.handle('sync:delete', async (_e, cloudProfileId: string) => deleteCloudProfile(cloudProfileId));
   ipcMain.handle('sync:getConfig', async () => getSyncConfig());
   ipcMain.handle('sync:setConfig', async (_e, config: any) => setSyncConfig(config));
   ipcMain.handle('sync:syncAll', async () => syncAllProfiles());
   ipcMain.handle('sync:getAllStatuses', async () => getAllProfilesSyncStatus());
 
-  // Initialize startup cloud sync queue resumption
+  // Account & Subscription IPC Handlers (v1.1.0+)
+  ipcMain.handle('account:signup', async (_e, dto: { email: string; password: string }) => {
+    return accountSignup(dto.email, dto.password);
+  });
+  ipcMain.handle('account:login', async (_e, dto: { email: string; password: string }) => {
+    return accountLogin(dto.email, dto.password);
+  });
+  ipcMain.handle('account:logout', async () => {
+    return accountLogout();
+  });
+  ipcMain.handle('account:getStatus', async () => {
+    return accountFetchStatus();
+  });
+  ipcMain.handle('account:switchDevice', async () => {
+    return accountSwitchDevice();
+  });
+  ipcMain.handle('account:getPaymentInfo', async () => {
+    return accountGetPaymentInfo();
+  });
+  ipcMain.handle('account:getSession', async () => {
+    return getAccountSession();
+  });
+  ipcMain.handle('account:getPlanLimits', async () => {
+    return getAccountPlanLimits();
+  });
+
+  // Initialize startup cloud sync queue resumption & account status scheduler
   initCloudSync();
+  startAccountStatusScheduler();
 
   // Wire event emitters from processManager, audit logger, and engine downloader to renderer windows
   addManagedEngineProgressListener((progress) => {

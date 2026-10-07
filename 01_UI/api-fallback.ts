@@ -627,6 +627,17 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     syncAllProfiles: async () => {},
     getAllProfilesSyncStatus: async () => ({}),
     onSyncProgress: () => () => {},
+
+    // Account & Subscription System (v1.1.0+)
+    accountSignup: async () => ({ success: true, token: 'mock-token' }),
+    accountLogin: async () => ({ success: true, token: 'mock-token' }),
+    accountLogout: async () => ({ success: true }),
+    accountGetStatus: async () => ({ plan: 'free', profile_limit: 15, sync_allowed: false }),
+    accountSwitchDevice: async () => ({ success: true, message: 'Device rebound' }),
+    accountGetPaymentInfo: async () => ({ upi_id: '', price_inr: 0, price_usdt: 0, usdt_address: '', usdt_network: '', whatsapp_number: '' }),
+    accountGetSession: async () => null,
+    accountGetPlanLimits: async () => ({ isPro: false, plan: 'free', maxProfiles: 15, expiresAt: null }),
+    onAccountStatusChanged: () => () => {},
   };
 
   (window as any).mahiAPI = fallbackApi;

@@ -9,6 +9,7 @@ import { AppLockModal } from './components/AppLockModal.js';
 import { WelcomeWizardModal } from './components/WelcomeWizardModal.js';
 import { UpdateModal } from './components/UpdateModal.js';
 import { EngineDownloadModal } from './components/EngineDownloadModal.js';
+import { AccountModal } from './components/AccountModal.js';
 import { useAccountStore } from './stores/useAccountStore.js';
 
 // Pages
@@ -55,7 +56,7 @@ export const App: React.FC = () => {
   const { fetchLogs, addLog } = useLogStore();
   const { fetchSettings } = useSettingsStore();
 
-  const { currentUser, commercialUser } = useAccountStore();
+  const { currentUser, commercialUser, isAccountModalOpen, closeAccountModal } = useAccountStore();
 
   useEffect(() => {
     // Attempt auto-login if saved license exists
@@ -281,6 +282,10 @@ export const App: React.FC = () => {
       <SynchronizerModal
         isOpen={isSynchronizerOpen}
         onClose={() => setIsSynchronizerOpen(false)}
+      />
+      <AccountModal
+        isOpen={isAccountModalOpen}
+        onClose={closeAccountModal}
       />
       <ToastContainer />
     </div>

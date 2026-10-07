@@ -6,6 +6,7 @@ import { verifyLicense } from './license-service.js';
 import { isOnlineRevoked, isGraceExpired } from './license-status-service.js';
 import { getDynamicPrice } from './price-service.js';
 import { getDatabase } from '../06_DATABASE/connection.js';
+import { hasValidAccountSubscription } from './account-service.js';
 
 function getUserDataPath(): string {
   try {
@@ -79,15 +80,19 @@ export function getNonDeletedProfileCount(): number {
   }
 }
 
+export function isUserPro(): boolean {
+  return hasValidAccountSubscription() || hasValidLicense();
+}
+
 /**
  * Validates whether creating `additionalCount` profiles is permitted under current plan.
  * Throws a user-friendly error if the limit is exceeded.
  */
 export function assertCanCreateProfile(additionalCount = 1): void {
   const currentCount = getNonDeletedProfileCount();
-  const isLicensed = hasValidLicense();
+  const isPro = isUserPro();
 
-  if (!isLicensed) {
+  if (!isPro) {
     if (currentCount + additionalCount > FREE_PROFILE_LIMIT) {
       const price = getDynamicPrice();
       throw new Error(
@@ -113,11 +118,12 @@ export function getPlanLimitsInfo(): {
   proLimit: number;
 } {
   const isLicensed = hasValidLicense();
+  const isPro = isUserPro();
   return {
     isLicensed,
-    isPro: isLicensed,
+    isPro,
     currentCount: getNonDeletedProfileCount(),
-    maxProfiles: isLicensed ? PRO_PROFILE_LIMIT : FREE_PROFILE_LIMIT,
+    maxProfiles: isPro ? PRO_PROFILE_LIMIT : FREE_PROFILE_LIMIT,
     freeLimit: FREE_PROFILE_LIMIT,
     proLimit: PRO_PROFILE_LIMIT,
   };

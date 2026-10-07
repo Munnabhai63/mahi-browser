@@ -70,7 +70,7 @@ export const UpdateModal: React.FC = () => {
               MAHI BROWSER Update
             </h4>
             <p id="update-dialog-desc" className="text-xs text-slate-300 mt-1 leading-relaxed font-medium">
-              नया update ready ({versionText}). Restart करके update करें?
+              New update ready ({versionText}). Restart now to apply update?
             </p>
           </div>
         </div>

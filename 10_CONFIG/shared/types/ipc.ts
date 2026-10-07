@@ -339,6 +339,17 @@ export interface MahiBrowserAPI {
   getAllProfilesSyncStatus: () => Promise<Record<string, string>>;
   onSyncProgress: (callback: (event: any) => void) => () => void;
 
+  // Account & Subscription System (v1.1.0+)
+  accountSignup: (dto: { email: string; password: string }) => Promise<{ success: boolean; token?: string; user?: any; error?: string }>;
+  accountLogin: (dto: { email: string; password: string }) => Promise<{ success: boolean; token?: string; user?: any; error?: string }>;
+  accountLogout: () => Promise<{ success: boolean }>;
+  accountGetStatus: () => Promise<any>;
+  accountSwitchDevice: () => Promise<{ success: boolean; message: string }>;
+  accountGetPaymentInfo: () => Promise<any>;
+  accountGetSession: () => Promise<any>;
+  accountGetPlanLimits: () => Promise<{ isPro: boolean; plan: string; maxProfiles: number; expiresAt: string | null }>;
+  onAccountStatusChanged?: (callback: (data: any) => void) => () => void;
+
   // Event Listeners
   onProfileStatusChanged: (callback: (data: { profileId: string; status: string; pid?: number; error?: string }) => void) => () => void;
   onActivityLogAdded: (callback: (log: ActivityLogItem) => void) => () => void;

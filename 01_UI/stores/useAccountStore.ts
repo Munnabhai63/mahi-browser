@@ -39,14 +39,28 @@ interface AccountState {
   commercialError: string | null;
   rememberMe: boolean;
 
+  // GoLogin-Style Account & Subscription System (v1.1.0+)
+  accountSession: any | null;
+  planLimits: { isPro: boolean; plan: string; maxProfiles: number; expiresAt: string | null } | null;
+  paymentInfo: any | null;
+  pendingProfileDto: any | null;
+
   setDashboardRole: (role: 'ADMIN' | 'STUDENT') => void;
-  openAccountModal: () => void;
+  openAccountModal: (pendingDto?: any) => void;
   closeAccountModal: () => void;
+  clearPendingProfileDto: () => void;
   switchAccount: (email: string) => void;
   logout: () => Promise<void>;
   setActiveWorkspace: (id: string) => void;
   addWorkspace: (name: string) => void;
   setRememberMe: (val: boolean) => void;
+
+  fetchPlanLimits: () => Promise<void>;
+  fetchPaymentInfo: () => Promise<void>;
+  accountSignup: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  accountLogin: (email: string, password: string) => Promise<{ success: boolean; error?: string; deviceMismatch?: boolean }>;
+  accountLogout: () => Promise<void>;
+  accountSwitchDevice: () => Promise<{ success: boolean; error?: string }>;
 
   commercialLogin: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   commercialRegister: (email: string, password: string, name?: string) => Promise<{ success: boolean; error?: string }>;
@@ -97,9 +111,101 @@ export const useAccountStore = create<AccountState>()(
       commercialError: null,
       rememberMe: false,
 
+      accountSession: null,
+      planLimits: null,
+      paymentInfo: null,
+      pendingProfileDto: null,
+
       setDashboardRole: (role) => set({ dashboardRole: role }),
-      openAccountModal: () => set({ isAccountModalOpen: true }),
-      closeAccountModal: () => set({ isAccountModalOpen: false }),
+      openAccountModal: (pendingDto) => set({ isAccountModalOpen: true, pendingProfileDto: pendingDto || null }),
+      closeAccountModal: () => set({ isAccountModalOpen: false, pendingProfileDto: null }),
+      clearPendingProfileDto: () => set({ pendingProfileDto: null }),
+
+      fetchPlanLimits: async () => {
+        if (!window.mahiAPI) return;
+        try {
+          const limits = await window.mahiAPI.accountGetPlanLimits();
+          set({ planLimits: limits });
+          const sess = await window.mahiAPI.accountGetSession();
+          set({ accountSession: sess });
+          if (sess) {
+            set({
+              currentUser: {
+                email: sess.email,
+                displayName: sess.email.split('@')[0],
+                avatarLetter: sess.email[0].toUpperCase(),
+                avatarColor: getRandomColor(sess.email),
+                planName: limits.plan.toUpperCase(),
+                maxProfiles: limits.maxProfiles,
+                createdAt: sess.saved_at,
+              }
+            });
+          }
+        } catch {}
+      },
+
+      fetchPaymentInfo: async () => {
+        if (!window.mahiAPI) return;
+        try {
+          const info = await window.mahiAPI.accountGetPaymentInfo();
+          set({ paymentInfo: info });
+        } catch {}
+      },
+
+      accountSignup: async (email, password) => {
+        if (!window.mahiAPI) return { success: false, error: 'API unavailable' };
+        try {
+          const res = await window.mahiAPI.accountSignup({ email, password });
+          if (res.success) {
+            await get().fetchPlanLimits();
+            return { success: true };
+          }
+          return { success: false, error: res.error || 'Signup failed' };
+        } catch (err: any) {
+          return { success: false, error: err.message || 'Signup failed' };
+        }
+      },
+
+      accountLogin: async (email, password) => {
+        if (!window.mahiAPI) return { success: false, error: 'API unavailable' };
+        try {
+          const res = await window.mahiAPI.accountLogin({ email, password });
+          if (res.success) {
+            await get().fetchPlanLimits();
+            return { success: true };
+          }
+          return { success: false, error: res.error || 'Login failed', deviceMismatch: (res as any).device_limit };
+        } catch (err: any) {
+          return { success: false, error: err.message || 'Login failed', deviceMismatch: err.device_limit };
+        }
+      },
+
+      accountLogout: async () => {
+        if (!window.mahiAPI) return;
+        try {
+          await window.mahiAPI.accountLogout();
+        } catch {}
+        set({
+          accountSession: null,
+          currentUser: null,
+          planLimits: { isPro: false, plan: 'free', maxProfiles: 15, expiresAt: null },
+        });
+      },
+
+      accountSwitchDevice: async () => {
+        if (!window.mahiAPI) return { success: false, error: 'API unavailable' };
+        try {
+          const res = await window.mahiAPI.accountSwitchDevice();
+          if (res.success) {
+            await get().fetchPlanLimits();
+            return { success: true };
+          }
+          return { success: false, error: (res as any).message || 'Device switch failed' };
+        } catch (err: any) {
+          return { success: false, error: err.message || 'Device switch failed' };
+        }
+      },
+
       setRememberMe: (val) => set({ rememberMe: val }),
 
       commercialLogin: async (email, password) => {

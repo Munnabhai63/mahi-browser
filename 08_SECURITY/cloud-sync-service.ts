@@ -5,7 +5,8 @@ import http from 'node:http';
 import { app, BrowserWindow } from 'electron';
 import { getHWID, verifyLicense } from './license-service.js';
 import { ADMIN_API_BASE_URL, isOnlineRevoked, isGraceExpired } from './license-status-service.js';
-import { hasValidLicense } from './freemium-guard.js';
+import { hasValidLicense, assertCanCreateProfile } from './freemium-guard.js';
+import { hasValidAccountSubscription, getAccountSyncKey, loadEncryptedSession } from './account-service.js';
 import { getProfileById, getProfiles } from '../02_BROWSER/services/profile-service.js';
 import { exportProfileToArchive, importProfileFromArchive } from '../02_BROWSER/services/archive-service.js';
 import {
@@ -101,7 +102,36 @@ export function getActiveLicenseKey(): string | null {
   return null;
 }
 
+export function getSyncAuthHeaders(): Record<string, string> {
+  const session = loadEncryptedSession();
+  const hwid = getHWID();
+  if (session?.token) {
+    return {
+      'x-mahi-token': session.token,
+      'x-mahi-hwid': hwid
+    };
+  }
+  const key = getActiveLicenseKey();
+  if (key) {
+    return {
+      'x-mahi-hwid': hwid,
+      'x-mahi-license-key': key
+    };
+  }
+  return { 'x-mahi-hwid': hwid };
+}
+
+export function getEffectiveSyncPassphrase(): string {
+  const accountKey = getAccountSyncKey();
+  if (accountKey) return accountKey;
+  return getSyncConfig().syncPassphrase;
+}
+
 export function isCloudSyncAllowed(): { allowed: boolean; reason?: string } {
+  if (hasValidAccountSubscription()) {
+    return { allowed: true };
+  }
+
   if (isOnlineRevoked()) {
     return { allowed: false, reason: 'License has been revoked by administration. Cloud sync disabled.' };
   }
@@ -109,7 +139,7 @@ export function isCloudSyncAllowed(): { allowed: boolean; reason?: string } {
     return { allowed: false, reason: 'License verification grace period expired. Please connect to internet to verify license.' };
   }
   if (!hasValidLicense()) {
-    return { allowed: false, reason: 'Cloud Sync is a MAHI PRO feature. Active license required.' };
+    return { allowed: false, reason: 'Cloud Sync is a MAHI PRO feature. Active license or account required.' };
   }
   const key = getActiveLicenseKey();
   if (!key) {
@@ -151,6 +181,30 @@ export function getAllProfilesSyncStatus(): Record<string, CloudSyncStatus> {
     res[k] = v.status;
   }
   return res;
+}
+
+let hasBroadcastAuthError = false;
+let isQueuePausedForQuota = false;
+
+export function getQueuePausedStatus(): boolean {
+  return isQueuePausedForQuota;
+}
+
+export function resetQueuePausedStatus(): void {
+  isQueuePausedForQuota = false;
+  hasBroadcastAuthError = false;
+}
+
+export function broadcastSyncToast(type: 'info' | 'warning' | 'error' | 'success', title: string, message: string): void {
+  if (typeof BrowserWindow !== 'undefined' && BrowserWindow && BrowserWindow.getAllWindows) {
+    try {
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send('toast:show', { type, title, message });
+        }
+      });
+    } catch {}
+  }
 }
 
 function broadcastProgress(event: CloudSyncProgressEvent): void {
@@ -205,15 +259,11 @@ export async function getCloudSyncUsage(): Promise<CloudSyncUsage> {
     throw new Error(check.reason);
   }
 
-  const hwid = getHWID();
-  const key = getActiveLicenseKey()!;
+  const authHeaders = getSyncAuthHeaders();
 
   const res = await requestApi(`${ADMIN_API_BASE_URL}/v1/sync/usage`, {
     method: 'GET',
-    headers: {
-      'x-mahi-hwid': hwid,
-      'x-mahi-license-key': key
-    }
+    headers: authHeaders
   });
 
   if (res.statusCode !== 200) {
@@ -238,15 +288,11 @@ export async function getCloudSyncList(): Promise<CloudProfileMetadata[]> {
     throw new Error(check.reason);
   }
 
-  const hwid = getHWID();
-  const key = getActiveLicenseKey()!;
+  const authHeaders = getSyncAuthHeaders();
 
   const res = await requestApi(`${ADMIN_API_BASE_URL}/v1/sync/list`, {
     method: 'GET',
-    headers: {
-      'x-mahi-hwid': hwid,
-      'x-mahi-license-key': key
-    }
+    headers: authHeaders
   });
 
   if (res.statusCode !== 200) {
@@ -270,9 +316,8 @@ export async function uploadProfileToCloud(profileId: string): Promise<{ success
     throw new Error(`Profile ${profileId} not found locally`);
   }
 
-  const hwid = getHWID();
-  const key = getActiveLicenseKey()!;
-  const config = getSyncConfig();
+  const authHeaders = getSyncAuthHeaders();
+  const effectivePassphrase = getEffectiveSyncPassphrase();
 
   broadcastProgress({
     stage: 'PACKING',
@@ -294,7 +339,7 @@ export async function uploadProfileToCloud(profileId: string): Promise<{ success
       includeExtensions: true,
       includeBrowserSettings: true,
       includeStorage: true,
-      password: config.syncPassphrase
+      password: effectivePassphrase
     });
 
     const fileStat = fs.statSync(tempExportPath);
@@ -317,8 +362,7 @@ export async function uploadProfileToCloud(profileId: string): Promise<{ success
       headers: {
         'Content-Type': 'application/octet-stream',
         'Content-Length': fileBuffer.length,
-        'x-mahi-hwid': hwid,
-        'x-mahi-license-key': key,
+        ...authHeaders,
         'x-mahi-profile-id': profileId,
         'x-mahi-profile-name': profile.name,
         'x-mahi-updated-at': new Date().toISOString()
@@ -332,7 +376,9 @@ export async function uploadProfileToCloud(profileId: string): Promise<{ success
         const parsed = JSON.parse(errText);
         if (parsed.error) errMsg = parsed.error;
       } catch {}
-      throw new Error(errMsg);
+      const errorObj: any = new Error(errMsg);
+      errorObj.status = res.statusCode;
+      throw errorObj;
     }
 
     const respData = JSON.parse(res.body.toString('utf8'));
@@ -368,15 +414,14 @@ export async function downloadAndRestoreProfile(
   cloudProfileId: string,
   options?: { overrideName?: string; targetFolder?: string; passphrase?: string }
 ): Promise<any> {
+  assertCanCreateProfile(1);
   const check = isCloudSyncAllowed();
   if (!check.allowed) {
     throw new Error(check.reason);
   }
 
-  const hwid = getHWID();
-  const key = getActiveLicenseKey()!;
-  const config = getSyncConfig();
-  const passphrase = options?.passphrase || config.syncPassphrase;
+  const authHeaders = getSyncAuthHeaders();
+  const effectivePassphrase = options?.passphrase || getEffectiveSyncPassphrase();
 
   broadcastProgress({
     stage: 'DOWNLOADING',
@@ -387,10 +432,7 @@ export async function downloadAndRestoreProfile(
 
   const res = await requestApi(`${ADMIN_API_BASE_URL}/v1/sync/download?profile=${encodeURIComponent(cloudProfileId)}`, {
     method: 'GET',
-    headers: {
-      'x-mahi-hwid': hwid,
-      'x-mahi-license-key': key
-    }
+    headers: authHeaders
   });
 
   if (res.statusCode !== 200) {
@@ -411,7 +453,7 @@ export async function downloadAndRestoreProfile(
   try {
     const restored = importProfileFromArchive({
       sourceFilePath: tempFilePath,
-      password: passphrase,
+      password: effectivePassphrase,
       overrideName: options?.overrideName,
       targetFolder: options?.targetFolder
     });
@@ -441,15 +483,11 @@ export async function deleteCloudProfile(cloudProfileId: string): Promise<boolea
     throw new Error(check.reason);
   }
 
-  const hwid = getHWID();
-  const key = getActiveLicenseKey()!;
+  const authHeaders = getSyncAuthHeaders();
 
   const res = await requestApi(`${ADMIN_API_BASE_URL}/v1/sync/profile?id=${encodeURIComponent(cloudProfileId)}`, {
     method: 'DELETE',
-    headers: {
-      'x-mahi-hwid': hwid,
-      'x-mahi-license-key': key
-    }
+    headers: authHeaders
   });
 
   if (res.statusCode === 200) {
@@ -494,6 +532,8 @@ export async function processSyncQueue(): Promise<void> {
   const auth = isCloudSyncAllowed();
   if (!auth.allowed) return;
 
+  if (isQueuePausedForQuota) return;
+
   isProcessingQueue = true;
   const queue = readQueue();
 
@@ -505,6 +545,32 @@ export async function processSyncQueue(): Promise<void> {
         queue.shift(); // remove on success
         saveQueue(queue);
       } catch (err: any) {
+        const status = err.status || (
+          err.message.includes('401') ? 401 :
+          err.message.includes('403') ? 403 :
+          err.message.includes('413') ? 413 :
+          err.message.includes('507') ? 507 : 500
+        );
+
+        if (status === 401 || status === 403) {
+          // 401/403 (revoked/expired): retry STOP, clear queue, show single toast, no launch spam
+          console.warn(`[CloudSync] Auth failure (${status}). Halting sync retries and clearing queue.`);
+          saveQueue([]);
+          if (!hasBroadcastAuthError) {
+            hasBroadcastAuthError = true;
+            broadcastSyncToast('error', 'Cloud Sync Disabled', 'Cloud sync suspended: Active license required. Local profiles remain completely safe.');
+          }
+          break;
+        }
+
+        if (status === 413 || status === 507) {
+          // 413/507 (quota/disk): pause queue, show single usage toast, keep queue for later
+          console.warn(`[CloudSync] Storage cap reached (${status}). Pausing sync queue.`);
+          isQueuePausedForQuota = true;
+          broadcastSyncToast('warning', 'Cloud Storage Full', 'Cloud storage quota (1GB) or server disk capacity reached. Sync queue paused.');
+          break;
+        }
+
         console.warn(`[CloudSync] Queue item ${item.profileId} failed (attempt ${item.attempts + 1}):`, err.message);
         item.attempts += 1;
         if (item.attempts >= 3) {
@@ -525,6 +591,8 @@ export function enqueueSync(profileId: string): void {
 
   const auth = isCloudSyncAllowed();
   if (!auth.allowed) return;
+
+  if (isQueuePausedForQuota) return;
 
   updateLocalSyncStatus(profileId, 'PENDING');
   const queue = readQueue();
@@ -557,6 +625,11 @@ export function syncAllProfiles(): void {
  * Initializes startup sync queue resumption
  */
 export function initCloudSync(): void {
+  const auth = isCloudSyncAllowed();
+  if (!auth.allowed) {
+    // Suppress launch spam if user is not authorized for cloud sync
+    return;
+  }
   setTimeout(() => {
     processSyncQueue().catch(() => {});
   }, 5000);

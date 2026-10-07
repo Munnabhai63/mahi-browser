@@ -299,6 +299,21 @@ const api: MahiBrowserAPI = {
     ipcRenderer.on('sync:progress', handler);
     return () => ipcRenderer.removeListener('sync:progress', handler);
   },
+
+  // Account & Subscription System (v1.1.0+)
+  accountSignup: (dto) => ipcRenderer.invoke('account:signup', dto),
+  accountLogin: (dto) => ipcRenderer.invoke('account:login', dto),
+  accountLogout: () => ipcRenderer.invoke('account:logout'),
+  accountGetStatus: () => ipcRenderer.invoke('account:getStatus'),
+  accountSwitchDevice: () => ipcRenderer.invoke('account:switchDevice'),
+  accountGetPaymentInfo: () => ipcRenderer.invoke('account:getPaymentInfo'),
+  accountGetSession: () => ipcRenderer.invoke('account:getSession'),
+  accountGetPlanLimits: () => ipcRenderer.invoke('account:getPlanLimits'),
+  onAccountStatusChanged: (callback) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('account:statusChanged', handler);
+    return () => ipcRenderer.removeListener('account:statusChanged', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('mahiAPI', api);

@@ -177,7 +177,7 @@ export function getOnlineStatusSummary(): {
       revoked: true,
       graceExpired: false,
       offlineDaysLeft: 0,
-      statusText: 'Revoked (लाइसेंस रद्द है)'
+      statusText: 'Revoked (License cancelled)'
     };
   }
 
@@ -187,7 +187,7 @@ export function getOnlineStatusSummary(): {
       revoked: false,
       graceExpired: true,
       offlineDaysLeft: 0,
-      statusText: 'Offline Grace Expired (इंटरनेट कनेक्ट करें)'
+      statusText: 'Offline Grace Expired (Please connect to internet)'
     };
   }
 

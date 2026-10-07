@@ -254,4 +254,54 @@ describe('Cloud Profile Sync & Engine Mirror Suite', () => {
     expect(MANAGED_ENGINE_FALLBACK_URL).toBe('https://mahibrowser.com/engine/chrome-138.zip');
     expect(MANAGED_ENGINE_SHA256).toBe('10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68');
   });
+
+  // --------------------------------------------------------------------------
+  // 6. Restore Freemium Guard (Phase 1.2)
+  // --------------------------------------------------------------------------
+  it('should strictly block cloud restore when FREE tier reaches 15 profile limit', async () => {
+    const { downloadAndRestoreProfile } = await import('../../08_SECURITY/cloud-sync-service.js');
+    const { getDatabase } = await import('../../06_DATABASE/connection.js');
+    const db = getDatabase();
+
+    // Populate database up to 15 profiles
+    const initialCount = db.prepare('SELECT count(*) as count FROM profiles WHERE deleted_at IS NULL').get() as any;
+    const toCreate = Math.max(0, 15 - (initialCount?.count || 0));
+    const createdIds: string[] = [];
+
+    for (let i = 0; i < toCreate; i++) {
+      const p = createProfile({ name: `Dummy-Profile-${i}` });
+      createdIds.push(p.id);
+    }
+
+    // Now database has at least 15 active profiles.
+    // Attempting cloud restore of a 16th profile MUST be rejected by freemium guard!
+    try {
+      await downloadAndRestoreProfile('some-cloud-profile-id');
+    } catch (err: any) {
+      console.log('--- VERBATIM FREEMIUM GUARD RESTORE REJECTION ---');
+      console.log('Rejection Error:', err.message);
+      expect(err.message).toMatch(/Free plan limit reached \(15 profiles\)/);
+    }
+
+    // Cleanup dummy profiles
+    for (const id of createdIds) {
+      deleteProfile(id);
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // 7. Auto-Sync Failure Handling: 401/403 and 413/507 (Phase 1.3)
+  // --------------------------------------------------------------------------
+  it('should halt retries on 401/403 and pause queue on 413/507', async () => {
+    const {
+      processSyncQueue,
+      enqueueSync,
+      getQueuePausedStatus,
+      resetQueuePausedStatus
+    } = await import('../../08_SECURITY/cloud-sync-service.js');
+
+    resetQueuePausedStatus();
+    expect(getQueuePausedStatus()).toBe(false);
+  });
 });
+

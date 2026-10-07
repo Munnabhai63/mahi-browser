@@ -36,6 +36,8 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
     setActiveWorkspace,
     addWorkspace,
     logout,
+    openAccountModal,
+    accountLogout,
   } = useAccountStore();
 
   const currentLicenseStatus = useLicenseStore((state) => state.currentLicenseStatus);
@@ -232,31 +234,32 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
 
           <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2" />
 
-          {/* Optional Commercial Account login/logout */}
+          {/* Account Login / Logout */}
           <div className="p-1.5">
             {currentUser ? (
               <button
                 type="button"
                 onClick={() => {
+                  accountLogout();
                   logout();
                   setIsOpen(false);
                 }}
                 className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl hover:bg-rose-500/10 text-rose-500 font-semibold transition"
               >
                 <LogOut size={15} />
-                <span>Log Out</span>
+                <span>Sign Out</span>
               </button>
             ) : (
               <button
                 type="button"
                 onClick={() => {
-                  setIsCommercialModalOpen(true);
+                  openAccountModal();
                   setIsOpen(false);
                 }}
-                className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-200 font-medium transition"
+                className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl hover:bg-emerald-500/10 text-emerald-500 hover:text-emerald-400 font-medium transition"
               >
                 <ShieldCheck size={15} />
-                <span>Commercial Device Sign-in</span>
+                <span>Sign In / 7-Day PRO Trial</span>
               </button>
             )}
           </div>

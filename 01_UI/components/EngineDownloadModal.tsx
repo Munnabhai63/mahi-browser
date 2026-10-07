@@ -50,12 +50,12 @@ export const EngineDownloadModal: React.FC = () => {
   const downloadedMB = (status.downloadedBytes / (1024 * 1024)).toFixed(1);
   const totalMB = status.totalBytes > 0 ? (status.totalBytes / (1024 * 1024)).toFixed(1) : '172.6';
 
-  let stageLabel = 'डाउनलोड हो रहा है...';
-  if (status.stage === 'CHECKING') stageLabel = 'डिस्क स्पेस की पुष्टि हो रही है...';
-  if (status.stage === 'VERIFYING') stageLabel = 'SHA-256 सुरक्षा चेकसम सत्यापित हो रहा है...';
-  if (status.stage === 'EXTRACTING') stageLabel = 'ब्राउज़र इंजन अनपैक हो रहा है...';
-  if (status.stage === 'READY') stageLabel = 'इंजन तैयार है!';
-  if (status.stage === 'ERROR') stageLabel = 'डाउनलोड विफल (Download Failed)';
+  let stageLabel = 'Downloading...';
+  if (status.stage === 'CHECKING') stageLabel = 'Checking available disk space...';
+  if (status.stage === 'VERIFYING') stageLabel = 'Verifying SHA-256 checksum...';
+  if (status.stage === 'EXTRACTING') stageLabel = 'Extracting browser engine...';
+  if (status.stage === 'READY') stageLabel = 'Engine ready!';
+  if (status.stage === 'ERROR') stageLabel = 'Download Failed';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -73,7 +73,7 @@ export const EngineDownloadModal: React.FC = () => {
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100 leading-snug">
-              Browser engine डाउनलोड हो रहा है (~170MB, सिर्फ एक बार)
+              Downloading browser engine (~170MB, one-time setup)
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               Version {status.version} • Google Chrome for Testing CDN
@@ -85,12 +85,12 @@ export const EngineDownloadModal: React.FC = () => {
         {status.stage === 'ERROR' ? (
           <div className="space-y-3">
             <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-xl text-xs text-red-700 dark:text-red-300">
-              <p className="font-medium">इंजन डाउनलोड नहीं हो सका:</p>
-              <p className="mt-1 opacity-90 break-words">{status.error || 'अज्ञात नेटवर्क या डिस्क त्रुटि।'}</p>
+              <p className="font-medium">Engine download failed:</p>
+              <p className="mt-1 opacity-90 break-words">{status.error || 'Unknown network or disk error.'}</p>
             </div>
             <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-1.5">
-                <HardDrive className="w-3.5 h-3.5" /> 1GB डिस्क स्पेस आवश्यक
+                <HardDrive className="w-3.5 h-3.5" /> 1GB disk space required
               </span>
               <button
                 onClick={handleRetry}
@@ -98,7 +98,7 @@ export const EngineDownloadModal: React.FC = () => {
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-xl text-xs flex items-center gap-1.5 transition-colors shadow-sm disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
-                {isRetrying ? 'पुनः प्रयास हो रहा है...' : 'पुनः प्रयास करें (Retry)'}
+                {isRetrying ? 'Retrying...' : 'Retry'}
               </button>
             </div>
           </div>
@@ -122,7 +122,7 @@ export const EngineDownloadModal: React.FC = () => {
             <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-1">
               <span className="flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                सुरक्षित एवं पिन किया गया
+                Secure & Verified Checksum
               </span>
               <span>
                 {downloadedMB} MB / {totalMB} MB
@@ -130,7 +130,7 @@ export const EngineDownloadModal: React.FC = () => {
             </div>
 
             <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center italic">
-              डाउनलोड पृष्ठभूमि में चल रहा है। केवल ब्राउज़र लॉन्च इसके पूर्ण होने की प्रतीक्षा करेगा।
+              Download is running in background. Only browser launches will wait for completion.
             </p>
           </div>
         )}
