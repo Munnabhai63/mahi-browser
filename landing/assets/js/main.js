@@ -179,14 +179,15 @@ function initLanguageSwitcher() {
       fp_node_ua: 'User Agent',
       sol_eyebrow: 'Antidetect & proxy in one solution:',
       sol_title: 'MAHI — like a regular <img src="assets/img/ui/chrome-logo.svg" alt="Chrome" class="chrome-heading-logo" width="40" height="40"> browser with tools for multiple accounts',
-      elem1_title: 'Create unique profile and choose location',
-      elem1_desc: 'Use built-in MAHI proxies to set account location. Or add your own proxy in 1-click',
-      elem1_btn: 'Try this feature now',
-      elem2_title: 'Share account access with your team',
-      elem2_desc: 'Let a team member continue your account session on a different device, anywhere in the world',
-      elem2_btn: 'Try this feature now',
-      elem3_title: 'Organize accounts with folders, statuses and notes',
-      elem3_desc: 'Manage all your accounts from one dashboard, for better control, clarity and speed',
+      elem1_title: "Universal proxy manager with local tunnel",
+      elem1_desc: "Connect any SOCKS5, HTTP, or HTTPS proxy in 1-click. Built-in local loopback authenticator eliminates browser authentication popups with real-time IP, ISP, and latency diagnostics.",
+      elem1_btn: "Try this feature now",
+      elem2_title: "Local workspaces and role segmentation",
+      elem2_desc: "Organize browser profiles into dedicated local workspaces with custom tags and role-based permissions to keep campaigns strictly partitioned.",
+      elem2_btn: "Try this feature now",
+      elem3_title: "Session continuity, profile locking & trash recovery",
+      elem3_desc: "Never lose session state. Automatic lockfiles prevent database corruption, and the soft-delete trash bin enables instant 1-click recovery of deleted profiles.",
+      elem3_btn: "Try this feature now",
       elem3_btn: 'Try this feature now',
       supp_badge: "🥇 #1 support in software",
       supp_247: "24/7",
@@ -2164,6 +2165,99 @@ function initResourceModal() {
   });
 
   const resourceData = {
+    'rpa-automation': {
+      category: 'Built-In Automation',
+      title: 'Visual RPA Workflow Builder',
+      html: `
+        <p style="color: #64748b; font-size: 0.925rem; line-height: 1.6; margin-bottom: 1.25rem;">
+          MAHI Browser features a fully integrated Playwright-powered visual automation runner. Build multi-step browsing workflows without writing code.
+        </p>
+        <div style="background: #0f172a; border: 1px solid rgba(0, 168, 126, 0.3); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.25rem;">
+          <strong style="color: #34d399; font-size: 0.85rem; display: block; margin-bottom: 0.75rem; text-transform: uppercase;">Supported Native Actions:</strong>
+          <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+            <span style="background: rgba(255,255,255,0.08); color: #e2e8f0; font-family: monospace; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px;">OPEN_URL</span>
+            <span style="background: rgba(255,255,255,0.08); color: #e2e8f0; font-family: monospace; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px;">CLICK</span>
+            <span style="background: rgba(255,255,255,0.08); color: #e2e8f0; font-family: monospace; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px;">FILL</span>
+            <span style="background: rgba(255,255,255,0.08); color: #e2e8f0; font-family: monospace; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px;">WAIT_FOR_SELECTOR</span>
+            <span style="background: rgba(255,255,255,0.08); color: #e2e8f0; font-family: monospace; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px;">SCREENSHOT</span>
+            <span style="background: rgba(255,255,255,0.08); color: #e2e8f0; font-family: monospace; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px;">EXTRACT_TITLE</span>
+            <span style="background: rgba(255,255,255,0.08); color: #e2e8f0; font-family: monospace; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px;">SCROLL</span>
+            <span style="background: rgba(255,255,255,0.08); color: #e2e8f0; font-family: monospace; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px;">SLEEP</span>
+          </div>
+        </div>
+        <a href="/download/MAHI-Setup.exe" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;" download>Download Windows App to Try RPA →</a>
+      `
+    },
+    'cookie-warmer': {
+      category: 'Account Farming Bot',
+      title: 'Automated Cookie Warmer & Farmer',
+      html: `
+        <p style="color: #64748b; font-size: 0.925rem; line-height: 1.6; margin-bottom: 1.25rem;">
+          Fresh profiles with zero cookies trigger antibot alerts on major platforms. MAHI's Cookie Warmer visits top authoritative websites in the background to build organic cookie weight and natural browsing history.
+        </p>
+        <ul style="color: #475569; font-size: 0.875rem; line-height: 1.8; margin-bottom: 1.25rem; padding-left: 1.25rem;">
+          <li>Automated visits to Google, Wikipedia, Amazon, YouTube</li>
+          <li>Custom wait times, scroll physics, and link following</li>
+          <li>Dramatic increase in initial account trust and lifespan</li>
+        </ul>
+        <a href="/download/MAHI-Setup.exe" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;" download>Download to Use Cookie Warmer →</a>
+      `
+    },
+    'synchronizer': {
+      category: 'Multi-Window Sync',
+      title: 'Multi-Window Live Synchronizer',
+      html: `
+        <p style="color: #64748b; font-size: 0.925rem; line-height: 1.6; margin-bottom: 1.25rem;">
+          Operate one Master profile window and broadcast your actions simultaneously across dozens of Slave windows via Chrome DevTools Protocol (CDP).
+        </p>
+        <ul style="color: #475569; font-size: 0.875rem; line-height: 1.8; margin-bottom: 1.25rem; padding-left: 1.25rem;">
+          <li>Mirrors mouse movements, clicks, and text typing</li>
+          <li>Synchronized scrolling and page navigation</li>
+          <li>Reduces manual workload by over 90% in mass operations</li>
+        </ul>
+        <a href="/download/MAHI-Setup.exe" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;" download>Download to Try Synchronizer →</a>
+      `
+    },
+    'mobile-rotator': {
+      category: 'Hardware & Proxy',
+      title: '4G/5G Mobile Hotspot ADB Rotator',
+      html: `
+        <p style="color: #64748b; font-size: 0.925rem; line-height: 1.6; margin-bottom: 1.25rem;">
+          Save on expensive 4G/5G mobile proxies. Connect any Android smartphone via USB tethering, and MAHI Browser automatically toggles airplane mode via ADB to refresh your mobile carrier IP.
+        </p>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem; margin-bottom: 1.25rem;">
+          <strong style="color: #0f172a; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Zero Subscription Cost:</strong>
+          <span style="color: #64748b; font-size: 0.85rem;">Uses your smartphone's existing cellular data plan for unlimited clean mobile carrier IPs.</span>
+        </div>
+        <a href="/download/MAHI-Setup.exe" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;" download>Download to Setup ADB Rotator →</a>
+      `
+    },
+    'proxy-manager': {
+      category: 'Network & Tunneling',
+      title: 'Universal Proxy Manager & Local Auth Tunnel',
+      html: `
+        <p style="color: #64748b; font-size: 0.925rem; line-height: 1.6; margin-bottom: 1.25rem;">
+          Connect any third-party HTTP, HTTPS, or SOCKS5 proxy. MAHI features a built-in local loopback proxy tunnel on 127.0.0.1 that auto-authenticates credentials and prevents Chromium authentication popups.
+        </p>
+        <ul style="color: #475569; font-size: 0.875rem; line-height: 1.8; margin-bottom: 1.25rem; padding-left: 1.25rem;">
+          <li>AES-256 encrypted proxy credential storage</li>
+          <li>Live IP, ISP, country, and latency diagnostics</li>
+          <li>Automatic proxy failover and health checking</li>
+        </ul>
+        <a href="/download/MAHI-Setup.exe" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;" download>Download Windows App →</a>
+      `
+    },
+    'profile-backup': {
+      category: 'Security & Backup',
+      title: 'Encrypted Profile Backup & Portability',
+      html: `
+        <p style="color: #64748b; font-size: 0.925rem; line-height: 1.6; margin-bottom: 1.25rem;">
+          All browser profiles, cookies, and settings are encrypted at rest with AES-256-GCM. Export your entire environment as a portable encrypted archive anytime to migrate between PCs without data loss.
+        </p>
+        <a href="/download/MAHI-Setup.exe" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;" download>Download Free Version →</a>
+      `
+    },
+
     'blog': {
       category: 'MAHI Insights',
       title: 'Latest Research & Browser Privacy Articles',
@@ -2317,7 +2411,7 @@ function initResourceModal() {
       `
     },
     'cloud-android': {
-      category: 'Mobile Emulation',
+      category: 'Roadmap (Coming Soon in V2)',
       title: 'Cloud Android Fingerprint Engine',
       html: `
         <p style="color: #64748b; font-size: 0.925rem; line-height: 1.6; margin-bottom: 1rem;">

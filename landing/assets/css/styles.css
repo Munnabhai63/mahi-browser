@@ -3662,3 +3662,197 @@ button {
     scroll-behavior: auto !important;
   }
 }
+
+
+/* ==========================================================================
+   PHASE 1 TRUTH ALIGNMENT: AUTOMATION SHOWCASE & TRUST BADGES
+   ========================================================================== */
+
+.platform-trust-pills-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.trust-capability-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.85rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  backdrop-filter: blur(8px);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.trust-capability-pill:hover {
+  background: rgba(0, 168, 126, 0.08);
+  border-color: rgba(0, 168, 126, 0.35);
+}
+
+.trust-cap-icon {
+  font-size: 0.9rem;
+}
+
+.os-circle-btn.coming-soon-os,
+.footer-os-badge.disabled-os {
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+  position: relative;
+}
+
+.os-circle-btn.coming-soon-os:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.os-status-pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-left: 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.footer-os-badge.active-os {
+  border-color: #00a87e;
+  background: rgba(0, 168, 126, 0.12);
+  color: #ffffff;
+}
+
+.footer-os-badge.disabled-os {
+  opacity: 0.5;
+  border-style: dashed;
+}
+
+/* Automation Showcase Section */
+.automation-showcase-section {
+  padding: 5.5rem 0 4.5rem;
+  background: radial-gradient(circle at 50% 20%, rgba(0, 168, 126, 0.07) 0%, transparent 65%), #07090e;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  position: relative;
+}
+
+.automation-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  margin-top: 2.75rem;
+}
+
+@media (max-width: 900px) {
+  .automation-cards-grid {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+}
+
+.automation-feature-card {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 18px;
+  padding: 2.25rem 2rem;
+  position: relative;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.28s ease, background 0.28s ease, box-shadow 0.28s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.automation-feature-card:hover {
+  transform: translateY(-4px);
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(0, 168, 126, 0.4);
+  box-shadow: 0 16px 36px -12px rgba(0, 168, 126, 0.2);
+}
+
+.auto-card-badge {
+  position: absolute;
+  top: 1.75rem;
+  right: 1.75rem;
+  padding: 0.25rem 0.65rem;
+  background: rgba(0, 168, 126, 0.12);
+  border: 1px solid rgba(0, 168, 126, 0.3);
+  color: #34d399;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.auto-card-icon-wrap {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+}
+
+.auto-card-emoji {
+  font-size: 1.4rem;
+}
+
+.auto-card-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 0.65rem;
+  letter-spacing: -0.01em;
+}
+
+.auto-card-desc {
+  font-size: 0.885rem;
+  color: #94a3b8;
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.auto-steps-pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: auto;
+  padding-top: 0.75rem;
+}
+
+.step-pill {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.25rem 0.55rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(0, 168, 126, 0.35);
+  color: #34d399;
+  border-radius: 6px;
+  letter-spacing: 0.02em;
+}
+
+.auto-feature-checklist {
+  list-style: none;
+  padding: 0;
+  margin: auto 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-top: 0.5rem;
+}
+
+.auto-feature-checklist li {
+  font-size: 0.84rem;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
