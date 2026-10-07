@@ -187,6 +187,7 @@ export interface MahiBrowserAPI {
 
 
   // Licensing & MAHI Pro
+  getDynamicPrice: () => Promise<number>;
   getLicenseStatus: () => Promise<LicenseValidationResult>;
   getOnlineLicenseStatus: () => Promise<{ verified: boolean; revoked: boolean; graceExpired: boolean; offlineDaysLeft: number; statusText: string }>;
   checkOnlineLicenseNow: () => Promise<{ success: boolean; status?: string; error?: string }>;

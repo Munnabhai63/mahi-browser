@@ -9,7 +9,6 @@ import { AppLockModal } from './components/AppLockModal.js';
 import { WelcomeWizardModal } from './components/WelcomeWizardModal.js';
 import { UpdateModal } from './components/UpdateModal.js';
 import { EngineDownloadModal } from './components/EngineDownloadModal.js';
-import { CommercialUserModal } from './components/CommercialUserModal.js';
 import { useAccountStore } from './stores/useAccountStore.js';
 
 // Pages
@@ -56,7 +55,7 @@ export const App: React.FC = () => {
   const { fetchLogs, addLog } = useLogStore();
   const { fetchSettings } = useSettingsStore();
 
-  const { currentUser, commercialUser, isAccountModalOpen, closeAccountModal } = useAccountStore();
+  const { currentUser, commercialUser } = useAccountStore();
 
   useEffect(() => {
     // Attempt auto-login if saved license exists
@@ -219,11 +218,7 @@ export const App: React.FC = () => {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 font-sans">
       {/* â•â•â• AUTH GATE: shown when user is not logged in. Blocks entire app â•â•â• */}
-      {/* License & Account Management Modal */}
-      <CommercialUserModal
-        isOpen={isAccountModalOpen}
-        onClose={closeAccountModal}
-      />
+
 
       {/* App Lock PIN Screen */}
       <AppLockModal />

@@ -268,6 +268,7 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
 
 
     // Licensing & MAHI Pro
+    getDynamicPrice: async () => 599,
     getLicenseStatus: async () => {
       try { return await apiGet('/license/status'); } catch {
         return { isValid: false, status: 'NOT_ACTIVATED' as const, message: 'License server unreachable' };

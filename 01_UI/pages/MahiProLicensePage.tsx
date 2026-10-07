@@ -95,9 +95,15 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [onlineStatus, setOnlineStatus] = useState<{ verified: boolean; revoked: boolean; graceExpired: boolean; offlineDaysLeft: number; statusText: string } | null>(null);
+  const [priceInr, setPriceInr] = useState<number>(599);
 
   useEffect(() => {
     fetchCurrentStatus();
+    if (window.mahiAPI?.getDynamicPrice) {
+      window.mahiAPI.getDynamicPrice().then((p) => {
+        if (typeof p === 'number' && p > 0) setPriceInr(p);
+      }).catch(() => {});
+    }
     if (window.mahiAPI?.getHwid) {
       window.mahiAPI.getHwid().then((id: string) => setHwid(id)).catch(() => {});
     }
@@ -436,7 +442,9 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
                 {isProActive ? 'Change / Switch License Key' : 'Activate MAHI PRO'}
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Enter your license key to unlock up to 100 profiles and Pro features.
+                {isProActive
+                  ? 'Enter a new license key to switch entitlements.'
+                  : `Enter your license key to unlock up to 100 profiles (₹${priceInr}/year).`}
               </p>
             </div>
 

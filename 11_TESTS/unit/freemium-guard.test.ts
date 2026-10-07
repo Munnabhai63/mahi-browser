@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { assertCanCreateProfile, getPlanLimitsInfo, hasValidLicense } from '../../08_SECURITY/freemium-guard.js';
+import { setDynamicPriceForTesting } from '../../08_SECURITY/price-service.js';
 import { FREE_PROFILE_LIMIT, PRO_PROFILE_LIMIT } from '../../10_CONFIG/freemium-limits.js';
 
 describe('Freemium Guard & Profile Limits', () => {
@@ -21,11 +22,21 @@ describe('Freemium Guard & Profile Limits', () => {
     }
   });
 
-  it('should enforce limits properly via assertCanCreateProfile', () => {
+  it('should enforce limits properly via assertCanCreateProfile with dynamic price', () => {
     if (!hasValidLicense()) {
+      setDynamicPriceForTesting(599);
       expect(() => {
         assertCanCreateProfile(16);
-      }).toThrow('Free plan limit reached (15 profiles). Activate a license (₹599/year) to create up to 100 profiles.');
+      }).toThrow('Free plan limit reached (15 profiles). Upgrade MAHI PRO (₹599/year) for 100 profiles.');
+
+      // Test dynamic price update (e.g. ₹499)
+      setDynamicPriceForTesting(499);
+      expect(() => {
+        assertCanCreateProfile(16);
+      }).toThrow('Free plan limit reached (15 profiles). Upgrade MAHI PRO (₹499/year) for 100 profiles.');
+
+      // Restore to 599
+      setDynamicPriceForTesting(599);
     }
   });
 

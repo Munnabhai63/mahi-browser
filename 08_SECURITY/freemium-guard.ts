@@ -4,6 +4,7 @@ import { app } from 'electron';
 import { FREE_PROFILE_LIMIT, PRO_PROFILE_LIMIT } from '../10_CONFIG/freemium-limits.js';
 import { verifyLicense } from './license-service.js';
 import { isOnlineRevoked, isGraceExpired } from './license-status-service.js';
+import { getDynamicPrice } from './price-service.js';
 import { getDatabase } from '../06_DATABASE/connection.js';
 
 function getUserDataPath(): string {
@@ -88,8 +89,9 @@ export function assertCanCreateProfile(additionalCount = 1): void {
 
   if (!isLicensed) {
     if (currentCount + additionalCount > FREE_PROFILE_LIMIT) {
+      const price = getDynamicPrice();
       throw new Error(
-        `Free plan limit reached (${FREE_PROFILE_LIMIT} profiles). Activate a license (₹599/year) to create up to ${PRO_PROFILE_LIMIT} profiles.`
+        `Free plan limit reached (${FREE_PROFILE_LIMIT} profiles). Upgrade MAHI PRO (₹${price}/year) for ${PRO_PROFILE_LIMIT} profiles.`
       );
     }
   } else {

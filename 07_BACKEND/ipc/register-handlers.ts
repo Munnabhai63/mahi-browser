@@ -4,6 +4,7 @@ import * as path from 'path';
 import { verifyLicense, getHWID } from '../../08_SECURITY/license-service.js';
 import { isOnlineRevoked, isGraceExpired, getOnlineStatusSummary, checkLicenseStatusOnline } from '../../08_SECURITY/license-status-service.js';
 import { assertCanCreateProfile, getPlanLimitsInfo } from '../../08_SECURITY/freemium-guard.js';
+import { getDynamicPrice, fetchDynamicPrice } from '../../08_SECURITY/price-service.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { setActiveUserId } from '../commercial/session-context.js';
 import {
@@ -1035,6 +1036,14 @@ export function registerIpcHandlers(): void {
       return await checkLicenseStatusOnline();
     } catch (err) {
       throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('app:getDynamicPrice', async () => {
+    try {
+      return getDynamicPrice();
+    } catch (err) {
+      return 599;
     }
   });
 

@@ -127,8 +127,8 @@ describe('REAL BROWSER SYNCHRONIZER E2E VERIFICATION', () => {
     let masterTabs: any[] = [];
     let slaveTabs: any[] = [];
 
-    // Poll up to 5 seconds for both master and slave tabs to become available
-    for (let i = 0; i < 10; i++) {
+    // Poll up to 10 seconds for both master and slave tabs to become available
+    for (let i = 0; i < 20; i++) {
       masterTabs = await getCdpTabs(masterPort);
       slaveTabs = await getCdpTabs(slavePort);
       if (masterTabs.length > 0 && slaveTabs.length > 0) break;

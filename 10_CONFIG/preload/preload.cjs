@@ -95,6 +95,7 @@ const api = {
 
 
   // Licensing & MAHI Pro
+  getDynamicPrice: () => ipcRenderer.invoke('app:getDynamicPrice'),
   getLicenseStatus: () => ipcRenderer.invoke('license:getStatus'),
   getOnlineLicenseStatus: () => ipcRenderer.invoke('license:getOnlineStatus'),
   checkOnlineLicenseNow: () => ipcRenderer.invoke('license:checkOnlineNow'),

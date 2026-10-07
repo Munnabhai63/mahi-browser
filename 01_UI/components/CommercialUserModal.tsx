@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Key, Shield, Check, Copy } from 'lucide-react';
+import { Key, Shield, Check, Copy, X } from 'lucide-react';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 
@@ -60,6 +60,17 @@ export const CommercialUserModal: React.FC<CommercialUserModalProps> = ({ isOpen
           <div className="absolute -top-[20%] -right-[10%] w-64 h-64 bg-purple-500/30 blur-[80px] rounded-full"></div>
           <div className="absolute -bottom-[20%] -left-[10%] w-64 h-64 bg-blue-500/30 blur-[80px] rounded-full"></div>
         </div>
+
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute top-4 right-4 z-20 p-2 text-slate-400 hover:text-white rounded-full bg-slate-800/40 hover:bg-slate-800 transition"
+            title="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
 
         <div className="relative z-10 flex flex-col items-center">
           <div className="w-16 h-16 bg-gradient-to-tr from-purple-600 to-blue-500 rounded-2xl flex items-center justify-center shadow-lg mb-6">

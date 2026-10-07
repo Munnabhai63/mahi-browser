@@ -10,6 +10,7 @@ import { startApiServer, stopApiServer } from './api/local-api-server.js';
 import { logActivity } from './services/audit-service.js';
 import { initAutoUpdater } from './services/updater-service.js';
 import { startLicenseStatusService } from '../08_SECURITY/license-status-service.js';
+import { startPriceSync } from '../08_SECURITY/price-service.js';
 import { startResourceMonitoring, stopResourceMonitoring } from '../03_HARDWARE/resource-monitor-service.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -318,6 +319,7 @@ app.whenReady().then(async () => {
     logCheckpoint('Step 4: IPC Handlers Registered');
     initAutoUpdater();
     startLicenseStatusService();
+    startPriceSync();
     startResourceMonitoring();
   } catch (ipcErr: unknown) {
     writeCrashLog('IPC_REGISTER_ERROR', String(ipcErr));

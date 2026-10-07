@@ -86,7 +86,7 @@ export const useAccountStore = create<AccountState>()(
       savedAccounts: [],
       activeWorkspaceId: 'ws-default',
       workspaces: INITIAL_WORKSPACES,
-      isAccountModalOpen: true,
+      isAccountModalOpen: false,
       dashboardRole: 'ADMIN',
 
       commercialUser: null,
@@ -256,7 +256,7 @@ export const useAccountStore = create<AccountState>()(
           entitlements: null,
           userDevices: [],
           currentUser: null,
-          isAccountModalOpen: true,
+          isAccountModalOpen: false,
           commercialError: null,
         });
       },
@@ -308,12 +308,10 @@ export const useAccountStore = create<AccountState>()(
             state.entitlements = null;
             state.userDevices = [];
             state.currentUser = null;
-            state.isAccountModalOpen = true;
+            state.isAccountModalOpen = false;
           } else {
             // If they are remembered, the modal should be closed
-            if (state.commercialUser) {
-              state.isAccountModalOpen = false;
-            }
+            state.isAccountModalOpen = false;
           }
           state.isCommercialLoading = false;
           state.commercialError = null;

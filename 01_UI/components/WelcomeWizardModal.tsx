@@ -33,12 +33,9 @@ export const WelcomeWizardModal: React.FC<WelcomeWizardModalProps> = ({ onNaviga
   const { profiles, createProfile } = useProfileStore();
 
   useEffect(() => {
-    // Only show if user has not completed onboarding
-    const completed = localStorage.getItem('mahi_onboarding_completed');
-    if (!completed && profiles.length === 0) {
-      setIsOpen(true);
-    }
-  }, [profiles.length]);
+    // Disabled auto-popup to allow direct access to main UI on fresh install
+    // User lands directly on ProfilesList with 0 blocking gates
+  }, []);
 
   const handleClose = () => {
     localStorage.setItem('mahi_onboarding_completed', 'true');
