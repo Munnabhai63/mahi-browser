@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
+import path from 'node:path';
+import fs from 'node:fs';
+import { initSqlEngine, setCustomDatabasePath, closeDatabase } from '../../06_DATABASE/connection.js';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { getFolders, createFolder, updateFolder, deleteFolder } from '../../02_BROWSER/services/folder-service.js';
 import { getProfileLock, acquireProfileLock, releaseProfileLock } from '../../02_BROWSER/services/profile-lock-service.js';
@@ -13,9 +16,14 @@ describe('MAHI Platform V2 — Enterprise Platform Verification Suite', () => {
   let server: http.Server;
   const PORT = 34567;
   let testProfileId = '';
+  const testDbDir = path.resolve('.mahi_data', 'test-v2-enterprise-isolated');
+  const testDbPath = path.join(testDbDir, 'v2_enterprise_test.sqlite');
 
   beforeAll(async () => {
-    // Ensure DB is initialized
+    if (!fs.existsSync(testDbDir)) fs.mkdirSync(testDbDir, { recursive: true });
+    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+    setCustomDatabasePath(testDbPath);
+    await initSqlEngine();
     await initializeDatabase();
 
     // Start Central API server on test port
@@ -28,6 +36,10 @@ describe('MAHI Platform V2 — Enterprise Platform Verification Suite', () => {
       try { deleteProfile(testProfileId); } catch {}
     }
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    closeDatabase();
+    try {
+      if (fs.existsSync(testDbDir)) fs.rmSync(testDbDir, { recursive: true, force: true });
+    } catch {}
   });
 
   // TEST 1: Folders Management

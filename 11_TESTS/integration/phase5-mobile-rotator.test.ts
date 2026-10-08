@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { initSqlEngine } from '../../06_DATABASE/connection.js';
+import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import {
   checkPublicIp,
   getConnectedAdbDevices,
@@ -11,6 +12,7 @@ import {
 describe('Phase 5: Mobile 4G/5G Hotspot IP Rotator Engine', () => {
   beforeAll(async () => {
     await initSqlEngine();
+    await initializeDatabase();
   });
 
   it('should query public IP and return structured IP info', async () => {

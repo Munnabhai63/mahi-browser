@@ -9,8 +9,48 @@ let inTransaction = false;
 let isSaving = false;
 let saveTimeout: NodeJS.Timeout | null = null;
 
+export function isTestRunnerEnvironment(): boolean {
+  return (
+    process.env.NODE_ENV === 'test' ||
+    Boolean(process.env.VITEST) ||
+    Boolean(process.env.VITEST_WORKER_ID) ||
+    Boolean(process.env.JEST_WORKER_ID)
+  );
+}
+
+export function assertPathIsNotProduction(targetPath: string): void {
+  const norm = targetPath.toLowerCase().replace(/\\/g, '/');
+  if (
+    norm.includes('/appdata/roaming/mahi-browser') ||
+    norm.includes('/appdata/local/programs/mahi browser')
+  ) {
+    throw new Error(
+      `[GLOBAL TEST SAFETY GUARD VIOLATION] Automated tests must NEVER target production user database in AppData! Attempted path: "${targetPath}". Please use setCustomDatabasePath(...) with an isolated test directory or let the safety guard route to temporary storage.`
+    );
+  }
+}
+
 export function getDatabasePath(): string {
-  if (currentDbPath) return currentDbPath;
+  if (currentDbPath) {
+    if (isTestRunnerEnvironment()) {
+      assertPathIsNotProduction(currentDbPath);
+    }
+    return currentDbPath;
+  }
+
+  // GLOBAL TEST SAFETY GUARD:
+  // If running inside automated test runner and no custom path was explicitly bound,
+  // automatically route to an isolated, disposable directory under .mahi_data/test-auto-isolated
+  if (isTestRunnerEnvironment()) {
+    const workerId = process.env.VITEST_WORKER_ID || process.env.VITEST_POOL_ID || 'isolated';
+    const testDir = path.join(process.cwd(), '.mahi_data', 'test-auto-isolated');
+    if (!fs.existsSync(testDir)) {
+      fs.mkdirSync(testDir, { recursive: true });
+    }
+    currentDbPath = path.join(testDir, `mahi_test_worker_${workerId}.sqlite`);
+    return currentDbPath;
+  }
+
   let userDataDir = '';
   if (process.env.APPDATA) {
     userDataDir = path.join(process.env.APPDATA, 'mahi-browser');
@@ -34,6 +74,9 @@ export function getDatabasePath(): string {
 }
 
 export function setCustomDatabasePath(dbPath: string): void {
+  if (isTestRunnerEnvironment()) {
+    assertPathIsNotProduction(dbPath);
+  }
   currentDbPath = dbPath;
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) {

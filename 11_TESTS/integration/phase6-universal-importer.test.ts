@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { initSqlEngine } from '../../06_DATABASE/connection.js';
+import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import {
   detectAndParseAccountData,
   parseNetscapeCookies,
@@ -14,6 +15,7 @@ import { getProxyById } from '../../02_BROWSER/services/proxy-service.js';
 describe('Phase 6: Universal Multi-Account Bulk Importer & Cookie Packager', () => {
   beforeAll(async () => {
     await initSqlEngine();
+    await initializeDatabase();
   });
 
   it('should parse colon-delimited account string with embedded proxies', () => {

@@ -1,5 +1,7 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
-import { initSqlEngine } from '../../06_DATABASE/connection.js';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import path from 'node:path';
+import fs from 'node:fs';
+import { initSqlEngine, setCustomDatabasePath, closeDatabase } from '../../06_DATABASE/connection.js';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import {
   WARMING_SITES,
@@ -14,10 +16,22 @@ import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defa
 describe('Phase 4: Smart Cookie Warmer & Auto-Farmer Bot', () => {
   let testProfileId: string;
   let testProfileId2: string;
+  const testDbDir = path.resolve('.mahi_data', 'test-warmer-isolated');
+  const testDbPath = path.join(testDbDir, 'warmer_test.sqlite');
 
   beforeAll(async () => {
+    if (!fs.existsSync(testDbDir)) fs.mkdirSync(testDbDir, { recursive: true });
+    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+    setCustomDatabasePath(testDbPath);
     await initSqlEngine();
     await initializeDatabase();
+  });
+
+  afterAll(() => {
+    closeDatabase();
+    try {
+      if (fs.existsSync(testDbDir)) fs.rmSync(testDbDir, { recursive: true, force: true });
+    } catch {}
   });
 
 

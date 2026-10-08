@@ -57,6 +57,7 @@
   "portable": {
     "artifactName": "MAHI-Browser-Portable-${version}.${ext}"
   },
+  "afterSign": "./12_SCRIPTS/sign-mac.cjs",
   "mac": {
     "category": "public.app-category.developer-tools",
     "target": [
@@ -72,8 +73,6 @@
     "icon": "13_ASSETS/resources/icon.png",
     "artifactName": "MAHI-Browser-${version}-macOS-${arch}.${ext}",
     "hardenedRuntime": true,
-    "gatekeeperAssess": false,
-    "afterSign": "./12_SCRIPTS/sign-mac.cjs",
     "entitlements": "13_ASSETS/resources/entitlements.mac.plist",
     "entitlementsInherit": "13_ASSETS/resources/entitlements.mac.inherit.plist"
   },

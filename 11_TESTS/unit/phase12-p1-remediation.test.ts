@@ -31,7 +31,7 @@ describe('P1 Blocker Remediation Suite (P1-1 to P1-5)', () => {
       const config = JSON.parse(fs.readFileSync(builderConfigPath, 'utf8'));
       expect(config.mac).toBeDefined();
       expect(config.mac.hardenedRuntime).toBe(true);
-      expect(config.mac.afterSign).toBe('./12_SCRIPTS/sign-mac.cjs');
+      expect(config.afterSign || config.mac.afterSign).toBe('./12_SCRIPTS/sign-mac.cjs');
       expect(config.mac.entitlements).toContain('entitlements.mac.plist');
     });
   });
