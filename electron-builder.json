@@ -1,6 +1,6 @@
 {
   "appId": "com.mahibrowser.app",
-  "productName": "MAHI BROWSER",
+  "productName": "MAHI Browser",
   "copyright": "Copyright © 2026 Mahi Browser Team",
   "directories": {
     "output": "release",
@@ -37,7 +37,7 @@
       }
     ],
     "icon": "13_ASSETS/resources/icon.ico",
-    "artifactName": "${productName}-${version}-Setup.${ext}",
+    "artifactName": "MAHI-Browser-Setup-${version}.${ext}",
     "signtoolOptions": {
       "sign": "./12_SCRIPTS/sign.cjs"
     }
@@ -47,7 +47,7 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "MAHI BROWSER",
+    "shortcutName": "MAHI Browser",
     "runAfterFinish": true,
     "installerIcon": "13_ASSETS/resources/icon.ico",
     "uninstallerIcon": "13_ASSETS/resources/icon.ico",
@@ -55,7 +55,7 @@
     "perMachine": false
   },
   "portable": {
-    "artifactName": "${productName}-${version}-Portable.${ext}"
+    "artifactName": "MAHI-Browser-Portable-${version}.${ext}"
   },
   "mac": {
     "category": "public.app-category.developer-tools",

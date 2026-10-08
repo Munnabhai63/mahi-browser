@@ -209,7 +209,7 @@ describe('Phase 13: Final GA Cutover & Production Release Closure Verification S
       expect(manifestContent.files).toBeInstanceOf(Array);
       expect(manifestContent.files.length).toBeGreaterThan(0);
 
-      const setupFile = manifestContent.files.find((f: any) => f.name.includes('Setup.exe'));
+      const setupFile = manifestContent.files.find((f: any) => f.name.includes('Setup'));
       expect(setupFile).toBeDefined();
       expect(setupFile.size).toBeGreaterThan(50 * 1024 * 1024); // > 50MB
     });

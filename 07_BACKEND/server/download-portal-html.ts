@@ -272,8 +272,8 @@ export function getDownloadPortalHtml(info?: {
       </div>
 
       <div class="space-y-2">
-        <h2 id="download-title" class="text-2xl sm:text-3xl font-black text-white tracking-tight">MAHI Browser for Windows (64-bit)</h2>
-        <p id="download-subtitle" class="text-xs sm:text-sm text-slate-300 font-normal">Production installer with automatic desktop launcher and stealth sandbox</p>
+        <h2 id="download-title" class="text-2xl sm:text-3xl font-black text-white tracking-tight">Download MAHI Browser for Windows</h2>
+        <p id="download-subtitle" class="text-xs sm:text-sm text-slate-300 font-normal">Version ${version} — Windows x64</p>
       </div>
 
       <!-- Action Button -->
@@ -287,7 +287,7 @@ export function getDownloadPortalHtml(info?: {
           <svg class="w-6 h-6 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
           </svg>
-          <span id="download-btn-text">Download MAHI Installer (64-bit)</span>
+          <span id="download-btn-text">Download MAHI Browser for Windows</span>
         </a>
       </div>
 
@@ -295,7 +295,7 @@ export function getDownloadPortalHtml(info?: {
       <div class="pt-4 grid grid-cols-3 gap-2.5 border-t border-slate-800/80">
         <div class="flex items-center justify-center space-x-1.5 p-2.5 bg-slate-950/70 rounded-xl border border-slate-800/80 text-[11px] text-slate-300 font-medium">
           <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
-          <span>v${version} Build</span>
+          <span>v${version}</span>
         </div>
 
         <div class="flex items-center justify-center space-x-1.5 p-2.5 bg-slate-950/70 rounded-xl border border-slate-800/80 text-[11px] text-slate-300 font-medium">
@@ -305,7 +305,7 @@ export function getDownloadPortalHtml(info?: {
 
         <div class="flex items-center justify-center space-x-1.5 p-2.5 bg-slate-950/70 rounded-xl border border-slate-800/80 text-[11px] text-slate-300 font-medium">
           <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
-          <span>Signed & Clean</span>
+          <span>Windows x64</span>
         </div>
       </div>
     </div>

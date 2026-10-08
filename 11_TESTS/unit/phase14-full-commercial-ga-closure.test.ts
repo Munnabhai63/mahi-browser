@@ -20,7 +20,7 @@ describe('Phase 14: Final 3 External Blockers Closure & Full Commercial GA Relea
   describe('1. Blocker 1: Windows Authenticode Signing & Package Integrity', () => {
     it('verifies release installer artifact existence and SHA-256 match with latest.json', () => {
       const releaseDir = path.resolve(process.cwd(), 'release');
-      const setupPath = path.join(releaseDir, 'MAHI BROWSER-1.1.1-Setup.exe');
+      const setupPath = path.join(releaseDir, 'MAHI-Browser-Setup-1.1.1.exe');
       const manifestPath = path.join(releaseDir, 'latest.json');
 
       expect(fs.existsSync(setupPath)).toBe(true);
@@ -34,7 +34,7 @@ describe('Phase 14: Final 3 External Blockers Closure & Full Commercial GA Relea
       const actualSha256 = crypto.createHash('sha256').update(content).digest('hex');
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
-      const manifestFile = manifest.files.find((f: any) => f.name.includes('Setup.exe'));
+      const manifestFile = manifest.files.find((f: any) => f.name.includes('Setup'));
       expect(manifestFile).toBeDefined();
       expect(actualSha256).toBe(manifestFile.sha256);
       expect(manifest.version).toBe('1.1.1');

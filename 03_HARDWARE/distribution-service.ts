@@ -47,10 +47,19 @@ export function getReleaseDirectory(): string {
   if (fs.existsSync(relDir)) {
     return relDir;
   }
-  const appDir = app.isPackaged ? path.dirname(process.execPath) : cwd;
+  const appDir = (app && app.isPackaged) ? path.dirname(process.execPath) : cwd;
   const relInApp = path.join(appDir, 'release');
   if (fs.existsSync(relInApp)) {
     return relInApp;
+  }
+  const candidateDirs = [
+    path.join(os.homedir(), 'Desktop', 'mahai brouser', 'release'),
+    path.join(os.homedir(), 'Desktop', 'mahi browser', 'release'),
+  ];
+  for (const cand of candidateDirs) {
+    if (fs.existsSync(cand)) {
+      return cand;
+    }
   }
   return relDir;
 }
@@ -62,10 +71,36 @@ export function getDistributionInfo(): DistributionInfo {
   const networkDownloadUrls = localIps.map((ip) => `http://${ip}:${port}/download`);
   const releaseDir = getReleaseDirectory();
 
-  let setupFileName = 'MAHI BROWSER-1.0.0-Setup.exe';
-  let portableFileName = 'MAHI BROWSER-1.0.0-Portable.exe';
+  let version = (app && typeof app.getVersion === 'function' ? app.getVersion() : null) || '1.1.1';
+  try {
+    const pkgPath = path.join(process.cwd(), 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      if (pkg.version) version = pkg.version;
+    }
+  } catch {}
+
+  let setupFileName = `MAHI-Browser-Setup-${version}.exe`;
+  let portableFileName = `MAHI-Browser-Portable-${version}.exe`;
   let setupPath = path.join(releaseDir, setupFileName);
   let portablePath = path.join(releaseDir, portableFileName);
+
+  // If exact versioned file is not yet at target name, check for existing setup in releaseDir
+  if (!fs.existsSync(setupPath) && fs.existsSync(releaseDir)) {
+    const setupCandidate = fs.readdirSync(releaseDir).find((f) => f.includes('Setup') && f.endsWith('.exe'));
+    if (setupCandidate) {
+      setupFileName = setupCandidate;
+      setupPath = path.join(releaseDir, setupCandidate);
+    }
+  }
+
+  if (!fs.existsSync(portablePath) && fs.existsSync(releaseDir)) {
+    const portableCandidate = fs.readdirSync(releaseDir).find((f) => f.includes('Portable') && f.endsWith('.exe'));
+    if (portableCandidate) {
+      portableFileName = portableCandidate;
+      portablePath = path.join(releaseDir, portableCandidate);
+    }
+  }
 
   // Check desktop as fallback if in development
   const desktopDir = path.join(os.homedir(), 'Desktop');
@@ -115,7 +150,7 @@ export function getDistributionInfo(): DistributionInfo {
     portablePath,
     setupSizeMB,
     portableSizeMB,
-    version: '1.0.0',
+    version,
   };
 }
 
