@@ -50,6 +50,15 @@ const api: MahiBrowserAPI = {
   deleteProxy: (id) => ipcRenderer.invoke('proxies:delete', id),
   testProxy: (dto) => ipcRenderer.invoke('proxies:test', dto),
 
+  // Commercial Proxy Catalog (Phase 5)
+  getProxyCatalog: (query) => ipcRenderer.invoke('proxy:getCatalog', query),
+  getProxyProviders: () => ipcRenderer.invoke('proxy:getProviders'),
+  generateProxySession: (request) => ipcRenderer.invoke('proxy:generateSession', request),
+  rotateProxySession: (sessionId) => ipcRenderer.invoke('proxy:rotateSession', sessionId),
+  releaseProxySession: (sessionId) => ipcRenderer.invoke('proxy:releaseSession', sessionId),
+  getProxySessions: () => ipcRenderer.invoke('proxy:getSessions'),
+  getProxyUsage: (sessionId) => ipcRenderer.invoke('proxy:getUsage', sessionId),
+
 
   // Cookies
   getCookies: (options) => ipcRenderer.invoke('cookies:get', options),

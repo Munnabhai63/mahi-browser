@@ -15,3 +15,4 @@ export * from './workspace.js';
 export * from './updater.js';
 export * from './resources.js';
 export * from './commercial.js';
+export * from './proxy-provider.js';

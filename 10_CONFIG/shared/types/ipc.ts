@@ -12,6 +12,16 @@ import {
   ProxyTestResult,
 } from './proxy.js';
 import {
+  ProxyProviderInfo,
+  ProxyCatalogQuery,
+  ProxyCatalogResult,
+  ProxySessionGenerateRequest,
+  ProxySessionResult,
+  ProxySessionRecord,
+  ProxyUsageReport,
+  ProxyRotationResult,
+} from './proxy-provider.js';
+import {
   CookieItem,
   CookieFilterOptions,
   CookieExportOptions,
@@ -139,7 +149,7 @@ export interface MahiBrowserAPI {
 
   getDashboardMetrics: () => Promise<DashboardMetrics>;
 
-  // Proxies
+  // Proxies (BYOP)
   getProxies: () => Promise<ProxyItem[]>;
   getProxyById: (id: string) => Promise<ProxyItem | null>;
   createProxy: (dto: CreateProxyDTO) => Promise<ProxyItem>;
@@ -147,6 +157,15 @@ export interface MahiBrowserAPI {
   updateProxy: (id: string, dto: UpdateProxyDTO) => Promise<ProxyItem>;
   deleteProxy: (id: string) => Promise<boolean>;
   testProxy: (dto: Partial<CreateProxyDTO>) => Promise<ProxyTestResult>;
+
+  // Commercial Proxy Catalog & Provider Platform (Phase 5)
+  getProxyCatalog: (query?: ProxyCatalogQuery) => Promise<ProxyCatalogResult>;
+  getProxyProviders: () => Promise<ProxyProviderInfo[]>;
+  generateProxySession: (request: ProxySessionGenerateRequest) => Promise<ProxySessionResult>;
+  rotateProxySession: (sessionId: string) => Promise<ProxyRotationResult>;
+  releaseProxySession: (sessionId: string) => Promise<boolean>;
+  getProxySessions: () => Promise<ProxySessionRecord[]>;
+  getProxyUsage: (sessionId?: string) => Promise<ProxyUsageReport>;
 
 
   // Cookies

@@ -762,6 +762,93 @@ export async function initializeDatabase(): Promise<void> {
     db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (12, ?)').run(new Date().toISOString());
   }
 
+  // Migration v13: Phase 5 Commercial Proxy Provider Integration & Catalog
+  const checkMigration13 = db.prepare('SELECT version FROM schema_migrations WHERE version = 13').get();
+  if (!checkMigration13) {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS proxy_providers (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          website TEXT,
+          is_enabled INTEGER NOT NULL DEFAULT 1,
+          priority INTEGER NOT NULL DEFAULT 100,
+          capabilities_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS proxy_provider_sessions (
+          id TEXT PRIMARY KEY,
+          provider_id TEXT NOT NULL,
+          proxy_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          workspace_id TEXT,
+          profile_id TEXT,
+          network_type TEXT NOT NULL,
+          country TEXT NOT NULL,
+          region TEXT,
+          city TEXT,
+          session_type TEXT NOT NULL,
+          upstream_session_id TEXT NOT NULL,
+          ttl_minutes INTEGER,
+          expires_at TEXT,
+          rotatable INTEGER NOT NULL DEFAULT 1,
+          rotation_count INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'ACTIVE',
+          bytes_used INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (proxy_id) REFERENCES proxies(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_proxy_sessions_user ON proxy_provider_sessions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_proxy_sessions_ws ON proxy_provider_sessions(workspace_id);
+        CREATE INDEX IF NOT EXISTS idx_proxy_sessions_proxy ON proxy_provider_sessions(proxy_id);
+        CREATE INDEX IF NOT EXISTS idx_proxy_sessions_provider ON proxy_provider_sessions(provider_id);
+        CREATE INDEX IF NOT EXISTS idx_proxy_sessions_status ON proxy_provider_sessions(status);
+
+        CREATE TABLE IF NOT EXISTS proxy_usage_records (
+          id TEXT PRIMARY KEY,
+          session_id TEXT,
+          provider_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          bytes_used INTEGER NOT NULL DEFAULT 0,
+          recorded_at TEXT NOT NULL,
+          FOREIGN KEY (session_id) REFERENCES proxy_provider_sessions(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_proxy_usage_user ON proxy_usage_records(user_id);
+        CREATE INDEX IF NOT EXISTS idx_proxy_usage_session ON proxy_usage_records(session_id);
+
+        CREATE TABLE IF NOT EXISTS proxy_provider_health (
+          provider_id TEXT PRIMARY KEY,
+          status TEXT NOT NULL DEFAULT 'UNCONFIGURED',
+          latency_ms INTEGER,
+          last_checked_at TEXT NOT NULL,
+          error_message TEXT
+        );
+      `);
+
+      // Additive columns to existing proxies table
+      try { db.exec('ALTER TABLE proxies ADD COLUMN provider_id TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE proxies ADD COLUMN network_type TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE proxies ADD COLUMN session_type TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE proxies ADD COLUMN city TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE proxies ADD COLUMN region TEXT;'); } catch {}
+
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (13, ?)').run(new Date().toISOString());
+    } catch {}
+  }
+
+  // Ensure additive columns exist regardless of migration cache
+  try { db.exec('ALTER TABLE proxies ADD COLUMN city TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE proxies ADD COLUMN region TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE proxies ADD COLUMN provider_id TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE proxies ADD COLUMN network_type TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE proxies ADD COLUMN session_type TEXT;'); } catch {}
+
   // Clean legacy auto-warmed status lines from user notes
   try {
     const rows = db.prepare("SELECT id, notes FROM profiles WHERE notes LIKE '%[Auto-Warmed%'").all() as { id: string; notes: string }[];

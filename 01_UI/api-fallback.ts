@@ -690,6 +690,63 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     accountRevokeAllSessions: async () => ({ success: true }),
     accountRefreshToken: async () => ({ success: true, token: 'mock-refreshed-token' }),
     onAccountStatusChanged: () => () => {},
+
+    // Commercial Proxy Provider Platform (Phase 5)
+    getProxyCatalog: async () => ({
+      providers: [],
+      availableCountries: [
+        { code: 'US', name: 'United States', supportedTypes: ['RESIDENTIAL', 'MOBILE', 'DATACENTER', 'ISP'] },
+        { code: 'GB', name: 'United Kingdom', supportedTypes: ['RESIDENTIAL', 'MOBILE', 'DATACENTER'] },
+        { code: 'DE', name: 'Germany', supportedTypes: ['RESIDENTIAL', 'DATACENTER'] },
+      ],
+      supportedNetworkTypes: ['RESIDENTIAL', 'MOBILE', 'DATACENTER', 'ISP'],
+      supportedSessionTypes: ['STICKY', 'ROTATING'],
+    }),
+    getProxyProviders: async () => [],
+    generateProxySession: async () => ({
+      session: {
+        id: 'mock-sess-1',
+        providerId: 'mock',
+        proxyId: 'mock-proxy-1',
+        userId: 'default-user',
+        networkType: 'RESIDENTIAL',
+        country: 'US',
+        sessionType: 'STICKY',
+        sessionId: 'mock_sess_1',
+        rotatable: true,
+        rotationCount: 0,
+        status: 'ACTIVE',
+        bytesUsed: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      proxy: {
+        id: 'mock-proxy-1',
+        name: 'Mock Proxy',
+        protocol: 'http',
+        host: '127.0.0.1',
+        port: 8080,
+        status: 'CONNECTED',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+    rotateProxySession: async () => ({
+      success: true,
+      sessionId: 'mock-sess-1',
+      newIp: '185.220.101.5',
+      rotationCount: 1,
+    }),
+    releaseProxySession: async () => true,
+    getProxySessions: async () => [],
+    getProxyUsage: async () => ({
+      userId: 'default-user',
+      bytesUsed: 0,
+      bytesLimit: 53687091200,
+      bytesRemaining: 53687091200,
+      activeSessionCount: 0,
+      lastUpdated: new Date().toISOString(),
+    }),
   };
 
   (window as any).mahiAPI = fallbackApi;

@@ -71,6 +71,7 @@ import {
   getUpdateConfig,
   setUpdateConfig,
 } from '../services/updater-service.js';
+import { proxyProviderService } from '../services/proxy-provider-service.js';
 import { sampleFleetResources, optimizeFleetMemory } from '../../03_HARDWARE/resource-monitor-service.js';
 import { exportMasterVault, importMasterVault } from '../services/vault-service.js';
 import {
@@ -547,6 +548,63 @@ export function registerIpcHandlers(): void {
       return await testProxyConnection(dto);
     } catch (err) {
       return { success: false, latencyMs: 0, errorMessage: sanitizeError(err) };
+    }
+  });
+
+  // COMMERCIAL PROXY PROVIDER PLATFORM (Phase 5)
+  ipcMain.handle('proxy:getCatalog', async (_event, query) => {
+    try {
+      return await proxyProviderService.getCatalog(query);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('proxy:getProviders', async () => {
+    try {
+      return await proxyProviderService.getProviders();
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('proxy:generateSession', async (_event, request) => {
+    try {
+      return await proxyProviderService.generateSession(request);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('proxy:rotateSession', async (_event, sessionId: string) => {
+    try {
+      return await proxyProviderService.rotateSession(sessionId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('proxy:releaseSession', async (_event, sessionId: string) => {
+    try {
+      return await proxyProviderService.releaseSession(sessionId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('proxy:getSessions', async () => {
+    try {
+      return proxyProviderService.getSessions();
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('proxy:getUsage', async (_event, sessionId?: string) => {
+    try {
+      return await proxyProviderService.getUsage(sessionId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
     }
   });
 

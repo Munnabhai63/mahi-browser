@@ -51,6 +51,7 @@ export function getProxies(): ProxyItem[] {
     hasPassword: Boolean(r.password_encrypted),
     countryRegion: r.country_region || undefined,
     countryName: r.country_name || undefined,
+    city: (r as any).city || undefined,
     ip: r.public_ip || undefined,
     notes: r.notes || undefined,
     status: r.status as ProxyStatus,
@@ -101,6 +102,7 @@ export function getProxyById(id: string): ProxyItem | null {
     hasPassword: Boolean(row.password_encrypted),
     countryRegion: row.country_region || undefined,
     countryName: row.country_name || undefined,
+    city: (row as any).city || undefined,
     ip: row.public_ip || undefined,
     notes: row.notes || undefined,
     status: row.status as ProxyStatus,
@@ -160,6 +162,10 @@ export function createProxy(dto: CreateProxyDTO): ProxyItem {
     now,
     now
   );
+
+  if (dto.city) {
+    try { db.prepare('UPDATE proxies SET city = ? WHERE id = ?').run(dto.city, id); } catch {}
+  }
 
   logActivity('PROXY', 'SUCCESS', 'Create Proxy', `Created proxy "${dto.name}" (${dto.protocol}://${dto.host}:${dto.port})`);
 
