@@ -12,6 +12,7 @@ import {
   MANAGED_ENGINE_FALLBACK_URL,
   GOOGLE_CFT_MANIFEST_URL,
   MANAGED_ENGINE_REQUIRED_DISK_SPACE_BYTES,
+  getPlatformEngineConfig,
 } from '../10_CONFIG/engine-config.js';
 
 const execAsync = promisify(exec);
@@ -106,10 +107,26 @@ export function getEnginesBaseDir(): string {
 }
 
 /**
- * Returns the exact absolute path to the managed chrome.exe binary for a specific or current version.
+ * Returns the exact absolute path to the managed browser binary for a specific version and platform.
  */
-export function getManagedEngineExecutablePath(version: string = MANAGED_ENGINE_VERSION): string {
-  return path.join(getEnginesBaseDir(), version, 'chrome-win64', 'chrome.exe');
+export function getManagedEngineExecutablePath(
+  version: string = MANAGED_ENGINE_VERSION,
+  targetPlatform: string = process.platform,
+  targetArch: string = process.arch
+): string {
+  const baseDir = path.join(getEnginesBaseDir(), version);
+  if (targetPlatform === 'win32') {
+    return path.join(baseDir, 'chrome-win64', 'chrome.exe');
+  } else if (targetPlatform === 'darwin') {
+    const macSubdir = targetArch === 'arm64' ? 'chrome-mac-arm64' : 'chrome-mac-x64';
+    const appPath = path.join(baseDir, macSubdir, 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing');
+    if (fs.existsSync(appPath)) return appPath;
+    const fallbackPath = path.join(baseDir, macSubdir, 'chrome');
+    return fs.existsSync(fallbackPath) ? fallbackPath : appPath;
+  } else {
+    // Linux
+    return path.join(baseDir, 'chrome-linux64', 'chrome');
+  }
 }
 
 /**
@@ -255,7 +272,7 @@ function downloadFileWithProgress(
 }
 
 /**
- * Extracts a zip archive to a destination directory using system tar (bsdtar) or PowerShell.
+ * Extracts a zip archive to a destination directory using system tar (bsdtar), unzip, or PowerShell.
  */
 async function extractZipArchive(zipPath: string, destDir: string): Promise<void> {
   if (!fs.existsSync(destDir)) {
@@ -263,13 +280,18 @@ async function extractZipArchive(zipPath: string, destDir: string): Promise<void
   }
 
   try {
-    // bsdtar is built into Windows 10/11 and extracts zip archives fast and reliably
+    // bsdtar is built into Windows 10/11, macOS, and Linux
     await execAsync(`tar -xf "${zipPath}" -C "${destDir}"`);
   } catch (tarErr) {
-    debugLog(`[ManagedEngine] Native tar extraction failed, falling back to PowerShell: ${tarErr}`);
-    await execAsync(
-      `powershell -NoProfile -NonInteractive -Command "Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${destDir}' -Force"`
-    );
+    if (process.platform === 'win32') {
+      debugLog(`[ManagedEngine] Native tar extraction failed, falling back to PowerShell: ${tarErr}`);
+      await execAsync(
+        `powershell -NoProfile -NonInteractive -Command "Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${destDir}' -Force"`
+      );
+    } else {
+      debugLog(`[ManagedEngine] Native tar extraction failed, falling back to unzip: ${tarErr}`);
+      await execAsync(`unzip -q -o "${zipPath}" -d "${destDir}"`);
+    }
   }
 }
 
@@ -420,9 +442,13 @@ export async function ensureManagedEngineInstalled(options?: {
         fs.unlinkSync(tempZipPath);
       } catch {}
 
-      // Verify that chrome.exe exists in extracted content
-      const extractedExe = path.join(tempWorkingDir, 'chrome-win64', 'chrome.exe');
-      if (!fs.existsSync(extractedExe)) {
+      // Verify that executable binary exists in extracted content
+      const platConfig = getPlatformEngineConfig();
+      const relativeExe = platConfig.executableRelativePath;
+      const extractedSubdir = platConfig.archiveSubdir;
+      const extractedExe = path.join(tempWorkingDir, extractedSubdir, relativeExe);
+      const winFallback = path.join(tempWorkingDir, 'chrome-win64', 'chrome.exe');
+      if (!fs.existsSync(extractedExe) && !fs.existsSync(winFallback)) {
         throw new Error(`Extracted engine is missing expected binary at "${extractedExe}".`);
       }
 
@@ -434,6 +460,15 @@ export async function ensureManagedEngineInstalled(options?: {
         } catch {}
       }
       fs.renameSync(tempWorkingDir, finalVersionDir);
+
+      // Ensure executable permissions on POSIX
+      if (process.platform !== 'win32') {
+        try {
+          if (fs.existsSync(finalExe)) {
+            fs.chmodSync(finalExe, 0o755);
+          }
+        } catch {}
+      }
 
       // Step 8: Clean up old versions
       cleanOldEngineVersions(version);

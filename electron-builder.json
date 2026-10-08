@@ -56,6 +56,65 @@
   "portable": {
     "artifactName": "${productName}-${version}-Portable.${ext}"
   },
+  "mac": {
+    "category": "public.app-category.developer-tools",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["arm64", "x64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["arm64", "x64"]
+      }
+    ],
+    "icon": "13_ASSETS/resources/icon.png",
+    "artifactName": "MAHI-Browser-${version}-macOS-${arch}.${ext}",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "entitlements": "13_ASSETS/resources/entitlements.mac.plist",
+    "entitlementsInherit": "13_ASSETS/resources/entitlements.mac.inherit.plist"
+  },
+  "dmg": {
+    "contents": [
+      {
+        "x": 130,
+        "y": 220
+      },
+      {
+        "x": 410,
+        "y": 220,
+        "type": "link",
+        "path": "/Applications"
+      }
+    ],
+    "window": {
+      "width": 540,
+      "height": 380
+    }
+  },
+  "linux": {
+    "category": "Network;WebBrowser;",
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      },
+      {
+        "target": "deb",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "13_ASSETS/resources/icon.png",
+    "artifactName": "MAHI-Browser-${version}-Linux-${arch}.${ext}",
+    "synopsis": "Professional Cross-Platform Anti-Detect Browser",
+    "description": "Multi-accounting antidetect browser with visual automation studio, session warming, and cloud synchronization.",
+    "maintainer": "Mahi Browser Team <support@mahibrowser.com>"
+  },
+  "deb": {
+    "priority": "optional",
+    "packageCategory": "net"
+  },
   "asar": true,
   "extraResources": [
     {

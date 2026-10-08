@@ -19,11 +19,16 @@ function getWindowsProcessMemory(pids: number[]): Promise<Record<number, { memor
     }
 
     if (process.platform !== 'win32') {
-      const fallback: Record<number, { memoryMB: number; cpuPercent: number }> = {};
-      pids.forEach((pid) => {
-        fallback[pid] = { memoryMB: 120, cpuPercent: 0.5 };
-      });
-      resolve(fallback);
+      import('../02_BROWSER/services/platform-adapter.js')
+        .then(({ platformAdapter }) => platformAdapter.sampleProcessResources(pids))
+        .then(resolve)
+        .catch(() => {
+          const fallback: Record<number, { memoryMB: number; cpuPercent: number }> = {};
+          pids.forEach((pid) => {
+            fallback[pid] = { memoryMB: 120, cpuPercent: 0.5 };
+          });
+          resolve(fallback);
+        });
       return;
     }
 

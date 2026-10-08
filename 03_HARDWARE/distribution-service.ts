@@ -224,7 +224,15 @@ Write-Output ($created -join ",")
 export async function createProfileShortcut(profileId: string, profileName: string): Promise<{ success: boolean; path: string }> {
   return new Promise((resolve) => {
     if (process.platform !== 'win32') {
-      return resolve({ success: false, path: '' });
+      import('../02_BROWSER/services/platform-adapter.js')
+        .then(({ platformAdapter }) => {
+          const appExe = process.execPath;
+          const iconPath = path.join(process.cwd(), '13_ASSETS', 'resources', 'icon.png');
+          return platformAdapter.createShortcut(profileId, profileName, appExe, iconPath);
+        })
+        .then((res) => resolve({ success: res.success, path: res.shortcutPath }))
+        .catch(() => resolve({ success: false, path: '' }));
+      return;
     }
 
     const cwd = process.cwd();

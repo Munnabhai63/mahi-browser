@@ -3,6 +3,7 @@
  * 
  * Single source of truth for MAHI BROWSER's version-pinned browser engine.
  * Pinned to Google Chrome for Testing (CfT) for reproducible anti-detect fingerprinting.
+ * Supports Windows x64, macOS Apple Silicon (arm64), macOS Intel (x64), and Linux x64.
  * 
  * IMPORTANT: NEVER auto-update this value. It changes ONLY when manually edited.
  */
@@ -15,7 +16,7 @@ export const MANAGED_ENGINE_VERSION = '138.0.7204.183';
 export const MANAGED_ENGINE_SHA256 = '10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68';
 
 /**
- * Official Google Cloud CDN download URL for Chrome for Testing public release.
+ * Official Google Cloud CDN download URL for Chrome for Testing public release (Windows baseline).
  * NEVER hosted on private servers — downloads directly from Google infrastructure.
  */
 export const MANAGED_ENGINE_DOWNLOAD_URL = `https://storage.googleapis.com/chrome-for-testing-public/${MANAGED_ENGINE_VERSION}/win64/chrome-win64.zip`;
@@ -35,3 +36,73 @@ export const GOOGLE_CFT_MANIFEST_URL = 'https://googlechromelabs.github.io/chrom
  * Minimum free disk space required before attempting download & extraction (1 GB).
  */
 export const MANAGED_ENGINE_REQUIRED_DISK_SPACE_BYTES = 1024 * 1024 * 1024; // 1 GB
+
+export type SupportedPlatformKey = 'win64' | 'mac-arm64' | 'mac-x64' | 'linux64';
+
+export interface ManagedEnginePlatformConfig {
+  platform: 'win32' | 'darwin' | 'linux';
+  arch: 'x64' | 'arm64';
+  platformKey: SupportedPlatformKey;
+  downloadUrl: string;
+  fallbackUrl: string;
+  sha256?: string;
+  archiveSubdir: string;
+  executableRelativePath: string;
+}
+
+export const MANAGED_ENGINE_PLATFORMS: Record<SupportedPlatformKey, ManagedEnginePlatformConfig> = {
+  win64: {
+    platform: 'win32',
+    arch: 'x64',
+    platformKey: 'win64',
+    downloadUrl: `https://storage.googleapis.com/chrome-for-testing-public/${MANAGED_ENGINE_VERSION}/win64/chrome-win64.zip`,
+    fallbackUrl: 'https://mahibrowser.com/engine/chrome-138-win64.zip',
+    sha256: '10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68',
+    archiveSubdir: 'chrome-win64',
+    executableRelativePath: 'chrome.exe',
+  },
+  'mac-arm64': {
+    platform: 'darwin',
+    arch: 'arm64',
+    platformKey: 'mac-arm64',
+    downloadUrl: `https://storage.googleapis.com/chrome-for-testing-public/${MANAGED_ENGINE_VERSION}/mac-arm64/chrome-mac-arm64.zip`,
+    fallbackUrl: 'https://mahibrowser.com/engine/chrome-138-mac-arm64.zip',
+    archiveSubdir: 'chrome-mac-arm64',
+    executableRelativePath: 'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
+  },
+  'mac-x64': {
+    platform: 'darwin',
+    arch: 'x64',
+    platformKey: 'mac-x64',
+    downloadUrl: `https://storage.googleapis.com/chrome-for-testing-public/${MANAGED_ENGINE_VERSION}/mac-x64/chrome-mac-x64.zip`,
+    fallbackUrl: 'https://mahibrowser.com/engine/chrome-138-mac-x64.zip',
+    archiveSubdir: 'chrome-mac-x64',
+    executableRelativePath: 'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
+  },
+  linux64: {
+    platform: 'linux',
+    arch: 'x64',
+    platformKey: 'linux64',
+    downloadUrl: `https://storage.googleapis.com/chrome-for-testing-public/${MANAGED_ENGINE_VERSION}/linux64/chrome-linux64.zip`,
+    fallbackUrl: 'https://mahibrowser.com/engine/chrome-138-linux64.zip',
+    archiveSubdir: 'chrome-linux64',
+    executableRelativePath: 'chrome',
+  },
+};
+
+export function resolveEnginePlatformKey(
+  platform: string = process.platform,
+  arch: string = process.arch
+): SupportedPlatformKey {
+  if (platform === 'win32') return 'win64';
+  if (platform === 'darwin') return arch === 'arm64' ? 'mac-arm64' : 'mac-x64';
+  return 'linux64';
+}
+
+export function getPlatformEngineConfig(
+  platform: string = process.platform,
+  arch: string = process.arch
+): ManagedEnginePlatformConfig {
+  const key = resolveEnginePlatformKey(platform, arch);
+  return MANAGED_ENGINE_PLATFORMS[key];
+}

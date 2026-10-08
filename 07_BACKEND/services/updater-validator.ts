@@ -111,6 +111,15 @@ export function validateUpdateManifest(
     };
   }
 
+  // Platform protection: block manifest if explicit targetPlatform doesn't match host
+  const currentHostPlatform = process.platform;
+  if (manifest.targetPlatform && manifest.targetPlatform !== currentHostPlatform) {
+    return {
+      valid: false,
+      error: `Update target platform "${manifest.targetPlatform}" does not match host platform "${currentHostPlatform}"`,
+    };
+  }
+
   // Files verification
   if (!Array.isArray(manifest.files) || manifest.files.length === 0) {
     return { valid: false, error: 'Manifest contains no release files' };
@@ -134,6 +143,7 @@ export function validateUpdateManifest(
     minAppVersion: manifest.minAppVersion,
     sha256: manifest.sha256 || primaryFile.sha256,
     sha512: manifest.sha512 || primaryFile.sha512,
+    targetPlatform: manifest.targetPlatform || (currentHostPlatform as any),
     files: manifest.files.map((f: any) => ({
       url: f.url,
       name: f.name || path.basename(f.url),
@@ -141,6 +151,9 @@ export function validateUpdateManifest(
       sha256: f.sha256 || manifest.sha256,
       sha512: f.sha512 || manifest.sha512,
       arch: f.arch || 'x64',
+      platform: f.platform || manifest.targetPlatform || (currentHostPlatform as any),
+      format: f.format,
+      signatureStatus: f.signatureStatus || 'SIGNED',
     })),
   };
 

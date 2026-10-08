@@ -25,6 +25,9 @@ export interface UpdateReleaseFile {
   sha512?: string;
   signature?: string;
   arch?: 'x64' | 'arm64' | 'ia32';
+  platform?: 'win32' | 'darwin' | 'linux';
+  format?: 'nsis' | 'portable' | 'dmg' | 'zip' | 'appimage' | 'deb';
+  signatureStatus?: 'SIGNED' | 'UNSIGNED' | 'NOTARIZED';
 }
 
 export interface UpdateReleaseManifest {
@@ -37,6 +40,7 @@ export interface UpdateReleaseManifest {
   files: UpdateReleaseFile[];
   sha512?: string;
   sha256?: string;
+  targetPlatform?: 'win32' | 'darwin' | 'linux';
 }
 
 export interface AppUpdateInfo {

@@ -6,8 +6,9 @@ import { getProfileById, updateProfileStatus, findProfileByNumber } from './serv
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { recordSessionStart, recordSessionStop } from '../07_BACKEND/services/stats-service.js';
 import { launchBrowser, markCleanExit } from './launcher.js';
-import { ProxyTunnelHandle } from './proxy-tunnel.js';
 import { synchronizerHub } from '../09_AUTOMATION/sync-hub.js';
+import { platformAdapter } from './services/platform-adapter.js';
+import { ProxyTunnelHandle } from './proxy-tunnel.js';
 
 function debugLog(msg: string) {
   const fn = (globalThis as any).__mahiDebugLog;
@@ -265,7 +266,7 @@ class ProcessManager {
       if (process.platform === 'win32') {
         exec(`taskkill /F /T /PID ${entry.pid}`, () => {});
       } else {
-        try { entry.process.kill('SIGTERM'); } catch {}
+        platformAdapter.terminateProcess(entry.pid).catch(() => {});
       }
 
       this.handleProcessClosed(profileId, entry);
@@ -301,6 +302,8 @@ class ProcessManager {
       } catch (err) {
         debugLog(`[ProcessManager] Note: AppActivate threw: ${err}`);
       }
+    } else {
+      platformAdapter.focusWindow(entry.pid, entry.profileName).catch(() => {});
     }
     return true;
   }
@@ -420,7 +423,7 @@ class ProcessManager {
         if (process.platform === 'win32') {
           exec(`taskkill /F /T /PID ${entry.pid}`, () => {});
         } else {
-          try { entry.process.kill('SIGTERM'); } catch {}
+          platformAdapter.terminateProcess(entry.pid).catch(() => {});
         }
         if (entry.proxyTunnel) {
           try { entry.proxyTunnel.close(); } catch {}

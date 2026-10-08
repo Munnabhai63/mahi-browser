@@ -59,9 +59,12 @@ export function detectSystemBrowsers(): DetectedBrowser[] {
       }
     }
   } else if (platform === 'darwin') {
+    const home = os.homedir();
     const macCandidates = [
       { name: 'Google Chrome', engine: 'chrome' as BrowserEngine, path: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' },
+      { name: 'Google Chrome (User)', engine: 'chrome' as BrowserEngine, path: path.join(home, 'Applications', 'Google Chrome.app', 'Contents', 'MacOS', 'Google Chrome') },
       { name: 'Microsoft Edge', engine: 'edge' as BrowserEngine, path: '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge' },
+      { name: 'Brave Browser', engine: 'chrome' as BrowserEngine, path: '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser' },
       { name: 'Chromium', engine: 'chromium' as BrowserEngine, path: '/Applications/Chromium.app/Contents/MacOS/Chromium' },
     ];
     for (const c of macCandidates) {
@@ -76,6 +79,8 @@ export function detectSystemBrowsers(): DetectedBrowser[] {
       { name: 'Google Chrome Stable', engine: 'chrome' as BrowserEngine, path: '/usr/bin/google-chrome-stable' },
       { name: 'Chromium Browser', engine: 'chromium' as BrowserEngine, path: '/usr/bin/chromium-browser' },
       { name: 'Chromium', engine: 'chromium' as BrowserEngine, path: '/usr/bin/chromium' },
+      { name: 'Chromium (Snap)', engine: 'chromium' as BrowserEngine, path: '/snap/bin/chromium' },
+      { name: 'Brave Browser', engine: 'chrome' as BrowserEngine, path: '/usr/bin/brave-browser' },
       { name: 'Microsoft Edge', engine: 'edge' as BrowserEngine, path: '/usr/bin/microsoft-edge' },
     ];
     for (const c of linuxCandidates) {
@@ -107,6 +112,8 @@ export function resolveExecutablePath(engine: BrowserEngine, customPath?: string
   // Fallback defaults
   if (os.platform() === 'win32') {
     return 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+  } else if (os.platform() === 'darwin') {
+    return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
   }
   return '/usr/bin/google-chrome';
 }
