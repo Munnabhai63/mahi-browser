@@ -61,6 +61,12 @@ import {
   CreateWorkspaceDTO,
   CreateMemberDTO,
   WorkspaceBundleExportOptions,
+  TeamWorkspace,
+  TeamWorkspaceMember,
+  TeamRole,
+  TeamWorkspaceInvitation,
+  TeamProfileShare,
+  TeamWorkspaceAuditLog,
 } from './workspace.js';
 import {
 
@@ -263,11 +269,24 @@ export interface MahiBrowserAPI {
   workspaceExportBundle: (options: WorkspaceBundleExportOptions) => Promise<string>;
   workspaceImportBundle: (bundleJson: string, targetWorkspaceId?: string) => Promise<{ importedProfilesCount: number; workspaceId: string }>;
 
-
-
-
-
-
+  // Phase 3 Multi-User Team Workspaces & RBAC
+  teamWorkspaceList: () => Promise<TeamWorkspace[]>;
+  teamWorkspaceCreate: (input: { name: string; description?: string }) => Promise<TeamWorkspace>;
+  teamWorkspaceGet: (workspaceId: string) => Promise<TeamWorkspace | null>;
+  teamWorkspaceUpdate: (workspaceId: string, updates: { name?: string; description?: string }) => Promise<TeamWorkspace>;
+  teamWorkspaceDelete: (workspaceId: string) => Promise<boolean>;
+  teamWorkspaceTransferOwnership: (workspaceId: string, newOwnerId: string) => Promise<boolean>;
+  teamWorkspaceGetMembers: (workspaceId: string) => Promise<TeamWorkspaceMember[]>;
+  teamWorkspaceInviteMember: (workspaceId: string, email: string, role: TeamRole) => Promise<any>;
+  teamWorkspaceUpdateMemberRole: (workspaceId: string, memberUserId: string, role: TeamRole) => Promise<boolean>;
+  teamWorkspaceRemoveMember: (workspaceId: string, memberUserId: string) => Promise<boolean>;
+  teamWorkspaceListInvitations: (workspaceId: string) => Promise<TeamWorkspaceInvitation[]>;
+  teamWorkspaceRevokeInvitation: (workspaceId: string, inviteId: string) => Promise<boolean>;
+  teamWorkspaceAcceptInvitation: (token: string) => Promise<{ success: boolean; workspaceId: string; role: TeamRole }>;
+  teamWorkspaceListProfiles: (workspaceId: string) => Promise<TeamProfileShare[]>;
+  teamWorkspaceShareProfile: (workspaceId: string, input: { cloudProfileId: string; permissionLevel?: 'VIEW' | 'RUN' | 'EDIT' | 'ADMIN'; encryptedKeyEnvelope: string }) => Promise<TeamProfileShare>;
+  teamWorkspaceRevokeProfileShare: (workspaceId: string, cloudProfileId: string) => Promise<boolean>;
+  teamWorkspaceGetAuditLogs: (workspaceId: string, limit?: number) => Promise<TeamWorkspaceAuditLog[]>;
 
   // Auto-Updater
   checkForUpdates: () => Promise<UpdateStatusEvent>;

@@ -25,7 +25,26 @@ import {
   revokeAllSessions as accountRevokeAllSessions
 } from '../../08_SECURITY/account-service.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import { setActiveUserId } from '../commercial/session-context.js';
+import { setActiveUserId, getActiveUserId } from '../commercial/session-context.js';
+import {
+  createTeamWorkspace,
+  listUserTeamWorkspaces,
+  getTeamWorkspace,
+  updateTeamWorkspace,
+  deleteTeamWorkspace,
+  transferWorkspaceOwnership,
+  getWorkspaceMembers as getTeamWorkspaceMembers,
+  updateMemberRole as updateTeamMemberRole,
+  removeWorkspaceMember as removeTeamWorkspaceMember,
+  inviteWorkspaceMember,
+  listWorkspaceInvitations,
+  revokeWorkspaceInvitation,
+  acceptWorkspaceInvitation,
+  shareProfileToWorkspace,
+  revokeProfileShare,
+  listWorkspaceProfiles,
+  getWorkspaceAuditLogs,
+} from '../services/team-workspace-service.js';
 import {
   getProfiles,
   getProfileById,
@@ -975,6 +994,194 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('workspace:importBundle', async (_event, bundleJson: string, targetWorkspaceId?: string) => {
     try {
       return await importWorkspaceBundle(bundleJson, targetWorkspaceId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  // PHASE 3 MULTI-USER TEAM WORKSPACES & RBAC
+  ipcMain.handle('teamWorkspace:list', async () => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) return [];
+      return listUserTeamWorkspaces(userId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:create', async (_event, input) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) throw new Error('Authentication required to create a team workspace');
+      return createTeamWorkspace(userId, input);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:get', async (_event, workspaceId: string) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) return null;
+      return getTeamWorkspace(userId, workspaceId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:update', async (_event, workspaceId: string, updates) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) throw new Error('Authentication required');
+      return updateTeamWorkspace(userId, workspaceId, updates);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:delete', async (_event, workspaceId: string) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) throw new Error('Authentication required');
+      return deleteTeamWorkspace(userId, workspaceId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:transferOwnership', async (_event, workspaceId: string, newOwnerId: string) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) throw new Error('Authentication required');
+      return transferWorkspaceOwnership(userId, workspaceId, newOwnerId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:getMembers', async (_event, workspaceId: string) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) throw new Error('Authentication required');
+      return getTeamWorkspaceMembers(userId, workspaceId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:inviteMember', async (_event, workspaceId: string, email: string, role) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) throw new Error('Authentication required');
+      return await inviteWorkspaceMember(userId, workspaceId, email, role);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:updateMemberRole', async (_event, workspaceId: string, memberUserId: string, role) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) throw new Error('Authentication required');
+      return updateTeamMemberRole(userId, workspaceId, memberUserId, role);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:removeMember', async (_event, workspaceId: string, memberUserId: string) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) throw new Error('Authentication required');
+      return removeTeamWorkspaceMember(userId, workspaceId, memberUserId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:listInvitations', async (_event, workspaceId: string) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) throw new Error('Authentication required');
+      return listWorkspaceInvitations(userId, workspaceId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:revokeInvitation', async (_event, workspaceId: string, inviteId: string) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) throw new Error('Authentication required');
+      return revokeWorkspaceInvitation(userId, workspaceId, inviteId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:acceptInvitation', async (_event, token: string) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) throw new Error('Authentication required to accept an invitation');
+      return acceptWorkspaceInvitation(userId, token);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:listProfiles', async (_event, workspaceId: string) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) throw new Error('Authentication required');
+      return listWorkspaceProfiles(userId, workspaceId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:shareProfile', async (_event, workspaceId: string, input) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) throw new Error('Authentication required');
+      return shareProfileToWorkspace(userId, workspaceId, input);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:revokeProfileShare', async (_event, workspaceId: string, cloudProfileId: string) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) throw new Error('Authentication required');
+      return revokeProfileShare(userId, workspaceId, cloudProfileId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('teamWorkspace:getAuditLogs', async (_event, workspaceId: string, limit?: number) => {
+    try {
+      const session = getAccountSession();
+      const userId = getActiveUserId() || session?.account_id;
+      if (!userId) throw new Error('Authentication required');
+      return getWorkspaceAuditLogs(userId, workspaceId, limit);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }

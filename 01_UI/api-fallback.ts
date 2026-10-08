@@ -448,8 +448,42 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     workspaceExportBundle: async () => JSON.stringify({ format: 'MAHI_WORKSPACE_BUNDLE_V1' }),
     workspaceImportBundle: async () => ({ importedProfilesCount: 0, workspaceId: 'default-ws' }),
 
-
-
+    // Phase 3 Multi-User Team Workspaces & RBAC
+    teamWorkspaceList: async () => {
+      try { const res = await apiGet('/workspaces'); return res.workspaces || []; } catch { return []; }
+    },
+    teamWorkspaceCreate: async (input: any) => {
+      try { const res = await apiPost('/workspaces', input); return res.workspace; } catch {
+        return { id: 'team-ws-fallback', name: input.name, description: input.description || '', ownerUserId: 'me', status: 'ACTIVE', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), memberCount: 1, profileCount: 0, userRole: 'OWNER' };
+      }
+    },
+    teamWorkspaceGet: async (workspaceId: string) => {
+      try { const res = await apiGet(`/workspaces/${workspaceId}`); return res.workspace; } catch { return null; }
+    },
+    teamWorkspaceUpdate: async (workspaceId: string, updates: any) => {
+      try { const res = await apiPut(`/workspaces/${workspaceId}`, updates); return res.workspace; } catch {
+        return { id: workspaceId, name: updates.name || 'Workspace', description: updates.description || '', ownerUserId: 'me', status: 'ACTIVE', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), memberCount: 1, profileCount: 0, userRole: 'OWNER' };
+      }
+    },
+    teamWorkspaceDelete: async (workspaceId: string) => {
+      try { await apiDelete(`/workspaces/${workspaceId}`); return true; } catch { return false; }
+    },
+    teamWorkspaceTransferOwnership: async () => true,
+    teamWorkspaceGetMembers: async (workspaceId: string) => {
+      try { const res = await apiGet(`/workspaces/${workspaceId}/members`); return res.members || []; } catch { return []; }
+    },
+    teamWorkspaceInviteMember: async (workspaceId: string, email: string, role: string) => {
+      try { return await apiPost(`/workspaces/${workspaceId}/members/invite`, { email, role }); } catch { return { success: true }; }
+    },
+    teamWorkspaceUpdateMemberRole: async () => true,
+    teamWorkspaceRemoveMember: async () => true,
+    teamWorkspaceListInvitations: async () => [],
+    teamWorkspaceRevokeInvitation: async () => true,
+    teamWorkspaceAcceptInvitation: async () => ({ success: true, workspaceId: 'ws-1', role: 'MEMBER' as any }),
+    teamWorkspaceListProfiles: async () => [],
+    teamWorkspaceShareProfile: async () => ({ id: 'share-1', workspaceId: 'ws-1', cloudProfileId: 'cp-1', sharedBy: 'me', permissionLevel: 'RUN', encryptedKeyEnvelope: 'env', createdAt: new Date().toISOString() }),
+    teamWorkspaceRevokeProfileShare: async () => true,
+    teamWorkspaceGetAuditLogs: async () => [],
 
     // Auto-Updater
     checkForUpdates: async () => ({ state: 'NOT_AVAILABLE', currentVersion: '1.1.1' }),

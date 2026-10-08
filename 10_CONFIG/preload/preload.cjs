@@ -170,11 +170,24 @@ const api = {
   workspaceExportBundle: (options) => ipcRenderer.invoke('workspace:exportBundle', options),
   workspaceImportBundle: (bundleJson, targetWorkspaceId) => ipcRenderer.invoke('workspace:importBundle', bundleJson, targetWorkspaceId),
 
-
-
-
-
-
+  // Phase 3 Multi-User Team Workspaces
+  teamWorkspaceList: () => ipcRenderer.invoke('teamWorkspace:list'),
+  teamWorkspaceCreate: (input) => ipcRenderer.invoke('teamWorkspace:create', input),
+  teamWorkspaceGet: (workspaceId) => ipcRenderer.invoke('teamWorkspace:get', workspaceId),
+  teamWorkspaceUpdate: (workspaceId, updates) => ipcRenderer.invoke('teamWorkspace:update', workspaceId, updates),
+  teamWorkspaceDelete: (workspaceId) => ipcRenderer.invoke('teamWorkspace:delete', workspaceId),
+  teamWorkspaceTransferOwnership: (workspaceId, newOwnerId) => ipcRenderer.invoke('teamWorkspace:transferOwnership', workspaceId, newOwnerId),
+  teamWorkspaceGetMembers: (workspaceId) => ipcRenderer.invoke('teamWorkspace:getMembers', workspaceId),
+  teamWorkspaceInviteMember: (workspaceId, email, role) => ipcRenderer.invoke('teamWorkspace:inviteMember', workspaceId, email, role),
+  teamWorkspaceUpdateMemberRole: (workspaceId, memberUserId, role) => ipcRenderer.invoke('teamWorkspace:updateMemberRole', workspaceId, memberUserId, role),
+  teamWorkspaceRemoveMember: (workspaceId, memberUserId) => ipcRenderer.invoke('teamWorkspace:removeMember', workspaceId, memberUserId),
+  teamWorkspaceListInvitations: (workspaceId) => ipcRenderer.invoke('teamWorkspace:listInvitations', workspaceId),
+  teamWorkspaceRevokeInvitation: (workspaceId, inviteId) => ipcRenderer.invoke('teamWorkspace:revokeInvitation', workspaceId, inviteId),
+  teamWorkspaceAcceptInvitation: (token) => ipcRenderer.invoke('teamWorkspace:acceptInvitation', token),
+  teamWorkspaceListProfiles: (workspaceId) => ipcRenderer.invoke('teamWorkspace:listProfiles', workspaceId),
+  teamWorkspaceShareProfile: (workspaceId, input) => ipcRenderer.invoke('teamWorkspace:shareProfile', workspaceId, input),
+  teamWorkspaceRevokeProfileShare: (workspaceId, cloudProfileId) => ipcRenderer.invoke('teamWorkspace:revokeProfileShare', workspaceId, cloudProfileId),
+  teamWorkspaceGetAuditLogs: (workspaceId, limit) => ipcRenderer.invoke('teamWorkspace:getAuditLogs', workspaceId, limit),
 
   // Auto-Updater
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),

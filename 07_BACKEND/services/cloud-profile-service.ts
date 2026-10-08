@@ -2,6 +2,60 @@ import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getStorageProvider } from '../../08_SECURITY/storage-provider.js';
 import { evaluateUserEntitlements } from '../commercial/commercial-entitlement-service.js';
+import { TeamRole, TeamPermission, ROLE_PERMISSIONS } from '../../10_CONFIG/shared/types/workspace.js';
+
+/**
+ * Check if a user has access to a cloud profile, either directly as owner
+ * or through an active team workspace share.
+ */
+export function verifyUserProfileAccess(
+  userId: string,
+  cloudProfileId: string,
+  requiredPermission: TeamPermission = 'PROFILE_VIEW'
+): { profile: any; isOwner: boolean; sharedEnvelope?: string } | null {
+  const db = getDatabase();
+
+  // 1. Direct owner check
+  const profile = db.prepare(`
+    SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'
+  `).get(cloudProfileId) as any;
+
+  if (!profile) return null;
+
+  if (profile.owner_id === userId) {
+    return { profile, isOwner: true };
+  }
+
+  // 2. Team workspace share check
+  // Check if profile is shared to any workspace where user is an ACTIVE member with required permission
+  const share = db.prepare(`
+    SELECT s.encrypted_key_envelope, s.permission_level, m.role
+    FROM team_profile_shares s
+    JOIN team_workspace_members m ON s.workspace_id = m.workspace_id
+    JOIN team_workspaces w ON s.workspace_id = w.id
+    WHERE s.cloud_profile_id = ?
+      AND m.user_id = ?
+      AND m.status = 'ACTIVE'
+      AND w.status = 'ACTIVE'
+      AND s.revoked_at IS NULL
+    LIMIT 1
+  `).get(cloudProfileId, userId) as any;
+
+  if (!share) return null;
+
+  // Check role permission in that workspace
+  const role = share.role as TeamRole;
+  const allowed = (ROLE_PERMISSIONS[role] || []).includes(requiredPermission);
+  if (!allowed) {
+    return null;
+  }
+
+  return {
+    profile,
+    isOwner: false,
+    sharedEnvelope: share.encrypted_key_envelope,
+  };
+}
 
 export interface CloudProfileRecord {
   id: string;
@@ -136,13 +190,11 @@ export function listUserCloudProfiles(userId: string): CloudProfileRecord[] {
  * Get specific cloud profile details.
  */
 export function getCloudProfile(userId: string, cloudProfileId: string): CloudProfileRecord | null {
-  const db = getDatabase();
-  const profile = db.prepare(`
-    SELECT * FROM cloud_profiles
-    WHERE id = ? AND owner_id = ? AND status != 'DELETED'
-  `).get(cloudProfileId, userId) as any;
+  const access = verifyUserProfileAccess(userId, cloudProfileId, 'PROFILE_VIEW');
+  if (!access) return null;
 
-  if (!profile) return null;
+  const db = getDatabase();
+  const profile = access.profile;
 
   const latestVersion = db.prepare(`
     SELECT version, file_size, checksum_sha256, encrypted_data_key, iv, auth_tag, created_at
@@ -156,7 +208,10 @@ export function getCloudProfile(userId: string, cloudProfileId: string): CloudPr
     ...profile,
     size_mb: sizeMb,
     version: profile.current_version,
-    latest_version: latestVersion || undefined,
+    latest_version: latestVersion ? {
+      ...latestVersion,
+      encrypted_data_key: access.sharedEnvelope || latestVersion.encrypted_data_key,
+    } : undefined,
   };
 }
 
@@ -383,16 +438,13 @@ export async function createDownloadSession(
   cloudProfileId: string,
   targetVersion?: number
 ) {
-  const db = getDatabase();
-
-  const profile = db.prepare(`
-    SELECT * FROM cloud_profiles
-    WHERE id = ? AND owner_id = ? AND status != 'DELETED'
-  `).get(cloudProfileId, userId) as any;
-
-  if (!profile) {
+  const access = verifyUserProfileAccess(userId, cloudProfileId, 'PROFILE_RUN');
+  if (!access) {
     throw new Error('Cloud profile not found or access denied');
   }
+
+  const db = getDatabase();
+  const profile = access.profile;
 
   let verRow: any;
   if (targetVersion && targetVersion > 0) {
@@ -415,13 +467,13 @@ export async function createDownloadSession(
   const storage = getStorageProvider();
   const downloadUrl = await storage.createDownloadUrl(verRow.object_key, 900); // 15 mins
 
-  logCloudAudit(userId, 'DOWNLOAD_REQUESTED', `Version ${verRow.version}`, cloudProfileId);
+  logCloudAudit(userId, 'DOWNLOAD_REQUESTED', `Version ${verRow.version} (${access.isOwner ? 'owner' : 'team_member'})`, cloudProfileId);
 
   return {
     downloadUrl,
     version: verRow.version,
     checksumSha256: verRow.checksum_sha256,
-    encryptedDataKey: verRow.encrypted_data_key,
+    encryptedDataKey: access.sharedEnvelope || verRow.encrypted_data_key,
     iv: verRow.iv,
     authTag: verRow.auth_tag,
     fileSize: verRow.file_size,
@@ -487,6 +539,17 @@ export function acquireProfileLock(
   ttlSeconds = 300
 ): { acquired: boolean; heldBy?: string; expiresAt?: string } {
   const db = getDatabase();
+  const profile = db.prepare(`
+    SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'
+  `).get(cloudProfileId) as any;
+
+  if (profile) {
+    const access = verifyUserProfileAccess(userId, cloudProfileId, 'PROFILE_RUN');
+    if (!access) {
+      throw new Error('Access denied: Profile not found or not shared with you');
+    }
+  }
+
   cleanupExpiredLocks();
 
   const now = new Date();
@@ -532,6 +595,17 @@ export function renewProfileLock(
   ttlSeconds = 300
 ): { renewed: boolean; expiresAt?: string } {
   const db = getDatabase();
+  const profile = db.prepare(`
+    SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'
+  `).get(cloudProfileId) as any;
+
+  if (profile) {
+    const access = verifyUserProfileAccess(userId, cloudProfileId, 'PROFILE_RUN');
+    if (!access) {
+      throw new Error('Access denied: Profile not found or not shared with you');
+    }
+  }
+
   cleanupExpiredLocks();
 
   const lock = db.prepare(`
@@ -556,6 +630,17 @@ export function releaseProfileLock(
   deviceId: string
 ): { released: boolean } {
   const db = getDatabase();
+  const profile = db.prepare(`
+    SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'
+  `).get(cloudProfileId) as any;
+
+  if (profile) {
+    const access = verifyUserProfileAccess(userId, cloudProfileId, 'PROFILE_VIEW');
+    if (!access) {
+      throw new Error('Access denied: Profile not found or not shared with you');
+    }
+  }
+
   const res = db.prepare(`
     DELETE FROM cloud_profile_locks WHERE cloud_profile_id = ? AND device_id = ?
   `).run(cloudProfileId, deviceId);
@@ -569,6 +654,17 @@ export function releaseProfileLock(
 
 export function getProfileLockStatus(userId: string, cloudProfileId: string) {
   const db = getDatabase();
+  const profile = db.prepare(`
+    SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'
+  `).get(cloudProfileId) as any;
+
+  if (profile) {
+    const access = verifyUserProfileAccess(userId, cloudProfileId, 'PROFILE_VIEW');
+    if (!access) {
+      throw new Error('Access denied: Profile not found or not shared with you');
+    }
+  }
+
   cleanupExpiredLocks();
 
   const lock = db.prepare(`

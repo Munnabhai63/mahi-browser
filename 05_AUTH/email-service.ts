@@ -13,6 +13,7 @@ export interface EmailProvider {
   sendVerificationEmail(email: string, token: string, verifyUrl: string): Promise<boolean>;
   sendPasswordResetEmail(email: string, token: string, resetUrl: string): Promise<boolean>;
   sendSecurityAlert(email: string, alertType: string, details: string): Promise<boolean>;
+  sendWorkspaceInvitationEmail(email: string, token: string, workspaceName: string, inviterName: string, inviteUrl: string): Promise<boolean>;
 }
 
 export class DevelopmentEmailProvider implements EmailProvider {
@@ -55,6 +56,20 @@ export class DevelopmentEmailProvider implements EmailProvider {
     };
     this.sentEmails.push(msg);
     console.log(`[EmailService:DEV] Security alert sent to ${email}: ${alertType}`);
+    return true;
+  }
+
+  async sendWorkspaceInvitationEmail(email: string, token: string, workspaceName: string, inviterName: string, inviteUrl: string): Promise<boolean> {
+    const msg: EmailMessage = {
+      to: email,
+      subject: `You've been invited to join "${workspaceName}" on MAHI Browser`,
+      html: `<p>Hello,</p><p><strong>${inviterName}</strong> has invited you to join team workspace <strong>"${workspaceName}"</strong> on MAHI Browser.</p><p><a href="${inviteUrl}">Accept Invitation</a></p><p>Or enter invitation token in your app: <code>${token}</code></p>`,
+      token,
+      actionUrl: inviteUrl,
+      sentAt: new Date().toISOString(),
+    };
+    this.sentEmails.push(msg);
+    console.log(`[EmailService:DEV] Workspace invitation email queued for ${email} (Workspace: ${workspaceName}, Token: ${token.substring(0, 8)}...)`);
     return true;
   }
 

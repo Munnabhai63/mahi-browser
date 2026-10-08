@@ -74,6 +74,27 @@ import {
   releaseProfileLock,
   getProfileLockStatus,
 } from '../services/cloud-profile-service.js';
+import {
+  createTeamWorkspace,
+  listUserTeamWorkspaces,
+  getTeamWorkspace,
+  updateTeamWorkspace,
+  deleteTeamWorkspace,
+  transferWorkspaceOwnership,
+  getWorkspaceMembers,
+  updateMemberRole,
+  removeWorkspaceMember,
+  inviteWorkspaceMember,
+  listWorkspaceInvitations,
+  revokeWorkspaceInvitation,
+  acceptWorkspaceInvitation,
+  shareProfileToWorkspace,
+  revokeProfileShare,
+  listWorkspaceProfiles,
+  getWorkspaceAuditLogs,
+  getWorkspaceKeyEnvelope,
+  setWorkspaceKeyEnvelope,
+} from '../services/team-workspace-service.js';
 import { getStorageProvider, LocalStorageProvider } from '../../08_SECURITY/storage-provider.js';
 
 function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
@@ -951,6 +972,308 @@ export async function handleCommercialApiRoutes(
     const profileId = parsedUrl.searchParams.get('cloudProfileId') || '';
     const status = getProfileLockStatus(user.userId, profileId);
     sendJSON(res, 200, { success: true, data: status });
+    return true;
+  }
+
+  // -------------------------------------------------------------
+  // 15. PHASE 3 TEAM WORKSPACES & RBAC ENDPOINTS (Protected)
+  // -------------------------------------------------------------
+  if (routePath === '/api/v1/workspaces' && method === 'GET') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Central login required.' });
+      return true;
+    }
+    const workspaces = listUserTeamWorkspaces(user.userId);
+    sendJSON(res, 200, { success: true, workspaces });
+    return true;
+  }
+
+  if (routePath === '/api/v1/workspaces' && method === 'POST') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const body = await parseBody(req);
+      const ws = createTeamWorkspace(user.userId, body);
+      sendJSON(res, 201, { success: true, workspace: ws });
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  if (routePath === '/api/v1/workspaces/invitations/accept' && method === 'POST') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const body = await parseBody(req);
+      const result = acceptWorkspaceInvitation(user.userId, body.token);
+      sendJSON(res, 200, result);
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const wsDetailMatch = routePath.match(/^\/api\/v1\/workspaces\/([a-zA-Z0-9_-]+)$/);
+  if (wsDetailMatch && method === 'GET') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    const ws = getTeamWorkspace(user.userId, wsDetailMatch[1]);
+    if (!ws) {
+      sendJSON(res, 404, { success: false, error: 'Workspace not found or access denied.' });
+      return true;
+    }
+    sendJSON(res, 200, { success: true, workspace: ws });
+    return true;
+  }
+
+  if (wsDetailMatch && method === 'PUT') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const body = await parseBody(req);
+      const updated = updateTeamWorkspace(user.userId, wsDetailMatch[1], body);
+      sendJSON(res, 200, { success: true, workspace: updated });
+    } catch (err: any) {
+      sendJSON(res, 403, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  if (wsDetailMatch && method === 'DELETE') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      deleteTeamWorkspace(user.userId, wsDetailMatch[1]);
+      sendJSON(res, 200, { success: true });
+    } catch (err: any) {
+      sendJSON(res, 403, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const wsTransferMatch = routePath.match(/^\/api\/v1\/workspaces\/([a-zA-Z0-9_-]+)\/transfer-ownership$/);
+  if (wsTransferMatch && method === 'POST') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const body = await parseBody(req);
+      transferWorkspaceOwnership(user.userId, wsTransferMatch[1], body.newOwnerUserId);
+      sendJSON(res, 200, { success: true });
+    } catch (err: any) {
+      sendJSON(res, 403, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const wsMembersMatch = routePath.match(/^\/api\/v1\/workspaces\/([a-zA-Z0-9_-]+)\/members$/);
+  if (wsMembersMatch && method === 'GET') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const members = getWorkspaceMembers(user.userId, wsMembersMatch[1]);
+      sendJSON(res, 200, { success: true, members });
+    } catch (err: any) {
+      sendJSON(res, 403, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const wsInviteMatch = routePath.match(/^\/api\/v1\/workspaces\/([a-zA-Z0-9_-]+)\/members\/invite$/);
+  if (wsInviteMatch && method === 'POST') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const body = await parseBody(req);
+      const result = await inviteWorkspaceMember(user.userId, wsInviteMatch[1], body.email, body.role);
+      sendJSON(res, 201, { success: true, invitation: result });
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const wsRoleMatch = routePath.match(/^\/api\/v1\/workspaces\/([a-zA-Z0-9_-]+)\/members\/([a-zA-Z0-9_-]+)\/role$/);
+  if (wsRoleMatch && method === 'PUT') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const body = await parseBody(req);
+      updateMemberRole(user.userId, wsRoleMatch[1], wsRoleMatch[2], body.role);
+      sendJSON(res, 200, { success: true });
+    } catch (err: any) {
+      sendJSON(res, 403, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const wsRemoveMemberMatch = routePath.match(/^\/api\/v1\/workspaces\/([a-zA-Z0-9_-]+)\/members\/([a-zA-Z0-9_-]+)$/);
+  if (wsRemoveMemberMatch && method === 'DELETE') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      removeWorkspaceMember(user.userId, wsRemoveMemberMatch[1], wsRemoveMemberMatch[2]);
+      sendJSON(res, 200, { success: true });
+    } catch (err: any) {
+      sendJSON(res, 403, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const wsListInvitesMatch = routePath.match(/^\/api\/v1\/workspaces\/([a-zA-Z0-9_-]+)\/invitations$/);
+  if (wsListInvitesMatch && method === 'GET') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const invitations = listWorkspaceInvitations(user.userId, wsListInvitesMatch[1]);
+      sendJSON(res, 200, { success: true, invitations });
+    } catch (err: any) {
+      sendJSON(res, 403, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const wsRevokeInviteMatch = routePath.match(/^\/api\/v1\/workspaces\/([a-zA-Z0-9_-]+)\/invitations\/([a-zA-Z0-9_-]+)\/revoke$/);
+  if (wsRevokeInviteMatch && method === 'POST') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      revokeWorkspaceInvitation(user.userId, wsRevokeInviteMatch[1], wsRevokeInviteMatch[2]);
+      sendJSON(res, 200, { success: true });
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const wsProfilesMatch = routePath.match(/^\/api\/v1\/workspaces\/([a-zA-Z0-9_-]+)\/profiles$/);
+  if (wsProfilesMatch && method === 'GET') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const profiles = listWorkspaceProfiles(user.userId, wsProfilesMatch[1]);
+      sendJSON(res, 200, { success: true, profiles });
+    } catch (err: any) {
+      sendJSON(res, 403, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const wsShareMatch = routePath.match(/^\/api\/v1\/workspaces\/([a-zA-Z0-9_-]+)\/profiles\/share$/);
+  if (wsShareMatch && method === 'POST') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const body = await parseBody(req);
+      const share = shareProfileToWorkspace(user.userId, wsShareMatch[1], body);
+      sendJSON(res, 200, { success: true, share });
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const wsRevokeShareMatch = routePath.match(/^\/api\/v1\/workspaces\/([a-zA-Z0-9_-]+)\/profiles\/([a-zA-Z0-9_-]+)\/share$/);
+  if (wsRevokeShareMatch && method === 'DELETE') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      revokeProfileShare(user.userId, wsRevokeShareMatch[1], wsRevokeShareMatch[2]);
+      sendJSON(res, 200, { success: true });
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const wsAuditMatch = routePath.match(/^\/api\/v1\/workspaces\/([a-zA-Z0-9_-]+)\/audit-logs$/);
+  if (wsAuditMatch && method === 'GET') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const limit = parseInt(parsedUrl.searchParams.get('limit') || '50', 10);
+      const logs = getWorkspaceAuditLogs(user.userId, wsAuditMatch[1], limit);
+      sendJSON(res, 200, { success: true, logs });
+    } catch (err: any) {
+      sendJSON(res, 403, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const wsKeyMatch = routePath.match(/^\/api\/v1\/workspaces\/([a-zA-Z0-9_-]+)\/key$/);
+  if (wsKeyMatch && method === 'GET') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    const envelope = getWorkspaceKeyEnvelope(user.userId, wsKeyMatch[1]);
+    sendJSON(res, 200, { success: true, keyEnvelope: envelope });
+    return true;
+  }
+
+  if (wsKeyMatch && method === 'POST') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const body = await parseBody(req);
+      setWorkspaceKeyEnvelope(user.userId, wsKeyMatch[1], body.targetUserId, body.encryptedKey);
+      sendJSON(res, 200, { success: true });
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
     return true;
   }
 

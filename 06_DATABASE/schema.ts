@@ -659,6 +659,109 @@ export async function initializeDatabase(): Promise<void> {
     db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (11, ?)').run(new Date().toISOString());
   }
 
+  // Migration v12: Phase 3 Multi-User Team Workspaces, Secure Profile Sharing & RBAC
+  const checkMigration12 = db.prepare('SELECT version FROM schema_migrations WHERE version = 12').get();
+  if (!checkMigration12) {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS team_workspaces (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT DEFAULT '',
+          owner_user_id TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'ACTIVE',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (owner_user_id) REFERENCES auth_users(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_team_ws_owner ON team_workspaces(owner_user_id);
+        CREATE INDEX IF NOT EXISTS idx_team_ws_status ON team_workspaces(status);
+
+        CREATE TABLE IF NOT EXISTS team_workspace_members (
+          id TEXT PRIMARY KEY,
+          workspace_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'MEMBER',
+          status TEXT NOT NULL DEFAULT 'ACTIVE',
+          invited_by TEXT,
+          joined_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (workspace_id) REFERENCES team_workspaces(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE,
+          UNIQUE (workspace_id, user_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_team_ws_members_user ON team_workspace_members(user_id);
+        CREATE INDEX IF NOT EXISTS idx_team_ws_members_ws ON team_workspace_members(workspace_id);
+        CREATE INDEX IF NOT EXISTS idx_team_ws_members_status ON team_workspace_members(workspace_id, status);
+
+        CREATE TABLE IF NOT EXISTS team_workspace_invitations (
+          id TEXT PRIMARY KEY,
+          workspace_id TEXT NOT NULL,
+          email TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'MEMBER',
+          token_hash TEXT NOT NULL UNIQUE,
+          invited_by TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'PENDING',
+          expires_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (workspace_id) REFERENCES team_workspaces(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_team_ws_invites_hash ON team_workspace_invitations(token_hash);
+        CREATE INDEX IF NOT EXISTS idx_team_ws_invites_ws ON team_workspace_invitations(workspace_id);
+        CREATE INDEX IF NOT EXISTS idx_team_ws_invites_email ON team_workspace_invitations(email);
+        CREATE INDEX IF NOT EXISTS idx_team_ws_invites_status ON team_workspace_invitations(status);
+
+        CREATE TABLE IF NOT EXISTS team_profile_shares (
+          id TEXT PRIMARY KEY,
+          workspace_id TEXT NOT NULL,
+          cloud_profile_id TEXT NOT NULL,
+          shared_by TEXT NOT NULL,
+          permission_level TEXT NOT NULL DEFAULT 'RUN',
+          encrypted_key_envelope TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          revoked_at TEXT DEFAULT NULL,
+          FOREIGN KEY (workspace_id) REFERENCES team_workspaces(id) ON DELETE CASCADE,
+          FOREIGN KEY (cloud_profile_id) REFERENCES cloud_profiles(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_team_shares_ws ON team_profile_shares(workspace_id);
+        CREATE INDEX IF NOT EXISTS idx_team_shares_profile ON team_profile_shares(cloud_profile_id);
+
+        CREATE TABLE IF NOT EXISTS team_workspace_keys (
+          id TEXT PRIMARY KEY,
+          workspace_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          encrypted_workspace_key TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (workspace_id) REFERENCES team_workspaces(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE,
+          UNIQUE (workspace_id, user_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_team_ws_keys_user ON team_workspace_keys(workspace_id, user_id);
+
+        CREATE TABLE IF NOT EXISTS team_workspace_audit_logs (
+          id TEXT PRIMARY KEY,
+          workspace_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          action TEXT NOT NULL,
+          target_id TEXT,
+          details TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (workspace_id) REFERENCES team_workspaces(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_team_ws_audit_ws ON team_workspace_audit_logs(workspace_id);
+        CREATE INDEX IF NOT EXISTS idx_team_ws_audit_user ON team_workspace_audit_logs(user_id);
+        CREATE INDEX IF NOT EXISTS idx_team_ws_audit_action ON team_workspace_audit_logs(action);
+      `);
+    } catch {}
+    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (12, ?)').run(new Date().toISOString());
+  }
+
   // Clean legacy auto-warmed status lines from user notes
   try {
     const rows = db.prepare("SELECT id, notes FROM profiles WHERE notes LIKE '%[Auto-Warmed%'").all() as { id: string; notes: string }[];
