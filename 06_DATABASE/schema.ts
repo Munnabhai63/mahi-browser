@@ -1138,6 +1138,58 @@ export async function initializeDatabase(): Promise<void> {
     } catch {}
   }
 
+  // Migration v17: Phase 11 Android Mobile Companion & Push Notifications
+  const checkMigration17 = db.prepare('SELECT version FROM schema_migrations WHERE version = 17').get();
+  if (!checkMigration17) {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS mobile_device_tokens (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          device_id TEXT NOT NULL,
+          push_token TEXT NOT NULL,
+          platform TEXT NOT NULL DEFAULT 'android',
+          device_model TEXT,
+          os_version TEXT,
+          app_version TEXT,
+          status TEXT NOT NULL DEFAULT 'ACTIVE',
+          last_seen_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mobile_tokens_user ON mobile_device_tokens(user_id);
+        CREATE INDEX IF NOT EXISTS idx_mobile_tokens_dev ON mobile_device_tokens(device_id);
+
+        CREATE TABLE IF NOT EXISTS mobile_notification_preferences (
+          user_id TEXT PRIMARY KEY,
+          security_alerts INTEGER NOT NULL DEFAULT 1,
+          cloud_sessions INTEGER NOT NULL DEFAULT 1,
+          automation_alerts INTEGER NOT NULL DEFAULT 1,
+          workspace_alerts INTEGER NOT NULL DEFAULT 1,
+          proxy_alerts INTEGER NOT NULL DEFAULT 1,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS mobile_notifications (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          category TEXT NOT NULL,
+          title TEXT NOT NULL,
+          body TEXT NOT NULL,
+          data_json TEXT,
+          read INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mobile_notif_user ON mobile_notifications(user_id);
+        CREATE INDEX IF NOT EXISTS idx_mobile_notif_cat ON mobile_notifications(category);
+      `);
+
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (17, ?)').run(new Date().toISOString());
+    } catch {}
+  }
+
   // Ensure additive columns exist regardless of migration cache
   try { db.exec('ALTER TABLE proxies ADD COLUMN city TEXT;'); } catch {}
   try { db.exec('ALTER TABLE proxies ADD COLUMN region TEXT;'); } catch {}

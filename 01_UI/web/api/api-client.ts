@@ -497,6 +497,51 @@ export class WebApiClient {
       body: JSON.stringify({ action }),
     });
   }
+
+  // ========================================================================
+  // PHASE 11: ANDROID MOBILE COMPANION CLIENT METHODS
+  // ========================================================================
+
+  public async registerMobileDevice(dto: {
+    deviceId: string;
+    pushToken: string;
+    deviceModel?: string;
+    osVersion?: string;
+    appVersion?: string;
+  }) {
+    return this.request<any>('/api/v1/remote/mobile/device-token', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    });
+  }
+
+  public async revokeMobileDevice(deviceId: string) {
+    return this.request<{ success: boolean }>(`/api/v1/remote/mobile/device-token/${deviceId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  public async getMobileNotifications(unreadOnly = false) {
+    const query = unreadOnly ? '?unread=true' : '';
+    return this.request<any[]>(`/api/v1/remote/mobile/notifications${query}`, { method: 'GET' });
+  }
+
+  public async markMobileNotificationRead(notificationId: string) {
+    return this.request<{ success: boolean }>(`/api/v1/remote/mobile/notifications/${notificationId}/read`, {
+      method: 'PUT',
+    });
+  }
+
+  public async getMobileNotificationPreferences() {
+    return this.request<any>('/api/v1/remote/mobile/notifications/preferences', { method: 'GET' });
+  }
+
+  public async updateMobileNotificationPreferences(preferences: any) {
+    return this.request<any>('/api/v1/remote/mobile/notifications/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(preferences),
+    });
+  }
 }
 
 // Default global instance for browser use

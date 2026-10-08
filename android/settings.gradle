@@ -1,0 +1,2 @@
+rootProject.name = 'MahiBrowserMobile'
+include ':app'

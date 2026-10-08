@@ -13,7 +13,7 @@
  * - Clean shutdown, flush wait, and secure workspace wipe
  */
 
-import { spawn, ChildProcess } from 'node:child_process';
+import { spawn, exec, ChildProcess } from 'node:child_process';
 import http from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
@@ -219,13 +219,20 @@ export class BrowserWorkerManager {
       startedAt: new Date().toISOString(),
       stop: async () => {
         try {
-          if (!proc.killed) {
+          try {
             proc.kill('SIGTERM');
-            // Give 2.5 seconds for Chromium profile flush
-            await new Promise((resolve) => setTimeout(resolve, 2500));
-            if (!proc.killed) {
+          } catch {}
+          if (process.platform === 'win32' && pid) {
+            try {
+              await new Promise<void>((resolve) => {
+                exec(`taskkill /F /T /PID ${pid}`, () => resolve());
+              });
+            } catch {}
+          }
+          if (!proc.killed) {
+            try {
               proc.kill('SIGKILL');
-            }
+            } catch {}
           }
         } catch {}
         if (proxyTunnel) {

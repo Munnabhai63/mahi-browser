@@ -61,6 +61,7 @@ import {
   sessionScheduler,
   resourceLimiter,
 } from '../cloud-browser/index.js';
+import { mobileCompanionService } from '../services/mobile-companion-service.js';
 import {
   RemoteAuthContext,
   RemoteApiScope,
@@ -1418,6 +1419,72 @@ export async function handleRemoteApiRoutes(
       resourceLimiter.touchActivity(sessionId);
 
       sendRemoteJSON(req, res, 200, { success: true }, requestId, rateLimit);
+      return true;
+    }
+
+    // ========================================================================
+    // PHASE 11: ANDROID MOBILE COMPANION ENDPOINTS
+    // ========================================================================
+
+    // POST mobile/device-token (Register or update device push token)
+    if (route === 'mobile/device-token' && method === 'POST') {
+      const body = await parseBody(req);
+      if (!body.deviceId || !body.pushToken) {
+        sendRemoteJSON(req, res, 400, {
+          success: false,
+          error: { code: 'INVALID_REQUEST', message: 'deviceId and pushToken are required.' },
+        }, requestId, rateLimit);
+        return true;
+      }
+
+      const record = mobileCompanionService.registerDeviceToken(auth.userId, {
+        deviceId: body.deviceId,
+        pushToken: body.pushToken,
+        deviceModel: body.deviceModel,
+        osVersion: body.osVersion,
+        appVersion: body.appVersion,
+      });
+
+      sendRemoteJSON(req, res, 200, { success: true, data: record }, requestId, rateLimit);
+      return true;
+    }
+
+    // DELETE mobile/device-token/:deviceId (Revoke device push token)
+    const dtDeleteMatch = route.match(/^mobile\/device-token\/([a-zA-Z0-9_-]+)$/);
+    if (dtDeleteMatch && method === 'DELETE') {
+      mobileCompanionService.revokeDeviceToken(auth.userId, dtDeleteMatch[1]);
+      sendRemoteJSON(req, res, 200, { success: true }, requestId, rateLimit);
+      return true;
+    }
+
+    // GET mobile/notifications (List user notifications)
+    if (route === 'mobile/notifications' && method === 'GET') {
+      const unreadOnly = parsedUrl.searchParams.get('unread') === 'true';
+      const notifications = mobileCompanionService.getUserNotifications(auth.userId, 50, unreadOnly);
+      sendRemoteJSON(req, res, 200, { success: true, data: notifications }, requestId, rateLimit);
+      return true;
+    }
+
+    // PUT mobile/notifications/:id/read (Mark notification read)
+    const notifReadMatch = route.match(/^mobile\/notifications\/([a-zA-Z0-9_-]+)\/read$/);
+    if (notifReadMatch && method === 'PUT') {
+      mobileCompanionService.markNotificationRead(auth.userId, notifReadMatch[1]);
+      sendRemoteJSON(req, res, 200, { success: true }, requestId, rateLimit);
+      return true;
+    }
+
+    // GET mobile/notifications/preferences (Get user notification preferences)
+    if (route === 'mobile/notifications/preferences' && method === 'GET') {
+      const prefs = mobileCompanionService.getNotificationPreferences(auth.userId);
+      sendRemoteJSON(req, res, 200, { success: true, data: prefs }, requestId, rateLimit);
+      return true;
+    }
+
+    // PUT mobile/notifications/preferences (Update notification preferences)
+    if (route === 'mobile/notifications/preferences' && method === 'PUT') {
+      const body = await parseBody(req);
+      const updated = mobileCompanionService.updateNotificationPreferences(auth.userId, body);
+      sendRemoteJSON(req, res, 200, { success: true, data: updated }, requestId, rateLimit);
       return true;
     }
 

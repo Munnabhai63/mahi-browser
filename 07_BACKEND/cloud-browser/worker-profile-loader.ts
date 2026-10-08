@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { execSync } from 'node:child_process';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getStorageProvider } from '../../08_SECURITY/storage-provider.js';
 import {
@@ -315,12 +316,29 @@ export class WorkerProfileLoader {
    * Securely wipes the isolated worker directory upon session termination.
    */
   public cleanWorkerDirectory(targetDir: string): void {
-    try {
-      if (fs.existsSync(targetDir)) {
-        fs.rmSync(targetDir, { recursive: true, force: true });
+    if (!fs.existsSync(targetDir)) return;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      try {
+        if (fs.existsSync(targetDir)) {
+          fs.rmSync(targetDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+        }
+        if (!fs.existsSync(targetDir)) return;
+      } catch {}
+
+      if (process.platform === 'win32' && fs.existsSync(targetDir)) {
+        try {
+          execSync(`rmdir /s /q "${targetDir}"`, { stdio: 'ignore' });
+          if (!fs.existsSync(targetDir)) return;
+        } catch {}
       }
-    } catch {}
+
+      try {
+        const start = Date.now();
+        while (Date.now() - start < 100) {}
+      } catch {}
+    }
   }
+
 }
 
 export const workerProfileLoader = WorkerProfileLoader.getInstance();
