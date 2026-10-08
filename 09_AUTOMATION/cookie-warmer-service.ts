@@ -365,7 +365,20 @@ export async function warmProfile(
     }
 
     const debugPort = getProfileDebugPort(profileId);
-    browserObj = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`, { timeout: 15000 });
+    let connectErr: any = null;
+    for (let cdpAttempt = 0; cdpAttempt < 5; cdpAttempt++) {
+      try {
+        browserObj = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`, { timeout: 10000 });
+        connectErr = null;
+        break;
+      } catch (err) {
+        connectErr = err;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+    if (!browserObj && connectErr) {
+      throw connectErr;
+    }
 
     const contexts = browserObj.contexts();
     const context = contexts.length > 0 ? contexts[0] : await browserObj.newContext();

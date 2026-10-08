@@ -219,21 +219,20 @@ export class BrowserWorkerManager {
       startedAt: new Date().toISOString(),
       stop: async () => {
         try {
-          try {
-            proc.kill('SIGTERM');
-          } catch {}
           if (process.platform === 'win32' && pid) {
             try {
               await new Promise<void>((resolve) => {
                 exec(`taskkill /F /T /PID ${pid}`, () => resolve());
               });
             } catch {}
-          }
-          if (!proc.killed) {
+          } else {
             try {
-              proc.kill('SIGKILL');
+              proc.kill('SIGTERM');
+              await new Promise((resolve) => setTimeout(resolve, 300));
+              if (!proc.killed) proc.kill('SIGKILL');
             } catch {}
           }
+          (proc as any).killed = true;
         } catch {}
         if (proxyTunnel) {
           try {

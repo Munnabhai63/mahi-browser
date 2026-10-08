@@ -159,10 +159,10 @@ describe('Phase 11 — Mobile Cloud Companion E2E Suite', () => {
     const workerInstance = browserWorkerManager.getWorker(testSessionId);
     expect(workerInstance).toBeDefined();
 
-    // Stop worker gracefully
+    // Detach gateway and stop worker gracefully
+    sessionGateway.detachSession(testSessionId);
     await workerInstance!.stop();
     expect(workerInstance!.process.killed).toBe(true);
-    sessionGateway.detachSession(testSessionId);
 
     // Package profile to cloud storage
     const syncResult = await workerProfileLoader.packageAndSyncProfile({
@@ -176,9 +176,12 @@ describe('Phase 11 — Mobile Cloud Companion E2E Suite', () => {
     expect(syncResult.success).toBe(true);
     expect(syncResult.newVersion).toBe(2);
 
-    // Clean worker storage
-    await new Promise((r) => setTimeout(r, 500));
+    // Clean worker storage with asynchronous Windows lock release tolerance
     workerProfileLoader.cleanWorkerDirectory(testRuntimeDir);
+    for (let i = 0; i < 10 && fs.existsSync(testRuntimeDir); i++) {
+      await new Promise((r) => setTimeout(r, 200));
+      workerProfileLoader.cleanWorkerDirectory(testRuntimeDir);
+    }
     expect(fs.existsSync(testRuntimeDir)).toBe(false);
   });
 

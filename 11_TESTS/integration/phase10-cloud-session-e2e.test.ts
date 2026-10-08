@@ -134,9 +134,12 @@ describe('Phase 10: Real Cloud Browser Worker & Interactive Session E2E Suite', 
     expect(syncRes.success).toBe(true);
     expect(syncRes.newVersion).toBe(2);
 
-    // 4. Securely wipe worker directory
-    await new Promise((r) => setTimeout(r, 500));
+    // 4. Securely wipe worker directory with asynchronous Windows lock release tolerance
     workerProfileLoader.cleanWorkerDirectory(testRuntimeDir);
+    for (let i = 0; i < 10 && fs.existsSync(testRuntimeDir); i++) {
+      await new Promise((r) => setTimeout(r, 200));
+      workerProfileLoader.cleanWorkerDirectory(testRuntimeDir);
+    }
     expect(fs.existsSync(testRuntimeDir)).toBe(false);
   });
 });
