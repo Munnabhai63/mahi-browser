@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   LayoutDashboard,
   ExternalLink,
+  Bot,
 } from 'lucide-react';
 import { useWebAuthStore } from '../state/useWebAuthStore.js';
 import { TeamWorkspace } from '../../../10_CONFIG/shared/types/workspace.js';
@@ -26,6 +27,7 @@ export type WebTab =
   | 'profiles'
   | 'workspaces'
   | 'proxies'
+  | 'automation'
   | 'developer'
   | 'devices'
   | 'audit'
@@ -63,6 +65,7 @@ export const WebDashboardLayout: React.FC<WebDashboardLayoutProps> = ({
     { id: 'profiles', label: 'Browser Profiles', icon: Globe2 },
     { id: 'workspaces', label: 'Team Workspaces', icon: Layers },
     { id: 'proxies', label: 'Proxy Platform', icon: Shield },
+    { id: 'automation', label: 'Automation & RPA', icon: Bot },
     { id: 'developer', label: 'Developer API & Webhooks', icon: Key },
     { id: 'devices', label: 'Connected Devices', icon: Laptop },
     { id: 'audit', label: 'Audit Activity', icon: Activity },

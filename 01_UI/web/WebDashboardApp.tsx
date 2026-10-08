@@ -8,6 +8,7 @@ import { ProfilesPage, WebProfileItem } from './pages/ProfilesPage.js';
 import { WorkspacesPage } from './pages/WorkspacesPage.js';
 import { ProxiesPage, WebProxySession } from './pages/ProxiesPage.js';
 import { DeveloperPage } from './pages/DeveloperPage.js';
+import { AutomationPage } from './pages/AutomationPage.js';
 import { DevicesPage, WebDeviceSession } from './pages/DevicesPage.js';
 import { AuditPage, WebAuditItem } from './pages/AuditPage.js';
 import { AccountPage } from './pages/AccountPage.js';
@@ -519,6 +520,14 @@ export const WebDashboardApp: React.FC = () => {
           onGenerateSession={handleGenerateProxySession}
           onRotateSession={handleRotateProxySession}
           onRevokeSession={handleRevokeProxySession}
+        />
+      )}
+
+      {activeTab === 'automation' && (
+        <AutomationPage
+          currentWorkspace={currentWorkspace}
+          profiles={profiles}
+          recordAudit={recordAudit}
         />
       )}
 

@@ -940,12 +940,116 @@ export async function initializeDatabase(): Promise<void> {
     } catch {}
   }
 
+  // Migration v15: Phase 8 Production Automation & RPA Platform
+  const checkMigration15 = db.prepare('SELECT version FROM schema_migrations WHERE version = 15').get();
+  if (!checkMigration15) {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS automation_versions (
+          id TEXT PRIMARY KEY,
+          workflow_id TEXT NOT NULL,
+          version INTEGER NOT NULL,
+          definition_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          created_by TEXT,
+          FOREIGN KEY (workflow_id) REFERENCES automation_workflows(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_auto_versions_wf ON automation_versions(workflow_id);
+
+        CREATE TABLE IF NOT EXISTS automation_runs (
+          id TEXT PRIMARY KEY,
+          workflow_id TEXT NOT NULL,
+          workflow_version INTEGER NOT NULL DEFAULT 1,
+          profile_id TEXT NOT NULL,
+          workspace_id TEXT,
+          status TEXT NOT NULL DEFAULT 'QUEUED',
+          started_at TEXT NOT NULL,
+          completed_at TEXT,
+          duration_ms INTEGER,
+          failed_step_id TEXT,
+          retry_count INTEGER NOT NULL DEFAULT 0,
+          summary TEXT,
+          variables_snapshot_json TEXT,
+          step_logs_json TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_auto_runs_wf ON automation_runs(workflow_id);
+        CREATE INDEX IF NOT EXISTS idx_auto_runs_prof ON automation_runs(profile_id);
+        CREATE INDEX IF NOT EXISTS idx_auto_runs_ws ON automation_runs(workspace_id);
+        CREATE INDEX IF NOT EXISTS idx_auto_runs_status ON automation_runs(status);
+
+        CREATE TABLE IF NOT EXISTS automation_schedules (
+          id TEXT PRIMARY KEY,
+          workflow_id TEXT NOT NULL,
+          profile_id TEXT,
+          profile_ids_json TEXT,
+          workspace_id TEXT,
+          schedule_type TEXT NOT NULL,
+          cron_expression TEXT,
+          timezone TEXT NOT NULL DEFAULT 'UTC',
+          next_run_at TEXT,
+          last_run_at TEXT,
+          status TEXT NOT NULL DEFAULT 'ACTIVE',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (workflow_id) REFERENCES automation_workflows(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_auto_sched_wf ON automation_schedules(workflow_id);
+        CREATE INDEX IF NOT EXISTS idx_auto_sched_status ON automation_schedules(status);
+
+        CREATE TABLE IF NOT EXISTS automation_templates (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          category TEXT NOT NULL,
+          description TEXT,
+          icon TEXT,
+          is_builtin INTEGER NOT NULL DEFAULT 0,
+          workspace_id TEXT,
+          workflow_json TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+      `);
+
+      // Additive columns to existing automation tables
+      try { db.exec('ALTER TABLE automation_workflows ADD COLUMN version INTEGER NOT NULL DEFAULT 1;'); } catch {}
+      try { db.exec('ALTER TABLE automation_workflows ADD COLUMN workspace_id TEXT;'); } catch {}
+      try { db.exec("ALTER TABLE automation_workflows ADD COLUMN variables_json TEXT NOT NULL DEFAULT '[]';"); } catch {}
+      try { db.exec("ALTER TABLE automation_workflows ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}';"); } catch {}
+      try { db.exec("ALTER TABLE automation_workflows ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]';"); } catch {}
+
+      try { db.exec('ALTER TABLE automation_steps ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0;'); } catch {}
+      try { db.exec('ALTER TABLE automation_steps ADD COLUMN retry_delay_ms INTEGER NOT NULL DEFAULT 1000;'); } catch {}
+      try { db.exec('ALTER TABLE automation_steps ADD COLUMN condition_json TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE automation_steps ADD COLUMN loop_config_json TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE automation_steps ADD COLUMN output_variable_name TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE automation_steps ADD COLUMN is_secret INTEGER NOT NULL DEFAULT 0;'); } catch {}
+
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (15, ?)').run(new Date().toISOString());
+    } catch {}
+  }
+
   // Ensure additive columns exist regardless of migration cache
   try { db.exec('ALTER TABLE proxies ADD COLUMN city TEXT;'); } catch {}
   try { db.exec('ALTER TABLE proxies ADD COLUMN region TEXT;'); } catch {}
   try { db.exec('ALTER TABLE proxies ADD COLUMN provider_id TEXT;'); } catch {}
   try { db.exec('ALTER TABLE proxies ADD COLUMN network_type TEXT;'); } catch {}
   try { db.exec('ALTER TABLE proxies ADD COLUMN session_type TEXT;'); } catch {}
+
+  try { db.exec('ALTER TABLE automation_workflows ADD COLUMN version INTEGER NOT NULL DEFAULT 1;'); } catch {}
+  try { db.exec('ALTER TABLE automation_workflows ADD COLUMN workspace_id TEXT;'); } catch {}
+  try { db.exec("ALTER TABLE automation_workflows ADD COLUMN variables_json TEXT NOT NULL DEFAULT '[]';"); } catch {}
+  try { db.exec("ALTER TABLE automation_workflows ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}';"); } catch {}
+  try { db.exec("ALTER TABLE automation_workflows ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]';"); } catch {}
+
+  try { db.exec('ALTER TABLE automation_steps ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0;'); } catch {}
+  try { db.exec('ALTER TABLE automation_steps ADD COLUMN retry_delay_ms INTEGER NOT NULL DEFAULT 1000;'); } catch {}
+  try { db.exec('ALTER TABLE automation_steps ADD COLUMN condition_json TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE automation_steps ADD COLUMN loop_config_json TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE automation_steps ADD COLUMN output_variable_name TEXT;'); } catch {}
+  try { db.exec('ALTER TABLE automation_steps ADD COLUMN is_secret INTEGER NOT NULL DEFAULT 0;'); } catch {}
 
   // Clean legacy auto-warmed status lines from user notes
   try {

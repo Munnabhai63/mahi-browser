@@ -378,6 +378,66 @@ export class WebApiClient {
       method: 'GET',
     });
   }
+
+  // ==========================================================================
+  // 7. AUTOMATION & RPA
+  // ==========================================================================
+
+  public async listWorkflows(workspaceId?: string) {
+    const query = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
+    return this.request<any[]>(`/api/v1/remote/automation/workflows${query}`, { method: 'GET' });
+  }
+
+  public async getWorkflow(workflowId: string) {
+    return this.request<any>(`/api/v1/remote/automation/workflows/${workflowId}`, { method: 'GET' });
+  }
+
+  public async runWorkflow(workflowId: string, profileId?: string) {
+    return this.request<{ runId: string; workflowId: string; profileId?: string; status: string; message: string }>(
+      `/api/v1/remote/automation/workflows/${workflowId}/run`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ profileId }),
+      }
+    );
+  }
+
+  public async getWorkflowRuns(workflowId?: string) {
+    const query = workflowId ? `?workflowId=${encodeURIComponent(workflowId)}` : '';
+    return this.request<any[]>(`/api/v1/remote/automation/runs${query}`, { method: 'GET' });
+  }
+
+  public async getWorkflowRunLogs(runId: string) {
+    return this.request<any[]>(`/api/v1/remote/automation/runs/${runId}`, { method: 'GET' });
+  }
+
+  public async stopWorkflowRun(runId: string) {
+    return this.request<{ stopped: boolean; runId: string }>(`/api/v1/remote/automation/runs/${runId}/stop`, {
+      method: 'POST',
+    });
+  }
+
+  public async listSchedules(workspaceId?: string) {
+    const query = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
+    return this.request<any[]>(`/api/v1/remote/automation/schedules${query}`, { method: 'GET' });
+  }
+
+  public async createSchedule(dto: any) {
+    return this.request<any>('/api/v1/remote/automation/schedules', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    });
+  }
+
+  public async deleteSchedule(scheduleId: string) {
+    return this.request<{ deleted: boolean; scheduleId: string }>(`/api/v1/remote/automation/schedules/${scheduleId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  public async getAutomationTemplates() {
+    return this.request<any[]>('/api/v1/remote/automation/templates', { method: 'GET' });
+  }
 }
 
 // Default global instance for browser use

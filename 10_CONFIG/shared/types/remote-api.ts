@@ -22,6 +22,7 @@ export type RemoteApiScope =
   | 'workspace:read'
   | 'workspace:manage'
   | 'automation:read'
+  | 'automation:write'
   | 'automation:run'
   | 'webhooks:read'
   | 'webhooks:manage'
@@ -40,6 +41,7 @@ export const ALL_REMOTE_API_SCOPES: RemoteApiScope[] = [
   'workspace:read',
   'workspace:manage',
   'automation:read',
+  'automation:write',
   'automation:run',
   'webhooks:read',
   'webhooks:manage',

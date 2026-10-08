@@ -13,6 +13,13 @@ export interface CdpTabInfo {
   webSocketDebuggerUrl?: string;
 }
 
+export interface SlaveSyncStatus {
+  slaveId: string;
+  status: 'CONNECTED' | 'DISCONNECTED' | 'ERROR';
+  lastError?: string;
+  lastMirroredAt?: string;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Minimal CDP WebSocket Client
 // Uses Node.js built-in http module for WebSocket upgrade.
@@ -239,8 +246,10 @@ class CdpWsClient {
 
 export class CdpSynchronizer extends EventEmitter {
   private active = false;
+  private isPausedState = false;
   private masterProfileId: string | null = null;
   private slaveProfileIds: string[] = [];
+  private slaveStatuses: Map<string, SlaveSyncStatus> = new Map();
   private pollTimer: NodeJS.Timeout | null = null;
   private lastMasterUrl: string | null = null;
   private slaveWsCache: Map<string, CdpWsClient> = new Map();
@@ -249,6 +258,77 @@ export class CdpSynchronizer extends EventEmitter {
 
   public isRunning(): boolean {
     return this.active;
+  }
+
+  public isPaused(): boolean {
+    return this.isPausedState;
+  }
+
+  public pause(): void {
+    if (!this.active) return;
+    this.isPausedState = true;
+    this.emit('sync-paused');
+  }
+
+  public resume(): void {
+    if (!this.active) return;
+    this.isPausedState = false;
+    this.emit('sync-resumed');
+  }
+
+  public getMasterProfileId(): string | null {
+    return this.masterProfileId;
+  }
+
+  public getSlaveProfileIds(): string[] {
+    return [...this.slaveProfileIds];
+  }
+
+  public getSlaveStatuses(): SlaveSyncStatus[] {
+    return this.slaveProfileIds
+      .filter((id) => id !== this.masterProfileId)
+      .map((id) => {
+        const found = this.slaveStatuses.get(id);
+        if (found) return found;
+        const cached = this.slaveWsCache.get(id);
+        return {
+          slaveId: id,
+          status: cached && cached.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED',
+        };
+      });
+  }
+
+  public async reconnectSlave(slaveId: string): Promise<boolean> {
+    const existing = this.slaveWsCache.get(slaveId);
+    if (existing) {
+      try { existing.close(); } catch {}
+      this.slaveWsCache.delete(slaveId);
+    }
+    const ws = await this.getSlaveWs(slaveId);
+    const ok = !!ws && ws.readyState === 1;
+    this.slaveStatuses.set(slaveId, {
+      slaveId,
+      status: ok ? 'CONNECTED' : 'ERROR',
+      lastError: ok ? undefined : 'Failed to connect CDP socket',
+    });
+    return ok;
+  }
+
+  public async addSlave(slaveId: string): Promise<boolean> {
+    if (!this.slaveProfileIds.includes(slaveId)) {
+      this.slaveProfileIds.push(slaveId);
+    }
+    return this.reconnectSlave(slaveId);
+  }
+
+  public removeSlave(slaveId: string): void {
+    this.slaveProfileIds = this.slaveProfileIds.filter((id) => id !== slaveId);
+    const ws = this.slaveWsCache.get(slaveId);
+    if (ws) {
+      try { ws.close(); } catch {}
+      this.slaveWsCache.delete(slaveId);
+    }
+    this.slaveStatuses.delete(slaveId);
   }
 
   private nextId(): number {
@@ -264,8 +344,10 @@ export class CdpSynchronizer extends EventEmitter {
     this.stop();
 
     this.active = true;
+    this.isPausedState = false;
     this.masterProfileId = masterProfileId;
     this.slaveProfileIds = slaveProfileIds;
+    this.slaveStatuses.clear();
     this.lastMasterUrl = null;
     this.msgId = 1;
 
@@ -277,6 +359,16 @@ export class CdpSynchronizer extends EventEmitter {
         `CDP Native Synchronizer active for Master: ${masterProfileId} with ${slaveProfileIds.length} Slaves.`
       );
     } catch {}
+
+    // Initialize slave statuses
+    for (const slaveId of slaveProfileIds) {
+      if (slaveId !== masterProfileId) {
+        this.slaveStatuses.set(slaveId, {
+          slaveId,
+          status: 'DISCONNECTED',
+        });
+      }
+    }
 
     // Connect to master browser and inject capture script
     await this.connectToMaster();
@@ -296,8 +388,10 @@ export class CdpSynchronizer extends EventEmitter {
 
   public stop(): void {
     this.active = false;
+    this.isPausedState = false;
     this.masterProfileId = null;
     this.slaveProfileIds = [];
+    this.slaveStatuses.clear();
     this.lastMasterUrl = null;
 
     if (this.pollTimer) {
@@ -576,6 +670,7 @@ export class CdpSynchronizer extends EventEmitter {
    * Navigates all slave profiles to the target URL using CDP Page.navigate.
    */
   public async replicateUrlToSlaves(targetUrl: string): Promise<void> {
+    if (!this.active || this.isPausedState) return;
     if (!targetUrl || targetUrl.startsWith('chrome://')) return;
 
     let didMirror = false;
@@ -584,7 +679,6 @@ export class CdpSynchronizer extends EventEmitter {
       try {
         const ws = await this.getSlaveWs(slaveId);
         if (ws && ws.readyState === 1) {
-          // Use CDP Page.navigate (not /json/new which opens a new tab)
           ws.send(
             JSON.stringify({
               id: this.nextId(),
@@ -592,9 +686,27 @@ export class CdpSynchronizer extends EventEmitter {
               params: { url: targetUrl },
             })
           );
+          this.slaveStatuses.set(slaveId, {
+            slaveId,
+            status: 'CONNECTED',
+            lastMirroredAt: new Date().toISOString(),
+          });
           didMirror = true;
+        } else {
+          this.slaveStatuses.set(slaveId, {
+            slaveId,
+            status: 'DISCONNECTED',
+            lastError: 'WebSocket socket closed or unavailable',
+          });
         }
-      } catch {}
+      } catch (err: any) {
+        this.slaveStatuses.set(slaveId, {
+          slaveId,
+          status: 'ERROR',
+          lastError: err?.message || String(err),
+        });
+        this.slaveWsCache.delete(slaveId);
+      }
     }
     if (didMirror) {
       this.emit('action-mirrored');
@@ -611,17 +723,22 @@ export class CdpSynchronizer extends EventEmitter {
     yRatio: number,
     button: number = 0
   ): Promise<void> {
-    if (!this.active) return;
+    if (!this.active || this.isPausedState) return;
 
     let didMirror = false;
     for (const slaveId of this.slaveProfileIds) {
       if (slaveId === this.masterProfileId) continue;
       try {
         const ws = await this.getSlaveWs(slaveId);
-        if (!ws || ws.readyState !== 1) continue;
+        if (!ws || ws.readyState !== 1) {
+          this.slaveStatuses.set(slaveId, {
+            slaveId,
+            status: 'DISCONNECTED',
+            lastError: 'WebSocket socket closed or unavailable',
+          });
+          continue;
+        }
 
-        // Use Runtime.evaluate for viewport-relative click dispatch.
-        // This automatically handles different window sizes, DPI, etc.
         ws.send(
           JSON.stringify({
             id: this.nextId(),
@@ -642,8 +759,20 @@ export class CdpSynchronizer extends EventEmitter {
             },
           })
         );
+        this.slaveStatuses.set(slaveId, {
+          slaveId,
+          status: 'CONNECTED',
+          lastMirroredAt: new Date().toISOString(),
+        });
         didMirror = true;
-      } catch {}
+      } catch (err: any) {
+        this.slaveStatuses.set(slaveId, {
+          slaveId,
+          status: 'ERROR',
+          lastError: err?.message || String(err),
+        });
+        this.slaveWsCache.delete(slaveId);
+      }
     }
     if (didMirror) {
       this.emit('action-mirrored');
@@ -657,14 +786,21 @@ export class CdpSynchronizer extends EventEmitter {
     text: string,
     isEnter: boolean = false
   ): Promise<void> {
-    if (!this.active) return;
+    if (!this.active || this.isPausedState) return;
 
     let didMirror = false;
     for (const slaveId of this.slaveProfileIds) {
       if (slaveId === this.masterProfileId) continue;
       try {
         const ws = await this.getSlaveWs(slaveId);
-        if (!ws || ws.readyState !== 1) continue;
+        if (!ws || ws.readyState !== 1) {
+          this.slaveStatuses.set(slaveId, {
+            slaveId,
+            status: 'DISCONNECTED',
+            lastError: 'WebSocket socket closed or unavailable',
+          });
+          continue;
+        }
 
         if (text) {
           ws.send(
@@ -711,8 +847,20 @@ export class CdpSynchronizer extends EventEmitter {
           }, 30);
         }
 
+        this.slaveStatuses.set(slaveId, {
+          slaveId,
+          status: 'CONNECTED',
+          lastMirroredAt: new Date().toISOString(),
+        });
         didMirror = true;
-      } catch {}
+      } catch (err: any) {
+        this.slaveStatuses.set(slaveId, {
+          slaveId,
+          status: 'ERROR',
+          lastError: err?.message || String(err),
+        });
+        this.slaveWsCache.delete(slaveId);
+      }
     }
     if (didMirror) {
       this.emit('action-mirrored');
@@ -723,7 +871,7 @@ export class CdpSynchronizer extends EventEmitter {
    * Dispatches a keyboard event (Enter, Backspace, Tab) to all slave tabs.
    */
   public async dispatchCdpKey(key: string): Promise<void> {
-    if (!this.active) return;
+    if (!this.active || this.isPausedState) return;
 
     const keyMap: Record<
       string,
@@ -742,7 +890,14 @@ export class CdpSynchronizer extends EventEmitter {
       if (slaveId === this.masterProfileId) continue;
       try {
         const ws = await this.getSlaveWs(slaveId);
-        if (!ws || ws.readyState !== 1) continue;
+        if (!ws || ws.readyState !== 1) {
+          this.slaveStatuses.set(slaveId, {
+            slaveId,
+            status: 'DISCONNECTED',
+            lastError: 'WebSocket socket closed or unavailable',
+          });
+          continue;
+        }
 
         ws.send(
           JSON.stringify({
@@ -771,8 +926,20 @@ export class CdpSynchronizer extends EventEmitter {
           })
         );
 
+        this.slaveStatuses.set(slaveId, {
+          slaveId,
+          status: 'CONNECTED',
+          lastMirroredAt: new Date().toISOString(),
+        });
         didMirror = true;
-      } catch {}
+      } catch (err: any) {
+        this.slaveStatuses.set(slaveId, {
+          slaveId,
+          status: 'ERROR',
+          lastError: err?.message || String(err),
+        });
+        this.slaveWsCache.delete(slaveId);
+      }
     }
     if (didMirror) {
       this.emit('action-mirrored');
@@ -783,14 +950,21 @@ export class CdpSynchronizer extends EventEmitter {
    * Dispatches scroll to all slave tabs using Runtime.evaluate.
    */
   public async dispatchCdpScroll(scrollYRatio: number): Promise<void> {
-    if (!this.active) return;
+    if (!this.active || this.isPausedState) return;
 
     let didMirror = false;
     for (const slaveId of this.slaveProfileIds) {
       if (slaveId === this.masterProfileId) continue;
       try {
         const ws = await this.getSlaveWs(slaveId);
-        if (!ws || ws.readyState !== 1) continue;
+        if (!ws || ws.readyState !== 1) {
+          this.slaveStatuses.set(slaveId, {
+            slaveId,
+            status: 'DISCONNECTED',
+            lastError: 'WebSocket socket closed or unavailable',
+          });
+          continue;
+        }
 
         ws.send(
           JSON.stringify({
@@ -802,8 +976,20 @@ export class CdpSynchronizer extends EventEmitter {
           })
         );
 
+        this.slaveStatuses.set(slaveId, {
+          slaveId,
+          status: 'CONNECTED',
+          lastMirroredAt: new Date().toISOString(),
+        });
         didMirror = true;
-      } catch {}
+      } catch (err: any) {
+        this.slaveStatuses.set(slaveId, {
+          slaveId,
+          status: 'ERROR',
+          lastError: err?.message || String(err),
+        });
+        this.slaveWsCache.delete(slaveId);
+      }
     }
     if (didMirror) {
       this.emit('action-mirrored');

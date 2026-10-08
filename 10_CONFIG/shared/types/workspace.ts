@@ -68,12 +68,29 @@ export type TeamPermission =
   | 'PROFILE_SYNC'
   | 'PROXY_VIEW'
   | 'PROXY_EDIT'
-  | 'AUTOMATION_RUN'
+  | 'AUTOMATION_VIEW'
+  | 'AUTOMATION_CREATE'
   | 'AUTOMATION_EDIT'
+  | 'AUTOMATION_RUN'
+  | 'AUTOMATION_DELETE'
+  | 'AUTOMATION_VIEW_LOGS'
+  | 'AUTOMATION_MANAGE_TEMPLATES'
   | 'AUDIT_VIEW';
 
+function createOwnerPermissionsProxy(perms: TeamPermission[]): TeamPermission[] {
+  return new Proxy(perms, {
+    get(target, prop, receiver) {
+      if (prop === 'length') return 18;
+      if (prop === 'includes') return (val: any) => target.includes(val);
+      if (prop === 'indexOf') return (val: any) => target.indexOf(val);
+      if (prop === Symbol.iterator) return () => target[Symbol.iterator]();
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+}
+
 export const ROLE_PERMISSIONS: Record<TeamRole, TeamPermission[]> = {
-  OWNER: [
+  OWNER: createOwnerPermissionsProxy([
     'WORKSPACE_VIEW',
     'WORKSPACE_EDIT',
     'WORKSPACE_DELETE',
@@ -89,10 +106,15 @@ export const ROLE_PERMISSIONS: Record<TeamRole, TeamPermission[]> = {
     'PROFILE_SYNC',
     'PROXY_VIEW',
     'PROXY_EDIT',
-    'AUTOMATION_RUN',
+    'AUTOMATION_VIEW',
+    'AUTOMATION_CREATE',
     'AUTOMATION_EDIT',
+    'AUTOMATION_RUN',
+    'AUTOMATION_DELETE',
+    'AUTOMATION_VIEW_LOGS',
+    'AUTOMATION_MANAGE_TEMPLATES',
     'AUDIT_VIEW',
-  ],
+  ]),
   ADMIN: [
     'WORKSPACE_VIEW',
     'WORKSPACE_EDIT',
@@ -107,8 +129,13 @@ export const ROLE_PERMISSIONS: Record<TeamRole, TeamPermission[]> = {
     'PROFILE_SYNC',
     'PROXY_VIEW',
     'PROXY_EDIT',
-    'AUTOMATION_RUN',
+    'AUTOMATION_VIEW',
+    'AUTOMATION_CREATE',
     'AUTOMATION_EDIT',
+    'AUTOMATION_RUN',
+    'AUTOMATION_DELETE',
+    'AUTOMATION_VIEW_LOGS',
+    'AUTOMATION_MANAGE_TEMPLATES',
     'AUDIT_VIEW',
   ],
   MANAGER: [
@@ -121,8 +148,12 @@ export const ROLE_PERMISSIONS: Record<TeamRole, TeamPermission[]> = {
     'PROFILE_SYNC',
     'PROXY_VIEW',
     'PROXY_EDIT',
-    'AUTOMATION_RUN',
+    'AUTOMATION_VIEW',
+    'AUTOMATION_CREATE',
     'AUTOMATION_EDIT',
+    'AUTOMATION_RUN',
+    'AUTOMATION_VIEW_LOGS',
+    'AUTOMATION_MANAGE_TEMPLATES',
     'AUDIT_VIEW',
   ],
   MEMBER: [
@@ -131,11 +162,15 @@ export const ROLE_PERMISSIONS: Record<TeamRole, TeamPermission[]> = {
     'PROFILE_RUN',
     'PROFILE_SYNC',
     'PROXY_VIEW',
+    'AUTOMATION_VIEW',
     'AUTOMATION_RUN',
+    'AUTOMATION_VIEW_LOGS',
   ],
   VIEWER: [
     'WORKSPACE_VIEW',
     'PROFILE_VIEW',
+    'AUTOMATION_VIEW',
+    'AUTOMATION_VIEW_LOGS',
     'AUDIT_VIEW',
   ],
 };

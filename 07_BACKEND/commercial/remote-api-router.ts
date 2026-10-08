@@ -43,7 +43,18 @@ import {
   listWorkspaceProfiles,
 } from '../services/team-workspace-service.js';
 import { ProxyProviderService } from '../services/proxy-provider-service.js';
-import { getWorkflows, getWorkflowById, getWorkflowLogs } from '../../09_AUTOMATION/automation-engine.js';
+import {
+  getWorkflows,
+  getWorkflowById,
+  getWorkflowLogs,
+  saveWorkflow,
+  deleteWorkflow,
+  stopWorkflowRun,
+  getWorkflowRunStatus,
+} from '../../09_AUTOMATION/automation-engine.js';
+import { automationScheduler } from '../../09_AUTOMATION/automation-scheduler.js';
+import { WARMING_TEMPLATES } from '../../09_AUTOMATION/cookie-warmer-service.js';
+import { getDatabase } from '../../06_DATABASE/connection.js';
 import {
   RemoteAuthContext,
   RemoteApiScope,
@@ -190,6 +201,17 @@ export function resolveRemoteAuth(req: http.IncomingMessage): RemoteAuthContext 
 // ============================================================================
 // REMOTE API ROUTE DISPATCHER
 // ============================================================================
+
+export async function handleRemoteApiRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse
+): Promise<boolean> {
+  const urlStr = req.url || '/';
+  const parsedUrl = new URL(urlStr, 'http://localhost');
+  const pathname = parsedUrl.pathname;
+  const method = (req.method || 'GET').toUpperCase();
+  return handleRemoteApiRoutes(req, res, pathname, method, parsedUrl);
+}
 
 export async function handleRemoteApiRoutes(
   req: http.IncomingMessage,
@@ -833,6 +855,51 @@ export async function handleRemoteApiRoutes(
       return true;
     }
 
+    if (route === 'automation/workflows' && method === 'POST') {
+      if (!requireAccess('automation:write')) return true;
+
+      const body = await parseBody(req);
+      if (!body.name || !Array.isArray(body.steps)) {
+        sendRemoteJSON(req, res, 400, { success: false, error: { code: 'INVALID_WORKFLOW', message: 'Workflow name and steps array are required' } }, requestId, rateLimit);
+        return true;
+      }
+
+      const created = saveWorkflow({
+        id: body.id,
+        name: body.name,
+        description: body.description,
+        workspaceId: body.workspaceId || auth.workspaceId,
+        steps: body.steps,
+        variables: body.variables || [],
+        executionPolicy: body.executionPolicy,
+        tags: body.tags || [],
+      });
+
+      sendRemoteJSON(req, res, 201, { success: true, data: created }, requestId, rateLimit);
+      return true;
+    }
+
+    const workflowGetMatch = route.match(/^automation\/workflows\/([a-zA-Z0-9_-]+)$/);
+    if (workflowGetMatch && method === 'GET') {
+      if (!requireAccess('automation:read')) return true;
+
+      const wf = getWorkflowById(workflowGetMatch[1]);
+      if (!wf) {
+        sendRemoteJSON(req, res, 404, { success: false, error: { code: 'NOT_FOUND', message: 'Workflow not found' } }, requestId, rateLimit);
+        return true;
+      }
+      sendRemoteJSON(req, res, 200, { success: true, data: wf }, requestId, rateLimit);
+      return true;
+    }
+
+    if (workflowGetMatch && method === 'DELETE') {
+      if (!requireAccess('automation:write')) return true;
+
+      const deleted = deleteWorkflow(workflowGetMatch[1]);
+      sendRemoteJSON(req, res, 200, { success: true, data: { deleted, workflowId: workflowGetMatch[1] } }, requestId, rateLimit);
+      return true;
+    }
+
     const workflowRunMatch = route.match(/^automation\/workflows\/([a-zA-Z0-9_-]+)\/run$/);
     if (workflowRunMatch && method === 'POST') {
       if (!requireAccess('automation:run')) return true;
@@ -844,6 +911,7 @@ export async function handleRemoteApiRoutes(
         return true;
       }
 
+      const body = await parseBody(req);
       const runId = `run_${crypto.randomUUID()}`;
       webhookService.dispatchEvent('automation.started', { runId, workflowId }, { userId: auth.userId });
 
@@ -856,6 +924,7 @@ export async function handleRemoteApiRoutes(
           data: {
             runId,
             workflowId,
+            profileId: body.profileId || wf.defaultProfileId,
             status: 'QUEUED',
             message: 'RPA workflow queued for execution.',
           },
@@ -866,12 +935,101 @@ export async function handleRemoteApiRoutes(
       return true;
     }
 
+    if (route === 'automation/runs' && method === 'GET') {
+      if (!requireAccess('automation:read')) return true;
+
+      const db = getDatabase();
+      const workflowIdFilter = parsedUrl.searchParams.get('workflowId');
+      let runsQuery = 'SELECT * FROM automation_runs WHERE 1=1';
+      const params: any[] = [];
+      if (workflowIdFilter) {
+        runsQuery += ' AND workflow_id = ?';
+        params.push(workflowIdFilter);
+      }
+      runsQuery += ' ORDER BY started_at DESC LIMIT 50';
+
+      const rows = db.prepare(runsQuery).all(...params) as any[];
+      const runs = rows.map((r) => ({
+        id: r.id,
+        workflowId: r.workflow_id,
+        profileId: r.profile_id,
+        status: r.status,
+        startedAt: r.started_at,
+        completedAt: r.completed_at,
+        durationMs: r.duration_ms,
+        summary: r.summary,
+      }));
+
+      sendRemoteJSON(req, res, 200, { success: true, data: runs }, requestId, rateLimit);
+      return true;
+    }
+
     const workflowLogsMatch = route.match(/^automation\/runs\/([a-zA-Z0-9_-]+)$/);
     if (workflowLogsMatch && method === 'GET') {
       if (!requireAccess('automation:read')) return true;
 
       const logs = getWorkflowLogs(workflowLogsMatch[1]);
       sendRemoteJSON(req, res, 200, { success: true, data: logs }, requestId, rateLimit);
+      return true;
+    }
+
+    const workflowStopMatch = route.match(/^automation\/runs\/([a-zA-Z0-9_-]+)\/stop$/);
+    if (workflowStopMatch && method === 'POST') {
+      if (!requireAccess('automation:run')) return true;
+
+      const stopped = stopWorkflowRun(workflowStopMatch[1]);
+      sendRemoteJSON(req, res, 200, { success: true, data: { stopped, runId: workflowStopMatch[1] } }, requestId, rateLimit);
+      return true;
+    }
+
+    if (route === 'automation/schedules' && method === 'GET') {
+      if (!requireAccess('automation:read')) return true;
+
+      const schedules = automationScheduler.listSchedules({
+        workspaceId: parsedUrl.searchParams.get('workspaceId') || undefined,
+        workflowId: parsedUrl.searchParams.get('workflowId') || undefined,
+      });
+      sendRemoteJSON(req, res, 200, { success: true, data: schedules }, requestId, rateLimit);
+      return true;
+    }
+
+    if (route === 'automation/schedules' && method === 'POST') {
+      if (!requireAccess('automation:write')) return true;
+
+      const body = await parseBody(req);
+      if (!body.workflowId || !body.scheduleType || !body.nextRunAt) {
+        sendRemoteJSON(req, res, 400, { success: false, error: { code: 'INVALID_SCHEDULE', message: 'workflowId, scheduleType, and nextRunAt are required' } }, requestId, rateLimit);
+        return true;
+      }
+
+      const schedule = automationScheduler.createSchedule({
+        workflowId: body.workflowId,
+        profileId: body.profileId,
+        profileIds: body.profileIds,
+        workspaceId: body.workspaceId || auth.workspaceId,
+        scheduleType: body.scheduleType,
+        cronExpression: body.cronExpression,
+        timezone: body.timezone || 'UTC',
+        nextRunAt: body.nextRunAt,
+      });
+
+      sendRemoteJSON(req, res, 201, { success: true, data: schedule }, requestId, rateLimit);
+      return true;
+    }
+
+    const scheduleDeleteMatch = route.match(/^automation\/schedules\/([a-zA-Z0-9_-]+)$/);
+    if (scheduleDeleteMatch && method === 'DELETE') {
+      if (!requireAccess('automation:write')) return true;
+
+      const deleted = automationScheduler.deleteSchedule(scheduleDeleteMatch[1]);
+      sendRemoteJSON(req, res, 200, { success: true, data: { deleted, scheduleId: scheduleDeleteMatch[1] } }, requestId, rateLimit);
+      return true;
+    }
+
+    if (route === 'automation/templates' && method === 'GET') {
+      if (!requireAccess('automation:read')) return true;
+
+      sendRemoteJSON(req, res, 200, { success: true, data: WARMING_TEMPLATES }, requestId, rateLimit);
       return true;
     }
 
