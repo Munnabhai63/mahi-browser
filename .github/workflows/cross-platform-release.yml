@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest, macos-latest, macos-13, ubuntu-latest]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -33,7 +33,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2
+          sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2
 
       - name: Install NPM Dependencies
         run: npm ci
@@ -41,11 +41,16 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Run Test Suite
+      - name: Run Test Suite (Linux Xvfb)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm test
+
+      - name: Run Test Suite (macOS / Windows)
+        if: runner.os != 'Linux'
         run: npm test
 
   build-and-package:
-    name: Package Desktop (${{ matrix.os }})
+    name: Package Desktop (${{ matrix.platform }}-${{ matrix.arch }} on ${{ matrix.os }})
     needs: test-and-verify
     runs-on: ${{ matrix.os }}
     strategy:
@@ -54,12 +59,19 @@ jobs:
         include:
           - os: windows-latest
             platform: win
+            arch: x64
             artifact_pattern: 'release/*.exe'
           - os: macos-latest
             platform: mac
+            arch: arm64
+            artifact_pattern: 'release/*.dmg'
+          - os: macos-13
+            platform: mac
+            arch: x64
             artifact_pattern: 'release/*.dmg'
           - os: ubuntu-latest
             platform: linux
+            arch: x64
             artifact_pattern: 'release/*.AppImage'
     steps:
       - name: Checkout Code
@@ -75,7 +87,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2
+          sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2
 
       - name: Install NPM Dependencies
         run: npm ci
@@ -93,9 +105,28 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run dist:${{ matrix.platform }}
 
+      - name: Execute Native Smoke Test (Linux Xvfb)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" node 12_SCRIPTS/smoke-test-packaged-app.cjs
+
+      - name: Execute Native Smoke Test (macOS / Windows)
+        if: runner.os != 'Linux'
+        run: node 12_SCRIPTS/smoke-test-packaged-app.cjs
+
+      - name: Generate Checksums (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: |
+          cd release && shasum -a 256 * > SHA256SUMS.txt || true
+
+      - name: Generate Checksums (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem release\*.exe | Get-FileHash -Algorithm SHA256 | Out-File -FilePath release\SHA256SUMS.txt
+
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: mahi-browser-${{ matrix.platform }}
+          name: mahi-browser-${{ matrix.platform }}-${{ matrix.arch }}
           path: release/*
           if-no-files-found: ignore

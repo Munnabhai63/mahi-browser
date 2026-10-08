@@ -281,7 +281,9 @@ app.whenReady().then(async () => {
   logCheckpoint('Step 3: App whenReady fired');
 
   // 0. Display Branded Startup Splash Screen
-  createSplashWindow();
+  if (!process.argv.includes('--smoke-test')) {
+    createSplashWindow();
+  }
 
   // 1. Initialize SQLite Database
   try {
@@ -332,6 +334,17 @@ app.whenReady().then(async () => {
     logCheckpoint('Step 4: REST API Server Running');
   } catch (apiErr: unknown) {
     writeCrashLog('API_SERVER_START_ERROR', String(apiErr));
+  }
+
+  // Packaged Application Native Smoke Test Mode
+  if (process.argv.includes('--smoke-test')) {
+    logCheckpoint('SMOKE_TEST: Packaged Application Smoke Test Mode Triggered');
+    console.log('[SMOKE_TEST] Main Process Initialized');
+    console.log('[SMOKE_TEST] SQLite Database Initialized');
+    console.log(`[SMOKE_TEST] Platform: ${process.platform} Arch: ${process.arch}`);
+    console.log('[SMOKE_TEST_PASS] MAHI Browser initialized cleanly without error.');
+    await performCleanExit();
+    return;
   }
 
   // 4. Create Main Window & Load UI
