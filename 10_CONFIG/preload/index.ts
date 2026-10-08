@@ -309,6 +309,14 @@ const api: MahiBrowserAPI = {
   accountGetPaymentInfo: () => ipcRenderer.invoke('account:getPaymentInfo'),
   accountGetSession: () => ipcRenderer.invoke('account:getSession'),
   accountGetPlanLimits: () => ipcRenderer.invoke('account:getPlanLimits'),
+  accountVerifyEmail: (dto) => ipcRenderer.invoke('account:verifyEmail', dto),
+  accountResendVerification: (dto) => ipcRenderer.invoke('account:resendVerification', dto),
+  accountForgotPassword: (dto) => ipcRenderer.invoke('account:forgotPassword', dto),
+  accountResetPassword: (dto) => ipcRenderer.invoke('account:resetPassword', dto),
+  accountListSessions: () => ipcRenderer.invoke('account:listSessions'),
+  accountRevokeSession: (dto) => ipcRenderer.invoke('account:revokeSession', dto),
+  accountRevokeAllSessions: (dto) => ipcRenderer.invoke('account:revokeAllSessions', dto),
+  accountRefreshToken: () => ipcRenderer.invoke('account:refreshToken'),
   onAccountStatusChanged: (callback) => {
     const handler = (_event: any, data: any) => callback(data);
     ipcRenderer.on('account:statusChanged', handler);

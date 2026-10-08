@@ -62,6 +62,15 @@ interface AccountState {
   accountLogout: () => Promise<void>;
   accountSwitchDevice: () => Promise<{ success: boolean; error?: string }>;
 
+  activeSessions: any[];
+  verifyEmail: (token: string) => Promise<{ success: boolean; error?: string }>;
+  resendVerification: (email: string) => Promise<{ success: boolean; error?: string }>;
+  forgotPassword: (email: string) => Promise<{ success: boolean; message?: string; error?: string }>;
+  resetPassword: (token: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  fetchActiveSessions: () => Promise<void>;
+  revokeSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>;
+  revokeAllSessions: (keepCurrent?: boolean) => Promise<{ success: boolean; error?: string }>;
+
   commercialLogin: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   commercialRegister: (email: string, password: string, name?: string) => Promise<{ success: boolean; error?: string }>;
   
@@ -115,6 +124,7 @@ export const useAccountStore = create<AccountState>()(
       planLimits: null,
       paymentInfo: null,
       pendingProfileDto: null,
+      activeSessions: [],
 
       setDashboardRole: (role) => set({ dashboardRole: role }),
       openAccountModal: (pendingDto) => set({ isAccountModalOpen: true, pendingProfileDto: pendingDto || null }),
@@ -204,6 +214,54 @@ export const useAccountStore = create<AccountState>()(
         } catch (err: any) {
           return { success: false, error: err.message || 'Device switch failed' };
         }
+      },
+
+      verifyEmail: async (token: string) => {
+        if (!window.mahiAPI) return { success: false, error: 'API unavailable' };
+        return window.mahiAPI.accountVerifyEmail({ token });
+      },
+
+      resendVerification: async (email: string) => {
+        if (!window.mahiAPI) return { success: false, error: 'API unavailable' };
+        return window.mahiAPI.accountResendVerification({ email });
+      },
+
+      forgotPassword: async (email: string) => {
+        if (!window.mahiAPI) return { success: false, error: 'API unavailable' };
+        return window.mahiAPI.accountForgotPassword({ email });
+      },
+
+      resetPassword: async (token: string, newPassword: string) => {
+        if (!window.mahiAPI) return { success: false, error: 'API unavailable' };
+        return window.mahiAPI.accountResetPassword({ token, newPassword });
+      },
+
+      fetchActiveSessions: async () => {
+        if (!window.mahiAPI) return;
+        try {
+          const res = await window.mahiAPI.accountListSessions();
+          if (res.success && res.sessions) {
+            set({ activeSessions: res.sessions });
+          }
+        } catch {}
+      },
+
+      revokeSession: async (sessionId: string) => {
+        if (!window.mahiAPI) return { success: false, error: 'API unavailable' };
+        const res = await window.mahiAPI.accountRevokeSession({ sessionId });
+        if (res.success) {
+          await get().fetchActiveSessions();
+        }
+        return res;
+      },
+
+      revokeAllSessions: async (keepCurrent: boolean = true) => {
+        if (!window.mahiAPI) return { success: false, error: 'API unavailable' };
+        const res = await window.mahiAPI.accountRevokeAllSessions({ keepCurrent });
+        if (res.success) {
+          await get().fetchActiveSessions();
+        }
+        return res;
       },
 
       setRememberMe: (val) => set({ rememberMe: val }),

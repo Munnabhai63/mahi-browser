@@ -27,8 +27,14 @@ kQIDAQAB
 
 export interface AccountSession {
   token: string;
+  refreshToken?: string;
   account_id: string;
   email: string;
+  name?: string;
+  role?: string;
+  status?: string;
+  plan?: string;
+  profile_quota?: number;
   sync_key: string | null;
   saved_at: string;
 }
@@ -286,55 +292,41 @@ function makeRequest(urlStr: string, options: https.RequestOptions, bodyData?: a
 // ============================================================================
 // ACCOUNT CLIENT APIS
 // ============================================================================
-export async function signup(email: string, password: string): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
+export async function signup(email: string, password: string, name?: string): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
   const hwid = getHWID();
-  const res = await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/signup`, {
-    method: 'POST'
-  }, { email, password, hwid });
+  let res: any;
+  try {
+    // Try primary Central Auth endpoint
+    res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/register`, {
+      method: 'POST'
+    }, { email, password, name, deviceId: hwid });
+  } catch {
+    // Fallback to legacy endpoint if admin URL routes differently
+    res = await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/signup`, {
+      method: 'POST'
+    }, { email, password, hwid });
+  }
 
-  if (res.statusCode !== 201) {
+  if (res.statusCode !== 201 && res.statusCode !== 200) {
     const errMsg = res.body?.error || `Signup failed (HTTP ${res.statusCode})`;
     throw new Error(errMsg);
   }
 
-  const { token, user } = res.body;
+  const token = res.body.token || res.body.tokens?.accessToken;
+  const refreshToken = res.body.tokens?.refreshToken || res.body.refreshToken;
+  const user = res.body.user;
   if (!token) throw new Error('Missing session token in signup response');
 
   saveEncryptedSession({
     token,
-    account_id: user.id,
-    email: user.email,
-    sync_key: null, // will be updated upon getStatus
-    saved_at: new Date().toISOString()
-  });
-
-  // Fetch initial signed status & sync_key
-  try {
-    await fetchAndCacheStatus();
-  } catch {}
-
-  return { success: true, token, user };
-}
-
-export async function login(email: string, password: string): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
-  const hwid = getHWID();
-  const res = await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/login`, {
-    method: 'POST'
-  }, { email, password, hwid });
-
-  if (res.statusCode !== 200) {
-    const errMsg = res.body?.error || `Login failed (HTTP ${res.statusCode})`;
-    const err: any = new Error(errMsg);
-    err.status = res.statusCode;
-    err.device_limit = res.body?.device_ok === false;
-    throw err;
-  }
-
-  const { token, user } = res.body;
-  saveEncryptedSession({
-    token,
-    account_id: user.id,
-    email: user.email,
+    refreshToken,
+    account_id: user?.id || `usr_${Date.now()}`,
+    email: user?.email || email,
+    name: user?.name,
+    role: user?.role,
+    status: user?.status,
+    plan: user?.planId || 'free',
+    profile_quota: user?.profileQuota || 10,
     sync_key: null,
     saved_at: new Date().toISOString()
   });
@@ -346,18 +338,212 @@ export async function login(email: string, password: string): Promise<{ success:
   return { success: true, token, user };
 }
 
+export async function login(email: string, password: string): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
+  const hwid = getHWID();
+  let res: any;
+  try {
+    res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/login`, {
+      method: 'POST'
+    }, { email, password, deviceId: hwid, deviceName: 'Windows Desktop', platform: process.platform || 'windows' });
+  } catch {
+    res = await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/login`, {
+      method: 'POST'
+    }, { email, password, hwid });
+  }
+
+  if (res.statusCode !== 200) {
+    const errMsg = res.body?.error || `Login failed (HTTP ${res.statusCode})`;
+    const err: any = new Error(errMsg);
+    err.status = res.statusCode;
+    err.device_limit = res.body?.device_ok === false;
+    throw err;
+  }
+
+  const token = res.body.token || res.body.tokens?.accessToken;
+  const refreshToken = res.body.tokens?.refreshToken || res.body.refreshToken;
+  const user = res.body.user;
+
+  saveEncryptedSession({
+    token,
+    refreshToken,
+    account_id: user?.id || `usr_${Date.now()}`,
+    email: user?.email || email,
+    name: user?.name,
+    role: user?.role,
+    status: user?.status,
+    plan: user?.planId || 'free',
+    profile_quota: user?.profileQuota || 10,
+    sync_key: null,
+    saved_at: new Date().toISOString()
+  });
+
+  try {
+    await fetchAndCacheStatus();
+  } catch {}
+
+  return { success: true, token, user };
+}
+
+export async function refreshAccountToken(): Promise<{ success: boolean; token?: string; error?: string }> {
+  const session = loadEncryptedSession();
+  if (!session?.refreshToken) {
+    return { success: false, error: 'No refresh token available' };
+  }
+
+  try {
+    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/refresh`, {
+      method: 'POST'
+    }, { refreshToken: session.refreshToken });
+
+    if (res.statusCode === 200 && res.body?.tokens) {
+      session.token = res.body.tokens.accessToken;
+      if (res.body.tokens.refreshToken) {
+        session.refreshToken = res.body.tokens.refreshToken;
+      }
+      session.saved_at = new Date().toISOString();
+      saveEncryptedSession(session);
+      return { success: true, token: session.token };
+    }
+    return { success: false, error: res.body?.error || 'Token refresh failed' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Network error during token refresh' };
+  }
+}
+
 export async function logout(): Promise<{ success: boolean }> {
   const session = loadEncryptedSession();
   if (session?.token) {
     try {
-      await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/logout`, {
-        method: 'POST'
+      await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.token}`
+        }
       }, { token: session.token });
     } catch {}
   }
   clearEncryptedSession();
   broadcastAccountChanged();
   return { success: true };
+}
+
+export async function verifyEmail(token: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/verify-email`, {
+      method: 'POST'
+    }, { token });
+    if (res.statusCode === 200) {
+      return { success: true };
+    }
+    return { success: false, error: res.body?.error || 'Email verification failed' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Network error during verification' };
+  }
+}
+
+export async function resendVerificationEmail(email: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/resend-verification`, {
+      method: 'POST'
+    }, { email });
+    if (res.statusCode === 200) {
+      return { success: true };
+    }
+    return { success: false, error: res.body?.error || 'Failed to resend verification' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Network error during resend' };
+  }
+}
+
+export async function forgotPassword(email: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/forgot-password`, {
+      method: 'POST'
+    }, { email });
+    if (res.statusCode === 200) {
+      return { success: true, message: res.body?.message || 'Reset instructions sent.' };
+    }
+    return { success: false, error: res.body?.error || 'Failed to request password reset' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Network error during password reset request' };
+  }
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/reset-password`, {
+      method: 'POST'
+    }, { token, newPassword });
+    if (res.statusCode === 200) {
+      return { success: true };
+    }
+    return { success: false, error: res.body?.error || 'Password reset failed' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Network error during password reset' };
+  }
+}
+
+export async function listActiveSessions(): Promise<{ success: boolean; sessions?: any[]; error?: string }> {
+  const session = loadEncryptedSession();
+  if (!session?.token) {
+    return { success: false, error: 'No active session' };
+  }
+  try {
+    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/sessions`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.token}`
+      }
+    });
+    if (res.statusCode === 200) {
+      return { success: true, sessions: res.body?.data || [] };
+    }
+    return { success: false, error: res.body?.error || 'Failed to list sessions' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Network error' };
+  }
+}
+
+export async function revokeSession(sessionId: string): Promise<{ success: boolean; error?: string }> {
+  const session = loadEncryptedSession();
+  if (!session?.token) {
+    return { success: false, error: 'No active session' };
+  }
+  try {
+    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/sessions/revoke`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.token}`
+      }
+    }, { sessionId });
+    if (res.statusCode === 200) {
+      return { success: true };
+    }
+    return { success: false, error: res.body?.error || 'Failed to revoke session' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Network error' };
+  }
+}
+
+export async function revokeAllSessions(keepCurrent: boolean = true): Promise<{ success: boolean; error?: string }> {
+  const session = loadEncryptedSession();
+  if (!session?.token) {
+    return { success: false, error: 'No active session' };
+  }
+  try {
+    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/sessions/revoke-all`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.token}`
+      }
+    }, { keepCurrent });
+    if (res.statusCode === 200) {
+      return { success: true };
+    }
+    return { success: false, error: res.body?.error || 'Failed to revoke sessions' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Network error' };
+  }
 }
 
 export async function switchDevice(): Promise<{ success: boolean; message: string }> {

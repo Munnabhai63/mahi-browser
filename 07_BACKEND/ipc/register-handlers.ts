@@ -14,7 +14,15 @@ import {
   getPaymentInfo as accountGetPaymentInfo,
   getAccountSession,
   getAccountPlanLimits,
-  startAccountStatusScheduler
+  startAccountStatusScheduler,
+  refreshAccountToken,
+  verifyEmail as accountVerifyEmail,
+  resendVerificationEmail as accountResendVerificationEmail,
+  forgotPassword as accountForgotPassword,
+  resetPassword as accountResetPassword,
+  listActiveSessions as accountListActiveSessions,
+  revokeSession as accountRevokeSession,
+  revokeAllSessions as accountRevokeAllSessions
 } from '../../08_SECURITY/account-service.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { setActiveUserId } from '../commercial/session-context.js';
@@ -1742,6 +1750,30 @@ export function registerIpcHandlers(): void {
   });
   ipcMain.handle('account:getPlanLimits', async () => {
     return getAccountPlanLimits();
+  });
+  ipcMain.handle('account:verifyEmail', async (_e, dto: { token: string }) => {
+    return accountVerifyEmail(dto.token);
+  });
+  ipcMain.handle('account:resendVerification', async (_e, dto: { email: string }) => {
+    return accountResendVerificationEmail(dto.email);
+  });
+  ipcMain.handle('account:forgotPassword', async (_e, dto: { email: string }) => {
+    return accountForgotPassword(dto.email);
+  });
+  ipcMain.handle('account:resetPassword', async (_e, dto: { token: string; newPassword: string }) => {
+    return accountResetPassword(dto.token, dto.newPassword);
+  });
+  ipcMain.handle('account:listSessions', async () => {
+    return accountListActiveSessions();
+  });
+  ipcMain.handle('account:revokeSession', async (_e, dto: { sessionId: string }) => {
+    return accountRevokeSession(dto.sessionId);
+  });
+  ipcMain.handle('account:revokeAllSessions', async (_e, dto?: { keepCurrent?: boolean }) => {
+    return accountRevokeAllSessions(dto?.keepCurrent ?? true);
+  });
+  ipcMain.handle('account:refreshToken', async () => {
+    return refreshAccountToken();
   });
 
   // Initialize startup cloud sync queue resumption & account status scheduler

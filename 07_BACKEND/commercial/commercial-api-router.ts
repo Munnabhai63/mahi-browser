@@ -10,6 +10,22 @@ import {
   updateUserPlan,
 } from './commercial-auth-service.js';
 import {
+  registerCentralUser,
+  verifyEmailToken,
+  resendEmailVerification,
+  loginCentralUser,
+  refreshAccessToken,
+  logoutSession,
+  listUserSessions,
+  revokeUserSession,
+  revokeAllUserSessions,
+  requestPasswordReset,
+  resetPasswordWithToken,
+  getCentralUserById,
+  getCentralUserByEmail,
+  verifyAccessToken,
+} from '../../05_AUTH/central-auth-service.js';
+import {
   getCommercialPlans,
   getCommercialPlanById,
   createCommercialPlan,
@@ -73,10 +89,19 @@ function parseBody(req: http.IncomingMessage): Promise<any> {
   });
 }
 
-function getAuthUser(req: http.IncomingMessage): { userId: string; email: string; role: CommercialRole } | null {
+function getAuthUser(req: http.IncomingMessage): { userId: string; email: string; role: CommercialRole; sessionId?: string } | null {
   const authHeader = req.headers['authorization'] || '';
   if (authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
+    const centralPayload = verifyAccessToken(token);
+    if (centralPayload) {
+      return {
+        userId: centralPayload.userId,
+        email: centralPayload.email,
+        role: centralPayload.role as CommercialRole,
+        sessionId: centralPayload.sessionId,
+      };
+    }
     return verifyToken(token);
   }
   return null;
@@ -115,50 +140,198 @@ export async function handleCommercialApiRoutes(
   method: string,
   parsedUrl: URL
 ): Promise<boolean> {
-  // Only handle /api/v1/ routes
-  if (!pathname.startsWith('/api/v1/')) {
+  // Support both /api/v1/* and direct /auth/* routes
+  const isApiV1 = pathname.startsWith('/api/v1/');
+  const isDirectAuth = pathname.startsWith('/auth/');
+  if (!isApiV1 && !isDirectAuth) {
     return false;
   }
+  const routePath = isDirectAuth ? `/api/v1${pathname}` : pathname;
 
   const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
 
   // -------------------------------------------------------------
   // 1. PUBLIC AUTHENTICATION & REGISTRATION
   // -------------------------------------------------------------
-  if (pathname === '/api/v1/auth/register' && method === 'POST') {
+  if (routePath === '/api/v1/auth/register' && method === 'POST') {
     const body = await parseBody(req);
-    const result = registerUser(body, clientIp);
-    sendJSON(res, result.success ? 201 : 400, result);
+    const result = await registerCentralUser({
+      email: body.email,
+      password: body.password,
+      name: body.name,
+      ipAddress: clientIp,
+    });
+    if (!result.success) {
+      sendJSON(res, 400, result);
+      return true;
+    }
+    try {
+      registerUser(body, clientIp);
+    } catch {}
+    sendJSON(res, 201, {
+      success: true,
+      user: result.user,
+      tokens: result.tokens,
+      token: result.tokens?.accessToken,
+    });
     return true;
   }
 
-  if (pathname === '/api/v1/auth/login' && method === 'POST') {
+  if (routePath === '/api/v1/auth/verify-email' && method === 'POST') {
     const body = await parseBody(req);
-    const result = loginUser(body, clientIp);
-    if (!result.success || !result.user) {
+    const result = await verifyEmailToken(body.token, clientIp);
+    sendJSON(res, result.success ? 200 : 400, result);
+    return true;
+  }
+
+  if (routePath === '/api/v1/auth/resend-verification' && method === 'POST') {
+    const body = await parseBody(req);
+    const result = await resendEmailVerification(body.email, clientIp);
+    sendJSON(res, result.success ? 200 : 400, result);
+    return true;
+  }
+
+  if (routePath === '/api/v1/auth/login' && method === 'POST') {
+    const body = await parseBody(req);
+    const centralRes = await loginCentralUser({
+      email: body.email,
+      password: body.password,
+      deviceId: body.deviceId,
+      deviceName: body.deviceName,
+      platform: body.platform,
+      ipAddress: clientIp,
+    });
+
+    if (centralRes.success && centralRes.user && centralRes.tokens) {
+      const entitlements = evaluateUserEntitlements(centralRes.user.id, body.deviceId, body.deviceName);
+      sendJSON(res, 200, {
+        success: true,
+        token: centralRes.tokens.accessToken,
+        tokens: centralRes.tokens,
+        user: centralRes.user,
+        entitlements,
+      });
+      return true;
+    }
+
+    // Fallback to legacy commercial login only if not registered in central auth
+    const centralUserExists = getCentralUserByEmail(body.email);
+    if (!centralUserExists) {
+      const legacyResult = loginUser(body, clientIp);
+      if (legacyResult.success && legacyResult.user) {
+        const entitlements = evaluateUserEntitlements(legacyResult.user.id, body.deviceId, body.deviceName);
+        sendJSON(res, 200, {
+          success: true,
+          token: legacyResult.token,
+          user: legacyResult.user,
+          entitlements,
+        });
+        return true;
+      }
+    }
+
+    sendJSON(res, centralRes.lockedRemainingMs ? 429 : 401, {
+      success: false,
+      error: centralRes.error || 'Invalid email or password.',
+    });
+    return true;
+  }
+
+  if (routePath === '/api/v1/auth/refresh' && method === 'POST') {
+    const body = await parseBody(req);
+    const refreshToken = body.refreshToken || body.token;
+    const result = await refreshAccessToken(refreshToken, clientIp);
+    if (!result.success || !result.tokens) {
       sendJSON(res, 401, result);
       return true;
     }
-    const entitlements = evaluateUserEntitlements(result.user.id, body.deviceId, body.deviceName);
     sendJSON(res, 200, {
       success: true,
-      token: result.token,
+      tokens: result.tokens,
+      token: result.tokens.accessToken,
       user: result.user,
-      entitlements,
     });
+    return true;
+  }
+
+  if (routePath === '/api/v1/auth/logout' && method === 'POST') {
+    const auth = getAuthUser(req);
+    const body = await parseBody(req);
+    const sessionId = body.sessionId || (auth as any)?.sessionId;
+    if (sessionId) {
+      logoutSession(sessionId, clientIp);
+    }
+    sendJSON(res, 200, { success: true, message: 'Logged out successfully.' });
+    return true;
+  }
+
+  if (routePath === '/api/v1/auth/forgot-password' && method === 'POST') {
+    const body = await parseBody(req);
+    const result = await requestPasswordReset(body.email, clientIp);
+    sendJSON(res, 200, result);
+    return true;
+  }
+
+  if (routePath === '/api/v1/auth/reset-password' && method === 'POST') {
+    const body = await parseBody(req);
+    const result = await resetPasswordWithToken({
+      token: body.token,
+      newPassword: body.newPassword || body.password,
+      ipAddress: clientIp,
+    });
+    sendJSON(res, result.success ? 200 : 400, result);
+    return true;
+  }
+
+  if (routePath === '/api/v1/auth/sessions' && method === 'GET') {
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
+    const currentSessionId = (auth as any).sessionId;
+    const sessions = listUserSessions(auth.userId, currentSessionId);
+    sendJSON(res, 200, { success: true, data: sessions });
+    return true;
+  }
+
+  if (routePath === '/api/v1/auth/sessions/revoke' && method === 'POST') {
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
+    const body = await parseBody(req);
+    const resRevoke = revokeUserSession(auth.userId, body.sessionId, clientIp);
+    sendJSON(res, 200, { success: resRevoke.success });
+    return true;
+  }
+
+  if (routePath === '/api/v1/auth/sessions/revoke-all' && method === 'POST') {
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
+    const body = await parseBody(req);
+    const currentSessionId = (auth as any).sessionId;
+    const revokedCount = revokeAllUserSessions(auth.userId, body.keepCurrent ? currentSessionId : undefined, clientIp);
+    sendJSON(res, 200, { success: true, revokedCount });
     return true;
   }
 
   // -------------------------------------------------------------
   // 2. USER PROFILE & ENTITLEMENTS (Authenticated)
   // -------------------------------------------------------------
-  if (pathname === '/api/v1/auth/me' && method === 'GET') {
+  if (routePath === '/api/v1/auth/me' && method === 'GET') {
     const auth = getAuthUser(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Valid Bearer token required.' });
       return true;
     }
-    const user = getUserById(auth.userId);
+    // Look up in central users first, then legacy
+    const centralUser = getCentralUserById(auth.userId);
+    const user = centralUser || getUserById(auth.userId);
     if (!user) {
       sendJSON(res, 404, { success: false, error: 'User not found.' });
       return true;
@@ -507,3 +680,15 @@ export async function handleCommercialApiRoutes(
   sendJSON(res, 404, { success: false, error: `Endpoint ${method} ${pathname} not found.` });
   return true;
 }
+
+export async function handleCommercialAPIRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse
+): Promise<boolean> {
+  const host = req.headers.host || '127.0.0.1';
+  const parsedUrl = new URL(req.url || '/', `http://${host}`);
+  const pathname = parsedUrl.pathname;
+  const method = req.method || 'GET';
+  return handleCommercialApiRoutes(req, res, pathname, method, parsedUrl);
+}
+

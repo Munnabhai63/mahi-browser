@@ -637,6 +637,14 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     accountGetPaymentInfo: async () => ({ upi_id: '', price_inr: 0, price_usdt: 0, usdt_address: '', usdt_network: '', whatsapp_number: '' }),
     accountGetSession: async () => null,
     accountGetPlanLimits: async () => ({ isPro: false, plan: 'free', maxProfiles: 15, expiresAt: null }),
+    accountVerifyEmail: async () => ({ success: true }),
+    accountResendVerification: async () => ({ success: true }),
+    accountForgotPassword: async () => ({ success: true, message: 'Password reset link sent.' }),
+    accountResetPassword: async () => ({ success: true }),
+    accountListSessions: async () => ({ success: true, sessions: [{ id: 'sess-1', device_name: 'Current PC', is_current: true, last_used_at: new Date().toISOString() }] }),
+    accountRevokeSession: async () => ({ success: true }),
+    accountRevokeAllSessions: async () => ({ success: true }),
+    accountRefreshToken: async () => ({ success: true, token: 'mock-refreshed-token' }),
     onAccountStatusChanged: () => () => {},
   };
 

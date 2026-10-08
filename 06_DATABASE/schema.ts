@@ -499,6 +499,77 @@ export async function initializeDatabase(): Promise<void> {
     db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (9, ?)').run(new Date().toISOString());
   }
 
+  // Migration v10: Phase 1 Central Account & Authentication Architecture
+  const checkMigration10 = db.prepare('SELECT version FROM schema_migrations WHERE version = 10').get();
+  if (!checkMigration10) {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS auth_users (
+          id TEXT PRIMARY KEY,
+          email TEXT NOT NULL UNIQUE,
+          normalized_email TEXT NOT NULL UNIQUE,
+          password_hash TEXT NOT NULL,
+          salt TEXT NOT NULL,
+          name TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'USER',
+          status TEXT NOT NULL DEFAULT 'ACTIVE',
+          email_verified INTEGER NOT NULL DEFAULT 0,
+          email_verified_at TEXT,
+          plan_id TEXT NOT NULL DEFAULT 'plan_free',
+          profile_quota INTEGER NOT NULL DEFAULT 10,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          last_login_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_auth_users_normalized_email ON auth_users(normalized_email);
+
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          refresh_token_hash TEXT NOT NULL UNIQUE,
+          device_id TEXT NOT NULL,
+          device_name TEXT NOT NULL,
+          platform TEXT NOT NULL,
+          ip_address TEXT,
+          is_revoked INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          last_used_at TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_token_hash ON auth_sessions(refresh_token_hash);
+
+        CREATE TABLE IF NOT EXISTS auth_verification_tokens (
+          id TEXT PRIMARY KEY,
+          token_hash TEXT NOT NULL UNIQUE,
+          user_id TEXT NOT NULL,
+          email TEXT NOT NULL,
+          type TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          used_at TEXT,
+          FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_auth_tokens_hash ON auth_verification_tokens(token_hash);
+
+        CREATE TABLE IF NOT EXISTS auth_security_logs (
+          id TEXT PRIMARY KEY,
+          user_id TEXT,
+          action TEXT NOT NULL,
+          ip_address TEXT,
+          details TEXT,
+          result TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+      `);
+    } catch {}
+    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (10, ?)').run(new Date().toISOString());
+  }
+
   // Clean legacy auto-warmed status lines from user notes
   try {
     const rows = db.prepare("SELECT id, notes FROM profiles WHERE notes LIKE '%[Auto-Warmed%'").all() as { id: string; notes: string }[];

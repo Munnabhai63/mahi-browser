@@ -348,6 +348,14 @@ export interface MahiBrowserAPI {
   accountGetPaymentInfo: () => Promise<any>;
   accountGetSession: () => Promise<any>;
   accountGetPlanLimits: () => Promise<{ isPro: boolean; plan: string; maxProfiles: number; expiresAt: string | null }>;
+  accountVerifyEmail: (dto: { token: string }) => Promise<{ success: boolean; error?: string }>;
+  accountResendVerification: (dto: { email: string }) => Promise<{ success: boolean; error?: string }>;
+  accountForgotPassword: (dto: { email: string }) => Promise<{ success: boolean; message?: string; error?: string }>;
+  accountResetPassword: (dto: { token: string; newPassword: string }) => Promise<{ success: boolean; error?: string }>;
+  accountListSessions: () => Promise<{ success: boolean; sessions?: any[]; error?: string }>;
+  accountRevokeSession: (dto: { sessionId: string }) => Promise<{ success: boolean; error?: string }>;
+  accountRevokeAllSessions: (dto?: { keepCurrent?: boolean }) => Promise<{ success: boolean; error?: string }>;
+  accountRefreshToken: () => Promise<{ success: boolean; token?: string; error?: string }>;
   onAccountStatusChanged?: (callback: (data: any) => void) => () => void;
 
   // Event Listeners
