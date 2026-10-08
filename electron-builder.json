@@ -73,6 +73,7 @@
     "artifactName": "MAHI-Browser-${version}-macOS-${arch}.${ext}",
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
+    "afterSign": "./12_SCRIPTS/sign-mac.cjs",
     "entitlements": "13_ASSETS/resources/entitlements.mac.plist",
     "entitlementsInherit": "13_ASSETS/resources/entitlements.mac.inherit.plist"
   },
