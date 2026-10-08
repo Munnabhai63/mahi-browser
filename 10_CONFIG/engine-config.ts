@@ -11,6 +11,14 @@
 export const MANAGED_ENGINE_VERSION = '138.0.7204.183';
 
 /**
+ * Engine Distribution & Launch Identity Policy:
+ * - 'CHROMIUM_PRODUCTION': Branded-neutral, clean Chromium distribution suitable for production browsing without testing banners.
+ * - 'MANAGED_CFT': Google Chrome for Testing baseline engine for automated tasks, RPA workflows, and regression benchmarking.
+ */
+export type EngineDistributionPolicy = 'CHROMIUM_PRODUCTION' | 'MANAGED_CFT';
+export const CURRENT_ENGINE_DISTRIBUTION: EngineDistributionPolicy = 'CHROMIUM_PRODUCTION';
+
+/**
  * Expected SHA-256 integrity checksum for the official Google win64 zip.
  */
 export const MANAGED_ENGINE_SHA256 = '10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68';

@@ -605,10 +605,15 @@ export function ensureProfileStealthExtension(
       (document.body || document.documentElement).appendChild(pill);
     } catch(e) {}
   }
-  window.addEventListener('load', injectTopBarPill);
-  setTimeout(injectTopBarPill, 400);
-  setTimeout(injectTopBarPill, 1200);
-  setInterval(injectTopBarPill, 800);
+  // In clean production mode, suppress the in-page badge unless explicitly enabled in settings.
+  // Window/tab title is always cleanly prefixed via updateTitle().
+  var enableInPageBadge = ${JSON.stringify((settings?.browser as any)?.showProfileBadge === true)};
+  if (enableInPageBadge) {
+    window.addEventListener('load', injectTopBarPill);
+    setTimeout(injectTopBarPill, 400);
+    setTimeout(injectTopBarPill, 1200);
+    setInterval(injectTopBarPill, 800);
+  }
 
 
   // Quick Profile Switch / Launch (Space + Number, Shift + Number, or Number + Space)
@@ -1007,14 +1012,60 @@ export function ensureProfileTitleExtension(storageDir: string, profileName: str
 }
 
 /**
- * Ensures Chromium profile preferences are properly configured for full session persistence
-
-
-
- * ("Continue where you left off") and clean exit recovery.
+ * Ensures Chromium profile preferences and baseline marker files are configured
+ * for a clean, production-ready browsing launch experience:
+ * - Suppresses first-run onboarding, welcome page, and what's new prompts
+ * - Suppresses default browser checks and infobars
+ * - Suppresses Chrome sign-in promos and sync onboarding
+ * - Suppresses Privacy Sandbox intro dialogs
+ * - Suppresses metrics and crash report opt-ins
+ * - Configures clean session persistence and normal exit recovery
+ * - Preserves existing user cookies, sessions, history, and extensions safely.
  */
-export function prepareSessionPersistence(storageDir: string, profileName?: string, startupUrl?: string): void {
+export function prepareCleanProfilePreferences(
+  storageDir: string,
+  profileName?: string,
+  startupUrl?: string
+): void {
   try {
+    // 1. First Run marker file suppression:
+    // Chromium checks for the existence of "First Run" in the user data dir.
+    // Creating this sentinel file tells Chromium the first run flow has already completed.
+    const firstRunSentinel = path.join(storageDir, 'First Run');
+    if (!fs.existsSync(firstRunSentinel)) {
+      try {
+        fs.writeFileSync(firstRunSentinel, '', 'utf8');
+      } catch {}
+    }
+
+    // 2. Prepare Local State (browser-wide preferences)
+    const localStatePath = path.join(storageDir, 'Local State');
+    let localState: Record<string, any> = {};
+    if (fs.existsSync(localStatePath)) {
+      try {
+        localState = JSON.parse(fs.readFileSync(localStatePath, 'utf8'));
+      } catch {
+        localState = {};
+      }
+    }
+    if (!localState.browser || typeof localState.browser !== 'object') {
+      localState.browser = {};
+    }
+    localState.browser.has_seen_welcome_page = true;
+    localState.browser.enabled_labs_experiments = localState.browser.enabled_labs_experiments || [];
+
+    if (!localState.metrics || typeof localState.metrics !== 'object') {
+      localState.metrics = {};
+    }
+    localState.metrics.reporting_enabled = false;
+
+    try {
+      fs.writeFileSync(localStatePath, JSON.stringify(localState, null, 2), 'utf8');
+    } catch (lsErr) {
+      debugLog(`[Launcher] Note: Could not write Local State: ${lsErr}`);
+    }
+
+    // 3. Prepare Default/Preferences (profile-specific preferences)
     const defaultDir = path.join(storageDir, 'Default');
     if (!fs.existsSync(defaultDir)) {
       fs.mkdirSync(defaultDir, { recursive: true });
@@ -1022,39 +1073,93 @@ export function prepareSessionPersistence(storageDir: string, profileName?: stri
 
     const prefsPath = path.join(defaultDir, 'Preferences');
     let prefs: Record<string, any> = {};
-
     if (fs.existsSync(prefsPath)) {
       try {
-        const raw = fs.readFileSync(prefsPath, 'utf8');
-        prefs = JSON.parse(raw);
+        prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf8'));
       } catch {
         prefs = {};
       }
     }
 
-    // 1. Configure "Continue where you left off" (restore_on_startup = 1)
+    // Browser level: first-run & default browser prompts
+    if (!prefs.browser || typeof prefs.browser !== 'object') {
+      prefs.browser = {};
+    }
+    prefs.browser.has_seen_welcome_page = true;
+    prefs.browser.check_default_browser = false;
+    // Chromium checks this timestamp to decide whether to re-prompt
+    prefs.browser.default_browser_infobar_last_declined = prefs.browser.default_browser_infobar_last_declined || 13350000000000000;
+    prefs.browser.show_update_promotion_info_bar = false;
+    prefs.browser.clear_data = prefs.browser.clear_data || { time_period: 0 };
+
+    // Distribution level: installer/welcome suppressions
+    if (!prefs.distribution || typeof prefs.distribution !== 'object') {
+      prefs.distribution = {};
+    }
+    prefs.distribution.import_bookmarks = false;
+    prefs.distribution.import_history = false;
+    prefs.distribution.import_search_engine = false;
+    prefs.distribution.make_chrome_default_for_user = false;
+    prefs.distribution.skip_first_run_ui = true;
+    prefs.distribution.suppress_first_run_bubble = true;
+    prefs.distribution.suppress_first_run_default_browser_prompt = true;
+
+    // Signin & Sync promo suppression
+    if (!prefs.signin || typeof prefs.signin !== 'object') {
+      prefs.signin = {};
+    }
+    prefs.signin.allowed = false;
+
+    if (!prefs.sync_promo || typeof prefs.sync_promo !== 'object') {
+      prefs.sync_promo = {};
+    }
+    prefs.sync_promo.show_on_first_run_allowed = false;
+    prefs.sync_promo.user_skipped = true;
+
+    // Privacy Sandbox intro suppression
+    if (!prefs.privacy_sandbox || typeof prefs.privacy_sandbox !== 'object') {
+      prefs.privacy_sandbox = {};
+    }
+    if (!prefs.privacy_sandbox.m1 || typeof prefs.privacy_sandbox.m1 !== 'object') {
+      prefs.privacy_sandbox.m1 = {};
+    }
+    prefs.privacy_sandbox.m1.consent_decision_made = true;
+    prefs.privacy_sandbox.m1.notice_acknowledged = true;
+    prefs.privacy_sandbox.m1.row_notice_acknowledged = true;
+    prefs.privacy_sandbox.page_learn_more_clicked = true;
+
+    // Session persistence & clean exit
     if (!prefs.session || typeof prefs.session !== 'object') {
       prefs.session = {};
     }
-    prefs.session.restore_on_startup = 1; // 1 = RESTORE_LAST_SESSION (Continue where you left off)
-
+    prefs.session.restore_on_startup = 1; // 1 = RESTORE_LAST_SESSION
     if (startupUrl && (!prefs.session.startup_urls || !Array.isArray(prefs.session.startup_urls) || prefs.session.startup_urls.length === 0)) {
       prefs.session.startup_urls = [startupUrl];
     }
 
-    // 2. Mark clean exit state
     if (!prefs.profile || typeof prefs.profile !== 'object') {
       prefs.profile = {};
     }
     prefs.profile.exit_type = 'Normal';
     prefs.profile.exited_cleanly = true;
+    if (profileName && !prefs.profile.name) {
+      prefs.profile.name = profileName;
+    }
 
-    // 3. Write back safely
+    // Write back safely without corrupting any other existing preferences
     fs.writeFileSync(prefsPath, JSON.stringify(prefs, null, 2), 'utf8');
-    debugLog(`[Launcher] Configured session persistence for: ${storageDir}`);
+    debugLog(`[Launcher] Configured clean profile baseline preferences for: ${storageDir}`);
   } catch (err) {
-    debugLog(`[Launcher] Warning: Failed to configure session persistence preferences: ${err}`);
+    debugLog(`[Launcher] Warning: Failed to configure clean profile preferences: ${err}`);
   }
+}
+
+/**
+ * Ensures Chromium profile preferences are properly configured for full session persistence
+ * ("Continue where you left off") and clean exit recovery.
+ */
+export function prepareSessionPersistence(storageDir: string, profileName?: string, startupUrl?: string): void {
+  prepareCleanProfilePreferences(storageDir, profileName, startupUrl);
 }
 
 /**
@@ -1086,9 +1191,92 @@ export function markCleanExit(storageDir: string, profileName?: string): void {
 }
 
 /**
+ * Options for generating sanitized launch arguments.
+ */
+export interface SanitizedLaunchArgsOptions {
+  storageDir: string;
+  debugPort: number;
+  loadExtensionsArg?: string;
+  settings?: any;
+  mode?: 'normal' | 'automation';
+}
+
+/**
+ * Builds clean, audited Chromium launch arguments for production browsing.
+ * - Suppresses first-run screens, welcome prompts, and default browser banners
+ * - Suppresses search engine choice dialogs and sync promos
+ * - Enables session restore and normal exit recovery
+ * - Enforces WebRTC IP handling and proxy isolation
+ * - Ensures normal user browsing NEVER carries test automation switches (--enable-automation)
+ */
+export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): string[] {
+  const { storageDir, debugPort, loadExtensionsArg, settings, mode = 'normal' } = options;
+
+  const args: string[] = [
+    `--user-data-dir=${storageDir}`,
+    '--new-window',
+    `--remote-debugging-port=${debugPort}`,
+  ];
+
+  if (loadExtensionsArg) {
+    args.push(`--load-extension=${loadExtensionsArg}`);
+    args.push(`--disable-extensions-except=${loadExtensionsArg}`);
+  }
+
+  // Baseline Clean Production Arguments
+  args.push(
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-search-engine-choice-screen',
+    '--restore-last-session',
+    '--hide-crash-restore-bubble',
+    '--disable-background-networking',
+    '--disable-sync',
+    '--disable-default-apps',
+    '--disable-component-update',
+    '--disable-domain-reliability',
+    '--no-service-autorun',
+    '--suppress-message-center-popups',
+    '--disable-infobars',
+    '--disable-features=Translate,OptimizationHints,MediaRouter,EnableIPv6,ExtensionDeveloperModeWarning,PrivacySandboxSettings4,ChromeForTestingDisclaimer'
+  );
+
+  // In Normal User Mode, NEVER add test automation switches
+  if (mode === 'automation') {
+    // Automation mode retains clean flags unless automation script requests specific flags
+  }
+
+  // Window Dimensions
+  const w = settings?.display?.screenWidth || 1280;
+  const h = settings?.display?.screenHeight || 800;
+  args.push(`--window-size=${w},${h}`);
+
+  // User Agent
+  if (settings?.browser?.userAgent) {
+    args.push(`--user-agent=${settings.browser.userAgent}`);
+  }
+
+  // Language / Locale
+  if (settings?.locale?.language) {
+    args.push(`--lang=${settings.locale.language}`);
+  }
+
+  // WebRTC Leak Prevention
+  args.push('--force-webrtc-ip-handling-policy');
+  args.push('--webrtc-ip-handling-policy=disable_non_proxied_udp');
+
+  // Hardware Acceleration
+  if (settings?.browser?.hardwareAcceleration === false) {
+    args.push('--disable-gpu');
+  }
+
+  return args;
+}
+
+/**
  * Launches an isolated browser instance with full error handling and step-by-step logging.
  */
-export async function launchBrowser(profile: Profile): Promise<LaunchedProcessInfo> {
+export async function launchBrowser(profile: Profile, launchOptions?: { mode?: 'normal' | 'automation' }): Promise<LaunchedProcessInfo> {
   debugLog(`=======================================================`);
   debugLog(`[Launcher] Starting launch sequence for profile: "${profile.name}" (ID: ${profile.id})`);
 
@@ -1167,54 +1355,14 @@ export async function launchBrowser(profile: Profile): Promise<LaunchedProcessIn
     const allExtensionPaths = [titleExtDir, ...profileExtensionPaths];
     const loadExtensionsArg = allExtensionPaths.join(',');
 
-    const args: string[] = [
-      `--user-data-dir=${storageDir}`,
-      '--new-window',
-      `--remote-debugging-port=${debugPort}`,
-      `--load-extension=${loadExtensionsArg}`,
-      `--disable-extensions-except=${loadExtensionsArg}`,
-
-
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--restore-last-session',
-      '--hide-crash-restore-bubble',
-      '--disable-background-networking',
-      '--disable-sync',
-      '--disable-default-apps',
-      '--no-service-autorun',
-      '--suppress-message-center-popups',
-      '--disable-features=Translate,OptimizationHints,MediaRouter,EnableIPv6,ExtensionDeveloperModeWarning',
-    ];
-
-
-    // Window Dimensions
-    const w = settings?.display?.screenWidth || 1280;
-    const h = settings?.display?.screenHeight || 800;
-    args.push(`--window-size=${w},${h}`);
-    debugLog(`[Launcher Step 4/7] Window size set to: ${w}x${h}`);
-
-    // User Agent
-    if (settings?.browser?.userAgent) {
-      args.push(`--user-agent=${settings.browser.userAgent}`);
-      debugLog(`[Launcher Step 4/7] Custom User-Agent applied.`);
-    }
-
-    // Language / Locale
-    if (settings?.locale?.language) {
-      args.push(`--lang=${settings.locale.language}`);
-      debugLog(`[Launcher Step 4/7] Language set to: ${settings.locale.language}`);
-    }
-
-    // WebRTC Leak Prevention
-    args.push('--force-webrtc-ip-handling-policy');
-    args.push('--webrtc-ip-handling-policy=disable_non_proxied_udp');
-
-    // Hardware Acceleration
-    if (settings?.browser?.hardwareAcceleration === false) {
-      args.push('--disable-gpu');
-      debugLog(`[Launcher Step 4/7] Hardware acceleration disabled.`);
-    }
+    const args = buildSanitizedLaunchArgs({
+      storageDir,
+      debugPort,
+      loadExtensionsArg,
+      settings,
+      mode: launchOptions?.mode || 'normal',
+    });
+    debugLog(`[Launcher Step 4/7] Built ${args.length} sanitized production launch arguments.`);
 
     // -------------------------------------------------------------
     // Step 5: Network & Proxy Configuration
@@ -1281,7 +1429,7 @@ export async function launchBrowser(profile: Profile): Promise<LaunchedProcessIn
         }
       } catch {}
     } else {
-      const startupUrl = settings?.browser?.startupUrl?.trim() || 'https://www.google.com';
+      const startupUrl = settings?.browser?.startupUrl?.trim() || 'about:blank';
       args.push(startupUrl);
       debugLog(`[Launcher Step 5/7] Opening startup URL: ${startupUrl}`);
     }

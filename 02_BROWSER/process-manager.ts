@@ -119,10 +119,10 @@ class ProcessManager {
 
     if (errorMsg) {
       this.notifyStatus(profileId, 'ERROR', undefined, errorMsg);
-      logActivity('PROFILE', 'ERROR', 'Browser Error', `"${entry.profileName}" error: ${errorMsg}`, profileId, entry.profileName);
+      try { logActivity('PROFILE', 'ERROR', 'Browser Error', `"${entry.profileName}" error: ${errorMsg}`, profileId, entry.profileName); } catch {}
     } else {
       this.notifyStatus(profileId, 'STOPPED');
-      logActivity('PROFILE', 'INFO', 'Stop Browser', `Profile "${entry.profileName}" closed cleanly`, profileId, entry.profileName);
+      try { logActivity('PROFILE', 'INFO', 'Stop Browser', `Profile "${entry.profileName}" closed cleanly`, profileId, entry.profileName); } catch {}
 
       // Auto-Sync and Cloud Lock Release Hook on profile close
       try {

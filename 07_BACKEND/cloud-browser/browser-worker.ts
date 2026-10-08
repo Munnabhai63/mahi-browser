@@ -25,6 +25,7 @@ import {
 import { resolveExecutablePath } from '../../02_BROWSER/detector.js';
 import { getProxyById, getDecryptedProxyCredentials } from '../../02_BROWSER/services/proxy-service.js';
 import { createProxyTunnel, ProxyTunnelHandle } from '../../02_BROWSER/proxy-tunnel.js';
+import { prepareCleanProfilePreferences } from '../../02_BROWSER/launcher.js';
 
 export interface CloudWorkerLaunchOptions {
   sessionId: string;
@@ -112,6 +113,9 @@ export class BrowserWorkerManager {
       fs.mkdirSync(userDataDir, { recursive: true });
     }
 
+    const targetUrl = startupUrl || settings?.browser?.startupUrl || 'https://browserleaks.com/ip';
+    prepareCleanProfilePreferences(userDataDir, options.profileId, targetUrl);
+
     // 2. Resource class memory limits
     const maxMemoryMb = resourceClass === 'HIGH_PERF' ? 4096 : resourceClass === 'PRO' ? 2048 : 1024;
 
@@ -154,10 +158,15 @@ export class BrowserWorkerManager {
       `--window-size=${w},${h}`,
       '--no-first-run',
       '--no-default-browser-check',
+      '--disable-search-engine-choice-screen',
       '--disable-background-networking',
       '--disable-sync',
       '--disable-default-apps',
+      '--disable-component-update',
+      '--disable-domain-reliability',
+      '--disable-infobars',
       '--hide-crash-restore-bubble',
+      '--disable-features=Translate,OptimizationHints,MediaRouter,EnableIPv6,ExtensionDeveloperModeWarning,PrivacySandboxSettings4,ChromeForTestingDisclaimer',
       `--js-flags=--max-old-space-size=${maxMemoryMb}`,
 
       // WebRTC Leak Prevention
@@ -180,7 +189,6 @@ export class BrowserWorkerManager {
       args.push(...proxyArgs);
     }
 
-    const targetUrl = startupUrl || settings?.browser?.startupUrl || 'https://browserleaks.com/ip';
     args.push(targetUrl);
 
     // 5. Spawn child process
