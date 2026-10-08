@@ -62,6 +62,7 @@ import {
   resourceLimiter,
 } from '../cloud-browser/index.js';
 import { mobileCompanionService } from '../services/mobile-companion-service.js';
+import { paymentService } from './payment-service.js';
 import {
   RemoteAuthContext,
   RemoteApiScope,
@@ -74,6 +75,17 @@ import { TeamPermission, TeamRole } from '../../10_CONFIG/shared/types/workspace
 // ============================================================================
 // HTTP HELPERS & PARSING
 // ============================================================================
+
+export function parseRawBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+    });
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
 
 export function parseBody(req: http.IncomingMessage): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -235,6 +247,8 @@ export async function handleRemoteApiRoutes(
     normalizedPath = `/api/v1/remote/webhooks${pathname.substring(16)}`;
   } else if (pathname.startsWith('/api/v1/cloud-browser')) {
     normalizedPath = `/api/v1/remote/cloud-browser${pathname.substring(21)}`;
+  } else if (pathname.startsWith('/api/v1/billing')) {
+    normalizedPath = `/api/v1/remote/billing${pathname.substring(15)}`;
   }
 
   if (!normalizedPath.startsWith('/api/v1/remote/')) {
@@ -252,6 +266,71 @@ export async function handleRemoteApiRoutes(
     });
     res.end();
     return true;
+  }
+
+  // Public Endpoint: Commercial Plan Catalog (/api/v1/remote/billing/plans)
+  if (normalizedPath === '/api/v1/remote/billing/plans' && method === 'GET') {
+    sendRemoteJSON(
+      req,
+      res,
+      200,
+      {
+        success: true,
+        data: {
+          plans: paymentService.getPlanCatalog(),
+        },
+      },
+      requestId
+    );
+    return true;
+  }
+
+  // Public Endpoint: Cryptographic Payment Webhooks (/api/v1/remote/billing/webhook)
+  if (
+    (normalizedPath === '/api/v1/remote/billing/webhook' ||
+      normalizedPath.startsWith('/api/v1/remote/billing/webhook/')) &&
+    method === 'POST'
+  ) {
+    try {
+      const rawBody = await parseRawBody(req);
+      const signature = (
+        req.headers['stripe-signature'] ||
+        req.headers['x-razorpay-signature'] ||
+        req.headers['x-simulation-signature'] ||
+        req.headers['x-signature'] ||
+        ''
+      ) as string;
+
+      let provider: any = 'simulation';
+      if (req.headers['stripe-signature']) {
+        provider = 'stripe';
+      } else if (req.headers['x-razorpay-signature']) {
+        provider = 'razorpay';
+      } else if (parsedUrl.searchParams.get('provider')) {
+        provider = parsedUrl.searchParams.get('provider');
+      }
+
+      const result = await paymentService.handleWebhook(provider, rawBody, signature);
+      sendRemoteJSON(req, res, 200, { success: true, data: result }, requestId);
+      return true;
+    } catch (err: any) {
+      const isSig = err.message && err.message.includes('INVALID_WEBHOOK_SIGNATURE');
+      const isTamper = err.message && err.message.includes('AMOUNT_TAMPERING_DETECTED');
+      sendRemoteJSON(
+        req,
+        res,
+        isSig || isTamper ? 400 : 500,
+        {
+          success: false,
+          error: {
+            code: isSig ? 'INVALID_SIGNATURE' : isTamper ? 'AMOUNT_TAMPERED' : 'WEBHOOK_FAILED',
+            message: err.message || 'Webhook processing failed',
+          },
+        },
+        requestId
+      );
+      return true;
+    }
   }
 
   // Extract Authentication
@@ -1485,6 +1564,53 @@ export async function handleRemoteApiRoutes(
       const body = await parseBody(req);
       const updated = mobileCompanionService.updateNotificationPreferences(auth.userId, body);
       sendRemoteJSON(req, res, 200, { success: true, data: updated }, requestId, rateLimit);
+      return true;
+    }
+
+    // ========================================================================
+    // 12. COMMERCIAL BILLING & SUBSCRIPTIONS (/api/v1/remote/billing/*)
+    // ========================================================================
+    // POST billing/checkout (Create checkout session)
+    if (route === 'billing/checkout' && method === 'POST') {
+      const body = await parseBody(req);
+      const session = await paymentService.createCheckoutSession(
+        {
+          userId: auth.userId,
+          planId: body.planId,
+          billingCycle: body.billingCycle || 'MONTHLY',
+          successUrl: body.successUrl,
+          cancelUrl: body.cancelUrl,
+          idempotencyKey: idempotencyKey || body.idempotencyKey,
+        },
+        body.provider
+      );
+
+      const responsePayload = { success: true, data: session };
+      if (idempotencyKey) {
+        saveIdempotentResponse(idempotencyKey, auth.userId, route, 201, responsePayload);
+      }
+      sendRemoteJSON(req, res, 201, responsePayload, requestId, rateLimit);
+      return true;
+    }
+
+    // GET billing/subscription (Get current user active subscription)
+    if (route === 'billing/subscription' && method === 'GET') {
+      const sub = paymentService.getUserSubscription(auth.userId);
+      sendRemoteJSON(req, res, 200, { success: true, data: { subscription: sub } }, requestId, rateLimit);
+      return true;
+    }
+
+    // GET billing/invoices (List user billing invoices with IDOR protection)
+    if (route === 'billing/invoices' && method === 'GET') {
+      const invoices = paymentService.getUserInvoices(auth.userId);
+      sendRemoteJSON(req, res, 200, { success: true, data: { invoices } }, requestId, rateLimit);
+      return true;
+    }
+
+    // POST billing/cancel (Cancel active user subscription)
+    if (route === 'billing/cancel' && method === 'POST') {
+      const cancelled = paymentService.cancelSubscription(auth.userId);
+      sendRemoteJSON(req, res, 200, { success: true, data: { cancelled } }, requestId, rateLimit);
       return true;
     }
 

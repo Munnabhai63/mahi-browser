@@ -46,8 +46,8 @@ describe('Phase 11 — Database Migration Integrity & Dual-Path Verification', (
       const migrations = db.prepare('SELECT version FROM schema_migrations ORDER BY version ASC').all() as { version: number }[];
       const versions = migrations.map((m) => m.version);
 
-      expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
-      expect(Math.max(...versions)).toBe(17);
+      expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
+      expect(Math.max(...versions)).toBe(18);
 
       // Verify Phase 11 Mobile Tables exist
       const checkTokens = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='mobile_device_tokens'").get();
@@ -189,9 +189,9 @@ describe('Phase 11 — Database Migration Integrity & Dual-Path Verification', (
 
       const db = getDatabase();
 
-      // Verify schema version is now 17
+      // Verify schema version is now 18
       const versionRow = db.prepare('SELECT MAX(version) as maxVersion FROM schema_migrations').get() as any;
-      expect(versionRow.maxVersion).toBe(17);
+      expect(versionRow.maxVersion).toBe(18);
 
       // Verify Phase 11 mobile tables were created during upgrade
       const checkTokens = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='mobile_device_tokens'").get();
@@ -248,10 +248,10 @@ describe('Phase 11 — Database Migration Integrity & Dual-Path Verification', (
 
       const db = getDatabase();
       const countMigrations = db.prepare('SELECT COUNT(*) as count FROM schema_migrations').get() as any;
-      expect(countMigrations.count).toBe(17);
+      expect(countMigrations.count).toBe(18);
 
       const maxVer = db.prepare('SELECT MAX(version) as maxVer FROM schema_migrations').get() as any;
-      expect(maxVer.maxVer).toBe(17);
+      expect(maxVer.maxVer).toBe(18);
 
       closeDatabase();
     });

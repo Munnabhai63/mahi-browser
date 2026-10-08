@@ -1190,6 +1190,65 @@ export async function initializeDatabase(): Promise<void> {
     } catch {}
   }
 
+  // Migration v18: Commercial Payment Platform, Billing Invoices & Webhook Idempotency
+  const checkMigration18 = db.prepare('SELECT version FROM schema_migrations WHERE version = 18').get();
+  if (!checkMigration18) {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS commercial_payments (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          subscription_id TEXT,
+          provider TEXT NOT NULL DEFAULT 'stripe',
+          external_order_id TEXT,
+          external_payment_id TEXT UNIQUE,
+          amount_cents INTEGER NOT NULL,
+          currency TEXT NOT NULL DEFAULT 'USD',
+          status TEXT NOT NULL DEFAULT 'PENDING',
+          plan_id TEXT NOT NULL,
+          billing_cycle TEXT NOT NULL DEFAULT 'MONTHLY',
+          receipt_url TEXT,
+          metadata_json TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_comm_payments_user ON commercial_payments(user_id);
+        CREATE INDEX IF NOT EXISTS idx_comm_payments_ext ON commercial_payments(external_payment_id);
+        CREATE INDEX IF NOT EXISTS idx_comm_payments_status ON commercial_payments(status);
+
+        CREATE TABLE IF NOT EXISTS commercial_billing_invoices (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          payment_id TEXT,
+          invoice_number TEXT NOT NULL UNIQUE,
+          amount_cents INTEGER NOT NULL,
+          currency TEXT NOT NULL DEFAULT 'USD',
+          status TEXT NOT NULL DEFAULT 'PAID',
+          period_start TEXT NOT NULL,
+          period_end TEXT NOT NULL,
+          pdf_url TEXT,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_comm_invoices_user ON commercial_billing_invoices(user_id);
+
+        CREATE TABLE IF NOT EXISTS commercial_webhook_events (
+          id TEXT PRIMARY KEY,
+          provider TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          payload_json TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'PROCESSED',
+          created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_comm_webhooks_prov ON commercial_webhook_events(provider, event_type);
+      `);
+
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (18, ?)').run(new Date().toISOString());
+    } catch {}
+  }
+
   // Ensure additive columns exist regardless of migration cache
   try { db.exec('ALTER TABLE proxies ADD COLUMN city TEXT;'); } catch {}
   try { db.exec('ALTER TABLE proxies ADD COLUMN region TEXT;'); } catch {}
