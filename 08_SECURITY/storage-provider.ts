@@ -111,13 +111,35 @@ export class LocalStorageProvider implements ObjectStorageProvider {
   }
 }
 
+export interface BucketSecurityPolicy {
+  bucket: string;
+  isPrivateOnly: boolean;
+  blockPublicAccess: {
+    blockPublicAcls: boolean;
+    ignorePublicAcls: boolean;
+    blockPublicPolicy: boolean;
+    restrictPublicBuckets: boolean;
+  };
+  serverSideEncryption: 'AES256' | 'aws:kms';
+  cors: {
+    allowedOrigins: string[];
+    allowedMethods: string[];
+    allowedHeaders: string[];
+    maxAgeSeconds: number;
+  };
+  lifecycle: {
+    noncurrentVersionExpirationDays: number;
+    abortIncompleteMultipartUploadDays: number;
+  };
+}
+
 export class S3R2StorageProvider implements ObjectStorageProvider {
   public name = 's3-r2';
-  private bucket: string;
-  private endpoint: string;
-  private accessKeyId: string;
-  private secretAccessKey: string;
-  private region: string;
+  public bucket: string;
+  public endpoint: string;
+  public accessKeyId: string;
+  public secretAccessKey: string;
+  public region: string;
 
   constructor(options?: {
     bucket?: string;
@@ -133,6 +155,58 @@ export class S3R2StorageProvider implements ObjectStorageProvider {
     this.accessKeyId = options?.accessKeyId || process.env.R2_ACCESS_KEY_ID || process.env.R2_ACCESS_KEY || process.env.AWS_ACCESS_KEY_ID || '';
     this.secretAccessKey = options?.secretAccessKey || process.env.R2_SECRET_ACCESS_KEY || process.env.R2_SECRET_KEY || process.env.AWS_SECRET_ACCESS_KEY || '';
     this.region = options?.region || process.env.AWS_REGION || 'auto';
+
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.STORAGE_ENFORCE_PRODUCTION === 'true';
+    if (isProduction && (!this.accessKeyId || !this.secretAccessKey)) {
+      throw new Error('S3_R2_CONFIG_INVALID: Cloud storage access key ID and secret access key are required in production.');
+    }
+  }
+
+  public getSecurityPolicy(): BucketSecurityPolicy {
+    return {
+      bucket: this.bucket,
+      isPrivateOnly: true,
+      blockPublicAccess: {
+        blockPublicAcls: true,
+        ignorePublicAcls: true,
+        blockPublicPolicy: true,
+        restrictPublicBuckets: true,
+      },
+      serverSideEncryption: 'AES256',
+      cors: {
+        allowedOrigins: ['https://app.mahibrowser.com', 'https://admin.mahibrowser.com'],
+        allowedMethods: ['GET', 'PUT', 'HEAD', 'DELETE'],
+        allowedHeaders: ['*'],
+        maxAgeSeconds: 3600,
+      },
+      lifecycle: {
+        noncurrentVersionExpirationDays: 30,
+        abortIncompleteMultipartUploadDays: 7,
+      },
+    };
+  }
+
+  public static isPresignedUrlExpired(urlStr: string): boolean {
+    try {
+      const u = new URL(urlStr);
+      const amzDate = u.searchParams.get('X-Amz-Date');
+      const expiresInSec = parseInt(u.searchParams.get('X-Amz-Expires') || '0', 10);
+      if (!amzDate || !expiresInSec) return true;
+
+      // amzDate format: YYYYMMDDTHHMMSSZ
+      const y = parseInt(amzDate.substring(0, 4), 10);
+      const m = parseInt(amzDate.substring(4, 6), 10) - 1;
+      const d = parseInt(amzDate.substring(6, 8), 10);
+      const h = parseInt(amzDate.substring(9, 11), 10);
+      const min = parseInt(amzDate.substring(11, 13), 10);
+      const s = parseInt(amzDate.substring(13, 15), 10);
+
+      const requestTime = Date.UTC(y, m, d, h, min, s);
+      const expiryTime = requestTime + expiresInSec * 1000;
+      return Date.now() > expiryTime;
+    } catch {
+      return true;
+    }
   }
 
   // Generate AWS SigV4 Presigned URL
@@ -208,8 +282,6 @@ export class S3R2StorageProvider implements ObjectStorageProvider {
 
   async deleteObject(objectKey: string): Promise<boolean> {
     try {
-      const url = await this.generateSigV4Url('PUT', objectKey, undefined, 300); // Or DELETE if needed
-      // Direct S3 REST call for delete
       const res = await fetch(`${this.endpoint}/${this.bucket}/${objectKey}`, {
         method: 'DELETE',
         headers: {
@@ -276,6 +348,12 @@ export function getStorageProvider(): ObjectStorageProvider {
   if (hasR2 || hasS3) {
     activeStorageProvider = new S3R2StorageProvider();
   } else {
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.STORAGE_ENFORCE_PRODUCTION === 'true';
+    if (isProduction) {
+      throw new Error(
+        'PRODUCTION_STORAGE_UNAVAILABLE: Cloud Object Storage credentials (R2/S3) are unset in production environment. Refusing silent fallback to local disk.'
+      );
+    }
     activeStorageProvider = new LocalStorageProvider();
   }
 
