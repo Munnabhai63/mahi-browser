@@ -14,6 +14,7 @@ import { AuditPage, WebAuditItem } from './pages/AuditPage.js';
 import { AccountPage } from './pages/AccountPage.js';
 import { ProfileModal } from './components/ProfileModal.js';
 import { CreateWorkspaceModal } from './components/WorkspaceModal.js';
+import { CloudSessionViewer } from './components/CloudSessionViewer.js';
 
 import {
   TeamWorkspace,
@@ -59,6 +60,16 @@ export const WebDashboardApp: React.FC = () => {
   // Modals controlled from layout header
   const [isHeaderCreateProfileOpen, setIsHeaderCreateProfileOpen] = useState(false);
   const [isHeaderCreateWorkspaceOpen, setIsHeaderCreateWorkspaceOpen] = useState(false);
+
+  // Active Cloud Browser Session
+  const [activeCloudSession, setActiveCloudSession] = useState<{
+    sessionId: string;
+    profileId: string;
+    profileName: string;
+    streamToken: string;
+    streamGatewayUrl: string;
+    regionId: string;
+  } | null>(null);
 
   // Initialize auth on mount
   useEffect(() => {
@@ -240,6 +251,30 @@ export const WebDashboardApp: React.FC = () => {
     }
     recordAudit('profile.launched', id, `Profile launched successfully on connected desktop agent`, 'SUCCESS');
     return { success: true };
+  };
+
+  const handleLaunchCloud = async (profile: WebProfileItem) => {
+    try {
+      const res = await api.startCloudSession({
+        profileId: profile.id,
+        workspaceId: currentWorkspace?.id,
+      });
+      if (res.success && res.data) {
+        setActiveCloudSession({
+          sessionId: res.data.sessionId,
+          profileId: profile.id,
+          profileName: profile.name,
+          streamToken: res.data.streamToken,
+          streamGatewayUrl: res.data.streamGatewayUrl,
+          regionId: res.data.regionId,
+        });
+        recordAudit('CLOUD_SESSION_STARTED', `profile:${profile.id}`, `Cloud browser session launched for ${profile.name}`, 'SUCCESS');
+      } else {
+        alert(`Cloud Browser Launch Failed: ${res.error?.message || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      alert(`Failed to launch Cloud Browser: ${err.message}`);
+    }
   };
 
   // =========================================================================
@@ -490,6 +525,7 @@ export const WebDashboardApp: React.FC = () => {
           onUpdateProfile={handleUpdateProfile}
           onDeleteProfile={handleDeleteProfile}
           onLaunchProfile={handleLaunchProfile}
+          onLaunchCloud={handleLaunchCloud}
           onNavigateToDevices={() => setActiveTab('devices')}
         />
       )}
@@ -587,6 +623,22 @@ export const WebDashboardApp: React.FC = () => {
         onClose={() => setIsHeaderCreateWorkspaceOpen(false)}
         onSubmit={handleCreateWorkspace}
       />
+
+      {/* Interactive Cloud Browser Session Viewer */}
+      {activeCloudSession && (
+        <CloudSessionViewer
+          sessionId={activeCloudSession.sessionId}
+          profileId={activeCloudSession.profileId}
+          profileName={activeCloudSession.profileName}
+          initialStreamToken={activeCloudSession.streamToken}
+          initialStreamGatewayUrl={activeCloudSession.streamGatewayUrl}
+          regionId={activeCloudSession.regionId}
+          onClose={() => {
+            setActiveCloudSession(null);
+            loadDashboardData();
+          }}
+        />
+      )}
     </WebDashboardLayout>
   );
 };

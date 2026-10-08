@@ -438,6 +438,65 @@ export class WebApiClient {
   public async getAutomationTemplates() {
     return this.request<any[]>('/api/v1/remote/automation/templates', { method: 'GET' });
   }
+
+  // ========================================================================
+  // PHASE 10: CLOUD BROWSER API METHODS
+  // ========================================================================
+
+  public async startCloudSession(dto: {
+    profileId: string;
+    workspaceId?: string;
+    regionId?: string;
+    resourceClass?: string;
+    maxDurationSeconds?: number;
+    idleTimeoutSeconds?: number;
+    startupUrl?: string;
+  }) {
+    return this.request<any>('/api/v1/remote/cloud-browser/sessions', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    });
+  }
+
+  public async listCloudSessions() {
+    return this.request<any[]>('/api/v1/remote/cloud-browser/sessions', { method: 'GET' });
+  }
+
+  public async getCloudSession(sessionId: string) {
+    return this.request<any>(`/api/v1/remote/cloud-browser/sessions/${sessionId}`, { method: 'GET' });
+  }
+
+  public async stopCloudSession(sessionId: string, reason?: string) {
+    return this.request<any>(`/api/v1/remote/cloud-browser/sessions/${sessionId}/stop`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason || 'USER_REQUESTED' }),
+    });
+  }
+
+  public async getCloudReconnectToken(sessionId: string) {
+    return this.request<{ sessionId: string; streamToken: string; streamGatewayUrl: string }>(
+      `/api/v1/remote/cloud-browser/sessions/${sessionId}/reconnect-token`,
+      { method: 'POST' }
+    );
+  }
+
+  public async listCloudRegions() {
+    return this.request<any[]>('/api/v1/remote/cloud-browser/regions', { method: 'GET' });
+  }
+
+  public async getCloudUsage() {
+    return this.request<any>('/api/v1/remote/cloud-browser/usage', { method: 'GET' });
+  }
+
+  public async sendCloudInput(sessionId: string, action: any, streamToken?: string) {
+    const headers: Record<string, string> = {};
+    if (streamToken) headers['x-stream-token'] = streamToken;
+    return this.request<any>(`/api/v1/remote/cloud-browser/sessions/${sessionId}/input`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ action }),
+    });
+  }
 }
 
 // Default global instance for browser use

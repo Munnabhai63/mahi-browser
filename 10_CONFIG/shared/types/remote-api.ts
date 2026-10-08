@@ -127,6 +127,9 @@ export type WebhookEventType =
   | 'automation.started'
   | 'automation.completed'
   | 'automation.failed'
+  | 'cloud_session.started'
+  | 'cloud_session.ended'
+  | 'cloud_session.failed'
   | 'test.ping';
 
 export const ALL_WEBHOOK_EVENTS: WebhookEventType[] = [
@@ -145,6 +148,9 @@ export const ALL_WEBHOOK_EVENTS: WebhookEventType[] = [
   'automation.started',
   'automation.completed',
   'automation.failed',
+  'cloud_session.started',
+  'cloud_session.ended',
+  'cloud_session.failed',
   'test.ping',
 ];
 

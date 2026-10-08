@@ -56,6 +56,12 @@ import { automationScheduler } from '../../09_AUTOMATION/automation-scheduler.js
 import { WARMING_TEMPLATES } from '../../09_AUTOMATION/cookie-warmer-service.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import {
+  cloudBrowserControlPlane,
+  sessionGateway,
+  sessionScheduler,
+  resourceLimiter,
+} from '../cloud-browser/index.js';
+import {
   RemoteAuthContext,
   RemoteApiScope,
   RemoteApiResponse,
@@ -220,12 +226,14 @@ export async function handleRemoteApiRoutes(
   method: string,
   parsedUrl: URL
 ): Promise<boolean> {
-  // Normalize path aliases: allow /v1/* and /api/v1/remote/* and /api/v1/webhooks/*
+  // Normalize path aliases: allow /v1/*, /api/v1/remote/*, /api/v1/webhooks/*, /api/v1/cloud-browser/*
   let normalizedPath = pathname;
   if (pathname.startsWith('/v1/')) {
     normalizedPath = `/api/v1/remote/${pathname.substring(4)}`;
   } else if (pathname.startsWith('/api/v1/webhooks')) {
     normalizedPath = `/api/v1/remote/webhooks${pathname.substring(16)}`;
+  } else if (pathname.startsWith('/api/v1/cloud-browser')) {
+    normalizedPath = `/api/v1/remote/cloud-browser${pathname.substring(21)}`;
   }
 
   if (!normalizedPath.startsWith('/api/v1/remote/')) {
@@ -1191,6 +1199,225 @@ export async function handleRemoteApiRoutes(
 
       const deliveries = webhookService.getDeliveries(whDeliveriesMatch[1], auth.userId);
       sendRemoteJSON(req, res, 200, { success: true, data: deliveries }, requestId, rateLimit);
+      return true;
+    }
+
+    // ========================================================================
+    // PHASE 10: REAL CLOUD BROWSER ENDPOINTS
+    // ========================================================================
+
+    // POST cloud-browser/sessions (Start cloud session)
+    if (route === 'cloud-browser/sessions' && method === 'POST') {
+      if (!requireAccess('profiles:run')) return true;
+
+      const body = await parseBody(req);
+      if (!body.profileId) {
+        sendRemoteJSON(req, res, 400, {
+          success: false,
+          error: { code: 'INVALID_REQUEST', message: 'profileId is required.' },
+        }, requestId, rateLimit);
+        return true;
+      }
+
+      try {
+        const sessionResult = await cloudBrowserControlPlane.requestSession(auth.userId, {
+          profileId: body.profileId,
+          workspaceId: auth.workspaceId || body.workspaceId,
+          regionId: body.regionId,
+          resourceClass: body.resourceClass,
+          maxDurationSeconds: body.maxDurationSeconds,
+          idleTimeoutSeconds: body.idleTimeoutSeconds,
+          startupUrl: body.startupUrl,
+        });
+
+        sendRemoteJSON(req, res, 201, { success: true, data: sessionResult }, requestId, rateLimit);
+      } catch (err: any) {
+        const isQuota = err.message.includes('QUOTA_EXCEEDED');
+        const isLocked = err.message.includes('PROFILE_LOCKED');
+        const isAccess = err.message.includes('ACCESS_DENIED');
+        const statusCode = isQuota ? 403 : isLocked ? 409 : isAccess ? 403 : 500;
+        sendRemoteJSON(req, res, statusCode, {
+          success: false,
+          error: { code: isLocked ? 'PROFILE_LOCKED' : isQuota ? 'QUOTA_EXCEEDED' : 'LAUNCH_FAILED', message: err.message },
+        }, requestId, rateLimit);
+      }
+      return true;
+    }
+
+    // GET cloud-browser/sessions (List sessions)
+    if (route === 'cloud-browser/sessions' && method === 'GET') {
+      if (!requireAccess('profiles:read')) return true;
+
+      const sessions = cloudBrowserControlPlane.listSessions(auth.userId, auth.workspaceId);
+      sendRemoteJSON(req, res, 200, { success: true, data: sessions }, requestId, rateLimit);
+      return true;
+    }
+
+    // GET cloud-browser/regions (List deployment regions)
+    if (route === 'cloud-browser/regions' && method === 'GET') {
+      const regions = sessionScheduler.getRegions();
+      sendRemoteJSON(req, res, 200, { success: true, data: regions }, requestId, rateLimit);
+      return true;
+    }
+
+    // GET cloud-browser/usage (User usage summary)
+    if (route === 'cloud-browser/usage' && method === 'GET') {
+      const usage = resourceLimiter.getUserUsageSummary(auth.userId);
+      sendRemoteJSON(req, res, 200, { success: true, data: usage }, requestId, rateLimit);
+      return true;
+    }
+
+    // GET cloud-browser/sessions/:id (Get session)
+    const cbGetMatch = route.match(/^cloud-browser\/sessions\/([a-zA-Z0-9_-]+)$/);
+    if (cbGetMatch && method === 'GET') {
+      if (!requireAccess('profiles:read')) return true;
+
+      const session = cloudBrowserControlPlane.getSession(cbGetMatch[1]);
+      if (!session || (session.userId !== auth.userId && (!auth.workspaceId || session.workspaceId !== auth.workspaceId))) {
+        sendRemoteJSON(req, res, 404, {
+          success: false,
+          error: { code: 'NOT_FOUND', message: `Cloud session ${cbGetMatch[1]} not found.` },
+        }, requestId, rateLimit);
+        return true;
+      }
+
+      sendRemoteJSON(req, res, 200, { success: true, data: session }, requestId, rateLimit);
+      return true;
+    }
+
+    // POST cloud-browser/sessions/:id/stop (Stop session)
+    const cbStopMatch = route.match(/^cloud-browser\/sessions\/([a-zA-Z0-9_-]+)\/stop$/);
+    if (cbStopMatch && method === 'POST') {
+      if (!requireAccess('profiles:run')) return true;
+
+      try {
+        const body = await parseBody(req).catch(() => ({}));
+        const stopResult = await cloudBrowserControlPlane.stopSession(cbStopMatch[1], auth.userId, body.reason || 'USER_REQUESTED');
+        sendRemoteJSON(req, res, 200, { success: true, data: stopResult }, requestId, rateLimit);
+      } catch (err: any) {
+        sendRemoteJSON(req, res, 400, {
+          success: false,
+          error: { code: 'STOP_FAILED', message: err.message },
+        }, requestId, rateLimit);
+      }
+      return true;
+    }
+
+    // POST cloud-browser/sessions/:id/reconnect-token (Generate reconnect token)
+    const cbReconnectMatch = route.match(/^cloud-browser\/sessions\/([a-zA-Z0-9_-]+)\/reconnect-token$/);
+    if (cbReconnectMatch && method === 'POST') {
+      if (!requireAccess('profiles:run')) return true;
+
+      try {
+        const token = cloudBrowserControlPlane.generateReconnectToken(cbReconnectMatch[1], auth.userId);
+        sendRemoteJSON(req, res, 200, {
+          success: true,
+          data: {
+            sessionId: cbReconnectMatch[1],
+            streamToken: token,
+            streamGatewayUrl: `/api/v1/remote/cloud-browser/sessions/${cbReconnectMatch[1]}/stream`,
+          },
+        }, requestId, rateLimit);
+      } catch (err: any) {
+        sendRemoteJSON(req, res, 400, {
+          success: false,
+          error: { code: 'RECONNECT_FAILED', message: err.message },
+        }, requestId, rateLimit);
+      }
+      return true;
+    }
+
+    // GET cloud-browser/sessions/:id/stream (Live Screencast Stream via Server-Sent Events)
+    const cbStreamMatch = route.match(/^cloud-browser\/sessions\/([a-zA-Z0-9_-]+)\/stream$/);
+    if (cbStreamMatch && method === 'GET') {
+      const sessionId = cbStreamMatch[1];
+      const token = parsedUrl.searchParams.get('token');
+
+      // Verify token authenticity
+      const authorized = token
+        ? sessionGateway.verifyStreamToken(token, sessionId, auth.userId)
+        : auth.userId && requireAccess('profiles:run');
+
+      if (!authorized) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: { code: 'UNAUTHORIZED_STREAM', message: 'Invalid or expired stream token.' } }));
+        return true;
+      }
+
+      // Establish SSE stream
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': req.headers.origin || '*',
+      });
+
+      res.write(': stream-connected\n\n');
+
+      const subscriberId = crypto.randomUUID();
+      let unsubscribe: (() => void) | undefined;
+
+      try {
+        unsubscribe = sessionGateway.subscribeClient({
+          id: subscriberId,
+          userId: auth.userId,
+          sessionId,
+          send: (msg) => {
+            try {
+              res.write(`data: ${JSON.stringify(msg)}\n\n`);
+            } catch {}
+          },
+          close: () => {
+            try {
+              res.end();
+            } catch {}
+          },
+        });
+      } catch (subErr: any) {
+        res.write(`event: error\ndata: ${JSON.stringify({ message: subErr.message })}\n\n`);
+        res.end();
+        return true;
+      }
+
+      req.on('close', () => {
+        if (unsubscribe) unsubscribe();
+      });
+
+      return true;
+    }
+
+    // POST cloud-browser/sessions/:id/input (Interactive input action)
+    const cbInputMatch = route.match(/^cloud-browser\/sessions\/([a-zA-Z0-9_-]+)\/input$/);
+    if (cbInputMatch && method === 'POST') {
+      const sessionId = cbInputMatch[1];
+      const token = parsedUrl.searchParams.get('token') || (req.headers['x-stream-token'] as string);
+
+      const authorized = token
+        ? sessionGateway.verifyStreamToken(token, sessionId, auth.userId)
+        : auth.userId && requireAccess('profiles:run');
+
+      if (!authorized) {
+        sendRemoteJSON(req, res, 403, {
+          success: false,
+          error: { code: 'UNAUTHORIZED_INPUT', message: 'Valid stream token required for input dispatch.' },
+        }, requestId, rateLimit);
+        return true;
+      }
+
+      const body = await parseBody(req);
+      if (!body.action || !body.action.type) {
+        sendRemoteJSON(req, res, 400, {
+          success: false,
+          error: { code: 'INVALID_ACTION', message: 'Action object with type is required.' },
+        }, requestId, rateLimit);
+        return true;
+      }
+
+      sessionGateway.dispatchAction(sessionId, body.action);
+      resourceLimiter.touchActivity(sessionId);
+
+      sendRemoteJSON(req, res, 200, { success: true }, requestId, rateLimit);
       return true;
     }
 

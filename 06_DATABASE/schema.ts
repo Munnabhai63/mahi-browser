@@ -1031,6 +1031,113 @@ export async function initializeDatabase(): Promise<void> {
     } catch {}
   }
 
+  // Migration v16: Phase 10 Real Cloud Browser Infrastructure & Remote Interactive Sessions
+  const checkMigration16 = db.prepare('SELECT version FROM schema_migrations WHERE version = 16').get();
+  if (!checkMigration16) {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS cloud_browser_regions (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          endpoint_url TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'ACTIVE',
+          is_default INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS cloud_browser_workers (
+          id TEXT PRIMARY KEY,
+          region_id TEXT NOT NULL,
+          hostname TEXT NOT NULL,
+          ip_address TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'ONLINE',
+          capacity INTEGER NOT NULL DEFAULT 10,
+          active_sessions INTEGER NOT NULL DEFAULT 0,
+          cpu_usage_pct REAL DEFAULT 0.0,
+          memory_usage_mb REAL DEFAULT 0.0,
+          last_heartbeat_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (region_id) REFERENCES cloud_browser_regions(id) ON DELETE RESTRICT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cb_workers_region ON cloud_browser_workers(region_id);
+        CREATE INDEX IF NOT EXISTS idx_cb_workers_status ON cloud_browser_workers(status);
+
+        CREATE TABLE IF NOT EXISTS cloud_browser_sessions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          workspace_id TEXT,
+          profile_id TEXT NOT NULL,
+          worker_id TEXT,
+          region_id TEXT NOT NULL DEFAULT 'in-west',
+          status TEXT NOT NULL DEFAULT 'REQUESTED',
+          resource_class TEXT NOT NULL DEFAULT 'STANDARD',
+          profile_version INTEGER NOT NULL DEFAULT 1,
+          lock_id TEXT,
+          session_token_hash TEXT,
+          stream_gateway_url TEXT,
+          cdp_port INTEGER,
+          duration_seconds INTEGER NOT NULL DEFAULT 0,
+          max_duration_seconds INTEGER NOT NULL DEFAULT 3600,
+          idle_timeout_seconds INTEGER NOT NULL DEFAULT 600,
+          last_activity_at TEXT NOT NULL,
+          started_at TEXT,
+          ended_at TEXT,
+          termination_reason TEXT,
+          error_message TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cb_sessions_user ON cloud_browser_sessions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_cb_sessions_prof ON cloud_browser_sessions(profile_id);
+        CREATE INDEX IF NOT EXISTS idx_cb_sessions_status ON cloud_browser_sessions(status);
+        CREATE INDEX IF NOT EXISTS idx_cb_sessions_worker ON cloud_browser_sessions(worker_id);
+
+        CREATE TABLE IF NOT EXISTS cloud_browser_events (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          details_json TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (session_id) REFERENCES cloud_browser_sessions(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cb_events_session ON cloud_browser_events(session_id);
+        CREATE INDEX IF NOT EXISTS idx_cb_events_type ON cloud_browser_events(event_type);
+
+        CREATE TABLE IF NOT EXISTS cloud_browser_usage (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          workspace_id TEXT,
+          session_id TEXT NOT NULL,
+          duration_seconds INTEGER NOT NULL,
+          resource_class TEXT NOT NULL,
+          region_id TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cb_usage_user ON cloud_browser_usage(user_id);
+        CREATE INDEX IF NOT EXISTS idx_cb_usage_ws ON cloud_browser_usage(workspace_id);
+      `);
+
+      // Seed default cloud browser regions
+      const now = new Date().toISOString();
+      const insertRegion = db.prepare(`
+        INSERT OR IGNORE INTO cloud_browser_regions (id, name, endpoint_url, status, is_default, created_at)
+        VALUES (?, ?, ?, 'ACTIVE', ?, ?)
+      `);
+      insertRegion.run('in-west', 'India (Mumbai) - Local Node', 'https://in-west.cloud.mahibrowser.com', 1, now);
+      insertRegion.run('sg-central', 'Singapore (Central)', 'https://sg-central.cloud.mahibrowser.com', 0, now);
+      insertRegion.run('us-east', 'US East (N. Virginia)', 'https://us-east.cloud.mahibrowser.com', 0, now);
+      insertRegion.run('eu-central', 'EU Central (Frankfurt)', 'https://eu-central.cloud.mahibrowser.com', 0, now);
+
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (16, ?)').run(now);
+    } catch {}
+  }
+
   // Ensure additive columns exist regardless of migration cache
   try { db.exec('ALTER TABLE proxies ADD COLUMN city TEXT;'); } catch {}
   try { db.exec('ALTER TABLE proxies ADD COLUMN region TEXT;'); } catch {}

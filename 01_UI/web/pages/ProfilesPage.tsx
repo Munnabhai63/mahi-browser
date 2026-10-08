@@ -15,6 +15,7 @@ import {
   Tag,
   Shield,
   Laptop,
+  Cloud,
 } from 'lucide-react';
 import { DeviceLaunchModal } from '../components/DeviceLaunchModal.js';
 import { ProfileModal } from '../components/ProfileModal.js';
@@ -43,6 +44,7 @@ interface ProfilesPageProps {
   onUpdateProfile: (id: string, dto: { name?: string; folder?: string; notes?: string; tags?: string[] }) => Promise<void>;
   onDeleteProfile: (id: string) => Promise<void>;
   onLaunchProfile: (id: string) => Promise<{ success: boolean; code?: string; message?: string }>;
+  onLaunchCloud?: (profile: WebProfileItem) => Promise<void>;
   onNavigateToDevices?: () => void;
 }
 
@@ -54,6 +56,7 @@ export const ProfilesPage: React.FC<ProfilesPageProps> = ({
   onUpdateProfile,
   onDeleteProfile,
   onLaunchProfile,
+  onLaunchCloud,
   onNavigateToDevices,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -359,6 +362,20 @@ export const ProfilesPage: React.FC<ProfilesPageProps> = ({
                           <Play className="w-3 h-3" />
                           <span className="hidden sm:inline">Run</span>
                         </button>
+
+                        {/* Run in Cloud button */}
+                        {onLaunchCloud && (
+                          <button
+                            type="button"
+                            onClick={() => onLaunchCloud(p)}
+                            disabled={isLaunchingId === p.id}
+                            className="px-2.5 py-1 bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 border border-teal-500/30 rounded-lg font-semibold flex items-center space-x-1 transition-colors disabled:opacity-50"
+                            title="Run Profile in MAHI Cloud"
+                          >
+                            <Cloud className="w-3 h-3" />
+                            <span className="hidden sm:inline">Cloud</span>
+                          </button>
+                        )}
 
                         {/* Edit */}
                         <button

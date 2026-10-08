@@ -199,9 +199,10 @@ export async function handleCommercialApiRoutes(
     return false;
   }
 
-  // Delegate remote cloud API & webhooks
+  // Delegate remote cloud API, cloud browser & webhooks
   if (
     pathname.startsWith('/api/v1/remote/') ||
+    pathname.startsWith('/api/v1/cloud-browser') ||
     pathname.startsWith('/api/v1/webhooks') ||
     pathname.startsWith('/v1/')
   ) {
