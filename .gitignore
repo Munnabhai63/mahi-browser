@@ -10,9 +10,14 @@ release/
 .DS_Store
 Thumbs.db
 .env
+.env.*
 keys.json
 _ADMIN_KEYGEN/
 *.pem
 *.key
+*.pfx
+*.p12
+*.keystore
+*.jks
 crash-log.txt
 scratch/
