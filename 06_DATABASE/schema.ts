@@ -842,6 +842,104 @@ export async function initializeDatabase(): Promise<void> {
     } catch {}
   }
 
+  // Migration v14: Phase 6 Remote Cloud API, API Keys, Webhooks & Idempotency
+  const checkMigration14 = db.prepare('SELECT version FROM schema_migrations WHERE version = 14').get();
+  if (!checkMigration14) {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS remote_api_keys (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          workspace_id TEXT,
+          name TEXT NOT NULL,
+          key_prefix TEXT NOT NULL,
+          key_hash TEXT NOT NULL UNIQUE,
+          scopes_json TEXT NOT NULL DEFAULT '["profiles:read"]',
+          status TEXT NOT NULL DEFAULT 'ACTIVE',
+          rate_limit_per_min INTEGER NOT NULL DEFAULT 120,
+          requests_count_month INTEGER NOT NULL DEFAULT 0,
+          last_used_at TEXT,
+          expires_at TEXT,
+          created_at TEXT NOT NULL,
+          revoked_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_remote_keys_user ON remote_api_keys(user_id);
+        CREATE INDEX IF NOT EXISTS idx_remote_keys_ws ON remote_api_keys(workspace_id);
+        CREATE INDEX IF NOT EXISTS idx_remote_keys_hash ON remote_api_keys(key_hash);
+        CREATE INDEX IF NOT EXISTS idx_remote_keys_status ON remote_api_keys(status);
+
+        CREATE TABLE IF NOT EXISTS remote_api_key_audits (
+          id TEXT PRIMARY KEY,
+          key_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          action TEXT NOT NULL,
+          ip_address TEXT,
+          details TEXT,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_remote_key_audits_user ON remote_api_key_audits(user_id);
+        CREATE INDEX IF NOT EXISTS idx_remote_key_audits_key ON remote_api_key_audits(key_id);
+
+        CREATE TABLE IF NOT EXISTS webhook_endpoints (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          workspace_id TEXT,
+          url TEXT NOT NULL,
+          description TEXT,
+          secret_hash TEXT NOT NULL,
+          secret_encrypted TEXT NOT NULL,
+          events_json TEXT NOT NULL DEFAULT '["*"]',
+          status TEXT NOT NULL DEFAULT 'ACTIVE',
+          failure_count INTEGER NOT NULL DEFAULT 0,
+          last_delivery_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_webhooks_user ON webhook_endpoints(user_id);
+        CREATE INDEX IF NOT EXISTS idx_webhooks_ws ON webhook_endpoints(workspace_id);
+        CREATE INDEX IF NOT EXISTS idx_webhooks_status ON webhook_endpoints(status);
+
+        CREATE TABLE IF NOT EXISTS webhook_deliveries (
+          id TEXT PRIMARY KEY,
+          endpoint_id TEXT NOT NULL,
+          event_id TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          payload_json TEXT NOT NULL,
+          destination_url TEXT NOT NULL,
+          status_code INTEGER,
+          response_body TEXT,
+          duration_ms INTEGER,
+          attempt_count INTEGER NOT NULL DEFAULT 1,
+          success INTEGER NOT NULL DEFAULT 0,
+          error_message TEXT,
+          delivered_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_wh_deliveries_endpoint ON webhook_deliveries(endpoint_id);
+        CREATE INDEX IF NOT EXISTS idx_wh_deliveries_event ON webhook_deliveries(event_id);
+        CREATE INDEX IF NOT EXISTS idx_wh_deliveries_success ON webhook_deliveries(success);
+
+        CREATE TABLE IF NOT EXISTS api_idempotency_records (
+          idempotency_key TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          endpoint TEXT NOT NULL,
+          status_code INTEGER NOT NULL,
+          response_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          PRIMARY KEY (idempotency_key, user_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_idempotency_lookup ON api_idempotency_records(idempotency_key, user_id);
+      `);
+
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (14, ?)').run(new Date().toISOString());
+    } catch {}
+  }
+
   // Ensure additive columns exist regardless of migration cache
   try { db.exec('ALTER TABLE proxies ADD COLUMN city TEXT;'); } catch {}
   try { db.exec('ALTER TABLE proxies ADD COLUMN region TEXT;'); } catch {}

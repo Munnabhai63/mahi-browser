@@ -1,0 +1,428 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "MAHI Browser — Remote Cloud API",
+    "description": "Production-grade RESTful Cloud API and Signed Webhooks platform for MAHI Antidetect Browser. Allows approved external clients, CI/CD automation systems, cloud dashboards, and team integrations to securely interact with MAHI Browser cloud services.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "MAHI Browser Engineering Team",
+      "url": "https://mahibrowser.com",
+      "email": "api@mahibrowser.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.mahibrowser.com/v1",
+      "description": "Production Remote Cloud API"
+    },
+    {
+      "url": "http://localhost:8989/api/v1/remote",
+      "description": "Local Development / Testing Gateway"
+    }
+  ],
+  "security": [
+    {
+      "ApiKeyAuth": []
+    },
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/api-keys": {
+      "get": {
+        "summary": "List API keys",
+        "description": "Retrieves active API keys owned by the authenticated user or workspace.",
+        "responses": {
+          "200": {
+            "description": "List of API keys (secrets masked)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeysListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create API key",
+        "description": "Generates a cryptographically secure random API key with granular scopes. Raw key is returned ONLY once in this response.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApiKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "API key created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateApiKeyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          }
+        }
+      }
+    },
+    "/api-keys/{id}": {
+      "delete": {
+        "summary": "Revoke API key",
+        "description": "Immediately invalidates the specified API key.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "API key revoked"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api-keys/{id}/rotate": {
+      "post": {
+        "summary": "Rotate API key secret",
+        "description": "Rotates secret entropy while preserving key identity, scopes, and quotas.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "API key secret rotated"
+          }
+        }
+      }
+    },
+    "/api-keys/{id}/audits": {
+      "get": {
+        "summary": "Get API key audit logs",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Security audit records"
+          }
+        }
+      }
+    },
+    "/profiles": {
+      "get": {
+        "summary": "List remote profiles",
+        "description": "Returns paginated list of profile metadata owned by the authenticated user. Never exposes raw disk contents.",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20 } },
+          { "name": "folder", "in": "query", "schema": { "type": "string" } },
+          { "name": "status", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of profiles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create profile",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProfileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Profile created successfully"
+          }
+        }
+      }
+    },
+    "/profiles/{id}": {
+      "get": {
+        "summary": "Get profile metadata",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Profile metadata" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "put": {
+        "summary": "Update profile",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Profile updated" } }
+      },
+      "delete": {
+        "summary": "Delete profile",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Profile deleted" } }
+      }
+    },
+    "/profiles/{id}/launch": {
+      "post": {
+        "summary": "Request remote profile launch",
+        "description": "Honest launch model: Requires an online, registered desktop agent client. If no desktop device is online, returns 409 DEVICE_REQUIRED. Never fabricates launch success.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "202": { "description": "Launch command queued for connected desktop agent" },
+          "409": { "description": "DEVICE_REQUIRED: No online desktop device agent connected to receive launch command" }
+        }
+      }
+    },
+    "/workspaces": {
+      "get": {
+        "summary": "List user workspaces",
+        "responses": { "200": { "description": "List of team workspaces" } }
+      },
+      "post": {
+        "summary": "Create team workspace",
+        "responses": { "201": { "description": "Workspace created" } }
+      }
+    },
+    "/workspaces/{id}/members": {
+      "get": {
+        "summary": "List workspace members",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "List of active members" } }
+      }
+    },
+    "/workspaces/{id}/members/invite": {
+      "post": {
+        "summary": "Invite member to workspace",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "201": { "description": "Invitation dispatched" } }
+      }
+    },
+    "/proxies/catalog": {
+      "get": {
+        "summary": "Get proxy provider catalog",
+        "description": "Returns supported network types, geolocations, and provider health. Provider credentials are never exposed.",
+        "responses": { "200": { "description": "Catalog details" } }
+      }
+    },
+    "/proxies/generate": {
+      "post": {
+        "summary": "Generate commercial proxy session",
+        "description": "Provisions a residential or mobile proxy endpoint via commercial providers.",
+        "responses": { "201": { "description": "Session generated" } }
+      }
+    },
+    "/proxies/{id}/rotate": {
+      "post": {
+        "summary": "Rotate proxy session IP",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "New IP allocated" } }
+      }
+    },
+    "/webhooks": {
+      "get": {
+        "summary": "List webhook endpoints",
+        "responses": { "200": { "description": "List of active endpoints" } }
+      },
+      "post": {
+        "summary": "Register webhook endpoint",
+        "description": "Registers an HTTPS destination for outbound signed events. Validates against SSRF (RFC1918, loopback, cloud metadata blocking). Returns secret ONCE.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWebhookRequest"
+              }
+            }
+          }
+        },
+        "responses": { "201": { "description": "Endpoint registered with HMAC signing secret" } }
+      }
+    },
+    "/webhooks/{id}": {
+      "delete": {
+        "summary": "Revoke webhook endpoint",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Endpoint revoked" } }
+      }
+    },
+    "/webhooks/{id}/test": {
+      "post": {
+        "summary": "Dispatch test webhook ping",
+        "description": "Dispatches a signed 'test.ping' event to verify receiver signature validation and connectivity.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Test ping successfully delivered" }, "502": { "description": "Delivery failed" } }
+      }
+    },
+    "/webhooks/{id}/deliveries": {
+      "get": {
+        "summary": "Get delivery audit logs",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "List of past delivery attempts" } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "API Key format: mahi_live_..."
+      },
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "CreateApiKeyRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "example": "CI Automation Key" },
+          "workspaceId": { "type": "string" },
+          "scopes": {
+            "type": "array",
+            "items": { "type": "string" },
+            "example": ["profiles:read", "profiles:write", "proxy:read"]
+          },
+          "rateLimitPerMin": { "type": "integer", "default": 120 },
+          "expiresInDays": { "type": "integer", "example": 90 }
+        }
+      },
+      "CreateApiKeyResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "apiKey": { "type": "object" },
+              "secretKey": { "type": "string", "example": "mahi_live_0123456789abcdef" },
+              "note": { "type": "string" }
+            }
+          }
+        }
+      },
+      "ApiKeysListResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "data": {
+            "type": "array",
+            "items": { "type": "object" }
+          }
+        }
+      },
+      "CreateProfileRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "example": "E-Commerce Account 01" },
+          "folder": { "type": "string", "default": "General" },
+          "description": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "ProfileListResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "data": { "type": "array", "items": { "type": "object" } },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "page": { "type": "integer" },
+              "limit": { "type": "integer" },
+              "total": { "type": "integer" },
+              "hasMore": { "type": "boolean" }
+            }
+          }
+        }
+      },
+      "CreateWebhookRequest": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {
+          "url": { "type": "string", "format": "uri", "example": "https://api.yourdomain.com/webhooks/mahi" },
+          "description": { "type": "string" },
+          "events": {
+            "type": "array",
+            "items": { "type": "string" },
+            "example": ["profile.created", "profile.synced", "proxy.created"]
+          }
+        }
+      },
+      "StandardError": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "example": false },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "string", "example": "UNAUTHORIZED" },
+              "message": { "type": "string" },
+              "requestId": { "type": "string" },
+              "details": { "type": "object" }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Unauthorized request (missing or invalid credentials)",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StandardError" } } }
+      },
+      "Forbidden": {
+        "description": "Forbidden (scope or role RBAC violation)",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StandardError" } } }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StandardError" } } }
+      },
+      "ValidationError": {
+        "description": "Input validation failed",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StandardError" } } }
+      }
+    }
+  }
+}

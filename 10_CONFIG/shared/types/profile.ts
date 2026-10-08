@@ -91,6 +91,8 @@ export interface Profile {
   lastError?: string;
   activePid?: number;
   deletedAt?: string | null;
+  /** Owner of the profile for multi-user isolation */
+  ownerId?: string;
   /** Persistent historical session statistics — never reset on stop/close, only on explicit delete */
   stats?: ProfileStats;
 }
@@ -103,6 +105,7 @@ export interface CreateProfileDTO {
   tags?: string[];
   notes?: string;
   pinned?: boolean;
+  ownerId?: string;
   settings?: Partial<ProfileSettings>;
 }
 

@@ -96,6 +96,7 @@ import {
   setWorkspaceKeyEnvelope,
 } from '../services/team-workspace-service.js';
 import { getStorageProvider, LocalStorageProvider } from '../../08_SECURITY/storage-provider.js';
+import { handleRemoteApiRoutes } from './remote-api-router.js';
 
 function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
   res.writeHead(statusCode, {
@@ -189,13 +190,25 @@ export async function handleCommercialApiRoutes(
   method: string,
   parsedUrl: URL
 ): Promise<boolean> {
-  // Support /api/v1/*, direct /auth/*, and direct /v1/sync/* routes
+  // Support /api/v1/*, direct /auth/*, direct /v1/sync/*, and direct /v1/* routes
   const isApiV1 = pathname.startsWith('/api/v1/');
   const isDirectAuth = pathname.startsWith('/auth/');
   const isDirectSync = pathname.startsWith('/v1/sync/');
-  if (!isApiV1 && !isDirectAuth && !isDirectSync) {
+  const isDirectV1 = pathname.startsWith('/v1/');
+  if (!isApiV1 && !isDirectAuth && !isDirectSync && !isDirectV1) {
     return false;
   }
+
+  // Delegate remote cloud API & webhooks
+  if (
+    pathname.startsWith('/api/v1/remote/') ||
+    pathname.startsWith('/api/v1/webhooks') ||
+    pathname.startsWith('/v1/')
+  ) {
+    const handled = await handleRemoteApiRoutes(req, res, pathname, method, parsedUrl);
+    if (handled) return true;
+  }
+
   const routePath = isDirectAuth ? `/api/v1${pathname}` : isDirectSync ? `/api${pathname}` : pathname;
 
   const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
