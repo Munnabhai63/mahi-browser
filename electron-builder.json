@@ -1,5 +1,4 @@
 {
-  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.mahibrowser.app",
   "productName": "MAHI BROWSER",
   "copyright": "Copyright © 2026 Mahi Browser Team",
@@ -39,7 +38,9 @@
     ],
     "icon": "13_ASSETS/resources/icon.ico",
     "artifactName": "${productName}-${version}-Setup.${ext}",
-    "sign": "./12_SCRIPTS/sign.cjs"
+    "signtoolOptions": {
+      "sign": "./12_SCRIPTS/sign.cjs"
+    }
   },
   "nsis": {
     "oneClick": false,
