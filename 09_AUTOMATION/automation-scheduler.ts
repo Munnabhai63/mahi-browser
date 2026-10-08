@@ -167,9 +167,7 @@ class AutomationSchedulerService {
    * Computes subsequent run timestamp based on schedule type
    */
   public calculateNextRun(scheduleType: string, currentRunAt?: string): string | null {
-    const base = currentRunAt ? new Date(currentRunAt) : new Date();
-    const now = new Date();
-    const start = base.getTime() < now.getTime() ? now : base;
+    const start = currentRunAt ? new Date(currentRunAt) : new Date();
 
     switch (scheduleType) {
       case 'ONE_TIME':
