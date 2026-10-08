@@ -626,6 +626,10 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     setCloudSyncConfig: async (cfg: any) => cfg,
     syncAllProfiles: async () => {},
     getAllProfilesSyncStatus: async () => ({}),
+    resolveSyncConflict: async () => ({ success: true }),
+    acquireCloudLock: async () => ({ acquired: true }),
+    releaseCloudLock: async () => true,
+    getCloudLockStatus: async () => ({ isLocked: false }),
     onSyncProgress: () => () => {},
 
     // Account & Subscription System (v1.1.0+)

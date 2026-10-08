@@ -294,6 +294,10 @@ const api: MahiBrowserAPI = {
   setCloudSyncConfig: (config: any) => ipcRenderer.invoke('sync:setConfig', config),
   syncAllProfiles: () => ipcRenderer.invoke('sync:syncAll'),
   getAllProfilesSyncStatus: () => ipcRenderer.invoke('sync:getAllStatuses'),
+  resolveSyncConflict: (profileId: string, resolution: any) => ipcRenderer.invoke('sync:resolveConflict', profileId, resolution),
+  acquireCloudLock: (cloudProfileId: string, ttlSeconds?: number) => ipcRenderer.invoke('sync:lock:acquire', cloudProfileId, ttlSeconds),
+  releaseCloudLock: (cloudProfileId: string) => ipcRenderer.invoke('sync:lock:release', cloudProfileId),
+  getCloudLockStatus: (cloudProfileId: string) => ipcRenderer.invoke('sync:lock:status', cloudProfileId),
   onSyncProgress: (callback) => {
     const handler = (_event: any, data: any) => callback(data);
     ipcRenderer.on('sync:progress', handler);

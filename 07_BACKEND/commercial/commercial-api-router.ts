@@ -61,11 +61,26 @@ import { verifyAdminAccess } from '../../05_AUTH/admin-auth.js';
 import { isValidAdminWebSecret } from '../../08_SECURITY/install-secrets.js';
 import { CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
 
+import {
+  getUserSyncUsage,
+  listUserCloudProfiles,
+  getCloudProfile,
+  createUploadSession,
+  finalizeUploadSession,
+  createDownloadSession,
+  deleteCloudProfile,
+  acquireProfileLock,
+  renewProfileLock,
+  releaseProfileLock,
+  getProfileLockStatus,
+} from '../services/cloud-profile-service.js';
+import { getStorageProvider, LocalStorageProvider } from '../../08_SECURITY/storage-provider.js';
+
 function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-API-Key, X-Admin-Secret',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-API-Key, X-Admin-Secret, x-mahi-token',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   });
   res.end(JSON.stringify(data));
@@ -89,8 +104,21 @@ function parseBody(req: http.IncomingMessage): Promise<any> {
   });
 }
 
+function parseRawBuffer(req: http.IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk) => {
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      resolve(Buffer.concat(chunks));
+    });
+    req.on('error', reject);
+  });
+}
+
 function getAuthUser(req: http.IncomingMessage): { userId: string; email: string; role: CommercialRole; sessionId?: string } | null {
-  const authHeader = req.headers['authorization'] || '';
+  const authHeader = (req.headers['authorization'] as string) || (req.headers['x-mahi-token'] ? `Bearer ${req.headers['x-mahi-token']}` : '');
   if (authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
     const centralPayload = verifyAccessToken(token);
@@ -140,13 +168,14 @@ export async function handleCommercialApiRoutes(
   method: string,
   parsedUrl: URL
 ): Promise<boolean> {
-  // Support both /api/v1/* and direct /auth/* routes
+  // Support /api/v1/*, direct /auth/*, and direct /v1/sync/* routes
   const isApiV1 = pathname.startsWith('/api/v1/');
   const isDirectAuth = pathname.startsWith('/auth/');
-  if (!isApiV1 && !isDirectAuth) {
+  const isDirectSync = pathname.startsWith('/v1/sync/');
+  if (!isApiV1 && !isDirectAuth && !isDirectSync) {
     return false;
   }
-  const routePath = isDirectAuth ? `/api/v1${pathname}` : pathname;
+  const routePath = isDirectAuth ? `/api/v1${pathname}` : isDirectSync ? `/api${pathname}` : pathname;
 
   const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
 
@@ -674,6 +703,254 @@ export async function handleCommercialApiRoutes(
     }
     const version = publishSoftwareVersion(body, actor);
     sendJSON(res, 201, { success: true, data: version });
+    return true;
+  }
+
+  // -------------------------------------------------------------
+  // 13. STORAGE PROVIDER PRESIGNED ENDPOINTS (Local / S3 Fallback)
+  // -------------------------------------------------------------
+  if (routePath === '/api/v1/storage/upload' && method === 'PUT') {
+    const key = parsedUrl.searchParams.get('key');
+    const expires = parseInt(parsedUrl.searchParams.get('expires') || '0', 10);
+    const token = parsedUrl.searchParams.get('token') || '';
+    if (!key || !token) {
+      sendJSON(res, 400, { success: false, error: 'Missing storage parameters' });
+      return true;
+    }
+
+    const storage = getStorageProvider();
+    if (storage instanceof LocalStorageProvider) {
+      const valid = storage.verifyToken(key, 'upload', expires, token);
+      if (!valid) {
+        sendJSON(res, 403, { success: false, error: 'Invalid or expired upload signature' });
+        return true;
+      }
+    }
+
+    try {
+      const buffer = await parseRawBuffer(req);
+      const putResult = await storage.putObject(key, buffer);
+      sendJSON(res, 200, { success: true, size: putResult.size });
+    } catch (err: any) {
+      sendJSON(res, 500, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  if (routePath === '/api/v1/storage/download' && method === 'GET') {
+    const key = parsedUrl.searchParams.get('key');
+    const expires = parseInt(parsedUrl.searchParams.get('expires') || '0', 10);
+    const token = parsedUrl.searchParams.get('token') || '';
+    if (!key || !token) {
+      sendJSON(res, 400, { success: false, error: 'Missing storage parameters' });
+      return true;
+    }
+
+    const storage = getStorageProvider();
+    if (storage instanceof LocalStorageProvider) {
+      const valid = storage.verifyToken(key, 'download', expires, token);
+      if (!valid) {
+        sendJSON(res, 403, { success: false, error: 'Invalid or expired download signature' });
+        return true;
+      }
+    }
+
+    try {
+      const buffer = await storage.getObject(key);
+      if (!buffer) {
+        sendJSON(res, 404, { success: false, error: 'Object not found' });
+        return true;
+      }
+      res.writeHead(200, {
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': buffer.length,
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(buffer);
+    } catch (err: any) {
+      sendJSON(res, 500, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  // -------------------------------------------------------------
+  // 14. PHASE 2 CLOUD PROFILE SYNC ENDPOINTS (Protected)
+  // -------------------------------------------------------------
+  if (routePath === '/api/v1/sync/usage' && method === 'GET') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Login required for cloud sync.' });
+      return true;
+    }
+    const usage = getUserSyncUsage(user.userId);
+    sendJSON(res, 200, { success: true, ...usage });
+    return true;
+  }
+
+  if (routePath === '/api/v1/sync/list' && method === 'GET') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    const profiles = listUserCloudProfiles(user.userId);
+    sendJSON(res, 200, { success: true, profiles });
+    return true;
+  }
+
+  const syncProfileDetailMatch = routePath.match(/^\/api\/v1\/sync\/profile\/([a-zA-Z0-9_-]+)$/);
+  if (syncProfileDetailMatch && method === 'GET') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    const profile = getCloudProfile(user.userId, syncProfileDetailMatch[1]);
+    if (!profile) {
+      sendJSON(res, 404, { success: false, error: 'Cloud profile not found' });
+      return true;
+    }
+    sendJSON(res, 200, { success: true, profile });
+    return true;
+  }
+
+  if (syncProfileDetailMatch && method === 'DELETE') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      await deleteCloudProfile(user.userId, syncProfileDetailMatch[1]);
+      sendJSON(res, 200, { success: true });
+    } catch (err: any) {
+      sendJSON(res, 404, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  if (routePath === '/api/v1/sync/upload-session' && method === 'POST') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const body = await parseBody(req);
+      const result = await createUploadSession(user.userId, body);
+      if (result.conflict) {
+        sendJSON(res, 409, { success: false, ...result });
+      } else {
+        sendJSON(res, 200, { success: true, ...result });
+      }
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  if (routePath === '/api/v1/sync/finalize-upload' && method === 'POST') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const body = await parseBody(req);
+      const result = await finalizeUploadSession(
+        user.userId,
+        body.sessionId,
+        body.profileName,
+        body.localProfileId,
+        body.deviceId,
+        body.deviceName
+      );
+      sendJSON(res, 200, result);
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  if (routePath === '/api/v1/sync/download-session' && method === 'POST') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const body = await parseBody(req);
+      const result = await createDownloadSession(user.userId, body.cloudProfileId, body.version);
+      sendJSON(res, 200, { success: true, data: result });
+    } catch (err: any) {
+      sendJSON(res, 404, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  if (routePath === '/api/v1/sync/lock/acquire' && method === 'POST') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const body = await parseBody(req);
+      const result = acquireProfileLock(
+        user.userId,
+        body.cloudProfileId,
+        body.deviceId,
+        body.deviceName,
+        body.ttlSeconds
+      );
+      sendJSON(res, result.acquired ? 200 : 423, result);
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  if (routePath === '/api/v1/sync/lock/renew' && method === 'POST') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const body = await parseBody(req);
+      const result = renewProfileLock(user.userId, body.cloudProfileId, body.deviceId, body.ttlSeconds);
+      sendJSON(res, 200, result);
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  if (routePath === '/api/v1/sync/lock/release' && method === 'POST') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    try {
+      const body = await parseBody(req);
+      const result = releaseProfileLock(user.userId, body.cloudProfileId, body.deviceId);
+      sendJSON(res, 200, result);
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  if (routePath === '/api/v1/sync/lock/status' && method === 'GET') {
+    const user = getAuthUser(req);
+    if (!user) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
+      return true;
+    }
+    const profileId = parsedUrl.searchParams.get('cloudProfileId') || '';
+    const status = getProfileLockStatus(user.userId, profileId);
+    sendJSON(res, 200, { success: true, data: status });
     return true;
   }
 

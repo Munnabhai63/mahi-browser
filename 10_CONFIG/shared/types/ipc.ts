@@ -337,6 +337,10 @@ export interface MahiBrowserAPI {
   setCloudSyncConfig: (config: any) => Promise<any>;
   syncAllProfiles: () => Promise<void>;
   getAllProfilesSyncStatus: () => Promise<Record<string, string>>;
+  resolveSyncConflict: (profileId: string, resolution: 'DOWNLOAD_LATEST' | 'KEEP_LOCAL_AS_NEW' | 'OVERWRITE_FORCE') => Promise<any>;
+  acquireCloudLock: (cloudProfileId: string, ttlSeconds?: number) => Promise<{ acquired: boolean; heldBy?: string; expiresAt?: string }>;
+  releaseCloudLock: (cloudProfileId: string) => Promise<boolean>;
+  getCloudLockStatus: (cloudProfileId: string) => Promise<{ isLocked: boolean; heldBy?: string; expiresAt?: string }>;
   onSyncProgress: (callback: (event: any) => void) => () => void;
 
   // Account & Subscription System (v1.1.0+)

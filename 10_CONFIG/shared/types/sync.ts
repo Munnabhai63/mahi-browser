@@ -1,4 +1,4 @@
-export type CloudSyncStatus = 'SYNCED' | 'PENDING' | 'LOCAL_ONLY' | 'SYNCING' | 'ERROR';
+export type CloudSyncStatus = 'SYNCED' | 'PENDING' | 'LOCAL_ONLY' | 'SYNCING' | 'ERROR' | 'CONFLICT' | 'LOCKED';
 
 export interface CloudProfileMetadata {
   id: string;
@@ -24,7 +24,7 @@ export interface CloudSyncConfig {
 }
 
 export interface CloudSyncProgressEvent {
-  stage: 'CHECKING' | 'PACKING' | 'UPLOADING' | 'DOWNLOADING' | 'EXTRACTING' | 'COMPLETED' | 'ERROR';
+  stage: 'CHECKING' | 'PACKING' | 'UPLOADING' | 'DOWNLOADING' | 'EXTRACTING' | 'COMPLETED' | 'ERROR' | 'CONFLICT';
   profileId: string;
   percent: number;
   message?: string;

@@ -389,7 +389,7 @@ export async function loginCentralUser(params: {
   deviceName?: string;
   platform?: string;
   ipAddress?: string;
-}): Promise<{ success: boolean; user?: AuthUser; tokens?: AuthTokens; error?: string; lockedRemainingMs?: number }> {
+}): Promise<{ success: boolean; user?: AuthUser; session?: { id: string; deviceId: string; deviceName: string; platform: string }; tokens?: AuthTokens; error?: string; lockedRemainingMs?: number }> {
   const db = getDatabase();
   const rawEmail = (params.email || '').trim();
   const normalizedEmail = rawEmail.toLowerCase();

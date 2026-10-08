@@ -570,6 +570,95 @@ export async function initializeDatabase(): Promise<void> {
     db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (10, ?)').run(new Date().toISOString());
   }
 
+  // Migration v11: Phase 2 Zero-Knowledge Cloud Profile Storage & Multi-Device Sync
+  const checkMigration11 = db.prepare('SELECT version FROM schema_migrations WHERE version = 11').get();
+  if (!checkMigration11) {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS cloud_profiles (
+          id TEXT PRIMARY KEY,
+          owner_id TEXT NOT NULL,
+          local_profile_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          current_version INTEGER NOT NULL DEFAULT 1,
+          status TEXT NOT NULL DEFAULT 'ACTIVE',
+          storage_bytes INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (owner_id) REFERENCES auth_users(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cloud_profiles_owner ON cloud_profiles(owner_id);
+        CREATE INDEX IF NOT EXISTS idx_cloud_profiles_local ON cloud_profiles(owner_id, local_profile_id);
+
+        CREATE TABLE IF NOT EXISTS cloud_profile_versions (
+          id TEXT PRIMARY KEY,
+          cloud_profile_id TEXT NOT NULL,
+          version INTEGER NOT NULL,
+          object_key TEXT NOT NULL,
+          file_size INTEGER NOT NULL,
+          checksum_sha256 TEXT NOT NULL,
+          encrypted_data_key TEXT NOT NULL,
+          iv TEXT NOT NULL,
+          auth_tag TEXT NOT NULL,
+          source_device_id TEXT NOT NULL,
+          source_device_name TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (cloud_profile_id) REFERENCES cloud_profiles(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cloud_versions_profile ON cloud_profile_versions(cloud_profile_id);
+        CREATE INDEX IF NOT EXISTS idx_cloud_versions_profile_ver ON cloud_profile_versions(cloud_profile_id, version);
+
+        CREATE TABLE IF NOT EXISTS cloud_profile_locks (
+          cloud_profile_id TEXT PRIMARY KEY,
+          device_id TEXT NOT NULL,
+          device_name TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          locked_at TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          FOREIGN KEY (cloud_profile_id) REFERENCES cloud_profiles(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cloud_locks_expires ON cloud_profile_locks(expires_at);
+
+        CREATE TABLE IF NOT EXISTS cloud_sync_upload_sessions (
+          id TEXT PRIMARY KEY,
+          cloud_profile_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          target_version INTEGER NOT NULL,
+          base_version INTEGER NOT NULL,
+          object_key TEXT NOT NULL,
+          expected_size INTEGER NOT NULL,
+          expected_checksum TEXT NOT NULL,
+          encrypted_data_key TEXT NOT NULL,
+          iv TEXT NOT NULL,
+          auth_tag TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'PENDING',
+          expires_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_upload_sessions_status ON cloud_sync_upload_sessions(status);
+
+        CREATE TABLE IF NOT EXISTS cloud_sync_audit_logs (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          cloud_profile_id TEXT,
+          action TEXT NOT NULL,
+          device_id TEXT,
+          details TEXT,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cloud_logs_user ON cloud_sync_audit_logs(user_id);
+        CREATE INDEX IF NOT EXISTS idx_cloud_logs_action ON cloud_sync_audit_logs(action);
+      `);
+    } catch {}
+    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (11, ?)').run(new Date().toISOString());
+  }
+
   // Clean legacy auto-warmed status lines from user notes
   try {
     const rows = db.prepare("SELECT id, notes FROM profiles WHERE notes LIKE '%[Auto-Warmed%'").all() as { id: string; notes: string }[];

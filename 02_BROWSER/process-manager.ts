@@ -123,9 +123,13 @@ class ProcessManager {
       this.notifyStatus(profileId, 'STOPPED');
       logActivity('PROFILE', 'INFO', 'Stop Browser', `Profile "${entry.profileName}" closed cleanly`, profileId, entry.profileName);
 
-      // Auto-Sync Hook on profile close
+      // Auto-Sync and Cloud Lock Release Hook on profile close
       try {
-        import('../08_SECURITY/cloud-sync-service.js').then(({ enqueueSync, getSyncConfig }) => {
+        import('../08_SECURITY/cloud-sync-service.js').then(({ enqueueSync, getSyncConfig, releaseCloudLock, getProfileCloudBinding }) => {
+          const binding = getProfileCloudBinding(profileId);
+          if (binding?.cloudProfileId) {
+            releaseCloudLock(binding.cloudProfileId).catch(() => {});
+          }
           if (getSyncConfig().autoSync) {
             enqueueSync(profileId);
           }
@@ -166,6 +170,24 @@ class ProcessManager {
     }
 
     debugLog(`[ProcessManager] Preparing to launch "${profile.name}"...`);
+
+    // Cloud lock coordination: if profile has active cloud binding, check/acquire distributed lock
+    try {
+      const { getProfileCloudBinding, acquireCloudLock } = await import('../08_SECURITY/cloud-sync-service.js');
+      const binding = getProfileCloudBinding(profileId);
+      if (binding?.cloudProfileId) {
+        const lockRes = await acquireCloudLock(binding.cloudProfileId);
+        if (!lockRes.acquired) {
+          const errorMsg = `Profile is currently active on ${lockRes.heldBy || 'another device'}. Lock active until ${lockRes.expiresAt}`;
+          debugLog(`[ProcessManager ERROR] ${errorMsg}`);
+          this.notifyStatus(profileId, 'STOPPED', undefined, errorMsg);
+          return { success: false, error: errorMsg };
+        }
+      }
+    } catch {
+      // Offline mode: never block local launch!
+    }
+
     this.notifyStatus(profileId, 'STARTING');
 
     try {

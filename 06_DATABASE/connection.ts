@@ -101,6 +101,7 @@ export interface PreparedStatement {
 export interface SqliteWrapper {
   exec: (sql: string) => void;
   prepare: (sql: string) => PreparedStatement;
+  transaction?: <T extends (...args: any[]) => any>(fn: T) => T;
   close: () => void;
   export: () => Uint8Array;
 }
@@ -127,6 +128,23 @@ export function getDatabase(): SqliteWrapper {
   const rawDb = dbInstance;
 
   return {
+    transaction: <T extends (...args: any[]) => any>(fn: T): T => {
+      return ((...args: any[]) => {
+        rawDb.exec('BEGIN TRANSACTION;');
+        inTransaction = true;
+        try {
+          const res = fn(...args);
+          rawDb.exec('COMMIT;');
+          inTransaction = false;
+          requestDatabaseSave();
+          return res;
+        } catch (err) {
+          try { rawDb.exec('ROLLBACK;'); } catch {}
+          inTransaction = false;
+          throw err;
+        }
+      }) as T;
+    },
     exec: (sql: string) => {
       const isBegin = /BEGIN/i.test(sql);
       const isCommitOrRollback = /COMMIT|ROLLBACK/i.test(sql);

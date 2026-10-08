@@ -70,6 +70,10 @@ import {
   syncAllProfiles,
   getAllProfilesSyncStatus,
   initCloudSync,
+  resolveSyncConflict,
+  acquireCloudLock,
+  releaseCloudLock,
+  getCloudLockStatus,
 } from '../../08_SECURITY/cloud-sync-service.js';
 
 
@@ -1725,6 +1729,10 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('sync:setConfig', async (_e, config: any) => setSyncConfig(config));
   ipcMain.handle('sync:syncAll', async () => syncAllProfiles());
   ipcMain.handle('sync:getAllStatuses', async () => getAllProfilesSyncStatus());
+  ipcMain.handle('sync:resolveConflict', async (_e, profileId: string, resolution: any) => resolveSyncConflict(profileId, resolution));
+  ipcMain.handle('sync:lock:acquire', async (_e, cloudProfileId: string, ttlSeconds?: number) => acquireCloudLock(cloudProfileId, ttlSeconds));
+  ipcMain.handle('sync:lock:release', async (_e, cloudProfileId: string) => releaseCloudLock(cloudProfileId));
+  ipcMain.handle('sync:lock:status', async (_e, cloudProfileId: string) => getCloudLockStatus(cloudProfileId));
 
   // Account & Subscription IPC Handlers (v1.1.0+)
   ipcMain.handle('account:signup', async (_e, dto: { email: string; password: string }) => {
