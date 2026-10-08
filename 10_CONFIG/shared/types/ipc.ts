@@ -48,7 +48,7 @@ import {
   CaptchaSolveResult,
   CaptchaProvider,
 } from './captcha.js';
-import { UpdateStatusEvent } from './updater.js';
+import { UpdateStatusEvent, UpdateConfig, UpdateInstallOptions, UpdateInstallResult } from './updater.js';
 import {
   FleetResourceSummary,
   MasterVaultExportOptions,
@@ -289,10 +289,12 @@ export interface MahiBrowserAPI {
   teamWorkspaceGetAuditLogs: (workspaceId: string, limit?: number) => Promise<TeamWorkspaceAuditLog[]>;
 
   // Auto-Updater
-  checkForUpdates: () => Promise<UpdateStatusEvent>;
+  checkForUpdates: (channel?: 'STABLE' | 'BETA') => Promise<UpdateStatusEvent>;
   downloadUpdate: () => Promise<boolean>;
-  installUpdate: () => Promise<boolean>;
+  installUpdate: (options?: UpdateInstallOptions) => Promise<UpdateInstallResult>;
   getUpdateStatus: () => Promise<UpdateStatusEvent>;
+  getUpdateConfig: () => Promise<UpdateConfig>;
+  setUpdateConfig: (config: Partial<UpdateConfig>) => Promise<UpdateConfig>;
 
   // Resource Monitoring & Memory Optimizer
   getFleetResources: () => Promise<FleetResourceSummary>;

@@ -1,81 +1,118 @@
 import { app, BrowserWindow } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
 import pkg from 'electron-updater';
-import { UpdateStatusEvent, UpdateProgress } from '../../10_CONFIG/shared/types/updater.js';
+import {
+  UpdateState,
+  UpdateChannel,
+  UpdateProgress,
+  UpdateStatusEvent,
+  UpdateConfig,
+  UpdateInstallOptions,
+  UpdateInstallResult,
+  UpdateReleaseManifest,
+} from '../../10_CONFIG/shared/types/updater.js';
 import { logActivity } from './audit-service.js';
+import {
+  validateSemVer,
+  compareSemVer,
+  isValidTransition,
+  validateUpdateManifest,
+  verifyFileIntegrity,
+} from './updater-validator.js';
+import { getActiveUpdateProvider } from './updater-provider.js';
+import { processManager } from '../../02_BROWSER/process-manager.js';
+import { getDatabase } from '../../06_DATABASE/connection.js';
 
-export const UPDATE_FEED_URL = 'https://mahibrowser.com/update/';
-export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
-
-export type UpdaterState = 'IDLE' | 'CHECKING' | 'AVAILABLE' | 'DOWNLOADING' | 'DOWNLOADED' | 'NOT_AVAILABLE' | 'ERROR';
-
-/**
- * Pure semver comparison utility.
- * Returns:
- *   1 if v1 > v2
- *  -1 if v1 < v2
- *   0 if v1 === v2
- */
-export function compareSemVer(v1: string, v2: string): number {
-  const clean = (v: string) =>
-    (v || '0.0.0')
-      .replace(/^v/, '')
-      .split('-')[0]
-      .split('.')
-      .map((n) => parseInt(n, 10) || 0);
-
-  const parts1 = clean(v1);
-  const parts2 = clean(v2);
-  const maxLen = Math.max(parts1.length, parts2.length);
-
-  for (let i = 0; i < maxLen; i++) {
-    const p1 = parts1[i] ?? 0;
-    const p2 = parts2[i] ?? 0;
-    if (p1 > p2) return 1;
-    if (p1 < p2) return -1;
-  }
-  return 0;
+function safeLogActivity(level: 'INFO' | 'WARNING' | 'ERROR', action: string, details: string) {
+  try {
+    logActivity('SYSTEM', level, action, details);
+  } catch {}
 }
 
-/**
- * Validates whether a state transition follows expected auto-updater lifecycle.
- */
-export function isValidTransition(from: UpdaterState, to: UpdaterState): boolean {
-  const validTransitions: Record<UpdaterState, UpdaterState[]> = {
-    IDLE: ['CHECKING', 'ERROR'],
-    CHECKING: ['AVAILABLE', 'NOT_AVAILABLE', 'DOWNLOADING', 'ERROR', 'IDLE'],
-    AVAILABLE: ['DOWNLOADING', 'ERROR', 'IDLE'],
-    DOWNLOADING: ['DOWNLOADED', 'ERROR', 'IDLE'],
-    DOWNLOADED: ['IDLE'],
-    NOT_AVAILABLE: ['CHECKING', 'IDLE'],
-    ERROR: ['CHECKING', 'IDLE'],
+export const DEFAULT_UPDATE_FEED_URL = 'https://mahibrowser.com/update/';
+export const UPDATE_FEED_URL = DEFAULT_UPDATE_FEED_URL;
+export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+export { compareSemVer, isValidTransition };
+export type UpdaterState = UpdateState;
+
+function getConfigPath(): string {
+  const dataDir = path.join(process.cwd(), '.mahi_data');
+  return path.join(dataDir, 'updater_config.json');
+}
+
+export function loadUpdateConfig(): UpdateConfig {
+  try {
+    const configPath = getConfigPath();
+    if (fs.existsSync(configPath)) {
+      const data = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      return {
+        channel: data.channel === 'BETA' ? 'BETA' : 'STABLE',
+        autoCheck: data.autoCheck !== false,
+        autoDownload: data.autoDownload !== false,
+        notifyBeforeRestart: data.notifyBeforeRestart !== false,
+        feedUrl: data.feedUrl || DEFAULT_UPDATE_FEED_URL,
+        lastCheckedAt: data.lastCheckedAt,
+      };
+    }
+  } catch {}
+
+  return {
+    channel: 'STABLE',
+    autoCheck: true,
+    autoDownload: true,
+    notifyBeforeRestart: true,
+    feedUrl: DEFAULT_UPDATE_FEED_URL,
   };
-  return validTransitions[from]?.includes(to) ?? false;
+}
+
+export function saveUpdateConfig(config: UpdateConfig): void {
+  try {
+    const configPath = getConfigPath();
+    const dir = path.dirname(configPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[UpdaterService] Failed to save config:', err);
+  }
 }
 
 function getSafeAppVersion(): string {
   try {
     if (app && typeof app.getVersion === 'function') {
-      return app.getVersion() || '1.0.0';
+      return app.getVersion() || '1.1.1';
     }
   } catch {}
-  return '1.0.0';
+  return '1.1.1';
 }
 
 function getAutoUpdater() {
   return pkg.autoUpdater;
 }
 
+let activeConfig: UpdateConfig = loadUpdateConfig();
 let updateStatus: UpdateStatusEvent = {
   state: 'IDLE',
   currentVersion: getSafeAppVersion(),
+  channel: activeConfig.channel,
 };
 
+let currentPendingManifest: UpdateReleaseManifest | null = null;
+let downloadedFilePath: string | null = null;
 let isManualCheck = false;
 let recurringTimer: NodeJS.Timeout | null = null;
 let isInitialized = false;
 
-function broadcastStatus(status: UpdateStatusEvent): void {
-  updateStatus = { ...status, currentVersion: getSafeAppVersion() };
+export function broadcastStatus(status: UpdateStatusEvent): void {
+  updateStatus = {
+    ...status,
+    currentVersion: getSafeAppVersion(),
+    channel: activeConfig.channel,
+  };
+
   if (typeof BrowserWindow !== 'undefined' && BrowserWindow && BrowserWindow.getAllWindows) {
     try {
       BrowserWindow.getAllWindows().forEach((win) => {
@@ -90,99 +127,98 @@ function broadcastStatus(status: UpdateStatusEvent): void {
 export function initAutoUpdater(): void {
   if (isInitialized) return;
   isInitialized = true;
+  activeConfig = loadUpdateConfig();
 
   const autoUpdater = getAutoUpdater();
 
-  // Feed URL: https://mahibrowser.com/update/ (Generic Provider)
-  autoUpdater.setFeedURL({
-    provider: 'generic',
-    url: UPDATE_FEED_URL,
-  });
-
-  // Download SILENTLY in background whenever an update is found
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-
-  autoUpdater.on('checking-for-update', () => {
-    if (isManualCheck) {
-      broadcastStatus({
-        state: 'CHECKING',
-        currentVersion: getSafeAppVersion(),
-      });
-    }
-  });
-
-  autoUpdater.on('update-available', (info: any) => {
-    logActivity('SYSTEM', 'INFO', 'Auto-Updater', `Update available: v${info.version}, downloading silently in background...`);
-    // Silent background download: do NOT broadcast AVAILABLE to avoid showing popups early
-    updateStatus = {
-      state: 'AVAILABLE',
-      currentVersion: getSafeAppVersion(),
-      availableVersion: info.version,
-    };
-  });
-
-  autoUpdater.on('update-not-available', () => {
-    if (isManualCheck) {
-      broadcastStatus({
-        state: 'NOT_AVAILABLE',
-        currentVersion: getSafeAppVersion(),
-      });
-    } else {
-      updateStatus = {
-        state: 'NOT_AVAILABLE',
-        currentVersion: getSafeAppVersion(),
-      };
-    }
-  });
-
-  autoUpdater.on('download-progress', (progressObj: UpdateProgress) => {
-    // Keep internal state updated silently
-    updateStatus = {
-      state: 'DOWNLOADING',
-      currentVersion: getSafeAppVersion(),
-      availableVersion: updateStatus.availableVersion,
-      progress: {
-        bytesPerSecond: progressObj.bytesPerSecond,
-        percent: Math.round(progressObj.percent),
-        total: progressObj.total,
-        transferred: progressObj.transferred,
-      },
-    };
-  });
-
-  autoUpdater.on('update-downloaded', (info: any) => {
-    broadcastStatus({
-      state: 'DOWNLOADED',
-      currentVersion: getSafeAppVersion(),
-      availableVersion: info.version,
+  try {
+    autoUpdater.setFeedURL({
+      provider: 'generic',
+      url: activeConfig.feedUrl || DEFAULT_UPDATE_FEED_URL,
     });
-    logActivity('SYSTEM', 'INFO', 'Auto-Updater', `Update v${info.version} downloaded and ready to install.`);
-  });
+    autoUpdater.channel = activeConfig.channel === 'BETA' ? 'beta' : 'latest';
+    autoUpdater.autoDownload = activeConfig.autoDownload;
+    autoUpdater.autoInstallOnAppQuit = activeConfig.notifyBeforeRestart === false;
 
-  autoUpdater.on('error', (err: any) => {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    logActivity('SYSTEM', 'WARNING', 'Auto-Updater', `Auto-updater check/download error (handled silently): ${errorMsg}`);
+    autoUpdater.on('checking-for-update', () => {
+      if (isManualCheck) {
+        broadcastStatus({
+          state: 'CHECKING',
+          currentVersion: getSafeAppVersion(),
+        });
+      }
+    });
 
-    // Offline / network failure -> completely silent in background checks
-    if (isManualCheck) {
-      broadcastStatus({
-        state: 'ERROR',
+    autoUpdater.on('update-available', (info: any) => {
+      safeLogActivity('INFO', 'Auto-Updater', `Update available: v${info.version} (Channel: ${activeConfig.channel})`);
+      updateStatus = {
+        state: 'AVAILABLE',
         currentVersion: getSafeAppVersion(),
-        error: errorMsg,
-      });
-    } else {
+        availableVersion: info.version,
+        releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
+      };
+      if (isManualCheck || !activeConfig.autoDownload) {
+        broadcastStatus(updateStatus);
+      }
+    });
+
+    autoUpdater.on('update-not-available', () => {
+      updateStatus = {
+        state: 'NOT_AVAILABLE',
+        currentVersion: getSafeAppVersion(),
+      };
+      if (isManualCheck) {
+        broadcastStatus(updateStatus);
+      }
+      isManualCheck = false;
+    });
+
+    autoUpdater.on('download-progress', (progressObj: UpdateProgress) => {
+      updateStatus = {
+        state: 'DOWNLOADING',
+        currentVersion: getSafeAppVersion(),
+        availableVersion: updateStatus.availableVersion,
+        progress: {
+          bytesPerSecond: progressObj.bytesPerSecond,
+          percent: Math.round(progressObj.percent),
+          total: progressObj.total,
+          transferred: progressObj.transferred,
+        },
+      };
+      broadcastStatus(updateStatus);
+    });
+
+    autoUpdater.on('update-downloaded', (info: any) => {
+      updateStatus = {
+        state: 'DOWNLOADED',
+        currentVersion: getSafeAppVersion(),
+        availableVersion: info.version,
+        releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
+      };
+      broadcastStatus(updateStatus);
+      safeLogActivity('INFO', 'Auto-Updater', `Update v${info.version} downloaded and verified. Ready to install.`);
+    });
+
+    autoUpdater.on('error', (err: any) => {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      safeLogActivity('WARNING', 'Auto-Updater', `Update check/download notice: ${errorMsg}`);
+
       updateStatus = {
         state: 'ERROR',
         currentVersion: getSafeAppVersion(),
         error: errorMsg,
       };
-    }
-    isManualCheck = false;
-  });
+      if (isManualCheck) {
+        broadcastStatus(updateStatus);
+      }
+      isManualCheck = false;
+    });
+  } catch (initErr) {
+    console.warn('[UpdaterService] AutoUpdater initialization warning:', initErr);
+  }
 
-  // Check once at startup (after 10s delay so first launch stays fast) + every 6 hours
-  if (app && app.isPackaged) {
+  // Periodic check if autoCheck is enabled
+  if (app && app.isPackaged && activeConfig.autoCheck) {
     setTimeout(() => {
       checkForAppUpdates(false);
     }, 10000);
@@ -191,35 +227,99 @@ export function initAutoUpdater(): void {
       clearInterval(recurringTimer);
     }
     recurringTimer = setInterval(() => {
-      checkForAppUpdates(false);
+      if (activeConfig.autoCheck) {
+        checkForAppUpdates(false);
+      }
     }, UPDATE_CHECK_INTERVAL_MS);
   }
 }
 
-export async function checkForAppUpdates(manual = true): Promise<UpdateStatusEvent> {
+export async function checkForAppUpdates(manual = true, overrideChannel?: UpdateChannel): Promise<UpdateStatusEvent> {
   isManualCheck = manual;
+  const targetChannel = overrideChannel || activeConfig.channel;
+
+  if (manual) {
+    broadcastStatus({
+      state: 'CHECKING',
+      currentVersion: getSafeAppVersion(),
+    });
+  }
+
+  activeConfig.lastCheckedAt = new Date().toISOString();
+  saveUpdateConfig(activeConfig);
+
   try {
-    if (!app || !app.isPackaged) {
-      const mockResult: UpdateStatusEvent = {
-        state: 'NOT_AVAILABLE',
-        currentVersion: getSafeAppVersion() + ' (Dev)',
-      };
-      if (manual) {
-        broadcastStatus(mockResult);
-      }
-      return mockResult;
+    // 1. Packaged Electron runtime path
+    if (app && app.isPackaged) {
+      const autoUpdater = getAutoUpdater();
+      autoUpdater.channel = targetChannel === 'BETA' ? 'beta' : 'latest';
+      await autoUpdater.checkForUpdates();
+      return updateStatus;
     }
 
-    const autoUpdater = getAutoUpdater();
-    await autoUpdater.checkForUpdates();
-    return updateStatus;
+    // 2. Standalone / Dev / Test Provider Path
+    const provider = getActiveUpdateProvider();
+    const manifest = await provider.fetchManifest(targetChannel, activeConfig.feedUrl);
+
+    if (!manifest) {
+      const notAvail: UpdateStatusEvent = {
+        state: 'NOT_AVAILABLE',
+        currentVersion: getSafeAppVersion(),
+        channel: targetChannel,
+      };
+      broadcastStatus(notAvail);
+      return notAvail;
+    }
+
+    // Validate manifest security
+    const validation = validateUpdateManifest(manifest, getSafeAppVersion(), targetChannel);
+    if (!validation.valid) {
+      const isDowngradeOrCurrent = validation.error?.includes('Downgrade or duplicate');
+      if (isDowngradeOrCurrent) {
+        const upToDate: UpdateStatusEvent = {
+          state: 'NOT_AVAILABLE',
+          currentVersion: getSafeAppVersion(),
+          channel: targetChannel,
+        };
+        broadcastStatus(upToDate);
+        return upToDate;
+      }
+
+      const errResult: UpdateStatusEvent = {
+        state: 'ERROR',
+        currentVersion: getSafeAppVersion(),
+        error: validation.error,
+        channel: targetChannel,
+      };
+      broadcastStatus(errResult);
+      return errResult;
+    }
+
+    currentPendingManifest = validation.validatedManifest!;
+    const availResult: UpdateStatusEvent = {
+      state: 'AVAILABLE',
+      currentVersion: getSafeAppVersion(),
+      availableVersion: currentPendingManifest.version,
+      releaseNotes: currentPendingManifest.releaseNotes,
+      mandatory: currentPendingManifest.mandatory,
+      channel: targetChannel,
+    };
+    broadcastStatus(availResult);
+
+    if (activeConfig.autoDownload) {
+      startDownloadUpdate();
+    }
+
+    return availResult;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    logActivity('SYSTEM', 'WARNING', 'Auto-Updater', `Update check failed: ${msg}`);
+    safeLogActivity('WARNING', 'Auto-Updater', `Update check failed: ${msg}`);
+
     const errorResult: UpdateStatusEvent = {
       state: 'ERROR',
       currentVersion: getSafeAppVersion(),
       error: msg,
+      channel: targetChannel,
     };
     if (manual) {
       broadcastStatus(errorResult);
@@ -230,50 +330,161 @@ export async function checkForAppUpdates(manual = true): Promise<UpdateStatusEve
 
 export async function startDownloadUpdate(): Promise<boolean> {
   try {
-    if (!app || !app.isPackaged) {
-      // Simulate download in development mode for UI verification
-      let percent = 0;
-      const interval = setInterval(() => {
-        percent += 20;
-        if (percent >= 100) {
-          clearInterval(interval);
-          broadcastStatus({
-            state: 'DOWNLOADED',
-            currentVersion: getSafeAppVersion(),
-            availableVersion: '1.0.1',
-          });
-        }
-      }, 300);
+    if (app && app.isPackaged) {
+      const autoUpdater = getAutoUpdater();
+      await autoUpdater.downloadUpdate();
       return true;
     }
 
-    const autoUpdater = getAutoUpdater();
-    await autoUpdater.downloadUpdate();
+    // Standalone / Dev / Test download using provider and integrity check
+    if (!currentPendingManifest) {
+      broadcastStatus({
+        state: 'ERROR',
+        currentVersion: getSafeAppVersion(),
+        error: 'No valid update manifest available for download',
+      });
+      return false;
+    }
+
+    broadcastStatus({
+      state: 'DOWNLOADING',
+      currentVersion: getSafeAppVersion(),
+      availableVersion: currentPendingManifest.version,
+      progress: {
+        bytesPerSecond: 0,
+        percent: 0,
+        total: 0,
+        transferred: 0,
+      },
+    });
+
+    const primaryFile = currentPendingManifest.files[0];
+    const updateDir = path.join(process.cwd(), '.mahi_data', 'updates');
+    if (!fs.existsSync(updateDir)) {
+      fs.mkdirSync(updateDir, { recursive: true });
+    }
+
+    const destPath = path.join(updateDir, primaryFile.name || `mahi-setup-v${currentPendingManifest.version}.exe`);
+    const provider = getActiveUpdateProvider();
+
+    await provider.downloadFile(primaryFile.url, destPath, (prog) => {
+      broadcastStatus({
+        state: 'DOWNLOADING',
+        currentVersion: getSafeAppVersion(),
+        availableVersion: currentPendingManifest?.version,
+        progress: prog,
+      });
+    });
+
+    // Cryptographic integrity validation
+    const expectedChecksum = primaryFile.sha256 || currentPendingManifest.sha256 || primaryFile.sha512 || currentPendingManifest.sha512;
+    const algorithm = (primaryFile.sha512 || currentPendingManifest.sha512) ? 'sha512' : 'sha256';
+
+    if (expectedChecksum) {
+      const integrity = await verifyFileIntegrity(destPath, expectedChecksum, algorithm, primaryFile.size);
+      if (!integrity.verified) {
+        try { fs.unlinkSync(destPath); } catch {}
+        logActivity('SYSTEM', 'ERROR', 'Auto-Updater', `Tampered or corrupted update artifact rejected: ${integrity.error}`);
+        broadcastStatus({
+          state: 'ERROR',
+          currentVersion: getSafeAppVersion(),
+          error: `Corrupted or tampered update detected. Download aborted: ${integrity.error}`,
+        });
+        return false;
+      }
+    }
+
+    downloadedFilePath = destPath;
+    broadcastStatus({
+      state: 'DOWNLOADED',
+      currentVersion: getSafeAppVersion(),
+      availableVersion: currentPendingManifest.version,
+      releaseNotes: currentPendingManifest.releaseNotes,
+    });
+    safeLogActivity('INFO', 'Auto-Updater', `Verified update package downloaded: v${currentPendingManifest.version}`);
+
     return true;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    logActivity('SYSTEM', 'WARNING', 'Auto-Updater', `downloadUpdate failed: ${msg}`);
+    safeLogActivity('WARNING', 'Auto-Updater', `Download update failed: ${msg}`);
+    broadcastStatus({
+      state: 'ERROR',
+      currentVersion: getSafeAppVersion(),
+      error: msg,
+    });
     return false;
   }
 }
 
-export function applyAndRestartUpdate(): void {
+/**
+ * Checks if any browser profiles are currently running.
+ */
+export function getActiveProfilesRunning(): string[] {
+  try {
+    return processManager.getRunningProfiles().map((p) => p.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Applies update and coordinates restart with strict profile data safety.
+ */
+export async function applyAndRestartUpdate(options?: UpdateInstallOptions): Promise<UpdateInstallResult> {
+  const activeProfiles = getActiveProfilesRunning();
+
+  // Safety Gate: Block abrupt restart if profiles are running without explicit force
+  if (activeProfiles.length > 0 && !options?.force) {
+    safeLogActivity(
+      'WARNING',
+      'Auto-Updater',
+      `Update install deferred: ${activeProfiles.length} browser profiles are active (${activeProfiles.join(', ')})`
+    );
+    return {
+      success: false,
+      reason: 'PROFILES_ACTIVE',
+      activeProfiles,
+      error: `Cannot update while ${activeProfiles.length} browser profile(s) are running. Please close them or confirm force restart.`,
+    };
+  }
+
+  // Pre-Update Flush: Ensure database and storage state are flushed to disk
+  try {
+    const db = getDatabase();
+    if (db && typeof (db as any).exec === 'function') {
+      try { (db as any).exec('PRAGMA wal_checkpoint(FULL);'); } catch {}
+    }
+  } catch {}
+
+  broadcastStatus({
+    state: 'INSTALLING',
+    currentVersion: getSafeAppVersion(),
+    availableVersion: updateStatus.availableVersion,
+  });
+
+  safeLogActivity('INFO', 'Auto-Updater', `Applying update and restarting application.`);
+
   try {
     if (app && app.isPackaged) {
       const autoUpdater = getAutoUpdater();
       autoUpdater.quitAndInstall();
     } else {
+      // Development / Staging simulation
       if (app && typeof app.relaunch === 'function') {
         app.relaunch();
         app.quit();
       }
     }
+    return { success: true };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    logActivity('SYSTEM', 'ERROR', 'Auto-Updater', `applyAndRestartUpdate failed: ${msg}`);
-    if (app && typeof app.quit === 'function') {
-      app.quit();
-    }
+    safeLogActivity('ERROR', 'Auto-Updater', `applyAndRestartUpdate execution failed: ${msg}`);
+    broadcastStatus({
+      state: 'ERROR',
+      currentVersion: getSafeAppVersion(),
+      error: msg,
+    });
+    return { success: false, error: msg };
   }
 }
 
@@ -281,5 +492,50 @@ export function getAppUpdateStatus(): UpdateStatusEvent {
   return {
     ...updateStatus,
     currentVersion: getSafeAppVersion(),
+    channel: activeConfig.channel,
   };
+}
+
+export function getUpdateConfig(): UpdateConfig {
+  return { ...activeConfig };
+}
+
+export function setUpdateConfig(partial: Partial<UpdateConfig>): UpdateConfig {
+  activeConfig = {
+    ...activeConfig,
+    ...partial,
+  };
+  saveUpdateConfig(activeConfig);
+
+  // Update live autoUpdater configuration
+  try {
+    const autoUpdater = getAutoUpdater();
+    if (partial.channel) {
+      autoUpdater.channel = partial.channel === 'BETA' ? 'beta' : 'latest';
+    }
+    if (partial.autoDownload !== undefined) {
+      autoUpdater.autoDownload = partial.autoDownload;
+    }
+    if (partial.feedUrl) {
+      autoUpdater.setFeedURL({
+        provider: 'generic',
+        url: partial.feedUrl,
+      });
+    }
+  } catch {}
+
+  broadcastStatus(updateStatus);
+  return { ...activeConfig };
+}
+
+// Reset internal state for test harnesses
+export function resetUpdaterStateForTesting(): void {
+  updateStatus = {
+    state: 'IDLE',
+    currentVersion: getSafeAppVersion(),
+    channel: activeConfig.channel,
+  };
+  currentPendingManifest = null;
+  downloadedFilePath = null;
+  isManualCheck = false;
 }

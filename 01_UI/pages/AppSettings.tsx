@@ -10,10 +10,14 @@ import {
   CheckCircle2,
   Save,
   Globe2,
+  DownloadCloud,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { AppSettings } from '../../10_CONFIG/shared/types/settings.js';
+import { UpdateConfig, UpdateStatusEvent } from '../../10_CONFIG/shared/types/updater.js';
 import { NavigationPage } from '../components/Sidebar.js';
 
 interface AppSettingsPageProps {
@@ -24,8 +28,16 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
   const { settings, fetchSettings, updateSettings, theme, setTheme } = useSettingsStore();
   const { showToast } = useToastStore();
 
-  const [activeTab, setActiveTab] = useState<'general' | 'privacy' | 'security' | 'performance' | 'api'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'privacy' | 'security' | 'performance' | 'api' | 'updates'>('general');
   const [formData, setFormData] = useState<AppSettings>(settings);
+  const [updateConfig, setUpdateConfig] = useState<UpdateConfig>({
+    channel: 'STABLE',
+    autoCheck: true,
+    autoDownload: true,
+    notifyBeforeRestart: true,
+  });
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatusEvent | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
 
   // App Lock PIN setup state
   const [newPin, setNewPin] = useState('');
@@ -34,6 +46,16 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
 
   useEffect(() => {
     fetchSettings();
+    if (window.mahiAPI?.getUpdateConfig) {
+      window.mahiAPI.getUpdateConfig().then((cfg) => {
+        if (cfg) setUpdateConfig(cfg);
+      });
+    }
+    if (window.mahiAPI?.getUpdateStatus) {
+      window.mahiAPI.getUpdateStatus().then((st) => {
+        if (st) setUpdateStatus(st);
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -42,6 +64,31 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
 
   const handleSave = async () => {
     await updateSettings(formData);
+    if (window.mahiAPI?.setUpdateConfig) {
+      await window.mahiAPI.setUpdateConfig(updateConfig);
+    }
+    showToast({ type: 'success', title: 'Settings Saved', message: 'Preferences updated successfully.' });
+  };
+
+  const handleCheckForUpdates = async () => {
+    setIsCheckingUpdate(true);
+    try {
+      if (window.mahiAPI?.checkForUpdates) {
+        const res = await window.mahiAPI.checkForUpdates(updateConfig.channel);
+        setUpdateStatus(res);
+        if (res.state === 'NOT_AVAILABLE') {
+          showToast({ type: 'info', title: 'Up to Date', message: 'You are running the latest version.' });
+        } else if (res.state === 'AVAILABLE') {
+          showToast({ type: 'success', title: 'Update Available', message: `Version v${res.availableVersion} is available.` });
+        } else if (res.state === 'ERROR') {
+          showToast({ type: 'error', title: 'Update Notice', message: res.error || 'Update check encountered an issue.' });
+        }
+      }
+    } catch (err: any) {
+      showToast({ type: 'error', title: 'Update Check Error', message: err.message });
+    } finally {
+      setIsCheckingUpdate(false);
+    }
   };
 
   const handleSetPin = async (e: React.FormEvent) => {
@@ -97,6 +144,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
           { id: 'security', label: 'Security & App Lock' },
           { id: 'performance', label: 'Performance' },
           { id: 'api', label: 'Local REST API' },
+          { id: 'updates', label: 'Updates & Channel' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -346,6 +394,158 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
               <p className="text-[11px] text-slate-400 mt-1">
                 Include header <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">Authorization: Bearer [token]</code> in API requests.
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* UPDATES & CHANNEL TAB */}
+        {activeTab === 'updates' && (
+          <div className="space-y-6 max-w-2xl animate-in fade-in duration-150 text-xs">
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm">
+                  MAHI BROWSER Client Updates
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Current Version: <span className="font-mono font-semibold text-teal-500">v1.1.1</span> (x64)
+                </p>
+              </div>
+
+              <button
+                type="button"
+                disabled={isCheckingUpdate}
+                onClick={handleCheckForUpdates}
+                className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-semibold flex items-center gap-2 transition active:scale-95 disabled:opacity-50"
+              >
+                {isCheckingUpdate ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>Checking...</span>
+                  </>
+                ) : (
+                  <>
+                    <DownloadCloud size={14} />
+                    <span>Check for Updates</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Live Status Display */}
+            {updateStatus && (
+              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 flex items-start gap-3">
+                <div className="mt-0.5">
+                  {updateStatus.state === 'NOT_AVAILABLE' && <CheckCircle2 size={16} className="text-emerald-500" />}
+                  {updateStatus.state === 'AVAILABLE' && <DownloadCloud size={16} className="text-teal-400" />}
+                  {updateStatus.state === 'DOWNLOADING' && <RefreshCw size={16} className="animate-spin text-teal-400" />}
+                  {updateStatus.state === 'DOWNLOADED' && <CheckCircle2 size={16} className="text-teal-400" />}
+                  {updateStatus.state === 'ERROR' && <AlertCircle size={16} className="text-amber-500" />}
+                  {updateStatus.state === 'CHECKING' && <RefreshCw size={16} className="animate-spin text-slate-400" />}
+                </div>
+                <div className="flex-1">
+                  <div className="font-semibold text-slate-700 dark:text-slate-300">
+                    {updateStatus.state === 'NOT_AVAILABLE' && 'Application is up to date'}
+                    {updateStatus.state === 'AVAILABLE' && `New version v${updateStatus.availableVersion} is available`}
+                    {updateStatus.state === 'DOWNLOADING' && `Downloading update package (${updateStatus.progress?.percent || 0}%)`}
+                    {updateStatus.state === 'DOWNLOADED' && `Update v${updateStatus.availableVersion} verified and ready to install`}
+                    {updateStatus.state === 'ERROR' && 'Update Check Notice'}
+                    {updateStatus.state === 'CHECKING' && 'Checking updates server...'}
+                  </div>
+                  {updateStatus.releaseNotes && (
+                    <div className="text-[11px] text-slate-400 mt-1 italic">
+                      "{updateStatus.releaseNotes}"
+                    </div>
+                  )}
+                  {updateStatus.error && (
+                    <div className="text-[11px] text-amber-500 mt-0.5">
+                      {updateStatus.error}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Channel Selection */}
+            <div>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Release Channel
+              </label>
+              <select
+                value={updateConfig.channel}
+                onChange={(e) =>
+                  setUpdateConfig({
+                    ...updateConfig,
+                    channel: e.target.value as 'STABLE' | 'BETA',
+                  })
+                }
+                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-medium"
+              >
+                <option value="STABLE">STABLE — Production Releases (Recommended)</option>
+                <option value="BETA">BETA — Early Access &amp; Preview Features</option>
+              </select>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Stable users receive thoroughly vetted production builds. Beta users receive preview builds before general availability.
+              </p>
+            </div>
+
+            {/* Automation Preferences */}
+            <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <label className="flex items-center space-x-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={updateConfig.autoCheck}
+                  onChange={(e) =>
+                    setUpdateConfig({ ...updateConfig, autoCheck: e.target.checked })
+                  }
+                  className="w-4 h-4 text-teal-600 rounded border-slate-300 dark:border-slate-700 focus:ring-teal-500"
+                />
+                <div>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    Automatically Check for Updates
+                  </span>
+                  <p className="text-[11px] text-slate-400">
+                    Checks asynchronously on startup and every 6 hours without interrupting your work.
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-center space-x-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={updateConfig.autoDownload}
+                  onChange={(e) =>
+                    setUpdateConfig({ ...updateConfig, autoDownload: e.target.checked })
+                  }
+                  className="w-4 h-4 text-teal-600 rounded border-slate-300 dark:border-slate-700 focus:ring-teal-500"
+                />
+                <div>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    Automatically Download Updates
+                  </span>
+                  <p className="text-[11px] text-slate-400">
+                    Downloads verified packages in the background so you can restart when ready.
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-center space-x-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={updateConfig.notifyBeforeRestart}
+                  onChange={(e) =>
+                    setUpdateConfig({ ...updateConfig, notifyBeforeRestart: e.target.checked })
+                  }
+                  className="w-4 h-4 text-teal-600 rounded border-slate-300 dark:border-slate-700 focus:ring-teal-500"
+                />
+                <div>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    Notify Before Restart
+                  </span>
+                  <p className="text-[11px] text-slate-400">
+                    Always prompt before applying updates to protect active browser profiles and open tabs.
+                  </p>
+                </div>
+              </label>
             </div>
           </div>
         )}

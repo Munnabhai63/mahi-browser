@@ -190,10 +190,12 @@ const api = {
   teamWorkspaceGetAuditLogs: (workspaceId, limit) => ipcRenderer.invoke('teamWorkspace:getAuditLogs', workspaceId, limit),
 
   // Auto-Updater
-  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  checkForUpdates: (channel) => ipcRenderer.invoke('updater:check', channel),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),
-  installUpdate: () => ipcRenderer.invoke('updater:install'),
+  installUpdate: (options) => ipcRenderer.invoke('updater:install', options),
   getUpdateStatus: () => ipcRenderer.invoke('updater:getStatus'),
+  getUpdateConfig: () => ipcRenderer.invoke('updater:getConfig'),
+  setUpdateConfig: (config) => ipcRenderer.invoke('updater:setConfig', config),
 
   // Resource Monitoring & Memory Optimizer
   getFleetResources: () => ipcRenderer.invoke('resources:getFleetUsage'),

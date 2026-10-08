@@ -191,10 +191,12 @@ const api: MahiBrowserAPI = {
   teamWorkspaceGetAuditLogs: (workspaceId: string, limit?: number) => ipcRenderer.invoke('teamWorkspace:getAuditLogs', workspaceId, limit),
 
   // Auto-Updater
-  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  checkForUpdates: (channel?: 'STABLE' | 'BETA') => ipcRenderer.invoke('updater:check', channel),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),
-  installUpdate: () => ipcRenderer.invoke('updater:install'),
+  installUpdate: (options?: any) => ipcRenderer.invoke('updater:install', options),
   getUpdateStatus: () => ipcRenderer.invoke('updater:getStatus'),
+  getUpdateConfig: () => ipcRenderer.invoke('updater:getConfig'),
+  setUpdateConfig: (config: any) => ipcRenderer.invoke('updater:setConfig', config),
 
   // Resource Monitoring & Memory Optimizer
   getFleetResources: () => ipcRenderer.invoke('resources:getFleetUsage'),

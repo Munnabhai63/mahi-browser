@@ -68,6 +68,8 @@ import {
   startDownloadUpdate,
   applyAndRestartUpdate,
   getAppUpdateStatus,
+  getUpdateConfig,
+  setUpdateConfig,
 } from '../services/updater-service.js';
 import { sampleFleetResources, optimizeFleetMemory } from '../../03_HARDWARE/resource-monitor-service.js';
 import { exportMasterVault, importMasterVault } from '../services/vault-service.js';
@@ -1523,9 +1525,9 @@ export function registerIpcHandlers(): void {
   });
 
   // UPDATER HANDLERS
-  ipcMain.handle('updater:check', async () => {
+  ipcMain.handle('updater:check', async (_event, channel?: 'STABLE' | 'BETA') => {
     try {
-      return checkForAppUpdates(true);
+      return checkForAppUpdates(true, channel);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -1539,10 +1541,9 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('updater:install', async () => {
+  ipcMain.handle('updater:install', async (_event, options?: any) => {
     try {
-      applyAndRestartUpdate();
-      return true;
+      return applyAndRestartUpdate(options);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -1551,6 +1552,22 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('updater:getStatus', async () => {
     try {
       return getAppUpdateStatus();
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('updater:getConfig', async () => {
+    try {
+      return getUpdateConfig();
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('updater:setConfig', async (_event, config: any) => {
+    try {
+      return setUpdateConfig(config);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }

@@ -36,10 +36,20 @@ export interface AdvancedSettings {
   apiAuthToken: string;
 }
 
+export interface UpdateSettings {
+  autoCheck: boolean;
+  autoDownload: boolean;
+  channel: 'STABLE' | 'BETA';
+  notifyBeforeRestart: boolean;
+  feedUrl?: string;
+}
+
 export interface AppSettings {
   general: GeneralSettings;
   privacy: PrivacySettings;
   security: SecuritySettings;
   performance: PerformanceSettings;
   advanced: AdvancedSettings;
+  updates?: UpdateSettings;
 }
+

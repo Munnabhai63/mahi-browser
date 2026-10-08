@@ -43,6 +43,12 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
           title: 'Up to Date',
           message: 'You are running the latest version of MAHI BROWSER.',
         });
+      } else if (res.state === 'AVAILABLE') {
+        useToastStore.getState().showToast({
+          type: 'success',
+          title: 'Update Available',
+          message: `New version v${res.availableVersion} is available.`,
+        });
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

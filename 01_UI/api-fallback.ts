@@ -486,10 +486,16 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     teamWorkspaceGetAuditLogs: async () => [],
 
     // Auto-Updater
-    checkForUpdates: async () => ({ state: 'NOT_AVAILABLE', currentVersion: '1.1.1' }),
+    checkForUpdates: async (channel?: 'STABLE' | 'BETA') => ({
+      state: 'NOT_AVAILABLE' as const,
+      currentVersion: '1.1.1',
+      channel: channel || 'STABLE',
+    }),
     downloadUpdate: async () => true,
-    installUpdate: async () => true,
-    getUpdateStatus: async () => ({ state: 'IDLE', currentVersion: '1.1.1' }),
+    installUpdate: async (_options?: any) => ({ success: true }),
+    getUpdateStatus: async () => ({ state: 'IDLE' as const, currentVersion: '1.1.1', channel: 'STABLE' as const }),
+    getUpdateConfig: async () => ({ channel: 'STABLE' as const, autoCheck: true, autoDownload: true, notifyBeforeRestart: true }),
+    setUpdateConfig: async (config: any) => ({ channel: 'STABLE' as const, autoCheck: true, autoDownload: true, notifyBeforeRestart: true, ...config }),
 
     // Resource Monitoring & Memory Optimizer
     getFleetResources: async () => ({ totalMemoryMB: 0, totalCpuPercent: 0, activeProfilesCount: 0, profiles: {} }),
