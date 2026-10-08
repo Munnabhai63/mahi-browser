@@ -37,6 +37,7 @@ import { CountryFlag, getFlagEmoji, getCountryNameFromCode } from '../components
 import { UniversalBulkImportModal } from '../components/UniversalBulkImportModal.js';
 import { SynchronizerModal } from '../components/SynchronizerModal.js';
 import { CloudSyncSection } from '../components/CloudSyncSection.js';
+import { StarterProfilesSection } from '../components/StarterProfilesSection.js';
 
 interface ProfilesListProps {
   onNavigate: (page: NavigationPage) => void;
@@ -953,6 +954,19 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
             <Cloud className="w-3.5 h-3.5" />
             <span>Cloud Sync</span>
           </button>
+
+          {/* Starter Templates Tab */}
+          <button
+            onClick={() => setActiveFolderTab('STARTER_TEMPLATES')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
+              activeFolderTab === 'STARTER_TEMPLATES'
+                ? 'bg-teal-600 text-white font-semibold shadow-xs'
+                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-850'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-teal-400" />
+            <span>Starter Templates</span>
+          </button>
         </div>
 
         {/* Right: Search & Action Buttons */}
@@ -1126,10 +1140,18 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
 
 
 
-      {/* Main View: GoLogin-Style Table or Cloud Sync Section */}
+      {/* Main View: GoLogin-Style Table, Cloud Sync, or Starter Templates Section */}
       {activeFolderTab === 'CLOUD_SYNC' ? (
         <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950">
           <CloudSyncSection onNavigate={onNavigate} onProfileRestored={fetchProfiles} />
+        </div>
+      ) : activeFolderTab === 'STARTER_TEMPLATES' || profiles.length === 0 ? (
+        <div className="flex-1 overflow-auto bg-slate-950">
+          <StarterProfilesSection
+            onNavigate={onNavigate}
+            onOpenUniversalImport={() => setIsUniversalImportOpen(true)}
+            isStandaloneTab={profiles.length > 0 && activeFolderTab === 'STARTER_TEMPLATES'}
+          />
         </div>
       ) : (
       <div className="flex-1 overflow-auto bg-white dark:bg-slate-900">
@@ -1138,17 +1160,18 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
             <div className="w-16 h-16 rounded-2xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center mb-4">
               <Globe2 className="w-8 h-8" />
             </div>
-            <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">No Browser Profiles Found</h3>
+            <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">No Profiles Match Filter</h3>
             <p className="text-xs text-slate-400 max-w-sm mt-1 mb-6">
-              Create your first isolated profile with 1-click and start browsing immediately.
+              No profiles found matching "{filter.searchQuery || activeFolderTab}". Try clearing your search query or switching folders.
             </p>
             <button
-              onClick={handleInstantCreate}
-              disabled={instantCreating}
-              className="px-5 py-2.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-40 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-600/25 flex items-center space-x-2 active:scale-95 transition-all"
+              onClick={() => {
+                setFilter({ searchQuery: '' });
+                setActiveFolderTab('ALL');
+              }}
+              className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center space-x-2 active:scale-95 transition-all"
             >
-              <Plus className={`w-4 h-4 ${instantCreating ? 'animate-spin' : ''}`} />
-              <span>{instantCreating ? 'Creating Profile...' : '+ Create First Profile (Instant)'}</span>
+              <span>Clear Filter</span>
             </button>
           </div>
         ) : (

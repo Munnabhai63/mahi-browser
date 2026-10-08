@@ -101,7 +101,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       return profile;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('Free plan limit reached') || msg.includes('Pro plan limit reached')) {
+      if (msg.includes('Free plan limit reached') || msg.includes('Pro plan limit reached') || msg.includes('PROFILE_LIMIT_REACHED')) {
         import('./useAccountStore.js').then(({ useAccountStore }) => {
           useAccountStore.getState().openAccountModal(dto);
         });

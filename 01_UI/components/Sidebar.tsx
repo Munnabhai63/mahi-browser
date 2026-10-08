@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import {
   LayoutDashboard,
   Layers,
@@ -20,7 +21,9 @@ import {
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useSettingsStore } from '../stores/useSettingsStore.js';
+import { useAccountStore } from '../stores/useAccountStore.js';
 import { AccountDropdown } from './AccountDropdown.js';
+import { UpgradeModal } from './UpgradeModal.js';
 
 export type NavigationPage =
   | 'dashboard'
@@ -56,12 +59,30 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
   const trashProfiles = useProfileStore((state) => state.trashProfiles);
   const runningCount = profiles.filter((p) => p.status === 'RUNNING' || p.status === 'STARTING').length;
   const { settings, lockApp } = useSettingsStore();
+  const { hasCapability } = useAccountStore();
+
+  const [lockedModalData, setLockedModalData] = useState<{
+    featureTitle: string;
+    featureDescription: string;
+    requiredPlan: 'PRO' | 'BUSINESS';
+  } | null>(null);
+
+  const isTeamLocked = !hasCapability('workspace.team');
+  const isAutomationLocked = !hasCapability('automation.rpa');
 
   const navItems = [
     { id: 'dashboard' as NavigationPage, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'profiles' as NavigationPage, label: 'Profiles', icon: Layers, badge: runningCount > 0 ? `${runningCount} Active` : undefined },
     { id: 'diagnostics' as NavigationPage, label: 'Diagnostics', icon: Activity },
-    { id: 'workspaces' as NavigationPage, label: 'Workspaces & Team', icon: Users },
+    {
+      id: 'workspaces' as NavigationPage,
+      label: 'Workspaces & Team',
+      icon: Users,
+      badge: isTeamLocked ? 'BIZ' : undefined,
+      locked: isTeamLocked,
+      requiredPlan: 'BUSINESS' as const,
+      description: 'Collaborate with team members, share isolated profiles, and enforce organization-wide role-based access control.',
+    },
     { id: 'captcha' as NavigationPage, label: 'Captcha Solver', icon: Bot },
     { id: 'trash-bin' as NavigationPage, label: 'Trash Bin', icon: Trash2, badge: trashProfiles.length > 0 ? `${trashProfiles.length}` : undefined },
     { id: 'mobile-rotator' as NavigationPage, label: 'Mobile IP Rotator', icon: Smartphone },
@@ -70,7 +91,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
     { id: 'cookies' as NavigationPage, label: 'Cookies', icon: Globe2 },
     { id: 'history' as NavigationPage, label: 'History', icon: ScrollText },
     { id: 'extensions' as NavigationPage, label: 'Extensions', icon: Puzzle },
-    { id: 'automation' as NavigationPage, label: 'Automation', icon: PlaySquare },
+    {
+      id: 'automation' as NavigationPage,
+      label: 'Automation',
+      icon: PlaySquare,
+      badge: isAutomationLocked ? 'PRO' : undefined,
+      locked: isAutomationLocked,
+      requiredPlan: 'PRO' as const,
+      description: 'Build and run automated RPA workflows, schedule repetitive tasks, and warm cookies across browser profiles.',
+    },
     { id: 'logs' as NavigationPage, label: 'Activity Logs', icon: ScrollText },
     { id: 'settings' as NavigationPage, label: 'Settings', icon: Settings },
     { id: 'help' as NavigationPage, label: 'Help & Docs', icon: HelpCircle },
@@ -101,7 +130,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
           return (
             <button
               key={item.id}
-              onClick={() => onNavigate(item.id)}
+              onClick={() => {
+                if ((item as any).locked) {
+                  setLockedModalData({
+                    featureTitle: item.label,
+                    featureDescription: (item as any).description || '',
+                    requiredPlan: (item as any).requiredPlan || 'PRO',
+                  });
+                  return;
+                }
+                onNavigate(item.id);
+              }}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 group active:scale-[0.98] ${
                 isActive
                   ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-slate-950 shadow-md shadow-teal-500/20'
@@ -113,9 +152,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
                 <span>{item.label}</span>
               </div>
               {item.badge && (
-                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 ${
                   isActive ? 'bg-slate-950 text-teal-300' : 'bg-teal-950 text-teal-400 border border-teal-800/50 shadow-xs'
                 }`}>
+                  {(item as any).locked && <Lock className="w-2.5 h-2.5 text-amber-400" />}
                   {item.badge}
                 </span>
               )}
@@ -175,6 +215,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
           )}
         </div>
       </div>
+
+      {lockedModalData && (
+        <UpgradeModal
+          isOpen={!!lockedModalData}
+          onClose={() => setLockedModalData(null)}
+          featureTitle={lockedModalData.featureTitle}
+          featureDescription={lockedModalData.featureDescription}
+          requiredPlan={lockedModalData.requiredPlan}
+        />
+      )}
     </aside>
   );
 };

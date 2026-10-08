@@ -26,6 +26,25 @@ export interface CommercialUser {
   lastLoginAt?: string;
 }
 
+export type FeatureCapability =
+  | 'profile.basic'
+  | 'profile.multiple'
+  | 'cloud.sync'
+  | 'cloud.browser'
+  | 'proxy.builtin'
+  | 'proxy.custom'
+  | 'automation.rpa'
+  | 'automation.scheduler'
+  | 'automation.multiProfile'
+  | 'automation.cookieWarmer'
+  | 'automation.synchronizer'
+  | 'workspace.team'
+  | 'workspace.sharing'
+  | 'api.remote'
+  | 'api.webhooks'
+  | 'mobile.cloudBrowser'
+  | 'advanced.fingerprint';
+
 export interface CommercialPlanLimits {
   maxProfiles: number;
   maxDevices: number;
@@ -35,6 +54,13 @@ export interface CommercialPlanLimits {
   apiAccess: boolean;
   rpaAutomation: boolean;
   synchronizer: boolean;
+  cloudBrowser?: boolean;
+  cookieWarmer?: boolean;
+  scheduler?: boolean;
+  teamWorkspaces?: boolean;
+  profileSharing?: boolean;
+  webhooks?: boolean;
+  builtinProxies?: boolean;
 }
 
 export interface CommercialPlan {
@@ -110,6 +136,7 @@ export interface CommercialEntitlements {
     name: string;
     role: CommercialRole;
     status: CommercialUserStatus;
+    planId?: string;
   };
   plan: CommercialPlan;
   subscription?: CommercialSubscription;
@@ -125,6 +152,7 @@ export interface CommercialEntitlements {
     isAuthorized: boolean;
   };
   limits: CommercialPlanLimits;
+  capabilities?: Record<FeatureCapability, boolean>;
   usage: {
     profilesCount: number;
     runningProfilesCount: number;

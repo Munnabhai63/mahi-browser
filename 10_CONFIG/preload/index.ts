@@ -298,6 +298,16 @@ const api: MahiBrowserAPI = {
   commercialGetPlans: () => ipcRenderer.invoke('commercial:getPlans'),
   commercialActivateKey: (userId: string, rawKey: string) => ipcRenderer.invoke('commercial:activateKey', userId, rawKey),
 
+  // Starter / Demo Profiles (New User Clean Onboarding)
+  getStarterTemplates: () => ipcRenderer.invoke('starterProfiles:getTemplates'),
+  getStarterTemplateById: (id: string) => ipcRenderer.invoke('starterProfiles:getTemplateById', id),
+  isUserNew: (ownerId?: string) => ipcRenderer.invoke('starterProfiles:isUserNew', ownerId),
+  createProfileFromStarter: (templateId: string, options?: any) => ipcRenderer.invoke('starterProfiles:createFromTemplate', templateId, options),
+
+  // Central Entitlements & Capabilities
+  getEntitlements: (userId?: string, deviceId?: string) => ipcRenderer.invoke('entitlements:get', userId, deviceId),
+  checkCapability: (capability: string, userId?: string) => ipcRenderer.invoke('entitlements:checkCapability', capability, userId),
+
   // Managed Browser Engine
   getManagedEngineStatus: () => ipcRenderer.invoke('engine:getStatus'),
   downloadManagedEngine: () => ipcRenderer.invoke('engine:download'),

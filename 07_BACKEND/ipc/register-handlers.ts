@@ -3,7 +3,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { verifyLicense, getHWID } from '../../08_SECURITY/license-service.js';
 import { isOnlineRevoked, isGraceExpired, getOnlineStatusSummary, checkLicenseStatusOnline } from '../../08_SECURITY/license-status-service.js';
-import { assertCanCreateProfile, getPlanLimitsInfo } from '../../08_SECURITY/freemium-guard.js';
+import { assertCanCreateProfile, getPlanLimitsInfo, assertCapability } from '../../08_SECURITY/freemium-guard.js';
+import { getStarterTemplates, getStarterTemplateById, createProfileFromStarter, isUserNew } from '../../02_BROWSER/services/starter-profiles-service.js';
+import { evaluateUserEntitlements, checkCapability, assertEntitled } from '../commercial/commercial-entitlement-service.js';
 import { getDynamicPrice, fetchDynamicPrice } from '../../08_SECURITY/price-service.js';
 import {
   signup as accountSignup,
@@ -233,7 +235,7 @@ import { getFleetDevices, getLiveTelemetry, revokeDevice } from '../services/fle
 import { getApiKeys, generateApiKey, revokeApiKey } from '../services/api-v2-service.js';
 import { registerUser, loginUser } from '../commercial/commercial-auth-service.js';
 import { getCommercialPlans } from '../commercial/commercial-plan-service.js';
-import { evaluateUserEntitlements, activateCommercialLicenseForUser } from '../commercial/commercial-entitlement-service.js';
+import { activateCommercialLicenseForUser } from '../commercial/commercial-entitlement-service.js';
 import { getUserDevices, revokeCommercialDevice } from '../commercial/commercial-device-service.js';
 
 import { detectSystemBrowsers } from '../../02_BROWSER/detector.js';
@@ -454,6 +456,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:warm', async (_event, id: string, options?: any) => {
     try {
+      assertCapability('automation.cookieWarmer');
       return await warmProfile(id, options);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -462,6 +465,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:warmBulk', async (_event, ids: string[], options?: any) => {
     try {
+      assertCapability('automation.cookieWarmer');
       return await warmBulkProfiles(ids, options);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -763,6 +767,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('automation:runWorkflow', async (_event, dto) => {
     try {
+      assertCapability('automation.rpa');
       return await runWorkflow(dto);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -771,6 +776,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('automation:runWorkflowBatch', async (_event, dto) => {
     try {
+      assertCapability('automation.multiProfile');
       return await runWorkflowBatch(dto);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -1076,6 +1082,7 @@ export function registerIpcHandlers(): void {
       const session = getAccountSession();
       const userId = getActiveUserId() || session?.account_id;
       if (!userId) throw new Error('Authentication required to create a team workspace');
+      assertCapability('workspace.team');
       return createTeamWorkspace(userId, input);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -1219,6 +1226,7 @@ export function registerIpcHandlers(): void {
       const session = getAccountSession();
       const userId = getActiveUserId() || session?.account_id;
       if (!userId) throw new Error('Authentication required');
+      assertCapability('workspace.sharing');
       return shareProfileToWorkspace(userId, workspaceId, input);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -1552,6 +1560,7 @@ export function registerIpcHandlers(): void {
   // SYNCHRONIZER HANDLERS
   ipcMain.handle('synchronizer:start', async (_event, masterProfileId?: string, activeProfiles?: string[], config?: any) => {
     try {
+      assertCapability('automation.synchronizer');
       return synchronizerHub.startSync(masterProfileId, activeProfiles, config);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -1932,9 +1941,67 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('commercial:getEntitlements', async (_event, userId: string, deviceId?: string) => {
+  ipcMain.handle('commercial:getEntitlements', async (_event, userId?: string, deviceId?: string) => {
     try {
-      return evaluateUserEntitlements(userId, deviceId);
+      const uid = userId || getActiveUserId() || getAccountSession()?.account_id || 'anonymous';
+      return evaluateUserEntitlements(uid, deviceId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('entitlements:get', async (_event, userId?: string, deviceId?: string) => {
+    try {
+      const uid = userId || getActiveUserId() || getAccountSession()?.account_id || 'anonymous';
+      return evaluateUserEntitlements(uid, deviceId);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('entitlements:checkCapability', async (_event, capability: any, userId?: string) => {
+    try {
+      const uid = userId || getActiveUserId() || getAccountSession()?.account_id || 'anonymous';
+      return checkCapability(uid, capability);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  // Starter / Demo Profiles (New User Clean Onboarding)
+  ipcMain.handle('starterProfiles:getTemplates', async () => {
+    try {
+      return getStarterTemplates();
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('starterProfiles:getTemplateById', async (_event, id: string) => {
+    try {
+      return getStarterTemplateById(id);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('starterProfiles:isUserNew', async (_event, ownerId?: string) => {
+    try {
+      const uid = ownerId || getActiveUserId() || getAccountSession()?.account_id;
+      return isUserNew(uid);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('starterProfiles:createFromTemplate', async (_event, templateId: string, options?: any) => {
+    try {
+      const session = getAccountSession();
+      const resolvedOwnerId = options?.ownerId || getActiveUserId() || session?.account_id;
+      return createProfileFromStarter(templateId, {
+        ...options,
+        ownerId: resolvedOwnerId,
+      });
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -2001,15 +2068,22 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('sync:isAllowed', async () => isCloudSyncAllowed());
   ipcMain.handle('sync:getUsage', async () => getCloudSyncUsage());
   ipcMain.handle('sync:list', async () => getCloudSyncList());
-  ipcMain.handle('sync:upload', async (_e, profileId: string) => uploadProfileToCloud(profileId));
+  ipcMain.handle('sync:upload', async (_e, profileId: string) => {
+    assertCapability('cloud.sync');
+    return uploadProfileToCloud(profileId);
+  });
   ipcMain.handle('sync:restore', async (_e, cloudProfileId: string, options?: any) => {
+    assertCapability('cloud.sync');
     assertCanCreateProfile(1);
     return downloadAndRestoreProfile(cloudProfileId, options);
   });
   ipcMain.handle('sync:delete', async (_e, cloudProfileId: string) => deleteCloudProfile(cloudProfileId));
   ipcMain.handle('sync:getConfig', async () => getSyncConfig());
   ipcMain.handle('sync:setConfig', async (_e, config: any) => setSyncConfig(config));
-  ipcMain.handle('sync:syncAll', async () => syncAllProfiles());
+  ipcMain.handle('sync:syncAll', async () => {
+    assertCapability('cloud.sync');
+    return syncAllProfiles();
+  });
   ipcMain.handle('sync:getAllStatuses', async () => getAllProfilesSyncStatus());
   ipcMain.handle('sync:resolveConflict', async (_e, profileId: string, resolution: any) => resolveSyncConflict(profileId, resolution));
   ipcMain.handle('sync:lock:acquire', async (_e, cloudProfileId: string, ttlSeconds?: number) => acquireCloudLock(cloudProfileId, ttlSeconds));

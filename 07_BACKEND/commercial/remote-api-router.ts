@@ -63,6 +63,8 @@ import {
 } from '../cloud-browser/index.js';
 import { mobileCompanionService } from '../services/mobile-companion-service.js';
 import { paymentService } from './payment-service.js';
+import { checkCapability, canCreateProfile } from './commercial-entitlement-service.js';
+import { FeatureCapability } from '../../10_CONFIG/shared/types/commercial.js';
 import {
   RemoteAuthContext,
   RemoteApiScope,
@@ -421,6 +423,35 @@ export async function handleRemoteApiRoutes(
     return true;
   };
 
+  // Helper for plan-based feature entitlement enforcement
+  const requireFeature = (capability: FeatureCapability): boolean => {
+    const check = checkCapability(auth.userId, capability);
+    if (!check.allowed) {
+      sendRemoteJSON(
+        req,
+        res,
+        403,
+        {
+          success: false,
+          error: {
+            code: 'FEATURE_NOT_INCLUDED',
+            message: check.reason || `Feature "${capability}" is not included in current plan.`,
+            details: {
+              capability,
+              requiredTier: check.requiredTier,
+              planName: check.planName,
+              featureName: check.featureName,
+            },
+          },
+        },
+        requestId,
+        rateLimit
+      );
+      return false;
+    }
+    return true;
+  };
+
   try {
     // ========================================================================
     // 1. API KEYS MANAGEMENT (/api/v1/remote/api-keys)
@@ -543,6 +574,19 @@ export async function handleRemoteApiRoutes(
 
     if (route === 'profiles' && method === 'POST') {
       if (!requireAccess('profiles:write')) return true;
+
+      const limitCheck = canCreateProfile(auth.userId);
+      if (!limitCheck.allowed) {
+        sendRemoteJSON(
+          req,
+          res,
+          403,
+          { success: false, error: { code: 'PROFILE_LIMIT_REACHED', message: limitCheck.message || 'Profile limit reached for current plan.' } },
+          requestId,
+          rateLimit
+        );
+        return true;
+      }
 
       const body = await parseBody(req);
       if (!body.name || typeof body.name !== 'string') {
@@ -747,6 +791,7 @@ export async function handleRemoteApiRoutes(
 
     if (route === 'workspaces' && method === 'POST') {
       if (!requireAccess('workspace:manage')) return true;
+      if (!requireFeature('workspace.team')) return true;
 
       const body = await parseBody(req);
       if (!body.name) {
@@ -945,6 +990,7 @@ export async function handleRemoteApiRoutes(
 
     if (route === 'automation/workflows' && method === 'POST') {
       if (!requireAccess('automation:write')) return true;
+      if (!requireFeature('automation.rpa')) return true;
 
       const body = await parseBody(req);
       if (!body.name || !Array.isArray(body.steps)) {
@@ -1083,6 +1129,7 @@ export async function handleRemoteApiRoutes(
 
     if (route === 'automation/schedules' && method === 'POST') {
       if (!requireAccess('automation:write')) return true;
+      if (!requireFeature('automation.scheduler')) return true;
 
       const body = await parseBody(req);
       if (!body.workflowId || !body.scheduleType || !body.nextRunAt) {
@@ -1289,6 +1336,7 @@ export async function handleRemoteApiRoutes(
     // POST cloud-browser/sessions (Start cloud session)
     if (route === 'cloud-browser/sessions' && method === 'POST') {
       if (!requireAccess('profiles:run')) return true;
+      if (!requireFeature('cloud.browser')) return true;
 
       const body = await parseBody(req);
       if (!body.profileId) {

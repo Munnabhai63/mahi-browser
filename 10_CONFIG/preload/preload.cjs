@@ -298,6 +298,16 @@ const api = {
   commercialGetPlans: () => ipcRenderer.invoke('commercial:getPlans'),
   commercialActivateKey: (userId, rawKey) => ipcRenderer.invoke('commercial:activateKey', userId, rawKey),
 
+  // Starter / Demo Profiles (New User Clean Onboarding)
+  getStarterTemplates: () => ipcRenderer.invoke('starterProfiles:getTemplates'),
+  getStarterTemplateById: (id) => ipcRenderer.invoke('starterProfiles:getTemplateById', id),
+  isUserNew: (ownerId) => ipcRenderer.invoke('starterProfiles:isUserNew', ownerId),
+  createProfileFromStarter: (templateId, options) => ipcRenderer.invoke('starterProfiles:createFromTemplate', templateId, options),
+
+  // Central Entitlements & Capabilities
+  getEntitlements: (userId, deviceId) => ipcRenderer.invoke('entitlements:get', userId, deviceId),
+  checkCapability: (capability, userId) => ipcRenderer.invoke('entitlements:checkCapability', capability, userId),
+
   // Managed Browser Engine
   getManagedEngineStatus: () => ipcRenderer.invoke('engine:getStatus'),
   downloadManagedEngine: () => ipcRenderer.invoke('engine:download'),

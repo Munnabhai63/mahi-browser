@@ -5,14 +5,116 @@ import {
   CommercialSubscription,
   CommercialDevice,
   CommercialUser,
+  FeatureCapability,
+  CommercialPlanTier,
 } from '../../10_CONFIG/shared/types/commercial.js';
 import { getUserById } from './commercial-auth-service.js';
 import { getCommercialPlanById, DEFAULT_COMMERCIAL_PLANS } from './commercial-plan-service.js';
 import { registerOrUpdateDevice, getUserDevices } from './commercial-device-service.js';
 import { getDeviceId, getDeviceName } from '../../03_HARDWARE/device-id.js';
 import { getProfiles } from '../../02_BROWSER/services/profile-service.js';
+import { getRealUserProfileCount } from '../../02_BROWSER/services/starter-profiles-service.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
 import { validateCurrentLicense, getLicenseById } from '../../04_LICENSING/license-engine.js';
+import { hasValidLicense } from '../../08_SECURITY/freemium-guard.js';
+import { hasValidAccountSubscription } from '../../08_SECURITY/account-service.js';
+
+export const CAPABILITY_REQUIREMENTS: Record<
+  FeatureCapability,
+  { requiredTier: CommercialPlanTier; planName: string; featureName: string }
+> = {
+  'profile.basic': { requiredTier: 'FREE', planName: 'Free', featureName: 'Basic Profiles' },
+  'profile.multiple': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Bulk Profile Creation' },
+  'cloud.sync': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Cloud Profile Sync' },
+  'cloud.browser': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Cloud Browser Isolated Execution' },
+  'proxy.builtin': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Built-in Commercial Proxies' },
+  'proxy.custom': { requiredTier: 'FREE', planName: 'Free', featureName: 'Custom BYOP Proxies' },
+  'automation.rpa': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Visual RPA Automation Studio' },
+  'automation.scheduler': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Automation Task Scheduler' },
+  'automation.multiProfile': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Multi-Profile Batch Automation' },
+  'automation.cookieWarmer': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Smart Cookie Warmer' },
+  'automation.synchronizer': { requiredTier: 'PRO', planName: 'Professional', featureName: 'CDP Action Synchronizer' },
+  'workspace.team': { requiredTier: 'BUSINESS', planName: 'Business Growth', featureName: 'Team Workspaces & RBAC' },
+  'workspace.sharing': { requiredTier: 'BUSINESS', planName: 'Business Growth', featureName: 'Profile Sharing & Member Seats' },
+  'api.remote': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Remote Cloud API' },
+  'api.webhooks': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Webhook Notifications' },
+  'mobile.cloudBrowser': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Mobile Cloud Browser Stream' },
+  'advanced.fingerprint': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Advanced Hardware Noise Spoofing' },
+};
+
+export function resolveCapabilitiesForPlan(
+  plan?: CommercialPlan | null,
+  subscription?: CommercialSubscription
+): Record<FeatureCapability, boolean> {
+  const resolvedPlan = plan || DEFAULT_COMMERCIAL_PLANS[0];
+  const isSubActive = !subscription || subscription.status === 'ACTIVE' || subscription.status === 'TRIAL';
+  const effectiveTier: CommercialPlanTier = isSubActive ? resolvedPlan.tier : 'FREE';
+
+  if (effectiveTier === 'BUSINESS' || effectiveTier === 'ENTERPRISE' || effectiveTier === 'CUSTOM') {
+    return {
+      'profile.basic': true,
+      'profile.multiple': true,
+      'cloud.sync': true,
+      'cloud.browser': true,
+      'proxy.builtin': true,
+      'proxy.custom': true,
+      'automation.rpa': true,
+      'automation.scheduler': true,
+      'automation.multiProfile': true,
+      'automation.cookieWarmer': true,
+      'automation.synchronizer': true,
+      'workspace.team': true,
+      'workspace.sharing': true,
+      'api.remote': true,
+      'api.webhooks': true,
+      'mobile.cloudBrowser': true,
+      'advanced.fingerprint': true,
+    };
+  }
+
+  if (effectiveTier === 'PRO') {
+    return {
+      'profile.basic': true,
+      'profile.multiple': true,
+      'cloud.sync': true,
+      'cloud.browser': true,
+      'proxy.builtin': true,
+      'proxy.custom': true,
+      'automation.rpa': true,
+      'automation.scheduler': true,
+      'automation.multiProfile': true,
+      'automation.cookieWarmer': true,
+      'automation.synchronizer': true,
+      'workspace.team': false, // Team organization creation requires Business tier
+      'workspace.sharing': true, // Direct profile sharing enabled on Pro
+      'api.remote': true,
+      'api.webhooks': true,
+      'mobile.cloudBrowser': true,
+      'advanced.fingerprint': true,
+    };
+  }
+
+  // FREE Tier
+  return {
+    'profile.basic': true,
+    'profile.multiple': false,
+    'cloud.sync': false,
+    'cloud.browser': false,
+    'proxy.builtin': false,
+    'proxy.custom': true, // BYOP manual proxy allowed
+    'automation.rpa': false,
+    'automation.scheduler': false,
+    'automation.multiProfile': false,
+    'automation.cookieWarmer': false,
+    'automation.synchronizer': false,
+    'workspace.team': false,
+    'workspace.sharing': false,
+    'api.remote': false,
+    'api.webhooks': false,
+    'mobile.cloudBrowser': false,
+    'advanced.fingerprint': false,
+  };
+}
 
 export function evaluateUserEntitlements(
   userId: string,
@@ -27,6 +129,41 @@ export function evaluateUserEntitlements(
 
   // 1. Fetch User Record
   const user = getUserById(userId);
+
+  // If local / fallback user ID on desktop
+  if (!user && (userId === 'LOCAL_CLIENT' || userId === 'SYSTEM_OWNER' || !userId)) {
+    const isPro = hasValidLicense() || hasValidAccountSubscription();
+    const effectivePlan = isPro ? (getCommercialPlanById('plan_pro') || DEFAULT_COMMERCIAL_PLANS[1]) : defaultFreePlan;
+    const capabilities = resolveCapabilitiesForPlan(effectivePlan);
+    const allProfiles = getProfiles({ includeTrash: false });
+    const runningCount = processManager.getRunningCount();
+
+    return {
+      allowed: true,
+      user: {
+        id: userId || 'LOCAL_CLIENT',
+        email: 'local@mahibrowser.local',
+        name: 'Local User',
+        role: 'USER',
+        status: 'ACTIVE',
+        planId: effectivePlan.id,
+      },
+      plan: effectivePlan,
+      device: {
+        deviceId: currentDeviceId,
+        status: 'ACTIVE',
+        isAuthorized: true,
+      },
+      limits: effectivePlan.limits,
+      capabilities,
+      usage: {
+        profilesCount: getRealUserProfileCount(userId),
+        runningProfilesCount: runningCount,
+        activeDevicesCount: 1,
+      },
+    };
+  }
+
   if (!user) {
     return {
       allowed: false,
@@ -37,6 +174,7 @@ export function evaluateUserEntitlements(
         name: 'Unknown',
         role: 'USER',
         status: 'SUSPENDED',
+        planId: defaultFreePlan.id,
       },
       plan: defaultFreePlan,
       device: {
@@ -45,6 +183,7 @@ export function evaluateUserEntitlements(
         isAuthorized: false,
       },
       limits: defaultFreePlan.limits,
+      capabilities: resolveCapabilitiesForPlan(defaultFreePlan),
       usage: {
         profilesCount: 0,
         runningProfilesCount: 0,
@@ -66,6 +205,7 @@ export function evaluateUserEntitlements(
         isAuthorized: false,
       },
       limits: { ...defaultFreePlan.limits, maxProfiles: 0, maxConcurrentRunning: 0 },
+      capabilities: resolveCapabilitiesForPlan(defaultFreePlan),
       usage: { profilesCount: 0, runningProfilesCount: 0, activeDevicesCount: 0 },
     };
   }
@@ -82,6 +222,7 @@ export function evaluateUserEntitlements(
         isAuthorized: false,
       },
       limits: { ...defaultFreePlan.limits, maxProfiles: 0, maxConcurrentRunning: 0 },
+      capabilities: resolveCapabilitiesForPlan(defaultFreePlan),
       usage: { profilesCount: 0, runningProfilesCount: 0, activeDevicesCount: 0 },
     };
   }
@@ -142,6 +283,7 @@ export function evaluateUserEntitlements(
   const runningCount = processManager.getRunningCount();
 
   const isDeviceAuthorized = devReg.success;
+  const capabilities = resolveCapabilitiesForPlan(plan, subscription);
 
   return {
     allowed: isDeviceAuthorized,
@@ -156,8 +298,9 @@ export function evaluateUserEntitlements(
       isAuthorized: isDeviceAuthorized,
     },
     limits: plan.limits,
+    capabilities,
     usage: {
-      profilesCount: allProfiles.length,
+      profilesCount: getRealUserProfileCount(user.id),
       runningProfilesCount: runningCount,
       activeDevicesCount: activeDevCount,
     },
@@ -165,18 +308,110 @@ export function evaluateUserEntitlements(
 }
 
 /**
+ * Validates whether a user account has entitlement for a specific capability.
+ */
+export function checkCapability(
+  userId: string,
+  capability: FeatureCapability
+): {
+  allowed: boolean;
+  entitled: boolean;
+  reason?: string;
+  requiredTier: CommercialPlanTier;
+  requiredPlan: CommercialPlanTier;
+  planName: string;
+  featureName: string;
+} {
+  const req = CAPABILITY_REQUIREMENTS[capability] || {
+    requiredTier: 'PRO',
+    planName: 'Professional',
+    featureName: capability,
+  };
+
+  const user = getUserById(userId);
+  if (user && (user.status === 'SUSPENDED' || user.status === 'BANNED')) {
+    return {
+      allowed: false,
+      entitled: false,
+      reason: 'Account access is suspended or unauthorized.',
+      requiredPlan: req.requiredTier,
+      ...req,
+    };
+  }
+
+  const defaultFreePlan = DEFAULT_COMMERCIAL_PLANS[0];
+  const plan = user ? (getCommercialPlanById(user.planId) || defaultFreePlan) : defaultFreePlan;
+
+  let isSubActive = false;
+  if (user) {
+    const db = getDatabase();
+    const subRow = db
+      .prepare("SELECT * FROM commercial_subscriptions WHERE user_id = ? AND status = 'ACTIVE' ORDER BY starts_at DESC LIMIT 1")
+      .get(user.id) as any;
+    if (subRow) {
+      const isExpired = subRow.expires_at && new Date(subRow.expires_at).getTime() <= Date.now();
+      if (!isExpired) isSubActive = true;
+    }
+  } else if (userId === 'LOCAL_CLIENT' || userId === 'SYSTEM_OWNER' || !userId) {
+    isSubActive = hasValidLicense() || hasValidAccountSubscription();
+  }
+
+  const caps = resolveCapabilitiesForPlan(plan, isSubActive ? ({ status: 'ACTIVE' } as any) : undefined);
+  const isAllowed = Boolean(caps[capability]);
+
+  if (!isAllowed) {
+    return {
+      allowed: false,
+      entitled: false,
+      reason: `The feature "${req.featureName}" requires the ${req.planName} plan (${req.requiredTier}) or higher. Please upgrade your plan to unlock this feature.`,
+      requiredPlan: req.requiredTier,
+      ...req,
+    };
+  }
+
+  return {
+    allowed: true,
+    entitled: true,
+    requiredPlan: req.requiredTier,
+    ...req,
+  };
+}
+
+/**
+ * Asserts entitlement for a capability, throwing a structured error if not included.
+ */
+export function assertEntitled(userId: string, capability: FeatureCapability): void {
+  const res = checkCapability(userId, capability);
+  if (!res.entitled) {
+    const err = new Error(res.reason || `Feature "${capability}" is not included in current plan.`);
+    (err as any).code = 'FEATURE_NOT_INCLUDED';
+    (err as any).status = 403;
+    (err as any).capability = capability;
+    (err as any).requiredPlan = res.requiredTier;
+    (err as any).requiredTier = res.requiredTier;
+    (err as any).planName = res.planName;
+    (err as any).featureName = res.featureName;
+    throw err;
+  }
+}
+
+/**
  * Validates whether the user can create another profile according to plan limits.
  */
 export function canCreateProfile(userId: string): { allowed: boolean; message?: string } {
-  const entitlements = evaluateUserEntitlements(userId);
-  if (!entitlements.allowed) {
-    return { allowed: false, message: entitlements.reason || 'Account not authorized.' };
+  const user = getUserById(userId);
+  if (user && (user.status === 'SUSPENDED' || user.status === 'BANNED')) {
+    return { allowed: false, message: `Account is ${user.status.toLowerCase()}.` };
   }
 
-  if (entitlements.usage.profilesCount >= entitlements.limits.maxProfiles) {
+  const defaultFreePlan = DEFAULT_COMMERCIAL_PLANS[0];
+  const plan = user ? (getCommercialPlanById(user.planId) || defaultFreePlan) : defaultFreePlan;
+
+  const currentCount = getRealUserProfileCount(userId);
+  if (currentCount >= plan.limits.maxProfiles) {
     return {
       allowed: false,
-      message: `Profile creation limit reached (${entitlements.usage.profilesCount}/${entitlements.limits.maxProfiles}) for plan "${entitlements.plan.name}". Please upgrade your plan to add more profiles.`,
+      message: `Profile creation limit reached (${currentCount}/${plan.limits.maxProfiles}) for plan "${plan.name}". Please upgrade your plan to add more profiles.`,
     };
   }
 
@@ -187,15 +422,19 @@ export function canCreateProfile(userId: string): { allowed: boolean; message?: 
  * Validates whether the user can launch another browser profile concurrently.
  */
 export function canLaunchProfile(userId: string): { allowed: boolean; message?: string } {
-  const entitlements = evaluateUserEntitlements(userId);
-  if (!entitlements.allowed) {
-    return { allowed: false, message: entitlements.reason || 'Account not authorized.' };
+  const user = getUserById(userId);
+  if (user && (user.status === 'SUSPENDED' || user.status === 'BANNED')) {
+    return { allowed: false, message: `Account is ${user.status.toLowerCase()}.` };
   }
 
-  if (entitlements.usage.runningProfilesCount >= entitlements.limits.maxConcurrentRunning) {
+  const defaultFreePlan = DEFAULT_COMMERCIAL_PLANS[0];
+  const plan = user ? (getCommercialPlanById(user.planId) || defaultFreePlan) : defaultFreePlan;
+
+  const runningCount = processManager.getRunningCount();
+  if (runningCount >= plan.limits.maxConcurrentRunning) {
     return {
       allowed: false,
-      message: `Concurrent running limit reached (${entitlements.usage.runningProfilesCount}/${entitlements.limits.maxConcurrentRunning}). Please close an active profile or upgrade your plan.`,
+      message: `Concurrent running limit reached (${runningCount}/${plan.limits.maxConcurrentRunning}). Please close an active profile or upgrade your plan.`,
     };
   }
 
@@ -217,9 +456,7 @@ export function activateCommercialLicenseForUser(
     return { success: false, message: 'User account not found.' };
   }
 
-  const licRes = validateCurrentLicense();
-  // Call license activation in license engine
-  const actRes = validateCurrentLicense(); // will activate via engine
+  validateCurrentLicense();
 
   // Check if a plan matches the license notes or upgrade to PRO
   const proPlan = getCommercialPlanById('plan_pro') || DEFAULT_COMMERCIAL_PLANS[1];

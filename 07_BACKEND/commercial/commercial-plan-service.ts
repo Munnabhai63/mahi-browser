@@ -113,10 +113,16 @@ export function getCommercialPlans(includeInactive = false): CommercialPlan[] {
 
 export function getCommercialPlanById(planId: string): CommercialPlan | null {
   const db = getDatabase();
-  const row = db.prepare('SELECT * FROM commercial_plans WHERE id = ?').get(planId) as any;
+  const normalizedId = planId.startsWith('plan_') ? planId : `plan_${planId.toLowerCase()}`;
+  let row = db.prepare('SELECT * FROM commercial_plans WHERE id = ? OR id = ?').get(planId, normalizedId) as any;
+  if (!row) {
+    row = db.prepare('SELECT * FROM commercial_plans WHERE LOWER(tier) = ?').get(planId.toLowerCase()) as any;
+  }
   if (!row) {
     // Check in default list if not yet inserted
-    const fallback = DEFAULT_COMMERCIAL_PLANS.find((p) => p.id === planId);
+    const fallback = DEFAULT_COMMERCIAL_PLANS.find(
+      (p) => p.id === planId || p.id === normalizedId || p.tier.toLowerCase() === planId.toLowerCase()
+    );
     return fallback || null;
   }
   return mapRowToPlan(row);

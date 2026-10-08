@@ -620,6 +620,15 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     commercialSyncUser: async (user: any) => {
       return { success: true };
     },
+    // Starter / Demo Profiles (New User Clean Onboarding)
+    getStarterTemplates: async () => [],
+    getStarterTemplateById: async () => null,
+    isUserNew: async () => false,
+    createProfileFromStarter: async () => ({} as any),
+
+    // Central Entitlements & Capabilities
+    getEntitlements: async () => null,
+    checkCapability: async () => ({ entitled: true }),
     getHwid: async () => {
       try {
         const r = await apiGet('/license/status');

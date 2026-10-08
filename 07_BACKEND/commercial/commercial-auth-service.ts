@@ -242,19 +242,40 @@ export function loginUser(dto: LoginUserDTO, ipAddress?: string): { success: boo
 
 export function getUserById(userId: string): CommercialUser | null {
   const db = getDatabase();
-  const row = db.prepare('SELECT * FROM commercial_users WHERE id = ?').get(userId) as any;
-  if (!row) return null;
-  return {
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    role: row.role as CommercialRole,
-    status: row.status as CommercialUserStatus,
-    planId: row.plan_id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    lastLoginAt: row.last_login_at || undefined,
-  };
+  const row = db.prepare('SELECT * FROM commercial_users WHERE id = ? OR email = ?').get(userId, userId) as any;
+  if (row) {
+    return {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      role: row.role as CommercialRole,
+      status: row.status as CommercialUserStatus,
+      planId: row.plan_id || 'plan_free',
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      lastLoginAt: row.last_login_at || undefined,
+    };
+  }
+
+  // Fallback to central auth_users table
+  const authRow = db.prepare('SELECT * FROM auth_users WHERE id = ? OR email = ?').get(userId, userId) as any;
+  if (authRow) {
+    const role: CommercialRole = (authRow.role === 'ADMIN' || authRow.role === 'SUPER_ADMIN') ? authRow.role : 'USER';
+    const status: CommercialUserStatus = authRow.status === 'BANNED' ? 'BANNED' : authRow.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE';
+    return {
+      id: authRow.id,
+      email: authRow.email,
+      name: authRow.name || authRow.email.split('@')[0],
+      role,
+      status,
+      planId: (authRow.plan_tier === 'pro' || authRow.plan_tier === 'PRO') ? 'plan_pro' : 'plan_free',
+      createdAt: authRow.created_at,
+      updatedAt: authRow.updated_at,
+      lastLoginAt: authRow.last_login_at || undefined,
+    };
+  }
+
+  return null;
 }
 
 export function getUserByEmail(email: string): CommercialUser | null {

@@ -362,6 +362,16 @@ export interface MahiBrowserAPI {
   commercialGetPlans: () => Promise<any>;
   commercialActivateKey: (userId: string, rawKey: string) => Promise<any>;
 
+  // Starter / Demo Profiles (New User Clean Onboarding)
+  getStarterTemplates: () => Promise<any[]>;
+  getStarterTemplateById: (id: string) => Promise<any | null>;
+  isUserNew: (ownerId?: string) => Promise<boolean>;
+  createProfileFromStarter: (templateId: string, options?: any) => Promise<Profile>;
+
+  // Central Entitlements & Capabilities
+  getEntitlements: (userId?: string, deviceId?: string) => Promise<any>;
+  checkCapability: (capability: string, userId?: string) => Promise<{ entitled: boolean; reason?: string }>;
+
   // Managed Browser Engine
   getManagedEngineStatus: () => Promise<ManagedEngineStatus>;
   downloadManagedEngine: () => Promise<{ success: boolean; path?: string; error?: string }>;

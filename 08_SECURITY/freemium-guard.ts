@@ -128,3 +128,25 @@ export function getPlanLimitsInfo(): {
     proLimit: PRO_PROFILE_LIMIT,
   };
 }
+
+/**
+ * Asserts that the desktop environment has entitlement for a specific capability.
+ */
+export function assertCapability(capability: string): void {
+  // Basic features available to all users
+  if (capability === 'profile.basic' || capability === 'proxy.custom') {
+    return;
+  }
+
+  const isPro = isUserPro();
+  if (!isPro) {
+    const err = new Error(
+      `FEATURE_NOT_INCLUDED: Feature "${capability}" requires MAHI PRO or Business plan. Please upgrade to unlock.`
+    );
+    (err as any).code = 'FEATURE_NOT_INCLUDED';
+    (err as any).capability = capability;
+    (err as any).requiredPlan = 'PRO';
+    throw err;
+  }
+}
+

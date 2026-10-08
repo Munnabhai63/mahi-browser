@@ -78,6 +78,7 @@ interface AccountState {
   fetchUserDevices: () => Promise<void>;
   revokeUserDevice: (deviceId: string) => Promise<boolean>;
   activateLicenseKey: (rawKey: string) => Promise<{ success: boolean; message: string }>;
+  hasCapability: (cap: string) => boolean;
 }
 
 const DEFAULT_AVATAR_COLORS = [
@@ -150,6 +151,10 @@ export const useAccountStore = create<AccountState>()(
                 createdAt: sess.saved_at,
               }
             });
+          }
+          if (window.mahiAPI?.getEntitlements) {
+            const ent = await window.mahiAPI.getEntitlements();
+            if (ent) set({ entitlements: ent });
           }
         } catch {}
       },
@@ -351,10 +356,12 @@ export const useAccountStore = create<AccountState>()(
       },
 
       syncEntitlements: async () => {
-        const { commercialUser } = get();
-        if (!commercialUser || !window.mahiAPI) return;
+        if (!window.mahiAPI) return;
         try {
-          const entitlements = await window.mahiAPI.commercialGetEntitlements(commercialUser.id);
+          const { commercialUser } = get();
+          const entitlements = commercialUser
+            ? await window.mahiAPI.commercialGetEntitlements(commercialUser.id)
+            : (window.mahiAPI.getEntitlements ? await window.mahiAPI.getEntitlements() : null);
           if (entitlements) {
             set({
               entitlements,
@@ -366,6 +373,17 @@ export const useAccountStore = create<AccountState>()(
             });
           }
         } catch {}
+      },
+
+      hasCapability: (cap: string) => {
+        const { entitlements, planLimits } = get();
+        if (entitlements?.capabilities && typeof (entitlements.capabilities as any)[cap] === 'boolean') {
+          return (entitlements.capabilities as any)[cap];
+        }
+        const isPro = planLimits?.isPro || false;
+        if (isPro) return true;
+        if (cap === 'profile.basic' || cap === 'proxy.custom') return true;
+        return false;
       },
 
       fetchUserDevices: async () => {
