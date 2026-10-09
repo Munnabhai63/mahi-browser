@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, KeyRound, ArrowRight } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore.js';
+import { BrandLogo } from './BrandLogo.js';
 
 export const AppLockModal: React.FC = () => {
   const { isLocked, unlockApp } = useSettingsStore();
@@ -23,9 +24,7 @@ export const AppLockModal: React.FC = () => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-md select-none">
       <div className="bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl border border-slate-800 p-8 text-center animate-in fade-in zoom-in-95 duration-200">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-teal-500 to-emerald-400 mx-auto flex items-center justify-center shadow-lg shadow-teal-500/20 text-slate-950 mb-6">
-          <Lock className="w-8 h-8" />
-        </div>
+        <BrandLogo variant="icon" className="w-16 h-16 rounded-2xl mx-auto shadow-xl shadow-red-900/40 mb-6 shrink-0" />
 
         <h2 className="text-xl font-bold text-white tracking-wide">MAHI BROWSER</h2>
         <p className="text-xs text-slate-400 mt-1 mb-6">Application is locked. Enter your PIN to continue.</p>

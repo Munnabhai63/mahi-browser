@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Key, Shield, Check, Copy, X } from 'lucide-react';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
+import { BrandLogo } from './BrandLogo.js';
 
 interface CommercialUserModalProps {
   isOpen: boolean;
@@ -73,9 +74,7 @@ export const CommercialUserModal: React.FC<CommercialUserModalProps> = ({ isOpen
         )}
 
         <div className="relative z-10 flex flex-col items-center">
-          <div className="w-16 h-16 bg-gradient-to-tr from-purple-600 to-blue-500 rounded-2xl flex items-center justify-center shadow-lg mb-6">
-            <Shield className="w-8 h-8 text-white" />
-          </div>
+          <BrandLogo variant="icon" className="w-16 h-16 rounded-2xl shadow-xl shadow-red-900/40 mb-6 shrink-0" />
           
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">Activate License</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm text-center mb-6">

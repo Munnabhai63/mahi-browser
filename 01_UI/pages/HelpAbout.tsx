@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useToastStore } from '../stores/useToastStore.js';
 import { NavigationPage } from '../components/Sidebar.js';
+import { BrandLogo } from '../components/BrandLogo.js';
 
 interface HelpAboutProps {
   onNavigate: (page: NavigationPage) => void;
@@ -68,9 +69,7 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
       <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-6">
         <div className="space-y-2">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 font-bold text-lg flex items-center justify-center border border-teal-500/20">
-              M
-            </div>
+            <BrandLogo variant="icon" className="w-11 h-11 rounded-xl shadow-md shrink-0" />
             <div>
               <div className="flex items-center space-x-2.5">
                 <h1 className="text-base font-bold text-slate-900 dark:text-white">MAHI BROWSER</h1>

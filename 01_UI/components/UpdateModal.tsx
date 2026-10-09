@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, Sparkles, AlertTriangle, DownloadCloud, X } from 'lucide-react';
 import { UpdateStatusEvent } from '../../10_CONFIG/shared/types/updater.js';
+import { BrandLogo } from './BrandLogo.js';
 
 let sessionDismissed = false;
 
@@ -113,9 +114,7 @@ export const UpdateModal: React.FC = () => {
         {status.state === 'DOWNLOADED' && (
           <div className="space-y-3">
             <div className="flex items-start gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-teal-500/20 border border-teal-500/40 flex items-center justify-center text-teal-400 shrink-0 shadow-sm shadow-teal-500/20">
-                <Sparkles size={20} />
-              </div>
+              <BrandLogo variant="mark" className="w-10 h-10 rounded-xl shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <h4 id="update-dialog-title" className="text-sm font-bold text-white tracking-wide">

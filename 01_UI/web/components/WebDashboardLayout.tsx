@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useWebAuthStore } from '../state/useWebAuthStore.js';
 import { TeamWorkspace } from '../../../10_CONFIG/shared/types/workspace.js';
+import { BrandLogo } from '../../components/BrandLogo.js';
 
 export type WebTab =
   | 'overview'
@@ -87,9 +88,7 @@ export const WebDashboardLayout: React.FC<WebDashboardLayoutProps> = ({
           {/* Logo & Brand Header */}
           <div className="p-4 border-b border-slate-800/60 flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-teal-500 text-white flex items-center justify-center shadow-lg shadow-teal-500/20 shrink-0">
-                <Globe2 className="w-5 h-5" />
-              </div>
+              <BrandLogo variant="mark" className="w-10 h-10 rounded-xl shrink-0" />
               <div className="overflow-hidden">
                 <h1 className="text-sm font-bold tracking-wide text-white flex items-center space-x-1">
                   <span>MAHI CLOUD</span>
@@ -305,9 +304,7 @@ export const WebDashboardLayout: React.FC<WebDashboardLayoutProps> = ({
             <div className="space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                 <div className="flex items-center space-x-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-teal-500 text-white flex items-center justify-center font-bold">
-                    <Globe2 className="w-4 h-4" />
-                  </div>
+                  <BrandLogo variant="mark" className="w-8 h-8 rounded-lg shrink-0" />
                   <span className="font-bold text-sm text-white">MAHI CLOUD</span>
                 </div>
                 <button

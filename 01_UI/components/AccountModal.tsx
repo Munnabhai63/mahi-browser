@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
+import { BrandLogo } from './BrandLogo.js';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -403,9 +404,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
         {/* Header Bar */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/80 bg-slate-950/40">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-              M
-            </div>
+            <BrandLogo variant="icon" className="w-8 h-8 rounded-xl shadow-sm shrink-0" />
             <div>
               <h3 className="text-sm font-bold text-white tracking-wide">MAHI BROWSER ACCOUNT</h3>
               <p className="text-[11px] text-slate-400">Central Identity & Multi-Device Sessions</p>

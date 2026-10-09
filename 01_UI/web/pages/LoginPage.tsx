@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Globe2, Lock, Mail, User, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useWebAuthStore } from '../state/useWebAuthStore.js';
+import { BrandLogo } from '../../components/BrandLogo.js';
 
 export const LoginPage: React.FC = () => {
   const [isRegisterMode, setIsRegisterMode] = useState(false);
@@ -33,8 +34,8 @@ export const LoginPage: React.FC = () => {
       <div className="w-full max-w-md bg-[#0c1222]/90 backdrop-blur-xl border border-slate-800 rounded-3xl shadow-2xl p-8 space-y-6 relative z-10">
         {/* Header Branding */}
         <div className="text-center space-y-2">
-          <div className="inline-flex w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-500 to-teal-500 text-white items-center justify-center shadow-xl shadow-teal-500/20 mb-2">
-            <Globe2 className="w-7 h-7" />
+          <div className="flex justify-center mb-2">
+            <BrandLogo variant="icon" className="w-16 h-16 rounded-2xl shadow-xl shadow-red-900/40" />
           </div>
           <h1 className="text-xl font-bold tracking-tight text-white">MAHI CLOUD CONSOLE</h1>
           <p className="text-xs text-slate-400">

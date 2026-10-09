@@ -19,6 +19,7 @@ import { useProfileStore } from '../stores/useProfileStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { getDefaultProfileSettings, DEFAULT_USER_AGENTS } from '../../10_CONFIG/shared/constants/defaults.js';
 import { NavigationPage } from './Sidebar.js';
+import { BrandLogo } from './BrandLogo.js';
 
 interface WelcomeWizardModalProps {
   onNavigate: (page: NavigationPage) => void;
@@ -89,9 +90,7 @@ export const WelcomeWizardModal: React.FC<WelcomeWizardModalProps> = ({ onNaviga
         {/* Top Header Banner */}
         <div className="relative bg-gradient-to-r from-teal-900/60 via-slate-900 to-indigo-950/60 px-6 py-6 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center text-slate-950 font-black text-2xl shadow-lg shadow-teal-500/30">
-              M
-            </div>
+            <BrandLogo variant="icon" className="w-11 h-11 rounded-xl shadow-lg shadow-red-900/40 shrink-0" />
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-bold tracking-tight text-white">Welcome to MAHI BROWSER</h2>

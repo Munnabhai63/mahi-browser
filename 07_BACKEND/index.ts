@@ -119,17 +119,39 @@ if (!gotTheLock) {
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
 
+function resolveAppIconPath(): string | undefined {
+  const iconFileName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+  const candidates = [
+    path.join(process.resourcesPath, iconFileName),
+    path.join(projectDir, '13_ASSETS', 'resources', iconFileName),
+    path.join(projectDir, 'resources', iconFileName),
+    path.join(projectDir, '13_ASSETS', 'brand', 'mahi-browser.ico'),
+    path.join(projectDir, '13_ASSETS', 'brand', 'mahi-browser-icon.png'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+function resolveSplashPath(): string | undefined {
+  const candidates = [
+    path.join(process.resourcesPath, 'splash.html'),
+    path.join(projectDir, '13_ASSETS', 'resources', 'splash.html'),
+    path.join(projectDir, 'resources', 'splash.html'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 function createSplashWindow(): void {
   try {
-    const splashPath = app.isPackaged
-      ? path.join(process.resourcesPath, 'splash.html')
-      : path.join(projectDir, 'resources', 'splash.html');
+    const splashPath = resolveSplashPath();
+    if (!splashPath) return;
 
-    if (!fs.existsSync(splashPath)) return;
-
-    const iconPath = app.isPackaged
-      ? path.join(process.resourcesPath, 'icon.ico')
-      : path.join(projectDir, 'resources', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+    const iconPath = resolveAppIconPath();
 
     splashWindow = new BrowserWindow({
       width: 480,
@@ -140,7 +162,7 @@ function createSplashWindow(): void {
       center: true,
       alwaysOnTop: true,
       show: true,
-      icon: fs.existsSync(iconPath) ? iconPath : undefined,
+      icon: iconPath,
       backgroundColor: '#00000000',
       webPreferences: {
         nodeIntegration: false,
@@ -161,9 +183,7 @@ function createWindow(): void {
   logCheckpoint('Step 5: Preload script path', preloadPath);
   logCheckpoint('Step 5: Preload exists on disk', String(fs.existsSync(preloadPath)));
 
-  const iconPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'icon.ico')
-    : path.join(projectDir, 'resources', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+  const iconPath = resolveAppIconPath();
 
   mainWindow = new BrowserWindow({
     width: 1360,
@@ -171,7 +191,7 @@ function createWindow(): void {
     minWidth: 1080,
     minHeight: 680,
     title: 'MAHI BROWSER',
-    icon: fs.existsSync(iconPath) ? iconPath : undefined,
+    icon: iconPath,
     backgroundColor: '#0f172a',
     show: false,
     webPreferences: {
