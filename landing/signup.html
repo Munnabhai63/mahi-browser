@@ -465,7 +465,7 @@
         } else if (urlError === 'invalid_state') {
           showAlert('Authorization session expired. Please click "Continue with Google" again.', true);
         } else if (urlError.includes('NOT_CONFIGURED')) {
-          showAlert('Google OAuth is being configured by the administrator. Please sign up with email below.', true);
+          showAlert('Google sign-in is temporarily unavailable. Please sign up with your email below or try again shortly.', true);
         } else {
           showAlert('Google sign-in failed: ' + decodeURIComponent(urlError).replace(/_/g, ' '), true);
         }

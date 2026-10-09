@@ -503,7 +503,7 @@
         } else if (urlError === 'invalid_state') {
           showError('Session expired. Please click "Continue with Google" again.');
         } else if (urlError.includes('NOT_CONFIGURED')) {
-          showError('Google OAuth is being configured by the administrator. Please log in with your email and password.');
+          showError('Google sign-in is temporarily unavailable. Please log in with your email and password or try again shortly.');
         } else {
           showError('Google sign-in failed: ' + decodeURIComponent(urlError).replace(/_/g, ' '));
         }
