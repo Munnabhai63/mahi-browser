@@ -303,8 +303,8 @@ describe('Phase 14: Final 3 External Blockers Closure & Full Commercial GA Relea
       const db = getDatabase();
       const rows = db.prepare('SELECT version FROM schema_migrations ORDER BY version ASC').all() as { version: number }[];
       const versions = rows.map((r) => r.version);
-      expect(versions).toContain(20);
-      expect(Math.max(...versions)).toBe(20);
+      expect(versions).toContain(21);
+      expect(Math.max(...versions)).toBe(21);
     });
   });
 

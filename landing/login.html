@@ -495,50 +495,38 @@
         }
       });
 
+      // Check for OAuth callback error messages in URL
+      const urlError = urlParams.get('error');
+      if (urlError) {
+        if (urlError === 'cancelled') {
+          showError('Google sign-in was cancelled. Please log in using your password or try again.');
+        } else if (urlError === 'invalid_state') {
+          showError('Session expired. Please click "Continue with Google" again.');
+        } else if (urlError.includes('NOT_CONFIGURED')) {
+          showError('Google OAuth is being configured by the administrator. Please log in with your email and password.');
+        } else {
+          showError('Google sign-in failed: ' + decodeURIComponent(urlError).replace(/_/g, ' '));
+        }
+      }
+
       // Google SSO Button
-      googleBtn.addEventListener('click', async () => {
+      googleBtn.addEventListener('click', () => {
         hideError();
+        if (googleBtn.disabled) return;
         googleBtn.disabled = true;
         googleBtn.style.opacity = '0.7';
+        googleBtn.style.cursor = 'wait';
 
-        const mockGoogleEmail = prompt('Enter Google Account email for SSO login:', 'user@gmail.com');
-        if (!mockGoogleEmail) {
-          googleBtn.disabled = false;
-          googleBtn.style.opacity = '1';
-          return;
-        }
+        googleBtn.innerHTML = `
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite; margin-right: 8px;">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-opacity="0.25"></circle>
+            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"></path>
+          </svg>
+          <span>Connecting to Google...</span>
+        `;
 
-        try {
-          const res = await fetch('/api/v1/auth/google', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              idToken: 'mock-google-token',
-              email: mockGoogleEmail,
-              name: mockGoogleEmail.split('@')[0],
-              intent: intent || (plan ? 'paid' : 'login'),
-              plan: plan || undefined,
-              billing: billing || undefined
-            })
-          });
-
-          const data = await res.json();
-          if (!res.ok || !data.success) {
-            showError(data.error?.message || 'Google authentication failed.');
-            googleBtn.disabled = false;
-            googleBtn.style.opacity = '1';
-            return;
-          }
-
-          localStorage.setItem('mahi_auth_token', data.token);
-          localStorage.setItem('mahi_user', JSON.stringify(data.user));
-          resolveRedirect(data.token, data.user);
-
-        } catch (err) {
-          showError('Google SSO error. Please use email & password.');
-          googleBtn.disabled = false;
-          googleBtn.style.opacity = '1';
-        }
+        const startUrl = `/api/v1/auth/google/start?intent=${encodeURIComponent(intent || 'login')}&plan=${encodeURIComponent(plan || '')}&billing=${encodeURIComponent(billing || '')}&returnUrl=${encodeURIComponent(returnUrl || '/download')}`;
+        window.location.href = startUrl;
       });
 
     })();

@@ -1418,4 +1418,37 @@ export async function initializeDatabase(): Promise<void> {
       db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (20, ?)').run(new Date().toISOString());
     } catch {}
   }
+
+  // Migration v21: Phase 19 Production Google OAuth SSO Architecture
+  const checkMigration21 = db.prepare('SELECT version FROM schema_migrations WHERE version = 21').get();
+  if (!checkMigration21) {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS oauth_states (
+          state TEXT PRIMARY KEY,
+          nonce TEXT NOT NULL,
+          provider TEXT NOT NULL DEFAULT 'google',
+          intent TEXT NOT NULL DEFAULT 'trial',
+          plan_id TEXT,
+          billing_cycle TEXT,
+          return_url TEXT,
+          expires_at TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_oauth_states_expires ON oauth_states(expires_at);
+      `);
+
+      // Additive columns for Google identity and avatar
+      try { db.exec('ALTER TABLE commercial_users ADD COLUMN google_sub TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE commercial_users ADD COLUMN avatar_url TEXT;'); } catch {}
+      try { db.exec("ALTER TABLE commercial_users ADD COLUMN auth_provider TEXT DEFAULT 'LOCAL';"); } catch {}
+
+      try { db.exec('ALTER TABLE auth_users ADD COLUMN google_sub TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE auth_users ADD COLUMN avatar_url TEXT;'); } catch {}
+      try { db.exec("ALTER TABLE auth_users ADD COLUMN auth_provider TEXT DEFAULT 'LOCAL';"); } catch {}
+
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (21, ?)').run(new Date().toISOString());
+    } catch {}
+  }
 }

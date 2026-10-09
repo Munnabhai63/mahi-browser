@@ -1,4 +1,5 @@
 import http from 'node:http';
+import crypto from 'node:crypto';
 import { URL } from 'node:url';
 import {
   registerUser,
@@ -61,6 +62,17 @@ import {
   recordFunnelEvent,
   getFunnelMetrics,
 } from './funnel-service.js';
+import {
+  generateOAuthAuthorization,
+  validateAndConsumeOAuthState,
+  exchangeGoogleAuthorizationCode,
+  fetchGoogleProfile,
+  authenticateWithGoogleClaims,
+  getGoogleOAuthConfig,
+  normalizePlanId,
+  GoogleClaims,
+  OAuthStateRecord,
+} from './google-oauth-service.js';
 import {
   getUserDevices,
   getAllCommercialDevices,
@@ -382,62 +394,166 @@ export async function handleCommercialApiRoutes(
     return true;
   }
 
-  // Google OAuth SSO Endpoint
-  if (routePath === '/api/v1/auth/google' && method === 'POST') {
-    const body = await parseBody(req);
-    const googleEmail = (body.email || `google_user_${Date.now()}@gmail.com`).trim().toLowerCase();
-    const googleName = (body.name || 'Google User').trim();
+  // ============================================================================
+  // Google OAuth SSO Endpoints (Phase 19)
+  // ============================================================================
 
-    // Find existing or register new user
-    let user = getUserById(googleEmail);
-    if (!user) {
-      const reg = registerUser({
-        email: googleEmail,
-        password: `OAuthGoogle_${crypto.randomUUID()}`,
-        name: googleName,
-        intent: body.intent || 'trial',
-        planId: body.planId,
-        billingCycle: body.billingCycle,
-      }, clientIp);
-      user = reg.user || null;
-    }
+  // 1. OAuth Start: Redirects browser to Google OAuth consent
+  if (routePath === '/api/v1/auth/google/start' && method === 'GET') {
+    const intent = parsedUrl.searchParams.get('intent') || 'trial';
+    const planId = parsedUrl.searchParams.get('plan') || parsedUrl.searchParams.get('planId') || 'professional_50';
+    const billingCycle = parsedUrl.searchParams.get('billing') || parsedUrl.searchParams.get('billingCycle') || 'annual';
+    const returnUrl = parsedUrl.searchParams.get('returnUrl') || '/download';
 
-    if (!user) {
-      sendJSON(res, 400, { success: false, error: 'Failed to authenticate with Google.' });
+    const auth = generateOAuthAuthorization({
+      intent,
+      planId,
+      billingCycle,
+      returnUrl,
+    });
+
+    // Check if caller requested JSON response (e.g., API client or AJAX)
+    const acceptsJson = req.headers.accept?.includes('application/json') || req.headers['x-requested-with'];
+    if (acceptsJson) {
+      sendJSON(res, 200, {
+        success: true,
+        authUrl: auth.authUrl,
+        state: auth.state,
+        configured: auth.configured,
+      });
       return true;
     }
 
-    const token = signToken({ userId: user.id, email: user.email, role: user.role });
-    const entitlements = evaluateUserEntitlements(user.id);
-    const trialStatus = getUserTrialStatus(user.id);
+    // Direct browser navigation: 302 Redirect to Google Auth URL
+    res.writeHead(302, {
+      Location: auth.authUrl,
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end();
+    return true;
+  }
+
+  // 2. OAuth Callback: Validates state, exchanges code, links/creates user, creates session
+  if (routePath === '/api/v1/auth/google/callback' && method === 'GET') {
+    const code = parsedUrl.searchParams.get('code');
+    const state = parsedUrl.searchParams.get('state');
+    const error = parsedUrl.searchParams.get('error');
+
+    // Handle user cancellation or OAuth error
+    if (error || !state) {
+      const stateRecord = state ? validateAndConsumeOAuthState(state) : null;
+      const fallbackIntent = stateRecord?.intent || 'trial';
+      const fallbackPlan = stateRecord?.planId || 'professional_50';
+      const errorMsg = error === 'access_denied' ? 'cancelled' : (error || 'oauth_error');
+      res.writeHead(302, {
+        Location: `/signup?error=${encodeURIComponent(errorMsg)}&intent=${encodeURIComponent(fallbackIntent)}&plan=${encodeURIComponent(fallbackPlan)}`,
+      });
+      res.end();
+      return true;
+    }
+
+    // Validate and consume state (anti-CSRF & single-use)
+    const stateRecord = validateAndConsumeOAuthState(state);
+    if (!stateRecord) {
+      res.writeHead(302, {
+        Location: '/signup?error=invalid_state',
+      });
+      res.end();
+      return true;
+    }
+
+    if (!code) {
+      res.writeHead(302, {
+        Location: '/signup?error=missing_code',
+      });
+      res.end();
+      return true;
+    }
 
     try {
-      recordFunnelEvent({
-        eventName: 'signup_completed',
-        userId: user.id,
-        planId: user.planId,
-        ipAddress: clientIp,
-        metadata: { provider: 'google', intent: body.intent },
-      });
-      if (trialStatus.isTrialActive) {
-        recordFunnelEvent({
-          eventName: 'trial_activated',
-          userId: user.id,
-          planId: user.planId,
-          ipAddress: clientIp,
+      const redirectUri = getGoogleOAuthConfig().defaultRedirectUri;
+      const tokens = await exchangeGoogleAuthorizationCode(code, redirectUri);
+      const profile = await fetchGoogleProfile(tokens.accessToken);
+
+      const authResult = authenticateWithGoogleClaims(profile, stateRecord, clientIp);
+      if (!authResult.success) {
+        res.writeHead(302, {
+          Location: `/signup?error=${encodeURIComponent(authResult.error || 'auth_failed')}`,
         });
+        res.end();
+        return true;
       }
-    } catch {}
+
+      // Establish session cookie and redirect to onboarding / download
+      const targetUrl = authResult.returnUrl.startsWith('http')
+        ? authResult.returnUrl
+        : `${authResult.returnUrl}${authResult.returnUrl.includes('?') ? '&' : '?'}token=${authResult.token}&login=success`;
+
+      res.writeHead(302, {
+        Location: targetUrl,
+        'Set-Cookie': `mahi_token=${authResult.token}; Path=/; Max-Age=2592000; SameSite=Lax`,
+      });
+      res.end();
+      return true;
+    } catch (err: any) {
+      res.writeHead(302, {
+        Location: `/signup?error=${encodeURIComponent(err.message || 'oauth_exchange_failed')}`,
+      });
+      res.end();
+      return true;
+    }
+  }
+
+  // 3. Programmatic Google OAuth SSO Endpoint (Used by desktop, mobile, or direct API)
+  if (routePath === '/api/v1/auth/google' && method === 'POST') {
+    const body = await parseBody(req);
+    const googleEmail = (body.email || '').trim().toLowerCase();
+    if (!googleEmail || !googleEmail.includes('@')) {
+      sendJSON(res, 400, { success: false, error: 'A valid email address is required.' });
+      return true;
+    }
+
+    const claims: GoogleClaims = {
+      sub: body.sub || `google_sub_${crypto.createHash('sha256').update(googleEmail).digest('hex').substring(0, 24)}`,
+      email: googleEmail,
+      email_verified: body.email_verified !== undefined ? Boolean(body.email_verified) : true,
+      name: body.name || googleEmail.split('@')[0],
+      picture: body.picture || body.avatarUrl,
+    };
+
+    const stateContext: OAuthStateRecord = {
+      state: 'direct_post',
+      nonce: 'direct_post',
+      provider: 'google',
+      intent: body.intent || 'trial',
+      planId: normalizePlanId(body.planId),
+      billingCycle: body.billingCycle || 'annual',
+      returnUrl: body.returnUrl || '/download',
+      expiresAt: new Date(Date.now() + 60000).toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+
+    const authResult = authenticateWithGoogleClaims(claims, stateContext, clientIp);
+    if (!authResult.success) {
+      sendJSON(res, 400, { success: false, error: authResult.error });
+      return true;
+    }
+
+    const entitlements = evaluateUserEntitlements(authResult.user.id);
+    const trialStatus = getUserTrialStatus(authResult.user.id);
 
     sendJSON(res, 200, {
       success: true,
-      token,
-      user,
+      token: authResult.token,
+      tokens: { accessToken: authResult.token },
+      user: authResult.user,
       entitlements,
       trialStatus,
       trialActive: trialStatus.isTrialActive,
       trialExpiresAt: trialStatus.trialExpiresAt,
-      planId: user.planId,
+      isNewAccount: authResult.isNewAccount,
+      isLinked: authResult.isLinked,
+      planId: authResult.user.planId,
     });
     return true;
   }

@@ -227,6 +227,9 @@ export interface CommercialUser {
   signupIntent?: string;
   pendingPlanId?: string;
   pendingBillingCycle?: string;
+  googleSub?: string;
+  avatarUrl?: string;
+  authProvider?: string;
   createdAt: string;
   updatedAt: string;
   lastLoginAt?: string;

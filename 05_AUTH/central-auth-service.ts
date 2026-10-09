@@ -27,6 +27,9 @@ export interface AuthUser {
   emailVerifiedAt?: string;
   planId: string;
   profileQuota: number;
+  googleSub?: string;
+  avatarUrl?: string;
+  authProvider?: string;
   createdAt: string;
   updatedAt: string;
   lastLoginAt?: string;

@@ -457,50 +457,40 @@
       });
 
       // 5. Google SSO Button Handler
+      // Check for OAuth callback error messages in URL
+      const urlError = urlParams.get('error');
+      if (urlError) {
+        if (urlError === 'cancelled') {
+          showAlert('Google sign-in was cancelled. You can sign up using email or try again.', true);
+        } else if (urlError === 'invalid_state') {
+          showAlert('Authorization session expired. Please click "Continue with Google" again.', true);
+        } else if (urlError.includes('NOT_CONFIGURED')) {
+          showAlert('Google OAuth is being configured by the administrator. Please sign up with email below.', true);
+        } else {
+          showAlert('Google sign-in failed: ' + decodeURIComponent(urlError).replace(/_/g, ' '), true);
+        }
+      }
+
+      // 5. Google OAuth SSO Button Handler
       const btnGoogle = document.getElementById('btn-google-signup');
-      btnGoogle.addEventListener('click', async function() {
+      btnGoogle.addEventListener('click', function(e) {
+        e.preventDefault();
+        if (btnGoogle.disabled) return;
         btnGoogle.disabled = true;
         btnGoogle.style.opacity = '0.7';
+        btnGoogle.style.cursor = 'wait';
 
-        // Prompt for Google account or perform OAuth SSO continuation
-        const userEmail = prompt('Enter your Google Account email for Verified SSO:', 'user@gmail.com');
-        if (!userEmail) {
-          btnGoogle.disabled = false;
-          btnGoogle.style.opacity = '1';
-          return;
-        }
+        btnGoogle.innerHTML = `
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite; margin-right: 8px;">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-opacity="0.25"></circle>
+            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"></path>
+          </svg>
+          Connecting to Google...
+        `;
 
-        try {
-          const res = await fetch('/api/v1/auth/google', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: userEmail,
-              name: userEmail.split('@')[0],
-              intent,
-              planId,
-              billingCycle
-            })
-          });
-
-          const data = await res.json();
-          if (data.success && data.token) {
-            localStorage.setItem('mahi_access_token', data.token);
-            document.cookie = `mahi_token=${data.token}; path=/; max-age=2592000; SameSite=Lax`;
-            showAlert('Google Authentication verified! Redirecting...', false);
-            setTimeout(() => {
-              window.location.href = returnUrl;
-            }, 600);
-          } else {
-            showAlert(data.error || 'Google SSO failed.');
-            btnGoogle.disabled = false;
-            btnGoogle.style.opacity = '1';
-          }
-        } catch (err) {
-          showAlert('Failed to connect to Google Auth endpoint.');
-          btnGoogle.disabled = false;
-          btnGoogle.style.opacity = '1';
-        }
+        // Direct browser navigation to backend Google OAuth start
+        const startUrl = `/api/v1/auth/google/start?intent=${encodeURIComponent(intent)}&plan=${encodeURIComponent(planId)}&billing=${encodeURIComponent(billingCycle)}&returnUrl=${encodeURIComponent(returnUrl)}`;
+        window.location.href = startUrl;
       });
 
     })();
