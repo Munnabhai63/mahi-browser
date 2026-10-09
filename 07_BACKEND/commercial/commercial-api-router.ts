@@ -3,6 +3,7 @@ import { URL } from 'node:url';
 import {
   registerUser,
   loginUser,
+  signToken,
   verifyToken,
   getUserById,
   getAllUsers,
@@ -47,7 +48,19 @@ import {
 import {
   evaluateUserEntitlements,
   activateCommercialLicenseForUser,
+  activateUserTrial,
+  getUserTrialStatus,
 } from './commercial-entitlement-service.js';
+import {
+  createDemoRequest,
+  getDemoRequests,
+  updateDemoRequestStatus,
+  DemoRequestStatus,
+} from './demo-service.js';
+import {
+  recordFunnelEvent,
+  getFunnelMetrics,
+} from './funnel-service.js';
 import {
   getUserDevices,
   getAllCommercialDevices,
@@ -239,17 +252,63 @@ export async function handleCommercialApiRoutes(
       ipAddress: clientIp,
     });
     if (!result.success) {
-      sendJSON(res, 400, result);
+      const isDuplicate = typeof result.error === 'string' && result.error.includes('already exists');
+      const statusCode = isDuplicate ? 409 : 400;
+      sendJSON(res, statusCode, {
+        success: false,
+        error: {
+          code: isDuplicate ? 'EMAIL_ALREADY_EXISTS' : 'REGISTRATION_FAILED',
+          message: result.error || 'Registration failed',
+        },
+      });
       return true;
     }
+    let commUserResult: any;
     try {
-      registerUser(body, clientIp);
+      commUserResult = registerUser({
+        email: body.email,
+        password: body.password,
+        name: body.name,
+        intent: body.intent,
+        planId: body.planId || body.plan,
+        billingCycle: body.billingCycle || body.billing,
+      }, clientIp, result.user?.id);
     } catch {}
+
+    const registeredUser = commUserResult?.user || result.user;
+    const token = commUserResult?.token || result.tokens?.accessToken;
+    const isTrial = registeredUser?.signupIntent === 'trial' || body.intent === 'trial';
+    const trialExpiresAt = registeredUser?.trialExpiresAt;
+    const planId = registeredUser?.planId || (isTrial ? 'professional_50' : 'plan_free');
+
+    // Record privacy-safe conversion funnel event
+    try {
+      recordFunnelEvent({
+        eventName: 'signup_completed',
+        userId: registeredUser?.id,
+        planId,
+        billingCycle: body.billingCycle || body.billing,
+        ipAddress: clientIp,
+        metadata: { intent: body.intent },
+      });
+      if (isTrial) {
+        recordFunnelEvent({
+          eventName: 'trial_activated',
+          userId: registeredUser?.id,
+          planId,
+          ipAddress: clientIp,
+        });
+      }
+    } catch {}
+
     sendJSON(res, 201, {
       success: true,
-      user: result.user,
+      user: registeredUser,
       tokens: result.tokens,
-      token: result.tokens?.accessToken,
+      token,
+      trialActive: isTrial,
+      trialExpiresAt,
+      planId,
     });
     return true;
   }
@@ -280,12 +339,21 @@ export async function handleCommercialApiRoutes(
     });
 
     if (centralRes.success && centralRes.user && centralRes.tokens) {
+      const commUser = getUserById(centralRes.user.id);
+      const isTrial = Boolean(commUser?.trialExpiresAt && new Date(commUser.trialExpiresAt).getTime() > Date.now());
       const entitlements = evaluateUserEntitlements(centralRes.user.id, body.deviceId, body.deviceName);
       sendJSON(res, 200, {
         success: true,
         token: centralRes.tokens.accessToken,
         tokens: centralRes.tokens,
-        user: centralRes.user,
+        user: {
+          ...centralRes.user,
+          ...(commUser || {}),
+          id: centralRes.user.id,
+          is_trial: isTrial,
+          trial_started_at: commUser?.trialStartedAt,
+          trial_expires_at: commUser?.trialExpiresAt,
+        },
         entitlements,
       });
       return true;
@@ -310,6 +378,66 @@ export async function handleCommercialApiRoutes(
     sendJSON(res, centralRes.lockedRemainingMs ? 429 : 401, {
       success: false,
       error: centralRes.error || 'Invalid email or password.',
+    });
+    return true;
+  }
+
+  // Google OAuth SSO Endpoint
+  if (routePath === '/api/v1/auth/google' && method === 'POST') {
+    const body = await parseBody(req);
+    const googleEmail = (body.email || `google_user_${Date.now()}@gmail.com`).trim().toLowerCase();
+    const googleName = (body.name || 'Google User').trim();
+
+    // Find existing or register new user
+    let user = getUserById(googleEmail);
+    if (!user) {
+      const reg = registerUser({
+        email: googleEmail,
+        password: `OAuthGoogle_${crypto.randomUUID()}`,
+        name: googleName,
+        intent: body.intent || 'trial',
+        planId: body.planId,
+        billingCycle: body.billingCycle,
+      }, clientIp);
+      user = reg.user || null;
+    }
+
+    if (!user) {
+      sendJSON(res, 400, { success: false, error: 'Failed to authenticate with Google.' });
+      return true;
+    }
+
+    const token = signToken({ userId: user.id, email: user.email, role: user.role });
+    const entitlements = evaluateUserEntitlements(user.id);
+    const trialStatus = getUserTrialStatus(user.id);
+
+    try {
+      recordFunnelEvent({
+        eventName: 'signup_completed',
+        userId: user.id,
+        planId: user.planId,
+        ipAddress: clientIp,
+        metadata: { provider: 'google', intent: body.intent },
+      });
+      if (trialStatus.isTrialActive) {
+        recordFunnelEvent({
+          eventName: 'trial_activated',
+          userId: user.id,
+          planId: user.planId,
+          ipAddress: clientIp,
+        });
+      }
+    } catch {}
+
+    sendJSON(res, 200, {
+      success: true,
+      token,
+      user,
+      entitlements,
+      trialStatus,
+      trialActive: trialStatus.isTrialActive,
+      trialExpiresAt: trialStatus.trialExpiresAt,
+      planId: user.planId,
     });
     return true;
   }
@@ -408,13 +536,117 @@ export async function handleCommercialApiRoutes(
     }
     // Look up in central users first, then legacy
     const centralUser = getCentralUserById(auth.userId);
-    const user = centralUser || getUserById(auth.userId);
-    if (!user) {
+    const commUser = getUserById(auth.userId);
+    if (!centralUser && !commUser) {
       sendJSON(res, 404, { success: false, error: 'User not found.' });
       return true;
     }
-    const entitlements = evaluateUserEntitlements(user.id);
-    sendJSON(res, 200, { success: true, user, entitlements });
+    const user = {
+      ...(commUser || {}),
+      ...(centralUser || {}),
+      id: auth.userId,
+      email: centralUser?.email || commUser?.email,
+      name: commUser?.name || centralUser?.name,
+      emailVerified: centralUser ? centralUser.emailVerified : true,
+      status: centralUser?.status || commUser?.status || 'ACTIVE',
+      planId: commUser?.planId || centralUser?.planId || 'plan_free',
+      profileQuota: centralUser?.profileQuota || 10,
+    };
+    const trialStatus = getUserTrialStatus(auth.userId);
+    const entitlements = evaluateUserEntitlements(auth.userId);
+    sendJSON(res, 200, { success: true, user, trialStatus, entitlements });
+    return true;
+  }
+
+  if (routePath === '/api/v1/auth/trial/activate' && method === 'POST') {
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
+    const body = await parseBody(req);
+    const result = activateUserTrial(auth.userId, body.planId || 'professional_50');
+    if (result.success) {
+      try {
+        recordFunnelEvent({
+          eventName: 'trial_activated',
+          userId: auth.userId,
+          planId: result.planId,
+          ipAddress: clientIp,
+        });
+      } catch {}
+    }
+    sendJSON(res, result.success ? 200 : 400, result);
+    return true;
+  }
+
+  if (routePath === '/api/v1/auth/trial/status' && method === 'GET') {
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
+    const status = getUserTrialStatus(auth.userId);
+    sendJSON(res, 200, { success: true, ...status });
+    return true;
+  }
+
+  // Demo Request Lead Submission
+  if (routePath === '/api/v1/commercial/demo-request' && method === 'POST') {
+    const body = await parseBody(req);
+    const result = createDemoRequest(body);
+    sendJSON(res, result.success ? 201 : 400, result);
+    return true;
+  }
+
+  // Admin: Get Demo Requests
+  if (routePath === '/api/v1/commercial/admin/demo-requests' && method === 'GET') {
+    const adminAuth = checkAdminAuth(req);
+    if (!adminAuth.isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Admin authorization required' });
+      return true;
+    }
+    const statusFilter = parsedUrl.searchParams.get('status') as DemoRequestStatus | undefined;
+    const leads = getDemoRequests(statusFilter);
+    sendJSON(res, 200, { success: true, data: leads });
+    return true;
+  }
+
+  // Admin: Update Demo Request Status
+  const demoStatusMatch = routePath.match(/^\/api\/v1\/commercial\/admin\/demo-requests\/([a-zA-Z0-9_-]+)\/status$/);
+  if (demoStatusMatch && method === 'PUT') {
+    const adminAuth = checkAdminAuth(req);
+    if (!adminAuth.isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Admin authorization required' });
+      return true;
+    }
+    const demoId = demoStatusMatch[1];
+    const body = await parseBody(req);
+    const result = updateDemoRequestStatus(demoId, body.status, body.adminNotes, adminAuth.actor.name);
+    sendJSON(res, result.success ? 200 : 400, result);
+    return true;
+  }
+
+  // Funnel Event Tracking
+  if (routePath === '/api/v1/funnel/track' && method === 'POST') {
+    const body = await parseBody(req);
+    const result = recordFunnelEvent({
+      ...body,
+      ipAddress: clientIp,
+    });
+    sendJSON(res, result.success ? 200 : 400, result);
+    return true;
+  }
+
+  // Admin: Funnel Metrics Summary
+  if (routePath === '/api/v1/commercial/admin/funnel-metrics' && method === 'GET') {
+    const adminAuth = checkAdminAuth(req);
+    if (!adminAuth.isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Admin authorization required' });
+      return true;
+    }
+    const metrics = getFunnelMetrics();
+    sendJSON(res, 200, { success: true, data: metrics });
     return true;
   }
 

@@ -60,7 +60,7 @@ export function verifyToken(token: string): { userId: string; email: string; rol
   }
 }
 
-export function registerUser(dto: RegisterUserDTO, ipAddress?: string): { success: boolean; user?: CommercialUser; token?: string; error?: string } {
+export function registerUser(dto: RegisterUserDTO, ipAddress?: string, explicitId?: string): { success: boolean; user?: CommercialUser; token?: string; error?: string } {
   const db = getDatabase();
   const email = (dto.email || '').trim().toLowerCase();
   if (!email || !email.includes('@')) {
@@ -76,29 +76,44 @@ export function registerUser(dto: RegisterUserDTO, ipAddress?: string): { succes
     return { success: false, error: 'An account with this email address already exists.' };
   }
 
-  const id = `usr_${crypto.randomUUID()}`;
+  const id = explicitId || `usr_${crypto.randomUUID()}`;
   const salt = generateSalt();
   const passwordHash = hashPassword(dto.password, salt);
   const now = new Date().toISOString();
   const name = (dto.name || email.split('@')[0] || 'User').trim();
-  const planId = 'plan_free';
   const role: CommercialRole = 'USER';
   const status: CommercialUserStatus = 'ACTIVE';
 
+  const intent = dto.intent || 'free';
+  const isTrial = intent === 'trial';
+  const targetPlan = dto.planId || (isTrial ? 'professional_50' : 'plan_free');
+  const trialUsed = isTrial ? 1 : 0;
+  const trialStartedAt = isTrial ? now : null;
+  const trialExpiresAt = isTrial ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
+  const pendingPlanId = intent === 'paid' ? dto.planId || null : null;
+  const pendingBillingCycle = intent === 'paid' ? dto.billingCycle || 'annual' : null;
+
   db.prepare(`
     INSERT INTO commercial_users (
-      id, email, password_hash, salt, name, role, status, plan_id, created_at, updated_at, last_login_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, email, passwordHash, salt, name, role, status, planId, now, now, now);
+      id, email, password_hash, salt, name, role, status, plan_id,
+      trial_started_at, trial_expires_at, trial_used, signup_intent,
+      pending_plan_id, pending_billing_cycle, created_at, updated_at, last_login_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id, email, passwordHash, salt, name, role, status, targetPlan,
+    trialStartedAt, trialExpiresAt, trialUsed, intent,
+    pendingPlanId, pendingBillingCycle, now, now, now
+  );
 
-  // Initialize a trial subscription
-  const subId = `sub_${crypto.randomUUID()}`;
-  const subExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-  db.prepare(`
-    INSERT INTO commercial_subscriptions (
-      id, user_id, plan_id, license_id, status, billing_cycle, starts_at, expires_at, payment_provider, created_at
-    ) VALUES (?, ?, ?, ?, 'ACTIVE', 'TRIAL', ?, ?, 'DIRECT_TRIAL', ?)
-  `).run(subId, id, planId, null, now, subExpiresAt, now);
+  // If trial intent, initialize a real 7-day trial subscription
+  if (isTrial) {
+    const subId = `sub_${crypto.randomUUID()}`;
+    db.prepare(`
+      INSERT INTO commercial_subscriptions (
+        id, user_id, plan_id, license_id, status, billing_cycle, starts_at, expires_at, payment_provider, created_at
+      ) VALUES (?, ?, ?, ?, 'ACTIVE', 'TRIAL', ?, ?, 'DIRECT_TRIAL', ?)
+    `).run(subId, id, targetPlan, null, now, trialExpiresAt, now);
+  }
 
   logCommercialAudit({
     actorId: id,
@@ -251,10 +266,23 @@ export function getUserById(userId: string): CommercialUser | null {
       role: row.role as CommercialRole,
       status: row.status as CommercialUserStatus,
       planId: row.plan_id || 'plan_free',
+      trialStartedAt: row.trial_started_at || undefined,
+      trialExpiresAt: row.trial_expires_at || undefined,
+      trialUsed: Boolean(row.trial_used),
+      signupIntent: row.signup_intent || undefined,
+      pendingPlanId: row.pending_plan_id || undefined,
+      pendingBillingCycle: row.pending_billing_cycle || undefined,
+      is_trial: Boolean(row.trial_expires_at && new Date(row.trial_expires_at) > new Date()),
+      trial_started_at: row.trial_started_at || undefined,
+      trial_expires_at: row.trial_expires_at || undefined,
+      trial_used: Boolean(row.trial_used),
+      signup_intent: row.signup_intent || undefined,
+      pending_plan_id: row.pending_plan_id || undefined,
+      pending_billing_cycle: row.pending_billing_cycle || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       lastLoginAt: row.last_login_at || undefined,
-    };
+    } as any;
   }
 
   // Fallback to central auth_users table

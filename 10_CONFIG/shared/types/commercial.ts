@@ -221,6 +221,12 @@ export interface CommercialUser {
   role: CommercialRole;
   status: CommercialUserStatus;
   planId: string;
+  trialStartedAt?: string;
+  trialExpiresAt?: string;
+  trialUsed?: boolean;
+  signupIntent?: string;
+  pendingPlanId?: string;
+  pendingBillingCycle?: string;
   createdAt: string;
   updatedAt: string;
   lastLoginAt?: string;
@@ -332,6 +338,9 @@ export interface SoftwareVersionRecord {
 export interface CommercialEntitlements {
   allowed: boolean;
   reason?: string;
+  planId?: string;
+  maxProfiles?: number;
+  isTrialActive?: boolean;
   user: {
     id: string;
     email: string;
@@ -355,6 +364,7 @@ export interface CommercialEntitlements {
   };
   limits: CommercialPlanLimits;
   capabilities?: Record<FeatureCapability, boolean>;
+  features?: Record<FeatureCapability, boolean>;
   usage: {
     profilesCount: number;
     runningProfilesCount: number;
@@ -367,6 +377,9 @@ export interface RegisterUserDTO {
   password: string;
   name?: string;
   licenseKey?: string;
+  intent?: 'trial' | 'free' | 'paid';
+  planId?: string;
+  billingCycle?: 'annual' | 'monthly';
 }
 
 export interface LoginUserDTO {

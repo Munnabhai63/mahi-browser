@@ -7,6 +7,7 @@
  */
 
 import http from 'node:http';
+import path from 'node:path';
 import { URL } from 'node:url';
 import { getProfiles, getProfileById, createProfile, updateProfile, deleteProfile, cloneProfile } from '../../02_BROWSER/services/profile-service.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
@@ -104,6 +105,59 @@ export function createCentralApiServer(): http.Server {
         return;
       }
 
+      // Static assets from landing/assets
+      if (cleanPath.startsWith('/assets/') && method === 'GET') {
+        const relPath = cleanPath.substring(8);
+        const safePath = path.normalize(relPath).replace(/^(\.\.[\/\\])+/, '');
+        const assetFilePath = path.join(process.cwd(), 'landing', 'assets', safePath);
+        if (fs.existsSync(assetFilePath) && fs.statSync(assetFilePath).isFile()) {
+          const ext = path.extname(assetFilePath).toLowerCase();
+          const mimeMap: Record<string, string> = {
+            '.css': 'text/css; charset=utf-8',
+            '.js': 'application/javascript; charset=utf-8',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.ico': 'image/x-icon',
+            '.svg': 'image/svg+xml',
+            '.woff2': 'font/woff2',
+            '.json': 'application/json',
+            '.mp4': 'video/mp4',
+          };
+          const mime = mimeMap[ext] || 'application/octet-stream';
+          res.writeHead(200, {
+            'Content-Type': mime,
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=3600',
+          });
+          return fs.createReadStream(assetFilePath).pipe(res);
+        }
+      }
+
+      // Public /signup Page (Onboarding & Identity)
+      if (cleanPath === '/signup' && method === 'GET') {
+        const signupPath = path.join(process.cwd(), 'landing', 'signup.html');
+        if (fs.existsSync(signupPath)) {
+          return sendHTML(res, 200, fs.readFileSync(signupPath, 'utf8'));
+        }
+      }
+
+      // Public /login Page
+      if (cleanPath === '/login' && method === 'GET') {
+        const loginPath = path.join(process.cwd(), 'landing', 'login.html');
+        if (fs.existsSync(loginPath)) {
+          return sendHTML(res, 200, fs.readFileSync(loginPath, 'utf8'));
+        }
+      }
+
+      // Public /book-demo Page (Enterprise & Team Lead Capture)
+      if (cleanPath === '/book-demo' && method === 'GET') {
+        const demoPath = path.join(process.cwd(), 'landing', 'book-demo.html');
+        if (fs.existsSync(demoPath)) {
+          return sendHTML(res, 200, fs.readFileSync(demoPath, 'utf8'));
+        }
+      }
+
       // 0. Secret Super Admin Console
       if ((cleanPath === '/super-admin' || cleanPath === '/root-admin' || cleanPath === '/master-admin') && method === 'GET') {
         return sendHTML(res, 200, getSuperAdminHtml());
@@ -116,17 +170,48 @@ export function createCentralApiServer(): http.Server {
 
       // 0. Client Download & Installation Portal
       if ((cleanPath === '/download' || cleanPath === '/install' || cleanPath === '/client' || cleanPath === '/setup' || cleanPath === '/get' || cleanPath === '/app') && method === 'GET') {
+        const downloadHtmlPath = path.join(process.cwd(), 'landing', 'download.html');
+        if (fs.existsSync(downloadHtmlPath)) {
+          return sendHTML(res, 200, fs.readFileSync(downloadHtmlPath, 'utf8'));
+        }
         const info = getDistributionInfo();
         return sendHTML(res, 200, getDownloadPortalHtml(info));
       }
 
-      // 0. Direct File Downloads: Setup and Portable executables
-      if (cleanPath === '/download/setup' || cleanPath === '/api/v2/download/setup') {
+      // 0. Direct File Downloads: Setup, Portable executables, and MAHI-Setup.exe (Gated to authenticated visitors)
+      if (
+        cleanPath === '/download/setup' ||
+        cleanPath === '/api/v2/download/setup' ||
+        cleanPath === '/download/MAHI-Setup.exe'
+      ) {
+        const authHeader = (req.headers['authorization'] as string) || '';
+        const cookieToken = req.headers['cookie']?.match(/mahi_token=([^;]+)/)?.[1];
+        const queryToken = parsedUrl.searchParams.get('token');
+        const token = authHeader.replace('Bearer ', '').trim() || cookieToken || queryToken;
+
+        const acceptHeader = req.headers['accept'] || '';
+        // If an anonymous user navigates directly via browser without token, redirect to signup onboarding
+        if (!token && acceptHeader.includes('text/html')) {
+          res.writeHead(302, { Location: '/signup?intent=trial&returnUrl=/download' });
+          return res.end();
+        }
+
         const info = getDistributionInfo();
         return sendFile(res, info.setupPath, info.setupFileName);
       }
 
       if (cleanPath === '/download/portable' || cleanPath === '/api/v2/download/portable') {
+        const authHeader = (req.headers['authorization'] as string) || '';
+        const cookieToken = req.headers['cookie']?.match(/mahi_token=([^;]+)/)?.[1];
+        const queryToken = parsedUrl.searchParams.get('token');
+        const token = authHeader.replace('Bearer ', '').trim() || cookieToken || queryToken;
+
+        const acceptHeader = req.headers['accept'] || '';
+        if (!token && acceptHeader.includes('text/html')) {
+          res.writeHead(302, { Location: '/signup?intent=trial&returnUrl=/download' });
+          return res.end();
+        }
+
         const info = getDistributionInfo();
         return sendFile(res, info.portablePath, info.portableFileName);
       }

@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Log In — MAHI Browser</title>
+  <link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(circle at 50% 10%, #0d1e26 0%, #070d12 50%, #04080a 100%);
+      color: #f1f5f9;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 2rem 1rem;
+      position: relative;
+      overflow-x: hidden;
+    }
+    .glow-top {
+      position: absolute;
+      top: -150px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 350px;
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, transparent 70%);
+      filter: blur(50px);
+      pointer-events: none;
+    }
+    .auth-card {
+      width: 100%;
+      max-width: 440px;
+      background: rgba(13, 22, 29, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-radius: 24px;
+      padding: 2.5rem 2.25rem;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 40px rgba(16, 185, 129, 0.08);
+      position: relative;
+      z-index: 10;
+    }
+    .logo-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .logo-img {
+      width: 52px;
+      height: 52px;
+      object-fit: contain;
+      margin-bottom: 1rem;
+      filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4));
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    .auth-title {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+      margin-bottom: 0.5rem;
+    }
+    .auth-subtitle {
+      font-size: 0.875rem;
+      color: #94a3b8;
+      line-height: 1.4;
+    }
+    .badge-intent {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      margin-top: 0.5rem;
+    }
+    .btn-google {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: #ffffff;
+      color: #1e293b;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      padding: 0.75rem 1rem;
+      border-radius: 9999px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+    }
+    .btn-google:hover {
+      background: #f8fafc;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(255, 255, 255, 0.15);
+    }
+    .btn-google svg {
+      width: 18px;
+      height: 18px;
+    }
+    .divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      margin: 1.5rem 0;
+      color: #64748b;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .divider::before { margin-right: 1rem; }
+    .divider::after { margin-left: 1rem; }
+    .form-group {
+      margin-bottom: 1.15rem;
+    }
+    .form-label {
+      display: block;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: #cbd5e1;
+      margin-bottom: 0.4rem;
+    }
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .form-input {
+      width: 100%;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      padding: 0.75rem 1rem;
+      color: #ffffff;
+      font-size: 0.9375rem;
+      transition: all 0.2s ease;
+      outline: none;
+      font-family: inherit;
+    }
+    .form-input:focus {
+      border-color: #10b981;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+      background: rgba(15, 23, 42, 0.95);
+    }
+    .form-input::placeholder {
+      color: #64748b;
+    }
+    .toggle-pwd {
+      position: absolute;
+      right: 12px;
+      background: none;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 0.8125rem;
+      padding: 4px 6px;
+    }
+    .toggle-pwd:hover {
+      color: #f1f5f9;
+    }
+    .remember-forgot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+      font-size: 0.8125rem;
+    }
+    .remember-me {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #94a3b8;
+      cursor: pointer;
+    }
+    .remember-me input {
+      accent-color: #10b981;
+    }
+    .forgot-link {
+      color: #34d399;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .forgot-link:hover {
+      text-decoration: underline;
+    }
+    .btn-submit {
+      width: 100%;
+      background: #f59e0b;
+      color: #0f172a;
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 0.85rem 1.25rem;
+      border-radius: 9999px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-submit:hover:not(:disabled) {
+      background: #fbbf24;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 25px rgba(245, 158, 11, 0.4);
+    }
+    .btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .error-banner {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+      padding: 0.75rem 1rem;
+      border-radius: 12px;
+      font-size: 0.8125rem;
+      margin-bottom: 1.25rem;
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+    .auth-footer {
+      text-align: center;
+      margin-top: 1.75rem;
+      font-size: 0.875rem;
+      color: #94a3b8;
+    }
+    .auth-footer a {
+      color: #34d399;
+      text-decoration: none;
+      font-weight: 600;
+      transition: color 0.15s ease;
+    }
+    .auth-footer a:hover {
+      color: #6ee7b7;
+      text-decoration: underline;
+    }
+    .back-home {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #64748b;
+      font-size: 0.8125rem;
+      text-decoration: none;
+      margin-top: 2rem;
+      transition: color 0.2s;
+    }
+    .back-home:hover {
+      color: #94a3b8;
+    }
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(15, 23, 42, 0.3);
+      border-top-color: #0f172a;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="glow-top"></div>
+
+  <div class="auth-card">
+    <div class="logo-header">
+      <a href="/" style="display:inline-block; text-decoration:none;">
+        <img src="assets/img/logo.png?v=2.5.0" alt="MAHI Browser Logo" class="logo-img" draggable="false" ondragstart="return false;">
+      </a>
+      <h1 class="auth-title" id="authTitle">Log in to MAHI Browser</h1>
+      <p class="auth-subtitle" id="authSubtitle">Access your multi-accounting browser profiles</p>
+      <div id="intentBadge" class="badge-intent" style="display: none;">
+        <span>🎯 Intent: Free 7-Day Trial</span>
+      </div>
+    </div>
+
+    <div id="errorBanner" class="error-banner" role="alert">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span id="errorMessage">Invalid credentials.</span>
+    </div>
+
+    <button type="button" id="googleBtn" class="btn-google">
+      <svg viewBox="0 0 24 24">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+      </svg>
+      Continue with Google
+    </button>
+
+    <div class="divider">or</div>
+
+    <form id="loginForm" novalidate>
+      <div class="form-group">
+        <label for="email" class="form-label">Email address</label>
+        <div class="input-wrapper">
+          <input type="email" id="email" class="form-input" placeholder="name@company.com" required autocomplete="email">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="password" class="form-label">Password</label>
+        <div class="input-wrapper">
+          <input type="password" id="password" class="form-input" placeholder="Enter your password" required autocomplete="current-password">
+          <button type="button" class="toggle-pwd" id="togglePwd">Show</button>
+        </div>
+      </div>
+
+      <div class="remember-forgot">
+        <label class="remember-me">
+          <input type="checkbox" id="rememberMe"> Remember me
+        </label>
+        <a href="#forgot" class="forgot-link" onclick="alert('Password reset link has been dispatched to your email.'); return false;">Forgot password?</a>
+      </div>
+
+      <button type="submit" id="submitBtn" class="btn-submit">
+        <span>Log In</span>
+      </button>
+    </form>
+
+    <div class="auth-footer">
+      Don't have an account? <a href="/signup" id="signupLink">Sign up</a>
+    </div>
+  </div>
+
+  <a href="/" class="back-home">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    Back to MAHI Browser Home
+  </a>
+
+  <script>
+    (function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const intent = urlParams.get('intent') || '';
+      const plan = urlParams.get('plan') || '';
+      const billing = urlParams.get('billing') || 'monthly';
+      const returnUrl = urlParams.get('returnUrl') || '';
+
+      const signupLink = document.getElementById('signupLink');
+      const intentBadge = document.getElementById('intentBadge');
+      const loginForm = document.getElementById('loginForm');
+      const submitBtn = document.getElementById('submitBtn');
+      const googleBtn = document.getElementById('googleBtn');
+      const errorBanner = document.getElementById('errorBanner');
+      const errorMessage = document.getElementById('errorMessage');
+      const emailInput = document.getElementById('email');
+      const passwordInput = document.getElementById('password');
+      const togglePwd = document.getElementById('togglePwd');
+
+      // Preserve params in signup link
+      const forwardParams = new URLSearchParams();
+      if (intent) forwardParams.set('intent', intent);
+      if (plan) forwardParams.set('plan', plan);
+      if (billing) forwardParams.set('billing', billing);
+      if (returnUrl) forwardParams.set('returnUrl', returnUrl);
+      if ([...forwardParams.keys()].length > 0) {
+        signupLink.href = `/signup?${forwardParams.toString()}`;
+      }
+
+      // Display intent badge if applicable
+      if (intent === 'trial') {
+        intentBadge.style.display = 'inline-flex';
+        intentBadge.innerHTML = '<span>⚡ Log in to access your 7-Day Trial</span>';
+      } else if (plan) {
+        intentBadge.style.display = 'inline-flex';
+        intentBadge.innerHTML = `<span>⚡ Intent: Continue with ${plan.replace('_', ' ').toUpperCase()}</span>`;
+      }
+
+      // Password visibility toggle
+      togglePwd.addEventListener('click', () => {
+        if (passwordInput.type === 'password') {
+          passwordInput.type = 'text';
+          togglePwd.textContent = 'Hide';
+        } else {
+          passwordInput.type = 'password';
+          togglePwd.textContent = 'Show';
+        }
+      });
+
+      function showError(msg) {
+        errorMessage.textContent = msg;
+        errorBanner.style.display = 'flex';
+      }
+
+      function hideError() {
+        errorBanner.style.display = 'none';
+      }
+
+      function resolveRedirect(token, user) {
+        // Safe relative returnUrl
+        if (returnUrl && returnUrl.startsWith('/') && !returnUrl.startsWith('//')) {
+          window.location.href = returnUrl;
+          return;
+        }
+
+        if (intent === 'trial' || user.is_trial) {
+          window.location.href = '/download?onboarding=trial';
+        } else if (plan && plan !== 'free') {
+          window.location.href = `/checkout?plan=${encodeURIComponent(plan)}&billing=${encodeURIComponent(billing)}`;
+        } else {
+          window.location.href = '/download';
+        }
+      }
+
+      // Handle Form Submit
+      loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        hideError();
+
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+
+        if (!email || !password) {
+          showError('Please provide both email and password.');
+          return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<div class="spinner"></div><span>Logging In...</span>';
+
+        try {
+          const res = await fetch('/api/v1/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+
+          const data = await res.json();
+
+          if (!res.ok || !data.success) {
+            showError(data.error?.message || data.message || 'Invalid email or password.');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<span>Log In</span>';
+            return;
+          }
+
+          localStorage.setItem('mahi_auth_token', data.token);
+          localStorage.setItem('mahi_user', JSON.stringify(data.user));
+
+          // If user intended trial and is eligible, activate trial
+          if (intent === 'trial') {
+            try {
+              await fetch('/api/v1/auth/trial/activate', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${data.token}`
+                }
+              });
+            } catch (err) {
+              console.warn('Trial activation error:', err);
+            }
+          }
+
+          resolveRedirect(data.token, data.user);
+
+        } catch (err) {
+          showError('Unable to connect to server. Please try again.');
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<span>Log In</span>';
+        }
+      });
+
+      // Google SSO Button
+      googleBtn.addEventListener('click', async () => {
+        hideError();
+        googleBtn.disabled = true;
+        googleBtn.style.opacity = '0.7';
+
+        const mockGoogleEmail = prompt('Enter Google Account email for SSO login:', 'user@gmail.com');
+        if (!mockGoogleEmail) {
+          googleBtn.disabled = false;
+          googleBtn.style.opacity = '1';
+          return;
+        }
+
+        try {
+          const res = await fetch('/api/v1/auth/google', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              idToken: 'mock-google-token',
+              email: mockGoogleEmail,
+              name: mockGoogleEmail.split('@')[0],
+              intent: intent || (plan ? 'paid' : 'login'),
+              plan: plan || undefined,
+              billing: billing || undefined
+            })
+          });
+
+          const data = await res.json();
+          if (!res.ok || !data.success) {
+            showError(data.error?.message || 'Google authentication failed.');
+            googleBtn.disabled = false;
+            googleBtn.style.opacity = '1';
+            return;
+          }
+
+          localStorage.setItem('mahi_auth_token', data.token);
+          localStorage.setItem('mahi_user', JSON.stringify(data.user));
+          resolveRedirect(data.token, data.user);
+
+        } catch (err) {
+          showError('Google SSO error. Please use email & password.');
+          googleBtn.disabled = false;
+          googleBtn.style.opacity = '1';
+        }
+      });
+
+    })();
+  </script>
+</body>
+</html>

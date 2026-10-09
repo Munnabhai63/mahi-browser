@@ -2186,7 +2186,7 @@ function initResourceModal() {
             <span style="background: rgba(255,255,255,0.08); color: #e2e8f0; font-family: monospace; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px;">SLEEP</span>
           </div>
         </div>
-        <a href="/download/MAHI-Setup.exe" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;" download>Download Windows App to Try RPA →</a>
+        <a href="/download" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;">Download Windows App to Try RPA →</a>
       `
     },
     'cookie-warmer': {
@@ -2201,7 +2201,7 @@ function initResourceModal() {
           <li>Custom wait times, scroll physics, and link following</li>
           <li>Dramatic increase in initial account trust and lifespan</li>
         </ul>
-        <a href="/download/MAHI-Setup.exe" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;" download>Download to Use Cookie Warmer →</a>
+        <a href="/download" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;">Download to Use Cookie Warmer →</a>
       `
     },
     'synchronizer': {
@@ -2216,7 +2216,7 @@ function initResourceModal() {
           <li>Synchronized scrolling and page navigation</li>
           <li>Reduces manual workload by over 90% in mass operations</li>
         </ul>
-        <a href="/download/MAHI-Setup.exe" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;" download>Download to Try Synchronizer →</a>
+        <a href="/download" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;">Download to Try Synchronizer →</a>
       `
     },
     'mobile-rotator': {
@@ -2230,7 +2230,7 @@ function initResourceModal() {
           <strong style="color: #0f172a; font-size: 0.9rem; display: block; margin-bottom: 0.25rem;">Zero Subscription Cost:</strong>
           <span style="color: #64748b; font-size: 0.85rem;">Uses your smartphone's existing cellular data plan for unlimited clean mobile carrier IPs.</span>
         </div>
-        <a href="/download/MAHI-Setup.exe" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;" download>Download to Setup ADB Rotator →</a>
+        <a href="/download" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;">Download to Setup ADB Rotator →</a>
       `
     },
     'proxy-manager': {
@@ -2245,7 +2245,7 @@ function initResourceModal() {
           <li>Live IP, ISP, country, and latency diagnostics</li>
           <li>Automatic proxy failover and health checking</li>
         </ul>
-        <a href="/download/MAHI-Setup.exe" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;" download>Download Windows App →</a>
+        <a href="/download" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;">Download Windows App →</a>
       `
     },
     'profile-backup': {
@@ -2255,7 +2255,7 @@ function initResourceModal() {
         <p style="color: #64748b; font-size: 0.925rem; line-height: 1.6; margin-bottom: 1.25rem;">
           All browser profiles, cookies, and settings are encrypted at rest with AES-256-GCM. Export your entire environment as a portable encrypted archive anytime to migrate between PCs without data loss.
         </p>
-        <a href="/download/MAHI-Setup.exe" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;" download>Download Free Version →</a>
+        <a href="/download" class="btn-clean-primary" style="display: inline-flex; width: 100%; justify-content: center; padding: 0.85rem;">Download Free Version →</a>
       `
     },
 
@@ -2483,8 +2483,15 @@ function initResourceModal() {
  */
 function initDownloadTriggers() {
   document.querySelectorAll('.btn-download-trigger, a[href*="MAHI-Setup.exe"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      showToast('Download started! MAHI-Setup.exe (v1.1.1) — 15 Free Profiles unlocked.', 'success', 4500);
+    btn.addEventListener('click', (e) => {
+      const token = localStorage.getItem('mahi_auth_token');
+      if (!token) {
+        // Block anonymous direct file downloads from landing triggers
+        e.preventDefault();
+        window.location.href = '/download';
+        return;
+      }
+      showToast('Download started! MAHI-Setup.exe (v1.1.1) — Authenticated session active.', 'success', 4500);
     });
   });
 }
@@ -2668,12 +2675,28 @@ function initPricingSection() {
 
   function renderCards() {
     const isAnnual = toggle ? toggle.checked : true;
+    const activeBilling = isAnnual ? 'annual' : 'monthly';
     const plans = PRICING_DATA[currentCategory] || PRICING_DATA.personal;
+    const token = localStorage.getItem('mahi_auth_token');
 
     grid.innerHTML = plans.map(plan => {
       const priceDisplay = isAnnual ? formatInr(plan.annual) : formatInr(plan.monthly);
       const strikethroughDisplay = isAnnual ? `₹${formatInr(plan.monthly)}/mo` : '';
       const isPopular = plan.popular;
+      const planKey = (currentCategory === 'business' ? 'team_' : 'professional_') + plan.id;
+
+      let ctaLabel = 'Start 7-Day Free Trial';
+      if (currentCategory === 'business' && plan.id >= 200) {
+        ctaLabel = `Choose ${plan.name}`;
+      } else {
+        ctaLabel = `Start 7-Day Free Trial`;
+      }
+
+      let ctaHref = `/signup?plan=${encodeURIComponent(planKey)}&billing=${encodeURIComponent(activeBilling)}&intent=trial`;
+      if (token) {
+        ctaHref = `/download?plan=${encodeURIComponent(planKey)}&billing=${encodeURIComponent(activeBilling)}`;
+        ctaLabel = 'Open Dashboard';
+      }
 
       return `
         <div class="clean-price-card ${isPopular ? 'popular-highlight' : ''}" data-tier="${plan.id}">
@@ -2703,16 +2726,13 @@ function initPricingSection() {
           </ul>
 
           <div class="cpc-cta-wrap">
-            <a href="/download/MAHI-Setup.exe" class="${isPopular ? 'btn-cpc-solid' : 'btn-cpc-outline'} btn-download-trigger" download>
-              Start 7-day free trial
+            <a href="${ctaHref}" class="${isPopular ? 'btn-cpc-solid' : 'btn-cpc-outline'}">
+              ${ctaLabel}
             </a>
           </div>
         </div>
       `;
     }).join('');
-
-    // Rebind download trigger toasts
-    initDownloadTriggers();
   }
 
   if (toggle) {
@@ -2774,6 +2794,9 @@ function initPricingSection() {
   function renderComparisonTable() {
     if (!compareTableWrapper) return;
     const catData = COMPARISON_DATA[currentCategory] || COMPARISON_DATA.personal;
+    const isAnnual = toggle ? toggle.checked : true;
+    const activeBilling = isAnnual ? 'annual' : 'monthly';
+    const token = localStorage.getItem('mahi_auth_token');
 
     let tableHtml = `
       <table class="compare-table-clean">
@@ -2804,10 +2827,17 @@ function initPricingSection() {
             <td></td>
             ${catData.columns.map((col, idx) => {
               const isPop = idx === catData.popularCol;
+              const colPlanKey = col.toLowerCase().replace(/\s+/g, '_');
+              let compCtaHref = `/signup?plan=${encodeURIComponent(colPlanKey)}&billing=${encodeURIComponent(activeBilling)}&intent=trial`;
+              let compCtaLabel = 'Start 7-day free trial';
+              if (token) {
+                compCtaHref = `/download?plan=${encodeURIComponent(colPlanKey)}&billing=${encodeURIComponent(activeBilling)}`;
+                compCtaLabel = 'Open Dashboard';
+              }
               return `
                 <td class="${isPop ? 'col-popular-td' : ''}">
-                  <a href="/download/MAHI-Setup.exe" class="${isPop ? 'btn-cpc-solid' : 'btn-cpc-outline'} btn-download-trigger" download>
-                    Start 7-day free trial
+                  <a href="${compCtaHref}" class="${isPop ? 'btn-cpc-solid' : 'btn-cpc-outline'}">
+                    ${compCtaLabel}
                   </a>
                 </td>
               `;

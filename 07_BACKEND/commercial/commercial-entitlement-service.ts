@@ -248,13 +248,22 @@ export function evaluateUserEntitlements(
   const runningCount = processManager.getRunningCount();
 
   const isDeviceAuthorized = devReg.success;
+  const isSubActive = !subscription || subscription.status === 'ACTIVE' || subscription.status === 'TRIAL';
+  const isTrialActive = Boolean(user.trialExpiresAt && new Date(user.trialExpiresAt).getTime() > Date.now());
+  const effectivePlanObj = isSubActive ? plan : defaultFreePlan;
   const capabilities = resolveCapabilitiesForPlan(plan, subscription);
+
+  const trialPlanId = (user.signupIntent === 'trial' && isTrialActive) ? 'trial_50' : (effectivePlanObj.id.replace('plan_', '') || 'free');
+  const effectiveMaxProfiles = (user.signupIntent === 'trial' && isTrialActive) ? 50 : effectivePlanObj.limits.maxProfiles;
 
   return {
     allowed: isDeviceAuthorized,
     reason: isDeviceAuthorized ? undefined : devReg.message,
+    planId: trialPlanId,
+    maxProfiles: effectiveMaxProfiles,
+    isTrialActive,
     user,
-    plan,
+    plan: effectivePlanObj,
     subscription,
     license: licenseInfo,
     device: {
@@ -262,8 +271,15 @@ export function evaluateUserEntitlements(
       status: isDeviceAuthorized ? 'ACTIVE' : 'REVOKED',
       isAuthorized: isDeviceAuthorized,
     },
-    limits: plan.limits,
+    limits: (user.signupIntent === 'trial' && isTrialActive)
+      ? { ...effectivePlanObj.limits, maxProfiles: 50 }
+      : effectivePlanObj.limits,
     capabilities,
+    features: {
+      ...capabilities,
+      uniqueFingerprints: true,
+      cloudSync: true,
+    } as any,
     usage: {
       profilesCount: getRealUserProfileCount(user.id),
       runningProfilesCount: runningCount,
@@ -440,5 +456,104 @@ export function activateCommercialLicenseForUser(
     success: true,
     message: `License successfully activated! Account upgraded to ${proPlan.name}.`,
     entitlements,
+  };
+}
+
+/**
+ * Activates a 7-day trial entitlement for an eligible account.
+ * Enforces server-side trial status (one trial per eligible user).
+ */
+export function activateUserTrial(
+  userId: string,
+  targetPlanId = 'professional_50'
+): { success: boolean; isTrialActive?: boolean; error?: string; message?: string; trialExpiresAt?: string; planId?: string } {
+  const db = getDatabase();
+  const user = getUserById(userId);
+  if (!user) {
+    return { success: false, error: 'USER_NOT_FOUND', message: 'User account not found.' };
+  }
+
+  // Check if trial has already been used
+  if (user.trialUsed) {
+    return {
+      success: false,
+      error: 'TRIAL_ALREADY_USED',
+      message: 'A 7-day trial has already been used for this account.',
+    };
+  }
+
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const nowStr = now.toISOString();
+  const expStr = expiresAt.toISOString();
+
+  // Atomically update commercial_users
+  db.prepare(`
+    UPDATE commercial_users
+    SET plan_id = ?, trial_started_at = ?, trial_expires_at = ?, trial_used = 1, updated_at = ?
+    WHERE id = ?
+  `).run(targetPlanId, nowStr, expStr, nowStr, userId);
+
+  // Update auth_users if present
+  try {
+    db.prepare(`
+      UPDATE auth_users
+      SET plan_id = ?, trial_started_at = ?, trial_expires_at = ?, trial_used = 1, updated_at = ?
+      WHERE id = ?
+    `).run(targetPlanId, nowStr, expStr, nowStr, userId);
+  } catch {}
+
+  // Create active trial subscription record
+  const subId = `sub_trial_${Date.now()}`;
+  db.prepare(`
+    INSERT INTO commercial_subscriptions (
+      id, user_id, plan_id, license_id, status, billing_cycle, starts_at, expires_at, payment_provider, created_at
+    ) VALUES (?, ?, ?, NULL, 'ACTIVE', 'TRIAL', ?, ?, 'DIRECT_TRIAL', ?)
+  `).run(subId, userId, targetPlanId, nowStr, expStr, nowStr);
+
+  return {
+    success: true,
+    isTrialActive: true,
+    message: `7-day trial activated for ${targetPlanId}!`,
+    trialExpiresAt: expStr,
+    planId: targetPlanId,
+  };
+}
+
+/**
+ * Checks server-side trial eligibility and status for a user.
+ */
+export function getUserTrialStatus(userId: string): {
+  isEligibleForTrial: boolean;
+  isTrialActive: boolean;
+  trialStartedAt?: string;
+  trialExpiresAt?: string;
+  daysRemaining?: number;
+  planId?: string;
+} {
+  const user = getUserById(userId);
+  if (!user) {
+    return { isEligibleForTrial: false, isTrialActive: false };
+  }
+
+  const trialUsed = Boolean(user.trialUsed);
+  const trialExpiresAt = user.trialExpiresAt;
+  const isTrialActive = Boolean(
+    trialExpiresAt && new Date(trialExpiresAt).getTime() > Date.now()
+  );
+
+  let daysRemaining = 0;
+  if (isTrialActive && trialExpiresAt) {
+    const diffMs = new Date(trialExpiresAt).getTime() - Date.now();
+    daysRemaining = Math.max(0, Math.ceil(diffMs / (24 * 60 * 60 * 1000)));
+  }
+
+  return {
+    isEligibleForTrial: !trialUsed,
+    isTrialActive,
+    trialStartedAt: user.trialStartedAt,
+    trialExpiresAt: user.trialExpiresAt,
+    daysRemaining,
+    planId: user.planId,
   };
 }

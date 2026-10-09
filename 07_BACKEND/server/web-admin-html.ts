@@ -124,6 +124,22 @@ export function getWebAdminHtml(): string {
             <span>Audit Trail</span>
           </div>
         </button>
+
+        <button onclick="switchPage('demo_requests')" id="nav-demo_requests" class="nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all">
+          <div class="flex items-center space-x-3">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            <span>Demo Leads</span>
+          </div>
+          <span class="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-500/20 text-emerald-400">LEADS</span>
+        </button>
+
+        <button onclick="switchPage('funnel')" id="nav-funnel" class="nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all">
+          <div class="flex items-center space-x-3">
+            <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+            <span>Funnel Telemetry</span>
+          </div>
+          <span class="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-sky-500/20 text-sky-400">FUNNEL</span>
+        </button>
       </div>
     </div>
 
@@ -257,6 +273,12 @@ export function getWebAdminHtml(): string {
       } else if (currentPage === 'audit_logs') {
         title.innerText = 'System Audit Trail';
         renderAuditLogs();
+      } else if (currentPage === 'demo_requests') {
+        title.innerText = 'Enterprise & Team Demo Leads';
+        renderDemoRequests();
+      } else if (currentPage === 'funnel') {
+        title.innerText = 'Conversion Funnel Telemetry';
+        renderFunnelTelemetry();
       }
     }
 
@@ -1166,6 +1188,165 @@ export function getWebAdminHtml(): string {
               \`).join('')}
             </tbody>
           </table>
+        </div>
+      \`;
+    async function renderDemoRequests(statusFilter = '') {
+      const container = document.getElementById('content-container');
+      const url = statusFilter ? \`/api/v1/commercial/admin/demo-requests?status=\${encodeURIComponent(statusFilter)}\` : '/api/v1/commercial/admin/demo-requests';
+      const res = await apiFetch(url);
+      if (!res.success) {
+        container.innerHTML = '<div class="p-6 bg-rose-50 text-rose-700 rounded-2xl text-xs font-bold">Failed to load demo requests</div>';
+        return;
+      }
+
+      const leads = res.data || [];
+      const statuses = ['NEW', 'CONTACTED', 'SCHEDULED', 'COMPLETED', 'CLOSED'];
+
+      container.innerHTML = \`
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <button onclick="renderDemoRequests('')" class="px-3 py-1.5 rounded-xl text-xs font-bold \${!statusFilter ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}">All (\${leads.length})</button>
+              \${statuses.map(st => \`
+                <button onclick="renderDemoRequests('\${st}')" class="px-3 py-1.5 rounded-xl text-xs font-bold \${statusFilter === st ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}">\${st}</button>
+              \`).join('')}
+            </div>
+            <button onclick="renderDemoRequests('\${statusFilter}')" class="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50">↻ Refresh</button>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px]">
+                <tr>
+                  <th class="p-3">Date</th>
+                  <th class="p-3">Lead / Contact</th>
+                  <th class="p-3">Company & Team</th>
+                  <th class="p-3">Use Case</th>
+                  <th class="p-3">Contact Preference</th>
+                  <th class="p-3">Status</th>
+                  <th class="p-3 text-right">Update Status</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                \${leads.length === 0 ? '<tr><td colspan="7" class="p-8 text-center text-slate-400">No demo requests found</td></tr>' : leads.map(lead => \`
+                  <tr class="hover:bg-slate-50">
+                    <td class="p-3 font-mono text-[11px] text-slate-400 whitespace-nowrap">\${new Date(lead.createdAt).toLocaleDateString()}</td>
+                    <td class="p-3">
+                      <div class="font-bold text-slate-900">\${lead.fullName}</div>
+                      <div class="text-[11px] text-slate-500 font-mono">\${lead.email}</div>
+                    </td>
+                    <td class="p-3">
+                      <div class="font-bold text-slate-800">\${lead.companyName || '—'}</div>
+                      <div class="text-[11px] text-slate-500">\${lead.teamSize} members</div>
+                    </td>
+                    <td class="p-3 text-slate-700 max-w-xs truncate">\${lead.useCase}</td>
+                    <td class="p-3">
+                      <div class="text-slate-800 font-medium">\${lead.contactMethod}</div>
+                      \${lead.preferredDatetime ? \`<div class="text-[10px] text-slate-400">\${lead.preferredDatetime}</div>\` : ''}
+                    </td>
+                    <td class="p-3">
+                      <span class="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase \${
+                        lead.status === 'NEW' ? 'bg-sky-50 text-sky-700 border border-sky-200' :
+                        lead.status === 'SCHEDULED' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                        lead.status === 'COMPLETED' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                        lead.status === 'CONTACTED' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                        'bg-slate-100 text-slate-600 border border-slate-200'
+                      }">\${lead.status}</span>
+                    </td>
+                    <td class="p-3 text-right">
+                      <select onchange="updateDemoStatus('\${lead.id}', this.value)" class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-700 outline-none">
+                        \${statuses.map(s => \`<option value="\${s}" \${lead.status === s ? 'selected' : ''}>\${s}</option>\`).join('')}
+                      </select>
+                    </td>
+                  </tr>
+                \`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      \`;
+    }
+
+    async function updateDemoStatus(id, newStatus) {
+      const res = await apiFetch(\`/api/v1/commercial/admin/demo-requests/\${id}/status\`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (res.success) {
+        showToast('Lead status updated to ' + newStatus);
+        renderDemoRequests();
+      } else {
+        showToast(res.error || 'Failed to update status', 'error');
+      }
+    }
+
+    async function renderFunnelTelemetry() {
+      const container = document.getElementById('content-container');
+      const res = await apiFetch('/api/v1/commercial/admin/funnel-metrics');
+      if (!res.success) {
+        container.innerHTML = '<div class="p-6 bg-rose-50 text-rose-700 rounded-2xl text-xs font-bold">Failed to load funnel metrics</div>';
+        return;
+      }
+
+      const m = res.data;
+      container.innerHTML = \`
+        <div class="space-y-6">
+          <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">CTA Clicks</span>
+              <div class="text-2xl font-black text-slate-900 mt-1 font-mono">\${m.landingCtaClicks}</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">Landing engagement</div>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Signup Starts</span>
+              <div class="text-2xl font-black text-sky-600 mt-1 font-mono">\${m.signupStarts}</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">Registration begun</div>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Accounts Created</span>
+              <div class="text-2xl font-black text-emerald-600 mt-1 font-mono">\${m.signupCompletions}</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">\${m.signupRate}% completion</div>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">7-Day Trials</span>
+              <div class="text-2xl font-black text-amber-600 mt-1 font-mono">\${m.trialActivations}</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">Server entitlements</div>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Downloads</span>
+              <div class="text-2xl font-black text-purple-600 mt-1 font-mono">\${m.downloadsStarted}</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">Windows x64 installer</div>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Paid Conversions</span>
+              <div class="text-2xl font-black text-emerald-700 mt-1 font-mono">\${m.paidConversions}</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">\${m.overallConversionRate}% overall</div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+            <h3 class="text-sm font-bold text-slate-900">Onboarding Pipeline Health</h3>
+            <div class="space-y-3">
+              <div>
+                <div class="flex justify-between text-xs font-bold text-slate-700 mb-1">
+                  <span>Signup Completion (Starts → Created)</span>
+                  <span>\${m.signupRate}%</span>
+                </div>
+                <div class="w-full bg-slate-100 rounded-full h-2">
+                  <div class="bg-emerald-500 h-2 rounded-full" style="width: \${Math.min(100, m.signupRate)}%"></div>
+                </div>
+              </div>
+              <div>
+                <div class="flex justify-between text-xs font-bold text-slate-700 mb-1">
+                  <span>Download Activation (Signups → Downloads)</span>
+                  <span>\${m.downloadRate}%</span>
+                </div>
+                <div class="w-full bg-slate-100 rounded-full h-2">
+                  <div class="bg-purple-500 h-2 rounded-full" style="width: \${Math.min(100, m.downloadRate)}%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       \`;
     }

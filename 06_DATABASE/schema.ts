@@ -1360,4 +1360,62 @@ export async function initializeDatabase(): Promise<void> {
       db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (19, ?)').run(new Date().toISOString());
     } catch {}
   }
+
+  // Migration v20: Website CTA -> Auth -> Trial / Demo / Funnel Infrastructure
+  const checkMigration20 = db.prepare('SELECT version FROM schema_migrations WHERE version = 20').get();
+  if (!checkMigration20) {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS demo_requests (
+          id TEXT PRIMARY KEY,
+          full_name TEXT NOT NULL,
+          email TEXT NOT NULL,
+          company_name TEXT,
+          team_size TEXT,
+          use_case TEXT,
+          contact_method TEXT DEFAULT 'Email',
+          preferred_datetime TEXT,
+          message TEXT,
+          status TEXT NOT NULL DEFAULT 'NEW',
+          admin_notes TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_demo_status ON demo_requests(status);
+        CREATE INDEX IF NOT EXISTS idx_demo_email ON demo_requests(email);
+
+        CREATE TABLE IF NOT EXISTS funnel_events (
+          id TEXT PRIMARY KEY,
+          event_name TEXT NOT NULL,
+          user_id TEXT,
+          anonymous_id TEXT,
+          plan_id TEXT,
+          billing_cycle TEXT,
+          source_url TEXT,
+          ip_address TEXT,
+          metadata_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_funnel_event_name ON funnel_events(event_name);
+        CREATE INDEX IF NOT EXISTS idx_funnel_created ON funnel_events(created_at);
+      `);
+
+      // Additive columns for trial tracking and intent continuation
+      try { db.exec('ALTER TABLE commercial_users ADD COLUMN trial_started_at TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE commercial_users ADD COLUMN trial_expires_at TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE commercial_users ADD COLUMN trial_used INTEGER NOT NULL DEFAULT 0;'); } catch {}
+      try { db.exec('ALTER TABLE commercial_users ADD COLUMN signup_intent TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE commercial_users ADD COLUMN pending_plan_id TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE commercial_users ADD COLUMN pending_billing_cycle TEXT;'); } catch {}
+
+      try { db.exec('ALTER TABLE auth_users ADD COLUMN trial_started_at TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE auth_users ADD COLUMN trial_expires_at TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE auth_users ADD COLUMN trial_used INTEGER NOT NULL DEFAULT 0;'); } catch {}
+      try { db.exec('ALTER TABLE auth_users ADD COLUMN signup_intent TEXT;'); } catch {}
+
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (20, ?)').run(new Date().toISOString());
+    } catch {}
+  }
 }
