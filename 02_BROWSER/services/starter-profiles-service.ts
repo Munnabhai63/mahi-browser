@@ -27,6 +27,14 @@ export interface StarterProfileTemplate {
   color: string;
   features: string[];
   recommendedUse: string;
+  browser?: string;
+  fingerprintPreview?: {
+    screenResolution?: string;
+    userAgentSnippet?: string;
+    webGlVendor?: string;
+    canvasNoise?: boolean;
+    audioNoise?: boolean;
+  };
   defaultSettings?: Partial<ProfileSettings>;
 }
 

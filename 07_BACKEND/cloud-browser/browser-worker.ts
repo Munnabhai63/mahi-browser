@@ -21,6 +21,8 @@ import fs from 'node:fs';
 import {
   isManagedEngineInstalled,
   getManagedEngineExecutablePath,
+  isProductionChromiumInstalled,
+  getProductionChromiumExecutablePath,
 } from '../../02_BROWSER/managed-engine.js';
 import { resolveExecutablePath } from '../../02_BROWSER/detector.js';
 import { getProxyById, getDecryptedProxyCredentials } from '../../02_BROWSER/services/proxy-service.js';
@@ -90,6 +92,10 @@ export class BrowserWorkerManager {
    * Resolves the verified version-pinned Chromium engine.
    */
   public resolveWorkerExecutable(): string {
+    if (isProductionChromiumInstalled()) {
+      const p = getProductionChromiumExecutablePath();
+      if (fs.existsSync(p)) return p;
+    }
     if (isManagedEngineInstalled()) {
       const p = getManagedEngineExecutablePath();
       if (fs.existsSync(p)) return p;

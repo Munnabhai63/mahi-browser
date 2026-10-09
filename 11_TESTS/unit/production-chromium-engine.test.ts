@@ -1,0 +1,159 @@
+import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+  CURRENT_ENGINE_DISTRIBUTION,
+  CHROMIUM_PRODUCTION_CONFIG,
+  CHROMIUM_PRODUCTION_VERSION,
+  CHROMIUM_PRODUCTION_SHA256,
+  CHROMIUM_PRODUCTION_DOWNLOAD_URL,
+} from '../../10_CONFIG/engine-config.js';
+import {
+  getProductionChromiumExecutablePath,
+  isProductionChromiumInstalled,
+  getManagedEngineExecutablePath,
+  isManagedEngineInstalled,
+} from '../../02_BROWSER/managed-engine.js';
+
+describe('Production Unbranded Chromium Engine Suite (P0 Batch 1)', () => {
+  it('declares CHROMIUM_PRODUCTION as the active engine policy', () => {
+    expect(CURRENT_ENGINE_DISTRIBUTION).toBe('CHROMIUM_PRODUCTION');
+  });
+
+  it('defines explicit, verified production Chromium configuration', () => {
+    expect(CHROMIUM_PRODUCTION_CONFIG.distribution).toBe('CHROMIUM_PRODUCTION');
+    expect(CHROMIUM_PRODUCTION_CONFIG.version).toBe('138.0.7204.0');
+    expect(CHROMIUM_PRODUCTION_CONFIG.commitPosition).toBe(1465706);
+    expect(CHROMIUM_PRODUCTION_CONFIG.platform).toBe('win32');
+    expect(CHROMIUM_PRODUCTION_CONFIG.arch).toBe('x64');
+    expect(CHROMIUM_PRODUCTION_CONFIG.platformKey).toBe('win64');
+    expect(CHROMIUM_PRODUCTION_CONFIG.archiveSubdir).toBe('chrome-win');
+    expect(CHROMIUM_PRODUCTION_CONFIG.executableRelativePath).toBe('chrome.exe');
+  });
+
+  it('pins trusted official Google snapshot CDN and SHA-256 checksum', () => {
+    expect(CHROMIUM_PRODUCTION_DOWNLOAD_URL).toBe(
+      'https://commondatastorage.googleapis.com/chromium-browser-snapshots/Win_x64/1465706/chrome-win.zip'
+    );
+    expect(CHROMIUM_PRODUCTION_SHA256).toBe(
+      '26237e603d68f909f2ba62162a30c51fa1ba94683ca61358e5489b0a08461bc2'
+    );
+    expect(CHROMIUM_PRODUCTION_CONFIG.fileSizeBytes).toBe(296108021);
+  });
+
+  it('resolves production Chromium executable path in isolated engine directory', () => {
+    const exePath = getProductionChromiumExecutablePath();
+    expect(exePath).toContain(path.join('engines', CHROMIUM_PRODUCTION_VERSION, 'chrome-win', 'chrome.exe'));
+    expect(exePath.endsWith(path.join('chrome-win', 'chrome.exe'))).toBe(true);
+  });
+
+  it('verifies production Chromium is installed and accessible', () => {
+    expect(isProductionChromiumInstalled()).toBe(true);
+    const exePath = getProductionChromiumExecutablePath();
+    expect(fs.existsSync(exePath)).toBe(true);
+  });
+
+  it('resolves production Chromium when CHROMIUM_PRODUCTION_VERSION is queried', () => {
+    const exePath = getManagedEngineExecutablePath(CHROMIUM_PRODUCTION_VERSION);
+    expect(exePath).toBe(getProductionChromiumExecutablePath());
+    expect(isManagedEngineInstalled(CHROMIUM_PRODUCTION_VERSION)).toBe(true);
+  });
+
+  it('preserves backwards-compatible access to CfT engine for regression safety', () => {
+    const cftPath = getManagedEngineExecutablePath('138.0.7204.183');
+    expect(cftPath).toContain(path.join('engines', '138.0.7204.183', 'chrome-win64', 'chrome.exe'));
+  });
+
+  it('validates package.json and release artifact version consistency', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'));
+    expect(pkg.version).toBe('1.1.1');
+    expect(pkg.name).toBe('mahi-browser');
+  });
+
+  it('verifies production Chromium binary metadata and absence of CfT branding', () => {
+    const exePath = getProductionChromiumExecutablePath();
+    expect(fs.existsSync(exePath)).toBe(true);
+
+    if (process.platform === 'win32') {
+      const { execSync } = require('node:child_process');
+      const versionCmd = `powershell -NoProfile -Command "(Get-Item '${exePath}').VersionInfo | Select-Object -Property ProductName, FileDescription, FileVersion | ConvertTo-Json"`;
+      const jsonStr = execSync(versionCmd).toString();
+      const info = JSON.parse(jsonStr);
+
+      expect(info.ProductName).toBe('Chromium');
+      expect(info.FileDescription).toBe('Chromium');
+      expect(info.FileVersion.startsWith('138.')).toBe(true);
+    }
+  });
+
+  it('launches production unbranded Chromium cleanly via launcher', async () => {
+    const { launchBrowser } = await import('../../02_BROWSER/launcher.js');
+    const testStorage = path.resolve('.mahi_data', 'profiles', 'test-unit-unbranded');
+    fs.mkdirSync(testStorage, { recursive: true });
+
+    const testProfile: any = {
+      id: 'test-unit-unbranded-id',
+      name: 'Unbranded Chromium Unit Test',
+      status: 'STOPPED',
+      storagePath: testStorage,
+      settings: {
+        browser: {
+          startupUrl: 'about:blank',
+          showProfileBadge: false,
+        },
+      },
+    };
+
+    const launched = await launchBrowser(testProfile);
+    expect(launched).toBeDefined();
+    expect(launched.process).toBeDefined();
+    expect(typeof launched.process.pid).toBe('number');
+    expect(launched.process.pid).toBeGreaterThan(0);
+
+    // Clean shutdown
+    try {
+      launched.process.kill();
+    } catch {}
+  });
+
+  it('validates release/latest.yml artifact manifest integrity', () => {
+    const ymlPath = path.resolve('release', 'latest.yml');
+    expect(fs.existsSync(ymlPath)).toBe(true);
+    const content = fs.readFileSync(ymlPath, 'utf8');
+    expect(content).toContain('version: 1.1.1');
+    expect(content).toContain('MAHI-Browser-Setup-1.1.1.exe');
+    expect(content).toContain('sha512:');
+    expect(content).toContain('size:');
+  });
+
+  it('validates release/latest.json manifest matches packaged installer hash', () => {
+    const jsonPath = path.resolve('release', 'latest.json');
+    expect(fs.existsSync(jsonPath)).toBe(true);
+    const manifest = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+    expect(manifest.version).toBe('1.1.1');
+    expect(manifest.channel).toBe('STABLE');
+    expect(manifest.files.length).toBeGreaterThanOrEqual(2);
+
+    const setupFile = manifest.files.find((f: any) => f.name === 'MAHI-Browser-Setup-1.1.1.exe');
+    expect(setupFile).toBeDefined();
+    expect(setupFile.size).toBe(91032673);
+    expect(setupFile.sha256).toBe('8692d0f1c9842399f8de2afc845d2ebf539ebaff86ab8f7bae071c094db35919');
+  });
+
+  it('enforces clean runtime policy without CfT or automation banners in launch arguments', async () => {
+    const { buildSanitizedLaunchArgs } = await import('../../02_BROWSER/launcher.js');
+    const args = buildSanitizedLaunchArgs({
+      storageDir: path.resolve('.mahi_data', 'profiles', 'mock-clean-profile'),
+      debugPort: 9222,
+      mode: 'normal',
+    });
+
+    expect(args).toContain('--no-first-run');
+    expect(args).toContain('--no-default-browser-check');
+    expect(args).toContain('--disable-infobars');
+    // Ensure CfT or testing automation banners are strictly prohibited
+    expect(args.some((a: string) => a.includes('--enable-automation'))).toBe(false);
+    expect(args.some((a: string) => a.includes('--test-type'))).toBe(false);
+  });
+});
+

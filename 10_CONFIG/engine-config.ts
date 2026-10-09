@@ -19,7 +19,31 @@ export type EngineDistributionPolicy = 'CHROMIUM_PRODUCTION' | 'MANAGED_CFT';
 export const CURRENT_ENGINE_DISTRIBUTION: EngineDistributionPolicy = 'CHROMIUM_PRODUCTION';
 
 /**
- * Expected SHA-256 integrity checksum for the official Google win64 zip.
+ * Official Production Unbranded Chromium Distribution (P0 Batch 1)
+ * Official Google Chromium snapshot build at milestone 138 commit position 1465706.
+ * Zero "Chrome for Testing" testing banner, identical CDP and fingerprint architecture.
+ */
+export const CHROMIUM_PRODUCTION_CONFIG = {
+  distribution: 'CHROMIUM_PRODUCTION' as const,
+  version: '138.0.7204.0',
+  commitPosition: 1465706,
+  platform: 'win32' as const,
+  arch: 'x64' as const,
+  platformKey: 'win64' as const,
+  downloadUrl: 'https://commondatastorage.googleapis.com/chromium-browser-snapshots/Win_x64/1465706/chrome-win.zip',
+  fallbackUrl: 'https://mahibrowser.com/engine/chromium-138-win64.zip',
+  sha256: '26237e603d68f909f2ba62162a30c51fa1ba94683ca61358e5489b0a08461bc2',
+  fileSizeBytes: 296108021,
+  archiveSubdir: 'chrome-win',
+  executableRelativePath: 'chrome.exe',
+};
+
+export const CHROMIUM_PRODUCTION_VERSION = CHROMIUM_PRODUCTION_CONFIG.version;
+export const CHROMIUM_PRODUCTION_SHA256 = CHROMIUM_PRODUCTION_CONFIG.sha256;
+export const CHROMIUM_PRODUCTION_DOWNLOAD_URL = CHROMIUM_PRODUCTION_CONFIG.downloadUrl;
+
+/**
+ * Expected SHA-256 integrity checksum for the official Google win64 CfT zip.
  */
 export const MANAGED_ENGINE_SHA256 = '10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68';
 

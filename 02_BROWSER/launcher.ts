@@ -7,8 +7,14 @@ import {
   isManagedEngineInstalled,
   getManagedEngineExecutablePath,
   ensureManagedEngineInstalled,
+  isProductionChromiumInstalled,
+  getProductionChromiumExecutablePath,
 } from './managed-engine.js';
-import { MANAGED_ENGINE_VERSION } from '../10_CONFIG/engine-config.js';
+import {
+  MANAGED_ENGINE_VERSION,
+  CURRENT_ENGINE_DISTRIBUTION,
+  CHROMIUM_PRODUCTION_VERSION,
+} from '../10_CONFIG/engine-config.js';
 import { getProxyById, getDecryptedProxyCredentials, testAndSaveProxyStatus } from './services/proxy-service.js';
 import { getExtensions } from './services/extension-service.js';
 import { createProxyTunnel, ProxyTunnelHandle } from './proxy-tunnel.js';
@@ -1284,22 +1290,28 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
 
   try {
     // -------------------------------------------------------------
-    // Step 1: Resolve Browser Executable Path (Managed Version-Pinned Engine)
+    // Step 1: Resolve Browser Executable Path (Production Unbranded Chromium / Managed Engine)
     // -------------------------------------------------------------
-    debugLog(`[Launcher Step 1/7] Resolving managed version-pinned browser engine (${MANAGED_ENGINE_VERSION})...`);
+    const activeVersionLabel = CURRENT_ENGINE_DISTRIBUTION === 'CHROMIUM_PRODUCTION'
+      ? CHROMIUM_PRODUCTION_VERSION
+      : MANAGED_ENGINE_VERSION;
+    debugLog(`[Launcher Step 1/7] Resolving browser engine (${CURRENT_ENGINE_DISTRIBUTION} ${activeVersionLabel})...`);
     
     let executablePath: string;
-    if (isManagedEngineInstalled()) {
+    if (CURRENT_ENGINE_DISTRIBUTION === 'CHROMIUM_PRODUCTION' && isProductionChromiumInstalled()) {
+      executablePath = getProductionChromiumExecutablePath();
+      debugLog(`[Launcher Step 1/7] Production unbranded Chromium located: "${executablePath}"`);
+    } else if (isManagedEngineInstalled()) {
       executablePath = getManagedEngineExecutablePath();
       debugLog(`[Launcher Step 1/7] Managed engine located: "${executablePath}"`);
     } else {
-      debugLog(`[Launcher Step 1/7] Managed engine missing. Initiating download from Google CDN...`);
+      debugLog(`[Launcher Step 1/7] Engine missing. Initiating download...`);
       try {
         executablePath = await ensureManagedEngineInstalled();
-        debugLog(`[Launcher Step 1/7] Managed engine downloaded and verified: "${executablePath}"`);
+        debugLog(`[Launcher Step 1/7] Engine downloaded and verified: "${executablePath}"`);
       } catch (dlErr: any) {
         const errorDetails = dlErr instanceof Error ? dlErr.message : String(dlErr);
-        const errMsg = `Managed browser engine (${MANAGED_ENGINE_VERSION}) download failed: ${errorDetails}. Please check your connection or disk space and click Retry.`;
+        const errMsg = `Browser engine (${activeVersionLabel}) download failed: ${errorDetails}. Please check your connection or disk space and click Retry.`;
         debugLog(`[Launcher Step 1/7 ERROR] ${errMsg}`);
         throw new Error(errMsg);
       }

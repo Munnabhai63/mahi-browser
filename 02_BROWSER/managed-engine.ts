@@ -13,6 +13,11 @@ import {
   GOOGLE_CFT_MANIFEST_URL,
   MANAGED_ENGINE_REQUIRED_DISK_SPACE_BYTES,
   getPlatformEngineConfig,
+  CURRENT_ENGINE_DISTRIBUTION,
+  CHROMIUM_PRODUCTION_CONFIG,
+  CHROMIUM_PRODUCTION_VERSION,
+  CHROMIUM_PRODUCTION_SHA256,
+  CHROMIUM_PRODUCTION_DOWNLOAD_URL,
 } from '../10_CONFIG/engine-config.js';
 
 const execAsync = promisify(exec);
@@ -107,6 +112,31 @@ export function getEnginesBaseDir(): string {
 }
 
 /**
+ * Returns the exact absolute path to the production unbranded Chromium binary.
+ */
+export function getProductionChromiumExecutablePath(
+  targetPlatform: string = process.platform,
+  targetArch: string = process.arch
+): string {
+  const baseDir = path.join(getEnginesBaseDir(), CHROMIUM_PRODUCTION_VERSION);
+  if (targetPlatform === 'win32') {
+    return path.join(baseDir, CHROMIUM_PRODUCTION_CONFIG.archiveSubdir, CHROMIUM_PRODUCTION_CONFIG.executableRelativePath);
+  } else if (targetPlatform === 'darwin') {
+    const macSubdir = targetArch === 'arm64' ? 'chrome-mac-arm64' : 'chrome-mac-x64';
+    return path.join(baseDir, macSubdir, 'chrome');
+  } else {
+    return path.join(baseDir, 'chrome-linux64', 'chrome');
+  }
+}
+
+/**
+ * Checks whether the production unbranded Chromium binary exists on disk.
+ */
+export function isProductionChromiumInstalled(): boolean {
+  return fs.existsSync(getProductionChromiumExecutablePath());
+}
+
+/**
  * Returns the exact absolute path to the managed browser binary for a specific version and platform.
  */
 export function getManagedEngineExecutablePath(
@@ -114,6 +144,9 @@ export function getManagedEngineExecutablePath(
   targetPlatform: string = process.platform,
   targetArch: string = process.arch
 ): string {
+  if (version === CHROMIUM_PRODUCTION_VERSION) {
+    return getProductionChromiumExecutablePath(targetPlatform, targetArch);
+  }
   const baseDir = path.join(getEnginesBaseDir(), version);
   if (targetPlatform === 'win32') {
     return path.join(baseDir, 'chrome-win64', 'chrome.exe');
@@ -133,6 +166,9 @@ export function getManagedEngineExecutablePath(
  * Checks whether the managed browser engine binary exists on disk and is ready to launch.
  */
 export function isManagedEngineInstalled(version: string = MANAGED_ENGINE_VERSION): boolean {
+  if (version === CHROMIUM_PRODUCTION_VERSION) {
+    return isProductionChromiumInstalled();
+  }
   const exePath = getManagedEngineExecutablePath(version);
   return fs.existsSync(exePath);
 }
@@ -308,8 +344,8 @@ export function cleanOldEngineVersions(keepVersion: string = MANAGED_ENGINE_VERS
     for (const entry of entries) {
       if (entry.isDirectory()) {
         const folderName = entry.name;
-        // Clean up stale interrupted .tmp folders or previous versions
-        if (folderName.includes('.tmp-') || folderName !== keepVersion) {
+        // Clean up stale interrupted .tmp folders or previous unpinned versions
+        if (folderName.includes('.tmp-') || (folderName !== keepVersion && folderName !== CHROMIUM_PRODUCTION_VERSION && folderName !== MANAGED_ENGINE_VERSION)) {
           debugLog(`[ManagedEngine] Removing old engine version directory: ${folderName}`);
           try {
             fs.rmSync(path.join(enginesDir, folderName), { recursive: true, force: true });
@@ -325,6 +361,111 @@ export function cleanOldEngineVersions(keepVersion: string = MANAGED_ENGINE_VERS
 }
 
 /**
+ * Ensures the production unbranded Chromium engine is fully installed and verified.
+ * Fails closed on wrong SHA-256, wrong arch, wrong version, or corrupted archive.
+ */
+export async function ensureProductionChromiumInstalled(options?: {
+  onProgress?: (progress: ManagedEngineProgress) => void;
+}): Promise<string> {
+  const version = CHROMIUM_PRODUCTION_VERSION;
+  const finalExe = getProductionChromiumExecutablePath();
+
+  if (fs.existsSync(finalExe)) {
+    broadcastProgress({
+      stage: 'READY',
+      percent: 100,
+      downloadedBytes: 0,
+      totalBytes: 0,
+    });
+    return finalExe;
+  }
+
+  const enginesDir = getEnginesBaseDir();
+  const finalVersionDir = path.join(enginesDir, version);
+  const tempWorkingDir = path.join(enginesDir, `${version}.tmp-${Date.now()}`);
+  const tempZipPath = path.join(tempWorkingDir, 'chrome-win.zip');
+
+  try {
+    broadcastProgress({ stage: 'CHECKING', percent: 0, downloadedBytes: 0, totalBytes: 0 });
+    const space = checkDiskSpace(enginesDir, MANAGED_ENGINE_REQUIRED_DISK_SPACE_BYTES);
+    if (!space.ok) {
+      const freeMB = Math.round(space.freeBytes / (1024 * 1024));
+      const errMsg = `Insufficient disk space for browser engine. 1 GB required, only ${freeMB} MB available.`;
+      broadcastProgress({ stage: 'ERROR', error: errMsg });
+      throw new Error(errMsg);
+    }
+
+    fs.mkdirSync(tempWorkingDir, { recursive: true });
+
+    const downloadUrl = CHROMIUM_PRODUCTION_DOWNLOAD_URL;
+    debugLog(`[ManagedEngine] Downloading production unbranded Chromium ${version} from: ${downloadUrl}`);
+    broadcastProgress({ stage: 'DOWNLOADING', percent: 0, downloadedBytes: 0, totalBytes: CHROMIUM_PRODUCTION_CONFIG.fileSizeBytes });
+
+    const progressCallback = (downloaded: number, total: number) => {
+      const percent = Math.min(100, Math.round((downloaded / total) * 100));
+      broadcastProgress({
+        stage: 'DOWNLOADING',
+        percent,
+        downloadedBytes: downloaded,
+        totalBytes: total,
+      });
+    };
+
+    let computedSha256 = '';
+    try {
+      computedSha256 = await downloadFileWithProgress(downloadUrl, tempZipPath, progressCallback);
+    } catch (primaryErr: any) {
+      debugLog(`[ManagedEngine] Primary download failed: ${primaryErr?.message}. Falling back to mirror: ${CHROMIUM_PRODUCTION_CONFIG.fallbackUrl}`);
+      if (fs.existsSync(tempZipPath)) {
+        try { fs.unlinkSync(tempZipPath); } catch {}
+      }
+      computedSha256 = await downloadFileWithProgress(CHROMIUM_PRODUCTION_CONFIG.fallbackUrl, tempZipPath, progressCallback);
+    }
+
+    // Step: Verify SHA-256 Checksum (Fail closed)
+    broadcastProgress({ stage: 'VERIFYING', percent: 100 });
+    debugLog(`[ManagedEngine] Downloaded zip SHA-256: ${computedSha256}`);
+    if (computedSha256.toLowerCase() !== CHROMIUM_PRODUCTION_SHA256.toLowerCase()) {
+      const hashErr = `SHA-256 checksum mismatch for Chromium ${version}. Expected ${CHROMIUM_PRODUCTION_SHA256}, got ${computedSha256}.`;
+      broadcastProgress({ stage: 'ERROR', error: hashErr });
+      throw new Error(hashErr);
+    }
+
+    // Step: Extract archive
+    broadcastProgress({ stage: 'EXTRACTING', percent: 100 });
+    debugLog(`[ManagedEngine] Extracting Chromium zip to: ${tempWorkingDir}`);
+    await extractZipArchive(tempZipPath, tempWorkingDir);
+
+    try { fs.unlinkSync(tempZipPath); } catch {}
+
+    const extractedExe = path.join(tempWorkingDir, CHROMIUM_PRODUCTION_CONFIG.archiveSubdir, CHROMIUM_PRODUCTION_CONFIG.executableRelativePath);
+    if (!fs.existsSync(extractedExe)) {
+      throw new Error(`Extracted engine is missing expected binary at "${extractedExe}".`);
+    }
+
+    // Atomically move into place
+    debugLog(`[ManagedEngine] Atomically renaming ${tempWorkingDir} -> ${finalVersionDir}`);
+    if (fs.existsSync(finalVersionDir)) {
+      try { fs.rmSync(finalVersionDir, { recursive: true, force: true }); } catch {}
+    }
+    fs.renameSync(tempWorkingDir, finalVersionDir);
+
+    broadcastProgress({ stage: 'READY', percent: 100 });
+    debugLog(`[ManagedEngine] Production Chromium ${version} installed at: ${finalExe}`);
+    return finalExe;
+  } catch (err: any) {
+    try {
+      if (fs.existsSync(tempWorkingDir)) {
+        fs.rmSync(tempWorkingDir, { recursive: true, force: true });
+      }
+    } catch {}
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    broadcastProgress({ stage: 'ERROR', error: errorMsg });
+    throw err;
+  }
+}
+
+/**
  * Ensures the managed browser engine is fully downloaded, verified, and extracted.
  * Guarantees atomicity: partial downloads never corrupt the directory.
  * If multiple callers invoke concurrently, returns the same in-flight promise.
@@ -333,6 +474,10 @@ export async function ensureManagedEngineInstalled(options?: {
   onProgress?: (progress: ManagedEngineProgress) => void;
   skipManifestCheck?: boolean;
 }): Promise<string> {
+  if (CURRENT_ENGINE_DISTRIBUTION === 'CHROMIUM_PRODUCTION') {
+    return await ensureProductionChromiumInstalled(options);
+  }
+
   const version = MANAGED_ENGINE_VERSION;
   const finalExe = getManagedEngineExecutablePath(version);
 

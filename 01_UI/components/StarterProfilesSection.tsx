@@ -29,14 +29,14 @@ export interface StarterTemplate {
   category: 'PERSONAL' | 'SOCIAL' | 'E-COMMERCE' | 'WORK' | 'AUTOMATION' | 'SANDBOX';
   badge: 'STARTER' | 'DEMO' | 'EXAMPLE';
   description: string;
-  os: 'windows' | 'mac' | 'linux';
-  browser: string;
-  fingerprintPreview: {
-    screenResolution: string;
-    userAgentSnippet: string;
-    webGlVendor: string;
-    canvasNoise: boolean;
-    audioNoise: boolean;
+  os?: 'windows' | 'mac' | 'linux';
+  browser?: string;
+  fingerprintPreview?: {
+    screenResolution?: string;
+    userAgentSnippet?: string;
+    webGlVendor?: string;
+    canvasNoise?: boolean;
+    audioNoise?: boolean;
   };
 }
 
@@ -338,11 +338,11 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
                 <div className="space-y-1.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 text-[11px] font-mono text-slate-400 mb-4">
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500">Platform:</span>
-                    <span className="text-slate-300">{tpl.browser}</span>
+                    <span className="text-slate-300">{tpl.browser || 'Chromium 138 / Windows'}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500">Screen:</span>
-                    <span className="text-slate-300">{tpl.fingerprintPreview.screenResolution}</span>
+                    <span className="text-slate-300">{tpl.fingerprintPreview?.screenResolution || '1920x1080'}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500">Protection:</span>
