@@ -4366,3 +4366,14 @@ button {
     grid-template-columns: repeat(2, 1fr) !important;
   }
 }
+
+/* Responsive Compact Navbar Branding - Official Dragon Mark */
+@media (max-width: 640px) {
+  .navbar-wrapper-clean .brand-logo-clean .brand-name-clean {
+    display: none;
+  }
+  .navbar-wrapper-clean .brand-logo-clean img {
+    width: 32px;
+    height: 32px;
+  }
+}
