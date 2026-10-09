@@ -311,6 +311,7 @@ const api = {
   // Managed Browser Engine
   getManagedEngineStatus: () => ipcRenderer.invoke('engine:getStatus'),
   downloadManagedEngine: () => ipcRenderer.invoke('engine:download'),
+  repairManagedEngine: () => ipcRenderer.invoke('engine:repair'),
   onEngineDownloadProgress: (callback) => {
     const handler = (_event, status) => callback(status);
     ipcRenderer.on('engine:downloadProgress', handler);

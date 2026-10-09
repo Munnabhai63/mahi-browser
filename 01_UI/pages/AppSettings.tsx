@@ -38,6 +38,8 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
   });
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusEvent | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [engineStatus, setEngineStatus] = useState<{ installed: boolean; version: string } | null>(null);
+  const [isRepairingEngine, setIsRepairingEngine] = useState(false);
 
   // App Lock PIN setup state
   const [newPin, setNewPin] = useState('');
@@ -55,6 +57,11 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
       window.mahiAPI.getUpdateStatus().then((st) => {
         if (st) setUpdateStatus(st);
       });
+    }
+    if (window.mahiAPI?.getManagedEngineStatus) {
+      window.mahiAPI.getManagedEngineStatus().then((s) => {
+        setEngineStatus({ installed: s.installed, version: s.version });
+      }).catch(() => {});
     }
   }, []);
 
@@ -114,6 +121,25 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
   const handleCopyToken = () => {
     navigator.clipboard.writeText(formData.advanced.apiAuthToken);
     showToast({ type: 'info', title: 'Token Copied', message: 'API Bearer token copied to clipboard.' });
+  };
+
+  const handleRepairEngine = async () => {
+    setIsRepairingEngine(true);
+    try {
+      if (window.mahiAPI?.repairManagedEngine) {
+        const result = await window.mahiAPI.repairManagedEngine();
+        if (result.success) {
+          showToast({ type: 'success', title: 'Browser Engine Repaired', message: 'Engine is healthy and ready to use.' });
+          setEngineStatus((prev) => prev ? { ...prev, installed: true } : prev);
+        } else {
+          showToast({ type: 'error', title: 'Repair Failed', message: result.error || 'Could not repair the browser engine. Please reinstall MAHI Browser.' });
+        }
+      }
+    } catch (err: any) {
+      showToast({ type: 'error', title: 'Repair Error', message: err.message || 'Unexpected error during engine repair.' });
+    } finally {
+      setIsRepairingEngine(false);
+    }
   };
 
   return (
@@ -350,6 +376,37 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
                 }
                 className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl"
               />
+            </div>
+
+            {/* Engine Health */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-slate-800 dark:text-slate-100 block">Browser Engine Health</span>
+                  <span className="text-[11px] text-slate-400">
+                    {engineStatus?.installed
+                      ? <span className="text-emerald-500 font-medium">✓ Engine ready</span>
+                      : <span className="text-amber-500 font-medium">⚠ Engine not detected</span>
+                    }
+                    {engineStatus?.version && (
+                      <span className="ml-2 text-slate-400">· v{engineStatus.version}</span>
+                    )}
+                  </span>
+                </div>
+                <button
+                  id="btn-repair-engine"
+                  type="button"
+                  disabled={isRepairingEngine}
+                  onClick={handleRepairEngine}
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-semibold rounded-xl flex items-center gap-2 transition active:scale-95 disabled:opacity-50 text-xs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRepairingEngine ? 'animate-spin' : ''}`} />
+                  {isRepairingEngine ? 'Repairing…' : 'Repair Engine'}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                If profiles fail to launch, use Repair Engine to restore the browser engine. This may take a few minutes.
+              </p>
             </div>
           </div>
         )}

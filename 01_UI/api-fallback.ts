@@ -652,7 +652,7 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     onFleetResourceUsage: () => () => {},
     getManagedEngineStatus: async () => ({
       installed: true,
-      version: '138.0.7204.183',
+      version: '138.0.7204.0',
       path: 'Default',
       stage: 'READY' as const,
       percent: 100,
@@ -660,6 +660,7 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
       totalBytes: 0,
     }),
     downloadManagedEngine: async () => ({ success: true, path: 'Default' }),
+    repairManagedEngine: async () => ({ success: true, path: 'Default' }),
     onEngineDownloadProgress: () => () => {},
     onLicenseStatusChanged: () => () => {},
     onLicenseStatusToast: () => () => {},

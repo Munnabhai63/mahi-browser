@@ -375,6 +375,7 @@ export interface MahiBrowserAPI {
   // Managed Browser Engine
   getManagedEngineStatus: () => Promise<ManagedEngineStatus>;
   downloadManagedEngine: () => Promise<{ success: boolean; path?: string; error?: string }>;
+  repairManagedEngine: () => Promise<{ success: boolean; path?: string; error?: string }>;
 
   // Cloud Profile Sync (GoLogin-style)
   getCloudSyncAllowed: () => Promise<{ allowed: boolean; reason?: string }>;

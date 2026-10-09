@@ -12,6 +12,7 @@ import { initAutoUpdater } from './services/updater-service.js';
 import { startLicenseStatusService } from '../08_SECURITY/license-status-service.js';
 import { startPriceSync } from '../08_SECURITY/price-service.js';
 import { startResourceMonitoring, stopResourceMonitoring } from '../03_HARDWARE/resource-monitor-service.js';
+import { provisionEngineOnStartup } from '../02_BROWSER/managed-engine.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -323,6 +324,14 @@ app.whenReady().then(async () => {
     startLicenseStatusService();
     startPriceSync();
     startResourceMonitoring();
+
+    // Fire-and-forget: ensure browser engine is provisioned before any profile launch.
+    // This is intentionally non-blocking — the UI never waits for or sees this.
+    provisionEngineOnStartup().then((result) => {
+      logCheckpoint('Engine Provisioning', `source=${result.source} ok=${result.ok} path=${result.path}`);
+    }).catch((err) => {
+      logCheckpoint('Engine Provisioning Warning', String(err));
+    });
   } catch (ipcErr: unknown) {
     writeCrashLog('IPC_REGISTER_ERROR', String(ipcErr));
   }
