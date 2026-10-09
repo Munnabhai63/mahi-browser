@@ -504,42 +504,93 @@ button {
   margin-bottom: 2rem;
 }
 
-/* Platform Availability */
+/* Platform Availability Group */
 .platform-availability-block {
-  margin-top: 1rem;
-  margin-bottom: 3.5rem;
+  margin-top: 1.25rem;
+  margin-bottom: 2rem;
 }
 
 .platform-avail-label {
-  font-size: 0.825rem;
+  font-size: 0.85rem;
   color: #64748b;
-  margin-bottom: 0.65rem;
+  margin-bottom: 0.75rem;
   font-weight: 500;
+  letter-spacing: -0.01em;
 }
 
-.platform-os-circles {
+.platform-os-badges {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.45rem;
-  margin-bottom: 0.85rem;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
 }
 
-.os-circle-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: #0f172a;
+.hero-os-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  font-size: 0.825rem;
+  text-decoration: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.hero-os-badge svg {
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.hero-os-badge.active {
+  background: #f0fdf4;
+  border: 1.5px solid #10b981;
+  color: #065f46;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hero-os-badge.active:hover {
+  background: #dcfce7;
+  border-color: #059669;
+  color: #047857;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.16);
+}
+
+.hero-os-badge.disabled {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  font-weight: 500;
+  cursor: default;
+  opacity: 0.85;
+}
+
+.hero-os-badge .os-name {
+  font-weight: 600;
+}
+
+.hero-os-badge .os-badge-status {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.hero-os-badge .os-badge-status.ready {
+  background: #10b981;
   color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
 }
 
-.os-circle-btn:hover {
-  background: #00a87e;
-  transform: scale(1.08);
+.hero-os-badge .os-badge-status.soon {
+  background: #e2e8f0;
+  color: #64748b;
 }
 
 .platform-store-badges {
@@ -3673,32 +3724,37 @@ button {
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 1.25rem;
+  gap: 0.85rem;
+  margin-top: 1.5rem;
 }
 
 .trust-capability-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.4rem 0.85rem;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  gap: 0.5rem;
+  padding: 0.45rem 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   border-radius: 999px;
-  font-size: 0.8rem;
+  font-size: 0.825rem;
   font-weight: 600;
-  color: #e2e8f0;
-  backdrop-filter: blur(8px);
-  transition: border-color 0.2s ease, background 0.2s ease;
+  color: #334155;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .trust-capability-pill:hover {
-  background: rgba(0, 168, 126, 0.08);
-  border-color: rgba(0, 168, 126, 0.35);
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #0f172a;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.07);
 }
 
 .trust-cap-icon {
-  font-size: 0.9rem;
+  font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
 }
 
 .os-circle-btn.coming-soon-os,

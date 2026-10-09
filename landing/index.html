@@ -22,7 +22,7 @@
   <meta name="twitter:image" content="assets/img/og-image.png">
 
   <link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
-  <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="assets/css/styles.css?v=2.2.0">
 </head>
 <body>
 
@@ -180,34 +180,39 @@
         No card required
       </div>
 
-      <!-- Platform Availability -->
+      <!-- Platform Availability & Core Capabilities -->
       <div class="platform-availability-block">
-        <div class="platform-avail-label" data-i18n="avail_label">Platform Availability:</div>
-        <div class="platform-os-circles">
+        <div class="platform-avail-label" data-i18n="avail_label">Available for Windows · macOS &amp; Linux in development</div>
+        <div class="platform-os-badges">
           <!-- Windows (Active / Available Now) -->
-          <a href="/download/MAHI-Setup.exe" class="os-circle-btn active" title="Windows 10 / 11 64-bit (Available Now — v1.0.0)" download>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <a href="/download/MAHI-Setup.exe" class="hero-os-badge active btn-download-trigger" title="Download for Windows 10 &amp; 11 64-bit" download>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.551H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-13.051-1.802"/>
             </svg>
-            <span class="os-status-pill">Windows (Now)</span>
+            <span class="os-name">Windows 10 / 11</span>
+            <span class="os-badge-status ready">Available Now</span>
           </a>
+
           <!-- macOS (Coming Soon) -->
-          <span class="os-circle-btn coming-soon-os" title="macOS (Apple Silicon &amp; Intel) — Coming Soon">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+          <span class="hero-os-badge disabled" title="macOS (Apple Silicon &amp; Intel) — Coming Soon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.38c.62-.75 1.04-1.8 0.92-2.85-.9.04-1.99.6-2.63 1.35-.57.65-1.07 1.72-.94 2.74 1.01.08 2.03-.49 2.65-1.24z"/>
             </svg>
-            <span class="os-status-pill">macOS (Soon)</span>
+            <span class="os-name">macOS</span>
+            <span class="os-badge-status soon">Soon</span>
           </span>
+
           <!-- Linux (Coming Soon) -->
-          <span class="os-circle-btn coming-soon-os" title="Linux (Debian &amp; AppImage) — Coming Soon">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+          <span class="hero-os-badge disabled" title="Linux (Debian &amp; AppImage) — Coming Soon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M12.002 0c-3.14 0-5.69 2.55-5.69 5.69 0 .86.2 1.68.55 2.42-1.74.88-2.95 2.69-2.95 4.77 0 1.28.45 2.46 1.21 3.4-.64 1.21-.99 2.59-.99 4.06 0 1.74.5 3.36 1.38 4.75.4.63 1.15.91 1.84.66.7-.25 1.1-.96.95-1.69-.64-1.12-.99-2.4-.99-3.72 0-2.22 1.01-4.21 2.59-5.52.71 1.04 1.86 1.74 3.19 1.74s2.48-.7 3.19-1.74c1.58 1.31 2.59 3.3 2.59 5.52 0 1.32-.35 2.6-.99 3.72-.15.73.25 1.44.95 1.69.69.25 1.44-.03 1.84-.66.88-1.39 1.38-3.01 1.38-4.75 0-1.47-.35-2.85-.99-4.06.76-.94 1.21-2.12 1.21-3.4 0-2.08-1.21-3.89-2.95-4.77.35-.74.55-1.56.55-2.42C17.692 2.55 15.142 0 12.002 0z"/>
             </svg>
-            <span class="os-status-pill">Linux (Beta)</span>
+            <span class="os-name">Linux</span>
+            <span class="os-badge-status soon">Beta</span>
           </span>
         </div>
 
-        <!-- Verified Capability Trust Badges (Replaced Unimplemented Mobile App Badges) -->
+        <!-- Verified Capability Badges -->
         <div class="platform-trust-pills-row">
           <div class="trust-capability-pill">
             <span class="trust-cap-icon">🛡️</span>
@@ -220,47 +225,6 @@
           <div class="trust-capability-pill">
             <span class="trust-cap-icon">🔒</span>
             <span>AES-256 Local Encryption</span>
-          </div>
-        </div>
-      </div>
-      <!-- ======================================================================
-           3. SOCIAL PROOF / REVIEWS BAND ("Trusted by top professionals")
-           ====================================================================== -->
-      <div class="trusted-reviews-band">
-        <div class="reviews-band-left">
-          <h2 data-i18n="social_proof_title">Trusted by top<br>professionals</h2>
-        </div>
-
-        <div class="reviews-cards-group">
-          <!-- G2 Card -->
-          <div class="review-score-card">
-            <div class="g2-logo" aria-hidden="true">
-              <span>G</span>
-            </div>
-            <div class="review-details">
-              <div class="review-stars-row">
-                ★★★★★
-                <strong class="score-val">4.8 / 5</strong>
-              </div>
-              <div class="review-count">70 reviews</div>
-            </div>
-          </div>
-
-          <!-- Capterra Card -->
-          <div class="review-score-card">
-            <div class="capterra-logo" aria-hidden="true">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="#0052cc">
-                <path d="M12 2L2 22h20L12 2z"/>
-              </svg>
-              <span class="capterra-name">Capterra</span>
-            </div>
-            <div class="review-details">
-              <div class="review-stars-row">
-                ★★★★★
-                <strong class="score-val">4.6 / 5</strong>
-              </div>
-              <div class="review-count">111 reviews</div>
-            </div>
           </div>
         </div>
       </div>
@@ -1526,6 +1490,6 @@
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-  <script src="assets/js/main.js"></script>
+  <script src="assets/js/main.js?v=2.2.0"></script>
 </body>
 </html>

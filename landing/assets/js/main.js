@@ -2489,16 +2489,14 @@ function initDownloadTriggers() {
 }
 
 /**
- * 9. Platform OS Circle Buttons
+ * 9. Platform OS Badges
  */
 function initPlatformCircles() {
-  const btns = document.querySelectorAll('.platform-os-circles .os-circle-btn');
-  btns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      btns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const platformName = btn.getAttribute('title') || 'Selected Platform';
-      showToast(`Switched active platform: ${platformName}`, 'success');
+  const disabledBadges = document.querySelectorAll('.hero-os-badge.disabled');
+  disabledBadges.forEach(badge => {
+    badge.addEventListener('click', () => {
+      const name = badge.querySelector('.os-name')?.textContent || 'This platform';
+      showToast(`${name} support is currently in development. Windows 10 & 11 is available now!`, 'info');
     });
   });
 }
