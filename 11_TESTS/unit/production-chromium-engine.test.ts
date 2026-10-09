@@ -136,8 +136,8 @@ describe('Production Unbranded Chromium Engine Suite (P0 Batch 1)', () => {
 
     const setupFile = manifest.files.find((f: any) => f.name === 'MAHI-Browser-Setup-1.1.1.exe');
     expect(setupFile).toBeDefined();
-    expect(setupFile.size).toBe(91032673);
-    expect(setupFile.sha256).toBe('8692d0f1c9842399f8de2afc845d2ebf539ebaff86ab8f7bae071c094db35919');
+    expect(setupFile.size).toBe(288031824);
+    expect(setupFile.sha256).toBe('18187a2ec5cf791b6be90566163ee2b92ecf40ee12423101d144660c59966264');
   });
 
   it('enforces clean runtime policy without CfT or automation banners in launch arguments', async () => {

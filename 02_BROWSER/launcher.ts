@@ -1305,13 +1305,13 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
       executablePath = getManagedEngineExecutablePath();
       debugLog(`[Launcher Step 1/7] Managed engine located: "${executablePath}"`);
     } else {
-      debugLog(`[Launcher Step 1/7] Engine missing. Initiating download...`);
-      try {
-        executablePath = await ensureManagedEngineInstalled();
-        debugLog(`[Launcher Step 1/7] Engine downloaded and verified: "${executablePath}"`);
-      } catch (dlErr: any) {
-        const errorDetails = dlErr instanceof Error ? dlErr.message : String(dlErr);
-        const errMsg = `Browser engine (${activeVersionLabel}) download failed: ${errorDetails}. Please check your connection or disk space and click Retry.`;
+      // Step 14 Profile Run Contract: Profile Run must NEVER trigger on-the-fly downloads
+      const candidatePath = getProductionChromiumExecutablePath();
+      if (fs.existsSync(candidatePath)) {
+        executablePath = candidatePath;
+        debugLog(`[Launcher Step 1/7] Production Chromium located on disk: "${executablePath}"`);
+      } else {
+        const errMsg = `Browser engine is not installed or accessible at "${candidatePath}". Please run Engine Repair in Settings or reinstall MAHI Browser.`;
         debugLog(`[Launcher Step 1/7 ERROR] ${errMsg}`);
         throw new Error(errMsg);
       }
@@ -1322,7 +1322,7 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
     // -------------------------------------------------------------
     debugLog(`[Launcher Step 2/7] Verifying browser executable existence...`);
     if (!executablePath || !fs.existsSync(executablePath)) {
-      const errMsg = `Browser executable not found at: "${executablePath || 'undefined'}". Click Retry to download the managed engine.`;
+      const errMsg = `Browser executable not found at: "${executablePath || 'undefined'}". Please run Engine Repair in Settings or reinstall MAHI Browser.`;
       debugLog(`[Launcher Step 2/7 ERROR] ${errMsg}`);
       throw new Error(errMsg);
     }

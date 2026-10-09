@@ -13,6 +13,7 @@ import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defa
 import { createProfile, getProfiles } from './profile-service.js';
 import { assertCanCreateProfile } from '../../08_SECURITY/freemium-guard.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
+import { CHROMIUM_PRODUCTION_VERSION } from '../../10_CONFIG/engine-config.js';
 
 export type StarterCategory = 'PERSONAL' | 'SOCIAL' | 'E-COMMERCE' | 'WORK' | 'AUTOMATION' | 'SANDBOX';
 
@@ -58,7 +59,7 @@ export const STARTER_PROFILE_TEMPLATES: StarterProfileTemplate[] = [
     defaultSettings: {
       browser: {
         engine: 'chromium',
-        version: '138.0.7204.183',
+        version: CHROMIUM_PRODUCTION_VERSION,
         userAgent: '',
         startupUrl: 'https://duckduckgo.com',
         homepage: 'https://duckduckgo.com',
@@ -91,7 +92,7 @@ export const STARTER_PROFILE_TEMPLATES: StarterProfileTemplate[] = [
     defaultSettings: {
       browser: {
         engine: 'chromium',
-        version: '138.0.7204.183',
+        version: CHROMIUM_PRODUCTION_VERSION,
         userAgent: '',
         startupUrl: 'https://twitter.com',
         homepage: 'https://twitter.com',
@@ -128,7 +129,7 @@ export const STARTER_PROFILE_TEMPLATES: StarterProfileTemplate[] = [
     defaultSettings: {
       browser: {
         engine: 'chromium',
-        version: '138.0.7204.183',
+        version: CHROMIUM_PRODUCTION_VERSION,
         userAgent: '',
         startupUrl: 'https://www.google.com',
         homepage: 'https://www.google.com',
@@ -162,7 +163,7 @@ export const STARTER_PROFILE_TEMPLATES: StarterProfileTemplate[] = [
     defaultSettings: {
       browser: {
         engine: 'chromium',
-        version: '138.0.7204.183',
+        version: CHROMIUM_PRODUCTION_VERSION,
         userAgent: '',
         startupUrl: 'https://google.com',
         homepage: 'https://google.com',
@@ -191,7 +192,7 @@ export const STARTER_PROFILE_TEMPLATES: StarterProfileTemplate[] = [
     defaultSettings: {
       browser: {
         engine: 'chromium',
-        version: '138.0.7204.183',
+        version: CHROMIUM_PRODUCTION_VERSION,
         userAgent: '',
         startupUrl: 'https://example.com',
         homepage: 'https://example.com',
@@ -220,7 +221,7 @@ export const STARTER_PROFILE_TEMPLATES: StarterProfileTemplate[] = [
     defaultSettings: {
       browser: {
         engine: 'chromium',
-        version: '138.0.7204.183',
+        version: CHROMIUM_PRODUCTION_VERSION,
         userAgent: '',
         startupUrl: 'https://example.com',
         homepage: 'https://example.com',

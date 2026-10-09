@@ -73,10 +73,10 @@ export const EngineDownloadModal: React.FC = () => {
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100 leading-snug">
-              Downloading browser engine (~170MB, one-time setup)
+              Preparing browser engine
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Version {status.version} • Google Chrome for Testing CDN
+              MAHI Managed Engine • Verified Integrity
             </p>
           </div>
         </div>
@@ -85,12 +85,12 @@ export const EngineDownloadModal: React.FC = () => {
         {status.stage === 'ERROR' ? (
           <div className="space-y-3">
             <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-xl text-xs text-red-700 dark:text-red-300">
-              <p className="font-medium">Engine download failed:</p>
+              <p className="font-medium">Engine setup failed:</p>
               <p className="mt-1 opacity-90 break-words">{status.error || 'Unknown network or disk error.'}</p>
             </div>
             <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-1.5">
-                <HardDrive className="w-3.5 h-3.5" /> 1GB disk space required
+                <HardDrive className="w-3.5 h-3.5" /> 450 MB disk space required
               </span>
               <button
                 onClick={handleRetry}
@@ -130,7 +130,7 @@ export const EngineDownloadModal: React.FC = () => {
             </div>
 
             <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center italic">
-              Download is running in background. Only browser launches will wait for completion.
+              MAHI Browser is preparing the engine in the background.
             </p>
           </div>
         )}

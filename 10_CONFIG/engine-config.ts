@@ -8,7 +8,9 @@
  * IMPORTANT: NEVER auto-update this value. It changes ONLY when manually edited.
  */
 
+export const AUTHORITATIVE_PRODUCTION_VERSION = '138.0.7204.0';
 export const MANAGED_ENGINE_VERSION = '138.0.7204.183';
+export const LEGACY_CFT_VERSION = '138.0.7204.183';
 
 /**
  * Engine Distribution & Launch Identity Policy:
@@ -43,21 +45,24 @@ export const CHROMIUM_PRODUCTION_SHA256 = CHROMIUM_PRODUCTION_CONFIG.sha256;
 export const CHROMIUM_PRODUCTION_DOWNLOAD_URL = CHROMIUM_PRODUCTION_CONFIG.downloadUrl;
 
 /**
- * Expected SHA-256 integrity checksum for the official Google win64 CfT zip.
+ * Expected SHA-256 integrity checksum for the official Google win64 CfT zip (Legacy/Automated tests).
  */
 export const MANAGED_ENGINE_SHA256 = '10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68';
+export const LEGACY_CFT_SHA256 = '10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68';
 
 /**
  * Official Google Cloud CDN download URL for Chrome for Testing public release (Windows baseline).
  * NEVER hosted on private servers — downloads directly from Google infrastructure.
  */
 export const MANAGED_ENGINE_DOWNLOAD_URL = `https://storage.googleapis.com/chrome-for-testing-public/${MANAGED_ENGINE_VERSION}/win64/chrome-win64.zip`;
+export const LEGACY_CFT_DOWNLOAD_URL = `https://storage.googleapis.com/chrome-for-testing-public/${LEGACY_CFT_VERSION}/win64/chrome-win64.zip`;
 
 /**
  * Authoritative VPS Engine Mirror URL.
  * Used as fallback if official Google CDN is blocked, unavailable, or version removed.
  */
 export const MANAGED_ENGINE_FALLBACK_URL = 'https://mahibrowser.com/engine/chrome-138.zip';
+export const LEGACY_CFT_FALLBACK_URL = 'https://mahibrowser.com/engine/chrome-138.zip';
 
 /**
  * Official Google Chrome for Testing Manifest listing all known-good versions & downloads.

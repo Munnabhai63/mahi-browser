@@ -133,6 +133,10 @@
     {
       "from": "13_ASSETS/resources/icon.png",
       "to": "icon.png"
+    },
+    {
+      "from": ".mahi_data/engines/138.0.7204.0",
+      "to": "engines/138.0.7204.0"
     }
   ]
 }

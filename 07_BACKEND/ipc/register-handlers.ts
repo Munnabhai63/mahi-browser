@@ -151,6 +151,7 @@ import {
   ensureManagedEngineInstalled,
   getManagedEngineCurrentProgress,
   addManagedEngineProgressListener,
+  repairManagedEngine,
 } from '../../02_BROWSER/managed-engine.js';
 import { MANAGED_ENGINE_VERSION } from '../../10_CONFIG/engine-config.js';
 
@@ -2059,6 +2060,14 @@ export function registerIpcHandlers(): void {
     try {
       const exe = await ensureManagedEngineInstalled();
       return { success: true, path: exe };
+    } catch (err: any) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('engine:repair', async () => {
+    try {
+      return await repairManagedEngine();
     } catch (err: any) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }

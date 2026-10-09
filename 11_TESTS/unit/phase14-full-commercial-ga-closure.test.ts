@@ -260,7 +260,8 @@ describe('Phase 14: Final 3 External Blockers Closure & Full Commercial GA Relea
       const testUserId = 'usr_live_refund_test';
       const now = new Date().toISOString();
 
-      // Record refunded transaction
+      // Record refunded transaction (clean up existing test key if present)
+      db.prepare('DELETE FROM commercial_payments WHERE id = ? OR external_payment_id = ?').run('pay_refund_001', 'pi_ref_001');
       db.prepare(`
         INSERT INTO commercial_payments (
           id, user_id, provider, external_order_id, external_payment_id,
