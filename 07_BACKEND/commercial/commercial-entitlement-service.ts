@@ -7,9 +7,15 @@ import {
   CommercialUser,
   FeatureCapability,
   CommercialPlanTier,
+  CanonicalPlanId,
 } from '../../10_CONFIG/shared/types/commercial.js';
 import { getUserById } from './commercial-auth-service.js';
 import { getCommercialPlanById, DEFAULT_COMMERCIAL_PLANS } from './commercial-plan-service.js';
+import {
+  resolveCapabilitiesForCanonicalPlan,
+  CANONICAL_PLAN_CATALOG,
+  findLowestPlanForCapability,
+} from './canonical-plan-catalog.js';
 import { registerOrUpdateDevice, getUserDevices } from './commercial-device-service.js';
 import { getDeviceId, getDeviceName } from '../../03_HARDWARE/device-id.js';
 import { getProfiles } from '../../02_BROWSER/services/profile-service.js';
@@ -24,22 +30,22 @@ export const CAPABILITY_REQUIREMENTS: Record<
   { requiredTier: CommercialPlanTier; planName: string; featureName: string }
 > = {
   'profile.basic': { requiredTier: 'FREE', planName: 'Free', featureName: 'Basic Profiles' },
-  'profile.multiple': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Bulk Profile Creation' },
-  'cloud.sync': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Cloud Profile Sync' },
-  'cloud.browser': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Cloud Browser Isolated Execution' },
-  'proxy.builtin': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Built-in Commercial Proxies' },
+  'profile.multiple': { requiredTier: 'PRO', planName: 'Professional 10', featureName: 'Bulk Profile Creation' },
+  'cloud.sync': { requiredTier: 'PRO', planName: 'Professional 10', featureName: 'Cloud Profile Sync' },
+  'cloud.browser': { requiredTier: 'PRO', planName: 'Professional 50', featureName: 'Cloud Browser Isolated Execution' },
+  'proxy.builtin': { requiredTier: 'PRO', planName: 'Professional 25', featureName: 'Built-in Commercial Proxies' },
   'proxy.custom': { requiredTier: 'FREE', planName: 'Free', featureName: 'Custom BYOP Proxies' },
-  'automation.rpa': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Visual RPA Automation Studio' },
-  'automation.scheduler': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Automation Task Scheduler' },
-  'automation.multiProfile': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Multi-Profile Batch Automation' },
-  'automation.cookieWarmer': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Smart Cookie Warmer' },
-  'automation.synchronizer': { requiredTier: 'PRO', planName: 'Professional', featureName: 'CDP Action Synchronizer' },
-  'workspace.team': { requiredTier: 'BUSINESS', planName: 'Business Growth', featureName: 'Team Workspaces & RBAC' },
-  'workspace.sharing': { requiredTier: 'BUSINESS', planName: 'Business Growth', featureName: 'Profile Sharing & Member Seats' },
-  'api.remote': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Remote Cloud API' },
-  'api.webhooks': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Webhook Notifications' },
-  'mobile.cloudBrowser': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Mobile Cloud Browser Stream' },
-  'advanced.fingerprint': { requiredTier: 'PRO', planName: 'Professional', featureName: 'Advanced Hardware Noise Spoofing' },
+  'automation.rpa': { requiredTier: 'PRO', planName: 'Professional 50', featureName: 'Visual RPA Automation Studio' },
+  'automation.scheduler': { requiredTier: 'PRO', planName: 'Professional 50', featureName: 'Automation Task Scheduler' },
+  'automation.multiProfile': { requiredTier: 'PRO', planName: 'Professional 50', featureName: 'Multi-Profile Batch Automation' },
+  'automation.cookieWarmer': { requiredTier: 'PRO', planName: 'Professional 50', featureName: 'Smart Cookie Warmer' },
+  'automation.synchronizer': { requiredTier: 'PRO', planName: 'Professional 100', featureName: 'CDP Action Synchronizer' },
+  'workspace.team': { requiredTier: 'BUSINESS', planName: 'Team 50', featureName: 'Team Workspaces & RBAC' },
+  'workspace.sharing': { requiredTier: 'PRO', planName: 'Professional 25', featureName: 'Profile Sharing' },
+  'api.remote': { requiredTier: 'PRO', planName: 'Professional 100', featureName: 'Remote Cloud API' },
+  'api.webhooks': { requiredTier: 'PRO', planName: 'Professional 100', featureName: 'Webhook Notifications' },
+  'mobile.cloudBrowser': { requiredTier: 'PRO', planName: 'Professional 10', featureName: 'Mobile Cloud Browser Stream' },
+  'advanced.fingerprint': { requiredTier: 'PRO', planName: 'Professional 10', featureName: 'Advanced Hardware Noise Spoofing' },
 };
 
 export function resolveCapabilitiesForPlan(
@@ -50,70 +56,29 @@ export function resolveCapabilitiesForPlan(
   const isSubActive = !subscription || subscription.status === 'ACTIVE' || subscription.status === 'TRIAL';
   const effectiveTier: CommercialPlanTier = isSubActive ? resolvedPlan.tier : 'FREE';
 
+  // Try canonical plan catalog first (supports per-plan differentiation: Pro 10/25/50/100)
+  const planId = resolvedPlan.id;
+  if (isSubActive) {
+    const canonicalCaps = resolveCapabilitiesForCanonicalPlan(planId);
+    // If we got a non-free result from canonical, use it
+    const hasAnyCap = Object.values(canonicalCaps).some(v => v && v !== canonicalCaps['proxy.custom']);
+    if (hasAnyCap || effectiveTier !== 'FREE') {
+      return canonicalCaps;
+    }
+  }
+
+  // Fallback: legacy tier-based resolution
   if (effectiveTier === 'BUSINESS' || effectiveTier === 'ENTERPRISE' || effectiveTier === 'CUSTOM') {
-    return {
-      'profile.basic': true,
-      'profile.multiple': true,
-      'cloud.sync': true,
-      'cloud.browser': true,
-      'proxy.builtin': true,
-      'proxy.custom': true,
-      'automation.rpa': true,
-      'automation.scheduler': true,
-      'automation.multiProfile': true,
-      'automation.cookieWarmer': true,
-      'automation.synchronizer': true,
-      'workspace.team': true,
-      'workspace.sharing': true,
-      'api.remote': true,
-      'api.webhooks': true,
-      'mobile.cloudBrowser': true,
-      'advanced.fingerprint': true,
-    };
+    return resolveCapabilitiesForCanonicalPlan('business_growth');
   }
 
   if (effectiveTier === 'PRO') {
-    return {
-      'profile.basic': true,
-      'profile.multiple': true,
-      'cloud.sync': true,
-      'cloud.browser': true,
-      'proxy.builtin': true,
-      'proxy.custom': true,
-      'automation.rpa': true,
-      'automation.scheduler': true,
-      'automation.multiProfile': true,
-      'automation.cookieWarmer': true,
-      'automation.synchronizer': true,
-      'workspace.team': false, // Team organization creation requires Business tier
-      'workspace.sharing': true, // Direct profile sharing enabled on Pro
-      'api.remote': true,
-      'api.webhooks': true,
-      'mobile.cloudBrowser': true,
-      'advanced.fingerprint': true,
-    };
+    // Legacy plan_pro maps to professional_100 (highest personal tier)
+    return resolveCapabilitiesForCanonicalPlan('professional_100');
   }
 
   // FREE Tier
-  return {
-    'profile.basic': true,
-    'profile.multiple': false,
-    'cloud.sync': false,
-    'cloud.browser': false,
-    'proxy.builtin': false,
-    'proxy.custom': true, // BYOP manual proxy allowed
-    'automation.rpa': false,
-    'automation.scheduler': false,
-    'automation.multiProfile': false,
-    'automation.cookieWarmer': false,
-    'automation.synchronizer': false,
-    'workspace.team': false,
-    'workspace.sharing': false,
-    'api.remote': false,
-    'api.webhooks': false,
-    'mobile.cloudBrowser': false,
-    'advanced.fingerprint': false,
-  };
+  return resolveCapabilitiesForCanonicalPlan('free');
 }
 
 export function evaluateUserEntitlements(

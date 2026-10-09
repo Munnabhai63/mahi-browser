@@ -1277,8 +1277,87 @@ export async function initializeDatabase(): Promise<void> {
       db.prepare('UPDATE profiles SET notes = ? WHERE id = ?').run(cleanNotes, r.id);
     }
   } catch {}
+
+  // Migration v19: Production Business Model — Pricing Versioning, Provider Mapping, Usage Ledger
+  const checkMigration19 = db.prepare('SELECT version FROM schema_migrations WHERE version = 19').get();
+  if (!checkMigration19) {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS pricing_versions (
+          version INTEGER PRIMARY KEY,
+          status TEXT NOT NULL DEFAULT 'DRAFT',
+          prices_json TEXT NOT NULL,
+          annual_discount_percent INTEGER NOT NULL DEFAULT 50,
+          existing_subscriber_policy TEXT NOT NULL DEFAULT 'GRANDFATHER',
+          published_at TEXT,
+          published_by TEXT,
+          effective_at TEXT,
+          provider_sync_status_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS provider_price_mappings (
+          id TEXT PRIMARY KEY,
+          provider TEXT NOT NULL,
+          plan_id TEXT NOT NULL,
+          billing_cycle TEXT NOT NULL,
+          pricing_version INTEGER NOT NULL,
+          provider_product_id TEXT NOT NULL,
+          provider_price_id TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'ACTIVE',
+          created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ppm_plan ON provider_price_mappings(plan_id, billing_cycle);
+        CREATE INDEX IF NOT EXISTS idx_ppm_version ON provider_price_mappings(pricing_version);
+        CREATE INDEX IF NOT EXISTS idx_ppm_status ON provider_price_mappings(status);
+
+        CREATE TABLE IF NOT EXISTS usage_ledger (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          resource_type TEXT NOT NULL,
+          current_usage REAL NOT NULL DEFAULT 0,
+          max_allowed REAL NOT NULL DEFAULT 0,
+          billing_period_start TEXT NOT NULL,
+          billing_period_end TEXT NOT NULL,
+          last_updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_usage_user ON usage_ledger(user_id, resource_type);
+        CREATE INDEX IF NOT EXISTS idx_usage_period ON usage_ledger(billing_period_start);
+
+        CREATE TABLE IF NOT EXISTS pricing_audit_log (
+          id TEXT PRIMARY KEY,
+          actor_id TEXT NOT NULL,
+          actor_name TEXT NOT NULL,
+          action TEXT NOT NULL,
+          plan_id TEXT,
+          old_price_paise INTEGER,
+          new_price_paise INTEGER,
+          annual_discount_old INTEGER,
+          annual_discount_new INTEGER,
+          effective_date TEXT,
+          subscriber_policy TEXT,
+          pricing_version INTEGER,
+          provider_sync_result TEXT,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_pricing_audit_version ON pricing_audit_log(pricing_version);
+      `);
+
+      // Additive columns to commercial_subscriptions for pricing versioning
+      try { db.exec('ALTER TABLE commercial_subscriptions ADD COLUMN pricing_version INTEGER;'); } catch {}
+      try { db.exec('ALTER TABLE commercial_subscriptions ADD COLUMN cancel_at_period_end INTEGER NOT NULL DEFAULT 0;'); } catch {}
+
+      // Additive columns to commercial_billing_invoices for pricing snapshot
+      try { db.exec('ALTER TABLE commercial_billing_invoices ADD COLUMN pricing_version INTEGER;'); } catch {}
+      try { db.exec('ALTER TABLE commercial_billing_invoices ADD COLUMN plan_id TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE commercial_billing_invoices ADD COLUMN plan_name TEXT;'); } catch {}
+      try { db.exec('ALTER TABLE commercial_billing_invoices ADD COLUMN discount_paise INTEGER NOT NULL DEFAULT 0;'); } catch {}
+      try { db.exec('ALTER TABLE commercial_billing_invoices ADD COLUMN tax_paise INTEGER NOT NULL DEFAULT 0;'); } catch {}
+
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (19, ?)').run(new Date().toISOString());
+    } catch {}
+  }
 }
-
-
-
-

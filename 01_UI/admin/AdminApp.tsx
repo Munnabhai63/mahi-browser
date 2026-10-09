@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { FeatureFlagDefinition, DeviceRecord, FleetTelemetry, PlanTierId } from '../../10_CONFIG/shared/types/platform.js';
 
-type AdminTab = 'OVERVIEW' | 'FLEET' | 'FEATURE_FLAGS' | 'LICENSES' | 'SETTINGS';
+type AdminTab = 'OVERVIEW' | 'FLEET' | 'FEATURE_FLAGS' | 'PRICING' | 'SETTINGS';
 
 export const AdminApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('OVERVIEW');
@@ -126,6 +126,18 @@ export const AdminApp: React.FC = () => {
             >
               <Sliders className="w-4 h-4" />
               <span>Feature Flags</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('PRICING')}
+              className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                activeTab === 'PRICING'
+                  ? 'bg-teal-500/10 text-teal-400 border border-teal-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              <span>Pricing & Plans</span>
             </button>
 
             <button
@@ -325,7 +337,60 @@ export const AdminApp: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 4: SETTINGS */}
+        {/* TAB 4: PRICING */}
+        {activeTab === 'PRICING' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold">Canonical Plans & Pricing Versioning</h2>
+                <p className="text-xs text-slate-400">Manage plan tiers, prices, annual discounts, and entitlement quotas from one central location.</p>
+              </div>
+              <a
+                href="http://127.0.0.1:32123/admin"
+                target="_blank"
+                rel="noreferrer"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center space-x-2"
+              >
+                <span>Open Full Web Admin Suite</span>
+                <Globe2 className="w-3.5 h-3.5" />
+              </a>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { name: 'Professional 10', id: 'pro_10', profiles: 10, monthly: 599, annual: 299, desc: 'Starter anti-detect profiles' },
+                { name: 'Professional 25', id: 'pro_25', profiles: 25, monthly: 1499, annual: 749, desc: 'Includes 2GB proxy & sharing' },
+                { name: 'Professional 50', id: 'pro_50', profiles: 50, monthly: 2999, annual: 1499, desc: 'Cloud Browser & cookie import (Popular)' },
+                { name: 'Professional 100', id: 'pro_100', profiles: 100, monthly: 5999, annual: 2999, desc: 'Synchronizer, Cookie Bot & API' },
+                { name: 'Team 50', id: 'team_50', profiles: 50, monthly: 2999, annual: 1499, desc: '2 seats, team folders' },
+                { name: 'Team 100', id: 'team_100', profiles: 100, monthly: 3999, annual: 1999, desc: '5 seats, RBAC & Visual RPA' },
+                { name: 'Team 200', id: 'team_200', profiles: 200, monthly: 4999, annual: 2499, desc: '8 seats, multi-sync & ADB rotator' },
+                { name: 'Team 300', id: 'team_300', profiles: 300, monthly: 5999, annual: 2999, desc: 'Unlimited seats, Headless CDP & SLA' },
+              ].map(plan => (
+                <div key={plan.id} className="p-5 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col justify-between space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-white text-sm">{plan.name}</h4>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">{plan.id}</span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">{plan.desc}</p>
+                    <div className="mt-4 flex items-baseline space-x-1 font-mono">
+                      <span className="text-2xl font-black text-emerald-400">₹{plan.monthly}</span>
+                      <span className="text-xs text-slate-400">/mo</span>
+                      <span className="text-[11px] text-teal-400 font-bold ml-2">(₹{plan.annual} annual)</span>
+                    </div>
+                  </div>
+                  <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+                    <span>Profiles Limit: <b className="text-white font-mono">{plan.profiles}</b></span>
+                    <span className="text-emerald-400 font-bold">Separated from price ✓</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 5: SETTINGS */}
         {activeTab === 'SETTINGS' && (
           <div className="space-y-6">
             <div>

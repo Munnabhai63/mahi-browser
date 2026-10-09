@@ -410,35 +410,514 @@ export function getWebAdminHtml(): string {
       }
     }
 
+    let pricingState = {
+      activeVersion: null,
+      catalog: null,
+      versions: [],
+      syncStatus: {},
+      revenue: null,
+      currentCategory: 'personal',
+      annualDiscountPercent: 50,
+      subscriberPolicy: 'GRANDFATHER',
+      draftPrices: {}
+    };
+
+    function onMonthlyPriceChange(planId) {
+      const monthlyInput = document.getElementById('price-monthly-' + planId);
+      const annualInput = document.getElementById('price-annual-' + planId);
+      const equivBadge = document.getElementById('price-equiv-' + planId);
+      if (!monthlyInput || !annualInput) return;
+
+      const monthly = Math.max(0, parseInt(monthlyInput.value || '0', 10));
+      const discount = Math.max(0, Math.min(100, pricingState.annualDiscountPercent));
+      const annual = Math.round((monthly * 12) * (1 - (discount / 100)));
+
+      annualInput.value = annual;
+      if (equivBadge) {
+        equivBadge.innerText = '₹' + Math.round(annual / 12).toLocaleString('en-IN') + '/mo';
+      }
+
+      pricingState.draftPrices[planId] = {
+        planId: planId,
+        monthlyPricePaise: monthly * 100,
+        annualPricePaise: annual * 100,
+        currency: 'INR'
+      };
+    }
+
+    function onAnnualPriceChange(planId) {
+      const annualInput = document.getElementById('price-annual-' + planId);
+      const monthlyInput = document.getElementById('price-monthly-' + planId);
+      const equivBadge = document.getElementById('price-equiv-' + planId);
+      if (!annualInput) return;
+
+      const annual = Math.max(0, parseInt(annualInput.value || '0', 10));
+      if (equivBadge) {
+        equivBadge.innerText = '₹' + Math.round(annual / 12).toLocaleString('en-IN') + '/mo';
+      }
+
+      pricingState.draftPrices[planId] = {
+        planId: planId,
+        monthlyPricePaise: (monthlyInput ? parseInt(monthlyInput.value || '0', 10) : Math.round(annual / 6)) * 100,
+        annualPricePaise: annual * 100,
+        currency: 'INR'
+      };
+    }
+
+    function onDiscountPercentChange() {
+      const discInput = document.getElementById('pricing-discount-input');
+      if (!discInput) return;
+      const val = Math.max(0, Math.min(100, parseInt(discInput.value || '50', 10)));
+      pricingState.annualDiscountPercent = val;
+
+      const allPlans = [...(pricingState.catalog?.personal || []), ...(pricingState.catalog?.business || [])];
+      for (const p of allPlans) {
+        const monthlyInput = document.getElementById('price-monthly-' + p.planId);
+        if (monthlyInput) {
+          onMonthlyPriceChange(p.planId);
+        }
+      }
+      showToast(\`Annual discount updated to \${val}%. Recomputed annual prices.\`);
+    }
+
+    function switchPricingTab(category) {
+      pricingState.currentCategory = category;
+      const persTab = document.getElementById('pricing-tab-personal');
+      const bizTab = document.getElementById('pricing-tab-business');
+      const persGrid = document.getElementById('pricing-grid-personal');
+      const bizGrid = document.getElementById('pricing-grid-business');
+
+      if (category === 'personal') {
+        persTab?.classList.replace('text-slate-500', 'text-emerald-700');
+        persTab?.classList.replace('border-transparent', 'border-emerald-600');
+        bizTab?.classList.replace('text-emerald-700', 'text-slate-500');
+        bizTab?.classList.replace('border-emerald-600', 'border-transparent');
+        persGrid?.classList.remove('hidden');
+        bizGrid?.classList.add('hidden');
+      } else {
+        bizTab?.classList.replace('text-slate-500', 'text-emerald-700');
+        bizTab?.classList.replace('border-transparent', 'border-emerald-600');
+        persTab?.classList.replace('text-emerald-700', 'text-slate-500');
+        persTab?.classList.replace('border-emerald-600', 'border-transparent');
+        bizGrid?.classList.remove('hidden');
+        persGrid?.classList.add('hidden');
+      }
+    }
+
+    async function savePricingDraft() {
+      const prices = Object.values(pricingState.draftPrices);
+      if (prices.length === 0) {
+        showToast('No price modifications made.', 'error');
+        return;
+      }
+
+      const policyEl = document.getElementById('pricing-policy-select');
+      const policy = policyEl ? policyEl.value : 'GRANDFATHER';
+
+      const res = await apiFetch('/api/v1/admin/pricing/draft', {
+        method: 'POST',
+        body: JSON.stringify({
+          prices: prices,
+          annualDiscountPercent: pricingState.annualDiscountPercent,
+          existingSubscriberPolicy: policy
+        })
+      });
+
+      if (res.success) {
+        showToast(\`Pricing draft v\${res.data.version} saved successfully!\`);
+        renderPlans();
+      } else {
+        showToast(res.error || 'Failed to save draft', 'error');
+      }
+    }
+
+    async function previewPricingModal() {
+      const prices = Object.values(pricingState.draftPrices);
+      const policyEl = document.getElementById('pricing-policy-select');
+      const policy = policyEl ? policyEl.value : 'GRANDFATHER';
+
+      const draftRes = await apiFetch('/api/v1/admin/pricing/draft', {
+        method: 'POST',
+        body: JSON.stringify({
+          prices: prices,
+          annualDiscountPercent: pricingState.annualDiscountPercent,
+          existingSubscriberPolicy: policy
+        })
+      });
+
+      if (!draftRes.success) {
+        showToast(draftRes.error || 'Failed to prepare preview', 'error');
+        return;
+      }
+
+      const draftVer = draftRes.data.version;
+      const previewRes = await apiFetch(\`/api/v1/admin/pricing/preview/\${draftVer}\`);
+      if (!previewRes.success) {
+        showToast(previewRes.error || 'Failed to load preview', 'error');
+        return;
+      }
+
+      const prev = previewRes.data;
+      const modal = document.createElement('div');
+      modal.id = 'pricing-preview-modal';
+      modal.className = 'fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4';
+      modal.innerHTML = \`
+        <div class="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 overflow-hidden space-y-5">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div>
+              <h3 class="text-base font-bold text-slate-900">Preview Pricing Version v\${draftVer}</h3>
+              <p class="text-xs text-slate-500">Inspect diffs, affected subscribers, and grandfathering policy before live publishing.</p>
+            </div>
+            <button onclick="document.getElementById('pricing-preview-modal').remove()" class="text-slate-400 hover:text-slate-700 text-sm font-bold">✕</button>
+          </div>
+
+          <div class="grid grid-cols-3 gap-3">
+            <div class="p-3 bg-emerald-50 rounded-2xl border border-emerald-100">
+              <span class="text-[10px] text-emerald-700 font-bold uppercase tracking-wider">Subscriber Policy</span>
+              <div class="text-xs font-black text-emerald-900 mt-1 font-mono">\${prev.existingSubscriberPolicy}</div>
+            </div>
+            <div class="p-3 bg-blue-50 rounded-2xl border border-blue-100">
+              <span class="text-[10px] text-blue-700 font-bold uppercase tracking-wider">Total Active Subs</span>
+              <div class="text-base font-black text-blue-900 mt-0.5 font-mono">\${prev.activeSubscriberCount}</div>
+            </div>
+            <div class="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+              <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Discount Rule</span>
+              <div class="text-base font-black text-slate-900 mt-0.5 font-mono">\${prev.annualDiscountPercent}% OFF</div>
+            </div>
+          </div>
+
+          <div class="max-h-64 overflow-y-auto custom-scroll border border-slate-200 rounded-2xl">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-50 text-[10px] text-slate-500 uppercase border-b border-slate-200">
+                <tr>
+                  <th class="p-2.5">Plan</th>
+                  <th class="p-2.5">Old Monthly</th>
+                  <th class="p-2.5">New Monthly</th>
+                  <th class="p-2.5">Old Annual</th>
+                  <th class="p-2.5">New Annual</th>
+                  <th class="p-2.5 text-right">% Change</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 font-mono text-[11px]">
+                \${prev.priceDiffs.map(d => \`
+                  <tr class="\${d.monthlyChanged ? 'bg-amber-50/50' : ''}">
+                    <td class="p-2.5 font-bold font-sans text-slate-800">\${d.displayName}</td>
+                    <td class="p-2.5 text-slate-400">₹\${(d.oldMonthlyPaise / 100).toLocaleString('en-IN')}</td>
+                    <td class="p-2.5 font-bold \${d.monthlyChanged ? 'text-emerald-700' : 'text-slate-700'}">₹\${(d.newMonthlyPaise / 100).toLocaleString('en-IN')}</td>
+                    <td class="p-2.5 text-slate-400">₹\${(d.oldAnnualPaise / 100).toLocaleString('en-IN')}</td>
+                    <td class="p-2.5 font-bold \${d.annualChanged ? 'text-emerald-700' : 'text-slate-700'}">₹\${(d.newAnnualPaise / 100).toLocaleString('en-IN')}</td>
+                    <td class="p-2.5 text-right font-bold \${d.monthlyPercentChange > 0 ? 'text-rose-600' : d.monthlyPercentChange < 0 ? 'text-emerald-600' : 'text-slate-400'}">
+                      \${d.monthlyPercentChange > 0 ? '+' : ''}\${d.monthlyPercentChange}%
+                    </td>
+                  </tr>
+                \`).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+            <div class="text-[11px] text-slate-500">
+              Publishing creates immutable Version \${draftVer} and activates pricing live.
+            </div>
+            <div class="flex items-center space-x-2">
+              <button onclick="document.getElementById('pricing-preview-modal').remove()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition">Cancel</button>
+              <button onclick="executePublishDraft(\${draftVer})" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center space-x-1.5">
+                <span>✓ Confirm & Publish Live</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      \`;
+      document.body.appendChild(modal);
+    }
+
+    async function executePublishDraft(version) {
+      const modal = document.getElementById('pricing-preview-modal');
+      if (modal) modal.remove();
+
+      const policyEl = document.getElementById('pricing-policy-select');
+      const policy = policyEl ? policyEl.value : 'GRANDFATHER';
+
+      const res = await apiFetch(\`/api/v1/admin/pricing/publish/\${version}\`, {
+        method: 'POST',
+        body: JSON.stringify({ policy: policy })
+      });
+
+      if (res.success) {
+        showToast(\`Pricing version v\${version} published LIVE successfully!\`);
+        renderPlans();
+      } else {
+        showToast(res.error || 'Failed to publish version', 'error');
+      }
+    }
+
+    async function promptRollback(version) {
+      const reason = prompt(\`Enter rollback reason for Version \${version}:\`, 'Emergency pricing correction');
+      if (!reason) return;
+
+      const res = await apiFetch(\`/api/v1/admin/pricing/rollback/\${version}\`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason })
+      });
+
+      if (res.success) {
+        showToast(\`Pricing successfully rolled back to Version \${version}!\`);
+        renderPlans();
+      } else {
+        showToast(res.error || 'Rollback failed', 'error');
+      }
+    }
+
     async function renderPlans() {
       const container = document.getElementById('content-container');
-      const res = await apiFetch('/api/v1/admin/plans');
-      if (!res.success) return;
+      container.innerHTML = '<div class="text-slate-400 text-xs animate-pulse">Loading pricing catalog and version state...</div>';
+
+      const [catRes, actRes, verRes, syncRes, revRes] = await Promise.all([
+        apiFetch('/api/v1/admin/pricing/catalog'),
+        apiFetch('/api/v1/admin/pricing/active'),
+        apiFetch('/api/v1/admin/pricing/versions'),
+        apiFetch('/api/v1/admin/pricing/provider-sync-status'),
+        apiFetch('/api/v1/admin/pricing/revenue-summary')
+      ]);
+
+      if (!catRes.success || !actRes.success) {
+        container.innerHTML = \`<div class="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs font-bold">Failed to load pricing engine: \${catRes.error || actRes.error}</div>\`;
+        return;
+      }
+
+      pricingState.catalog = catRes.data;
+      pricingState.activeVersion = actRes.data;
+      pricingState.versions = verRes.success ? verRes.data : [];
+      pricingState.syncStatus = syncRes.success ? syncRes.data : {};
+      pricingState.revenue = revRes.success ? revRes.data : null;
+      pricingState.annualDiscountPercent = actRes.data.annualDiscountPercent || 50;
+      pricingState.subscriberPolicy = actRes.data.existingSubscriberPolicy || 'GRANDFATHER';
+
+      pricingState.draftPrices = {};
+      const allPlans = [...(catRes.data.personal || []), ...(catRes.data.business || [])];
+      for (const p of allPlans) {
+        pricingState.draftPrices[p.planId] = {
+          planId: p.planId,
+          monthlyPricePaise: p.monthlyPricePaise,
+          annualPricePaise: p.annualPricePaise,
+          currency: 'INR'
+        };
+      }
+
+      const activeVer = pricingState.activeVersion;
+      const personalPlans = catRes.data.personal || [];
+      const businessPlans = catRes.data.business || [];
 
       container.innerHTML = \`
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          \${res.data.map(p => \`
-            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between space-y-4">
-              <div>
-                <div class="flex items-center justify-between">
-                  <h4 class="font-bold text-slate-900 text-sm">\${p.name}</h4>
-                  <span class="px-2 py-0.5 rounded text-[9px] font-extrabold bg-emerald-50 text-emerald-700 uppercase">\${p.tier}</span>
-                </div>
-                <div class="mt-3 flex items-baseline space-x-1">
-                  <span class="text-2xl font-extrabold text-slate-900 font-mono">$\${p.priceMonthly}</span>
-                  <span class="text-xs text-slate-400">/mo</span>
-                </div>
-                <ul class="mt-4 space-y-2 text-xs text-slate-600">
-                  <li class="flex items-center space-x-2"><span>✓</span><span>Max Profiles: <b>\${p.limits.maxProfiles}</b></span></li>
-                  <li class="flex items-center space-x-2"><span>✓</span><span>Max Devices: <b>\${p.limits.maxDevices}</b></span></li>
-                  <li class="flex items-center space-x-2"><span>✓</span><span>Concurrent Running: <b>\${p.limits.maxConcurrentRunning}</b></span></li>
-                  <li class="flex items-center space-x-2"><span>\${p.limits.proxyAccess ? '✓' : '✗'}</span><span>Proxy Access</span></li>
-                  <li class="flex items-center space-x-2"><span>\${p.limits.apiAccess ? '✓' : '✗'}</span><span>Developer API</span></li>
-                  <li class="flex items-center space-x-2"><span>\${p.limits.rpaAutomation ? '✓' : '✗'}</span><span>RPA Automation</span></li>
-                </ul>
+        <div class="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-5">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+            <div>
+              <div class="flex items-center space-x-2">
+                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-white shadow-xs">LIVE VERSION v\${activeVer.version}</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200 font-mono">Policy: \${activeVer.existingSubscriberPolicy}</span>
+                <span class="text-xs text-slate-400">Published \${new Date(activeVer.publishedAt).toLocaleDateString()} by \${activeVer.publishedBy}</span>
+              </div>
+              <h2 class="text-lg font-black text-slate-900 mt-1 tracking-tight">Admin Pricing & Plan Tiers Control Suite</h2>
+              <p class="text-xs text-slate-500">Edit monthly price once — annual price auto-computes with 50% discount. Entitlements are strictly preserved.</p>
+            </div>
+
+            <div class="flex items-center space-x-2 bg-slate-50 p-2.5 rounded-2xl border border-slate-200 text-xs">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Gateways:</span>
+              <div class="flex items-center space-x-1.5 px-2 py-1 bg-white rounded-xl border border-slate-200 font-mono text-[11px]">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span class="text-slate-700 font-bold">Simulation</span>
+              </div>
+              <div class="flex items-center space-x-1.5 px-2 py-1 bg-white rounded-xl border border-slate-200 font-mono text-[11px]">
+                <span class="w-2 h-2 rounded-full \${pricingState.syncStatus.stripe === 'SYNCED' ? 'bg-emerald-500' : 'bg-slate-300'}"></span>
+                <span class="text-slate-700 font-bold">Stripe</span>
+              </div>
+              <div class="flex items-center space-x-1.5 px-2 py-1 bg-white rounded-xl border border-slate-200 font-mono text-[11px]">
+                <span class="w-2 h-2 rounded-full \${pricingState.syncStatus.razorpay === 'SYNCED' ? 'bg-emerald-500' : 'bg-slate-300'}"></span>
+                <span class="text-slate-700 font-bold">Razorpay</span>
               </div>
             </div>
-          \`).join('')}
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+            <div class="flex flex-col space-y-1">
+              <label class="text-[11px] font-bold text-slate-600">Default Annual Discount %</label>
+              <div class="flex items-center space-x-2">
+                <input id="pricing-discount-input" type="number" min="0" max="90" value="\${pricingState.annualDiscountPercent}" onchange="onDiscountPercentChange()" class="w-20 px-3 py-1.5 border border-slate-300 rounded-xl font-mono text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-500 bg-slate-50">
+                <span class="text-xs text-slate-500 font-bold">% off</span>
+              </div>
+            </div>
+
+            <div class="flex flex-col space-y-1">
+              <label class="text-[11px] font-bold text-slate-600">Subscriber Migration Policy</label>
+              <select id="pricing-policy-select" class="px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 bg-slate-50 focus:outline-none focus:border-emerald-500">
+                <option value="GRANDFATHER" \${pricingState.subscriberPolicy === 'GRANDFATHER' ? 'selected' : ''}>Grandfather (Keep old price indefinitely)</option>
+                <option value="MIGRATE_RENEWAL" \${pricingState.subscriberPolicy === 'MIGRATE_RENEWAL' ? 'selected' : ''}>Migrate at Next Renewal</option>
+                <option value="MIGRATE_IMMEDIATE" \${pricingState.subscriberPolicy === 'MIGRATE_IMMEDIATE' ? 'selected' : ''}>Migrate Immediately (Prorated)</option>
+              </select>
+            </div>
+
+            <div class="md:col-span-2 flex items-center justify-end space-x-2">
+              <button onclick="savePricingDraft()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition shadow-2xs">
+                Save Draft
+              </button>
+              <button onclick="previewPricingModal()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-xl shadow-sm transition flex items-center space-x-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                <span>Preview & Publish</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-6 border-b border-slate-200 text-xs font-bold">
+          <button id="pricing-tab-personal" onclick="switchPricingTab('personal')" class="pb-3 border-b-2 border-emerald-600 text-emerald-700 font-extrabold flex items-center space-x-2">
+            <span>Personal Plans (Individual Users)</span>
+            <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-mono">4</span>
+          </button>
+          <button id="pricing-tab-business" onclick="switchPricingTab('business')" class="pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center space-x-2">
+            <span>Business Plans (Teams & Organizations)</span>
+            <span class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-600 font-mono">4</span>
+          </button>
+        </div>
+
+        <div id="pricing-grid-personal" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          \${personalPlans.map(p => renderPlanCard(p)).join('')}
+        </div>
+
+        <div id="pricing-grid-business" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 hidden">
+          \${businessPlans.map(p => renderPlanCard(p)).join('')}
+        </div>
+
+        <div class="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs">
+          <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">Pricing Version History & Audit Trail</h3>
+              <p class="text-[11px] text-slate-400">All published snapshots are cryptographically versioned and rollback-ready.</p>
+            </div>
+            <span class="text-xs font-mono text-slate-500">\${pricingState.versions.length} versions</span>
+          </div>
+
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-50 text-[10px] text-slate-500 uppercase border-b border-slate-200">
+              <tr>
+                <th class="p-3">Version</th>
+                <th class="p-3">Status</th>
+                <th class="p-3">Policy</th>
+                <th class="p-3">Discount</th>
+                <th class="p-3">Published At</th>
+                <th class="p-3">Published By</th>
+                <th class="p-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 font-mono text-[11px]">
+              \${pricingState.versions.map(v => \`
+                <tr class="\${v.version === activeVer.version ? 'bg-emerald-50/40 font-bold' : ''}">
+                  <td class="p-3">
+                    <span class="px-2 py-0.5 rounded font-black \${v.version === activeVer.version ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-800'}">
+                      v\${v.version}
+                    </span>
+                  </td>
+                  <td class="p-3">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold \${v.status === 'PUBLISHED' ? 'bg-emerald-100 text-emerald-800' : v.status === 'SUPERSEDED' ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-800'}">
+                      \${v.status}
+                    </span>
+                  </td>
+                  <td class="p-3 text-slate-600">\${v.existingSubscriberPolicy}</td>
+                  <td class="p-3 text-slate-600">\${v.annualDiscountPercent}%</td>
+                  <td class="p-3 text-slate-500 font-sans">\${v.publishedAt ? new Date(v.publishedAt).toLocaleString() : 'Draft'}</td>
+                  <td class="p-3 text-slate-600 font-sans">\${v.publishedBy || 'SYSTEM'}</td>
+                  <td class="p-3 text-right font-sans">
+                    \${v.version !== activeVer.version && v.status === 'SUPERSEDED' ? \`
+                      <button onclick="promptRollback(\${v.version})" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition">
+                        Rollback
+                      </button>
+                    \` : v.version === activeVer.version ? \`
+                      <span class="text-[10px] text-emerald-600 font-bold">Active</span>
+                    \` : ''}
+                  </td>
+                </tr>
+              \`).join('')}
+            </tbody>
+          </table>
+        </div>
+      \`;
+    }
+
+    function renderPlanCard(p) {
+      const monthlyPaise = p.monthlyPricePaise || 0;
+      const annualPaise = p.annualPricePaise || 0;
+      const monthlyRupees = Math.round(monthlyPaise / 100);
+      const annualRupees = Math.round(annualPaise / 100);
+      const isPopular = p.isPopular;
+
+      return \`
+        <div class="bg-white rounded-3xl border \${isPopular ? 'border-emerald-400 ring-2 ring-emerald-400/20 shadow-md' : 'border-slate-200 shadow-xs'} p-5 flex flex-col justify-between space-y-4">
+          <div>
+            <div class="flex items-center justify-between">
+              <div>
+                <h4 class="font-extrabold text-slate-900 text-sm tracking-tight">\${p.displayName}</h4>
+                <span class="text-[10px] font-mono text-slate-400">\${p.planId}</span>
+              </div>
+              \${isPopular ? '<span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-500 text-white uppercase tracking-wider">POPULAR</span>' : ''}
+            </div>
+
+            <div class="mt-4 p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5">
+              <div>
+                <div class="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  <span>Monthly Price</span>
+                  <span class="font-mono text-slate-400">₹ INR</span>
+                </div>
+                <div class="relative">
+                  <span class="absolute left-3 top-2 text-xs font-bold text-slate-400">₹</span>
+                  <input id="price-monthly-\${p.planId}" type="number" step="1" value="\${monthlyRupees}" oninput="onMonthlyPriceChange('\${p.planId}')" class="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-300 rounded-xl text-sm font-black font-mono text-slate-900 focus:outline-none focus:border-emerald-500">
+                </div>
+              </div>
+
+              <div>
+                <div class="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  <span>Annual Price (Billed Yearly)</span>
+                  <span id="price-equiv-\${p.planId}" class="font-mono text-emerald-700 text-[10px] font-bold">₹\${Math.round(annualRupees / 12).toLocaleString('en-IN')}/mo</span>
+                </div>
+                <div class="relative">
+                  <span class="absolute left-3 top-2 text-xs font-bold text-slate-400">₹</span>
+                  <input id="price-annual-\${p.planId}" type="number" step="1" value="\${annualRupees}" oninput="onAnnualPriceChange('\${p.planId}')" class="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-300 rounded-xl text-sm font-black font-mono text-slate-900 focus:outline-none focus:border-emerald-500">
+                </div>
+                <p class="text-[9px] text-slate-400 mt-1">Auto-scales at 50% discount. Override permitted.</p>
+              </div>
+            </div>
+
+            <div class="mt-4">
+              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Fixed Entitlements:</span>
+              <ul class="mt-2 space-y-1.5 text-xs text-slate-700 font-medium">
+                <li class="flex items-center justify-between">
+                  <span class="text-slate-500">Profiles Limit:</span>
+                  <span class="font-black text-slate-900 font-mono">\${p.profileLimit}</span>
+                </li>
+                \${p.seatLimit ? \`
+                  <li class="flex items-center justify-between">
+                    <span class="text-slate-500">Team Seats:</span>
+                    <span class="font-black text-slate-900 font-mono">\${p.seatLimit === 999999 ? 'Unlimited' : p.seatLimit}</span>
+                  </li>
+                \` : ''}
+                \${p.cloudMinutesMonthly ? \`
+                  <li class="flex items-center justify-between">
+                    <span class="text-slate-500">Cloud Android:</span>
+                    <span class="font-black text-slate-900 font-mono">\${p.cloudMinutesMonthly} min/mo</span>
+                  </li>
+                \` : ''}
+                \${p.proxyDataGbMonthly ? \`
+                  <li class="flex items-center justify-between">
+                    <span class="text-slate-500">Proxy Data:</span>
+                    <span class="font-black text-slate-900 font-mono">\${p.proxyDataGbMonthly} GB/mo</span>
+                  </li>
+                \` : ''}
+              </ul>
+            </div>
+          </div>
+
+          <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+            <span>Capabilities: \${Object.keys(p.capabilities || {}).length}</span>
+            <span class="text-emerald-700 font-bold">Separated from price ✓</span>
+          </div>
         </div>
       \`;
     }

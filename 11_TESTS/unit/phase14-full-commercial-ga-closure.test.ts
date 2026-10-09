@@ -299,12 +299,12 @@ describe('Phase 14: Final 3 External Blockers Closure & Full Commercial GA Relea
       }
     });
 
-    it('verifies database schema integrity remains locked at schema v18 with zero drift', () => {
+    it('verifies database schema integrity remains locked at current schema with zero drift', () => {
       const db = getDatabase();
       const rows = db.prepare('SELECT version FROM schema_migrations ORDER BY version ASC').all() as { version: number }[];
       const versions = rows.map((r) => r.version);
-      expect(versions).toContain(18);
-      expect(Math.max(...versions)).toBe(18);
+      expect(versions).toContain(19);
+      expect(Math.max(...versions)).toBe(19);
     });
   });
 

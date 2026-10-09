@@ -2861,6 +2861,42 @@ function initPricingSection() {
 
   // Initial render
   renderCards();
+
+  // Dynamically fetch live pricing catalog from centralized commercial API
+  (async function fetchLivePricingCatalog() {
+    try {
+      const res = await fetch('/api/v1/pricing/catalog');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          const cat = json.data;
+          if (cat.personal && cat.personal.length > 0) {
+            PRICING_DATA.personal = cat.personal.map(p => ({
+              id: p.profileLimit,
+              name: p.displayName,
+              monthly: Math.round(p.monthlyPricePaise / 100),
+              annual: Math.round(p.annualPricePaise / 100),
+              popular: p.isPopular,
+              features: p.features || []
+            }));
+          }
+          if (cat.business && cat.business.length > 0) {
+            PRICING_DATA.business = cat.business.map(p => ({
+              id: p.profileLimit,
+              name: p.displayName,
+              monthly: Math.round(p.monthlyPricePaise / 100),
+              annual: Math.round(p.annualPricePaise / 100),
+              popular: p.isPopular,
+              features: p.features || []
+            }));
+          }
+          renderCards();
+        }
+      }
+    } catch {
+      // Offline fallback: preserve defaults
+    }
+  })();
 }
 
 async function fetchDynamicContent() {

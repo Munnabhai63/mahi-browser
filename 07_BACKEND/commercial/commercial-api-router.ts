@@ -32,6 +32,19 @@ import {
   updateCommercialPlan,
 } from './commercial-plan-service.js';
 import {
+  buildPlanCatalog,
+  getAllPricingVersions,
+  getActivePricingVersion,
+  createPricingDraft,
+  updatePricingDraft,
+  previewPricingChanges,
+  publishPricingVersion,
+  rollbackPricing,
+  getAdminRevenueSummary,
+  getProviderSyncStatus,
+  initializePricingTables,
+} from './pricing-admin-service.js';
+import {
   evaluateUserEntitlements,
   activateCommercialLicenseForUser,
 } from './commercial-entitlement-service.js';
@@ -465,6 +478,16 @@ export async function handleCommercialApiRoutes(
     return true;
   }
 
+  if ((pathname === '/api/v1/pricing/catalog' || pathname === '/api/v1/plans/catalog') && method === 'GET') {
+    try {
+      const catalog = buildPlanCatalog();
+      sendJSON(res, 200, { success: true, data: catalog });
+    } catch (err: any) {
+      sendJSON(res, 500, { success: false, error: err.message });
+    }
+    return true;
+  }
+
   // -------------------------------------------------------------
   // 5. SOFTWARE VERSIONS & COMPATIBILITY
   // -------------------------------------------------------------
@@ -602,6 +625,151 @@ export async function handleCommercialApiRoutes(
     const planId = planIdMatch[1];
     const updated = updateCommercialPlan(planId, body, actor);
     sendJSON(res, updated ? 200 : 404, { success: Boolean(updated), data: updated });
+    return true;
+  }
+
+  // -------------------------------------------------------------
+  // 8B. ADMIN PRICING VERSIONING & CATALOG (Protected)
+  // -------------------------------------------------------------
+  if (pathname === '/api/v1/admin/pricing/catalog' && method === 'GET') {
+    const { isAdmin } = checkAdminAuth(req);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
+      return true;
+    }
+    try {
+      const catalog = buildPlanCatalog();
+      sendJSON(res, 200, { success: true, data: catalog });
+    } catch (err: any) {
+      sendJSON(res, 500, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/v1/admin/pricing/versions' && method === 'GET') {
+    const { isAdmin } = checkAdminAuth(req);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
+      return true;
+    }
+    sendJSON(res, 200, { success: true, data: getAllPricingVersions() });
+    return true;
+  }
+
+  if (pathname === '/api/v1/admin/pricing/active' && method === 'GET') {
+    const { isAdmin } = checkAdminAuth(req);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
+      return true;
+    }
+    sendJSON(res, 200, { success: true, data: getActivePricingVersion() });
+    return true;
+  }
+
+  if (pathname === '/api/v1/admin/pricing/draft' && method === 'POST') {
+    const body = await parseBody(req);
+    const { isAdmin, actor } = checkAdminAuth(req, body);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
+      return true;
+    }
+    try {
+      const draft = createPricingDraft(body, actor.id, actor.name);
+      sendJSON(res, 201, { success: true, data: draft });
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const pricingDraftUpdateMatch = pathname.match(/^\/api\/v1\/admin\/pricing\/draft\/(\d+)$/);
+  if (pricingDraftUpdateMatch && method === 'PUT') {
+    const body = await parseBody(req);
+    const { isAdmin, actor } = checkAdminAuth(req, body);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
+      return true;
+    }
+    try {
+      const version = parseInt(pricingDraftUpdateMatch[1], 10);
+      const updated = updatePricingDraft(version, body, actor.id, actor.name);
+      sendJSON(res, updated ? 200 : 404, { success: Boolean(updated), data: updated });
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const pricingPreviewMatch = pathname.match(/^\/api\/v1\/admin\/pricing\/preview\/(\d+)$/);
+  if (pricingPreviewMatch && method === 'GET') {
+    const { isAdmin } = checkAdminAuth(req);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
+      return true;
+    }
+    try {
+      const version = parseInt(pricingPreviewMatch[1], 10);
+      const preview = previewPricingChanges(version);
+      sendJSON(res, 200, { success: true, data: preview });
+    } catch (err: any) {
+      sendJSON(res, 404, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const pricingPublishMatch = pathname.match(/^\/api\/v1\/admin\/pricing\/publish\/(\d+)$/);
+  if (pricingPublishMatch && method === 'POST') {
+    const body = await parseBody(req);
+    const { isAdmin, actor } = checkAdminAuth(req, body);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
+      return true;
+    }
+    try {
+      const version = parseInt(pricingPublishMatch[1], 10);
+      const resPublish = publishPricingVersion(version, actor.id, actor.name);
+      sendJSON(res, resPublish.success ? 200 : 400, resPublish);
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  const pricingRollbackMatch = pathname.match(/^\/api\/v1\/admin\/pricing\/rollback\/(\d+)$/);
+  if (pricingRollbackMatch && method === 'POST') {
+    const body = await parseBody(req);
+    const { isAdmin, actor } = checkAdminAuth(req, body);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
+      return true;
+    }
+    try {
+      const version = parseInt(pricingRollbackMatch[1], 10);
+      const rolledBack = rollbackPricing(version, actor.id, actor.name);
+      sendJSON(res, rolledBack.success ? 200 : 400, rolledBack);
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/v1/admin/pricing/revenue-summary' && method === 'GET') {
+    const { isAdmin } = checkAdminAuth(req);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
+      return true;
+    }
+    sendJSON(res, 200, { success: true, data: getAdminRevenueSummary() });
+    return true;
+  }
+
+  if (pathname === '/api/v1/admin/pricing/provider-sync-status' && method === 'GET') {
+    const { isAdmin } = checkAdminAuth(req);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
+      return true;
+    }
+    sendJSON(res, 200, { success: true, data: getProviderSyncStatus() });
     return true;
   }
 
