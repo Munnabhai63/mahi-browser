@@ -1,7 +1,13 @@
 /**
  * MAHI Browser - Authoritative Central Brand Configuration
- * Single source of truth for product identity, official logo assets, and brand styling.
+ * Strict centralized brand asset system locking the 4 approved final logo assets.
  */
+
+// Authoritative Master Asset Identifiers & Paths
+export const PRIMARY_LOGO = '/brand/mahi-browser-logo-primary.png'; // ASSET A (Full Logo with wordmark)
+export const RED_MARK = '/brand/mahi-browser-mark-red.png';         // ASSET B (Red Dragon Mark)
+export const DARK_MARK = '/brand/mahi-browser-mark-dark.png';       // ASSET C (Black + Red Dragon Mark)
+export const APP_ICON = '/brand/mahi-browser-app-icon.png';         // ASSET D (Red Squircle White Dragon App Icon)
 
 export const BRAND_CONFIG = {
   productName: 'MAHI Browser',
@@ -12,21 +18,36 @@ export const BRAND_CONFIG = {
   website: 'https://mahibrowser.com',
   consoleUrl: 'https://app.mahibrowser.com',
 
-  // Asset Paths (relative to application public root / bundle)
+  // Authoritative Approved Assets
   assets: {
+    // 4 Master Roles
+    primaryLogo: PRIMARY_LOGO,
+    redMark: RED_MARK,
+    darkMark: DARK_MARK,
+    appIcon: APP_ICON,
+
+    // Aliases and backward-compatible paths
     master: '13_ASSETS/brand/mahi-browser-logo-master.png',
-    logoHorizontal: '/brand/mahi-browser-logo-horizontal.png',
-    logoDark: '/brand/mahi-browser-logo-dark.png',
+    logoHorizontal: PRIMARY_LOGO,
+    logoDark: DARK_MARK,
     mark: '/brand/mahi-browser-mark.png',
-    markLight: '/brand/mahi-browser-mark-light.png',
-    markDark: '/brand/mahi-browser-mark-dark.png',
-    markMono: '/brand/mahi-browser-mark-mono.png',
-    icon: '/brand/mahi-browser-icon.png',
+    markLight: '/brand/mahi-browser-mark.png',
+    markDark: DARK_MARK,
+    markMono: RED_MARK,
+    icon: APP_ICON,
     ico: '/brand/mahi-browser.ico',
     favicon: '/favicon.ico',
   },
 
-  // Primary brand palette derived from official dragon mark
+  // Authoritative SHA-256 Hashes
+  hashes: {
+    ASSET_A: '2ce7854ac00975cc7e57881345bf1cc3b9e14940b0b1e59270e18aec2235efe8',
+    ASSET_B: '916b50d58aec8398058645e968318778efed9879082ae62f908e51130e1f04a5',
+    ASSET_C: 'a8a871b9e597a088699e6b38a49c25a6e454c3ab09aca74f031741d32de0a883',
+    ASSET_D: 'f5dcca2de1050e4e381bbb49b305b0b406773f888c54f08cde00eb97319f4f4d',
+  },
+
+  // Brand Palette
   colors: {
     primaryCrimson: '#B91C1C',
     deepRuby: '#991B1B',

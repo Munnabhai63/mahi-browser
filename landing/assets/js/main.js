@@ -2969,3 +2969,35 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+// Official Brand Asset Non-Draggable Lock
+(function initBrandDragLock() {
+  function lockBrandImgs() {
+    const brandSelectors = '.brand-logo-clean, .brand-logo-clean img, .footer-brand-title-wrap, .footer-brand-logo-img, .brand-logo, .brand-logo img, [data-brand-logo]';
+    document.querySelectorAll(brandSelectors).forEach((el) => {
+      el.setAttribute('draggable', 'false');
+      el.addEventListener('dragstart', (e) => {
+        e.preventDefault();
+        return false;
+      }, true);
+      el.addEventListener('selectstart', (e) => {
+        e.preventDefault();
+        return false;
+      }, true);
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', lockBrandImgs);
+  } else {
+    lockBrandImgs();
+  }
+  // Also global capture fallback for brand targets
+  document.addEventListener('dragstart', (e) => {
+    const target = e.target;
+    if (target && target.closest && target.closest('.brand-logo-clean, .brand-logo, .footer-brand-title-wrap, [data-brand-logo]')) {
+      e.preventDefault();
+      return false;
+    }
+  }, true);
+})();
+

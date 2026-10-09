@@ -207,6 +207,18 @@ button {
   gap: 0.65rem;
   text-decoration: none;
   flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
+}
+
+.brand-logo-clean img {
+  object-fit: contain;
+  -webkit-user-drag: none;
+  user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: auto;
 }
 
 .brand-name-clean {
@@ -214,6 +226,8 @@ button {
   font-weight: 800;
   color: #0f172a;
   letter-spacing: -0.02em;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .nav-links-clean {
@@ -728,6 +742,17 @@ button {
   font-size: 0.95rem;
   letter-spacing: -0.02em;
   color: var(--text-dark-h);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.brand-logo img {
+  object-fit: contain;
+  -webkit-user-drag: none;
+  user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: auto;
 }
 
 .brand-dot {
@@ -3315,12 +3340,20 @@ button {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .footer-brand-logo-img {
   width: 32px;
   height: 32px;
   display: block;
+  object-fit: contain;
+  -webkit-user-drag: none;
+  user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: auto;
 }
 
 .footer-brand-text {
@@ -3328,6 +3361,8 @@ button {
   font-weight: 800;
   color: #ffffff;
   letter-spacing: -0.02em;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .footer-social-wrap {

@@ -75,3 +75,16 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(20, 184, 166, 0.4);
 }
+
+/* Official Brand Asset Non-Draggable Lock */
+.brand-logo-img,
+[data-brand-logo],
+img[alt*="MAHI"],
+img[src*="/brand/"] {
+  -webkit-user-drag: none;
+  user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+  object-fit: contain;
+}
+
