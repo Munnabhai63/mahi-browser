@@ -2484,7 +2484,7 @@ function initResourceModal() {
 function initDownloadTriggers() {
   document.querySelectorAll('.btn-download-trigger, a[href*="MAHI-Setup.exe"]').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      const token = localStorage.getItem('mahi_auth_token');
+      const token = localStorage.getItem('mahi_access_token') || localStorage.getItem('mahi_auth_token');
       if (!token) {
         // Block anonymous direct file downloads from landing triggers
         e.preventDefault();
@@ -2677,7 +2677,7 @@ function initPricingSection() {
     const isAnnual = toggle ? toggle.checked : true;
     const activeBilling = isAnnual ? 'annual' : 'monthly';
     const plans = PRICING_DATA[currentCategory] || PRICING_DATA.personal;
-    const token = localStorage.getItem('mahi_auth_token');
+    const token = localStorage.getItem('mahi_access_token') || localStorage.getItem('mahi_auth_token');
 
     grid.innerHTML = plans.map(plan => {
       const priceDisplay = isAnnual ? formatInr(plan.annual) : formatInr(plan.monthly);
@@ -2830,6 +2830,7 @@ function initPricingSection() {
               const colPlanKey = col.toLowerCase().replace(/\s+/g, '_');
               let compCtaHref = `/signup?plan=${encodeURIComponent(colPlanKey)}&billing=${encodeURIComponent(activeBilling)}&intent=trial`;
               let compCtaLabel = 'Start 7-day free trial';
+              const token = localStorage.getItem('mahi_access_token') || localStorage.getItem('mahi_auth_token');
               if (token) {
                 compCtaHref = `/download?plan=${encodeURIComponent(colPlanKey)}&billing=${encodeURIComponent(activeBilling)}`;
                 compCtaLabel = 'Open Dashboard';
