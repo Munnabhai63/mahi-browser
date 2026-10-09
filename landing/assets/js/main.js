@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initResourceModal();
   initDownloadTriggers();
   initPlatformCircles();
+  initPricingSection();
   fetchDynamicContent();
   initSmoothScroll();
 });
@@ -2504,6 +2505,237 @@ function initPlatformCircles() {
 /**
  * 10. Dynamic Content Loader (content.json)
  */
+
+/**
+ * 9b. Interactive Pricing Engine (Photo Benchmark)
+ * Scales ₹599 to ₹5,999 with 50% Annually discount and Personal/Business tabs
+ */
+function initPricingSection() {
+  const toggle = document.getElementById('pricing-billing-toggle');
+  const tabs = document.querySelectorAll('.pricing-tab-btn');
+  const grid = document.getElementById('pricing-cards-grid');
+  if (!grid) return;
+
+  const PRICING_DATA = {
+    personal: [
+      {
+        id: 10,
+        name: 'Professional 10',
+        monthly: 599,
+        annual: 299,
+        popular: false,
+        features: [
+          'Up to 10 profiles',
+          '30 Cloud Android minutes/mo',
+          'Unique fingerprints',
+          'Folders / Groups',
+          'Bulk actions'
+        ]
+      },
+      {
+        id: 25,
+        name: 'Professional 25',
+        monthly: 1499,
+        annual: 749,
+        popular: false,
+        features: [
+          'Up to 25 profiles',
+          '2 GB of residential proxy data',
+          '30 Cloud Android minutes/mo',
+          'Unique fingerprints',
+          'Folders / Groups',
+          'Proxy devices',
+          'Profile shares'
+        ]
+      },
+      {
+        id: 50,
+        name: 'Professional 50',
+        monthly: 2999,
+        annual: 1499,
+        popular: true,
+        features: [
+          'Up to 50 profiles',
+          '2 GB of residential proxy data',
+          '30 Cloud Android minutes/mo',
+          'Unique fingerprints',
+          'Folders / Groups',
+          'Proxy devices',
+          'Profile shares',
+          'Bulk actions',
+          'Cloud Browser via web',
+          'Cookies import and export'
+        ]
+      },
+      {
+        id: 100,
+        name: 'Professional 100',
+        monthly: 5999,
+        annual: 2999,
+        popular: false,
+        features: [
+          'Up to 100 profiles',
+          '2 GB of residential proxy data',
+          '30 Cloud Android minutes/mo',
+          'Unique fingerprints',
+          'Folders / Groups',
+          'Proxy devices',
+          'Profile shares',
+          'Bulk actions',
+          'Cloud Browser via web',
+          'Cookies import and export',
+          'Synchronizer',
+          'Cookie Bot',
+          'Custom extensions',
+          'REST API & SDKs',
+          'MCP server'
+        ]
+      }
+    ],
+    business: [
+      {
+        id: 50,
+        name: 'Team 50',
+        monthly: 2999,
+        annual: 1499,
+        popular: false,
+        features: [
+          'Up to 50 profiles',
+          '2 Team Member seats included',
+          '5 GB of residential proxy data',
+          'Unique hardware fingerprints',
+          'Team Folders & Permissions',
+          'Bulk profile management',
+          'Proxy device sharing'
+        ]
+      },
+      {
+        id: 100,
+        name: 'Team 100',
+        monthly: 3999,
+        annual: 1999,
+        popular: false,
+        features: [
+          'Up to 100 profiles',
+          '5 Team Member seats included',
+          '10 GB of residential proxy data',
+          'Unique hardware fingerprints',
+          'Role-Based Access Control',
+          'Visual RPA Workflow Builder',
+          'Automated Cookie Warmer'
+        ]
+      },
+      {
+        id: 200,
+        name: 'Team 200',
+        monthly: 4999,
+        annual: 2499,
+        popular: false,
+        features: [
+          'Up to 200 profiles',
+          '8 Team Member seats included',
+          '15 GB residential proxy data',
+          'Multi-Window Live Synchronizer',
+          '4G/5G Hotspot ADB IP Rotator',
+          'REST API & SDKs (1000 RPM)',
+          'Cloud Browser via web'
+        ]
+      },
+      {
+        id: 300,
+        name: 'Team 300',
+        monthly: 5999,
+        annual: 2999,
+        popular: true,
+        features: [
+          'Up to 300 profiles',
+          'Unlimited team members',
+          '25 GB residential proxy data',
+          'Full Visual RPA & Cookie Warmer',
+          'Custom CDP & Headless automation',
+          'SLA 99.99% with dedicated manager',
+          'Priority WhatsApp Developer Support'
+        ]
+      }
+    ]
+  };
+
+  let currentCategory = 'personal';
+
+  function formatInr(num) {
+    return Number(num).toLocaleString('en-IN');
+  }
+
+  function renderCards() {
+    const isAnnual = toggle ? toggle.checked : true;
+    const plans = PRICING_DATA[currentCategory] || PRICING_DATA.personal;
+
+    grid.innerHTML = plans.map(plan => {
+      const priceDisplay = isAnnual ? formatInr(plan.annual) : formatInr(plan.monthly);
+      const strikethroughDisplay = isAnnual ? `₹${formatInr(plan.monthly)}/mo` : '';
+      const isPopular = plan.popular;
+
+      return `
+        <div class="clean-price-card ${isPopular ? 'popular-highlight' : ''}" data-tier="${plan.id}">
+          <div class="cpc-header">
+            ${isPopular ? `
+              <div class="cpc-title-row">
+                <h3 class="cpc-title cpc-title-emerald">${plan.name}</h3>
+                <span class="cpc-popular-badge">Popular</span>
+              </div>
+            ` : `
+              <h3 class="cpc-title">${plan.name}</h3>
+            `}
+            <div class="cpc-price-wrap">
+              <div class="cpc-price-main">
+                <span class="cpc-currency">₹</span><span class="cpc-amount">${priceDisplay}</span><span class="cpc-period">/mo</span>
+              </div>
+              <div class="cpc-strikethrough-wrap">
+                ${strikethroughDisplay ? `<span class="cpc-strikethrough">${strikethroughDisplay}</span>` : ''}
+              </div>
+            </div>
+          </div>
+          
+          <ul class="cpc-features-list">
+            ${plan.features.map(f => `
+              <li><span class="cpc-check">✓</span> <span>${f}</span></li>
+            `).join('')}
+          </ul>
+
+          <div class="cpc-cta-wrap">
+            <a href="/download/MAHI-Setup.exe" class="${isPopular ? 'btn-cpc-solid' : 'btn-cpc-outline'} btn-download-trigger" download>
+              Start 7-day free trial
+            </a>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Rebind download trigger toasts
+    initDownloadTriggers();
+  }
+
+  if (toggle) {
+    toggle.addEventListener('change', renderCards);
+  }
+
+  tabs.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabs.forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
+      });
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+      currentCategory = btn.getAttribute('data-tab') || 'personal';
+      renderCards();
+    });
+  });
+
+  // Initial render
+  renderCards();
+}
+
 async function fetchDynamicContent() {
   try {
     const res = await fetch('/content.json', { cache: 'no-cache' });

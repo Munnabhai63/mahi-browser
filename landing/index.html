@@ -22,7 +22,7 @@
   <meta name="twitter:image" content="assets/img/og-image.png">
 
   <link rel="icon" type="image/x-icon" href="assets/img/favicon.ico">
-  <link rel="stylesheet" href="assets/css/styles.css?v=2.2.0">
+  <link rel="stylesheet" href="assets/css/styles.css?v=2.3.0">
 </head>
 <body>
 
@@ -1090,63 +1090,194 @@
          ========================================================================== -->
     <section class="pricing-section" id="pricing">
       <div class="container">
-        <div class="section-head-center">
-          <span class="hero-badge-pill">Transparent Pricing</span>
-          <h2>Simple, transparent pricing</h2>
-          <p>Get started completely free. Upgrade to PRO whenever you are ready to scale your operations.</p>
-        </div>
+        
+        <!-- Section Header (Photo Benchmark) -->
+        <div class="pricing-head-clean">
+          <h2 class="pricing-title-clean">
+            Start small.<br>Scale without limits.
+          </h2>
+          
+          <!-- Pricing Controls Row -->
+          <div class="pricing-controls-row">
+            <!-- Annually 50% off Toggle -->
+            <label class="pricing-toggle-pill" for="pricing-billing-toggle">
+              <div class="switch-ui">
+                <input type="checkbox" id="pricing-billing-toggle" checked>
+                <span class="switch-slider"></span>
+              </div>
+              <span class="toggle-label-text">Annually <span class="badge-discount-text">50% off</span></span>
+            </label>
 
-        <div class="pricing-cards-container">
-          <!-- Free Plan -->
-          <div class="pricing-tier-card">
-            <div class="tier-name">Free Plan</div>
-            <p class="tier-desc">Perfect for testing, personal anonymity, and managing up to 15 accounts.</p>
-            <div class="tier-price-row">
-              <span class="tier-price-val">₹0</span>
-              <span class="tier-price-period">/ forever</span>
+            <!-- Segmented Tabs (Personal / Business) -->
+            <div class="pricing-segmented-tabs" role="tablist" aria-label="Pricing Category">
+              <button type="button" class="pricing-tab-btn active" data-tab="personal" role="tab" aria-selected="true">Personal</button>
+              <button type="button" class="pricing-tab-btn" data-tab="business" role="tab" aria-selected="false">Business</button>
             </div>
-            <div style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 1.5rem;">No credit card required</div>
-            <ul class="tier-features-list">
-              <li>✓ <strong>15 Browser Profiles</strong> forever</li>
-              <li>✓ Full fingerprint spoofing (Canvas, WebGL, Audio)</li>
-              <li>✓ Universal Proxy Manager (HTTP/SOCKS5)</li>
-              <li>✓ Local REST API &amp; CDP automation</li>
-              <li>✓ Cookie import &amp; export (JSON &amp; Netscape)</li>
-              <li>✓ 100% Local-first encrypted storage</li>
-              <li class="dimmed">✗ Visual RPA Workflow Builder</li>
-              <li class="dimmed">✗ Multi-Window Live Synchronizer</li>
-              <li class="dimmed">✗ Cloud Multi-Device Sync (Beta Coming Soon)</li>
-            </ul>
-            <a href="/download/MAHI-Setup.exe" class="btn-tier-cta btn-free" download>Download Free Version</a>
-          </div>
-
-          <!-- PRO Plan -->
-          <div class="pricing-tier-card pro-highlight">
-            <div class="popular-ribbon-tag">Most Popular</div>
-            <div class="tier-name">PRO Plan</div>
-            <p class="tier-desc">Designed for e-commerce sellers, marketing agencies, and professional operators.</p>
-            <div class="tier-price-row">
-              <span class="tier-price-val dynamic-price-inr">₹599</span>
-              <span class="tier-price-period">(or <span class="dynamic-price-usd">$7</span> USDT) / year</span>
-            </div>
-            <div class="trial-highlight-note">⚡ Includes 7-day free trial on signup</div>
-            <ul class="tier-features-list">
-              <li>✓ <strong>Unlimited Browser Profiles</strong></li>
-              <li>✓ Full hardware fingerprint spoofing &amp; noise engine</li>
-              <li>✓ Unlimited HTTP/HTTPS/SOCKS5 proxies with auto-tunnel</li>
-              <li>✓ <strong>Visual RPA Workflow Builder included</strong></li>
-              <li>✓ <strong>Automated Cookie Warmer &amp; Farmer Bot</strong></li>
-              <li>✓ <strong>Multi-Window CDP Live Synchronizer</strong></li>
-              <li>✓ <strong>4G/5G Mobile Hotspot ADB IP Rotator</strong></li>
-              <li>✓ <strong>AES-256 Encrypted Profile Backup &amp; Migration</strong></li>
-              <li>✓ Priority developer support via WhatsApp</li>
-            </ul>
-            <a href="https://wa.me/" class="btn-tier-cta btn-pro dynamic-whatsapp-link" target="_blank" rel="noopener">Get PRO via WhatsApp</a>
-            <p style="font-size: 0.78rem; color: #94a3b8; margin-top: 1rem; line-height: 1.4;">
-              Pay via UPI or USDT TRC20 — instant manual activation within minutes on WhatsApp.
-            </p>
           </div>
         </div>
+
+        <!-- 4-Tier Cards Grid -->
+        <div class="pricing-grid-clean" id="pricing-cards-grid">
+          <!-- Dynamically populated and server-rendered default (Personal, Annual) -->
+          
+          <!-- Card 1: Professional 10 -->
+          <div class="clean-price-card" data-tier="10">
+            <div class="cpc-header">
+              <h3 class="cpc-title">Professional 10</h3>
+              <div class="cpc-price-wrap">
+                <div class="cpc-price-main">
+                  <span class="cpc-currency">₹</span><span class="cpc-amount" data-key="p10-price">299</span><span class="cpc-period">/mo</span>
+                </div>
+                <div class="cpc-strikethrough-wrap">
+                  <span class="cpc-strikethrough" data-key="p10-orig">₹599/mo</span>
+                </div>
+              </div>
+            </div>
+            
+            <ul class="cpc-features-list">
+              <li><span class="cpc-check">✓</span> <span>Up to 10 profiles</span></li>
+              <li><span class="cpc-check">✓</span> <span>30 Cloud Android minutes/mo</span></li>
+              <li><span class="cpc-check">✓</span> <span>Unique fingerprints</span></li>
+              <li><span class="cpc-check">✓</span> <span>Folders / Groups</span></li>
+              <li><span class="cpc-check">✓</span> <span>Bulk actions</span></li>
+            </ul>
+
+            <div class="cpc-cta-wrap">
+              <a href="/download/MAHI-Setup.exe" class="btn-cpc-outline btn-download-trigger" download>
+                Start 7-day free trial
+              </a>
+            </div>
+          </div>
+
+          <!-- Card 2: Professional 25 -->
+          <div class="clean-price-card" data-tier="25">
+            <div class="cpc-header">
+              <h3 class="cpc-title">Professional 25</h3>
+              <div class="cpc-price-wrap">
+                <div class="cpc-price-main">
+                  <span class="cpc-currency">₹</span><span class="cpc-amount" data-key="p25-price">749</span><span class="cpc-period">/mo</span>
+                </div>
+                <div class="cpc-strikethrough-wrap">
+                  <span class="cpc-strikethrough" data-key="p25-orig">₹1,499/mo</span>
+                </div>
+              </div>
+            </div>
+            
+            <ul class="cpc-features-list">
+              <li><span class="cpc-check">✓</span> <span>Up to 25 profiles</span></li>
+              <li><span class="cpc-check">✓</span> <span>2 GB of residential proxy data</span></li>
+              <li><span class="cpc-check">✓</span> <span>30 Cloud Android minutes/mo</span></li>
+              <li><span class="cpc-check">✓</span> <span>Unique fingerprints</span></li>
+              <li><span class="cpc-check">✓</span> <span>Folders / Groups</span></li>
+              <li><span class="cpc-check">✓</span> <span>Proxy devices</span></li>
+              <li><span class="cpc-check">✓</span> <span>Profile shares</span></li>
+            </ul>
+
+            <div class="cpc-cta-wrap">
+              <a href="/download/MAHI-Setup.exe" class="btn-cpc-outline btn-download-trigger" download>
+                Start 7-day free trial
+              </a>
+            </div>
+          </div>
+
+          <!-- Card 3: Professional 50 (POPULAR HIGHLIGHT) -->
+          <div class="clean-price-card popular-highlight" data-tier="50">
+            <div class="cpc-header">
+              <div class="cpc-title-row">
+                <h3 class="cpc-title cpc-title-emerald">Professional 50</h3>
+                <span class="cpc-popular-badge">Popular</span>
+              </div>
+              <div class="cpc-price-wrap">
+                <div class="cpc-price-main">
+                  <span class="cpc-currency">₹</span><span class="cpc-amount" data-key="p50-price">1,499</span><span class="cpc-period">/mo</span>
+                </div>
+                <div class="cpc-strikethrough-wrap">
+                  <span class="cpc-strikethrough" data-key="p50-orig">₹2,999/mo</span>
+                </div>
+              </div>
+            </div>
+            
+            <ul class="cpc-features-list">
+              <li><span class="cpc-check">✓</span> <span>Up to 50 profiles</span></li>
+              <li><span class="cpc-check">✓</span> <span>2 GB of residential proxy data</span></li>
+              <li><span class="cpc-check">✓</span> <span>30 Cloud Android minutes/mo</span></li>
+              <li><span class="cpc-check">✓</span> <span>Unique fingerprints</span></li>
+              <li><span class="cpc-check">✓</span> <span>Folders / Groups</span></li>
+              <li><span class="cpc-check">✓</span> <span>Proxy devices</span></li>
+              <li><span class="cpc-check">✓</span> <span>Profile shares</span></li>
+              <li><span class="cpc-check">✓</span> <span>Bulk actions</span></li>
+              <li><span class="cpc-check">✓</span> <span>Cloud Browser via web</span></li>
+              <li><span class="cpc-check">✓</span> <span>Cookies import and export</span></li>
+            </ul>
+
+            <div class="cpc-cta-wrap">
+              <a href="/download/MAHI-Setup.exe" class="btn-cpc-solid btn-download-trigger" download>
+                Start 7-day free trial
+              </a>
+            </div>
+          </div>
+
+          <!-- Card 4: Professional 100 -->
+          <div class="clean-price-card" data-tier="100">
+            <div class="cpc-header">
+              <h3 class="cpc-title">Professional 100</h3>
+              <div class="cpc-price-wrap">
+                <div class="cpc-price-main">
+                  <span class="cpc-currency">₹</span><span class="cpc-amount" data-key="p100-price">2,999</span><span class="cpc-period">/mo</span>
+                </div>
+                <div class="cpc-strikethrough-wrap">
+                  <span class="cpc-strikethrough" data-key="p100-orig">₹5,999/mo</span>
+                </div>
+              </div>
+            </div>
+            
+            <ul class="cpc-features-list">
+              <li><span class="cpc-check">✓</span> <span>Up to 100 profiles</span></li>
+              <li><span class="cpc-check">✓</span> <span>2 GB of residential proxy data</span></li>
+              <li><span class="cpc-check">✓</span> <span>30 Cloud Android minutes/mo</span></li>
+              <li><span class="cpc-check">✓</span> <span>Unique fingerprints</span></li>
+              <li><span class="cpc-check">✓</span> <span>Folders / Groups</span></li>
+              <li><span class="cpc-check">✓</span> <span>Proxy devices</span></li>
+              <li><span class="cpc-check">✓</span> <span>Profile shares</span></li>
+              <li><span class="cpc-check">✓</span> <span>Bulk actions</span></li>
+              <li><span class="cpc-check">✓</span> <span>Cloud Browser via web</span></li>
+              <li><span class="cpc-check">✓</span> <span>Cookies import and export</span></li>
+              <li><span class="cpc-check">✓</span> <span>Synchronizer</span></li>
+              <li><span class="cpc-check">✓</span> <span>Cookie Bot</span></li>
+              <li><span class="cpc-check">✓</span> <span>Custom extensions</span></li>
+              <li><span class="cpc-check">✓</span> <span>REST API &amp; SDKs</span></li>
+              <li><span class="cpc-check">✓</span> <span>MCP server</span></li>
+            </ul>
+
+            <div class="cpc-cta-wrap">
+              <a href="/download/MAHI-Setup.exe" class="btn-cpc-outline btn-download-trigger" download>
+                Start 7-day free trial
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Bar: Free Forever Tier (Photo Benchmark) -->
+        <div class="pricing-bottom-bar-clean">
+          <div class="pbb-left-group">
+            <div class="pbb-free-price">
+              <span class="pbb-label">Free</span>
+              <strong class="pbb-amount">₹0</strong>
+              <span class="pbb-forever">forever</span>
+            </div>
+            <div class="pbb-checks-row">
+              <span class="pbb-check-item">✓ Up to 3 profiles</span>
+              <span class="pbb-check-item">✓ Unique fingerprints</span>
+              <span class="pbb-check-item">✓ No credit card required</span>
+            </div>
+          </div>
+          <div class="pbb-right-cta">
+            <a href="/download/MAHI-Setup.exe" class="btn-pbb-free btn-download-trigger" download>
+              Start for free
+            </a>
+          </div>
+        </div>
+
       </div>
     </section>
 
@@ -1490,6 +1621,6 @@
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-  <script src="assets/js/main.js?v=2.2.0"></script>
+  <script src="assets/js/main.js?v=2.3.0"></script>
 </body>
 </html>
