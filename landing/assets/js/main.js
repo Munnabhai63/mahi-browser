@@ -2719,6 +2719,133 @@ function initPricingSection() {
     toggle.addEventListener('change', renderCards);
   }
 
+  
+  // Comparison Table Rendering (Photo Benchmark #2)
+  const compareTableWrapper = document.getElementById('compare-table-wrapper');
+  const compareTabs = document.querySelectorAll('.compare-tab-btn');
+
+  const COMPARISON_DATA = {
+    personal: {
+      columns: ['Professional 10', 'Professional 25', 'Professional 50', 'Professional 100'],
+      popularCol: 2, // 0-indexed (Professional 50)
+      rows: [
+        { name: 'Browser profiles', vals: ['10', '25', '50', '100'] },
+        { name: 'Residential proxy data', vals: ['—', '2 GB', '2 GB', '2 GB'] },
+        { name: 'Cloud Android minutes/mo', vals: ['30', '30', '30', '30'] },
+        { name: 'Unique fingerprints', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'Folders / Groups', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'Bulk actions', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'Proxy devices', vals: ['—', '✓', '✓', '✓'] },
+        { name: 'Profile shares', vals: ['—', '✓', '✓', '✓'] },
+        { name: 'Cloud Browser via web', vals: ['—', '—', '✓', '✓'] },
+        { name: 'Cookies import and export', vals: ['—', '—', '✓', '✓'] },
+        { name: 'Synchronizer', vals: ['—', '—', '—', '✓'] },
+        { name: 'Cookie Bot', vals: ['—', '—', '—', '✓'] },
+        { name: 'Custom extensions', vals: ['—', '—', '—', '✓'] },
+        { name: 'REST API & SDKs', vals: ['—', '—', '—', '✓'] },
+        { name: 'MCP server', vals: ['—', '—', '—', '✓'] }
+      ]
+    },
+    business: {
+      columns: ['Team 50', 'Team 100', 'Team 200', 'Team 300'],
+      popularCol: 3, // Team 300
+      rows: [
+        { name: 'Browser profiles', vals: ['50', '100', '200', '300'] },
+        { name: 'Team member seats', vals: ['2', '5', '8', 'Unlimited'] },
+        { name: 'Residential proxy data', vals: ['5 GB', '10 GB', '15 GB', '25 GB'] },
+        { name: 'Cloud Android minutes/mo', vals: ['60', '120', '240', '500'] },
+        { name: 'Unique fingerprints', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'Team Folders & Permissions', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'Bulk profile management', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'Proxy device sharing', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'Profile sharing', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'Cloud Browser via web', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'Cookies import and export', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'Synchronizer', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'Cookie Bot', vals: ['—', '✓', '✓', '✓'] },
+        { name: 'Custom extensions', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'REST API & SDKs (1000 RPM)', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'MCP server', vals: ['—', '✓', '✓', '✓'] },
+        { name: 'Priority Support', vals: ['WhatsApp', 'WhatsApp', 'WhatsApp', 'Dedicated 24/7'] }
+      ]
+    }
+  };
+
+  function renderComparisonTable() {
+    if (!compareTableWrapper) return;
+    const catData = COMPARISON_DATA[currentCategory] || COMPARISON_DATA.personal;
+
+    let tableHtml = `
+      <table class="compare-table-clean">
+        <thead>
+          <tr>
+            <th>Features</th>
+            ${catData.columns.map((col, idx) => `
+              <th class="${idx === catData.popularCol ? 'col-popular-th' : ''}">${col}</th>
+            `).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${catData.rows.map(row => `
+            <tr>
+              <td>${row.name}</td>
+              ${row.vals.map((val, idx) => {
+                const isPop = idx === catData.popularCol;
+                let valDisplay = val;
+                if (val === '✓') valDisplay = '<span class="cmp-check">✓</span>';
+                else if (val === '—') valDisplay = '<span class="cmp-dash">—</span>';
+                return `<td class="${isPop ? 'col-popular-td' : ''}">${valDisplay}</td>`;
+              }).join('')}
+            </tr>
+          `).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td></td>
+            ${catData.columns.map((col, idx) => {
+              const isPop = idx === catData.popularCol;
+              return `
+                <td class="${isPop ? 'col-popular-td' : ''}">
+                  <a href="/download/MAHI-Setup.exe" class="${isPop ? 'btn-cpc-solid' : 'btn-cpc-outline'} btn-download-trigger" download>
+                    Start 7-day free trial
+                  </a>
+                </td>
+              `;
+            }).join('')}
+          </tr>
+        </tfoot>
+      </table>
+    `;
+
+    compareTableWrapper.innerHTML = tableHtml;
+  }
+
+  compareTabs.forEach(btn => {
+    btn.addEventListener('click', () => {
+      compareTabs.forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
+      });
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+      currentCategory = btn.getAttribute('data-tab') || 'personal';
+
+      // Keep top tabs in sync
+      tabs.forEach(t => {
+        if (t.getAttribute('data-tab') === currentCategory) {
+          t.classList.add('active');
+          t.setAttribute('aria-selected', 'true');
+        } else {
+          t.classList.remove('active');
+          t.setAttribute('aria-selected', 'false');
+        }
+      });
+
+      renderCards();
+      renderComparisonTable();
+    });
+  });
+
   tabs.forEach(btn => {
     btn.addEventListener('click', () => {
       tabs.forEach(b => {

@@ -4205,3 +4205,164 @@ button {
   align-items: center;
   gap: 0.5rem;
 }
+
+/* ==========================================================================
+   FEATURE COMPARISON MATRIX (See all features and compare plans)
+   Photo Benchmark: Full 4-Tier Matrix with Checkmarks and CTAs
+   ========================================================================== */
+.compare-plans-section {
+  padding: 4.5rem 1.5rem 6.5rem;
+  background: #ffffff;
+  text-align: center;
+}
+
+.compare-plans-container {
+  max-width: 1140px;
+  margin: 0 auto;
+}
+
+.compare-head-clean {
+  margin-bottom: 2.5rem;
+}
+
+.compare-title-clean {
+  font-size: clamp(2rem, 3.2vw, 2.5rem);
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: -0.03em;
+  margin: 0 0 1.5rem 0;
+}
+
+.compare-segmented-tabs {
+  display: inline-flex;
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 4px;
+  gap: 2px;
+}
+
+.compare-tab-btn {
+  border: none;
+  background: transparent;
+  padding: 0.45rem 1.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.compare-tab-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.compare-table-wrapper {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 1.5rem 1.25rem 2rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.compare-table-clean {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: center;
+  min-width: 720px;
+}
+
+.compare-table-clean th {
+  padding: 1.25rem 0.85rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1e293b;
+  border-bottom: 1.5px solid #e2e8f0;
+}
+
+.compare-table-clean th:first-child {
+  text-align: left;
+  width: 28%;
+}
+
+.compare-table-clean th.col-popular-th {
+  color: #059669;
+}
+
+.compare-table-clean td {
+  padding: 1rem 0.85rem;
+  font-size: 0.875rem;
+  color: #475569;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.compare-table-clean tr:hover td {
+  background-color: #fafbfc;
+}
+
+.compare-table-clean td:first-child {
+  text-align: left;
+  font-weight: 500;
+  color: #334155;
+}
+
+.compare-table-clean .col-popular-td {
+  background-color: rgba(16, 185, 129, 0.02);
+}
+
+.compare-table-clean tr:hover .col-popular-td {
+  background-color: rgba(16, 185, 129, 0.04);
+}
+
+.cmp-check {
+  color: #10b981;
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+
+.cmp-dash {
+  color: #cbd5e1;
+  font-weight: 400;
+  font-size: 1.15rem;
+}
+
+.compare-table-clean tfoot td {
+  border-bottom: none;
+  padding-top: 1.75rem;
+}
+
+.compare-table-clean tfoot .btn-cpc-outline,
+.compare-table-clean tfoot .btn-cpc-solid {
+  font-size: 0.825rem;
+  padding: 0.55rem 0.4rem;
+}
+
+.nav-item-clean.active {
+  color: #00a87e;
+  font-weight: 700;
+}
+
+/* 6-Column Footer Grid Update (Screenshot #3 Benchmark) */
+.footer-benchmark-columns {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr) !important;
+  gap: clamp(1.2rem, 2.2vw, 2.5rem) !important;
+  margin-bottom: 3.5rem;
+}
+
+@media (max-width: 1100px) {
+  .footer-benchmark-columns {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .footer-benchmark-columns {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
