@@ -51,6 +51,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     resendVerification,
     forgotPassword,
     resetPassword,
+    submitManualUpiPayment,
   } = useAccountStore();
 
   const { showToast } = useToastStore();
@@ -67,6 +68,12 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<string | null>(null);
   const [deviceMismatchError, setDeviceMismatchError] = useState(false);
+
+  // Manual UPI payment submission states
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [utrInput, setUtrInput] = useState('');
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+  const [paymentSubmittedStatus, setPaymentSubmittedStatus] = useState<string | null>(null);
 
   const isUserLoggedIn = Boolean(accountSession?.token);
 
@@ -390,12 +397,56 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
   const currentPlan = planLimits?.plan || 'free';
   const isProActive = planLimits?.isPro || false;
 
-  const priceInr = paymentInfo?.price_inr || 0;
-  const priceUsdt = paymentInfo?.price_usdt || 0;
-  const upiId = paymentInfo?.upi_id || 'Loading...';
-  const usdtAddress = paymentInfo?.usdt_address || 'Loading...';
-  const waNumber = paymentInfo?.whatsapp_number || '';
-  const waCleanNumber = waNumber.replace(/[^0-9]/g, '');
+  const priceInr = paymentInfo?.price_inr || 1499;
+  const upiId = paymentInfo?.upi_id || '6375823589@slc';
+  const upiHolder = paymentInfo?.upi_account_holder || 'Mr Mahipal Choudhary';
+  const upiQrAsset = paymentInfo?.upi_qr_asset || '/brand/mahi-upi-qr.png';
+  const waNumber = paymentInfo?.whatsapp_number || '+91 9376343629';
+  const waCleanNumber = waNumber.replace(/[^0-9]/g, '') || '919376343629';
+
+  const handleSubmitPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanUtr = utrInput.trim();
+    if (!cleanUtr || cleanUtr.length < 6) {
+      showToast({
+        type: 'error',
+        title: 'Invalid UTR',
+        message: 'Please enter a valid UPI Transaction Reference / UTR (at least 6 characters).',
+      });
+      return;
+    }
+
+    setIsSubmittingPayment(true);
+    try {
+      const res = await submitManualUpiPayment({
+        plan_id: 'pro',
+        utr: cleanUtr,
+      });
+
+      if (res.success) {
+        setPaymentSubmittedStatus(res.status || 'PENDING_VERIFICATION');
+        showToast({
+          type: 'success',
+          title: 'Payment Submitted',
+          message: 'Your payment record is PENDING_VERIFICATION. Admin will activate your PRO plan.',
+        });
+      } else {
+        showToast({
+          type: 'error',
+          title: 'Submission Failed',
+          message: res.error || 'Failed to submit transaction reference.',
+        });
+      }
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Error',
+        message: err.message || 'Payment submission failed.',
+      });
+    } finally {
+      setIsSubmittingPayment(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-150">
@@ -527,56 +578,156 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
               </div>
 
               {/* Upgrade Pitch if not Pro */}
+              {/* Upgrade Pitch with UPI Manual Payment */}
               {!isProActive && (
-                <div className="p-4 rounded-2xl bg-gradient-to-b from-teal-950/40 to-slate-900 border border-teal-800/60">
-                  <div className="flex items-center gap-2 mb-2 text-teal-400">
-                    <Sparkles size={16} />
-                    <h4 className="font-bold text-sm text-white">Upgrade to MAHI PRO (100 Profiles)</h4>
+                <div className="p-4 rounded-2xl bg-gradient-to-b from-teal-950/40 to-slate-900 border border-teal-800/60 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-teal-400">
+                      <Sparkles size={16} />
+                      <h4 className="font-bold text-sm text-white">Upgrade to MAHI PRO (100 Profiles)</h4>
+                    </div>
+                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      ₹{priceInr}/year
+                    </span>
                   </div>
-                  <p className="text-xs text-slate-300 mb-3 leading-relaxed">
-                    Unlock 100 anti-detect profiles and encrypted cloud sync for ₹{priceInr}/year (UPI) or ≈${priceUsdt} USDT (TRC20).
+
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Unlock 100 isolated anti-detect browser containers, automated profile warming, and encrypted cloud sync.
                   </p>
 
-                  <div className="space-y-2 p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs font-mono">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">UPI ID:</span>
-                      <div className="flex items-center gap-2">
-                        <strong className="text-teal-400">{upiId}</strong>
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard(upiId, 'UPI ID')}
-                          className="text-slate-400 hover:text-white"
-                          title="Copy UPI ID"
-                        >
-                          <Copy size={13} />
-                        </button>
+                  {/* UPI Payment Container */}
+                  <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                      <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                        <Zap size={14} className="text-teal-400" />
+                        UPI Payment
+                      </span>
+                      <span className="text-[11px] font-mono text-emerald-400">Verified Gateway</span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-4">
+                      {/* Authoritative Slice QR Asset */}
+                      <div className="p-2 bg-white rounded-xl shadow-lg shrink-0 flex flex-col items-center">
+                        <img
+                          src={upiQrAsset}
+                          alt="Official MAHI UPI QR"
+                          className="w-32 h-32 object-contain rounded-lg"
+                        />
+                        <span className="text-[9px] font-bold text-slate-700 mt-1 uppercase tracking-wider">Scan with UPI App</span>
+                      </div>
+
+                      {/* UPI Account Details */}
+                      <div className="space-y-2.5 w-full text-xs">
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Account Holder</span>
+                          <strong className="text-white text-sm block">{upiHolder}</strong>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">UPI ID</span>
+                          <div className="flex items-center justify-between bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 mt-0.5">
+                            <strong className="text-teal-400 font-mono text-xs">{upiId}</strong>
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(upiId, 'UPI ID')}
+                              className="text-slate-400 hover:text-white flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 transition"
+                              title="Copy UPI ID"
+                            >
+                              <Copy size={11} />
+                              <span className="text-[10px]">Copy</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Payable Amount</span>
+                          <strong className="text-emerald-400 font-bold text-sm">₹{priceInr} INR</strong>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">USDT (TRC20):</span>
-                      <div className="flex items-center gap-2">
-                        <strong className="text-teal-400 truncate max-w-[180px]">{usdtAddress}</strong>
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard(usdtAddress, 'USDT TRC20 Address')}
-                          className="text-slate-400 hover:text-white"
-                          title="Copy USDT TRC20 Address"
-                        >
-                          <Copy size={13} />
-                        </button>
-                      </div>
+                    {/* Action Buttons: Copy UPI ID & I Have Paid */}
+                    <div className="pt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(upiId, 'UPI ID')}
+                        className="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition flex items-center justify-center gap-1.5"
+                      >
+                        <Copy size={13} />
+                        <span>Copy UPI ID</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowPaymentForm(!showPaymentForm)}
+                        className="flex-1 py-2 px-3 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5"
+                      >
+                        <CheckCircle2 size={13} />
+                        <span>{showPaymentForm ? 'Hide Form' : 'I Have Paid'}</span>
+                      </button>
                     </div>
+
+                    {/* Verification Form */}
+                    {showPaymentForm && (
+                      <form onSubmit={handleSubmitPayment} className="mt-3 pt-3 border-t border-slate-800/80 space-y-3">
+                        {paymentSubmittedStatus ? (
+                          <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs space-y-1">
+                            <div className="flex items-center gap-2 font-bold">
+                              <CheckCircle2 size={15} />
+                              <span>Status: {paymentSubmittedStatus}</span>
+                            </div>
+                            <p className="text-[11px] text-emerald-400/90 leading-relaxed">
+                              Your UTR has been submitted for manual approval. An administrator will verify and activate your PRO entitlement.
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                                UTR / Bank Reference Number <span className="text-rose-400">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={utrInput}
+                                onChange={(e) => setUtrInput(e.target.value)}
+                                placeholder="e.g. 427189028341 (12 digits)"
+                                required
+                                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-mono focus:border-teal-500 focus:outline-none"
+                              />
+                              <p className="text-[10px] text-slate-500 mt-1">
+                                Found in your GPay / PhonePe / Paytm / Slice payment receipt under "UTR" or "UPI Ref ID".
+                              </p>
+                            </div>
+
+                            <button
+                              type="submit"
+                              disabled={isSubmittingPayment}
+                              className="w-full py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs shadow transition flex items-center justify-center gap-2"
+                            >
+                              {isSubmittingPayment ? (
+                                <span>Verifying &amp; Submitting...</span>
+                              ) : (
+                                <>
+                                  <Check size={13} />
+                                  <span>Submit Payment for Approval</span>
+                                </>
+                              )}
+                            </button>
+                          </>
+                        )}
+                      </form>
+                    )}
                   </div>
 
+                  {/* WhatsApp Support Backup */}
                   <a
-                    href={`https://wa.me/${waCleanNumber}?text=${encodeURIComponent(`Hi, I would like to activate MAHI PRO for account email: ${accountSession?.email}`)}`}
+                    href={`https://wa.me/${waCleanNumber}?text=${encodeURIComponent(`Hi, I need help with MAHI PRO payment. Email: ${accountSession?.email || ''}`)}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-3 w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-md transition"
+                    className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-xs border border-slate-700/60 transition"
                   >
-                    <span>Send Payment Proof to WhatsApp</span>
-                    <ExternalLink size={13} />
+                    <span>Need Help? Contact WhatsApp Support (+91 9376343629)</span>
+                    <ExternalLink size={12} />
                   </a>
                 </div>
               )}

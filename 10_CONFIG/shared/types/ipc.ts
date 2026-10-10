@@ -401,6 +401,7 @@ export interface MahiBrowserAPI {
   accountGetStatus: () => Promise<any>;
   accountSwitchDevice: () => Promise<{ success: boolean; message: string }>;
   accountGetPaymentInfo: () => Promise<any>;
+  accountSubmitManualUpiPayment: (payload: { plan_id: string; utr: string; proof_asset?: string }) => Promise<{ success: boolean; payment_id?: string; status?: string; message?: string; error?: string }>;
   accountGetSession: () => Promise<any>;
   accountGetPlanLimits: () => Promise<{ isPro: boolean; plan: string; maxProfiles: number; expiresAt: string | null }>;
   accountVerifyEmail: (dto: { token: string }) => Promise<{ success: boolean; error?: string }>;

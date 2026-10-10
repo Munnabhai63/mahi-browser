@@ -6,6 +6,7 @@ import http from 'node:http';
 import { app, BrowserWindow, safeStorage } from 'electron';
 import { getHWID } from './license-service.js';
 import { ADMIN_API_BASE_URL } from './license-status-service.js';
+import { CONTACT_CONFIG } from '../10_CONFIG/contact-config.js';
 
 // ============================================================================
 // CONSTANTS & PUBLIC KEY FOR SIGNATURE VERIFICATION
@@ -53,10 +54,14 @@ export interface CachedAccountStatus {
 
 export interface PaymentInfo {
   upi_id: string;
+  upi_account_holder?: string;
+  upi_qr_asset?: string;
   price_inr: number;
+  price_usd?: number;
   price_usdt: number;
   usdt_address: string;
   usdt_network: string;
+  usdt_enabled?: boolean;
   whatsapp_number: string;
 }
 
@@ -564,19 +569,79 @@ export async function switchDevice(): Promise<{ success: boolean; message: strin
 }
 
 export async function getPaymentInfo(): Promise<PaymentInfo> {
-  const res = await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/payment-info`, { method: 'GET' });
-  if (res.statusCode === 200 && res.body) {
-    return res.body;
-  }
-  // Dynamic empty fallback if offline (hydrated from server at runtime)
+  try {
+    const res = await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/payment-info`, { method: 'GET' });
+    if (res.statusCode === 200 && res.body) {
+      return {
+        ...res.body,
+        upi_id: res.body.upi_id || CONTACT_CONFIG.UPI_ID,
+        upi_account_holder: res.body.upi_account_holder || CONTACT_CONFIG.UPI_ACCOUNT_HOLDER,
+        upi_qr_asset: res.body.upi_qr_asset || CONTACT_CONFIG.UPI_QR_ASSET,
+        whatsapp_number: res.body.whatsapp_number || CONTACT_CONFIG.WHATSAPP_NUMBER,
+        usdt_enabled: res.body.usdt_enabled === true,
+      };
+    }
+  } catch {}
+  // Canonical authoritative fallback (never dummy placeholders)
   return {
-    upi_id: '',
-    price_inr: 0,
+    upi_id: CONTACT_CONFIG.UPI_ID,
+    upi_account_holder: CONTACT_CONFIG.UPI_ACCOUNT_HOLDER,
+    upi_qr_asset: CONTACT_CONFIG.UPI_QR_ASSET,
+    price_inr: 1499,
+    price_usd: 19,
     price_usdt: 0,
     usdt_address: '',
     usdt_network: '',
-    whatsapp_number: ''
+    usdt_enabled: false,
+    whatsapp_number: CONTACT_CONFIG.WHATSAPP_NUMBER
   };
+}
+
+export async function submitManualUpiPayment(payload: {
+  plan_id: string;
+  utr: string;
+  proof_asset?: string;
+}): Promise<{ success: boolean; payment_id?: string; status?: string; message?: string; error?: string }> {
+  const session = loadEncryptedSession();
+  if (!session?.token) throw new Error('No active account session');
+
+  const utrClean = (payload.utr || '').trim();
+  if (!utrClean || utrClean.length < 6) {
+    return { success: false, error: 'Invalid UTR: Transaction reference must be at least 6 characters.' };
+  }
+
+  try {
+    const res = await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/payments/upi/submit`, {
+      method: 'POST',
+      headers: {
+        'x-mahi-token': session.token,
+        'Authorization': `Bearer ${session.token}`,
+      }
+    }, {
+      plan_id: payload.plan_id || 'pro',
+      utr: utrClean,
+      proof_asset: payload.proof_asset || '',
+    });
+
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      return {
+        success: true,
+        payment_id: res.body?.payment_id,
+        status: res.body?.status || 'PENDING_VERIFICATION',
+        message: res.body?.message || 'Payment submitted successfully for verification.',
+      };
+    }
+
+    return {
+      success: false,
+      error: res.body?.error || `Submission failed (HTTP ${res.statusCode})`
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err?.message || 'Network error while submitting payment'
+    };
+  }
 }
 
 // ============================================================================

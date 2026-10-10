@@ -1974,7 +1974,7 @@ function initLiveChatWidget() {
     if (/(?:agent|human|talk|speak|person|representative|support\s*team)/i.test(q)) {
       const ticketNum = 'SUP-2026-' + Math.floor(1000 + Math.random() * 9000);
       return {
-        reply: `You are connected with MAHI Priority Support. An engineer will attend to your session shortly. You can also reach our team directly via WhatsApp or email (support@mahibrowser.com). Reference Ticket: #${ticketNum}`,
+        reply: `You are connected with MAHI Priority Support. An engineer will attend to your session shortly. You can also reach our team directly via WhatsApp (+91 9376343629) or email (mahiverse.official@gmail.com). Reference Ticket: #${ticketNum}`,
         isEscalated: true,
         ticketNumber: ticketNum,
         category: 'AGENT'
@@ -3173,8 +3173,8 @@ async function fetchDynamicContent() {
     });
 
     // 2. WhatsApp Sync
-    const rawNumber = data.whatsapp_number || (data.whatsapp?.display || (data.whatsapp?.number ? `+${data.whatsapp.number}` : '+91-9876543210'));
-    const cleanNumber = rawNumber.replace(/[^0-9]/g, '');
+    const rawNumber = data.whatsapp_number || (data.whatsapp?.display || (data.whatsapp?.number ? `+${data.whatsapp.number}` : '+91 9376343629'));
+    const cleanNumber = rawNumber.replace(/[^0-9]/g, '') || '919376343629';
     const defaultMsg = encodeURIComponent("Hello MAHI Browser Team, I would like to book a demo of MAHI Browser for my multi-accounting team.");
     const waUrl = `https://wa.me/${cleanNumber}?text=${defaultMsg}`;
 
@@ -3187,12 +3187,41 @@ async function fetchDynamicContent() {
     });
 
     // 3. Email Sync
-    const email = data.email || 'support@mahibrowser.com';
+    const email = data.support_email || data.email || 'mahiverse.official@gmail.com';
     document.querySelectorAll('.dynamic-email-link').forEach(link => {
       link.setAttribute('href', `mailto:${email}`);
     });
     document.querySelectorAll('.dynamic-email-text').forEach(el => {
       el.textContent = `${email} →`;
+    });
+
+    // 3.1 Socials Sync & Guard
+    const xUrl = data.x_url || data.socials?.x || 'https://x.com/MunaBhai63';
+    const linkedinUrl = data.linkedin_url || data.socials?.linkedin || 'https://www.linkedin.com/in/mahipal-choudhary-153ba83b1';
+
+    document.querySelectorAll('.footer-social-icon[aria-label="X (Twitter)"]').forEach(a => {
+      if (xUrl && !xUrl.includes('x.com/') === false && xUrl !== 'https://x.com') {
+        a.setAttribute('href', xUrl);
+        a.style.display = '';
+      } else {
+        a.style.display = 'none';
+      }
+    });
+
+    document.querySelectorAll('.footer-social-icon[aria-label="LinkedIn"]').forEach(a => {
+      if (linkedinUrl && linkedinUrl.length > 'https://www.linkedin.com/'.length) {
+        a.setAttribute('href', linkedinUrl);
+        a.style.display = '';
+      } else {
+        a.style.display = 'none';
+      }
+    });
+
+    // Ensure unconfigured socials are hidden
+    ['Facebook', 'Telegram', 'Instagram', 'YouTube'].forEach(net => {
+      document.querySelectorAll(`.footer-social-icon[aria-label="${net}"]`).forEach(a => {
+        a.style.display = 'none';
+      });
     });
 
     // 4. Testimonials

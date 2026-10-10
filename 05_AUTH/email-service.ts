@@ -12,6 +12,7 @@
 
 import crypto from 'node:crypto';
 import dns from 'node:dns/promises';
+import { CONTACT_CONFIG } from '../10_CONFIG/contact-config.js';
 
 export interface EmailMessage {
   to: string;
@@ -152,7 +153,7 @@ export class DevelopmentEmailProvider implements EmailProvider {
     source?: string;
     accountOrPlan?: string;
   }): Promise<boolean> {
-    const supportEmail = process.env.SUPPORT_EMAIL || 'support@mahibrowser.com';
+    const supportEmail = process.env.SUPPORT_ESCALATION_EMAIL || process.env.SUPPORT_EMAIL || CONTACT_CONFIG.SUPPORT_ESCALATION_EMAIL;
     const msg: EmailMessage = {
       to: supportEmail,
       subject: `[MAHI Support] Payment Query Escalation - ${payload.ticketNumber}`,
@@ -288,7 +289,7 @@ export class ProductionSmtpEmailProvider implements EmailProvider {
     source?: string;
     accountOrPlan?: string;
   }): Promise<boolean> {
-    const supportEmail = process.env.SUPPORT_EMAIL || 'support@mahibrowser.com';
+    const supportEmail = process.env.SUPPORT_ESCALATION_EMAIL || process.env.SUPPORT_EMAIL || CONTACT_CONFIG.SUPPORT_ESCALATION_EMAIL;
     return this.deliver(
       supportEmail,
       `[MAHI Support] Payment Query Escalation - ${payload.ticketNumber}`,
@@ -397,7 +398,7 @@ export class ProductionApiEmailProvider implements EmailProvider {
     source?: string;
     accountOrPlan?: string;
   }): Promise<boolean> {
-    const supportEmail = process.env.SUPPORT_EMAIL || 'support@mahibrowser.com';
+    const supportEmail = process.env.SUPPORT_ESCALATION_EMAIL || process.env.SUPPORT_EMAIL || CONTACT_CONFIG.SUPPORT_ESCALATION_EMAIL;
     return this.deliver(
       supportEmail,
       `[MAHI Support] Payment Query Escalation - ${payload.ticketNumber}`,

@@ -14,6 +14,7 @@ import {
   fetchAndCacheStatus as accountFetchStatus,
   switchDevice as accountSwitchDevice,
   getPaymentInfo as accountGetPaymentInfo,
+  submitManualUpiPayment as accountSubmitManualUpiPayment,
   getAccountSession,
   getAccountPlanLimits,
   startAccountStatusScheduler,
@@ -2117,6 +2118,9 @@ export function registerIpcHandlers(): void {
   });
   ipcMain.handle('account:getPaymentInfo', async () => {
     return accountGetPaymentInfo();
+  });
+  ipcMain.handle('account:submitManualUpiPayment', async (_e, payload: any) => {
+    return accountSubmitManualUpiPayment(payload);
   });
   ipcMain.handle('account:getSession', async () => {
     return getAccountSession();

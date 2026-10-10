@@ -89,8 +89,8 @@ describe('P1 Blocker Remediation Suite (P1-1 to P1-5)', () => {
       expect(aupHtml).toContain('Carding');
       expect(aupHtml).toContain('Credential Stuffing');
       expect(aupHtml).toContain('Malware');
-      expect(aupHtml).toContain('abuse@mahibrowser.com');
-      expect(aupHtml).toContain('support@mahibrowser.com');
+      expect(aupHtml).toContain('mahiverse.official@gmail.com');
+      expect(aupHtml).toContain('mahiverse.hub@gmail.com');
     });
   });
 

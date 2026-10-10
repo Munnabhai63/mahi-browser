@@ -57,6 +57,7 @@ interface AccountState {
 
   fetchPlanLimits: () => Promise<void>;
   fetchPaymentInfo: () => Promise<void>;
+  submitManualUpiPayment: (payload: { plan_id: string; utr: string; proof_asset?: string }) => Promise<{ success: boolean; payment_id?: string; status?: string; message?: string; error?: string }>;
   accountSignup: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   accountLogin: (email: string, password: string) => Promise<{ success: boolean; error?: string; deviceMismatch?: boolean }>;
   accountLogout: () => Promise<void>;
@@ -165,6 +166,18 @@ export const useAccountStore = create<AccountState>()(
           const info = await window.mahiAPI.accountGetPaymentInfo();
           set({ paymentInfo: info });
         } catch {}
+      },
+
+      submitManualUpiPayment: async (payload) => {
+        if (!window.mahiAPI?.accountSubmitManualUpiPayment) {
+          return { success: false, error: 'Payment submission API unavailable' };
+        }
+        try {
+          const res = await window.mahiAPI.accountSubmitManualUpiPayment(payload);
+          return res;
+        } catch (err: any) {
+          return { success: false, error: err.message || 'Payment submission failed' };
+        }
       },
 
       accountSignup: async (email, password) => {

@@ -37,6 +37,7 @@ export const BRAND_CONFIG = {
     icon: APP_ICON,
     ico: '/brand/mahi-browser.ico',
     favicon: '/favicon.ico',
+    upiQr: '/brand/mahi-upi-qr.png',
   },
 
   // Authoritative SHA-256 Hashes
@@ -45,6 +46,7 @@ export const BRAND_CONFIG = {
     ASSET_B: '916b50d58aec8398058645e968318778efed9879082ae62f908e51130e1f04a5',
     ASSET_C: 'a8a871b9e597a088699e6b38a49c25a6e454c3ab09aca74f031741d32de0a883',
     ASSET_D: 'f5dcca2de1050e4e381bbb49b305b0b406773f888c54f08cde00eb97319f4f4d',
+    ASSET_UPI_QR: '14e4328115848ca0b89eb22c757a13306a2cae796c27a60834034c00d68f07b1',
   },
 
   // Brand Palette
@@ -59,3 +61,4 @@ export const BRAND_CONFIG = {
 } as const;
 
 export default BRAND_CONFIG;
+

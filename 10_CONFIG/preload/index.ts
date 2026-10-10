@@ -346,6 +346,7 @@ const api: MahiBrowserAPI = {
   accountGetStatus: () => ipcRenderer.invoke('account:getStatus'),
   accountSwitchDevice: () => ipcRenderer.invoke('account:switchDevice'),
   accountGetPaymentInfo: () => ipcRenderer.invoke('account:getPaymentInfo'),
+  accountSubmitManualUpiPayment: (payload: any) => ipcRenderer.invoke('account:submitManualUpiPayment', payload),
   accountGetSession: () => ipcRenderer.invoke('account:getSession'),
   accountGetPlanLimits: () => ipcRenderer.invoke('account:getPlanLimits'),
   accountVerifyEmail: (dto) => ipcRenderer.invoke('account:verifyEmail', dto),

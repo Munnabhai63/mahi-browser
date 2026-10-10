@@ -18,6 +18,8 @@ import {
   Bot,
   Users,
   Share2,
+  MessageCircle,
+  Mail,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useSettingsStore } from '../stores/useSettingsStore.js';
@@ -164,32 +166,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
         })}
       </div>
 
-      {/* Telegram Support & Community */}
+      {/* Official Support & Help */}
       <div className="px-4 py-2 mt-2 border-t border-slate-800/80 pt-4">
-        <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2 block">Support & Community</span>
+        <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2 block">Official Support</span>
         <div className="space-y-1.5">
           <a
-            href="https://t.me/mahiskills"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 group hover:bg-[#2AABEE]/10 text-slate-400 hover:text-[#2AABEE]"
-          >
-            <div className="flex items-center space-x-3">
-              <svg className="w-4 h-4 text-slate-400 group-hover:text-[#2AABEE] transition-colors" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.18-.08-.05-.19-.02-.27 0-.11.03-1.84 1.18-5.21 3.45-.49.33-.94.5-1.35.48-.45-.02-1.32-.26-1.96-.46-.79-.26-1.42-.4-1.36-.84.03-.22.35-.45.96-.68 3.75-1.63 6.25-2.71 7.5-3.23 3.56-1.48 4.3-1.74 4.79-1.75.11 0 .35.03.49.14.12.1.15.24.16.35-.01.03-.01.12-.02.21z"/></svg>
-              <span>MAHI Skills</span>
-            </div>
-          </a>
-          <a
-            href="https://t.me/MunaBhai63"
+            href="https://wa.me/919376343629"
             target="_blank"
             rel="noopener noreferrer"
             className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 group hover:bg-emerald-500/10 text-slate-400 hover:text-emerald-400"
           >
             <div className="flex items-center space-x-3">
-              <svg className="w-4 h-4 text-slate-400 group-hover:text-emerald-400 transition-colors" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
-              <span>Personal Support</span>
+              <MessageCircle className="w-4 h-4 text-slate-400 group-hover:text-emerald-400 transition-colors" />
+              <span>WhatsApp Support</span>
             </div>
-            <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-emerald-500/20 text-emerald-400 font-extrabold">PRO</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-emerald-500/20 text-emerald-400 font-extrabold">24/7</span>
+          </a>
+          <a
+            href="mailto:mahiverse.official@gmail.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 group hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-400"
+          >
+            <div className="flex items-center space-x-3">
+              <Mail className="w-4 h-4 text-slate-400 group-hover:text-indigo-400 transition-colors" />
+              <span>Official Support</span>
+            </div>
           </a>
         </div>
       </div>
