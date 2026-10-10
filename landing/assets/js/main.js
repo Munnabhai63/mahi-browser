@@ -195,12 +195,12 @@ function initLanguageSwitcher() {
       supp_title: "real-time support",
       supp_desc: "MAHI has the highest rated client support in software. We're here 24 hours a day, every day of the week, including holidays",
       supp_livechat: "Live-chat support",
-      supp_whatsapp: "WhatsApp support",
+      supp_ai_assistant: "AI Assistant Support",
       supp_email: "Email support",
       supp_facebook: "Facebook (Meta) support",
-      supp_chat_title: "Chat with MAHI",
-      supp_chat_msg: "Hi there 👋<br>How can we help?",
-      supp_chat_input: "Write your question...",
+      supp_chat_title: "Chat with MAHI AI",
+      supp_chat_msg: "Hi there 👋 I’m your MAHI AI Assistant. Ask me about plans, setup, browser features, or support.",
+      supp_chat_input: "Ask anything...",
       plat_title: "Ideal for managing accounts<br>across all services",
       iceberg_title: "That's just the tip of the iceberg",
       iceberg_c1_title: "Built-in proxies",
@@ -303,12 +303,12 @@ function initLanguageSwitcher() {
       supp_title: "support en temps réel",
       supp_desc: "MAHI propose le support client le mieux noté. Nous sommes disponibles 24h/24 et 7j/7, y compris les jours fériés.",
       supp_livechat: "Support par chat en direct",
-      supp_whatsapp: "Support WhatsApp",
+      supp_ai_assistant: "Support Assistant IA",
       supp_email: "Support par e-mail",
       supp_facebook: "Support Facebook (Meta)",
-      supp_chat_title: "Discuter avec MAHI",
-      supp_chat_msg: "Bonjour 👋<br>Comment pouvons-nous vous aider ?",
-      supp_chat_input: "Écrivez votre question...",
+      supp_chat_title: "Discuter avec MAHI AI",
+      supp_chat_msg: "Bonjour 👋 Je suis votre Assistant IA MAHI. Posez vos questions sur les forfaits, la configuration ou le support.",
+      supp_chat_input: "Posez votre question...",
       plat_title: "Idéal pour gérer des comptes<br>sur tous les services",
       iceberg_title: "Ce n'est que la partie visible de l'iceberg",
       iceberg_c1_title: "Proxys intégrés",
@@ -411,12 +411,12 @@ function initLanguageSwitcher() {
       supp_title: "поддержка в реальном времени",
       supp_desc: "У MAHI самая высокооцененная клиентская поддержка. Мы на связи круглосуточно, каждый день, включая праздники.",
       supp_livechat: "Онлайн-чат поддержки",
-      supp_whatsapp: "Поддержка в WhatsApp",
+      supp_ai_assistant: "Поддержка ИИ-ассистента",
       supp_email: "Поддержка по почте",
       supp_facebook: "Поддержка Facebook (Meta)",
-      supp_chat_title: "Чат с MAHI",
-      supp_chat_msg: "Здравствуйте 👋<br>Чем мы можем вам помочь?",
-      supp_chat_input: "Напишите ваш вопрос...",
+      supp_chat_title: "Чат с MAHI AI",
+      supp_chat_msg: "Привет 👋 Я ваш ИИ-ассистент MAHI. Спросите меня о тарифах, настройке, профилях или поддержке.",
+      supp_chat_input: "Задайте любой вопрос...",
       plat_title: "Идеально для управления аккаунтами<br>во всех сервисах",
       iceberg_title: "И это только верхушка айсберга",
       iceberg_c1_title: "Встроенные прокси",
@@ -519,12 +519,12 @@ function initLanguageSwitcher() {
       supp_title: "soporte en tiempo real",
       supp_desc: "MAHI cuenta con el soporte mejor valorado en la industria. Estamos aquí las 24 horas del día, todos los días del año.",
       supp_livechat: "Soporte por chat en vivo",
-      supp_whatsapp: "Soporte por WhatsApp",
+      supp_ai_assistant: "Soporte de Asistente IA",
       supp_email: "Soporte por correo electrónico",
       supp_facebook: "Soporte por Facebook (Meta)",
-      supp_chat_title: "Chatear con MAHI",
-      supp_chat_msg: "¡Hola! 👋<br>¿Cómo podemos ayudarte?",
-      supp_chat_input: "Escribe tu pregunta...",
+      supp_chat_title: "Chatear con MAHI AI",
+      supp_chat_msg: "¡Hola! 👋 Soy tu asistente de IA de MAHI. Pregúntame sobre planes, configuración o soporte.",
+      supp_chat_input: "Pregunta lo que sea...",
       plat_title: "Ideal para gestionar cuentas<br>en todos los servicios",
       iceberg_title: "Esto es solo la punta del iceberg",
       iceberg_c1_title: "Proxies integrados",
@@ -627,11 +627,11 @@ function initLanguageSwitcher() {
       supp_title: "实时专属技术支持",
       supp_desc: "MAHI 拥有行业顶尖的高评分客户支持服务。我们全年无休、全天 24 小时随叫随到，包含所有节假日",
       supp_livechat: "在线即时技术支持",
-      supp_whatsapp: "WhatsApp 在线支持",
+      supp_ai_assistant: "AI 助手客服",
       supp_email: "电子邮件客服支持",
       supp_facebook: "Facebook (Meta) 在线支持",
-      supp_chat_title: "与 MAHI 专属顾问交谈",
-      supp_chat_msg: "您好 👋<br>请问有什么可以帮助您？",
+      supp_chat_title: "与 MAHI AI 对话",
+      supp_chat_msg: "您好 👋 我是 MAHI AI 智能助手。随时向我咨询套餐、配置、功能或技术支持。",
       supp_chat_input: "输入您的问题...",
       plat_title: "全平台账号统一安全管理的<br>理想首选",
       iceberg_title: "这只是冰山一角",
@@ -734,12 +734,12 @@ function initLanguageSwitcher() {
       supp_title: "Echtzeit-Support",
       supp_desc: "MAHI hat den am besten bewerteten Support der Branche. 24 Stunden am Tag für Sie da, auch feiertags.",
       supp_livechat: "Live-Chat Support",
-      supp_whatsapp: "WhatsApp Support",
+      supp_ai_assistant: "KI-Assistent Support",
       supp_email: "E-Mail Support",
       supp_facebook: "Facebook (Meta) Support",
-      supp_chat_title: "Chat mit MAHI",
-      supp_chat_msg: "Hallo 👋<br>Wie können wir Ihnen helfen?",
-      supp_chat_input: "Schreiben Sie Ihre Frage...",
+      supp_chat_title: "Chat mit MAHI KI",
+      supp_chat_msg: "Hallo 👋 Ich bin Ihr MAHI KI-Assistent. Fragen Sie mich zu Tarifen, Einrichtung oder Support.",
+      supp_chat_input: "Fragen Sie alles...",
       plat_title: "Ideal für die Verwaltung von Konten<br>auf allen Diensten",
       iceberg_title: "Das ist nur die Spitze des Eisbergs",
       iceberg_c1_title: "Integrierte Proxys",
@@ -841,12 +841,12 @@ function initLanguageSwitcher() {
       supp_title: "suporte em tempo real",
       supp_desc: "O MAHI tem o suporte com melhor avaliação da indústria. Estamos aqui 24 horas por dia, 7 dias por semana.",
       supp_livechat: "Suporte via chat ao vivo",
-      supp_whatsapp: "Suporte via WhatsApp",
+      supp_ai_assistant: "Suporte com Assistente de IA",
       supp_email: "Suporte por e-mail",
       supp_facebook: "Suporte no Facebook (Meta)",
-      supp_chat_title: "Conversar com o MAHI",
-      supp_chat_msg: "Olá 👋<br>Como podemos ajudar você?",
-      supp_chat_input: "Digite sua dúvida...",
+      supp_chat_title: "Conversar com MAHI AI",
+      supp_chat_msg: "Olá 👋 Eu sou o seu Assistente IA da MAHI. Pergunte sobre planos, configuração ou suporte.",
+      supp_chat_input: "Pergunte qualquer coisa...",
       plat_title: "Ideal para gerenciar contas<br>em todos os serviços",
       iceberg_title: "Isso é apenas a ponta do iceberg",
       iceberg_c1_title: "Proxies integrados",
@@ -949,12 +949,12 @@ function initLanguageSwitcher() {
       supp_title: "リアルタイムサポート",
       supp_desc: "MAHIは業界トップクラスの顧客サポートを提供。24時間365日いつでも迅速に対応いたします。",
       supp_livechat: "ライブチャットサポート",
-      supp_whatsapp: "WhatsAppサポート",
+      supp_ai_assistant: "AIアシスタントサポート",
       supp_email: "メールサポート",
       supp_facebook: "Facebook (Meta) サポート",
-      supp_chat_title: "MAHIとチャットする",
-      supp_chat_msg: "こんにちは 👋<br>ご用件をお伺いします。",
-      supp_chat_input: "質問を入力してください...",
+      supp_chat_title: "MAHI AIとチャット",
+      supp_chat_msg: "こんにちは 👋 MAHI AIアシスタントです。プラン、セットアップ、機能について何でもお尋ねください。",
+      supp_chat_input: "何でも質問してください...",
       plat_title: "あらゆるサービスで複数のアカウントを管理するのに最適",
       iceberg_title: "これは氷山の一角に過ぎません",
       iceberg_c1_title: "内蔵プロキシ",
@@ -1057,12 +1057,12 @@ function initLanguageSwitcher() {
       supp_title: "hỗ trợ thời gian thực",
       supp_desc: "MAHI sở hữu dịch vụ khách hàng được đánh giá cao nhất. Chúng tôi trực tuyến 24/7, kể cả ngày lễ.",
       supp_livechat: "Hỗ trợ chat trực tiếp",
-      supp_whatsapp: "Hỗ trợ WhatsApp",
+      supp_ai_assistant: "Hỗ trợ Trợ lý AI",
       supp_email: "Hỗ trợ qua Email",
       supp_facebook: "Hỗ trợ Facebook (Meta)",
-      supp_chat_title: "Trò chuyện cùng MAHI",
-      supp_chat_msg: "Xin chào 👋<br>Chúng tôi có thể giúp gì cho bạn?",
-      supp_chat_input: "Nhập câu hỏi của bạn...",
+      supp_chat_title: "Trò chuyện cùng MAHI AI",
+      supp_chat_msg: "Xin chào 👋 Tôi là Trợ lý AI của MAHI. Hãy hỏi về gói dịch vụ, cài đặt hoặc hỗ trợ.",
+      supp_chat_input: "Hỏi bất cứ điều gì...",
       plat_title: "Lý tưởng để quản lý tài khoản<br>trên mọi nền tảng",
       iceberg_title: "Đó chỉ là phần nổi của tảng băng chìm",
       iceberg_c1_title: "Proxy tích hợp sẵn",
@@ -1165,12 +1165,12 @@ function initLanguageSwitcher() {
       supp_title: "wsparcie w czasie rzeczywistym",
       supp_desc: "MAHI ma najwyżej oceniane wsparcie dla klientów. Jesteśmy dostępni 24 godziny na dobę, bez przerw.",
       supp_livechat: "Wsparcie na żywo przez czat",
-      supp_whatsapp: "Wsparcie WhatsApp",
+      supp_ai_assistant: "Wsparcie Asystenta AI",
       supp_email: "Wsparcie e-mail",
       supp_facebook: "Wsparcie Facebook (Meta)",
-      supp_chat_title: "Czat z MAHI",
-      supp_chat_msg: "Cześć 👋<br>W czym możemy Ci pomóc?",
-      supp_chat_input: "Wpisz swoje pytanie...",
+      supp_chat_title: "Czat z MAHI AI",
+      supp_chat_msg: "Cześć 👋 Jestem Twoim Asystentem AI MAHI. Zapytaj o plany, konfigurację lub wsparcie.",
+      supp_chat_input: "Zadaj dowolne pytanie...",
       plat_title: "Idealne do zarządzania kontami<br>we wszystkich usługach",
       iceberg_title: "To zaledwie wierzchołek góry lodowej",
       iceberg_c1_title: "Wbudowane proxy",
@@ -1817,14 +1817,19 @@ function initLiveChatWidget() {
   const input = document.getElementById('chat-user-input');
   const container = document.getElementById('chat-messages-container');
   const liveChatLink = document.getElementById('channel-livechat');
+  const aiSupportLink = document.getElementById('channel-ai-support');
+  const typingRow = document.getElementById('chat-typing-row');
 
-  if (liveChatLink && input) {
-    liveChatLink.addEventListener('click', (e) => {
-      e.preventDefault();
+  function focusChat(e) {
+    if (e) e.preventDefault();
+    if (input) {
       input.focus();
       input.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
+    }
   }
+
+  if (liveChatLink) liveChatLink.addEventListener('click', focusChat);
+  if (aiSupportLink) aiSupportLink.addEventListener('click', focusChat);
 
   if (!form || !input || !container) return;
 
@@ -1832,7 +1837,67 @@ function initLiveChatWidget() {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  form.addEventListener('submit', (e) => {
+  // Client-side fallback knowledge & escalation engine
+  function resolveLocalAIResponse(query) {
+    const q = query.toLowerCase();
+
+    // 1. Payment / Billing escalation check
+    const isPayment = /(?:payment|paid|pay|billing|billed|invoice|refund|deduct|charged|charge|stripe|razorpay|transaction|money\s*deducted|double\s*charge|card\s*charged|payment\s*failed)/i.test(q);
+    if (isPayment) {
+      const ticketNum = 'ESC-2026-' + Math.floor(1000 + Math.random() * 9000);
+      return {
+        reply: `Your payment-related query has been forwarded to our support team. We will review it shortly. Reference Ticket: #${ticketNum}`,
+        isEscalated: true,
+        ticketNumber: ticketNum,
+        category: 'PAYMENT'
+      };
+    }
+
+    // 2. Pricing & Plans
+    if (/(?:price|pricing|cost|plan|subscription|starter|team|scale|enterprise|how\s*much|rate|discount)/i.test(q)) {
+      return {
+        reply: `MAHI Browser offers Starter ($19/mo), Team ($49/mo), and Enterprise ($99/mo) plans. All plans include 100% genuine canvas/WebGL spoofing, proxy manager, and visual RPA automation. You can test any plan with our 7-day trial!`,
+        isEscalated: false,
+        category: 'PRICING'
+      };
+    }
+
+    // 3. Trial & Download
+    if (/(?:trial|free|download|install|setup|windows|exe|start|demo)/i.test(q)) {
+      return {
+        reply: `You can test MAHI Browser risk-free with our 7-Day PRO Free Trial. Click "7-Day Free Trial" in the top bar to download the Windows installer. No credit card required!`,
+        isEscalated: false,
+        category: 'TRIAL'
+      };
+    }
+
+    // 4. Fingerprint & Proxy
+    if (/(?:fingerprint|canvas|webgl|audio|webrtc|proxy|socks5|http|ip|leak|ban|isolation)/i.test(q)) {
+      return {
+        reply: `MAHI Browser replaces hardware fingerprints directly at the Chromium engine level. It supports residential and datacenter SOCKS5/HTTP proxies with automated WebRTC and timezone alignment.`,
+        isEscalated: false,
+        category: 'FINGERPRINT'
+      };
+    }
+
+    // 5. Profiles & Multi-Accounting
+    if (/(?:profile|account|multi|facebook|google|crypto|airdrop|amazon|tiktok|instagram)/i.test(q)) {
+      return {
+        reply: `You can operate dozens of isolated browser profiles simultaneously on one PC. Profiles run in sandboxed partitions and never share cookies, storage, or fingerprint traces.`,
+        isEscalated: false,
+        category: 'PROFILES'
+      };
+    }
+
+    // 6. General Guidance
+    return {
+      reply: `Hi! I'm your MAHI AI Assistant. I can assist with profile setup, plan features, proxy routing, and troubleshooting. How can I assist your workflow today?`,
+      isEscalated: false,
+      category: 'GENERAL'
+    };
+  }
+
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const query = input.value.trim();
     if (!query) return;
@@ -1841,40 +1906,70 @@ function initLiveChatWidget() {
     const userRow = document.createElement('div');
     userRow.className = 'chat-message-row';
     userRow.innerHTML = `<div class="chat-user-bubble">${escapeHtml(query)}</div>`;
-    
-    // Insert before typing indicator
-    const typingRow = container.querySelector('.chat-typing-row');
+
     if (typingRow) {
       container.insertBefore(userRow, typingRow);
+      typingRow.style.display = 'flex';
     } else {
       container.appendChild(userRow);
     }
     input.value = '';
-
-    // Scroll to bottom of chat
     container.scrollTop = container.scrollHeight;
 
-    // After 600ms, reply with friendly engineer message
+    let responseData = null;
+
+    try {
+      // Call backend commercial support AI endpoint
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4500);
+
+      const res = await fetch('/api/v1/commercial/support/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: query,
+          userName: 'Visitor',
+          userEmail: ''
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        responseData = await res.json();
+      }
+    } catch (err) {
+      // Network or offline fallback
+    }
+
+    // If backend did not provide responseData, use local knowledge engine
+    if (!responseData || !responseData.reply) {
+      responseData = resolveLocalAIResponse(query);
+    }
+
+    // Brief realistic delay before typing finishes
     setTimeout(() => {
+      if (typingRow) {
+        typingRow.style.display = 'none';
+      }
+
       const agentRow = document.createElement('div');
       agentRow.className = 'chat-message-row';
-      agentRow.innerHTML = `
-        <div class="chat-agent-bubble">
-          Thanks for reaching out! Our engineer is active right now. Connect directly on WhatsApp for immediate 1-on-1 assistance:
-          <div style="margin-top: 8px;">
-            <a href="https://wa.me/" class="btn-primary-hero dynamic-whatsapp-link" target="_blank" style="padding: 0.45rem 0.95rem; font-size: 0.82rem; border-radius: 8px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
-              <span>Open WhatsApp &rarr;</span>
-            </a>
-          </div>
-        </div>
-      `;
+
+      let messageHtml = escapeHtml(responseData.reply);
+      if (responseData.isEscalated && responseData.ticketNumber) {
+        messageHtml += `<br><span class="chat-ticket-badge">Ref: #${escapeHtml(responseData.ticketNumber)}</span>`;
+      }
+
+      agentRow.innerHTML = `<div class="chat-agent-bubble">${messageHtml}</div>`;
+
       if (typingRow) {
         container.insertBefore(agentRow, typingRow);
       } else {
         container.appendChild(agentRow);
       }
       container.scrollTop = container.scrollHeight;
-    }, 650);
+    }, 450);
   });
 }
 

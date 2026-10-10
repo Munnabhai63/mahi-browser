@@ -1451,4 +1451,37 @@ export async function initializeDatabase(): Promise<void> {
       db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (21, ?)').run(new Date().toISOString());
     } catch {}
   }
+
+  // Migration v22: Phase 20 Support Tickets & Payment Escalation Architecture
+  const checkMigration22 = db.prepare('SELECT version FROM schema_migrations WHERE version = 22').get();
+  if (!checkMigration22) {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS support_tickets (
+          id TEXT PRIMARY KEY,
+          ticket_number TEXT NOT NULL UNIQUE,
+          category TEXT NOT NULL,
+          user_email TEXT,
+          user_name TEXT,
+          message TEXT NOT NULL,
+          reply TEXT,
+          source TEXT DEFAULT 'landing_ai_chat',
+          status TEXT DEFAULT 'OPEN',
+          is_escalated INTEGER NOT NULL DEFAULT 0,
+          escalation_reason TEXT,
+          email_sent INTEGER NOT NULL DEFAULT 0,
+          admin_notes TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_support_tickets_category ON support_tickets(category);
+        CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
+        CREATE INDEX IF NOT EXISTS idx_support_tickets_created ON support_tickets(created_at);
+      `);
+
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (22, ?)').run(new Date().toISOString());
+    } catch {}
+  }
 }
+

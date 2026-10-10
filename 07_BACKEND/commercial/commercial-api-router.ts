@@ -59,6 +59,11 @@ import {
   DemoRequestStatus,
 } from './demo-service.js';
 import {
+  handleSupportChatMessage,
+  getSupportTickets,
+  updateSupportTicketStatus,
+} from './support-ticket-service.js';
+import {
   recordFunnelEvent,
   getFunnelMetrics,
 } from './funnel-service.js';
@@ -739,6 +744,47 @@ export async function handleCommercialApiRoutes(
     const demoId = demoStatusMatch[1];
     const body = await parseBody(req);
     const result = updateDemoRequestStatus(demoId, body.status, body.adminNotes, adminAuth.actor.name);
+    sendJSON(res, result.success ? 200 : 400, result);
+    return true;
+  }
+
+  // Phase 20: AI Support Assistant & Payment Escalation Chat Route
+  if (
+    (routePath === '/api/v1/commercial/support/chat' || routePath === '/api/v1/support/chat') &&
+    method === 'POST'
+  ) {
+    const body = await parseBody(req);
+    const result = await handleSupportChatMessage(body);
+    sendJSON(res, result.success ? 200 : 400, result);
+    return true;
+  }
+
+  // Phase 20: Admin: List Support Tickets
+  if (routePath === '/api/v1/commercial/admin/support-tickets' && method === 'GET') {
+    const adminAuth = checkAdminAuth(req);
+    if (!adminAuth.isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Admin authorization required' });
+      return true;
+    }
+    const status = parsedUrl.searchParams.get('status') || undefined;
+    const category = parsedUrl.searchParams.get('category') || undefined;
+    const escalatedOnly = parsedUrl.searchParams.get('escalatedOnly') === 'true';
+    const tickets = getSupportTickets({ status, category, escalatedOnly });
+    sendJSON(res, 200, { success: true, data: tickets });
+    return true;
+  }
+
+  // Phase 20: Admin: Update Support Ticket Status
+  const ticketStatusMatch = routePath.match(/^\/api\/v1\/commercial\/admin\/support-tickets\/([a-zA-Z0-9_-]+)\/status$/);
+  if (ticketStatusMatch && method === 'PUT') {
+    const adminAuth = checkAdminAuth(req);
+    if (!adminAuth.isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Admin authorization required' });
+      return true;
+    }
+    const ticketId = ticketStatusMatch[1];
+    const body = await parseBody(req);
+    const result = updateSupportTicketStatus(ticketId, body.status, body.adminNotes, adminAuth.actor.name);
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
   }

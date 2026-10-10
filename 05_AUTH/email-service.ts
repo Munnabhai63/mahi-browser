@@ -34,6 +34,16 @@ export interface EmailProvider {
     inviteUrl: string
   ): Promise<boolean>;
   sendBillingAlert(email: string, invoiceId: string, amount: string, reason: string): Promise<boolean>;
+  sendSupportEscalationEmail(payload: {
+    ticketNumber: string;
+    userName?: string;
+    userEmail?: string;
+    category: string;
+    message: string;
+    timestamp: string;
+    source?: string;
+    accountOrPlan?: string;
+  }): Promise<boolean>;
 }
 
 export interface DomainAuthConfig {
@@ -129,6 +139,41 @@ export class DevelopmentEmailProvider implements EmailProvider {
     };
     this.sentEmails.push(msg);
     console.log(`[EmailService:DEV] Billing alert sent to ${email}: Invoice ${invoiceId}`);
+    return true;
+  }
+
+  async sendSupportEscalationEmail(payload: {
+    ticketNumber: string;
+    userName?: string;
+    userEmail?: string;
+    category: string;
+    message: string;
+    timestamp: string;
+    source?: string;
+    accountOrPlan?: string;
+  }): Promise<boolean> {
+    const supportEmail = process.env.SUPPORT_EMAIL || 'support@mahibrowser.com';
+    const msg: EmailMessage = {
+      to: supportEmail,
+      subject: `[MAHI Support] Payment Query Escalation - ${payload.ticketNumber}`,
+      html: `
+        <h2>[MAHI Support] Payment Query Escalation</h2>
+        <p><strong>Ticket ID:</strong> ${payload.ticketNumber}</p>
+        <p><strong>Timestamp:</strong> ${payload.timestamp}</p>
+        <p><strong>Category:</strong> ${payload.category}</p>
+        <p><strong>User Name:</strong> ${payload.userName || 'Anonymous Visitor'}</p>
+        <p><strong>User Email:</strong> ${payload.userEmail || 'Not provided'}</p>
+        <p><strong>Source / Page:</strong> ${payload.source || 'Landing Page AI Chat'}</p>
+        <p><strong>Account / Plan:</strong> ${payload.accountOrPlan || 'Unknown'}</p>
+        <hr />
+        <h3>Full Customer Query:</h3>
+        <blockquote style="background:#f1f5f9;padding:12px;border-left:4px solid #ef4444;">${payload.message}</blockquote>
+        <p><em>Action required: Review payment issue and reply to customer.</em></p>
+      `,
+      sentAt: new Date().toISOString(),
+    };
+    this.sentEmails.push(msg);
+    console.log(`[EmailService:DEV] Payment escalation email dispatched to ${supportEmail} for Ticket ${payload.ticketNumber}`);
     return true;
   }
 
@@ -232,6 +277,24 @@ export class ProductionSmtpEmailProvider implements EmailProvider {
       `<p>Invoice: ${invoiceId} | Amount: ${amount} | ${reason}</p>`
     );
   }
+
+  async sendSupportEscalationEmail(payload: {
+    ticketNumber: string;
+    userName?: string;
+    userEmail?: string;
+    category: string;
+    message: string;
+    timestamp: string;
+    source?: string;
+    accountOrPlan?: string;
+  }): Promise<boolean> {
+    const supportEmail = process.env.SUPPORT_EMAIL || 'support@mahibrowser.com';
+    return this.deliver(
+      supportEmail,
+      `[MAHI Support] Payment Query Escalation - ${payload.ticketNumber}`,
+      `<h2>Payment Query Escalation</h2><p>Ticket: ${payload.ticketNumber}</p><p>Customer: ${payload.userName || 'Anonymous'} (${payload.userEmail || 'No email'})</p><p>Query: ${payload.message}</p>`
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -321,6 +384,24 @@ export class ProductionApiEmailProvider implements EmailProvider {
       email,
       `Billing Alert: ${reason}`,
       `<p>Invoice: ${invoiceId} | Amount: ${amount} | ${reason}</p>`
+    );
+  }
+
+  async sendSupportEscalationEmail(payload: {
+    ticketNumber: string;
+    userName?: string;
+    userEmail?: string;
+    category: string;
+    message: string;
+    timestamp: string;
+    source?: string;
+    accountOrPlan?: string;
+  }): Promise<boolean> {
+    const supportEmail = process.env.SUPPORT_EMAIL || 'support@mahibrowser.com';
+    return this.deliver(
+      supportEmail,
+      `[MAHI Support] Payment Query Escalation - ${payload.ticketNumber}`,
+      `<h2>Payment Query Escalation</h2><p>Ticket: ${payload.ticketNumber}</p><p>Customer: ${payload.userName || 'Anonymous'} (${payload.userEmail || 'No email'})</p><p>Query: ${payload.message}</p>`
     );
   }
 }
