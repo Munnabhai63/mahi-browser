@@ -195,11 +195,11 @@ function initLanguageSwitcher() {
       supp_title: "real-time support",
       supp_desc: "MAHI has the highest rated client support in software. We're here 24 hours a day, every day of the week, including holidays",
       supp_livechat: "Live-chat support",
-      supp_ai_assistant: "AI Assistant Support",
+      supp_ai_assistant: "MAHI Browser Support",
       supp_email: "Email support",
       supp_facebook: "Facebook (Meta) support",
-      supp_chat_title: "Chat with MAHI AI",
-      supp_chat_msg: "Hi there 👋 I’m your MAHI AI Assistant. Ask me about plans, setup, browser features, or support.",
+      supp_chat_title: "MAHI Browser Support",
+      supp_chat_msg: "Hi there 👋 Welcome to MAHI Browser Support. How can we help you today? Ask about plans, setup, proxies, or account assistance.",
       supp_chat_input: "Ask anything...",
       plat_title: "Ideal for managing accounts<br>across all services",
       iceberg_title: "That's just the tip of the iceberg",
@@ -303,11 +303,11 @@ function initLanguageSwitcher() {
       supp_title: "support en temps réel",
       supp_desc: "MAHI propose le support client le mieux noté. Nous sommes disponibles 24h/24 et 7j/7, y compris les jours fériés.",
       supp_livechat: "Support par chat en direct",
-      supp_ai_assistant: "Support Assistant IA",
+      supp_ai_assistant: "Support MAHI Browser",
       supp_email: "Support par e-mail",
       supp_facebook: "Support Facebook (Meta)",
-      supp_chat_title: "Discuter avec MAHI AI",
-      supp_chat_msg: "Bonjour 👋 Je suis votre Assistant IA MAHI. Posez vos questions sur les forfaits, la configuration ou le support.",
+      supp_chat_title: "Support MAHI Browser",
+      supp_chat_msg: "Bonjour 👋 Bienvenue sur le Support MAHI Browser. Comment pouvons-nous vous aider aujourd'hui ?",
       supp_chat_input: "Posez votre question...",
       plat_title: "Idéal pour gérer des comptes<br>sur tous les services",
       iceberg_title: "Ce n'est que la partie visible de l'iceberg",
@@ -411,11 +411,11 @@ function initLanguageSwitcher() {
       supp_title: "поддержка в реальном времени",
       supp_desc: "У MAHI самая высокооцененная клиентская поддержка. Мы на связи круглосуточно, каждый день, включая праздники.",
       supp_livechat: "Онлайн-чат поддержки",
-      supp_ai_assistant: "Поддержка ИИ-ассистента",
+      supp_ai_assistant: "Поддержка MAHI Browser",
       supp_email: "Поддержка по почте",
       supp_facebook: "Поддержка Facebook (Meta)",
-      supp_chat_title: "Чат с MAHI AI",
-      supp_chat_msg: "Привет 👋 Я ваш ИИ-ассистент MAHI. Спросите меня о тарифах, настройке, профилях или поддержке.",
+      supp_chat_title: "Поддержка MAHI Browser",
+      supp_chat_msg: "Здравствуйте 👋 Добро пожаловать в службу поддержки MAHI Browser. Чем мы можем помочь вам сегодня?",
       supp_chat_input: "Задайте любой вопрос...",
       plat_title: "Идеально для управления аккаунтами<br>во всех сервисах",
       iceberg_title: "И это только верхушка айсберга",
@@ -519,11 +519,11 @@ function initLanguageSwitcher() {
       supp_title: "soporte en tiempo real",
       supp_desc: "MAHI cuenta con el soporte mejor valorado en la industria. Estamos aquí las 24 horas del día, todos los días del año.",
       supp_livechat: "Soporte por chat en vivo",
-      supp_ai_assistant: "Soporte de Asistente IA",
+      supp_ai_assistant: "Soporte MAHI Browser",
       supp_email: "Soporte por correo electrónico",
       supp_facebook: "Soporte por Facebook (Meta)",
-      supp_chat_title: "Chatear con MAHI AI",
-      supp_chat_msg: "¡Hola! 👋 Soy tu asistente de IA de MAHI. Pregúntame sobre planes, configuración o soporte.",
+      supp_chat_title: "Soporte MAHI Browser",
+      supp_chat_msg: "¡Hola! 👋 Bienvenido a Soporte MAHI Browser. ¿En qué podemos ayudarte hoy?",
       supp_chat_input: "Pregunta lo que sea...",
       plat_title: "Ideal para gestionar cuentas<br>en todos los servicios",
       iceberg_title: "Esto es solo la punta del iceberg",
@@ -627,11 +627,11 @@ function initLanguageSwitcher() {
       supp_title: "实时专属技术支持",
       supp_desc: "MAHI 拥有行业顶尖的高评分客户支持服务。我们全年无休、全天 24 小时随叫随到，包含所有节假日",
       supp_livechat: "在线即时技术支持",
-      supp_ai_assistant: "AI 助手客服",
+      supp_ai_assistant: "MAHI 浏览器官方支持",
       supp_email: "电子邮件客服支持",
       supp_facebook: "Facebook (Meta) 在线支持",
-      supp_chat_title: "与 MAHI AI 对话",
-      supp_chat_msg: "您好 👋 我是 MAHI AI 智能助手。随时向我咨询套餐、配置、功能或技术支持。",
+      supp_chat_title: "MAHI 浏览器官方支持",
+      supp_chat_msg: "您好 👋 欢迎咨询 MAHI 浏览器官方客服支持。今天有什么可以帮您的？",
       supp_chat_input: "输入您的问题...",
       plat_title: "全平台账号统一安全管理的<br>理想首选",
       iceberg_title: "这只是冰山一角",
@@ -1872,9 +1872,74 @@ function initLiveChatWidget() {
   if (channelAiSupport) channelAiSupport.addEventListener('click', openDrawer);
   if (previewCard) previewCard.addEventListener('click', openDrawer);
 
-  // 5. Quick suggestion chips
+  // 5. Quick suggestion chips with interactive slider controls
+  const chipsPrev = document.getElementById('chips-slide-prev');
+  const chipsNext = document.getElementById('chips-slide-next');
+  const chipsContainer = document.getElementById('floating-ai-chips');
+
+  if (chipsPrev && chipsContainer) {
+    chipsPrev.addEventListener('click', () => {
+      chipsContainer.scrollBy({ left: -140, behavior: 'smooth' });
+    });
+  }
+  if (chipsNext && chipsContainer) {
+    chipsNext.addEventListener('click', () => {
+      chipsContainer.scrollBy({ left: 140, behavior: 'smooth' });
+    });
+  }
+
+  // Wheel horizontal scrolling
+  if (chipsContainer) {
+    chipsContainer.addEventListener('wheel', (e) => {
+      if (e.deltaY !== 0) {
+        e.preventDefault();
+        chipsContainer.scrollLeft += e.deltaY;
+      }
+    }, { passive: false });
+  }
+
+  // Mouse Drag-to-scroll support
+  let isDragging = false;
+  let startX = 0;
+  let startScrollLeft = 0;
+  let hasMoved = false;
+
+  if (chipsContainer) {
+    chipsContainer.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      hasMoved = false;
+      startX = e.pageX - chipsContainer.offsetLeft;
+      startScrollLeft = chipsContainer.scrollLeft;
+    });
+
+    chipsContainer.addEventListener('mouseleave', () => {
+      isDragging = false;
+    });
+
+    chipsContainer.addEventListener('mouseup', () => {
+      setTimeout(() => {
+        isDragging = false;
+        hasMoved = false;
+      }, 60);
+    });
+
+    chipsContainer.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const x = e.pageX - chipsContainer.offsetLeft;
+      const walk = (x - startX) * 1.5;
+      if (Math.abs(walk) > 4) {
+        hasMoved = true;
+      }
+      chipsContainer.scrollLeft = startScrollLeft - walk;
+    });
+  }
+
   chipPills.forEach(pill => {
-    pill.addEventListener('click', () => {
+    pill.addEventListener('click', (e) => {
+      if (hasMoved) {
+        e.preventDefault();
+        return;
+      }
       const q = pill.getAttribute('data-query');
       if (q && input) {
         input.value = q;
@@ -1905,7 +1970,18 @@ function initLiveChatWidget() {
       };
     }
 
-    // 2. Pricing & Plans
+    // 2. Human Agent / Support Team Talk
+    if (/(?:agent|human|talk|speak|person|representative|support\s*team)/i.test(q)) {
+      const ticketNum = 'SUP-2026-' + Math.floor(1000 + Math.random() * 9000);
+      return {
+        reply: `You are connected with MAHI Priority Support. An engineer will attend to your session shortly. You can also reach our team directly via WhatsApp or email (support@mahibrowser.com). Reference Ticket: #${ticketNum}`,
+        isEscalated: true,
+        ticketNumber: ticketNum,
+        category: 'AGENT'
+      };
+    }
+
+    // 3. Pricing & Plans
     if (/(?:price|pricing|cost|plan|subscription|starter|team|scale|enterprise|how\s*much|rate|discount)/i.test(q)) {
       return {
         reply: `MAHI Browser offers Starter ($19/mo), Team ($49/mo), and Enterprise ($99/mo) plans. All plans include 100% genuine canvas/WebGL spoofing, proxy manager, and visual RPA automation. You can test any plan with our 7-day trial!`,
@@ -1914,7 +1990,7 @@ function initLiveChatWidget() {
       };
     }
 
-    // 3. Trial & Download
+    // 4. Trial & Download
     if (/(?:trial|free|download|install|setup|windows|exe|start|demo)/i.test(q)) {
       return {
         reply: `You can test MAHI Browser risk-free with our 7-Day PRO Free Trial. Click "7-Day Free Trial" in the top bar to download the Windows installer. No credit card required!`,
@@ -1923,7 +1999,7 @@ function initLiveChatWidget() {
       };
     }
 
-    // 4. Fingerprint & Proxy
+    // 5. Fingerprint & Proxy
     if (/(?:fingerprint|canvas|webgl|audio|webrtc|proxy|socks5|http|ip|leak|ban|isolation)/i.test(q)) {
       return {
         reply: `MAHI Browser replaces hardware fingerprints directly at the Chromium engine level. It supports residential and datacenter SOCKS5/HTTP proxies with automated WebRTC and timezone alignment.`,
@@ -1932,7 +2008,7 @@ function initLiveChatWidget() {
       };
     }
 
-    // 5. Profiles & Multi-Accounting
+    // 6. Profiles & Multi-Accounting
     if (/(?:profile|account|multi|facebook|google|crypto|airdrop|amazon|tiktok|instagram)/i.test(q)) {
       return {
         reply: `You can operate dozens of isolated browser profiles simultaneously on one PC. Profiles run in sandboxed partitions and never share cookies, storage, or fingerprint traces.`,
@@ -1941,9 +2017,9 @@ function initLiveChatWidget() {
       };
     }
 
-    // 6. General Guidance
+    // 7. General Guidance
     return {
-      reply: `Hi! I'm your MAHI AI Assistant. I can assist with profile setup, plan features, proxy routing, and troubleshooting. How can I assist your workflow today?`,
+      reply: `Hi! Welcome to MAHI Browser Support. How can we help with your setup, plans, proxy routing, or account today?`,
       isEscalated: false,
       category: 'GENERAL'
     };

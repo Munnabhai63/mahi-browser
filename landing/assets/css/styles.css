@@ -3840,18 +3840,16 @@ button {
   justify-content: center;
 }
 
-.ai-bubble-badge {
+.support-status-pip {
   position: absolute;
-  top: -2px;
-  right: -2px;
-  background: #0f172a;
-  color: #34d399;
-  border: 1.5px solid #00b87c;
-  font-size: 0.65rem;
-  font-weight: 800;
-  padding: 0.1rem 0.35rem;
-  border-radius: 9999px;
-  letter-spacing: 0.04em;
+  top: 1px;
+  right: 1px;
+  width: 13px;
+  height: 13px;
+  background: #10b981;
+  border: 2.5px solid #0f172a;
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.8);
 }
 
 /* 2. Floating AI Chat Drawer Window */
@@ -3968,36 +3966,79 @@ button {
   color: #ffffff;
 }
 
-/* Quick Suggestion Chips */
+/* Quick Suggestion Chips Slider Wrapper with Controls */
+.floating-chips-slider-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.28);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0 6px;
+  gap: 4px;
+}
+
+.chips-nav-arrow {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  z-index: 2;
+  padding: 0;
+}
+
+.chips-nav-arrow:hover {
+  background: rgba(0, 184, 124, 0.25);
+  color: #ffffff;
+  border-color: rgba(0, 184, 124, 0.5);
+  transform: scale(1.1);
+}
+
 .floating-ai-chips {
-  padding: 0.6rem 0.9rem;
+  flex: 1;
+  padding: 0.6rem 0.2rem;
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(0, 0, 0, 0.15);
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  cursor: grab;
+  user-select: none;
 }
+
+.floating-ai-chips:active {
+  cursor: grabbing;
+}
+
 .floating-ai-chips::-webkit-scrollbar {
   display: none;
 }
 
 .ai-chip-pill {
+  flex-shrink: 0;
   white-space: nowrap;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: #cbd5e1;
   font-size: 0.74rem;
   font-weight: 500;
-  padding: 0.3rem 0.65rem;
+  padding: 0.32rem 0.7rem;
   border-radius: 9999px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .ai-chip-pill:hover {
-  background: rgba(0, 184, 124, 0.18);
-  border-color: rgba(0, 184, 124, 0.35);
+  background: rgba(0, 184, 124, 0.22);
+  border-color: rgba(0, 184, 124, 0.45);
   color: #ffffff;
   transform: translateY(-1px);
 }
