@@ -633,7 +633,22 @@
       const downloadBtn = document.getElementById('downloadBtn');
       const portableLink = document.getElementById('portableLink');
 
-      const token = localStorage.getItem('mahi_auth_token');
+      // Support token retrieval from URL parameters, cookies (mahi_token), and localStorage
+      const urlParams = new URLSearchParams(window.location.search);
+      let token = urlParams.get('token') || localStorage.getItem('mahi_auth_token');
+      if (!token) {
+        const cookieMatch = document.cookie.match(/(?:^|;\s*)mahi_token=([^;]+)/);
+        if (cookieMatch) token = decodeURIComponent(cookieMatch[1]);
+      }
+      if (token) {
+        localStorage.setItem('mahi_auth_token', token);
+        if (urlParams.has('token')) {
+          urlParams.delete('token');
+          const cleanSearch = urlParams.toString() ? '?' + urlParams.toString() : '';
+          window.history.replaceState({}, document.title, window.location.pathname + cleanSearch);
+        }
+      }
+
       let cachedUser = null;
       try {
         cachedUser = JSON.parse(localStorage.getItem('mahi_user') || 'null');
