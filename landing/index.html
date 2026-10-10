@@ -688,8 +688,8 @@
               <img src="assets/img/ui/support_bg1.svg" alt="MAHI Dashboard Background" class="support-bg-img" width="704" height="564">
             </div>
             
-            <!-- Floating Dark Glassmorphic Chat Box -->
-            <div class="floating-chat-card">
+            <!-- Floating Dark Glassmorphic Chat Mockup Illustration -->
+            <div class="floating-chat-card" id="support-chat-preview-card" role="button" tabindex="0" title="Click to chat with MAHI AI">
               <div class="chat-card-header">
                 <div class="chat-header-identity">
                   <div class="chat-ai-avatar-mini">
@@ -708,16 +708,16 @@
                 </div>
               </div>
               
-              <div class="chat-card-body" id="chat-messages-container">
-                <!-- Support Message -->
+              <div class="chat-card-body">
+                <!-- Support Message Preview -->
                 <div class="chat-message-row">
                   <div class="chat-agent-bubble" data-i18n="supp_chat_msg">
                     Hi there 👋 I’m your MAHI AI Assistant. Ask me about plans, setup, browser features, or support.
                   </div>
                 </div>
                 
-                <!-- Typing Indicator with AI Headshot -->
-                <div class="chat-typing-row" id="chat-typing-row" style="display: none;">
+                <!-- Typing Indicator with AI Headshot Preview -->
+                <div class="chat-typing-row">
                   <div class="chat-agent-avatar ai-agent-avatar">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <rect x="4" y="8" width="16" height="12" rx="4"></rect>
@@ -734,15 +734,15 @@
                 </div>
               </div>
               
-              <!-- Chat Input Bar -->
-              <form class="chat-input-bar" id="live-chat-form" onsubmit="return false;">
-                <input type="text" class="chat-text-input" id="chat-user-input" placeholder="Ask anything..." data-i18n-placeholder="supp_chat_input" autocomplete="off">
-                <button type="submit" class="chat-send-btn" id="chat-send-btn" aria-label="Send message">
+              <!-- Mock Chat Input Bar (Click opens floating AI Assistant) -->
+              <div class="chat-input-bar chat-input-bar-mock" title="Click to chat with MAHI AI">
+                <span class="chat-text-input chat-mock-placeholder" data-i18n="supp_chat_input">Ask anything...</span>
+                <span class="chat-send-btn mock-send-btn" aria-hidden="true">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
                   </svg>
-                </button>
-              </form>
+                </span>
+              </div>
             </div>
             
           </div>
@@ -1466,12 +1466,95 @@
     </div>
   </footer>
 
-  <!-- Floating WhatsApp Widget Bubble -->
-  <a href="https://wa.me/" class="floating-whatsapp-bubble dynamic-whatsapp-link" target="_blank" rel="noopener" aria-label="Chat with MAHI support on WhatsApp">
-    <svg viewBox="0 0 24 24" fill="currentColor" width="28" height="28">
-      <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.04 14.69 2 12.04 2M12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.59 20.15 12.04 20.15C10.56 20.15 9.11 19.76 7.85 19L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 14.99 3.8 13.47 3.8 11.91C3.81 7.37 7.5 3.67 12.05 3.67M9.04 7.42C8.86 7.42 8.57 7.49 8.32 7.76C8.07 8.03 7.37 8.68 7.37 10.03C7.37 11.38 8.35 12.69 8.49 12.87C8.63 13.06 10.42 15.82 13.16 17C15.9 18.18 15.9 17.78 16.39 17.74C16.88 17.7 17.97 17.1 18.2 16.45C18.43 15.8 18.43 15.24 18.36 15.13C18.29 15.02 18.1 14.96 17.82 14.82C17.54 14.68 16.19 14.02 15.94 13.93C15.69 13.84 15.5 13.79 15.32 14.07C15.13 14.35 14.61 14.96 14.45 15.15C14.29 15.33 14.13 15.36 13.85 15.22C13.57 15.08 12.67 14.78 11.61 13.83C10.78 13.09 10.22 12.18 10.06 11.9C9.9 11.62 10.04 11.47 10.18 11.33C10.31 11.2 10.47 10.99 10.61 10.83C10.75 10.67 10.8 10.55 10.89 10.37C10.98 10.19 10.94 10.03 10.87 9.89C10.8 9.75 10.25 8.39 10.02 7.83C9.79 7.29 9.56 7.37 9.39 7.36C9.23 7.35 9.04 7.42 9.04 7.42Z"/>
-    </svg>
-  </a>
+  <!-- ==========================================================================
+       FLOATING MAHI AI ASSISTANT WIDGET & TRIGGER (Bottom-Right)
+       ========================================================================== -->
+  <div class="floating-ai-wrapper" id="floating-ai-container">
+    <!-- Floating AI Assistant Chat Drawer Window -->
+    <div class="floating-ai-drawer" id="floating-ai-drawer" role="dialog" aria-modal="true" aria-label="MAHI AI Assistant" style="display: none;">
+      <!-- Header -->
+      <div class="floating-ai-header">
+        <div class="floating-ai-identity">
+          <div class="floating-ai-avatar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00b87c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"></path>
+              <rect x="4" y="8" width="16" height="12" rx="4"></rect>
+              <circle cx="9" cy="13" r="1.5" fill="#00b87c"></circle>
+              <circle cx="15" cy="13" r="1.5" fill="#00b87c"></circle>
+              <path d="M9 17h6"></path>
+            </svg>
+          </div>
+          <div>
+            <div class="floating-ai-title">MAHI AI Assistant</div>
+            <div class="floating-ai-status"><span class="chat-status-pulse"></span> Online • 24/7 Instant Answers</div>
+          </div>
+        </div>
+        <div class="floating-ai-header-actions">
+          <a href="https://wa.me/" class="floating-ai-whatsapp-btn dynamic-whatsapp-link" target="_blank" rel="noopener" title="Open WhatsApp Support" aria-label="WhatsApp Support">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+              <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.04 14.69 2 12.04 2M12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.59 20.15 12.04 20.15C10.56 20.15 9.11 19.76 7.85 19L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 14.99 3.8 13.47 3.8 11.91C3.81 7.37 7.5 3.67 12.05 3.67M9.04 7.42C8.86 7.42 8.57 7.49 8.32 7.76C8.07 8.03 7.37 8.68 7.37 10.03C7.37 11.38 8.35 12.69 8.49 12.87C8.63 13.06 10.42 15.82 13.16 17C15.9 18.18 15.9 17.78 16.39 17.74C16.88 17.7 17.97 17.1 18.2 16.45C18.43 15.8 18.43 15.24 18.36 15.13C18.29 15.02 18.1 14.96 17.82 14.82C17.54 14.68 16.19 14.02 15.94 13.93C15.69 13.84 15.5 13.79 15.32 14.07C15.13 14.35 14.61 14.96 14.45 15.15C14.29 15.33 14.13 15.36 13.85 15.22C13.57 15.08 12.67 14.78 11.61 13.83C10.78 13.09 10.22 12.18 10.06 11.9C9.9 11.62 10.04 11.47 10.18 11.33C10.31 11.2 10.47 10.99 10.61 10.83C10.75 10.67 10.8 10.55 10.89 10.37C10.98 10.19 10.94 10.03 10.87 9.89C10.8 9.75 10.25 8.39 10.02 7.83C9.79 7.29 9.56 7.37 9.39 7.36C9.23 7.35 9.04 7.42 9.04 7.42Z"/>
+            </svg>
+          </a>
+          <button type="button" class="floating-ai-close-btn" id="floating-ai-close" aria-label="Close Assistant">✕</button>
+        </div>
+      </div>
+
+      <!-- Quick Knowledge Pills -->
+      <div class="floating-ai-chips">
+        <button type="button" class="ai-chip-pill" data-query="How much does the Pro 50 plan cost?">Pricing & Plans</button>
+        <button type="button" class="ai-chip-pill" data-query="How do I get the 7-day free trial?">7-Day Trial</button>
+        <button type="button" class="ai-chip-pill" data-query="How does antidetect fingerprint spoofing work?">Antidetect</button>
+        <button type="button" class="ai-chip-pill" data-query="My payment failed or money was deducted">Payment Help</button>
+      </div>
+
+      <!-- Conversation Container -->
+      <div class="floating-ai-messages" id="floating-ai-messages">
+        <div class="chat-message-row">
+          <div class="chat-agent-bubble">
+            Hi there 👋 I’m your MAHI AI Assistant. Ask me anything about browser features, pricing, proxy setup, or billing support!
+          </div>
+        </div>
+        <!-- Typing indicator -->
+        <div class="chat-typing-row" id="floating-ai-typing" style="display: none;">
+          <div class="chat-agent-avatar ai-agent-avatar">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2">
+              <rect x="4" y="8" width="16" height="12" rx="4"></rect>
+            </svg>
+          </div>
+          <div class="chat-typing-indicator">
+            <span class="dot-typing"></span>
+            <span class="dot-typing"></span>
+            <span class="dot-typing"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Input Form -->
+      <form class="floating-ai-input-bar" id="floating-ai-form" onsubmit="return false;">
+        <input type="text" class="floating-ai-input" id="floating-ai-input" placeholder="Ask anything..." autocomplete="off">
+        <button type="submit" class="floating-ai-send-btn" id="floating-ai-send" aria-label="Send message">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+          </svg>
+        </button>
+      </form>
+    </div>
+
+    <!-- Floating Trigger Bubble Button (Bottom-Right AI Assistant) -->
+    <button type="button" class="floating-ai-bubble-btn" id="floating-ai-trigger" aria-label="Open MAHI AI Assistant">
+      <span class="ai-bubble-pulse"></span>
+      <span class="ai-bubble-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2 2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"></path>
+          <rect x="4" y="8" width="16" height="12" rx="4"></rect>
+          <circle cx="9" cy="13" r="1.5" fill="currentColor"></circle>
+          <circle cx="15" cy="13" r="1.5" fill="currentColor"></circle>
+          <path d="M9 17h6"></path>
+        </svg>
+      </span>
+      <span class="ai-bubble-badge">AI</span>
+    </button>
+  </div>
 
   <!-- ==========================================================================
        REAL WORKING AUTH MODAL (Sign In / Register)

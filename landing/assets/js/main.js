@@ -1810,28 +1810,80 @@ function initPlatformShowcase() {
  */
 
 /**
- * 6b. Live Support Interactive Chat Widget
+ * 6b. Live Support Interactive Chat Widget (Floating Assistant + Support Section Integration)
  */
 function initLiveChatWidget() {
-  const form = document.getElementById('live-chat-form');
-  const input = document.getElementById('chat-user-input');
-  const container = document.getElementById('chat-messages-container');
-  const liveChatLink = document.getElementById('channel-livechat');
-  const aiSupportLink = document.getElementById('channel-ai-support');
-  const typingRow = document.getElementById('chat-typing-row');
+  const triggerBtn = document.getElementById('floating-ai-trigger');
+  const drawer = document.getElementById('floating-ai-drawer');
+  const closeBtn = document.getElementById('floating-ai-close');
+  const form = document.getElementById('floating-ai-form');
+  const input = document.getElementById('floating-ai-input');
+  const messagesContainer = document.getElementById('floating-ai-messages');
+  const typingIndicator = document.getElementById('floating-ai-typing');
+  const previewCard = document.getElementById('support-chat-preview-card');
+  const channelLiveChat = document.getElementById('channel-livechat');
+  const channelAiSupport = document.getElementById('channel-ai-support');
+  const chipPills = document.querySelectorAll('.ai-chip-pill');
 
-  function focusChat(e) {
-    if (e) e.preventDefault();
+  function openDrawer(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!drawer) return;
+    drawer.style.display = 'flex';
     if (input) {
-      input.focus();
-      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => input.focus(), 150);
     }
   }
 
-  if (liveChatLink) liveChatLink.addEventListener('click', focusChat);
-  if (aiSupportLink) aiSupportLink.addEventListener('click', focusChat);
+  function closeDrawer(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!drawer) return;
+    drawer.style.display = 'none';
+  }
 
-  if (!form || !input || !container) return;
+  function toggleDrawer(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!drawer) return;
+    if (drawer.style.display === 'none' || getComputedStyle(drawer).display === 'none') {
+      openDrawer();
+    } else {
+      closeDrawer();
+    }
+  }
+
+  // 1. Trigger bubble click
+  if (triggerBtn) {
+    triggerBtn.addEventListener('click', toggleDrawer);
+  }
+
+  // 2. Close button click
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closeDrawer);
+  }
+
+  // 3. Close on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && drawer && drawer.style.display !== 'none') {
+      closeDrawer();
+    }
+  });
+
+  // 4. Support section channels & preview card open the floating assistant
+  if (channelLiveChat) channelLiveChat.addEventListener('click', openDrawer);
+  if (channelAiSupport) channelAiSupport.addEventListener('click', openDrawer);
+  if (previewCard) previewCard.addEventListener('click', openDrawer);
+
+  // 5. Quick suggestion chips
+  chipPills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      const q = pill.getAttribute('data-query');
+      if (q && input) {
+        input.value = q;
+        submitQuery(q);
+      }
+    });
+  });
+
+  if (!form || !input || !messagesContainer) return;
 
   function escapeHtml(str) {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -1897,9 +1949,8 @@ function initLiveChatWidget() {
     };
   }
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const query = input.value.trim();
+  async function submitQuery(userText) {
+    const query = userText.trim();
     if (!query) return;
 
     // Append user message bubble
@@ -1907,19 +1958,18 @@ function initLiveChatWidget() {
     userRow.className = 'chat-message-row';
     userRow.innerHTML = `<div class="chat-user-bubble">${escapeHtml(query)}</div>`;
 
-    if (typingRow) {
-      container.insertBefore(userRow, typingRow);
-      typingRow.style.display = 'flex';
+    if (typingIndicator) {
+      messagesContainer.insertBefore(userRow, typingIndicator);
+      typingIndicator.style.display = 'flex';
     } else {
-      container.appendChild(userRow);
+      messagesContainer.appendChild(userRow);
     }
     input.value = '';
-    container.scrollTop = container.scrollHeight;
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
     let responseData = null;
 
     try {
-      // Call backend commercial support AI endpoint
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4500);
 
@@ -1942,15 +1992,13 @@ function initLiveChatWidget() {
       // Network or offline fallback
     }
 
-    // If backend did not provide responseData, use local knowledge engine
     if (!responseData || !responseData.reply) {
       responseData = resolveLocalAIResponse(query);
     }
 
-    // Brief realistic delay before typing finishes
     setTimeout(() => {
-      if (typingRow) {
-        typingRow.style.display = 'none';
+      if (typingIndicator) {
+        typingIndicator.style.display = 'none';
       }
 
       const agentRow = document.createElement('div');
@@ -1963,13 +2011,18 @@ function initLiveChatWidget() {
 
       agentRow.innerHTML = `<div class="chat-agent-bubble">${messageHtml}</div>`;
 
-      if (typingRow) {
-        container.insertBefore(agentRow, typingRow);
+      if (typingIndicator) {
+        messagesContainer.insertBefore(agentRow, typingIndicator);
       } else {
-        container.appendChild(agentRow);
+        messagesContainer.appendChild(agentRow);
       }
-      container.scrollTop = container.scrollHeight;
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }, 450);
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    submitQuery(input.value);
   });
 }
 

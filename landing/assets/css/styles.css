@@ -2361,6 +2361,24 @@ button {
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
 }
 
+.chat-input-bar-mock {
+  cursor: pointer;
+  user-select: none;
+}
+
+.chat-input-bar-mock:hover {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.chat-mock-placeholder {
+  display: flex;
+  align-items: center;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  padding: 0.55rem 0;
+}
+
 .chat-text-input {
   flex: 1;
   background: transparent;
@@ -3768,27 +3786,310 @@ button {
   }
 }
 
-/* Floating WhatsApp Button */
-.floating-whatsapp-bubble {
+/* ==========================================================================
+   FLOATING MAHI AI ASSISTANT WIDGET & TRIGGER (Bottom-Right)
+   ========================================================================== */
+.floating-ai-wrapper {
   position: fixed;
   bottom: 2rem;
   right: 2rem;
-  width: 54px;
-  height: 54px;
+  z-index: 9999;
+}
+
+/* 1. Floating Trigger Bubble */
+.floating-ai-bubble-btn {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00b87c 0%, #059669 100%);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 32px rgba(0, 184, 124, 0.45);
+  cursor: pointer;
+  transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+}
+
+.floating-ai-bubble-btn:hover {
+  transform: scale(1.08) translateY(-2px);
+  box-shadow: 0 12px 36px rgba(0, 184, 124, 0.65);
+}
+
+.ai-bubble-pulse {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid #00b87c;
+  opacity: 0.6;
+  animation: bubblePulseWave 2.4s infinite ease-out;
+  pointer-events: none;
+}
+
+@keyframes bubblePulseWave {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+
+.ai-bubble-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-bubble-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: #0f172a;
+  color: #34d399;
+  border: 1.5px solid #00b87c;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 0.1rem 0.35rem;
+  border-radius: 9999px;
+  letter-spacing: 0.04em;
+}
+
+/* 2. Floating AI Chat Drawer Window */
+.floating-ai-drawer {
+  position: fixed;
+  bottom: 6.2rem;
+  right: 2rem;
+  width: 380px;
+  max-width: calc(100vw - 2rem);
+  height: 530px;
+  max-height: calc(100vh - 7.5rem);
+  background: linear-gradient(180deg, #1e2434 0%, #111520 100%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 22px;
+  box-shadow: 0 30px 80px -10px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 10000;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  animation: slideDrawerUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideDrawerUp {
+  from { opacity: 0; transform: translateY(18px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.floating-ai-header {
+  padding: 0.95rem 1.15rem 0.85rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.floating-ai-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: left;
+}
+
+.floating-ai-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(0, 184, 124, 0.15);
+  border: 1px solid rgba(0, 184, 124, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.floating-ai-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+.floating-ai-status {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.floating-ai-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.floating-ai-whatsapp-btn {
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: #25d366;
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 25px rgba(37, 211, 102, 0.45);
-  z-index: 100;
-  transition: var(--transition-base);
+  text-decoration: none;
+  transition: transform 0.2s ease;
 }
 
-.floating-whatsapp-bubble:hover {
-  transform: scale(1.08);
-  box-shadow: 0 6px 30px rgba(37, 211, 102, 0.65);
+.floating-ai-whatsapp-btn:hover {
+  transform: scale(1.1);
+}
+
+.floating-ai-close-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: #94a3b8;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+}
+
+.floating-ai-close-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+/* Quick Suggestion Chips */
+.floating-ai-chips {
+  padding: 0.6rem 0.9rem;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.15);
+  scrollbar-width: none;
+}
+.floating-ai-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.ai-chip-pill {
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  font-size: 0.74rem;
+  font-weight: 500;
+  padding: 0.3rem 0.65rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ai-chip-pill:hover {
+  background: rgba(0, 184, 124, 0.18);
+  border-color: rgba(0, 184, 124, 0.35);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+/* Chat Messages */
+.floating-ai-messages {
+  flex: 1;
+  padding: 1rem 1.1rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  scroll-behavior: smooth;
+}
+
+.floating-ai-messages::-webkit-scrollbar {
+  width: 4px;
+}
+.floating-ai-messages::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+/* Input Bar */
+.floating-ai-input-bar {
+  padding: 0.75rem 0.95rem;
+  background: rgba(0, 0, 0, 0.25);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.floating-ai-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 0.6rem 0.85rem;
+  color: #ffffff;
+  font-size: 0.86rem;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.floating-ai-input:focus {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(0, 184, 124, 0.5);
+  box-shadow: 0 0 0 2px rgba(0, 184, 124, 0.15);
+}
+
+.floating-ai-input::placeholder {
+  color: #64748b;
+}
+
+.floating-ai-send-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #00b87c;
+  border: none;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.floating-ai-send-btn:hover {
+  background: #059669;
+  transform: scale(1.06);
+}
+
+/* Fallback for legacy class */
+.floating-whatsapp-bubble {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .floating-ai-wrapper {
+    bottom: 1.25rem;
+    right: 1.25rem;
+  }
+  .floating-ai-drawer {
+    bottom: 5.5rem;
+    right: 0.75rem;
+    left: 0.75rem;
+    width: auto;
+    height: 72vh;
+  }
 }
 
 /* ==========================================================================
