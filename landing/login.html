@@ -364,11 +364,59 @@
 
   <script>
     (function() {
+      // Security: Validate internal relative URLs
+      function isSafeInternalUrl(url) {
+        if (!url || typeof url !== 'string') return false;
+        const trimmed = url.trim();
+        if (!trimmed.startsWith('/') || trimmed.startsWith('//') || trimmed.startsWith('/\\')) return false;
+        if (trimmed.includes('\\') || trimmed.includes('//') || trimmed.includes('..')) return false;
+        if (/[\x00-\x1F\x7F]/.test(trimmed)) return false;
+        try {
+          const parsed = new URL(trimmed, window.location.origin);
+          if (parsed.origin !== window.location.origin) return false;
+          const pathname = parsed.pathname.toLowerCase();
+          if (pathname === '/') return true;
+          const ALLOWED = ['/dashboard', '/download', '/pricing', '/book-demo', '/account', '/checkout'];
+          return ALLOWED.some(prefix => pathname === prefix || pathname.startsWith(prefix + '/'));
+        } catch (e) {
+          return false;
+        }
+      }
+
+      // Centralized canonical redirect resolver
+      function resolvePostAuthRedirect({ intent, planId, billingCycle, returnUrl } = {}) {
+        if (returnUrl && isSafeInternalUrl(returnUrl)) {
+          return returnUrl.trim();
+        }
+        const normIntent = (intent || '').toLowerCase();
+        if (normIntent === 'download') {
+          return '/download';
+        }
+        if (normIntent === 'trial') {
+          const params = new URLSearchParams();
+          params.set('onboarding', 'trial');
+          if (planId && planId !== 'free') params.set('plan', planId);
+          return `/dashboard?${params.toString()}`;
+        }
+        if (normIntent === 'paid' || normIntent === 'checkout') {
+          const params = new URLSearchParams();
+          if (planId) params.set('plan', planId);
+          if (billingCycle) params.set('billing', billingCycle);
+          const qs = params.toString();
+          return qs ? `/pricing?${qs}` : '/pricing';
+        }
+        if (normIntent === 'demo') {
+          return '/book-demo';
+        }
+        return '/dashboard';
+      }
+
       const urlParams = new URLSearchParams(window.location.search);
       const intent = urlParams.get('intent') || '';
       const plan = urlParams.get('plan') || '';
       const billing = urlParams.get('billing') || 'monthly';
-      const returnUrl = urlParams.get('returnUrl') || '';
+      const rawReturnUrl = urlParams.get('returnUrl') || urlParams.get('return_url') || '';
+      const returnUrl = isSafeInternalUrl(rawReturnUrl) ? rawReturnUrl : '';
 
       const signupLink = document.getElementById('signupLink');
       const intentBadge = document.getElementById('intentBadge');
@@ -421,19 +469,13 @@
       }
 
       function resolveRedirect(token, user) {
-        // Safe relative returnUrl
-        if (returnUrl && returnUrl.startsWith('/') && !returnUrl.startsWith('//')) {
-          window.location.href = returnUrl;
-          return;
-        }
-
-        if (intent === 'trial' || user.is_trial) {
-          window.location.href = '/download?onboarding=trial';
-        } else if (plan && plan !== 'free') {
-          window.location.href = `/checkout?plan=${encodeURIComponent(plan)}&billing=${encodeURIComponent(billing)}`;
-        } else {
-          window.location.href = '/download';
-        }
+        const dest = resolvePostAuthRedirect({
+          intent: intent || (user && user.is_trial ? 'trial' : 'login'),
+          planId: plan || (user && user.plan),
+          billingCycle: billing,
+          returnUrl: returnUrl
+        });
+        window.location.href = dest;
       }
 
       // Handle Form Submit
@@ -525,8 +567,15 @@
           <span>Connecting to Google...</span>
         `;
 
-        const startUrl = `/api/v1/auth/google/start?intent=${encodeURIComponent(intent || 'login')}&plan=${encodeURIComponent(plan || '')}&billing=${encodeURIComponent(billing || '')}&returnUrl=${encodeURIComponent(returnUrl || '/download')}`;
-        window.location.href = startUrl;
+        const startParams = new URLSearchParams({
+          intent: intent || 'login',
+          plan: plan || '',
+          billing: billing || ''
+        });
+        if (returnUrl) {
+          startParams.set('returnUrl', returnUrl);
+        }
+        window.location.href = `/api/v1/auth/google/start?${startParams.toString()}`;
       });
 
     })();

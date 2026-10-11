@@ -408,7 +408,7 @@ export async function handleCommercialApiRoutes(
     const intent = parsedUrl.searchParams.get('intent') || 'trial';
     const planId = parsedUrl.searchParams.get('plan') || parsedUrl.searchParams.get('planId') || 'professional_50';
     const billingCycle = parsedUrl.searchParams.get('billing') || parsedUrl.searchParams.get('billingCycle') || 'annual';
-    const returnUrl = parsedUrl.searchParams.get('returnUrl') || '/download';
+    const returnUrl = parsedUrl.searchParams.get('returnUrl') || parsedUrl.searchParams.get('return_url') || '';
 
     const auth = generateOAuthAuthorization({
       intent,
@@ -533,7 +533,7 @@ export async function handleCommercialApiRoutes(
       intent: body.intent || 'trial',
       planId: normalizePlanId(body.planId),
       billingCycle: body.billingCycle || 'annual',
-      returnUrl: body.returnUrl || '/download',
+      returnUrl: body.returnUrl || '',
       expiresAt: new Date(Date.now() + 60000).toISOString(),
       createdAt: new Date().toISOString(),
     };

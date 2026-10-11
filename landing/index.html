@@ -104,9 +104,24 @@
         </div>
 
         <a href="/login" class="nav-signin-clean" id="nav-btn-signin" data-i18n="nav_signin" style="background: none; border: none; cursor: pointer; font-family: inherit; text-decoration: none; display: inline-flex; align-items: center;">Sign in</a>
-        <a href="/signup?intent=trial" class="btn-trial-clean">
+        <a href="/signup?intent=trial" class="btn-trial-clean" id="nav-btn-trial">
           <span data-i18n="nav_trial">7-day Trial</span>
         </a>
+
+        <!-- Authenticated Navbar State (Visible when session is active) -->
+        <div id="nav-auth-user" class="nav-auth-user" style="display: none; align-items: center; gap: 0.65rem;">
+          <span class="nav-user-badge" id="nav-user-badge" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); color: #34d399; font-size: 0.75rem; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">Active 7-Day Trial</span>
+          <div class="nav-user-chip" id="nav-user-chip" style="display: flex; align-items: center; gap: 6px; color: #f1f5f9; font-size: 0.8125rem; font-weight: 500;">
+            <div id="nav-user-avatar" style="width: 28px; height: 28px; border-radius: 50%; background: #10b981; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem;">M</div>
+            <span id="nav-user-email" style="max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">user@email.com</span>
+          </div>
+          <a href="/download" class="btn-nav-download" id="nav-btn-download" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #f1f5f9; padding: 0.35rem 0.8rem; border-radius: 9999px; font-size: 0.78125rem; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download
+          </a>
+          <button type="button" id="nav-btn-logout" class="btn-logout-clean" style="background: none; border: 1px solid rgba(255, 255, 255, 0.12); color: #94a3b8; padding: 0.35rem 0.75rem; border-radius: 9999px; font-size: 0.78125rem; font-weight: 500; cursor: pointer; transition: all 0.2s;">Log Out</button>
+        </div>
+
         <button class="mobile-menu-btn-clean" aria-label="Open mobile menu">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="3" y1="12" x2="21" y2="12"></line>
@@ -117,6 +132,30 @@
       </div>
     </div>
   </header>
+
+  <!-- Authenticated Welcome / Trial Onboarding Banner (Intent-Aware, Dismissible) -->
+  <div id="auth-onboarding-banner" class="auth-onboarding-banner" style="display: none; width: 100%; max-width: 1200px; margin: 1rem auto 0; padding: 0 1.5rem; position: relative; z-index: 50;">
+    <div style="background: radial-gradient(circle at 20% 50%, rgba(16, 185, 129, 0.15), rgba(13, 30, 38, 0.95) 70%); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 18px; padding: 1.25rem 1.75rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; box-shadow: 0 16px 36px -10px rgba(0,0,0,0.5);">
+      <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+        <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(16, 185, 129, 0.2); display: flex; align-items: center; justify-content: center; color: #34d399; font-size: 1.5rem;">⚡</div>
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span id="aob-plan-badge" style="background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; font-size: 0.75rem; font-weight: 700; padding: 3px 10px; border-radius: 9999px;">Active 7-Day Trial</span>
+            <span id="aob-trial-countdown" style="color: #fbbf24; font-size: 0.8125rem; font-weight: 600;">⏳ 7 days remaining</span>
+          </div>
+          <div id="aob-welcome-title" style="color: #ffffff; font-weight: 700; font-size: 1.05rem;">Welcome to MAHI Browser!</div>
+          <div id="aob-welcome-desc" style="color: #94a3b8; font-size: 0.85rem;">Your account is ready with 50 anti-detect profiles, fingerprint isolation, and fast cloud sync.</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <a href="/download" style="background: #10b981; color: #ffffff; font-weight: 600; font-size: 0.875rem; padding: 0.6rem 1.25rem; border-radius: 9999px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: background 0.2s;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download Desktop App (Optional)
+        </a>
+        <button type="button" id="aob-btn-dismiss" title="Dismiss" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #94a3b8; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1rem; transition: color 0.2s;">✕</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Mobile Drawer Overlay & Panel -->
   <div class="mobile-drawer-overlay" aria-hidden="true"></div>

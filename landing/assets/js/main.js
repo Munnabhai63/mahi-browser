@@ -4,6 +4,7 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+  initAuthSessionState();
   initNavbarIsland();
   initNavDropdowns();
   initLanguageSwitcher();
@@ -54,6 +55,140 @@ function showToast(message, type = 'success', duration = 3000) {
     toast.classList.remove('show');
     setTimeout(() => toast.remove(), 320);
   }, duration);
+}
+
+/**
+ * 0. Authenticated Session & Post-Login Navbar / Onboarding Handler
+ */
+function initAuthSessionState() {
+  const urlParams = new URLSearchParams(window.location.search);
+  let token = urlParams.get('token') || localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token');
+  if (!token) {
+    const cookieMatch = document.cookie.match(/(?:^|;\s*)mahi_token=([^;]+)/);
+    if (cookieMatch) token = decodeURIComponent(cookieMatch[1]);
+  }
+
+  // If token was delivered via URL parameter (e.g., from OAuth redirect), store it and clean URL bar
+  if (urlParams.has('token') && token) {
+    localStorage.setItem('mahi_auth_token', token);
+    localStorage.setItem('mahi_access_token', token);
+    document.cookie = `mahi_token=${token}; path=/; max-age=2592000; SameSite=Lax`;
+    urlParams.delete('token');
+    const cleanSearch = urlParams.toString() ? '?' + urlParams.toString() : '';
+    window.history.replaceState({}, document.title, window.location.pathname + cleanSearch);
+  }
+
+  if (!token) return;
+
+  const signinBtn = document.getElementById('nav-btn-signin');
+  const trialBtn = document.getElementById('nav-btn-trial');
+  const authNav = document.getElementById('nav-auth-user');
+  const navBadge = document.getElementById('nav-user-badge');
+  const navEmail = document.getElementById('nav-user-email');
+  const navAvatar = document.getElementById('nav-user-avatar');
+  const logoutBtn = document.getElementById('nav-btn-logout');
+
+  const onboardingBanner = document.getElementById('auth-onboarding-banner');
+  const aobBadge = document.getElementById('aob-plan-badge');
+  const aobCountdown = document.getElementById('aob-trial-countdown');
+  const aobTitle = document.getElementById('aob-welcome-title');
+  const aobDesc = document.getElementById('aob-welcome-desc');
+  const aobDismiss = document.getElementById('aob-btn-dismiss');
+
+  // Fetch current user and entitlements from central auth
+  fetch('/api/v1/auth/me', {
+    headers: { 'Authorization': `Bearer ${token}` }
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (!data.success || !data.user) {
+      // Stale token; clear session cleanly
+      localStorage.removeItem('mahi_auth_token');
+      localStorage.removeItem('mahi_access_token');
+      localStorage.removeItem('mahi_user');
+      return;
+    }
+
+    const user = data.user;
+    const trialStatus = data.trialStatus;
+    localStorage.setItem('mahi_user', JSON.stringify(user));
+
+    // 1. Update Navbar UI to Authenticated State
+    if (signinBtn) signinBtn.style.display = 'none';
+    if (trialBtn) trialBtn.style.display = 'none';
+    if (authNav) authNav.style.display = 'inline-flex';
+
+    if (navEmail) navEmail.textContent = user.email || 'Account Active';
+    if (navAvatar) {
+      const initial = (user.name || user.email || 'M').charAt(0).toUpperCase();
+      navAvatar.textContent = initial;
+    }
+
+    // Badge formatting
+    if (trialStatus && trialStatus.isTrialActive) {
+      if (navBadge) {
+        navBadge.textContent = 'Active 7-Day Trial';
+        navBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+        navBadge.style.borderColor = 'rgba(16, 185, 129, 0.35)';
+        navBadge.style.color = '#34d399';
+        navBadge.title = `${trialStatus.daysRemaining} days remaining`;
+      }
+    } else if (user.plan && user.plan !== 'free') {
+      if (navBadge) {
+        navBadge.textContent = `${user.plan.toUpperCase()} Plan`;
+        navBadge.style.background = 'rgba(56, 189, 248, 0.15)';
+        navBadge.style.borderColor = 'rgba(56, 189, 248, 0.35)';
+        navBadge.style.color = '#38bdf8';
+      }
+    } else {
+      if (navBadge) {
+        navBadge.textContent = 'Free Account';
+        navBadge.style.background = 'rgba(148, 163, 184, 0.15)';
+        navBadge.style.borderColor = 'rgba(148, 163, 184, 0.35)';
+        navBadge.style.color = '#cbd5e1';
+      }
+    }
+
+    // 2. Intent-Aware Onboarding Welcome Banner (Steps 10 & 13)
+    const isOnboardingIntent = urlParams.get('onboarding') === 'trial' || urlParams.get('onboarding') === 'google_sso';
+    const isDismissed = sessionStorage.getItem('mahi_onboarding_dismissed') === 'true';
+
+    if (onboardingBanner && (isOnboardingIntent || (!isDismissed && trialStatus && trialStatus.isTrialActive))) {
+      onboardingBanner.style.display = 'block';
+
+      if (trialStatus && trialStatus.isTrialActive) {
+        if (aobBadge) aobBadge.textContent = 'Active 7-Day Trial';
+        if (aobCountdown) {
+          aobCountdown.style.display = 'inline';
+          aobCountdown.textContent = `⏳ ${trialStatus.daysRemaining} days remaining`;
+        }
+        if (aobTitle) aobTitle.textContent = 'Welcome to MAHI Browser!';
+        if (aobDesc) aobDesc.textContent = 'Your Professional 50 trial is active with 50 anti-detect browser profiles and automated fingerprint masking ready to use.';
+      } else {
+        if (aobBadge) aobBadge.textContent = user.plan ? `${user.plan.toUpperCase()} Plan` : 'Account Active';
+        if (aobCountdown) aobCountdown.style.display = 'none';
+        if (aobTitle) aobTitle.textContent = `Welcome back, ${user.email}!`;
+        if (aobDesc) aobDesc.textContent = 'Manage your profiles, explore features, or download the desktop installer below.';
+      }
+    }
+
+    // Handle banner dismissal
+    aobDismiss?.addEventListener('click', () => {
+      sessionStorage.setItem('mahi_onboarding_dismissed', 'true');
+      onboardingBanner.style.display = 'none';
+    });
+
+    // Handle logout click
+    logoutBtn?.addEventListener('click', () => {
+      localStorage.removeItem('mahi_auth_token');
+      localStorage.removeItem('mahi_access_token');
+      localStorage.removeItem('mahi_user');
+      document.cookie = 'mahi_token=; path=/; max-age=0; SameSite=Lax';
+      document.cookie = 'mahi_session=; path=/; max-age=0; SameSite=Lax';
+      window.location.href = '/';
+    });
+  })
+  .catch(() => {});
 }
 
 /**
@@ -2918,8 +3053,8 @@ function initPricingSection() {
 
       let ctaHref = `/signup?plan=${encodeURIComponent(planKey)}&billing=${encodeURIComponent(activeBilling)}&intent=trial`;
       if (token) {
-        ctaHref = `/download?plan=${encodeURIComponent(planKey)}&billing=${encodeURIComponent(activeBilling)}`;
-        ctaLabel = 'Open Dashboard';
+        ctaHref = `/pricing?plan=${encodeURIComponent(planKey)}&billing=${encodeURIComponent(activeBilling)}`;
+        ctaLabel = `Select ${plan.name}`;
       }
 
       return `
@@ -3056,8 +3191,8 @@ function initPricingSection() {
               let compCtaLabel = 'Start 7-day free trial';
               const token = localStorage.getItem('mahi_access_token') || localStorage.getItem('mahi_auth_token');
               if (token) {
-                compCtaHref = `/download?plan=${encodeURIComponent(colPlanKey)}&billing=${encodeURIComponent(activeBilling)}`;
-                compCtaLabel = 'Open Dashboard';
+                compCtaHref = `/pricing?plan=${encodeURIComponent(colPlanKey)}&billing=${encodeURIComponent(activeBilling)}`;
+                compCtaLabel = 'Select Plan';
               }
               return `
                 <td class="${isPop ? 'col-popular-td' : ''}">

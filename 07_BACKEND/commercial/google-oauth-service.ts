@@ -56,6 +56,101 @@ export function isGoogleOAuthConfigured(): boolean {
 }
 
 /**
+ * Checks if a URL is a safe, internal relative path.
+ * Rejects external URLs, protocol-relative URLs (//evil.com), javascript:, backslash escapes, etc.
+ */
+export function isSafeInternalUrl(url?: string | null): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  // Must start with single '/' and not '//' or '/\'
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//') || trimmed.startsWith('/\\')) {
+    return false;
+  }
+  // Disallow backslashes, double slashes, or path traversal '..' anywhere in the path
+  if (trimmed.includes('\\') || trimmed.includes('//') || trimmed.includes('..')) {
+    return false;
+  }
+  // Disallow control characters or newlines
+  if (/[\x00-\x1F\x7F]/.test(trimmed)) {
+    return false;
+  }
+  try {
+    const parsed = new URL(trimmed, 'https://mahibrowser.com');
+    if (parsed.origin !== 'https://mahibrowser.com') return false;
+    const pathname = parsed.pathname.toLowerCase();
+    if (pathname === '/') return true;
+    const ALLOWED_EXACT_OR_PREFIXES = [
+      '/dashboard',
+      '/download',
+      '/pricing',
+      '/book-demo',
+      '/account',
+      '/checkout',
+    ];
+    return ALLOWED_EXACT_OR_PREFIXES.some(prefix => 
+      pathname === prefix || pathname.startsWith(prefix + '/')
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Canonical post-auth redirect resolver.
+ * Ensures consistent intent-aware destination across all auth surfaces:
+ * - normal login -> /dashboard
+ * - normal signup -> /dashboard
+ * - trial signup/login -> /dashboard?onboarding=trial (&plan=...)
+ * - explicit download CTA -> /download
+ * - paid plan intent -> /pricing?plan=...&billing=...
+ * - enterprise demo -> /book-demo
+ */
+export function resolvePostAuthRedirect(params: {
+  intent?: string;
+  planId?: string;
+  billingCycle?: string;
+  returnUrl?: string;
+} = {}): string {
+  const { intent, planId, billingCycle, returnUrl } = params;
+
+  // 1. If an explicit safe returnUrl was passed, validate and preserve it
+  if (returnUrl && isSafeInternalUrl(returnUrl)) {
+    return returnUrl.trim();
+  }
+
+  // 2. Intent-based canonical routing
+  const normalizedIntent = (intent || '').toLowerCase();
+
+  if (normalizedIntent === 'download') {
+    return '/download';
+  }
+
+  if (normalizedIntent === 'trial') {
+    const query = new URLSearchParams();
+    query.set('onboarding', 'trial');
+    if (planId && planId !== 'free') {
+      query.set('plan', planId);
+    }
+    return `/dashboard?${query.toString()}`;
+  }
+
+  if (normalizedIntent === 'paid' || normalizedIntent === 'checkout') {
+    const query = new URLSearchParams();
+    if (planId) query.set('plan', planId);
+    if (billingCycle) query.set('billing', billingCycle);
+    const qs = query.toString();
+    return qs ? `/pricing?${qs}` : '/pricing';
+  }
+
+  if (normalizedIntent === 'demo') {
+    return '/book-demo';
+  }
+
+  // 3. Default canonical route for normal login / signup
+  return '/dashboard';
+}
+
+/**
  * Validates a planId against the canonical plan catalog or known aliases
  */
 export function normalizePlanId(planId?: string): string {
@@ -97,7 +192,12 @@ export function generateOAuthAuthorization(params: {
   const intent = (params.intent || 'trial').toLowerCase();
   const planId = normalizePlanId(params.planId);
   const billingCycle = (params.billingCycle || 'annual').toLowerCase();
-  const returnUrl = params.returnUrl || '/download';
+  const returnUrl = resolvePostAuthRedirect({
+    intent,
+    planId,
+    billingCycle,
+    returnUrl: params.returnUrl,
+  });
   const redirectUri = params.redirectUri || config.defaultRedirectUri;
 
   db.prepare(`
@@ -302,7 +402,12 @@ export function authenticateWithGoogleClaims(
   const intent = stateRecord?.intent || 'trial';
   const planId = normalizePlanId(stateRecord?.planId);
   const billingCycle = stateRecord?.billingCycle || 'annual';
-  const returnUrl = stateRecord?.returnUrl || '/download';
+  const returnUrl = resolvePostAuthRedirect({
+    intent,
+    planId,
+    billingCycle,
+    returnUrl: stateRecord?.returnUrl,
+  });
 
   // Check 1: Find existing user by google_sub
   let existingUser = db.prepare('SELECT * FROM commercial_users WHERE google_sub = ?').get(claims.sub) as any;
