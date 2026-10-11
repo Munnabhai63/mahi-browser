@@ -482,7 +482,21 @@
 
           const data = await res.json();
           if (!res.ok || !data.success) {
-            showAlert(data.error || 'Failed to create account. Please try again.');
+            const errStr = typeof data.error === 'string' ? data.error : (data.error?.message || data.message || 'Failed to create account.');
+            if (res.status === 409 || errStr.toLowerCase().includes('already exists') || errStr.toLowerCase().includes('already registered')) {
+              showAlert('You already have a MAHI Browser account! Redirecting to Sign In...', false);
+              setTimeout(() => {
+                const forwardParams = new URLSearchParams();
+                if (rawIntent) forwardParams.set('intent', rawIntent);
+                if (rawPlan) forwardParams.set('plan', rawPlan);
+                if (urlParams.get('billing')) forwardParams.set('billing', billingCycle);
+                if (returnUrl) forwardParams.set('returnUrl', returnUrl);
+                forwardParams.set('email', email);
+                window.location.href = `/login?${forwardParams.toString()}`;
+              }, 1200);
+              return;
+            }
+            showAlert(errStr);
             btnSubmit.disabled = false;
             btnSubmitText.textContent = 'Sign up';
             return;

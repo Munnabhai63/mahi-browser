@@ -342,6 +342,7 @@ const api: MahiBrowserAPI = {
   // Account & Subscription System (v1.1.0+)
   accountSignup: (dto) => ipcRenderer.invoke('account:signup', dto),
   accountLogin: (dto) => ipcRenderer.invoke('account:login', dto),
+  accountLoginWithToken: (dto) => ipcRenderer.invoke('account:loginWithToken', dto),
   accountLogout: () => ipcRenderer.invoke('account:logout'),
   accountGetStatus: () => ipcRenderer.invoke('account:getStatus'),
   accountSwitchDevice: () => ipcRenderer.invoke('account:switchDevice'),

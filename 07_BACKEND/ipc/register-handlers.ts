@@ -25,7 +25,8 @@ import {
   resetPassword as accountResetPassword,
   listActiveSessions as accountListActiveSessions,
   revokeSession as accountRevokeSession,
-  revokeAllSessions as accountRevokeAllSessions
+  revokeAllSessions as accountRevokeAllSessions,
+  loginWithToken as accountLoginWithToken
 } from '../../08_SECURITY/account-service.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { setActiveUserId, getActiveUserId } from '../commercial/session-context.js';
@@ -2106,6 +2107,10 @@ export function registerIpcHandlers(): void {
   });
   ipcMain.handle('account:login', async (_e, dto: { email: string; password: string }) => {
     return accountLogin(dto.email, dto.password);
+  });
+  ipcMain.handle('account:loginWithToken', async (_e, dto: { token: string } | string) => {
+    const token = typeof dto === 'string' ? dto : dto.token;
+    return accountLoginWithToken(token);
   });
   ipcMain.handle('account:logout', async () => {
     return accountLogout();

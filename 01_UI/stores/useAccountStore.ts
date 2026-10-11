@@ -60,6 +60,7 @@ interface AccountState {
   submitManualUpiPayment: (payload: { plan_id: string; utr: string; proof_asset?: string }) => Promise<{ success: boolean; payment_id?: string; status?: string; message?: string; error?: string }>;
   accountSignup: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   accountLogin: (email: string, password: string) => Promise<{ success: boolean; error?: string; deviceMismatch?: boolean }>;
+  accountLoginWithToken: (token: string) => Promise<{ success: boolean; error?: string }>;
   accountLogout: () => Promise<void>;
   accountSwitchDevice: () => Promise<{ success: boolean; error?: string }>;
 
@@ -205,6 +206,20 @@ export const useAccountStore = create<AccountState>()(
           return { success: false, error: res.error || 'Login failed', deviceMismatch: (res as any).device_limit };
         } catch (err: any) {
           return { success: false, error: err.message || 'Login failed', deviceMismatch: err.device_limit };
+        }
+      },
+
+      accountLoginWithToken: async (token) => {
+        if (!window.mahiAPI?.accountLoginWithToken) return { success: false, error: 'API unavailable' };
+        try {
+          const res = await window.mahiAPI.accountLoginWithToken(token);
+          if (res.success) {
+            await get().fetchPlanLimits();
+            return { success: true };
+          }
+          return { success: false, error: res.error || 'Token login failed' };
+        } catch (err: any) {
+          return { success: false, error: err.message || 'Token login failed' };
         }
       },
 

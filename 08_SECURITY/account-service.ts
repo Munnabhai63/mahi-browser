@@ -389,6 +389,52 @@ export async function login(email: string, password: string): Promise<{ success:
   return { success: true, token, user };
 }
 
+export async function loginWithToken(rawToken: string): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
+  const token = (rawToken || '').trim();
+  if (!token) throw new Error('Token is required');
+
+  let res: any;
+  try {
+    res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/me`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  } catch (err: any) {
+    throw new Error(err?.message || 'Failed to connect to central authentication server.');
+  }
+
+  if (res.statusCode !== 200 || !res.body?.user) {
+    const errMsg = res.body?.error || `Invalid or expired session token (HTTP ${res.statusCode})`;
+    throw new Error(errMsg);
+  }
+
+  const user = res.body.user;
+  const trialStatus = res.body.trialStatus;
+  const plan = trialStatus?.isTrialActive ? 'trial' : (user.plan || user.planId || 'free');
+
+  saveEncryptedSession({
+    token,
+    account_id: user.id || `usr_${Date.now()}`,
+    email: user.email,
+    name: user.name,
+    role: user.role || 'USER',
+    status: user.status || 'ACTIVE',
+    plan,
+    profile_quota: user.profileQuota || (plan === 'pro' || plan === 'professional_50' ? 100 : plan === 'trial' ? 50 : 15),
+    sync_key: user.sync_key || null,
+    saved_at: new Date().toISOString()
+  });
+
+  try {
+    await fetchAndCacheStatus();
+  } catch {}
+
+  broadcastAccountChanged();
+  return { success: true, token, user };
+}
+
 export async function refreshAccountToken(): Promise<{ success: boolean; token?: string; error?: string }> {
   const session = loadEncryptedSession();
   if (!session?.refreshToken) {

@@ -39,6 +39,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     clearPendingProfileDto,
     accountSignup,
     accountLogin,
+    accountLoginWithToken,
     accountLogout,
     accountSwitchDevice,
     fetchPlanLimits,
@@ -56,11 +57,15 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
   const { showToast } = useToastStore();
 
-  const [activeTab, setActiveTab] = useState<'signup' | 'signin' | 'verify' | 'forgot' | 'reset'>('signup');
+  // Default to 'signin' because existing website users install desktop and sign in
+  const [activeTab, setActiveTab] = useState<'signup' | 'signin' | 'verify' | 'forgot' | 'reset'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [verificationToken, setVerificationToken] = useState('');
+  const [tokenInput, setTokenInput] = useState('');
+  const [showTokenInput, setShowTokenInput] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [resetToken, setResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
@@ -134,10 +139,64 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           } catch {}
         }
       } else {
-        setErrorMessage(res.error || 'Failed to create account.');
+        const errStr = res.error || 'Failed to create account.';
+        if (errStr.toLowerCase().includes('already exists')) {
+          setErrorMessage('This email is already registered on MAHI Browser. Switched to Sign In — please enter your password or continue with Google.');
+          setActiveTab('signin');
+        } else {
+          setErrorMessage(errStr);
+        }
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Signup failed.');
+      const msg = err.message || 'Signup failed.';
+      if (msg.toLowerCase().includes('already exists')) {
+        setErrorMessage('This email is already registered on MAHI Browser. Switched to Sign In — please enter your password or continue with Google.');
+        setActiveTab('signin');
+      } else {
+        setErrorMessage(msg);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = () => {
+    setIsGoogleLoading(true);
+    setErrorMessage(null);
+    setSuccessInfo('Opening Google sign-in in your default browser...');
+    const googleAuthUrl = 'https://admin.mahibrowser.com/api/v1/auth/google/start?intent=desktop_login';
+    if (typeof window !== 'undefined') {
+      window.open(googleAuthUrl, '_blank');
+    }
+    setShowTokenInput(true);
+    setTimeout(() => {
+      setIsGoogleLoading(false);
+    }, 2000);
+  };
+
+  const handleTokenLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tokenInput.trim()) {
+      setErrorMessage('Please paste your session token from the browser.');
+      return;
+    }
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const res = await accountLoginWithToken(tokenInput.trim());
+      if (res.success) {
+        showToast({
+          type: 'success',
+          title: 'Connected',
+          message: 'Central MAHI account session connected successfully.',
+        });
+        await fetchActiveSessions().catch(() => {});
+        onClose();
+      } else {
+        setErrorMessage(res.error || 'Failed to authenticate session token.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Token verification failed.');
     } finally {
       setIsLoading(false);
     }
@@ -173,13 +232,23 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           } catch {}
         }
       } else {
-        setErrorMessage(res.error || 'Invalid credentials.');
+        const errStr = res.error || 'Invalid credentials.';
+        if (errStr.toLowerCase().includes('google') || (res as any).code === 'GOOGLE_ACCOUNT') {
+          setErrorMessage('This account was created with Google. Click "Continue with Google" above or use Forgot Password to set a password.');
+        } else {
+          setErrorMessage(errStr);
+        }
         if (res.deviceMismatch) {
           setDeviceMismatchError(true);
         }
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Login failed.');
+      const msg = err.message || 'Login failed.';
+      if (msg.toLowerCase().includes('google') || err.code === 'GOOGLE_ACCOUNT') {
+        setErrorMessage('This account was created with Google. Click "Continue with Google" above or use Forgot Password to set a password.');
+      } else {
+        setErrorMessage(msg);
+      }
       if (err.device_limit) {
         setDeviceMismatchError(true);
       }
@@ -482,7 +551,14 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <span className="text-[11px] font-semibold text-slate-400">ACCOUNT EMAIL</span>
-                    <h4 className="text-sm font-bold text-white">{accountSession?.email}</h4>
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>{accountSession?.email}</span>
+                      {(accountSession?.auth_provider === 'GOOGLE' || accountSession?.google_sub) && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                          Google Linked
+                        </span>
+                      )}
+                    </h4>
                   </div>
                   <div>
                     {currentPlan === 'pro' && (
@@ -760,30 +836,30 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
             /* VIEW B: SIGN UP / SIGN IN / VERIFY / FORGOT / RESET TABS   */
             /* ========================================================== */
             <div>
-              {/* Top Navigation Tabs */}
+              {/* Top Navigation Tabs: Sign In is Primary, Create Account is Secondary */}
               {(activeTab === 'signup' || activeTab === 'signin') && (
                 <div className="flex p-1 bg-slate-950 rounded-2xl mb-5 border border-slate-800">
                   <button
                     type="button"
+                    onClick={() => { setActiveTab('signin'); setErrorMessage(null); setSuccessInfo(null); }}
+                    className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition ${
+                      activeTab === 'signin'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Sign In (Existing Account)
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => { setActiveTab('signup'); setErrorMessage(null); setSuccessInfo(null); }}
-                    className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
+                    className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition ${
                       activeTab === 'signup'
                         ? 'bg-emerald-600 text-white shadow-sm'
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Sign Up (7-Day Trial)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setActiveTab('signin'); setErrorMessage(null); setSuccessInfo(null); }}
-                    className={`flex-1 py-2 text-xs font-bold rounded-xl transition ${
-                      activeTab === 'signin'
-                        ? 'bg-slate-800 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Sign In
+                    Create Account (7-Day Trial)
                   </button>
                 </div>
               )}
@@ -817,7 +893,154 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                 </div>
               )}
 
-              {/* TAB 1: SIGN UP */}
+              {/* TAB 1: SIGN IN (PRIMARY / DEFAULT) */}
+              {activeTab === 'signin' && (
+                <div className="space-y-4">
+                  <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Use the same MAHI account you created on our website. All your profiles, trial days, and entitlements sync automatically.
+                    </p>
+                  </div>
+
+                  {/* Google Single-Sign-On */}
+                  <button
+                    type="button"
+                    onClick={handleGoogleLogin}
+                    disabled={isLoading || isGoogleLoading}
+                    className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs shadow-md transition flex items-center justify-center gap-2.5 active:scale-[0.99]"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3h3.88c2.27-2.09 3.665-5.17 3.665-9.09z"/>
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.1C3.28 21.44 7.35 24 12 24z"/>
+                      <path fill="#FBBC05" d="M5.28 14.32c-.25-.72-.38-1.49-.38-2.32s.13-1.6.38-2.32V6.57H1.25C.45 8.15 0 9.99 0 12s.45 3.85 1.25 5.43l4.03-3.11z"/>
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.28 2.56 1.25 6.57l4.03 3.11c.95-2.83 3.6-4.93 6.72-4.93z"/>
+                    </svg>
+                    <span>{isGoogleLoading ? 'Opening Google Sign-In...' : 'Continue with Google'}</span>
+                  </button>
+
+                  {/* Or Divider */}
+                  <div className="flex items-center gap-3 my-1">
+                    <div className="flex-1 h-px bg-slate-800"></div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">or sign in with email</span>
+                    <div className="flex-1 h-px bg-slate-800"></div>
+                  </div>
+
+                  <form onSubmit={handleLoginSubmit} className="space-y-3.5">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 mb-1">Email Address</label>
+                      <div className="relative">
+                        <Mail size={15} className="absolute left-3.5 top-3 text-slate-500" />
+                        <input
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="yourname@domain.com"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-semibold text-slate-400">Password</label>
+                        <button
+                          type="button"
+                          onClick={() => { setActiveTab('forgot'); setErrorMessage(null); setSuccessInfo(null); }}
+                          className="text-[11px] text-teal-400 hover:underline"
+                        >
+                          Forgot Password?
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <Lock size={15} className="absolute left-3.5 top-3 text-slate-500" />
+                        <input
+                          type="password"
+                          required
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-950/40 transition flex items-center justify-center gap-2 mt-1"
+                    >
+                      {isLoading ? <span>Signing In...</span> : <span>Sign In</span>}
+                    </button>
+
+                    {/* Web Token Paste Option (For smooth desktop handoff from browser) */}
+                    {showTokenInput ? (
+                      <div className="mt-3 p-3 rounded-xl bg-slate-950 border border-teal-800/60 space-y-2">
+                        <label className="block text-[11px] font-semibold text-teal-400">
+                          Paste Session Token from Browser:
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={tokenInput}
+                            onChange={(e) => setTokenInput(e.target.value)}
+                            placeholder="Paste token from web dashboard"
+                            className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-teal-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleTokenLoginSubmit}
+                            disabled={isLoading}
+                            className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold"
+                          >
+                            Connect
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowTokenInput(true)}
+                          className="text-[11px] text-slate-500 hover:text-slate-300 underline"
+                        >
+                          Have a session token from website? Paste it here
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-800/60">
+                      <button
+                        type="button"
+                        onClick={() => { setActiveTab('verify'); setErrorMessage(null); }}
+                        className="text-slate-400 hover:text-emerald-400"
+                      >
+                        Verify Email Token
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setActiveTab('reset'); setErrorMessage(null); }}
+                        className="text-slate-400 hover:text-teal-400"
+                      >
+                        Have a Reset Code?
+                      </button>
+                    </div>
+
+                    <div className="pt-2 text-center text-[11px] text-slate-400">
+                      <span>Don't have an account yet? </span>
+                      <button
+                        type="button"
+                        onClick={() => { setActiveTab('signup'); setErrorMessage(null); }}
+                        className="text-emerald-400 hover:underline font-bold"
+                      >
+                        Create Account (7-Day Trial)
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* TAB 2: SIGN UP (SECONDARY) */}
               {activeTab === 'signup' && (
                 <div>
                   <div className="p-4 rounded-2xl bg-gradient-to-b from-emerald-950/40 to-slate-900 border border-emerald-800/50 mb-4">
@@ -900,84 +1123,13 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                     </button>
 
                     <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                      <span>Already registered?</span>
+                      <span>Already registered on website?</span>
                       <button
                         type="button"
-                        onClick={() => { setActiveTab('verify'); setErrorMessage(null); }}
-                        className="text-emerald-400 hover:underline"
+                        onClick={() => { setActiveTab('signin'); setErrorMessage(null); }}
+                        className="text-emerald-400 hover:underline font-bold"
                       >
-                        Enter Email Verification Token
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              )}
-
-              {/* TAB 2: SIGN IN */}
-              {activeTab === 'signin' && (
-                <div>
-                  <form onSubmit={handleLoginSubmit} className="space-y-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-400 mb-1">Email Address</label>
-                      <div className="relative">
-                        <Mail size={15} className="absolute left-3.5 top-3 text-slate-500" />
-                        <input
-                          type="email"
-                          required
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          placeholder="yourname@domain.com"
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-xs font-semibold text-slate-400">Password</label>
-                        <button
-                          type="button"
-                          onClick={() => { setActiveTab('forgot'); setErrorMessage(null); setSuccessInfo(null); }}
-                          className="text-[11px] text-teal-400 hover:underline"
-                        >
-                          Forgot Password?
-                        </button>
-                      </div>
-                      <div className="relative">
-                        <Lock size={15} className="absolute left-3.5 top-3 text-slate-500" />
-                        <input
-                          type="password"
-                          required
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          placeholder="••••••••"
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition"
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={isLoading}
-                      className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2 mt-2"
-                    >
-                      {isLoading ? <span>Signing In...</span> : <span>Sign In</span>}
-                    </button>
-
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-800/60">
-                      <button
-                        type="button"
-                        onClick={() => { setActiveTab('verify'); setErrorMessage(null); }}
-                        className="text-slate-400 hover:text-emerald-400"
-                      >
-                        Verify Email Token
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setActiveTab('reset'); setErrorMessage(null); }}
-                        className="text-slate-400 hover:text-teal-400"
-                      >
-                        Have a Reset Code?
+                        Sign In with existing account
                       </button>
                     </div>
                   </form>

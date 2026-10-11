@@ -685,6 +685,7 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     // Account & Subscription System (v1.1.0+)
     accountSignup: async () => ({ success: true, token: 'mock-token' }),
     accountLogin: async () => ({ success: true, token: 'mock-token' }),
+    accountLoginWithToken: async () => ({ success: true, token: 'mock-token' }),
     accountLogout: async () => ({ success: true }),
     accountGetStatus: async () => ({ plan: 'free', profile_limit: 15, sync_allowed: false }),
     accountSwitchDevice: async () => ({ success: true, message: 'Device rebound' }),

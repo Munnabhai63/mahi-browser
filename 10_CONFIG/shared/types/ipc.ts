@@ -397,6 +397,7 @@ export interface MahiBrowserAPI {
   // Account & Subscription System (v1.1.0+)
   accountSignup: (dto: { email: string; password: string }) => Promise<{ success: boolean; token?: string; user?: any; error?: string }>;
   accountLogin: (dto: { email: string; password: string }) => Promise<{ success: boolean; token?: string; user?: any; error?: string }>;
+  accountLoginWithToken: (dto: { token: string } | string) => Promise<{ success: boolean; token?: string; user?: any; error?: string }>;
   accountLogout: () => Promise<{ success: boolean }>;
   accountGetStatus: () => Promise<any>;
   accountSwitchDevice: () => Promise<{ success: boolean; message: string }>;

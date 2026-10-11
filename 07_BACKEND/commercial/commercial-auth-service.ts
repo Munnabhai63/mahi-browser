@@ -187,6 +187,13 @@ export function loginUser(dto: LoginUserDTO, ipAddress?: string): { success: boo
     return { success: false, error: 'Invalid email or password.' };
   }
 
+  if (row.password_hash === 'OAUTH_GOOGLE' || (!row.password_hash && row.google_sub) || (row.auth_provider === 'GOOGLE' && row.password_hash === 'OAUTH_GOOGLE')) {
+    return {
+      success: false,
+      error: 'This account was created with Google Sign-In and has no password set. Please use "Continue with Google" or reset your password.',
+    };
+  }
+
   const calculatedHash = hashPassword(dto.password, row.salt);
   if (calculatedHash !== row.password_hash) {
     logCommercialAudit({

@@ -253,6 +253,14 @@ export async function registerCentralUser(params: {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, ?)
   `).run(userId, normalizedEmail, normalizedEmail, passwordHash, salt, name, role, status, planId, profileQuota, now, now, now);
 
+  try {
+    db.prepare(`
+      INSERT OR REPLACE INTO commercial_users (
+        id, email, password_hash, salt, name, role, status, plan_id, created_at, updated_at, last_login_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(userId, normalizedEmail, passwordHash, salt, name, role, 'ACTIVE', planId, now, now, now);
+  } catch {}
+
   // Generate Email Verification Token
   const rawVerifyToken = crypto.randomBytes(32).toString('hex');
   const tokenHash = hashToken(rawVerifyToken);
@@ -417,6 +425,13 @@ export async function loginCentralUser(params: {
     recordLoginFailure(rateLimitKey);
     logSecurityEvent(null, 'LOGIN_FAILED', `Non-existent user attempted: ${normalizedEmail}`, 'FAILURE', params.ipAddress);
     return { success: false, error: 'Invalid email or password.' };
+  }
+
+  if (row.password_hash === 'OAUTH_GOOGLE' || (!row.password_hash && row.google_sub) || (row.auth_provider === 'GOOGLE' && row.password_hash === 'OAUTH_GOOGLE')) {
+    return {
+      success: false,
+      error: 'This account was created with Google Sign-In and has no password set. Please use "Continue with Google" or use "Forgot Password" to set a password.',
+    };
   }
 
   const isValid = verifyPassword(params.password, row.salt, row.password_hash);
@@ -738,6 +753,14 @@ export async function resetPasswordWithToken(
     SET password_hash = ?, salt = ?, updated_at = ? 
     WHERE id = ?
   `).run(newPasswordHash, newSalt, now, row.user_id);
+
+  try {
+    db.prepare(`
+      UPDATE commercial_users 
+      SET password_hash = ?, salt = ?, updated_at = ? 
+      WHERE id = ?
+    `).run(newPasswordHash, newSalt, now, row.user_id);
+  } catch {}
 
   // Mark token used
   db.prepare('UPDATE auth_verification_tokens SET used_at = ? WHERE id = ?').run(now, row.id);
