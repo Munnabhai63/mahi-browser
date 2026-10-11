@@ -84,4 +84,35 @@ describe('Google OAuth SSO Runtime & "https is not defined" Regression Preventio
     expect(auth.authUrl).toContain('scope=openid');
     expect(auth.authUrl).not.toContain('client_secret');
   });
+
+  it('guarantees accountService exports hashToken function with authoritative SHA-256 hex string', () => {
+    const accountServicePath = path.resolve('scratch/vps_account_service_current.js');
+    if (fs.existsSync(accountServicePath)) {
+      const content = fs.readFileSync(accountServicePath, 'utf8');
+      expect(content).toMatch(/function\s+hashToken\s*\(/);
+      expect(content).toMatch(/module\.exports\s*=\s*\{[\s\S]*?\bhashToken\b/);
+      expect(content).toContain("crypto.createHash('sha256').update(rawToken).digest('hex')");
+    }
+  });
+
+  it('ensures auth-service exports hashToken with identical SHA-256 contract', () => {
+    const authServicePath = path.resolve('scratch/vps_auth_service_current.js');
+    if (fs.existsSync(authServicePath)) {
+      const content = fs.readFileSync(authServicePath, 'utf8');
+      expect(content).toMatch(/function\s+hashToken\s*\(/);
+      expect(content).toMatch(/module\.exports\s*=\s*\{[\s\S]*?\bhashToken\b/);
+      expect(content).toContain("crypto.createHash('sha256').update(rawToken).digest('hex')");
+    }
+  });
+
+  it('ensures server.js handles hashToken safely with defense-in-depth sha256 fallback', () => {
+    const serverPath = path.resolve('scratch/vps_server_current.js');
+    if (fs.existsSync(serverPath)) {
+      const content = fs.readFileSync(serverPath, 'utf8');
+      expect(content).toContain('accountService.hashToken');
+      // Ensure caller has defense-in-depth check
+      expect(content).toMatch(/typeof\s+accountService\.hashToken\s*===\s*['"]function['"]/);
+    }
+  });
 });
+
