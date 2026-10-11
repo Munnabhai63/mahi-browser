@@ -68,12 +68,14 @@ function initAuthSessionState() {
     if (cookieMatch) token = decodeURIComponent(cookieMatch[1]);
   }
 
-  // If token was delivered via URL parameter (e.g., from OAuth redirect), store it and clean URL bar
-  if (urlParams.has('token') && token) {
+  // If token or onboarding params were delivered via URL, store token and clean URL bar
+  if ((urlParams.has('token') || urlParams.has('onboarding') || urlParams.has('login')) && token) {
     localStorage.setItem('mahi_auth_token', token);
     localStorage.setItem('mahi_access_token', token);
     document.cookie = `mahi_token=${token}; path=/; max-age=2592000; SameSite=Lax`;
     urlParams.delete('token');
+    urlParams.delete('onboarding');
+    urlParams.delete('login');
     const cleanSearch = urlParams.toString() ? '?' + urlParams.toString() : '';
     window.history.replaceState({}, document.title, window.location.pathname + cleanSearch);
   }
@@ -84,16 +86,8 @@ function initAuthSessionState() {
   const trialBtn = document.getElementById('nav-btn-trial');
   const authNav = document.getElementById('nav-auth-user');
   const navBadge = document.getElementById('nav-user-badge');
-  const navEmail = document.getElementById('nav-user-email');
   const navAvatar = document.getElementById('nav-user-avatar');
   const logoutBtn = document.getElementById('nav-btn-logout');
-
-  const onboardingBanner = document.getElementById('auth-onboarding-banner');
-  const aobBadge = document.getElementById('aob-plan-badge');
-  const aobCountdown = document.getElementById('aob-trial-countdown');
-  const aobTitle = document.getElementById('aob-welcome-title');
-  const aobDesc = document.getElementById('aob-welcome-desc');
-  const aobDismiss = document.getElementById('aob-btn-dismiss');
 
   // Fetch current user and entitlements from central auth
   fetch('/api/v1/auth/me', {
@@ -113,15 +107,15 @@ function initAuthSessionState() {
     const trialStatus = data.trialStatus;
     localStorage.setItem('mahi_user', JSON.stringify(user));
 
-    // 1. Update Navbar UI to Authenticated State
+    // Update Navbar UI to Compact Authenticated State
     if (signinBtn) signinBtn.style.display = 'none';
     if (trialBtn) trialBtn.style.display = 'none';
     if (authNav) authNav.style.display = 'inline-flex';
 
-    if (navEmail) navEmail.textContent = user.email || 'Account Active';
     if (navAvatar) {
       const initial = (user.name || user.email || 'M').charAt(0).toUpperCase();
       navAvatar.textContent = initial;
+      navAvatar.title = user.email || 'My Account';
     }
 
     // Badge formatting
@@ -148,35 +142,6 @@ function initAuthSessionState() {
         navBadge.style.color = '#cbd5e1';
       }
     }
-
-    // 2. Intent-Aware Onboarding Welcome Banner (Steps 10 & 13)
-    const isOnboardingIntent = urlParams.get('onboarding') === 'trial' || urlParams.get('onboarding') === 'google_sso';
-    const isDismissed = sessionStorage.getItem('mahi_onboarding_dismissed') === 'true';
-
-    if (onboardingBanner && (isOnboardingIntent || (!isDismissed && trialStatus && trialStatus.isTrialActive))) {
-      onboardingBanner.style.display = 'block';
-
-      if (trialStatus && trialStatus.isTrialActive) {
-        if (aobBadge) aobBadge.textContent = 'Active 7-Day Trial';
-        if (aobCountdown) {
-          aobCountdown.style.display = 'inline';
-          aobCountdown.textContent = `⏳ ${trialStatus.daysRemaining} days remaining`;
-        }
-        if (aobTitle) aobTitle.textContent = 'Welcome to MAHI Browser!';
-        if (aobDesc) aobDesc.textContent = 'Your Professional 50 trial is active with 50 anti-detect browser profiles and automated fingerprint masking ready to use.';
-      } else {
-        if (aobBadge) aobBadge.textContent = user.plan ? `${user.plan.toUpperCase()} Plan` : 'Account Active';
-        if (aobCountdown) aobCountdown.style.display = 'none';
-        if (aobTitle) aobTitle.textContent = `Welcome back, ${user.email}!`;
-        if (aobDesc) aobDesc.textContent = 'Manage your profiles, explore features, or download the desktop installer below.';
-      }
-    }
-
-    // Handle banner dismissal
-    aobDismiss?.addEventListener('click', () => {
-      sessionStorage.setItem('mahi_onboarding_dismissed', 'true');
-      onboardingBanner.style.display = 'none';
-    });
 
     // Handle logout click
     logoutBtn?.addEventListener('click', () => {
