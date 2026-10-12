@@ -172,7 +172,7 @@ export class BrowserWorkerManager {
       '--disable-domain-reliability',
       '--disable-infobars',
       '--hide-crash-restore-bubble',
-      '--disable-features=Translate,OptimizationHints,MediaRouter,EnableIPv6,ExtensionDeveloperModeWarning,PrivacySandboxSettings4,ChromeForTestingDisclaimer',
+      '--disable-features=Translate,OptimizationHints,MediaRouter,ExtensionDeveloperModeWarning,PrivacySandboxSettings4,ChromeForTestingDisclaimer',
       `--js-flags=--max-old-space-size=${maxMemoryMb}`,
 
       // WebRTC Leak Prevention
@@ -193,6 +193,8 @@ export class BrowserWorkerManager {
 
     if (proxyArgs.length > 0) {
       args.push(...proxyArgs);
+    } else {
+      args.push('--no-proxy-server');
     }
 
     args.push(targetUrl);

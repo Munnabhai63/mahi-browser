@@ -269,12 +269,155 @@ function testHttpsConnectThroughProxy(
 }
 
 /**
+ * Performs native RFC 1928 SOCKS5 handshake through the proxy to verify internet connectivity.
+ */
+function testSocks5ThroughProxy(
+  host: string,
+  port: number,
+  username?: string,
+  password?: string,
+  timeoutMs = 7000
+): Promise<{ success: boolean; latencyMs: number; publicIp?: string; error?: string; errorCode?: string }> {
+  const startTime = Date.now();
+  return new Promise((resolve) => {
+    let isResolved = false;
+    const socket = net.connect(port, host);
+
+    const timer = setTimeout(() => {
+      if (!isResolved) {
+        isResolved = true;
+        try { socket.destroy(); } catch {}
+        resolve({
+          success: false,
+          latencyMs: Date.now() - startTime,
+          errorCode: 'TIMEOUT',
+          error: `SOCKS5 proxy connection timed out after ${timeoutMs}ms`,
+        });
+      }
+    }, timeoutMs);
+
+    const finish = (result: { success: boolean; latencyMs: number; publicIp?: string; error?: string; errorCode?: string }) => {
+      if (!isResolved) {
+        isResolved = true;
+        clearTimeout(timer);
+        try { socket.destroy(); } catch {}
+        resolve(result);
+      }
+    };
+
+    socket.on('error', (err: any) => {
+      let code = 'CONNECTION_FAILED';
+      let msg = err.message || 'Connection failed';
+      if (err.code === 'ECONNREFUSED') {
+        code = 'CONNECTION_REFUSED';
+        msg = `SOCKS5 proxy server refused connection at ${host}:${port}`;
+      } else if (err.code === 'ENOTFOUND') {
+        code = 'DNS_FAILURE';
+        msg = `Could not resolve SOCKS5 proxy hostname: ${host}`;
+      }
+      finish({
+        success: false,
+        latencyMs: Date.now() - startTime,
+        errorCode: code,
+        error: msg,
+      });
+    });
+
+    socket.on('connect', () => {
+      // Step 1: Version negotiation
+      if (username && password) {
+        socket.write(Buffer.from([0x05, 0x02, 0x00, 0x02]));
+      } else {
+        socket.write(Buffer.from([0x05, 0x01, 0x00]));
+      }
+
+      let state: 'AUTH_METHOD' | 'AUTH_SUBNEG' | 'CONNECT_RESP' = 'AUTH_METHOD';
+      socket.on('data', (data: Buffer) => {
+        if (state === 'AUTH_METHOD') {
+          if (data.length < 2 || data[0] !== 0x05) {
+            finish({
+              success: false,
+              latencyMs: Date.now() - startTime,
+              errorCode: 'PROXY_REJECTED',
+              error: 'Invalid SOCKS5 version in server response',
+            });
+            return;
+          }
+          const method = data[1];
+          if (method === 0xff) {
+            finish({
+              success: false,
+              latencyMs: Date.now() - startTime,
+              errorCode: 'AUTHENTICATION_FAILED',
+              error: 'SOCKS5 authentication method rejected by server',
+            });
+            return;
+          }
+          if (method === 0x02 && username && password) {
+            state = 'AUTH_SUBNEG';
+            const uBuf = Buffer.from(username, 'utf8');
+            const pBuf = Buffer.from(password, 'utf8');
+            const authPacket = Buffer.concat([
+              Buffer.from([0x01, uBuf.length]),
+              uBuf,
+              Buffer.from([pBuf.length]),
+              pBuf,
+            ]);
+            socket.write(authPacket);
+            return;
+          }
+          sendConnect();
+        } else if (state === 'AUTH_SUBNEG') {
+          if (data.length < 2 || data[1] !== 0x00) {
+            finish({
+              success: false,
+              latencyMs: Date.now() - startTime,
+              errorCode: 'AUTHENTICATION_FAILED',
+              error: 'SOCKS5 credentials rejected by proxy',
+            });
+            return;
+          }
+          sendConnect();
+        } else if (state === 'CONNECT_RESP') {
+          if (data.length >= 2 && data[1] === 0x00) {
+            finish({
+              success: true,
+              latencyMs: Date.now() - startTime,
+            });
+          } else {
+            const errByte = data.length >= 2 ? data[1] : 0x01;
+            finish({
+              success: false,
+              latencyMs: Date.now() - startTime,
+              errorCode: 'PROXY_REJECTED',
+              error: `SOCKS5 CONNECT failed with status code 0x${errByte.toString(16)}`,
+            });
+          }
+        }
+      });
+
+      function sendConnect() {
+        state = 'CONNECT_RESP';
+        // Connect to api.ipify.org:443 via domain name (ATYP = 0x03)
+        const targetDomain = Buffer.from('api.ipify.org', 'utf8');
+        const connectPacket = Buffer.concat([
+          Buffer.from([0x05, 0x01, 0x00, 0x03, targetDomain.length]),
+          targetDomain,
+          Buffer.from([0x01, 0xbb]), // port 443 (0x01bb)
+        ]);
+        socket.write(connectPacket);
+      }
+    });
+  });
+}
+
+/**
  * Master Proxy Testing & Geolocation Service
  */
 export async function testProxy(dto: Partial<CreateProxyDTO>): Promise<ProxyTestResult> {
   const host = dto.host?.trim();
   const port = Number(dto.port);
-  const protocol = dto.protocol || 'http';
+  const protocol = (dto.protocol || 'http').toLowerCase();
 
   debugLog(`[ProxyTestService] Starting validation for: ${sanitizeProxyLog(dto)}`);
 
@@ -286,17 +429,24 @@ export async function testProxy(dto: Partial<CreateProxyDTO>): Promise<ProxyTest
     return { success: false, latencyMs: 0, errorCode: 'INVALID_CONFIG', errorMessage: 'Valid port (1-65535) is required' };
   }
 
-  // 2. Perform True End-to-End HTTPS CONNECT Test
-  debugLog(`[ProxyTestService] Testing HTTPS CONNECT through ${protocol}://${host}:${port}...`);
-  let testResult = await testHttpsConnectThroughProxy(host, port, protocol, dto.username, dto.password, 7000);
+  // 2. Perform End-to-End Handshake Test based on Protocol
+  let testResult: { success: boolean; latencyMs: number; publicIp?: string; error?: string; errorCode?: string };
 
-  // If initial protocol failed, try alternate protocol (e.g. if configured as http, try https, or vice versa)
-  if (!testResult.success && testResult.errorCode !== 'AUTHENTICATION_FAILED') {
-    const altProtocol = protocol === 'https' ? 'http' : 'https';
-    debugLog(`[ProxyTestService] Retrying with alternate protocol (${altProtocol})...`);
-    const altResult = await testHttpsConnectThroughProxy(host, port, altProtocol, dto.username, dto.password, 4000);
-    if (altResult.success) {
-      testResult = altResult;
+  if (protocol === 'socks5' || protocol === 'socks4') {
+    debugLog(`[ProxyTestService] Testing SOCKS5 handshake through ${protocol}://${host}:${port}...`);
+    testResult = await testSocks5ThroughProxy(host, port, dto.username, dto.password, 7000);
+  } else {
+    debugLog(`[ProxyTestService] Testing HTTPS CONNECT through ${protocol}://${host}:${port}...`);
+    testResult = await testHttpsConnectThroughProxy(host, port, protocol, dto.username, dto.password, 7000);
+
+    // If initial protocol failed, try alternate protocol (e.g. if configured as http, try https, or vice versa)
+    if (!testResult.success && testResult.errorCode !== 'AUTHENTICATION_FAILED') {
+      const altProtocol = protocol === 'https' ? 'http' : 'https';
+      debugLog(`[ProxyTestService] Retrying with alternate protocol (${altProtocol})...`);
+      const altResult = await testHttpsConnectThroughProxy(host, port, altProtocol, dto.username, dto.password, 4000);
+      if (altResult.success) {
+        testResult = altResult;
+      }
     }
   }
 

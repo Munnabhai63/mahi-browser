@@ -190,12 +190,11 @@ export function ensureProfileStealthExtension(
   // 1. Automation & WebDriver Masking
   // -------------------------------------------------------------
   try {
-    Object.defineProperty(navigator, 'webdriver', {
-      get: function() { return undefined; },
+    Object.defineProperty(Object.getPrototypeOf(navigator), 'webdriver', {
+      get: function() { return false; },
       enumerable: true,
       configurable: true
     });
-    delete navigator.__proto__.webdriver;
   } catch(e) {}
 
   // Remove Chromedriver / automation artifacts
@@ -413,6 +412,19 @@ export function ensureProfileStealthExtension(
     }
   });
 
+  chrome.runtime.onMessage.addListener(function(msg) {
+    if (msg && msg.type === 'QUICK_SWITCH' && msg.number) {
+      fetch(API_BASE + '/profiles/quick-switch?token=' + encodeURIComponent(AUTH_TOKEN), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + AUTH_TOKEN
+        },
+        body: JSON.stringify({ number: msg.number })
+      }).catch(function() {});
+    }
+  });
+
   function connectSSE() {
     try {
       var url = API_BASE + '/sync/events?profileId=' + encodeURIComponent(profileId) + '&token=' + AUTH_TOKEN;
@@ -546,13 +558,7 @@ export function ensureProfileStealthExtension(
   ];
   var profileColor = colorPalette[(Math.max(1, parseInt(pNum, 10)) - 1) % colorPalette.length] || colorPalette[0];
 
-  // Inject stealth script into DOM if not already present
-  try {
-    var s = document.createElement('script');
-    s.textContent = ${JSON.stringify(stealthCoreJs)};
-    (document.head || document.documentElement).appendChild(s);
-    s.remove();
-  } catch(e) {}
+  // Stealth script is already registered in manifest content_scripts world: MAIN at document_start
 
   function updateTitle() {
     try {
@@ -648,14 +654,7 @@ export function ensureProfileStealthExtension(
         var quickNum = parseInt(digitMatch[1], 10);
         if (quickNum > 0) {
           digitBuffer = '';
-          fetch('http://127.0.0.1:32123/profiles/quick-switch?token=' + encodeURIComponent(${JSON.stringify(getApiAuthToken())}), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ' + ${JSON.stringify(getApiAuthToken())}
-            },
-            body: JSON.stringify({ number: quickNum })
-          }).catch(function() {});
+          chrome.runtime.sendMessage({ type: 'QUICK_SWITCH', number: quickNum }).catch(function() {});
           return;
         }
       }
@@ -673,14 +672,7 @@ export function ensureProfileStealthExtension(
         digitBuffer = '';
         clearTimeout(bufferTimer);
         if (!isNaN(num) && num > 0) {
-          fetch('http://127.0.0.1:32123/profiles/quick-switch?token=' + encodeURIComponent(${JSON.stringify(getApiAuthToken())}), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ' + ${JSON.stringify(getApiAuthToken())}
-            },
-            body: JSON.stringify({ number: num })
-          }).catch(function() {});
+          chrome.runtime.sendMessage({ type: 'QUICK_SWITCH', number: num }).catch(function() {});
         }
         return;
       }
@@ -904,12 +896,6 @@ export function ensureProfileStealthExtension(
     if (isHandlingRemoteAction) return;
     if (e.key === 'Enter') {
       sendSyncAction('KEY', { key: 'Enter', code: e.code, keyCode: 13 });
-      var el = e.target;
-      if (el && (el.name === 'q' || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
-        setTimeout(function() {
-          sendSyncAction('NAVIGATE', { url: window.location.href });
-        }, 400);
-      }
     }
   }, true);
 
@@ -942,16 +928,6 @@ export function ensureProfileStealthExtension(
       var rawQueue = sessionStorage.getItem('__MAHI_WARM_QUEUE__');
       if (rawQueue) {
         processWarmerQueue(JSON.parse(rawQueue));
-      } else {
-        fetch('http://127.0.0.1:32123/profiles/' + encodeURIComponent(pId) + '/warmer-queue?token=' + encodeURIComponent(${JSON.stringify(getApiAuthToken())}))
-          .then(function(r) { return r.json(); })
-          .then(function(d) {
-            if (d && d.success && Array.isArray(d.sites) && d.sites.length > 0) {
-              var q = { sites: d.sites, index: 0 };
-              sessionStorage.setItem('__MAHI_WARM_QUEUE__', JSON.stringify(q));
-              window.location.href = q.sites[0];
-            }
-          }).catch(function() {});
       }
     }
 
@@ -1236,7 +1212,6 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
     '--disable-search-engine-choice-screen',
     '--restore-last-session',
     '--hide-crash-restore-bubble',
-    '--disable-background-networking',
     '--disable-sync',
     '--disable-default-apps',
     '--disable-component-update',
@@ -1244,7 +1219,7 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
     '--no-service-autorun',
     '--suppress-message-center-popups',
     '--disable-infobars',
-    '--disable-features=Translate,OptimizationHints,MediaRouter,EnableIPv6,ExtensionDeveloperModeWarning,PrivacySandboxSettings4,ChromeForTestingDisclaimer'
+    '--disable-features=Translate,OptimizationHints,MediaRouter,ExtensionDeveloperModeWarning,PrivacySandboxSettings4,ChromeForTestingDisclaimer'
   );
 
   // In Normal User Mode, NEVER add test automation switches
@@ -1268,8 +1243,13 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
   }
 
   // WebRTC Leak Prevention
-  args.push('--force-webrtc-ip-handling-policy');
-  args.push('--webrtc-ip-handling-policy=disable_non_proxied_udp');
+  if (settings?.network?.webrtc === 'disable_non_proxied_udp') {
+    args.push('--force-webrtc-ip-handling-policy');
+    args.push('--webrtc-ip-handling-policy=disable_non_proxied_udp');
+  } else if (settings?.network?.webrtc === 'default_public_interface_only') {
+    args.push('--force-webrtc-ip-handling-policy');
+    args.push('--webrtc-ip-handling-policy=default_public_interface_only');
+  }
 
   // Hardware Acceleration
   if (settings?.browser?.hardwareAcceleration === false) {
@@ -1377,7 +1357,7 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
     debugLog(`[Launcher Step 4/7] Built ${args.length} sanitized production launch arguments.`);
 
     // -------------------------------------------------------------
-    // Step 5: Network & Proxy Configuration
+    // Step 5: Network & Proxy Configuration (Step 15 Direct Network Contract)
     // -------------------------------------------------------------
     debugLog(`[Launcher Step 5/7] Configuring network and proxy settings...`);
     if (!settings?.network?.directConnection && settings?.network?.proxyId) {
@@ -1408,17 +1388,24 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
 
           args.push(`--proxy-server=http://127.0.0.1:${proxyTunnel.port}`);
           args.push('--proxy-bypass-list=<-loopback>');
+          args.push('--force-webrtc-ip-handling-policy');
+          args.push('--webrtc-ip-handling-policy=disable_non_proxied_udp');
           debugLog(`[Launcher Step 5/7] Authenticating Tunnel ready: 127.0.0.1:${proxyTunnel.port} -> ${proxy.host}:${proxy.port}`);
         } else {
           args.push(`--proxy-server=${proxy.protocol}://${proxy.host}:${proxy.port}`);
           args.push('--proxy-bypass-list=<-loopback>');
+          args.push('--force-webrtc-ip-handling-policy');
+          args.push('--webrtc-ip-handling-policy=disable_non_proxied_udp');
           debugLog(`[Launcher Step 5/7] Direct Proxy Server: ${proxy.protocol}://${proxy.host}:${proxy.port}`);
         }
       } else {
-        debugLog(`[Launcher Step 5/7] Proxy ID ${settings.network.proxyId} not found in database, continuing with direct connection.`);
+        debugLog(`[Launcher Step 5/7] Proxy ID ${settings.network.proxyId} not found in database, enforcing direct connection.`);
+        args.push('--no-proxy-server');
       }
     } else {
-      debugLog(`[Launcher Step 5/7] Direct connection (No proxy configured).`);
+      // Step 15 Direct Network Contract: Profile with NO proxy must strictly enforce direct connection without WPAD
+      args.push('--no-proxy-server');
+      debugLog(`[Launcher Step 5/7] Direct connection contract enforced (--no-proxy-server).`);
     }
 
     // Custom Additional Arguments
