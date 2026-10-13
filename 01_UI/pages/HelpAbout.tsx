@@ -74,14 +74,14 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
               <div className="flex items-center space-x-2.5">
                 <h1 className="text-base font-bold text-slate-900 dark:text-white">MAHI BROWSER</h1>
                 <span className="text-[10px] px-2 py-0.5 rounded-md bg-teal-500/10 text-teal-600 dark:text-teal-400 font-semibold border border-teal-500/20">
-                  v1.1.1 Production
+                  v1.1.3
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 font-medium">
                   x64 Architecture
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Enterprise-grade multi-profile environment manager & Playwright automation engine
+                By Munna Bhai • Enterprise-grade multi-profile environment manager & Playwright automation engine
               </p>
             </div>
           </div>

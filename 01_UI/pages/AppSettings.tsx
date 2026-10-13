@@ -464,7 +464,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
                   MAHI BROWSER Client Updates
                 </h4>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Current Version: <span className="font-mono font-semibold text-teal-500">v1.1.1</span> (x64)
+                  Current Version: <span className="font-mono font-semibold text-teal-500">v1.1.3</span> • By Munna Bhai (x64)
                 </p>
               </div>
 

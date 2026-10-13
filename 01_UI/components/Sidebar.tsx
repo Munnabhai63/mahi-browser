@@ -168,7 +168,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
 
       {/* Official Support & Help */}
       <div className="px-4 py-2 mt-2 border-t border-slate-800/80 pt-4">
-        <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-2 block">Official Support</span>
+        <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2 block">Official Support</span>
         <div className="space-y-1.5">
           <a
             href="https://wa.me/919376343629"
@@ -215,6 +215,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
               <Lock className="w-4 h-4" />
             </button>
           )}
+        </div>
+        <div className="pt-2 text-center text-[10px] text-slate-500 font-medium">
+          By Munna Bhai • v1.1.3
         </div>
       </div>
 

@@ -37,7 +37,7 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
           targetUrl,
           {
             headers: {
-              'User-Agent': 'MAHI-Browser-Updater/1.1.1 (Windows NT 10.0; Win64; x64)',
+              'User-Agent': 'MAHI-Browser-Updater/1.1.3 (Windows NT 10.0; Win64; x64)',
               Accept: 'application/json',
             },
             timeout: 10000,
@@ -103,7 +103,7 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
           fileUrl,
           {
             headers: {
-              'User-Agent': 'MAHI-Browser-Updater/1.1.1 (Windows NT 10.0; Win64; x64)',
+              'User-Agent': 'MAHI-Browser-Updater/1.1.3 (Windows NT 10.0; Win64; x64)',
             },
             timeout: 60000,
           },
