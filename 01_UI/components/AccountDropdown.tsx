@@ -25,6 +25,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
   const [isOpen, setIsOpen] = useState(false);
   const [isAddingWorkspace, setIsAddingWorkspace] = useState(false);
   const [newWsName, setNewWsName] = useState('');
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
   
   const [isCommercialModalOpen, setIsCommercialModalOpen] = useState(false);
   
@@ -32,6 +33,8 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
   
   const {
     currentUser,
+    accountSession,
+    commercialUser,
     workspaces,
     activeWorkspaceId,
     setActiveWorkspace,
@@ -39,12 +42,37 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
     logout,
     openAccountModal,
     accountLogout,
+    fetchPlanLimits,
   } = useAccountStore();
 
   const currentLicenseStatus = useLicenseStore((state) => state.currentLicenseStatus);
   const isPro = Boolean(currentLicenseStatus?.isValid && currentLicenseStatus?.status === 'ACTIVE');
 
-  const userDisplayName = currentUser?.displayName || (isPro ? 'MAHI PRO' : 'MAHI BROWSER');
+  // Load authenticated session on mount
+  useEffect(() => {
+    let mounted = true;
+    setIsLoadingSession(true);
+    fetchPlanLimits()
+      .catch(() => {})
+      .finally(() => {
+        if (mounted) setIsLoadingSession(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [fetchPlanLimits]);
+
+  // Refresh session when dropdown opens
+  useEffect(() => {
+    if (isOpen) {
+      fetchPlanLimits().catch(() => {});
+    }
+  }, [isOpen, fetchPlanLimits]);
+
+  const userEmail = accountSession?.email || currentUser?.email || commercialUser?.email || null;
+  const isUserSignedIn = Boolean(accountSession?.token || currentUser || commercialUser);
+
+  const userDisplayName = userEmail || currentUser?.displayName || (isPro ? 'MAHI PRO' : 'MAHI BROWSER');
   const userPlanName = currentUser?.planName || (isPro ? 'PRO (100 Profiles)' : 'Free Plan (15 Profiles)');
   const maxProfiles = currentUser?.maxProfiles || (isPro ? 100 : 15);
 
@@ -85,13 +113,14 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-slate-800/80 transition-all text-left group"
+        title={userEmail || userDisplayName}
       >
         <div className="flex items-center space-x-2.5 min-w-0">
           <BrandLogo variant="icon" className="w-8 h-8 rounded-lg shadow-sm shrink-0" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-white text-xs truncate">
-                {userDisplayName}
+              <span className="font-bold text-white text-xs truncate" title={userEmail || undefined}>
+                {userEmail || userDisplayName}
               </span>
               <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
                 isPro
@@ -122,12 +151,31 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
           <div className="p-3.5 flex items-center space-x-3 bg-slate-50/80 dark:bg-slate-950/60 border-b border-slate-100 dark:border-slate-800/80">
             <BrandLogo variant="icon" className="w-11 h-11 rounded-xl shadow-sm shrink-0" />
             <div className="min-w-0 flex-1">
-              <h4 className="font-bold text-slate-900 dark:text-white text-xs truncate">
-                {userDisplayName}
+              <h4 className="font-bold text-slate-900 dark:text-white text-xs truncate" title={userEmail || undefined}>
+                {userEmail || userDisplayName}
               </h4>
               <p className="text-[11px] text-slate-400 truncate font-mono">
                 {isPro ? 'PRO Edition' : 'Freemium Edition'}
               </p>
+
+              {/* Account Email Display */}
+              <div
+                className="text-[11px] truncate mt-0.5"
+                title={userEmail || 'Not signed in'}
+              >
+                {isLoadingSession && !userEmail ? (
+                  <span className="inline-block w-24 h-2.5 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" />
+                ) : userEmail ? (
+                  <span className="text-teal-600 dark:text-teal-400 font-medium truncate block">
+                    {userEmail}
+                  </span>
+                ) : (
+                  <span className="text-slate-400 dark:text-slate-500 italic text-[10.5px] block">
+                    Not signed in
+                  </span>
+                )}
+              </div>
+
               <div className="flex items-center gap-1 mt-0.5">
                 <span className="text-[10px] font-semibold text-teal-600 dark:text-teal-400">
                   {userPlanName}
@@ -233,19 +281,32 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
 
           {/* Account Login / Logout */}
           <div className="p-1.5">
-            {currentUser ? (
-              <button
-                type="button"
-                onClick={() => {
-                  accountLogout();
-                  logout();
-                  setIsOpen(false);
-                }}
-                className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl hover:bg-rose-500/10 text-rose-500 font-semibold transition"
-              >
-                <LogOut size={15} />
-                <span>Sign Out</span>
-              </button>
+            {isUserSignedIn ? (
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    openAccountModal();
+                    setIsOpen(false);
+                  }}
+                  className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold transition"
+                >
+                  <Users size={15} />
+                  <span>Switch Account / Manage</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await accountLogout();
+                    await logout();
+                    setIsOpen(false);
+                  }}
+                  className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl hover:bg-rose-500/10 text-rose-500 font-semibold transition"
+                >
+                  <LogOut size={15} />
+                  <span>Sign Out</span>
+                </button>
+              </div>
             ) : (
               <button
                 type="button"

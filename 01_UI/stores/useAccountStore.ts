@@ -121,7 +121,7 @@ export const useAccountStore = create<AccountState>()(
       userDevices: [],
       isCommercialLoading: false,
       commercialError: null,
-      rememberMe: false,
+      rememberMe: true,
 
       accountSession: null,
       planLimits: null,
@@ -145,7 +145,7 @@ export const useAccountStore = create<AccountState>()(
             set({
               currentUser: {
                 email: sess.email,
-                displayName: sess.email.split('@')[0],
+                displayName: sess.email,
                 avatarLetter: sess.email[0].toUpperCase(),
                 avatarColor: getRandomColor(sess.email),
                 planName: limits.plan.toUpperCase(),
@@ -153,6 +153,8 @@ export const useAccountStore = create<AccountState>()(
                 createdAt: sess.saved_at,
               }
             });
+          } else if (!get().commercialUser) {
+            set({ currentUser: null, accountSession: null });
           }
           if (window.mahiAPI?.getEntitlements) {
             const ent = await window.mahiAPI.getEntitlements();
@@ -308,7 +310,7 @@ export const useAccountStore = create<AccountState>()(
           }
           const res = await window.mahiAPI.commercialLogin({ email, password });
           if (res.success && res.user) {
-            const username = res.user.name || res.user.email.split('@')[0];
+            const username = res.user.email;
             const newUser: UserAccount = {
               email: res.user.email,
               displayName: username,
@@ -348,9 +350,9 @@ export const useAccountStore = create<AccountState>()(
             set({ isCommercialLoading: false, commercialError: 'API not available' });
             return { success: false, error: 'API not available' };
           }
-          const res = await window.mahiAPI.commercialRegister({ email, password, name: name || email.split('@')[0] });
+          const res = await window.mahiAPI.commercialRegister({ email, password, name: name || email });
           if (res.success && res.user) {
-            const username = res.user.name || res.user.email.split('@')[0];
+            const username = res.user.email;
             const newUser: UserAccount = {
               email: res.user.email,
               displayName: username,
@@ -496,31 +498,23 @@ export const useAccountStore = create<AccountState>()(
     {
       name: 'mahi_user_account_storage',
       partialize: (state) => {
-        const persisted: any = {
+        return {
           activeWorkspaceId: state.activeWorkspaceId,
           workspaces: state.workspaces,
           dashboardRole: state.dashboardRole,
           savedAccounts: state.savedAccounts,
           rememberMe: state.rememberMe,
+          commercialUser: state.commercialUser,
+          commercialToken: state.commercialToken,
+          currentUser: state.currentUser,
+          accountSession: state.accountSession,
+          planLimits: state.planLimits,
         };
-        if (state.rememberMe) {
-          persisted.commercialUser = state.commercialUser;
-          persisted.commercialToken = state.commercialToken;
-          persisted.currentUser = state.currentUser;
-        }
-        return persisted;
       },
       onRehydrateStorage: () => (state) => {
         if (state) {
-          if (!state.rememberMe) {
-            state.commercialUser = null;
-            state.commercialToken = null;
-            state.entitlements = null;
-            state.userDevices = [];
-            state.currentUser = null;
-            state.isAccountModalOpen = false;
-          } else {
-            // If they are remembered, the modal should be closed
+          // If a user account is present, keep the account modal closed
+          if (state.currentUser || state.accountSession || state.commercialUser) {
             state.isAccountModalOpen = false;
           }
           state.isCommercialLoading = false;

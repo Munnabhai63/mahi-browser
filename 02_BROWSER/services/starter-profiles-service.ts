@@ -28,6 +28,7 @@ export interface StarterProfileTemplate {
   color: string;
   features: string[];
   recommendedUse: string;
+  os?: string;
   browser?: string;
   fingerprintPreview?: {
     screenResolution?: string;
@@ -49,6 +50,15 @@ export const STARTER_PROFILE_TEMPLATES: StarterProfileTemplate[] = [
     folder: 'Personal',
     icon: 'User',
     color: '#0D9488', // Teal
+    os: 'windows',
+    browser: 'Chrome 128 / Windows 11',
+    fingerprintPreview: {
+      screenResolution: '1920x1080',
+      userAgentSnippet: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...',
+      webGlVendor: 'Google Inc. (NVIDIA)',
+      canvasNoise: true,
+      audioNoise: true,
+    },
     features: [
       'Isolated Cookie Jar & Cache',
       'Canvas & Audio Hardware Emulation',
@@ -67,6 +77,12 @@ export const STARTER_PROFILE_TEMPLATES: StarterProfileTemplate[] = [
         enableExtensions: true,
         hardwareAcceleration: false,
       },
+      fingerprint: {
+        canvas: 'noise',
+        audio: 'noise',
+        canvasNoise: true,
+        audioContextNoise: true,
+      },
       network: {
         directConnection: true,
         webrtc: 'default',
@@ -77,11 +93,20 @@ export const STARTER_PROFILE_TEMPLATES: StarterProfileTemplate[] = [
     id: 'starter_social',
     name: 'Social Media Profile',
     category: 'SOCIAL',
-    badge: 'STARTER',
+    badge: 'DEMO',
     description: 'Optimized for managing independent social media handles with isolated session storage.',
     folder: 'Social Media',
     icon: 'Share2',
     color: '#3B82F6', // Blue
+    os: 'mac',
+    browser: 'Chrome 128 / macOS Sonoma',
+    fingerprintPreview: {
+      screenResolution: '2560x1440',
+      userAgentSnippet: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...',
+      webGlVendor: 'Apple (Apple M2 Pro)',
+      canvasNoise: true,
+      audioNoise: true,
+    },
     features: [
       'Isolated Session & LocalStorage',
       'Audio & Canvas Hardware Noise Injection',
@@ -119,6 +144,15 @@ export const STARTER_PROFILE_TEMPLATES: StarterProfileTemplate[] = [
     folder: 'E-Commerce',
     icon: 'ShoppingCart',
     color: '#10B981', // Emerald
+    os: 'windows',
+    browser: 'Chrome 128 / Windows 11',
+    fingerprintPreview: {
+      screenResolution: '1920x1080',
+      userAgentSnippet: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)...',
+      webGlVendor: 'Google Inc. (NVIDIA GeForce RTX 4070)',
+      canvasNoise: true,
+      audioNoise: true,
+    },
     features: [
       'Strict Cookie Isolation',
       'Persistent Session State (Clean Boot)',
@@ -141,6 +175,7 @@ export const STARTER_PROFILE_TEMPLATES: StarterProfileTemplate[] = [
         canvas: 'noise',
         webgl: 'noise',
         canvasNoise: true,
+        audioContextNoise: true,
       },
     },
   },
@@ -148,11 +183,20 @@ export const STARTER_PROFILE_TEMPLATES: StarterProfileTemplate[] = [
     id: 'starter_work',
     name: 'Business & Work Profile',
     category: 'WORK',
-    badge: 'STARTER',
-    description: 'Dedicated business container for team workspaces, SaaS suites, and CRM systems.',
+    badge: 'DEMO',
+    description: 'Dedicated client workspace container for enterprise dashboards, analytics, and business SaaS applications.',
     folder: 'Work',
     icon: 'Briefcase',
     color: '#6366F1', // Indigo
+    os: 'windows',
+    browser: 'Chrome 128 / Windows 11',
+    fingerprintPreview: {
+      screenResolution: '1920x1080',
+      userAgentSnippet: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)...',
+      webGlVendor: 'Google Inc. (Intel Iris Xe)',
+      canvasNoise: true,
+      audioNoise: true,
+    },
     features: [
       'Enterprise SaaS Container',
       'Independent Google Workspace / M365 Partition',
@@ -171,17 +215,32 @@ export const STARTER_PROFILE_TEMPLATES: StarterProfileTemplate[] = [
         enableExtensions: true,
         hardwareAcceleration: false,
       },
+      fingerprint: {
+        canvas: 'noise',
+        audio: 'noise',
+        canvasNoise: true,
+        audioContextNoise: true,
+      },
     },
   },
   {
     id: 'starter_automation',
     name: 'Automation Example Profile',
     category: 'AUTOMATION',
-    badge: 'DEMO',
+    badge: 'EXAMPLE',
     description: 'Configured for RPA workflow studio runs, Playwright tasks, and automated script sessions.',
     folder: 'Automation',
     icon: 'Bot',
     color: '#8B5CF6', // Purple
+    os: 'windows',
+    browser: 'Chrome 128 / Windows 11',
+    fingerprintPreview: {
+      screenResolution: '1920x1080',
+      userAgentSnippet: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)...',
+      webGlVendor: 'Google Inc. (NVIDIA)',
+      canvasNoise: true,
+      audioNoise: true,
+    },
     features: [
       'CDP Remote Debugging Ready',
       'Automated Script Execution Port',
@@ -200,17 +259,30 @@ export const STARTER_PROFILE_TEMPLATES: StarterProfileTemplate[] = [
         enableExtensions: false,
         hardwareAcceleration: false,
       },
+      fingerprint: {
+        canvas: 'noise',
+        canvasNoise: true,
+      },
     },
   },
   {
     id: 'starter_sandbox',
     name: 'Sandbox & Test Profile',
     category: 'SANDBOX',
-    badge: 'EXAMPLE',
+    badge: 'DEMO',
     description: 'Disposable testing environment for quick link verification and untrusted website testing.',
     folder: 'Sandbox',
     icon: 'ShieldAlert',
     color: '#F59E0B', // Amber
+    os: 'linux',
+    browser: 'Chrome 128 / Linux x86_64',
+    fingerprintPreview: {
+      screenResolution: '1920x1080',
+      userAgentSnippet: 'Mozilla/5.0 (X11; Linux x86_64)...',
+      webGlVendor: 'Google Inc. (Mesa / AMD Radeon)',
+      canvasNoise: true,
+      audioNoise: true,
+    },
     features: [
       'Disposable Ephemeral Profile',
       'WebRTC Leak Disabled',
@@ -228,6 +300,12 @@ export const STARTER_PROFILE_TEMPLATES: StarterProfileTemplate[] = [
         additionalArgs: [],
         enableExtensions: false,
         hardwareAcceleration: false,
+      },
+      fingerprint: {
+        canvas: 'noise',
+        audio: 'noise',
+        canvasNoise: true,
+        audioContextNoise: true,
       },
       network: {
         directConnection: true,
@@ -254,9 +332,25 @@ export function getStarterTemplates(): StarterProfileTemplate[] {
 
 /**
  * Fetches a single starter template by ID.
+ * Supports normalization of hyphenated IDs (e.g. 'starter-personal' -> 'starter_personal')
+ * and alias mapping ('starter-business' -> 'starter_work').
  */
 export function getStarterTemplateById(id: string): StarterProfileTemplate | null {
-  const found = STARTER_PROFILE_TEMPLATES.find((t) => t.id === id);
+  if (!id || typeof id !== 'string') return null;
+  const raw = id.trim();
+  const normalizedId = raw.toLowerCase().replace(/-/g, '_');
+  const aliasMap: Record<string, string> = {
+    starter_business: 'starter_work',
+    starter_work: 'starter_work',
+  };
+  const targetId = aliasMap[normalizedId] || normalizedId;
+  const found = STARTER_PROFILE_TEMPLATES.find(
+    (t) =>
+      t.id === targetId ||
+      t.id === raw ||
+      t.id.replace(/-/g, '_') === normalizedId ||
+      t.category.toLowerCase() === normalizedId
+  );
   return found ? JSON.parse(JSON.stringify(found)) : null;
 }
 

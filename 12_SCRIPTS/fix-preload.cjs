@@ -12,6 +12,16 @@ const destJs = path.join(destDir, 'index.js');
 console.log('fix-preload: src =', src, 'exists =', fs.existsSync(src));
 
 if (fs.existsSync(src)) {
+  // Validate syntax before copying to prevent shipping broken preload
+  const { execFileSync } = require('child_process');
+  try {
+    execFileSync(process.execPath, ['-c', src], { stdio: 'pipe' });
+    console.log('✓ Preload syntax validated successfully.');
+  } catch (syntaxErr) {
+    console.error('FATAL ERROR: preload.cjs failed syntax validation:', syntaxErr.stderr ? syntaxErr.stderr.toString() : syntaxErr.message);
+    process.exit(1);
+  }
+
   // Copy CJS preload as .cjs
   fs.copyFileSync(src, destCjs);
   // Also keep the .js version in case anything references it

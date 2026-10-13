@@ -59,6 +59,17 @@ export const App: React.FC = () => {
   const { currentUser, commercialUser, isAccountModalOpen, closeAccountModal } = useAccountStore();
 
   useEffect(() => {
+    // 1. Immediately restore desktop account session and plan limits from persistent storage
+    useAccountStore.getState().fetchPlanLimits().then(() => {
+      const state = useAccountStore.getState();
+      const hasSession = Boolean(state.accountSession?.token || state.currentUser);
+      const firstLaunchHandled = localStorage.getItem('mahi_first_launch_seen');
+      if (!hasSession && !firstLaunchHandled) {
+        localStorage.setItem('mahi_first_launch_seen', 'true');
+        useAccountStore.getState().openAccountModal();
+      }
+    }).catch(() => {});
+
     // Attempt auto-login if saved license exists
     useAccountStore.getState().commercialLogin('AUTO', 'LICENSE_MODE').catch(() => {});
 
@@ -77,9 +88,14 @@ export const App: React.FC = () => {
         addLog(log);
       });
 
+      const unsubAccount = window.mahiAPI.onAccountStatusChanged?.(() => {
+        useAccountStore.getState().fetchPlanLimits().catch(() => {});
+      });
+
       return () => {
         unsubStatus();
         unsubLogs();
+        unsubAccount?.();
       };
     }
   }, []);

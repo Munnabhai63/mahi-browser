@@ -17,6 +17,10 @@ import {
   TestTube2,
   ArrowRight,
   X,
+  Loader2,
+  CheckCheck,
+  Terminal,
+  AlertTriangle,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
@@ -42,7 +46,7 @@ export interface StarterTemplate {
 
 const FALLBACK_TEMPLATES: StarterTemplate[] = [
   {
-    id: 'starter-personal',
+    id: 'starter_personal',
     name: 'Personal Browsing',
     category: 'PERSONAL',
     badge: 'STARTER',
@@ -58,7 +62,7 @@ const FALLBACK_TEMPLATES: StarterTemplate[] = [
     },
   },
   {
-    id: 'starter-social',
+    id: 'starter_social',
     name: 'Social Media Profile',
     category: 'SOCIAL',
     badge: 'DEMO',
@@ -74,7 +78,7 @@ const FALLBACK_TEMPLATES: StarterTemplate[] = [
     },
   },
   {
-    id: 'starter-ecommerce',
+    id: 'starter_ecommerce',
     name: 'E-Commerce Store Profile',
     category: 'E-COMMERCE',
     badge: 'STARTER',
@@ -90,7 +94,7 @@ const FALLBACK_TEMPLATES: StarterTemplate[] = [
     },
   },
   {
-    id: 'starter-business',
+    id: 'starter_work',
     name: 'Business & Work Profile',
     category: 'WORK',
     badge: 'DEMO',
@@ -106,7 +110,7 @@ const FALLBACK_TEMPLATES: StarterTemplate[] = [
     },
   },
   {
-    id: 'starter-automation',
+    id: 'starter_automation',
     name: 'Automation Example Profile',
     category: 'AUTOMATION',
     badge: 'EXAMPLE',
@@ -122,7 +126,7 @@ const FALLBACK_TEMPLATES: StarterTemplate[] = [
     },
   },
   {
-    id: 'starter-sandbox',
+    id: 'starter_sandbox',
     name: 'Sandbox & Test Profile',
     category: 'SANDBOX',
     badge: 'DEMO',
@@ -143,21 +147,32 @@ interface StarterProfilesSectionProps {
   onNavigate: (page: NavigationPage) => void;
   onOpenUniversalImport?: () => void;
   isStandaloneTab?: boolean;
+  onSwitchToAllProfiles?: () => void;
 }
 
 export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
   onNavigate,
   onOpenUniversalImport,
   isStandaloneTab = false,
+  onSwitchToAllProfiles,
 }) => {
   const [templates, setTemplates] = useState<StarterTemplate[]>(FALLBACK_TEMPLATES);
   const [selectedTemplate, setSelectedTemplate] = useState<StarterTemplate | null>(null);
   const [customProfileName, setCustomProfileName] = useState('');
-  const [isCloning, setIsCloning] = useState(false);
+  const [creatingTemplateId, setCreatingTemplateId] = useState<string | null>(null);
   const [quotaExceededModalOpen, setQuotaExceededModalOpen] = useState(false);
+  const [desktopRequiredModalOpen, setDesktopRequiredModalOpen] = useState(false);
+  const [copiedAppPath, setCopiedAppPath] = useState(false);
 
   const { fetchProfiles } = useProfileStore();
   const { showToast } = useToastStore();
+
+  const isDesktopApp = (): boolean => {
+    if (typeof window === 'undefined') return false;
+    if ((window.mahiAPI as any)?.isDesktop === true) return true;
+    if (typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron')) return true;
+    return false;
+  };
 
   useEffect(() => {
     if (window.mahiAPI?.getStarterTemplates) {
@@ -177,29 +192,50 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
     setCustomProfileName(`${tpl.name} - My Profile`);
   };
 
-  const handleConfirmCreate = async () => {
-    if (!selectedTemplate) return;
-    setIsCloning(true);
+  const handleCreateProfile = async (tpl: StarterTemplate, customName?: string) => {
+    if (creatingTemplateId) return; // Prevent repeated clicks
+
+    if (!isDesktopApp()) {
+      setDesktopRequiredModalOpen(true);
+      return;
+    }
+
+    setCreatingTemplateId(tpl.id);
     try {
       if (window.mahiAPI?.createProfileFromStarter) {
-        const created = await window.mahiAPI.createProfileFromStarter(selectedTemplate.id, {
-          name: customProfileName.trim() || selectedTemplate.name,
+        const chosenName = customName?.trim() || tpl.name;
+        const created = await window.mahiAPI.createProfileFromStarter(tpl.id, {
+          name: chosenName,
         });
+
+        if (!created || !created.id) {
+          throw new Error('Backend failed to return a persistent profile record.');
+        }
+
         showToast({
           type: 'success',
           title: 'Profile Created!',
-          message: `Created real profile "${created.name}" from ${selectedTemplate.name} template.`,
+          message: `Created real profile "${created.name}" from ${tpl.name} template.`,
         });
+
         await fetchProfiles();
         setSelectedTemplate(null);
+
+        if (onSwitchToAllProfiles) {
+          onSwitchToAllProfiles();
+        }
         if (!isStandaloneTab) {
           onNavigate('profiles');
         }
+      } else {
+        throw new Error('Desktop IPC bridge "createProfileFromStarter" is not available.');
       }
     } catch (err: any) {
       const msg = err?.message || '';
       if (msg.includes('PROFILE_LIMIT_REACHED') || msg.includes('limit reached')) {
         setQuotaExceededModalOpen(true);
+      } else if (msg.includes('DESKTOP_REQUIRED')) {
+        setDesktopRequiredModalOpen(true);
       } else {
         showToast({
           type: 'error',
@@ -208,8 +244,13 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
         });
       }
     } finally {
-      setIsCloning(false);
+      setCreatingTemplateId(null);
     }
+  };
+
+  const handleConfirmCreate = async () => {
+    if (!selectedTemplate) return;
+    await handleCreateProfile(selectedTemplate, customProfileName);
   };
 
   const getCategoryIcon = (cat: string) => {
@@ -353,20 +394,44 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
                 </div>
               </div>
 
-              {/* Action Button */}
-              <button
-                onClick={() => handleOpenCloneModal(tpl)}
-                className="w-full py-2.5 px-3 rounded-xl bg-teal-500/10 hover:bg-teal-500 text-teal-400 hover:text-slate-950 font-bold text-xs border border-teal-500/20 hover:border-transparent flex items-center justify-center space-x-1.5 transition-all group-hover:shadow-md"
-              >
-                <span>Use Template</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+              {/* Action Buttons */}
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => handleCreateProfile(tpl)}
+                  disabled={creatingTemplateId !== null}
+                  className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center space-x-1.5 transition-all active:scale-95 shadow-sm ${
+                    creatingTemplateId === tpl.id
+                      ? 'bg-teal-500/80 text-slate-950 cursor-wait'
+                      : 'bg-teal-500/10 hover:bg-teal-500 text-teal-400 hover:text-slate-950 border border-teal-500/20 hover:border-transparent group-hover:shadow-md'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  {creatingTemplateId === tpl.id ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-950" />
+                      <span>Creating Profile...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Use Template</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => handleOpenCloneModal(tpl)}
+                  disabled={creatingTemplateId !== null}
+                  title="Customize profile name before creating"
+                  className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-colors disabled:opacity-40"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Template Conversion / Clone Modal */}
+      {/* Template Conversion / Custom Name Modal */}
       {selectedTemplate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-in fade-in select-none">
           <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden relative">
@@ -384,7 +449,8 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
               </div>
               <button
                 onClick={() => setSelectedTemplate(null)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+                disabled={creatingTemplateId !== null}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 disabled:opacity-40"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -400,7 +466,8 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
                   value={customProfileName}
                   onChange={(e) => setCustomProfileName(e.target.value)}
                   placeholder="Enter profile name..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-teal-500"
+                  disabled={creatingTemplateId !== null}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-teal-500 disabled:opacity-50"
                   autoFocus
                 />
               </div>
@@ -419,17 +486,119 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
             <div className="p-5 bg-slate-950/80 border-t border-slate-800 flex items-center justify-end space-x-3">
               <button
                 onClick={() => setSelectedTemplate(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
+                disabled={creatingTemplateId !== null}
+                className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white disabled:opacity-40"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmCreate}
-                disabled={isCloning}
+                disabled={creatingTemplateId !== null}
                 className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-lg shadow-teal-600/25 flex items-center space-x-2 disabled:opacity-50"
               >
-                <span>{isCloning ? 'Creating Profile...' : 'Create My Profile'}</span>
+                {creatingTemplateId !== null ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Creating Profile...</span>
+                  </>
+                ) : (
+                  <span>Create My Profile</span>
+                )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Desktop Application Required Modal (Chrome Preview Guard) */}
+      {desktopRequiredModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in select-none">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden relative">
+            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/40">
+              <div className="flex items-center space-x-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/20">
+                  <Laptop className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Desktop Application Required</h3>
+                  <span className="text-[10px] text-amber-400 font-semibold uppercase tracking-wider">
+                    Web Preview Mode Detected
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setDesktopRequiredModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-slate-300 leading-relaxed">
+                You are currently previewing MAHI Browser inside a web browser window. Creating and running isolated antidetect browser profiles requires the native <strong className="text-teal-400">MAHI Browser Desktop Application</strong>.
+              </p>
+
+              <div className="space-y-2 p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 text-[11px] text-slate-400">
+                <div className="text-slate-300 font-semibold flex items-center space-x-1.5">
+                  <Shield className="w-3.5 h-3.5 text-teal-400" />
+                  <span>Desktop-Exclusive Capabilities:</span>
+                </div>
+                <ul className="space-y-1 pl-5 list-disc text-slate-400">
+                  <li>Direct Chromium process spawning with independent storage partitions</li>
+                  <li>Local encrypted SQLite persistence &amp; master key security</li>
+                  <li>Kernel-level Canvas, WebGL, Audio &amp; ClientRects noise injection</li>
+                  <li>Real proxy routing, Mobile IP rotation &amp; automated cookie warming</li>
+                </ul>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                <span className="text-[11px] font-bold text-slate-400 flex items-center space-x-1.5">
+                  <Terminal className="w-3.5 h-3.5 text-teal-400" />
+                  <span>Launch Verified Desktop Application:</span>
+                </span>
+                <code className="block p-2 rounded-xl bg-slate-900 border border-slate-800 text-[10px] font-mono text-teal-300 break-all select-all">
+                  C:\Users\munaf\AppData\Local\Programs\MAHI BROWSER\MAHI Browser.exe
+                </code>
+              </div>
+            </div>
+
+            <div className="p-5 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between">
+              <span className="text-[10px] text-slate-500 font-medium">
+                Or launch from Start Menu / Desktop shortcut
+              </span>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => {
+                    if (navigator.clipboard) {
+                      navigator.clipboard.writeText(
+                        'C:\\Users\\munaf\\AppData\\Local\\Programs\\MAHI BROWSER\\MAHI Browser.exe'
+                      );
+                      setCopiedAppPath(true);
+                      setTimeout(() => setCopiedAppPath(false), 2000);
+                    }
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 flex items-center space-x-1.5"
+                >
+                  {copiedAppPath ? (
+                    <>
+                      <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-emerald-400">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy EXE Path</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setDesktopRequiredModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-md"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -63,6 +63,8 @@ import { handleCommercialApiRoutes } from '../commercial/commercial-api-router.j
 import { assertCanCreateProfile } from '../../08_SECURITY/freemium-guard.js';
 import { isValidApiToken, isValidAdminWebSecret, getApiAuthToken } from '../../08_SECURITY/install-secrets.js';
 import { verifyLicense } from '../../08_SECURITY/license-service.js';
+import { CreateProfileDTOSchema } from '../../10_CONFIG/shared/validation/schemas.js';
+import { getAccountSession } from '../../08_SECURITY/account-service.js';
 
 let apiServer: http.Server | null = null;
 
@@ -72,6 +74,7 @@ const ALLOWED_ORIGIN_PATTERNS = [
   /^app:\/\//,
   /^file:\/\//,
   /^chrome-extension:\/\//,
+  /^https?:\/\/([a-z0-9-]+\.)?mahibrowser\.com$/,
 ];
 
 function isOriginAllowed(origin: string | undefined): boolean {
@@ -100,12 +103,23 @@ function isValidHost(host: string | undefined): boolean {
 
 function checkMutatingAuth(req: http.IncomingMessage, parsedUrl: URL, body?: any): boolean {
   const authHeader = req.headers['authorization'];
+  let bearer = '';
   if (authHeader) {
-    const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
+    bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
     if (isValidApiToken(bearer)) return true;
   }
   const queryToken = parsedUrl.searchParams.get('token');
   if (queryToken && isValidApiToken(queryToken)) return true;
+
+  // Validate active desktop account session
+  try {
+    const session = getAccountSession();
+    if (session?.token) {
+      if ((bearer && bearer === session.token) || (queryToken && queryToken === session.token)) {
+        return true;
+      }
+    }
+  } catch {}
 
   const apiKey = (req.headers['x-api-key'] as string) || parsedUrl.searchParams.get('apiKey');
   if (apiKey) {
@@ -526,6 +540,19 @@ export function startApiServer(): void {
         const status = (parsedUrl.searchParams.get('status') as any) || undefined;
         const profiles = getProfiles({ searchQuery: search, status });
         sendJSON(res, 200, { success: true, data: profiles });
+        return;
+      }
+
+      if (pathname === '/profiles' && method === 'POST') {
+        try {
+          const body = await parseBody(req);
+          assertCanCreateProfile(1);
+          const validated = CreateProfileDTOSchema.parse(body);
+          const result = createProfile(validated);
+          sendJSON(res, 201, { success: true, data: result });
+        } catch (err: any) {
+          sendJSON(res, 400, { success: false, error: sanitizeError(err) });
+        }
         return;
       }
 

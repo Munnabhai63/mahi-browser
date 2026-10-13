@@ -317,6 +317,58 @@ const api = {
     ipcRenderer.on('engine:downloadProgress', handler);
     return () => ipcRenderer.removeListener('engine:downloadProgress', handler);
   },
+
+  // Cloud Profile Sync (GoLogin-style)
+  getCloudSyncAllowed: () => ipcRenderer.invoke('sync:isAllowed'),
+  getCloudSyncUsage: () => ipcRenderer.invoke('sync:getUsage'),
+  getCloudSyncList: () => ipcRenderer.invoke('sync:list'),
+  uploadProfileToCloud: (profileId) => ipcRenderer.invoke('sync:upload', profileId),
+  downloadAndRestoreProfile: (cloudProfileId, options) => ipcRenderer.invoke('sync:restore', cloudProfileId, options),
+  deleteCloudProfile: (cloudProfileId) => ipcRenderer.invoke('sync:delete', cloudProfileId),
+  getCloudSyncConfig: () => ipcRenderer.invoke('sync:getConfig'),
+  setCloudSyncConfig: (config) => ipcRenderer.invoke('sync:setConfig', config),
+  syncAllProfiles: () => ipcRenderer.invoke('sync:syncAll'),
+  getAllProfilesSyncStatus: () => ipcRenderer.invoke('sync:getAllStatuses'),
+  resolveSyncConflict: (profileId, resolution) => ipcRenderer.invoke('sync:resolveConflict', profileId, resolution),
+  acquireCloudLock: (cloudProfileId, ttlSeconds) => ipcRenderer.invoke('sync:lock:acquire', cloudProfileId, ttlSeconds),
+  releaseCloudLock: (cloudProfileId) => ipcRenderer.invoke('sync:lock:release', cloudProfileId),
+  getCloudLockStatus: (cloudProfileId) => ipcRenderer.invoke('sync:lock:status', cloudProfileId),
+  onSyncProgress: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('sync:progress', handler);
+    return () => ipcRenderer.removeListener('sync:progress', handler);
+  },
+
+  // Account & Subscription System (v1.1.0+)
+  accountSignup: (dto) => ipcRenderer.invoke('account:signup', dto),
+  accountLogin: (dto) => ipcRenderer.invoke('account:login', dto),
+  accountLoginWithToken: (dto) => ipcRenderer.invoke('account:loginWithToken', dto),
+  accountLogout: () => ipcRenderer.invoke('account:logout'),
+  accountGetStatus: () => ipcRenderer.invoke('account:getStatus'),
+  accountSwitchDevice: () => ipcRenderer.invoke('account:switchDevice'),
+  accountGetPaymentInfo: () => ipcRenderer.invoke('account:getPaymentInfo'),
+  accountSubmitManualUpiPayment: (payload) => ipcRenderer.invoke('account:submitManualUpiPayment', payload),
+  accountGetSession: () => ipcRenderer.invoke('account:getSession'),
+  accountGetPlanLimits: () => ipcRenderer.invoke('account:getPlanLimits'),
+  accountVerifyEmail: (dto) => ipcRenderer.invoke('account:verifyEmail', dto),
+  accountResendVerification: (dto) => ipcRenderer.invoke('account:resendVerification', dto),
+  accountForgotPassword: (dto) => ipcRenderer.invoke('account:forgotPassword', dto),
+  accountResetPassword: (dto) => ipcRenderer.invoke('account:resetPassword', dto),
+  accountListSessions: () => ipcRenderer.invoke('account:listSessions'),
+  accountRevokeSession: (dto) => ipcRenderer.invoke('account:revokeSession', dto),
+  accountRevokeAllSessions: (dto) => ipcRenderer.invoke('account:revokeAllSessions', dto),
+  accountRefreshToken: () => ipcRenderer.invoke('account:refreshToken'),
+  accountStartDesktopOAuth: (planId) => ipcRenderer.invoke('account:startDesktopOAuth', planId),
+  accountExchangeDesktopCode: (dto, code) => {
+    const payload = typeof dto === 'string' ? { ticket: dto, code: code || '' } : dto;
+    return ipcRenderer.invoke('account:exchangeDesktopCode', payload);
+  },
+  onAccountStatusChanged: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('account:statusChanged', handler);
+    return () => ipcRenderer.removeListener('account:statusChanged', handler);
+  },
+  isDesktop: true,
 };
 
 contextBridge.exposeInMainWorld('mahiAPI', api);

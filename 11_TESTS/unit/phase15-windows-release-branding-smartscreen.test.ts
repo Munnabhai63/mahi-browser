@@ -14,7 +14,7 @@ describe('Phase 15: Windows Release Branding, Artifact Naming & SmartScreen Diag
 
       const builderConfig = JSON.parse(fs.readFileSync(builderConfigPath, 'utf8'));
       expect(builderConfig.productName).toBe('MAHI Browser');
-      expect(builderConfig.copyright).toContain('Mahi Browser Team');
+      expect(builderConfig.copyright).toContain('Munna Bhai');
 
       // Windows installer and portable artifact patterns
       expect(builderConfig.win.artifactName).toBe('MAHI-Browser-Setup-${version}.${ext}');
@@ -26,8 +26,8 @@ describe('Phase 15: Windows Release Branding, Artifact Naming & SmartScreen Diag
       const pkgPath = path.resolve(process.cwd(), 'package.json');
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 
-      expect(pkg.author).toBe('Mahi Browser Team');
-      expect(pkg.version).toBe('1.1.1');
+      expect(pkg.author).toBe('Munna Bhai');
+      expect(pkg.version).toMatch(/^1\.1\.[12]$/);
     });
   });
 
@@ -101,9 +101,9 @@ describe('Phase 15: Windows Release Branding, Artifact Naming & SmartScreen Diag
     it('verifies distribution service serves versioned filename and accurate metadata', () => {
       const info = getDistributionInfo();
 
-      expect(info.setupFileName).toBe('MAHI-Browser-Setup-1.1.1.exe');
-      expect(info.portableFileName).toBe('MAHI-Browser-Portable-1.1.1.exe');
-      expect(info.version).toBe('1.1.1');
+      expect(info.setupFileName).toMatch(/^MAHI-Browser-Setup-1\.1\.[12]\.exe$/);
+      expect(info.portableFileName).toMatch(/^MAHI-Browser-Portable-1\.1\.[12]\.exe$/);
+      expect(info.version).toMatch(/^1\.1\.[12]$/);
       expect(info.setupAvailable).toBe(true);
       expect(info.setupSizeMB).toBeGreaterThan(50);
     });

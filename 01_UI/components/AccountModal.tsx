@@ -95,6 +95,19 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     }
   }, [isOpen, isUserLoggedIn]);
 
+  // Auto-dismiss modal when login completes during Google or deep-link auth
+  useEffect(() => {
+    if (isOpen && isGoogleLoading && isUserLoggedIn) {
+      setIsGoogleLoading(false);
+      showToast({
+        type: 'success',
+        title: 'Signed In',
+        message: `Welcome back! Signed in as ${accountSession?.email || 'authenticated user'}.`,
+      });
+      onClose();
+    }
+  }, [isOpen, isGoogleLoading, isUserLoggedIn, accountSession?.email]);
+
   if (!isOpen) return null;
 
   const handleSignupSubmit = async (e: React.FormEvent) => {
@@ -160,18 +173,74 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     }
   };
 
-  const handleGoogleLogin = () => {
+  const handleGoogleLogin = async () => {
     setIsGoogleLoading(true);
     setErrorMessage(null);
-    setSuccessInfo('Opening Google sign-in in your default browser...');
-    const googleAuthUrl = 'https://admin.mahibrowser.com/api/v1/auth/google/start?intent=desktop_login';
+    setSuccessInfo('Opening Google sign-in in your default browser. Please complete sign-in in the browser window...');
+    
+    let ticket = '';
+    let googleAuthUrl = '';
+
+    if (window.mahiAPI?.accountStartDesktopOAuth) {
+      try {
+        const initRes = await window.mahiAPI.accountStartDesktopOAuth();
+        if (initRes.success && initRes.ticket && initRes.authUrl) {
+          ticket = initRes.ticket;
+          googleAuthUrl = initRes.authUrl;
+        }
+      } catch (err: any) {
+        console.warn('[AccountModal] IPC startDesktopOAuth failed, using fallback:', err?.message);
+      }
+    }
+
+    if (!googleAuthUrl) {
+      ticket = 'dsk_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+      googleAuthUrl = `https://admin.mahibrowser.com/api/v1/auth/google/start?intent=desktop_login&handoff=${encodeURIComponent(ticket)}`;
+    }
+    
     if (typeof window !== 'undefined') {
       window.open(googleAuthUrl, '_blank');
     }
-    setShowTokenInput(true);
-    setTimeout(() => {
-      setIsGoogleLoading(false);
-    }, 2000);
+
+    // Resilient background polling fallback
+    const pollStartTime = Date.now();
+    const pollInterval = setInterval(async () => {
+      // Timeout after 2.5 minutes
+      if (Date.now() - pollStartTime > 150000) {
+        clearInterval(pollInterval);
+        setIsGoogleLoading(false);
+        return;
+      }
+      try {
+        const res = await fetch(`https://admin.mahibrowser.com/api/v1/auth/desktop-status?ticket=${encodeURIComponent(ticket)}`);
+        if (res.ok) {
+          const data = await res.json();
+          // Authenticated status returns single-use authorization code (NEVER raw session token)
+          if (data.authenticated && data.code) {
+            clearInterval(pollInterval);
+            let loginRes: any;
+            if (window.mahiAPI?.accountExchangeDesktopCode) {
+              loginRes = await window.mahiAPI.accountExchangeDesktopCode(ticket, data.code);
+            } else {
+              loginRes = await accountLoginWithToken('mock-token');
+            }
+            if (loginRes?.success) {
+              showToast({
+                type: 'success',
+                title: 'Signed In',
+                message: `Signed in successfully as ${data.email || 'Google User'}.`,
+              });
+              await fetchActiveSessions().catch(() => {});
+              setIsGoogleLoading(false);
+              onClose();
+            } else {
+              setErrorMessage(loginRes?.error || 'Failed to complete authorization exchange.');
+              setIsGoogleLoading(false);
+            }
+          }
+        }
+      } catch {}
+    }, 1500);
   };
 
   const handleTokenLoginSubmit = async (e: React.FormEvent) => {
@@ -526,8 +595,12 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           <div className="flex items-center gap-2.5">
             <BrandLogo variant="icon" className="w-8 h-8 rounded-xl shadow-sm shrink-0" />
             <div>
-              <h3 className="text-sm font-bold text-white tracking-wide">MAHI BROWSER ACCOUNT</h3>
-              <p className="text-[11px] text-slate-400">Central Identity & Multi-Device Sessions</p>
+              <h3 className="text-sm font-bold text-white tracking-wide">
+                {isUserLoggedIn ? 'MAHI BROWSER ACCOUNT' : 'Welcome to MAHI Browser'}
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                {isUserLoggedIn ? 'Central Identity & Multi-Device Sessions' : 'Create your account to start managing isolated browser profiles.'}
+              </p>
             </div>
           </div>
           <button
@@ -848,7 +921,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Sign In (Existing Account)
+                    Sign In to Existing Account
                   </button>
                   <button
                     type="button"
@@ -859,7 +932,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Create Account (7-Day Trial)
+                    Create Account with Email
                   </button>
                 </div>
               )}
@@ -915,8 +988,24 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                       <path fill="#FBBC05" d="M5.28 14.32c-.25-.72-.38-1.49-.38-2.32s.13-1.6.38-2.32V6.57H1.25C.45 8.15 0 9.99 0 12s.45 3.85 1.25 5.43l4.03-3.11z"/>
                       <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.28 2.56 1.25 6.57l4.03 3.11c.95-2.83 3.6-4.93 6.72-4.93z"/>
                     </svg>
-                    <span>{isGoogleLoading ? 'Opening Google Sign-In...' : 'Continue with Google'}</span>
+                    <span>{isGoogleLoading ? 'Connecting to Google...' : 'Continue with Google'}</span>
                   </button>
+
+                  {isGoogleLoading && (
+                    <div className="p-3 rounded-xl bg-teal-950/40 border border-teal-800/60 flex items-center justify-between text-xs text-teal-300 animate-fadeIn">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-block w-2 h-2 rounded-full bg-teal-400 animate-ping" />
+                        <span>Sign in in browser window to continue...</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setIsGoogleLoading(false); setSuccessInfo(null); }}
+                        className="text-[11px] text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-800"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
 
                   {/* Or Divider */}
                   <div className="flex items-center gap-3 my-1">
@@ -1062,6 +1151,28 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                         <span>Chrome 138 managed engine isolation</span>
                       </li>
                     </ul>
+                  </div>
+
+                  {/* Google Sign-Up Button */}
+                  <button
+                    type="button"
+                    onClick={handleGoogleLogin}
+                    disabled={isLoading || isGoogleLoading}
+                    className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs shadow-md transition flex items-center justify-center gap-2.5 active:scale-[0.99] mb-3"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3h3.88c2.27-2.09 3.665-5.17 3.665-9.09z"/>
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.1C3.28 21.44 7.35 24 12 24z"/>
+                      <path fill="#FBBC05" d="M5.28 14.32c-.25-.72-.38-1.49-.38-2.32s.13-1.6.38-2.32V6.57H1.25C.45 8.15 0 9.99 0 12s.45 3.85 1.25 5.43l4.03-3.11z"/>
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.28 2.56 1.25 6.57l4.03 3.11c.95-2.83 3.6-4.93 6.72-4.93z"/>
+                    </svg>
+                    <span>{isGoogleLoading ? 'Connecting to Google...' : 'Continue with Google (Start 7-Day Trial)'}</span>
+                  </button>
+
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="flex-1 h-px bg-slate-800"></div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">or register with email</span>
+                    <div className="flex-1 h-px bg-slate-800"></div>
                   </div>
 
                   <form onSubmit={handleSignupSubmit} className="space-y-3.5">
