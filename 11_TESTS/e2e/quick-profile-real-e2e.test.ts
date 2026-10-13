@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { initSqlEngine } from '../../06_DATABASE/connection.js';
+import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { createProfile, getProfileById, deleteProfile } from '../../02_BROWSER/services/profile-service.js';
 import { assertCanCreateProfile, getNonDeletedProfileCount } from '../../08_SECURITY/freemium-guard.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
@@ -9,7 +9,7 @@ describe('REAL E2E ACCEPTANCE: Quick Profile Creation, SQLite Persistence & Chro
   let createdProfileId: string | null = null;
 
   beforeAll(async () => {
-    await initSqlEngine();
+    await initializeDatabase();
   });
 
   afterAll(async () => {

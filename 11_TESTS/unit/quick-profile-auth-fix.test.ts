@@ -4,13 +4,14 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { CreateProfileDTOSchema } from '../../10_CONFIG/shared/validation/schemas.js';
 import { assertCanCreateProfile, getNonDeletedProfileCount } from '../../08_SECURITY/freemium-guard.js';
-import { initSqlEngine, getDatabase } from '../../06_DATABASE/connection.js';
+import { initializeDatabase } from '../../06_DATABASE/schema.js';
+import { getDatabase } from '../../06_DATABASE/connection.js';
 import { createProfile, getProfileById, deleteProfile } from '../../02_BROWSER/services/profile-service.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
 
 describe('P1 Production Bug Fix: Preload Integrity, Quick Profile Creation & Session Persistence', () => {
   beforeAll(async () => {
-    await initSqlEngine();
+    await initializeDatabase();
   });
 
   describe('1. Preload Script Syntax & Compilation Integrity', () => {
