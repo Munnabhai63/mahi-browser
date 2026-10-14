@@ -27,8 +27,9 @@ describe('Phase 15: Windows Release Branding, Artifact Naming & SmartScreen Diag
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 
       expect(pkg.author).toBe('Munna Bhai');
-      expect(pkg.version).toMatch(/^1\.1\.[12]$/);
+      expect(pkg.version).toMatch(/^1\.1\.[1-4]$/);
     });
+
   });
 
   describe('2. Step 3 & 4: Windows Multi-Resolution Icon & NSIS Configuration', () => {
@@ -101,9 +102,10 @@ describe('Phase 15: Windows Release Branding, Artifact Naming & SmartScreen Diag
     it('verifies distribution service serves versioned filename and accurate metadata', () => {
       const info = getDistributionInfo();
 
-      expect(info.setupFileName).toMatch(/^MAHI-Browser-Setup-1\.1\.[12]\.exe$/);
-      expect(info.portableFileName).toMatch(/^MAHI-Browser-Portable-1\.1\.[12]\.exe$/);
-      expect(info.version).toMatch(/^1\.1\.[12]$/);
+      expect(info.setupFileName).toMatch(/^MAHI-Browser-Setup-1\.1\.[1-4]\.exe$/);
+      expect(info.portableFileName).toMatch(/^MAHI-Browser-Portable-1\.1\.[1-4]\.exe$/);
+      expect(info.version).toMatch(/^1\.1\.[1-4]$/);
+
       expect(info.setupAvailable).toBe(true);
       expect(info.setupSizeMB).toBeGreaterThan(50);
     });

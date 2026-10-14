@@ -4,11 +4,7 @@
  * Served on http://127.0.0.1:32123/super-admin
  */
 
-import { getMasterAdminSecret, getApiAuthToken } from '../../08_SECURITY/install-secrets.js';
-
 export function getSuperAdminHtml(): string {
-  const masterSecret = getMasterAdminSecret();
-  const apiToken = getApiAuthToken();
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -86,7 +82,7 @@ export function getSuperAdminHtml(): string {
             <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
         </div>
-        <p class="text-[11px] text-slate-500">Master Secret Key: <code class="text-emerald-700 font-bold mono">\${masterSecret}</code></p>
+        <p class="text-[11px] text-slate-500">Confidential Master Authorization Key required to unlock.</p>
       </div>
 
       <button onclick="authenticateMaster()" class="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-600/20 transition transform active:scale-98">
@@ -344,11 +340,11 @@ export function getSuperAdminHtml(): string {
           <div class="p-5 bg-slate-50 rounded-2xl border border-slate-200 font-mono text-xs space-y-3">
             <div class="flex items-center justify-between border-b border-slate-200 pb-2">
               <span class="text-slate-500">Master Secret Key:</span>
-              <span class="text-emerald-700 font-bold">\${masterSecret}</span>
+              <span class="text-emerald-700 font-bold">•••••••••••••••• (Redacted / Server Enforced)</span>
             </div>
             <div class="flex items-center justify-between border-b border-slate-200 pb-2">
               <span class="text-slate-500">Default API Auth Header:</span>
-              <span class="text-slate-800 font-bold">Authorization: Bearer \${apiToken}</span>
+              <span class="text-slate-800 font-bold">Authorization: Bearer [Session Authenticated]</span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-slate-500">Permissions Scope:</span>
@@ -423,8 +419,8 @@ export function getSuperAdminHtml(): string {
     let currentTab = 'license-mint';
 
     function getAuthHeaders() {
-      const token = sessionStorage.getItem('mahi_api_token') || '\${apiToken}';
-      const secret = sessionStorage.getItem('mahi_admin_secret') || '\${masterSecret}';
+      const token = sessionStorage.getItem('mahi_api_token') || '';
+      const secret = sessionStorage.getItem('mahi_admin_secret') || '';
       return {
         'Content-Type': 'application/json',
         ...(token ? { 'Authorization': 'Bearer ' + token } : {}),

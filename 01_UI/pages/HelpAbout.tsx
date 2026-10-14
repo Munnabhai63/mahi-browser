@@ -15,51 +15,128 @@ import {
   Terminal,
   Database,
   Lock,
+  AlertCircle,
+  Sparkles,
 } from 'lucide-react';
 import { useToastStore } from '../stores/useToastStore.js';
 import { NavigationPage } from '../components/Sidebar.js';
 import { BrandLogo } from '../components/BrandLogo.js';
+import { UpdateStatusEvent } from '../../10_CONFIG/shared/types/updater.js';
 
 interface HelpAboutProps {
   onNavigate: (page: NavigationPage) => void;
 }
 
 export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
-  const [detectedBrowsers, setDetectedBrowsers] = useState<{ name: string; path: string; engine: string }[]>([]);
+  const [appVersion, setAppVersion] = useState<string>('1.1.3');
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatusEvent | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     if (window.mahiAPI) {
-      window.mahiAPI.getSystemBrowsers().then(setDetectedBrowsers);
+      if (window.mahiAPI.getAppVersion) {
+        window.mahiAPI.getAppVersion().then((v) => {
+          if (v) setAppVersion(v);
+        }).catch(() => {});
+      }
+
+      if (window.mahiAPI.getUpdateStatus) {
+        window.mahiAPI.getUpdateStatus().then((status) => {
+          if (status) {
+            setUpdateStatus(status);
+            if (status.currentVersion) setAppVersion(status.currentVersion);
+          }
+        }).catch(() => {});
+      }
+
+      const unsubUpdate = window.mahiAPI.onUpdateStatusChanged?.((status) => {
+        setUpdateStatus(status);
+        if (status.currentVersion) setAppVersion(status.currentVersion);
+        if (status.state === 'DOWNLOADING') setIsDownloading(true);
+        if (status.state === 'DOWNLOADED' || status.state === 'ERROR') setIsDownloading(false);
+      });
+
+      return () => {
+        unsubUpdate?.();
+      };
     }
   }, []);
 
   const handleCheckUpdate = async () => {
     setIsCheckingUpdate(true);
     try {
-      const res = await window.mahiAPI.checkForUpdates();
-      if (res.state === 'NOT_AVAILABLE') {
+      if (window.mahiAPI?.checkForUpdates) {
+        const res = await window.mahiAPI.checkForUpdates();
+        setUpdateStatus(res);
+        if (res.currentVersion) setAppVersion(res.currentVersion);
+
+        if (res.state === 'NOT_AVAILABLE') {
+          useToastStore.getState().showToast({
+            type: 'info',
+            title: "You're Up to Date",
+            message: `MAHI Browser v${res.currentVersion || appVersion} is the latest version.`,
+          });
+        } else if (res.state === 'AVAILABLE') {
+          useToastStore.getState().showToast({
+            type: 'success',
+            title: 'Update Available',
+            message: `Version v${res.availableVersion} is ready to download.`,
+          });
+        } else if (res.state === 'ERROR') {
+          useToastStore.getState().showToast({
+            type: 'error',
+            title: 'Update Notice',
+            message: res.error || 'Could not verify update status.',
+          });
+        }
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      useToastStore.getState().showToast({
+        type: 'error',
+        title: 'Update Check Error',
+        message: msg,
+      });
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
+  const handleDownloadUpdate = async () => {
+    setIsDownloading(true);
+    try {
+      if (window.mahiAPI?.downloadUpdate) {
+        await window.mahiAPI.downloadUpdate();
         useToastStore.getState().showToast({
           type: 'info',
-          title: 'Up to Date',
-          message: 'You are running the latest version of MAHI BROWSER.',
-        });
-      } else if (res.state === 'AVAILABLE') {
-        useToastStore.getState().showToast({
-          type: 'success',
-          title: 'Update Available',
-          message: `New version v${res.availableVersion} is available.`,
+          title: 'Downloading Update',
+          message: 'The latest installer package is downloading in the background.',
         });
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       useToastStore.getState().showToast({
         type: 'error',
-        title: 'Update Check Notice',
+        title: 'Download Error',
         message: msg,
       });
-    } finally {
-      setIsCheckingUpdate(false);
+      setIsDownloading(false);
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    try {
+      if (window.mahiAPI?.installUpdate) {
+        await window.mahiAPI.installUpdate({ force: true });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      useToastStore.getState().showToast({
+        type: 'error',
+        title: 'Install Error',
+        message: msg,
+      });
     }
   };
 
@@ -74,7 +151,7 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
               <div className="flex items-center space-x-2.5">
                 <h1 className="text-base font-bold text-slate-900 dark:text-white">MAHI BROWSER</h1>
                 <span className="text-[10px] px-2 py-0.5 rounded-md bg-teal-500/10 text-teal-600 dark:text-teal-400 font-semibold border border-teal-500/20">
-                  v1.1.3
+                  v{appVersion}
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 font-medium">
                   x64 Architecture
@@ -89,11 +166,11 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
 
         <button
           type="button"
-          disabled={isCheckingUpdate}
+          disabled={isCheckingUpdate || updateStatus?.state === 'DOWNLOADING'}
           onClick={handleCheckUpdate}
-          className="px-3.5 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-white flex items-center justify-center gap-2 transition active:scale-95 shadow-xs disabled:opacity-50 self-start sm:self-auto"
+          className="px-3.5 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-white flex items-center justify-center gap-2 transition active:scale-95 shadow-xs disabled:opacity-50 self-start sm:self-auto cursor-pointer"
         >
-          {isCheckingUpdate ? (
+          {isCheckingUpdate || updateStatus?.state === 'CHECKING' ? (
             <>
               <RefreshCw size={14} className="animate-spin text-teal-400" />
               <span>Checking...</span>
@@ -107,9 +184,128 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
         </button>
       </div>
 
-      {/* Grid: Diagnostics & Shortcuts */}
-      <div className="w-full">
+      {/* Real Live Update System Card */}
+      {updateStatus && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4 animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start space-x-3">
+              <div className="mt-0.5 shrink-0">
+                {updateStatus.state === 'NOT_AVAILABLE' && (
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                    <CheckCircle2 size={18} />
+                  </div>
+                )}
+                {updateStatus.state === 'AVAILABLE' && (
+                  <div className="w-8 h-8 rounded-xl bg-teal-500/10 flex items-center justify-center text-teal-400">
+                    <DownloadCloud size={18} />
+                  </div>
+                )}
+                {updateStatus.state === 'DOWNLOADING' && (
+                  <div className="w-8 h-8 rounded-xl bg-teal-500/10 flex items-center justify-center text-teal-400">
+                    <RefreshCw size={18} className="animate-spin" />
+                  </div>
+                )}
+                {updateStatus.state === 'DOWNLOADED' && (
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                    <CheckCircle2 size={18} />
+                  </div>
+                )}
+                {updateStatus.state === 'ERROR' && (
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500">
+                    <AlertCircle size={18} />
+                  </div>
+                )}
+                {updateStatus.state === 'CHECKING' && (
+                  <div className="w-8 h-8 rounded-xl bg-slate-500/10 flex items-center justify-center text-slate-400">
+                    <RefreshCw size={18} className="animate-spin" />
+                  </div>
+                )}
+                {updateStatus.state === 'IDLE' && (
+                  <div className="w-8 h-8 rounded-xl bg-slate-500/10 flex items-center justify-center text-slate-400">
+                    <Info size={18} />
+                  </div>
+                )}
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white">
+                  {updateStatus.state === 'NOT_AVAILABLE' && "You're up to date"}
+                  {updateStatus.state === 'AVAILABLE' && `Update Available — v${updateStatus.availableVersion}`}
+                  {updateStatus.state === 'DOWNLOADING' && `Downloading Update (${updateStatus.progress?.percent || 0}%)`}
+                  {updateStatus.state === 'DOWNLOADED' && `Update Ready to Install — v${updateStatus.availableVersion}`}
+                  {updateStatus.state === 'ERROR' && 'Update Check Notice'}
+                  {updateStatus.state === 'CHECKING' && 'Checking updates server...'}
+                  {updateStatus.state === 'IDLE' && 'Automatic Update Verification'}
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  {updateStatus.state === 'NOT_AVAILABLE' && `MAHI Browser v${updateStatus.currentVersion || appVersion} is the latest version available on the ${updateStatus.channel || 'STABLE'} release channel.`}
+                  {updateStatus.state === 'AVAILABLE' && `A new build v${updateStatus.availableVersion} is ready for installation. Current installed: v${updateStatus.currentVersion || appVersion}.`}
+                  {updateStatus.state === 'DOWNLOADING' && `Transferred ${Math.round((updateStatus.progress?.transferred || 0) / 1024 / 1024)} MB of ${Math.round((updateStatus.progress?.total || 0) / 1024 / 1024)} MB`}
+                  {updateStatus.state === 'DOWNLOADED' && `The update has been cryptographically verified and is ready to install.`}
+                  {updateStatus.state === 'ERROR' && (updateStatus.error || 'Could not connect to update feed. Please check your network.')}
+                  {updateStatus.state === 'CHECKING' && 'Contacting https://mahibrowser.com/update/ to check release metadata...'}
+                  {updateStatus.state === 'IDLE' && `Click "Check for Updates" to verify against the official production release feed.`}
+                </p>
+              </div>
+            </div>
 
+            {/* Action buttons */}
+            <div className="flex items-center gap-2 shrink-0">
+              {updateStatus.state === 'AVAILABLE' && (
+                <button
+                  type="button"
+                  disabled={isDownloading}
+                  onClick={handleDownloadUpdate}
+                  className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  <DownloadCloud size={14} />
+                  <span>{isDownloading ? 'Downloading...' : 'Download Update'}</span>
+                </button>
+              )}
+              {updateStatus.state === 'DOWNLOADED' && (
+                <button
+                  type="button"
+                  onClick={handleInstallUpdate}
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition active:scale-95 shadow-xs cursor-pointer"
+                >
+                  <RefreshCw size={14} />
+                  <span>Restart & Install</span>
+                </button>
+              )}
+              {updateStatus.state === 'ERROR' && (
+                <button
+                  type="button"
+                  onClick={handleCheckUpdate}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <RefreshCw size={13} />
+                  <span>Retry</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Progress bar for DOWNLOADING */}
+          {updateStatus.state === 'DOWNLOADING' && (
+            <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-teal-500 h-full rounded-full transition-all duration-300"
+                style={{ width: `${updateStatus.progress?.percent || 0}%` }}
+              />
+            </div>
+          )}
+
+          {/* Release Notes */}
+          {updateStatus.releaseNotes && updateStatus.state !== 'NOT_AVAILABLE' && (
+            <div className="p-3 bg-slate-50 dark:bg-slate-950/70 border border-slate-100 dark:border-slate-800/80 rounded-xl text-[11px] text-slate-600 dark:text-slate-300">
+              <span className="font-bold text-slate-400 block mb-1 uppercase tracking-wider text-[10px]">Release Notes</span>
+              <p className="whitespace-pre-line">{updateStatus.releaseNotes}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Grid: Shortcuts */}
+      <div className="w-full">
         {/* Keyboard Shortcuts */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
           <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-100">
@@ -145,8 +341,7 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
           </div>
         </div>
       </div>
-
-
     </div>
   );
 };
+

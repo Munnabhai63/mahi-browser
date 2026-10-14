@@ -168,10 +168,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       {/* Render Clean Workspace Dashboard */}
       <StudentWorkspaceDashboard onNavigate={onNavigate} />
 
-      {/* Master Vault Modal */}
+      {/* Master Vault Modal (Standardized Shell - GAP-07) */}
       {isVaultModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
-          <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden text-slate-800 dark:text-slate-100 flex flex-col">
+          <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden text-slate-800 dark:text-slate-100 flex flex-col">
             <div className="bg-slate-50 dark:bg-slate-800/80 px-6 py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-sm">
@@ -222,15 +222,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
               ) : (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
-                      <Upload size={14} className="text-emerald-500" />
-                      Paste .mahi-vault File Contents (JSON):
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                        <Upload size={14} className="text-emerald-500" />
+                        Select or Paste .mahi-vault Backup:
+                      </label>
+                      <label className="cursor-pointer text-xs font-medium text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1 rounded-lg border border-emerald-500/20 transition-all flex items-center gap-1">
+                        <span>Browse File...</span>
+                        <input
+                          type="file"
+                          accept=".mahi-vault,.json"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                const content = event.target?.result as string;
+                                if (content) setImportBundleText(content);
+                              };
+                              reader.readAsText(file);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
                     <textarea
                       rows={5}
                       value={importBundleText}
                       onChange={(e) => setImportBundleText(e.target.value)}
-                      placeholder="Paste the JSON text from your .mahi-vault backup file..."
+                      placeholder="Browse a .mahi-vault file above, or paste raw JSON backup text here..."
                       className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-800 dark:text-slate-300 focus:outline-none focus:border-emerald-500"
                     />
                   </div>

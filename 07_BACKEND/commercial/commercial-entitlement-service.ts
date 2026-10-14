@@ -202,7 +202,11 @@ export function evaluateUserEntitlements(
 
   let subscription: CommercialSubscription | undefined;
   if (subRow) {
-    const isExpired = subRow.expires_at && new Date(subRow.expires_at).getTime() <= Date.now();
+    const isTrialSub = subRow.billing_cycle === 'TRIAL';
+    const isExpired = Boolean(
+      (subRow.expires_at && new Date(subRow.expires_at).getTime() <= Date.now()) ||
+      (isTrialSub && user.trialExpiresAt && new Date(user.trialExpiresAt).getTime() <= Date.now())
+    );
     subscription = {
       id: subRow.id,
       userId: subRow.user_id,
@@ -248,13 +252,14 @@ export function evaluateUserEntitlements(
   const runningCount = processManager.getRunningCount();
 
   const isDeviceAuthorized = devReg.success;
-  const isSubActive = !subscription || subscription.status === 'ACTIVE' || subscription.status === 'TRIAL';
+  const isTrialUser = user.signupIntent === 'trial';
   const isTrialActive = Boolean(user.trialExpiresAt && new Date(user.trialExpiresAt).getTime() > Date.now());
-  const effectivePlanObj = isSubActive ? plan : defaultFreePlan;
-  const capabilities = resolveCapabilitiesForPlan(plan, subscription);
+  const isSubActive = Boolean(subscription && (subscription.status === 'ACTIVE' || subscription.status === 'TRIAL') && !(subscription.expiresAt && new Date(subscription.expiresAt).getTime() <= Date.now()));
+  const effectivePlanObj = (isTrialUser && !isTrialActive && !isSubActive) ? defaultFreePlan : (isSubActive ? plan : defaultFreePlan);
+  const capabilities = resolveCapabilitiesForPlan(effectivePlanObj, subscription);
 
-  const trialPlanId = (user.signupIntent === 'trial' && isTrialActive) ? 'trial_50' : (effectivePlanObj.id.replace('plan_', '') || 'free');
-  const effectiveMaxProfiles = (user.signupIntent === 'trial' && isTrialActive) ? 50 : effectivePlanObj.limits.maxProfiles;
+  const trialPlanId = (isTrialUser && isTrialActive) ? 'trial_50' : (effectivePlanObj.id.replace('plan_', '') || 'free');
+  const effectiveMaxProfiles = (isTrialUser && isTrialActive) ? 50 : effectivePlanObj.limits.maxProfiles;
 
   return {
     allowed: isDeviceAuthorized,

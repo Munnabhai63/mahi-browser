@@ -314,6 +314,8 @@ export interface MahiBrowserAPI {
   getUpdateStatus: () => Promise<UpdateStatusEvent>;
   getUpdateConfig: () => Promise<UpdateConfig>;
   setUpdateConfig: (config: Partial<UpdateConfig>) => Promise<UpdateConfig>;
+  getAppVersion: () => Promise<string>;
+
 
   // Resource Monitoring & Memory Optimizer
   getFleetResources: () => Promise<FleetResourceSummary>;
@@ -404,7 +406,9 @@ export interface MahiBrowserAPI {
   accountGetPaymentInfo: () => Promise<any>;
   accountSubmitManualUpiPayment: (payload: { plan_id: string; utr: string; proof_asset?: string }) => Promise<{ success: boolean; payment_id?: string; status?: string; message?: string; error?: string }>;
   accountGetSession: () => Promise<any>;
-  accountGetPlanLimits: () => Promise<{ isPro: boolean; plan: string; maxProfiles: number; expiresAt: string | null }>;
+  accountGetPlanLimits: (dto?: { force?: boolean }) => Promise<{ isPro: boolean; plan: string; maxProfiles: number; expiresAt: string | null }>;
+  accountRefreshPlanLimits: () => Promise<{ isPro: boolean; plan: string; maxProfiles: number; expiresAt: string | null }>;
+
   accountVerifyEmail: (dto: { token: string }) => Promise<{ success: boolean; error?: string }>;
   accountResendVerification: (dto: { email: string }) => Promise<{ success: boolean; error?: string }>;
   accountForgotPassword: (dto: { email: string }) => Promise<{ success: boolean; message?: string; error?: string }>;
@@ -413,6 +417,8 @@ export interface MahiBrowserAPI {
   accountRevokeSession: (dto: { sessionId: string }) => Promise<{ success: boolean; error?: string }>;
   accountRevokeAllSessions: (dto?: { keepCurrent?: boolean }) => Promise<{ success: boolean; error?: string }>;
   accountRefreshToken: () => Promise<{ success: boolean; token?: string; error?: string }>;
+  accountStartDesktopOAuth?: (planId?: string) => Promise<{ success: boolean; ticket: string; authUrl: string; error?: string }>;
+  accountExchangeDesktopCode?: (dto: { ticket: string; code: string } | string, code?: string) => Promise<{ success: boolean; token?: string; user?: any; error?: string }>;
   onAccountStatusChanged?: (callback: (data: any) => void) => () => void;
 
   // Event Listeners
@@ -423,6 +429,7 @@ export interface MahiBrowserAPI {
   onEngineDownloadProgress: (callback: (status: ManagedEngineStatus) => void) => () => void;
   onLicenseStatusChanged: (callback: (status: any) => void) => () => void;
   onLicenseStatusToast: (callback: (toast: { title: string; message: string; type: string }) => void) => () => void;
+  isDesktop?: boolean;
 }
 
 export interface ManagedEngineStatus {

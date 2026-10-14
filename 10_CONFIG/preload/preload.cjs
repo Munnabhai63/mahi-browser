@@ -205,6 +205,7 @@ const api = {
   getUpdateStatus: () => ipcRenderer.invoke('updater:getStatus'),
   getUpdateConfig: () => ipcRenderer.invoke('updater:getConfig'),
   setUpdateConfig: (config) => ipcRenderer.invoke('updater:setConfig', config),
+  getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
 
   // Resource Monitoring & Memory Optimizer
   getFleetResources: () => ipcRenderer.invoke('resources:getFleetUsage'),
@@ -350,6 +351,7 @@ const api = {
   accountSubmitManualUpiPayment: (payload) => ipcRenderer.invoke('account:submitManualUpiPayment', payload),
   accountGetSession: () => ipcRenderer.invoke('account:getSession'),
   accountGetPlanLimits: () => ipcRenderer.invoke('account:getPlanLimits'),
+  accountRefreshPlanLimits: () => ipcRenderer.invoke('account:refreshPlanLimits'),
   accountVerifyEmail: (dto) => ipcRenderer.invoke('account:verifyEmail', dto),
   accountResendVerification: (dto) => ipcRenderer.invoke('account:resendVerification', dto),
   accountForgotPassword: (dto) => ipcRenderer.invoke('account:forgotPassword', dto),

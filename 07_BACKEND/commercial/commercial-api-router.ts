@@ -226,6 +226,215 @@ function checkAdminAuth(req: http.IncomingMessage, body?: any): { isAdmin: boole
   };
 }
 
+// ============================================================================
+// Desktop OAuth SSO Handoff Tickets & Completion Page (GoLogin Parity)
+// ============================================================================
+export interface DesktopAuthTicket {
+  handoff: string;
+  codeChallenge?: string;
+  authCode?: string;
+  token?: string;
+  user?: any;
+  email?: string;
+  planId?: string;
+  createdAt: number;
+  expiresAt: number;
+  codeExpiresAt?: number;
+  used?: boolean;
+}
+export const desktopAuthTickets = new Map<string, DesktopAuthTicket>();
+
+export function getDesktopAuthSuccessHtml(params: {
+  handoff: string;
+  code: string;
+  email: string;
+  plan?: string;
+}): string {
+  const { handoff, code, email, plan = 'trial' } = params;
+  const safeEmail = (email || 'user@mahibrowser.com').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const isPro = (plan || '').toLowerCase().includes('pro');
+  const planLabel = isPro ? 'MAHI PRO • Unlimited Multi-Accounting' : 'Active 7-Day Trial • 50 Profiles';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MAHI Browser — Signed In Successfully</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: radial-gradient(circle at 50% 20%, #0f172a 0%, #020617 100%);
+      color: #f8fafc;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .card {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      backdrop-filter: blur(16px);
+      border-radius: 24px;
+      padding: 2.75rem 2.25rem;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 40px rgba(16, 185, 129, 0.12);
+      animation: fadeIn 0.4s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .icon-wrap {
+      width: 72px;
+      height: 72px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 2px solid rgba(16, 185, 129, 0.4);
+      color: #10b981;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem;
+      box-shadow: 0 0 24px rgba(16, 185, 129, 0.25);
+    }
+    .icon-wrap svg {
+      width: 36px;
+      height: 36px;
+    }
+    h1 {
+      font-size: 1.45rem;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.02em;
+    }
+    .user-pill {
+      display: inline-block;
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(51, 65, 85, 0.8);
+      border-radius: 9999px;
+      padding: 0.4rem 1rem;
+      font-size: 0.8125rem;
+      color: #38bdf8;
+      font-weight: 600;
+      margin: 0.75rem 0 0.5rem;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .plan-badge {
+      display: inline-block;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      padding: 0.25rem 0.65rem;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1.25rem;
+    }
+    p.desc {
+      color: #94a3b8;
+      font-size: 0.875rem;
+      line-height: 1.5;
+      margin-bottom: 2rem;
+    }
+    .btn-return {
+      display: block;
+      width: 100%;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.875rem;
+      padding: 0.875rem 1.25rem;
+      border-radius: 14px;
+      transition: all 0.2s ease;
+      box-shadow: 0 10px 20px -5px rgba(16, 185, 129, 0.35);
+      border: none;
+      cursor: pointer;
+    }
+    .btn-return:hover {
+      background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+      transform: translateY(-1px);
+    }
+    .status-text {
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+    </div>
+    <h1>Authentication Successful</h1>
+    <div>
+      <span class="user-pill">${safeEmail}</span>
+    </div>
+    <div>
+      <span class="plan-badge">${planLabel}</span>
+    </div>
+    <p class="desc">
+      Your account is authenticated and ready. MAHI Browser Desktop has been notified automatically.
+    </p>
+
+    <a href="mahi://auth?code=${encodeURIComponent(code)}&ticket=${encodeURIComponent(handoff)}" class="btn-return" id="openAppBtn">
+      Open MAHI Browser Desktop
+    </a>
+
+    <p class="status-text" id="statusMessage">
+      Connecting to your desktop application...
+    </p>
+  </div>
+
+  <script>
+    const code = ${JSON.stringify(code)};
+    const ticket = ${JSON.stringify(handoff)};
+    const deepLinkUrl = "mahi://auth?code=" + encodeURIComponent(code) + "&ticket=" + encodeURIComponent(ticket);
+
+    // 1. Send single-use authorization code to local daemon on port 32123 (CORS fetch)
+    fetch("http://127.0.0.1:32123/api/v1/auth/desktop-handoff", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticket: ticket, code: code })
+    }).then(r => r.json()).then(data => {
+      document.getElementById('statusMessage').textContent = "✓ Connected to MAHI Browser Desktop!";
+      document.getElementById('statusMessage').style.color = "#10b981";
+    }).catch(() => {
+      // Local daemon might not be on port 32123 or blocked; deep link and status polling handle fallback cleanly
+    });
+
+    // 2. Launch custom protocol to focus running app
+    setTimeout(() => {
+      try {
+        window.location.href = deepLinkUrl;
+      } catch (e) {}
+    }, 400);
+
+    // 3. Auto-close tab if supported
+    setTimeout(() => {
+      try { window.close(); } catch (e) {}
+    }, 4000);
+  </script>
+</body>
+</html>`;
+}
+
 export async function handleCommercialApiRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -400,7 +609,7 @@ export async function handleCommercialApiRoutes(
   }
 
   // ============================================================================
-  // Google OAuth SSO Endpoints (Phase 19)
+  // Google OAuth SSO Endpoints (Phase 19 & GoLogin Workflow Parity)
   // ============================================================================
 
   // 1. OAuth Start: Redirects browser to Google OAuth consent
@@ -409,12 +618,24 @@ export async function handleCommercialApiRoutes(
     const planId = parsedUrl.searchParams.get('plan') || parsedUrl.searchParams.get('planId') || 'professional_50';
     const billingCycle = parsedUrl.searchParams.get('billing') || parsedUrl.searchParams.get('billingCycle') || 'annual';
     const returnUrl = parsedUrl.searchParams.get('returnUrl') || parsedUrl.searchParams.get('return_url') || '';
+    const handoff = parsedUrl.searchParams.get('handoff') || '';
+    const codeChallenge = parsedUrl.searchParams.get('code_challenge') || '';
+
+    if (handoff) {
+      desktopAuthTickets.set(handoff, {
+        handoff,
+        codeChallenge,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 10 * 60 * 1000,
+      });
+    }
 
     const auth = generateOAuthAuthorization({
       intent,
       planId,
       billingCycle,
       returnUrl,
+      handoff,
     });
 
     // Check if caller requested JSON response (e.g., API client or AJAX)
@@ -489,10 +710,38 @@ export async function handleCommercialApiRoutes(
         return true;
       }
 
-      // Establish session cookie and redirect to onboarding / download
-      const targetUrl = authResult.returnUrl.startsWith('http')
+      // Check if this was a desktop login flow and update tickets with single-use authCode
+      const handoffMatch = stateRecord.returnUrl?.match(/handoff=([^&]+)/);
+      const handoffTicket = handoffMatch ? decodeURIComponent(handoffMatch[1]) : '';
+      if (handoffTicket && desktopAuthTickets.has(handoffTicket)) {
+        const ticketRec = desktopAuthTickets.get(handoffTicket)!;
+        const authCode = 'mb_code_' + crypto.randomBytes(32).toString('hex');
+        ticketRec.authCode = authCode;
+        ticketRec.token = authResult.token;
+        ticketRec.user = authResult.user;
+        ticketRec.email = authResult.user.email;
+        ticketRec.planId = authResult.user.planId;
+        ticketRec.codeExpiresAt = Date.now() + 60 * 1000; // 60s TTL
+        ticketRec.used = false;
+      }
+
+      // Establish session cookie and redirect to onboarding / desktop-success
+      let targetUrl = authResult.returnUrl.startsWith('http')
         ? authResult.returnUrl
         : `${authResult.returnUrl}${authResult.returnUrl.includes('?') ? '&' : '?'}token=${authResult.token}&login=success`;
+
+      if (stateRecord.intent === 'desktop_login' || authResult.returnUrl.includes('/auth/desktop-success')) {
+        const ticketRec = handoffTicket ? desktopAuthTickets.get(handoffTicket) : null;
+        const codeParam = ticketRec?.authCode ? `&code=${encodeURIComponent(ticketRec.authCode)}` : '';
+        targetUrl = `/auth/desktop-success?handoff=${encodeURIComponent(handoffTicket)}${codeParam}&email=${encodeURIComponent(authResult.user.email)}&plan=${encodeURIComponent(authResult.user.planId || 'trial')}`;
+
+        // CRITICAL SECURITY HARDENING: Never expose raw JWT session token in redirect URL, query strings or cookies!
+        res.writeHead(302, {
+          Location: targetUrl,
+        });
+        res.end();
+        return true;
+      }
 
       res.writeHead(302, {
         Location: targetUrl,
@@ -507,6 +756,135 @@ export async function handleCommercialApiRoutes(
       res.end();
       return true;
     }
+  }
+
+  // 2.1 Desktop Auth Status Polling (Fallback for environments without custom protocol or loopback)
+  if (routePath === '/api/v1/auth/desktop-status' && method === 'GET') {
+    const ticket = parsedUrl.searchParams.get('ticket');
+    if (!ticket) {
+      sendJSON(res, 400, { success: false, error: 'Ticket parameter required' });
+      return true;
+    }
+    const record = desktopAuthTickets.get(ticket);
+    if (!record || record.expiresAt < Date.now()) {
+      sendJSON(res, 200, { success: false, error: 'Ticket expired or not found', authenticated: false });
+      return true;
+    }
+    // Return single-use code to polling client. Never expose raw token!
+    if (record.authCode && !record.used && record.codeExpiresAt && record.codeExpiresAt > Date.now()) {
+      sendJSON(res, 200, {
+        success: true,
+        authenticated: true,
+        code: record.authCode,
+        ticket: record.handoff,
+        email: record.email,
+        plan: record.planId,
+      });
+      return true;
+    }
+    sendJSON(res, 200, { success: true, authenticated: false });
+    return true;
+  }
+
+  // 2.2 Secure PKCE Authorization Code Exchange (RFC 8252 Hardened)
+  if (routePath === '/api/v1/auth/desktop-exchange' && method === 'POST') {
+    let body: any = {};
+    try {
+      body = await parseBody(req);
+    } catch {
+      sendJSON(res, 400, { success: false, error: 'Invalid JSON payload' });
+      return true;
+    }
+    const { ticket, code, code_verifier } = body;
+    if (!ticket || !code || !code_verifier) {
+      sendJSON(res, 400, { success: false, error: 'ticket, code, and code_verifier are required' });
+      return true;
+    }
+
+    const record = desktopAuthTickets.get(ticket);
+    if (!record) {
+      sendJSON(res, 403, { success: false, error: 'Invalid or expired handoff ticket' });
+      return true;
+    }
+
+    if (record.used) {
+      desktopAuthTickets.delete(ticket);
+      sendJSON(res, 403, { success: false, error: 'Authorization code already consumed (replay prevented)' });
+      return true;
+    }
+
+    if (record.codeExpiresAt && record.codeExpiresAt < Date.now()) {
+      desktopAuthTickets.delete(ticket);
+      sendJSON(res, 403, { success: false, error: 'Authorization code expired' });
+      return true;
+    }
+
+    if (record.authCode !== code) {
+      sendJSON(res, 403, { success: false, error: 'Authorization code mismatch' });
+      return true;
+    }
+
+    // Verify PKCE challenge if challenge was registered
+    if (record.codeChallenge) {
+      const hashHex = crypto.createHash('sha256').update(code_verifier).digest('hex');
+      const hashBase64Url = crypto.createHash('sha256').update(code_verifier).digest('base64url');
+      if (record.codeChallenge !== hashHex && record.codeChallenge !== hashBase64Url) {
+        desktopAuthTickets.delete(ticket);
+        sendJSON(res, 403, { success: false, error: 'PKCE code verification failed' });
+        return true;
+      }
+    }
+
+    // Mark used and consume single-use ticket immediately
+    record.used = true;
+    const issuedToken = record.token;
+    const userProfile = record.user;
+    desktopAuthTickets.delete(ticket);
+
+    sendJSON(res, 200, {
+      success: true,
+      token: issuedToken,
+      user: userProfile,
+      message: 'Authentication completed successfully'
+    });
+    return true;
+  }
+
+  // 2.3 Desktop Loopback Handoff (Invoked by browser completion page to local daemon port 32123)
+  if (routePath === '/api/v1/auth/desktop-handoff' && method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const { ticket, code } = body;
+      if (ticket && code) {
+        const { exchangeDesktopAuthCode } = await import('../../08_SECURITY/account-service.js');
+        const exchangeResult = await exchangeDesktopAuthCode(ticket, code);
+        sendJSON(res, 200, {
+          success: exchangeResult.success,
+          message: exchangeResult.success ? 'Desktop authenticated via PKCE loopback' : exchangeResult.error
+        });
+        return true;
+      }
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err?.message || 'Invalid payload' });
+      return true;
+    }
+    sendJSON(res, 400, { success: false, error: 'ticket and code are required' });
+    return true;
+  }
+
+  // 2.4 Branded Desktop Auth Completion Page (GoLogin UX Parity & Zero Token Exposure)
+  if ((routePath === '/auth/desktop-success' || routePath === '/auth/success') && method === 'GET') {
+    const code = parsedUrl.searchParams.get('code') || '';
+    const email = parsedUrl.searchParams.get('email') || '';
+    const plan = parsedUrl.searchParams.get('plan') || '';
+    const handoff = parsedUrl.searchParams.get('handoff') || '';
+    const html = getDesktopAuthSuccessHtml({ handoff, code, email, plan });
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(html);
+    return true;
   }
 
   // 3. Programmatic Google OAuth SSO Endpoint (Used by desktop, mobile, or direct API)

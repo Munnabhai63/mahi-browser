@@ -42,11 +42,24 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
     logout,
     openAccountModal,
     accountLogout,
+    planLimits,
     fetchPlanLimits,
   } = useAccountStore();
 
   const currentLicenseStatus = useLicenseStore((state) => state.currentLicenseStatus);
-  const isPro = Boolean(currentLicenseStatus?.isValid && currentLicenseStatus?.status === 'ACTIVE');
+  const isLicensePro = Boolean(currentLicenseStatus?.isValid && currentLicenseStatus?.status === 'ACTIVE');
+  const isAccountPro = Boolean(
+    planLimits?.isPro ||
+    planLimits?.plan === 'pro' ||
+    planLimits?.plan === 'trial' ||
+    currentUser?.planName?.toUpperCase() === 'PRO' ||
+    currentUser?.planName?.toUpperCase() === 'TRIAL'
+  );
+  const isPro = isLicensePro || isAccountPro;
+
+  const currentPlan = (planLimits?.plan || currentUser?.planName || (isPro ? 'pro' : 'free')).toLowerCase();
+  const isPaidOrTrial = isPro || currentPlan === 'pro' || currentPlan === 'trial' || currentPlan === 'starter' || currentPlan === 'team';
+  const planBadgeText = currentPlan === 'trial' ? 'TRIAL' : currentPlan === 'pro' ? 'PRO' : currentPlan === 'starter' ? 'STARTER' : currentPlan === 'team' ? 'TEAM' : (isPro ? 'PRO' : 'FREE');
 
   // Load authenticated session on mount
   useEffect(() => {
@@ -73,8 +86,8 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
   const isUserSignedIn = Boolean(accountSession?.token || currentUser || commercialUser);
 
   const userDisplayName = userEmail || currentUser?.displayName || (isPro ? 'MAHI PRO' : 'MAHI BROWSER');
-  const userPlanName = currentUser?.planName || (isPro ? 'PRO (100 Profiles)' : 'Free Plan (15 Profiles)');
-  const maxProfiles = currentUser?.maxProfiles || (isPro ? 100 : 15);
+  const userPlanName = isPaidOrTrial ? `${planBadgeText} (${planLimits?.maxProfiles || 100} Profiles)` : 'Free Plan (15 Profiles)';
+  const maxProfiles = planLimits?.maxProfiles || currentUser?.maxProfiles || (isPro ? 100 : 15);
 
   const profiles = useProfileStore((state) => state.profiles);
   const profilesCount = profiles.filter((p) => p.deletedAt === null || !p.deletedAt).length;
@@ -123,11 +136,13 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
                 {userEmail || userDisplayName}
               </span>
               <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
-                isPro
-                  ? 'text-teal-400 bg-teal-950/80 border border-teal-800/60'
+                isPaidOrTrial
+                  ? currentPlan === 'trial'
+                    ? 'text-sky-400 bg-sky-950/80 border border-sky-800/60'
+                    : 'text-teal-400 bg-teal-950/80 border border-teal-800/60'
                   : 'text-slate-400 bg-slate-800 border border-slate-700'
               }`}>
-                {isPro ? 'PRO' : 'FREE'}
+                {planBadgeText}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 truncate">
@@ -155,7 +170,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
                 {userEmail || userDisplayName}
               </h4>
               <p className="text-[11px] text-slate-400 truncate font-mono">
-                {isPro ? 'PRO Edition' : 'Freemium Edition'}
+                {isPaidOrTrial ? `${planBadgeText} Edition` : 'Freemium Edition'}
               </p>
 
               {/* Account Email Display */}
@@ -193,13 +208,17 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
             <button
               type="button"
               onClick={() => {
-                onNavigate('license');
+                if (isUserSignedIn) {
+                  openAccountModal();
+                } else {
+                  onNavigate('license');
+                }
                 setIsOpen(false);
               }}
               className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/80 text-teal-600 dark:text-teal-400 font-semibold transition"
             >
               <Box size={15} className="text-teal-500" />
-              <span>{isPro ? 'MAHI PRO License Status' : 'Upgrade to MAHI PRO'}</span>
+              <span>{isPaidOrTrial ? `${planBadgeText} Subscription Details` : 'Upgrade to MAHI PRO'}</span>
             </button>
 
             <button

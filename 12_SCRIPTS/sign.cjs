@@ -33,31 +33,46 @@ exports.default = async function sign(configuration) {
   const targetPath = configuration.path;
   const certPath = process.env.WIN_CSC_LINK || process.env.CSC_LINK;
   const certPassword = process.env.WIN_CSC_KEY_PASSWORD || process.env.CSC_KEY_PASSWORD;
+  const certThumbprint = process.env.CERT_THUMBPRINT || process.env.WIN_CERT_THUMBPRINT;
 
   if (!targetPath) {
     return;
   }
 
-  // 1. Production Signing Gate: Verify if genuine certificate is supplied via secure secrets
-  if (certPath && fs.existsSync(certPath) && certPassword) {
-    console.log(`[Authenticode:PRODUCTION] Signing artifact: ${path.basename(targetPath)}`);
+  const signtool = resolveSigntool();
+  const timestampServer = process.env.TIMESTAMP_SERVER || 'http://timestamp.digicert.com';
+
+  // 1A. Production Hardware Token / Certificate Store Mode (FIPS 140-2 USB Dongle / Cloud HSM)
+  if (certThumbprint) {
+    console.log(`[Authenticode:PRODUCTION:HARDWARE_TOKEN] Signing artifact: ${path.basename(targetPath)}`);
     try {
-      const signtool = resolveSigntool();
-      const timestampServer = 'http://timestamp.digicert.com';
-      
-      const cmd = `"${signtool}" sign /f "${certPath}" /p "${certPassword}" /fd sha256 /tr "${timestampServer}" /td sha256 "${targetPath}"`;
+      const cmd = `"${signtool}" sign /sha1 "${certThumbprint}" /fd sha256 /d "MAHI Browser — By Munna Bhai" /du "https://mahibrowser.com" /tr "${timestampServer}" /td sha256 "${targetPath}"`;
       execSync(cmd, { stdio: 'inherit' });
-      console.log(`[Authenticode:PRODUCTION] Successfully signed with Authenticode: ${path.basename(targetPath)}`);
+      console.log(`[Authenticode:PRODUCTION] Successfully signed with Authenticode token: ${path.basename(targetPath)}`);
       return;
     } catch (err) {
-      console.error(`[Authenticode:ERROR] Signtool failed: ${err.message}`);
+      console.error(`[Authenticode:ERROR] Signtool token signing failed: ${err.message}`);
+      throw err;
+    }
+  }
+
+  // 1B. Production PFX File Mode
+  if (certPath && fs.existsSync(certPath) && certPassword) {
+    console.log(`[Authenticode:PRODUCTION:PFX] Signing artifact: ${path.basename(targetPath)}`);
+    try {
+      const cmd = `"${signtool}" sign /f "${certPath}" /p "${certPassword}" /fd sha256 /d "MAHI Browser — By Munna Bhai" /du "https://mahibrowser.com" /tr "${timestampServer}" /td sha256 "${targetPath}"`;
+      execSync(cmd, { stdio: 'inherit' });
+      console.log(`[Authenticode:PRODUCTION] Successfully signed with Authenticode PFX: ${path.basename(targetPath)}`);
+      return;
+    } catch (err) {
+      console.error(`[Authenticode:ERROR] Signtool PFX signing failed: ${err.message}`);
       throw err;
     }
   }
 
   // 2. Development / Staging mode: Informative advisory without breaking build
   console.log(
-    `[Authenticode:CONFIGURED] No code signing certificate found in environment (WIN_CSC_LINK / CSC_LINK). ` +
+    `[Authenticode:CONFIGURED] No code signing certificate found in environment (WIN_CSC_LINK / CERT_THUMBPRINT). ` +
     `Skipping binary signing for: ${path.basename(targetPath)}. ` +
     `STATUS: PRODUCTION CODE SIGNING CREDENTIAL REQUIRED.`
   );

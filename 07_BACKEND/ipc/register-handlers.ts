@@ -17,6 +17,7 @@ import {
   submitManualUpiPayment as accountSubmitManualUpiPayment,
   getAccountSession,
   getAccountPlanLimits,
+  refreshAccountPlanLimits,
   startAccountStatusScheduler,
   refreshAccountToken,
   verifyEmail as accountVerifyEmail,
@@ -26,7 +27,9 @@ import {
   listActiveSessions as accountListActiveSessions,
   revokeSession as accountRevokeSession,
   revokeAllSessions as accountRevokeAllSessions,
-  loginWithToken as accountLoginWithToken
+  loginWithToken as accountLoginWithToken,
+  createDesktopOAuthRequest,
+  exchangeDesktopAuthCode
 } from '../../08_SECURITY/account-service.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { setActiveUserId, getActiveUserId } from '../commercial/session-context.js';
@@ -2130,9 +2133,21 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('account:getSession', async () => {
     return getAccountSession();
   });
-  ipcMain.handle('account:getPlanLimits', async () => {
-    return getAccountPlanLimits();
+  ipcMain.handle('account:getPlanLimits', async (_e, dto?: { force?: boolean }) => {
+    return refreshAccountPlanLimits(dto?.force);
   });
+  ipcMain.handle('account:refreshPlanLimits', async () => {
+    return refreshAccountPlanLimits(true);
+  });
+  ipcMain.handle('app:getVersion', async () => {
+    try {
+      if (app && typeof app.getVersion === 'function') {
+        return app.getVersion() || '1.1.3';
+      }
+    } catch {}
+    return '1.1.3';
+  });
+
   ipcMain.handle('account:verifyEmail', async (_e, dto: { token: string }) => {
     return accountVerifyEmail(dto.token);
   });
@@ -2156,6 +2171,12 @@ export function registerIpcHandlers(): void {
   });
   ipcMain.handle('account:refreshToken', async () => {
     return refreshAccountToken();
+  });
+  ipcMain.handle('account:startDesktopOAuth', async (_e, planId?: string) => {
+    return createDesktopOAuthRequest(planId);
+  });
+  ipcMain.handle('account:exchangeDesktopCode', async (_e, dto: { ticket: string; code: string }) => {
+    return exchangeDesktopAuthCode(dto.ticket, dto.code);
   });
 
   // Initialize startup cloud sync queue resumption & account status scheduler

@@ -496,6 +496,7 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     getUpdateStatus: async () => ({ state: 'IDLE' as const, currentVersion: '1.1.1', channel: 'STABLE' as const }),
     getUpdateConfig: async () => ({ channel: 'STABLE' as const, autoCheck: true, autoDownload: true, notifyBeforeRestart: true }),
     setUpdateConfig: async (config: any) => ({ channel: 'STABLE' as const, autoCheck: true, autoDownload: true, notifyBeforeRestart: true, ...config }),
+    getAppVersion: async () => '1.1.4',
 
     // Resource Monitoring & Memory Optimizer
     getFleetResources: async () => ({ totalMemoryMB: 0, totalCpuPercent: 0, activeProfilesCount: 0, profiles: {} }),
@@ -624,7 +625,11 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     getStarterTemplates: async () => [],
     getStarterTemplateById: async () => null,
     isUserNew: async () => false,
-    createProfileFromStarter: async () => ({} as any),
+    createProfileFromStarter: async () => {
+      throw new Error(
+        'DESKTOP_REQUIRED: Real antidetect browser profiles require the MAHI Browser Desktop Application. Please open MAHI Browser from desktop or run Run_MAHI_BROWSER.bat.'
+      );
+    },
 
     // Central Entitlements & Capabilities
     getEntitlements: async () => null,
@@ -709,6 +714,7 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
       message: 'Submitted for verification',
     }),
     accountGetPlanLimits: async () => ({ isPro: false, plan: 'free', maxProfiles: 15, expiresAt: null }),
+    accountRefreshPlanLimits: async () => ({ isPro: false, plan: 'free', maxProfiles: 15, expiresAt: null }),
     accountVerifyEmail: async () => ({ success: true }),
     accountResendVerification: async () => ({ success: true }),
     accountForgotPassword: async () => ({ success: true, message: 'Password reset link sent.' }),
@@ -717,6 +723,8 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     accountRevokeSession: async () => ({ success: true }),
     accountRevokeAllSessions: async () => ({ success: true }),
     accountRefreshToken: async () => ({ success: true, token: 'mock-refreshed-token' }),
+    accountStartDesktopOAuth: async () => ({ success: true, ticket: 'mock-ticket', authUrl: 'https://admin.mahibrowser.com/api/v1/auth/google/start?intent=desktop_login' }),
+    accountExchangeDesktopCode: async () => ({ success: true, token: 'mock-token', user: { id: 'mock-user', email: 'test@mahibrowser.com' } }),
     onAccountStatusChanged: () => () => {},
 
     // Commercial Proxy Provider Platform (Phase 5)
@@ -775,6 +783,7 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
       activeSessionCount: 0,
       lastUpdated: new Date().toISOString(),
     }),
+    isDesktop: false,
   };
 
   (window as any).mahiAPI = fallbackApi;

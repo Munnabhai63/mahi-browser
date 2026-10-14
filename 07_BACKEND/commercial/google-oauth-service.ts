@@ -86,6 +86,7 @@ export function isSafeInternalUrl(url?: string | null): boolean {
       '/book-demo',
       '/account',
       '/checkout',
+      '/auth',
     ];
     return ALLOWED_EXACT_OR_PREFIXES.some(prefix => 
       pathname === prefix || pathname.startsWith(prefix + '/')
@@ -100,6 +101,7 @@ export function isSafeInternalUrl(url?: string | null): boolean {
  * Ensures consistent intent-aware destination across all auth surfaces:
  * - normal login -> /dashboard
  * - normal signup -> /dashboard
+ * - desktop login -> /auth/desktop-success (GoLogin-style seamless handoff)
  * - trial signup/login -> /dashboard?onboarding=trial (&plan=...)
  * - explicit download CTA -> /download
  * - paid plan intent -> /pricing?plan=...&billing=...
@@ -110,8 +112,9 @@ export function resolvePostAuthRedirect(params: {
   planId?: string;
   billingCycle?: string;
   returnUrl?: string;
+  handoff?: string;
 } = {}): string {
-  const { intent, planId, billingCycle, returnUrl } = params;
+  const { intent, planId, billingCycle, returnUrl, handoff } = params;
 
   // 1. If an explicit safe returnUrl was passed, validate and preserve it
   if (returnUrl && isSafeInternalUrl(returnUrl)) {
@@ -120,6 +123,10 @@ export function resolvePostAuthRedirect(params: {
 
   // 2. Intent-based canonical routing
   const normalizedIntent = (intent || '').toLowerCase();
+
+  if (normalizedIntent === 'desktop_login' || normalizedIntent === 'desktop') {
+    return handoff ? `/auth/desktop-success?handoff=${encodeURIComponent(handoff)}` : '/auth/desktop-success';
+  }
 
   if (normalizedIntent === 'download') {
     return '/download';
@@ -180,6 +187,7 @@ export function generateOAuthAuthorization(params: {
   billingCycle?: string;
   returnUrl?: string;
   redirectUri?: string;
+  handoff?: string;
 }): { authUrl: string; state: string; nonce: string; configured: boolean; redirectUri: string } {
   const config = getGoogleOAuthConfig();
   const db = getDatabase();
@@ -197,6 +205,7 @@ export function generateOAuthAuthorization(params: {
     planId,
     billingCycle,
     returnUrl: params.returnUrl,
+    handoff: params.handoff,
   });
   const redirectUri = params.redirectUri || config.defaultRedirectUri;
 

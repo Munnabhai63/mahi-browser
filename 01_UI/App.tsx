@@ -92,13 +92,20 @@ export const App: React.FC = () => {
         useAccountStore.getState().fetchPlanLimits().catch(() => {});
       });
 
+      const handleWindowFocus = () => {
+        useAccountStore.getState().fetchPlanLimits().catch(() => {});
+      };
+      window.addEventListener('focus', handleWindowFocus);
+
       return () => {
         unsubStatus();
         unsubLogs();
         unsubAccount?.();
+        window.removeEventListener('focus', handleWindowFocus);
       };
     }
   }, []);
+
 
   // When commercial user state changes, refresh profiles
   useEffect(() => {

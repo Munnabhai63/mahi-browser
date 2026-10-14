@@ -253,9 +253,31 @@ export async function checkForAppUpdates(manual = true, overrideChannel?: Update
     if (app && app.isPackaged) {
       const autoUpdater = getAutoUpdater();
       autoUpdater.channel = targetChannel === 'BETA' ? 'beta' : 'latest';
-      await autoUpdater.checkForUpdates();
+      const checkResult = await autoUpdater.checkForUpdates();
+      if (checkResult && checkResult.updateInfo) {
+        const remoteVersion = checkResult.updateInfo.version;
+        const currentVer = getSafeAppVersion();
+        const cmp = compareSemVer(remoteVersion, currentVer);
+        if (cmp > 0) {
+          updateStatus = {
+            state: 'AVAILABLE',
+            currentVersion: currentVer,
+            availableVersion: remoteVersion,
+            releaseNotes: typeof checkResult.updateInfo.releaseNotes === 'string' ? checkResult.updateInfo.releaseNotes : undefined,
+            channel: targetChannel,
+          };
+        } else {
+          updateStatus = {
+            state: 'NOT_AVAILABLE',
+            currentVersion: currentVer,
+            channel: targetChannel,
+          };
+        }
+        broadcastStatus(updateStatus);
+      }
       return updateStatus;
     }
+
 
     // 2. Standalone / Dev / Test Provider Path
     const provider = getActiveUpdateProvider();

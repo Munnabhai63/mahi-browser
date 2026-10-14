@@ -24,6 +24,10 @@ import {
   Zap,
   Cloud,
   UploadCloud,
+  Loader2,
+  X,
+  ChevronDown,
+  Check,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useProxyStore } from '../stores/useProxyStore.js';
@@ -133,6 +137,35 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
 
   // Synchronizer State
   const [isSyncActive, setIsSyncActive] = useState(false);
+
+  // Context Menu State (GAP-03)
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    profile: Profile;
+  } | null>(null);
+
+  // Folder Overflow Dropdown State (GAP-04)
+  const [isFolderOverflowOpen, setIsFolderOverflowOpen] = useState(false);
+
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      setContextMenu(null);
+      setIsFolderOverflowOpen(false);
+    };
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setContextMenu(null);
+        setIsFolderOverflowOpen(false);
+      }
+    };
+    window.addEventListener('click', handleGlobalClick);
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('click', handleGlobalClick);
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, []);
 
 
   const toggleSynchronizer = async () => {
@@ -267,6 +300,19 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
     }
     return true;
   });
+
+  // Pagination State for Scale & Performance (GAP-09)
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 50;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter.searchQuery, activeFolderTab]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProfiles.length / pageSize));
+  const paginatedProfiles = filteredProfiles.length > 50
+    ? filteredProfiles.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+    : filteredProfiles;
 
   const handleOpenQuickCreate = () => {
     setQuickName(`Profile ${profiles.length + 1}`);
@@ -919,13 +965,16 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
     <div className="h-full flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden font-sans">
       {/* Top GoLogin-Style Header Bar */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
-        {/* Left: GoLogin-Style Folder Tabs */}
+        {/* Left: GoLogin-Style Folder Tabs with Overflow Containment (GAP-04) */}
         <div className="flex items-center space-x-2">
-          {folders.map((folder) => (
+          {folders.slice(0, 5).map((folder) => (
             <button
               key={folder}
-              onClick={() => setActiveFolderTab(folder)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              onClick={() => {
+                setActiveFolderTab(folder);
+                setIsFolderOverflowOpen(false);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
                 activeFolderTab === folder
                   ? 'bg-slate-200/80 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold shadow-xs'
                   : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-850'
@@ -934,6 +983,61 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
               {folder === 'ALL' ? 'All profiles' : folder}
             </button>
           ))}
+
+          {folders.length > 5 && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsFolderOverflowOpen((prev) => !prev);
+                }}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1 border ${
+                  folders.slice(5).includes(activeFolderTab)
+                    ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/30 font-semibold'
+                    : 'text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-850'
+                }`}
+                title="More folders"
+              >
+                <span>
+                  {folders.slice(5).includes(activeFolderTab)
+                    ? activeFolderTab
+                    : `More (${folders.length - 5})`}
+                </span>
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+
+              {isFolderOverflowOpen && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute left-0 top-full mt-1.5 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 py-1.5 max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in duration-100"
+                >
+                  <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Folders ({folders.length - 5})
+                  </div>
+                  {folders.slice(5).map((folder) => (
+                    <button
+                      key={folder}
+                      type="button"
+                      onClick={() => {
+                        setActiveFolderTab(folder);
+                        setIsFolderOverflowOpen(false);
+                      }}
+                      className={`w-full px-3 py-1.5 text-xs text-left flex items-center justify-between transition-colors ${
+                        activeFolderTab === folder
+                          ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400 font-semibold'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <span className="truncate">{folder}</span>
+                      {activeFolderTab === folder && <Check className="w-3.5 h-3.5 text-teal-500 shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <button
             onClick={() => onNavigate('workspaces')}
             className="px-2 py-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-xs font-bold"
@@ -978,8 +1082,18 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
               value={filter.searchQuery || ''}
               onChange={(e) => setFilter({ searchQuery: e.target.value })}
               placeholder="Search profiles or notes..."
-              className="w-full pl-9 pr-3 py-1.5 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500"
+              className="w-full pl-9 pr-7 py-1.5 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500"
             />
+            {filter.searchQuery && (
+              <button
+                type="button"
+                onClick={() => setFilter({ searchQuery: '' })}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-0.5"
+                title="Clear search"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
           </div>
 
           <button
@@ -999,13 +1113,13 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
             <span>Quick Profile</span>
           </button>
 
-          {/* Bulk Create Button */}
+          {/* Bulk Create Button (Normalized Teal Brand Accent - GAP-02) */}
           <button
             onClick={() => setIsBulkModalOpen(true)}
-            className="px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/20 flex items-center space-x-1.5 active:scale-95 transition-all"
+            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold text-xs rounded-xl shadow-xs flex items-center space-x-1.5 active:scale-95 transition-all"
             title="Create 5, 10, 20 or more profiles at once"
           >
-            <Layers className="w-4 h-4" />
+            <Layers className="w-4 h-4 text-teal-500" />
             <span>Bulk Create</span>
           </button>
 
@@ -1151,6 +1265,7 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
             onNavigate={onNavigate}
             onOpenUniversalImport={() => setIsUniversalImportOpen(true)}
             isStandaloneTab={profiles.length > 0 && activeFolderTab === 'STARTER_TEMPLATES'}
+            onSwitchToAllProfiles={() => setActiveFolderTab('ALL')}
           />
         </div>
       ) : (
@@ -1217,7 +1332,7 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-              {filteredProfiles.map((p) => {
+              {paginatedProfiles.map((p) => {
                 const proxy = proxies.find((px) => px.id === p.settings?.network?.proxyId);
                 const isRunning = p.status === 'RUNNING';
                 const isStarting = p.status === 'STARTING';
@@ -1225,7 +1340,15 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
                 return (
                   <tr
                     key={p.id}
-                    className="hover:bg-slate-50 dark:hover:bg-slate-850/50 transition-colors group"
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      const menuWidth = 208;
+                      const menuHeight = 260;
+                      const x = Math.min(e.clientX, window.innerWidth - menuWidth - 16);
+                      const y = Math.min(e.clientY, window.innerHeight - menuHeight - 16);
+                      setContextMenu({ x, y, profile: p });
+                    }}
+                    className="hover:bg-slate-50 dark:hover:bg-slate-850/50 transition-colors group cursor-context-menu"
                   >
                     {/* Checkbox */}
                     <td className="py-3.5 px-4 text-center">
@@ -1263,10 +1386,17 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
                           className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center space-x-1.5 transition-all duration-150 active:scale-95 shadow-xs ${
                             isRunning
                               ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 border border-rose-500/30 hover:shadow-rose-500/10'
+                              : isStarting
+                              ? 'bg-amber-500/10 text-amber-500 border border-amber-500/30 cursor-wait'
                               : 'bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 border border-teal-500/30 hover:border-teal-500/50'
                           }`}
                         >
-                          {isRunning ? (
+                          {isStarting ? (
+                            <>
+                              <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+                              <span>Starting...</span>
+                            </>
+                          ) : isRunning ? (
                             <>
                               <Square className="w-3 h-3 fill-current" />
                               <span>Stop</span>
@@ -1484,6 +1614,36 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
             </tbody>
           </table>
         )}
+
+        {/* Pagination Controls for Scaling Fleets (GAP-09) */}
+        {filteredProfiles.length > 50 && (
+          <div className="px-6 py-3 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 select-none">
+            <span>
+              Showing {((currentPage - 1) * pageSize) + 1}–{Math.min(currentPage * pageSize, filteredProfiles.length)} of {filteredProfiles.length} profiles
+            </span>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-40 font-medium transition"
+              >
+                Previous
+              </button>
+              <span className="font-mono text-slate-700 dark:text-slate-200 px-2 font-semibold">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-40 font-medium transition"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       )}
 
@@ -1603,7 +1763,7 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
                   type="button"
                   onClick={(e) => handleQuickCreateSubmit(e, true)}
                   disabled={quickCreating}
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold rounded-xl shadow-md shadow-indigo-600/20 active:scale-95 transition-all flex items-center space-x-1.5"
+                  className="px-5 py-2.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-40 text-white font-bold rounded-xl shadow-md shadow-teal-600/20 active:scale-95 transition-all flex items-center space-x-1.5"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
                   <span>Create & Run</span>
@@ -1614,10 +1774,10 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* 🚀 Bulk Profile Creation Modal */}
+      {/* 🚀 Bulk Profile Creation Modal (Standardized Shell - GAP-07) */}
       {isBulkModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/40">
               <div className="flex items-center space-x-2.5">
                 <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
@@ -2520,6 +2680,162 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
         isOpen={isSynchronizerModalOpen}
         onClose={() => setIsSynchronizerModalOpen(false)}
       />
+
+      {/* 📋 Profile Row Right-Click Context Menu (GAP-03) */}
+      {contextMenu && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
+          className="fixed z-50 w-52 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-1.5 text-xs select-none animate-in fade-in zoom-in-95 duration-100"
+        >
+          <div className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800/80 mb-1">
+            <p className="font-bold text-slate-900 dark:text-slate-100 truncate text-[11px]">
+              {contextMenu.profile.name}
+            </p>
+            <p className="text-[10px] text-slate-400 font-mono truncate">
+              {contextMenu.profile.folder || 'General'} · {contextMenu.profile.status}
+            </p>
+          </div>
+
+          <div className="space-y-0.5">
+            {contextMenu.profile.status === 'RUNNING' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  stopProfile(contextMenu.profile.id);
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center space-x-2 px-2.5 py-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition font-medium"
+              >
+                <Square className="w-3.5 h-3.5 fill-current" />
+                <span>Stop Profile</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  startProfile(contextMenu.profile.id);
+                  setContextMenu(null);
+                }}
+                disabled={contextMenu.profile.status === 'STARTING'}
+                className="w-full flex items-center space-x-2 px-2.5 py-1.5 text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-500/10 rounded-lg transition font-medium disabled:opacity-50"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>{contextMenu.profile.status === 'STARTING' ? 'Starting...' : 'Launch Profile'}</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedProfileId(contextMenu.profile.id);
+                setContextMenu(null);
+                onNavigate('profile-settings');
+              }}
+              className="w-full flex items-center space-x-2 px-2.5 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition font-medium"
+            >
+              <SettingsIcon className="w-3.5 h-3.5 text-slate-400" />
+              <span>Edit Settings</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                await handleClone(contextMenu.profile);
+                setContextMenu(null);
+              }}
+              className="w-full flex items-center space-x-2 px-2.5 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition font-medium"
+            >
+              <Copy className="w-3.5 h-3.5 text-slate-400" />
+              <span>Duplicate Profile</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                const proxy = proxies.find((px) => px.id === contextMenu.profile.settings?.network?.proxyId);
+                if (proxy) {
+                  const proxyStr = `${proxy.protocol}://${proxy.host}:${proxy.port}`;
+                  await navigator.clipboard.writeText(proxyStr);
+                  showToast({
+                    type: 'success',
+                    title: 'Proxy Copied',
+                    message: `Copied ${proxyStr} to clipboard.`,
+                  });
+                } else {
+                  showToast({
+                    type: 'info',
+                    title: 'Direct Connection',
+                    message: 'This profile uses direct connection (no proxy).',
+                  });
+                }
+                setContextMenu(null);
+              }}
+              className="w-full flex items-center space-x-2 px-2.5 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition font-medium"
+            >
+              <Shield className="w-3.5 h-3.5 text-slate-400" />
+              <span>Copy Proxy</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedProfileId(contextMenu.profile.id);
+                setContextMenu(null);
+                onNavigate('cookies');
+              }}
+              className="w-full flex items-center space-x-2 px-2.5 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition font-medium"
+            >
+              <Cookie className="w-3.5 h-3.5 text-slate-400" />
+              <span>Export Cookies</span>
+            </button>
+
+            <div className="h-px bg-slate-100 dark:bg-slate-800/80 my-1" />
+
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteTargetId(contextMenu.profile.id);
+                setContextMenu(null);
+              }}
+              className="w-full flex items-center space-x-2 px-2.5 py-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition font-medium"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete to Trash</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 🚜 Cookie Warmer Real-Time Execution Indicator (GAP-05) */}
+      {isWarming && (
+        <div className="fixed bottom-6 right-6 z-40 bg-slate-900/95 backdrop-blur-md border border-amber-500/30 rounded-2xl shadow-2xl p-4 w-80 text-xs animate-in slide-in-from-bottom-3 duration-200">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center space-x-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
+              <span className="font-bold text-slate-100 flex items-center gap-1.5">
+                <Cookie className="w-3.5 h-3.5 text-amber-400" />
+                <span>Smart Cookie Warmer Active</span>
+              </span>
+            </div>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold uppercase">
+              {warmerMode}
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-400 mb-2.5">
+            {warmerTargetProfile
+              ? `Farming organic trust cookies for "${warmerTargetProfile.name}"...`
+              : `Bulk warming across ${selectedIds.length} selected profiles...`}
+          </p>
+          <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div className="bg-gradient-to-r from-amber-500 to-teal-400 h-1.5 rounded-full animate-pulse w-3/4 transition-all duration-500" />
+          </div>
+          <div className="flex items-center justify-between mt-2 text-[10px] text-slate-400">
+            <span>Simulating natural navigation</span>
+            <span className="text-amber-400 font-semibold">Running...</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

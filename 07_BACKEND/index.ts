@@ -106,6 +106,13 @@ if (process.platform === 'win32') {
   app.setAppUserModelId('com.mahibrowser.app');
 }
 
+// Register custom protocol client for seamless deep linking (GoLogin Parity: mahi://auth?token=...)
+try {
+  app.setAsDefaultProtocolClient('mahi');
+  logCheckpoint('Step 1: Custom protocol client "mahi" registered');
+} catch (err: unknown) {
+  writeCrashLog('PROTOCOL_CLIENT_ERROR', String(err));
+}
 
 // Single instance lock check (Non-blocking: Never terminate user window)
 logCheckpoint('Step 2: Checking Instance Status');
@@ -393,14 +400,53 @@ app.whenReady().then(async () => {
   writeCrashLog('APP_WHEN_READY_FATAL_ERROR', errObj.message, errObj.stack);
 });
 
-app.on('second-instance', () => {
+async function handleDeepLinkUrl(urlStr: string): Promise<void> {
+  try {
+    logCheckpoint('DeepLink: Processing auth handoff signal');
+    const parsed = new URL(urlStr);
+    if (parsed.protocol !== 'mahi:' || parsed.hostname !== 'auth') return;
+
+    const code = parsed.searchParams.get('code');
+    const ticket = parsed.searchParams.get('ticket');
+    if (ticket && code) {
+      const { exchangeDesktopAuthCode } = await import('../08_SECURITY/account-service.js');
+      const res = await exchangeDesktopAuthCode(ticket, code);
+      if (res.success) {
+        logCheckpoint('DeepLink: Secure PKCE exchange completed and session persisted');
+      } else {
+        logCheckpoint('DeepLink: Auth exchange rejected', res.error);
+      }
+    }
+  } catch (err: any) {
+    logCheckpoint('DeepLink: Failed to process deep link URL');
+  }
+}
+
+app.on('second-instance', (_event, argv) => {
   logCheckpoint('Event: second-instance detected - focusing or reopening main window');
+  if (Array.isArray(argv)) {
+    const deepLink = argv.find(arg => typeof arg === 'string' && arg.startsWith('mahi://'));
+    if (deepLink) {
+      handleDeepLinkUrl(deepLink);
+    }
+  }
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
   } else {
     createWindow();
+  }
+});
+
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  logCheckpoint('Event: open-url detected', url);
+  handleDeepLinkUrl(url);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
   }
 });
 

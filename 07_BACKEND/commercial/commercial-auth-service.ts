@@ -71,9 +71,11 @@ export function registerUser(dto: RegisterUserDTO, ipAddress?: string, explicitI
     return { success: false, error: 'Password must be at least 6 characters.' };
   }
 
-  const existing = db.prepare('SELECT id FROM commercial_users WHERE email = ?').get(email);
+  const existing = db.prepare('SELECT id FROM commercial_users WHERE email = ?').get(email) as any;
   if (existing) {
-    return { success: false, error: 'An account with this email address already exists.' };
+    if (!explicitId || existing.id !== explicitId) {
+      return { success: false, error: 'An account with this email address already exists.' };
+    }
   }
 
   const id = explicitId || `usr_${crypto.randomUUID()}`;
@@ -93,17 +95,31 @@ export function registerUser(dto: RegisterUserDTO, ipAddress?: string, explicitI
   const pendingPlanId = intent === 'paid' ? dto.planId || null : null;
   const pendingBillingCycle = intent === 'paid' ? dto.billingCycle || 'annual' : null;
 
-  db.prepare(`
-    INSERT INTO commercial_users (
-      id, email, password_hash, salt, name, role, status, plan_id,
-      trial_started_at, trial_expires_at, trial_used, signup_intent,
-      pending_plan_id, pending_billing_cycle, created_at, updated_at, last_login_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id, email, passwordHash, salt, name, role, status, targetPlan,
-    trialStartedAt, trialExpiresAt, trialUsed, intent,
-    pendingPlanId, pendingBillingCycle, now, now, now
-  );
+  if (existing && existing.id === explicitId) {
+    db.prepare(`
+      UPDATE commercial_users SET
+        password_hash = ?, salt = ?, name = ?, plan_id = ?,
+        trial_started_at = ?, trial_expires_at = ?, trial_used = ?, signup_intent = ?,
+        pending_plan_id = ?, pending_billing_cycle = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      passwordHash, salt, name, targetPlan,
+      trialStartedAt, trialExpiresAt, trialUsed, intent,
+      pendingPlanId, pendingBillingCycle, now, id
+    );
+  } else {
+    db.prepare(`
+      INSERT INTO commercial_users (
+        id, email, password_hash, salt, name, role, status, plan_id,
+        trial_started_at, trial_expires_at, trial_used, signup_intent,
+        pending_plan_id, pending_billing_cycle, created_at, updated_at, last_login_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, email, passwordHash, salt, name, role, status, targetPlan,
+      trialStartedAt, trialExpiresAt, trialUsed, intent,
+      pendingPlanId, pendingBillingCycle, now, now, now
+    );
+  }
 
   // If trial intent, initialize a real 7-day trial subscription
   if (isTrial) {

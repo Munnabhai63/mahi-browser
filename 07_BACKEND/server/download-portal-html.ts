@@ -273,7 +273,7 @@ export function getDownloadPortalHtml(info?: {
 
       <div class="space-y-2">
         <h2 id="download-title" class="text-2xl sm:text-3xl font-black text-white tracking-tight">Download MAHI Browser for Windows</h2>
-        <p id="download-subtitle" class="text-xs sm:text-sm text-slate-300 font-normal">Version ${version} — Windows x64</p>
+        <p id="download-subtitle" class="text-xs sm:text-sm text-slate-300 font-normal">Version ${version} — Windows x64 • By Munna Bhai</p>
       </div>
 
       <!-- Action Button -->
@@ -419,7 +419,7 @@ export function getDownloadPortalHtml(info?: {
 
   <!-- FOOTER -->
   <footer class="border-t border-slate-800/80 bg-[#050811] py-8 text-center text-xs text-slate-500 space-y-2">
-    <p>© 2026 MAHI BROWSER. All rights reserved.</p>
+    <p>© 2026 MAHI BROWSER — By Munna Bhai. All rights reserved.</p>
     <p class="text-[11px] text-slate-500">Enterprise Anti-Detect Platform • Windows 11/10 • macOS • Linux</p>
   </footer>
 

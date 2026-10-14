@@ -12,6 +12,7 @@ import {
   Search,
   Sparkles,
   Globe2,
+  Clipboard,
 } from 'lucide-react';
 import { useProxyStore } from '../stores/useProxyStore.js';
 import { useProfileStore } from '../stores/useProfileStore.js';
@@ -38,6 +39,7 @@ export const ProxyManagerPage: React.FC<ProxyManagerProps> = ({ onNavigate }) =>
   const [isTestingAll, setIsTestingAll] = useState<boolean>(false);
 
   // Form Fields
+  const [rawInput, setRawInput] = useState('');
   const [name, setName] = useState('');
   const [protocol, setProtocol] = useState<ProxyProtocol>('http');
   const [host, setHost] = useState('');
@@ -47,6 +49,52 @@ export const ProxyManagerPage: React.FC<ProxyManagerProps> = ({ onNavigate }) =>
   const [countryRegion, setCountryRegion] = useState('');
   const [notes, setNotes] = useState('');
 
+  // Smart Parser for all proxy string formats
+  const handleSmartParse = (text: string) => {
+    setRawInput(text);
+    let s = text.trim().replace(/^["']|["']$/g, '');
+    if (!s) return;
+
+    // Check protocol prefix
+    const protoMatch = s.match(/^(https?|socks[45]?):\/\//i);
+    if (protoMatch) {
+      const p = protoMatch[1].toLowerCase();
+      if (p === 'http' || p === 'https' || p === 'socks5') {
+        setProtocol(p as ProxyProtocol);
+      }
+      s = s.slice(protoMatch[0].length);
+    }
+
+    // Check user:pass@host:port
+    const atIdx = s.indexOf('@');
+    if (atIdx > 0) {
+      const creds = s.slice(0, atIdx);
+      s = s.slice(atIdx + 1);
+      const [u, ...pParts] = creds.split(':');
+      setUsername(u || '');
+      setPassword(pParts.join(':') || '');
+    }
+
+    // Parse host:port or host:port:user:pass
+    const parts = s.split(':');
+    if (parts.length >= 2) {
+      const parsedHost = parts[0].trim();
+      setHost(parsedHost);
+      const pNum = parseInt(parts[1].trim(), 10);
+      if (!isNaN(pNum)) setPort(pNum);
+
+      // host:port:user:pass
+      if (parts.length >= 4 && atIdx === -1) {
+        setUsername(parts[2].trim());
+        setPassword(parts.slice(3).join(':').trim());
+      }
+
+      if (!name) {
+        setName(`Proxy ${parsedHost}:${parts[1].trim()}`);
+      }
+    }
+  };
+
   useEffect(() => {
     fetchProxies();
     fetchProfiles();
@@ -54,6 +102,7 @@ export const ProxyManagerPage: React.FC<ProxyManagerProps> = ({ onNavigate }) =>
 
   const handleOpenAdd = () => {
     setEditingProxy(null);
+    setRawInput('');
     setName('');
     setProtocol('http');
     setHost('');
@@ -67,6 +116,7 @@ export const ProxyManagerPage: React.FC<ProxyManagerProps> = ({ onNavigate }) =>
 
   const handleOpenEdit = (p: ProxyItem) => {
     setEditingProxy(p);
+    setRawInput(`${p.protocol}://${p.host}:${p.port}`);
     setName(p.name);
     setProtocol(p.protocol);
     setHost(p.host);
@@ -317,8 +367,20 @@ export const ProxyManagerPage: React.FC<ProxyManagerProps> = ({ onNavigate }) =>
                     <td className="py-3 px-4">
                       <div className="flex items-center space-x-2">
                         {pr.status === 'CONNECTED' ? (
-                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          <span className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                            (pr.latencyMs ?? 0) <= 250
+                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                              : (pr.latencyMs ?? 0) <= 600
+                              ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                              : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              (pr.latencyMs ?? 0) <= 250
+                                ? 'bg-emerald-500 animate-pulse'
+                                : (pr.latencyMs ?? 0) <= 600
+                                ? 'bg-amber-500'
+                                : 'bg-rose-500'
+                            }`}></span>
                             <span>{pr.latencyMs !== undefined ? `${pr.latencyMs}ms` : 'Connected'}</span>
                           </span>
                         ) : pr.status === 'FAILED' ? (
@@ -389,6 +451,38 @@ export const ProxyManagerPage: React.FC<ProxyManagerProps> = ({ onNavigate }) =>
             </p>
 
             <form onSubmit={handleSave} className="space-y-3.5 text-xs">
+              {/* Quick Smart Parse Input Bar */}
+              <div className="p-3 rounded-xl bg-teal-500/10 border border-teal-500/20">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-bold text-teal-700 dark:text-teal-300 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-teal-500" />
+                    <span>Quick Smart Parse</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const txt = await navigator.clipboard.readText();
+                        if (txt) handleSmartParse(txt);
+                      } catch {
+                        // ignore clipboard read failure
+                      }
+                    }}
+                    className="text-[10px] text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-1 font-semibold"
+                  >
+                    <Clipboard className="w-2.5 h-2.5" />
+                    <span>Paste Clipboard</span>
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={rawInput}
+                  onChange={(e) => handleSmartParse(e.target.value)}
+                  placeholder="Paste ip:port:user:pass or protocol://user:pass@host:port..."
+                  className="w-full px-3 py-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-mono text-slate-800 dark:text-slate-100 focus:border-teal-500 focus:outline-none"
+                />
+              </div>
+
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Proxy Label Name <span className="text-rose-500">*</span>

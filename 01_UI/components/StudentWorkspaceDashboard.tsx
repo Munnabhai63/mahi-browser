@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   FolderPlus,
   RefreshCw,
+  Loader2,
 } from 'lucide-react';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { useLicenseStore } from '../stores/useLicenseStore.js';
@@ -30,7 +31,7 @@ interface StudentWorkspaceDashboardProps {
 }
 
 export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps> = ({ onNavigate }) => {
-  const { currentUser } = useAccountStore();
+  const { currentUser, planLimits } = useAccountStore();
   const { currentLicenseStatus, fetchCurrentStatus } = useLicenseStore();
   const { profiles, startProfile, stopProfile, setSelectedProfileId } = useProfileStore();
   const { proxies } = useProxyStore();
@@ -69,10 +70,19 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
     }
   };
 
-  const isProActive = currentLicenseStatus?.isValid && currentLicenseStatus.status === 'ACTIVE';
+  const isLicensePro = Boolean(currentLicenseStatus?.isValid && currentLicenseStatus.status === 'ACTIVE');
+  const isAccountPro = Boolean(
+    planLimits?.isPro ||
+    planLimits?.plan === 'pro' ||
+    planLimits?.plan === 'trial' ||
+    currentUser?.planName?.toUpperCase() === 'PRO' ||
+    currentUser?.planName?.toUpperCase() === 'TRIAL'
+  );
+  const isProActive = isLicensePro || isAccountPro;
 
-  const daysRemaining = currentLicenseStatus?.license?.expiresAt
-    ? Math.ceil((new Date(currentLicenseStatus.license.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  const expiryDate = planLimits?.expiresAt || currentLicenseStatus?.license?.expiresAt || null;
+  const daysRemaining = expiryDate
+    ? Math.ceil((new Date(expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
     : null;
 
   const studentProfiles = profiles.filter((p) => !p.deletedAt);
@@ -118,24 +128,24 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
       </div>
 
       {/* Student License Detail Card (if expiring or active) */}
-      {isProActive && currentLicenseStatus?.license && (
+      {isProActive && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
           <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs">
             <span className="text-[11px] font-bold text-slate-400 block">Subscription Expiry</span>
             <div className="text-base font-bold text-slate-800 dark:text-white mt-1">
-              {currentLicenseStatus.license.expiresAt
-                ? new Date(currentLicenseStatus.license.expiresAt).toLocaleDateString()
+              {expiryDate
+                ? (daysRemaining && daysRemaining > 3650 ? 'Lifetime Access' : new Date(expiryDate).toLocaleDateString())
                 : 'Lifetime Access'}
             </div>
             <div className="text-[11px] text-emerald-500 font-semibold mt-0.5">
-              {daysRemaining !== null ? `${daysRemaining} Days Remaining` : 'No Expiry'}
+              {daysRemaining !== null ? (daysRemaining > 3650 ? 'Lifetime Protection' : `${daysRemaining} Days Remaining`) : 'No Expiry'}
             </div>
           </div>
 
           <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs">
             <span className="text-[11px] font-bold text-slate-400 block">Authorized PC Limit</span>
             <div className="text-base font-bold text-slate-800 dark:text-white mt-1">
-              {currentLicenseStatus.license.activeDevicesCount} / {currentLicenseStatus.license.maxDevices} Active
+              {currentLicenseStatus?.license ? `${currentLicenseStatus.license.activeDevicesCount} / ${currentLicenseStatus.license.maxDevices} Active` : '1 / 1 Active PC'}
             </div>
             <div className="text-[11px] text-teal-400 font-semibold mt-0.5 flex items-center gap-1">
               <Laptop size={12} />
@@ -149,7 +159,7 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
               {runningProfiles.length} Running / {studentProfiles.length} Total
             </div>
             <div className="text-[11px] text-slate-400 mt-0.5">
-              Multi-Account Stealth Isolation
+              Multi-Account Stealth Isolation (Max {planLimits?.maxProfiles || 100})
             </div>
           </div>
         </div>
@@ -296,10 +306,23 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
                       <button
                         onClick={() => startProfile(profile.id)}
                         disabled={isStarting}
-                        className="px-3.5 py-1.5 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm transition active:scale-95"
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition active:scale-95 ${
+                          isStarting
+                            ? 'bg-amber-500/10 text-amber-500 border border-amber-500/30 cursor-wait'
+                            : 'bg-teal-600 hover:bg-teal-500 text-white'
+                        }`}
                       >
-                        <Play size={12} />
-                        <span>{isStarting ? 'Starting...' : 'Run'}</span>
+                        {isStarting ? (
+                          <>
+                            <Loader2 size={12} className="animate-spin text-amber-500" />
+                            <span>Starting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Play size={12} />
+                            <span>Run</span>
+                          </>
+                        )}
                       </button>
                     )}
                   </div>

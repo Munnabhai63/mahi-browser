@@ -14,7 +14,9 @@ export const BRAND_CONFIG = {
   brandName: 'MAHI Browser',
   shortName: 'MAHI',
   tagline: 'Enterprise Anti-Detect & Multi-Session Automation Hub',
-  company: 'MAHI Browser Team',
+  creator: 'Munna Bhai',
+  creatorBranding: 'By Munna Bhai',
+  company: 'Munna Bhai',
   website: 'https://mahibrowser.com',
   consoleUrl: 'https://app.mahibrowser.com',
 

@@ -46,7 +46,7 @@ function generateReleaseManifest(options = {}) {
     };
   });
 
-  const primaryFile = manifestFiles.find((f) => f.name.includes('Setup')) || manifestFiles[0];
+  const primaryFile = manifestFiles.find((f) => f.name.includes(`Setup-${version}`)) || manifestFiles.find((f) => f.name.includes('Setup')) || manifestFiles[0];
 
   const manifest = {
     version,
@@ -69,7 +69,8 @@ function generateReleaseManifest(options = {}) {
 }
 
 if (require.main === module) {
-  generateReleaseManifest();
+  const customDir = process.argv[2] ? path.resolve(process.argv[2]) : undefined;
+  generateReleaseManifest({ releaseDir: customDir });
 }
 
 module.exports = { generateReleaseManifest, calculateHash };

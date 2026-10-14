@@ -163,9 +163,27 @@ export function createCentralApiServer(): http.Server {
         return sendHTML(res, 200, getSuperAdminHtml());
       }
 
-      // 0. Standalone Web Admin Control Center UI
-      if ((cleanPath === '' || cleanPath === '/' || cleanPath === '/admin' || cleanPath === '/web' || cleanPath === '/dashboard') && method === 'GET') {
+      // 0. Standalone Web Admin Control Center UI (Restricted to /admin and /web)
+      if ((cleanPath === '/admin' || cleanPath === '/web') && method === 'GET') {
         return sendHTML(res, 200, getWebAdminHtml());
+      }
+
+      // 0. Public Root Landing Page
+      if ((cleanPath === '' || cleanPath === '/') && method === 'GET') {
+        const indexPath = path.join(process.cwd(), 'landing', 'index.html');
+        if (fs.existsSync(indexPath)) {
+          return sendHTML(res, 200, fs.readFileSync(indexPath, 'utf8'));
+        }
+      }
+
+      // 0. Customer Account & Onboarding Dashboard (/dashboard)
+      if (cleanPath === '/dashboard' && method === 'GET') {
+        const downloadHtmlPath = path.join(process.cwd(), 'landing', 'download.html');
+        if (fs.existsSync(downloadHtmlPath)) {
+          return sendHTML(res, 200, fs.readFileSync(downloadHtmlPath, 'utf8'));
+        }
+        const info = getDistributionInfo();
+        return sendHTML(res, 200, getDownloadPortalHtml(info));
       }
 
       // 0. Client Download & Installation Portal

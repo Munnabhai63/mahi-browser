@@ -12,6 +12,8 @@ import {
   Cpu,
   Plus,
   X,
+  Zap,
+  Loader2,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useProxyStore } from '../stores/useProxyStore.js';
@@ -35,6 +37,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
   const { proxies, fetchProxies } = useProxyStore();
 
   const [step, setStep] = useState(1);
+  const [isDeploying, setIsDeploying] = useState(false);
 
   // Step 1: Basic Info
   const [name, setName] = useState('New Profile ' + Math.floor(Math.random() * 1000));
@@ -68,16 +71,22 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
   };
 
   const handleCreate = async () => {
-    const created = await createProfile({
-      name,
-      description,
-      folder,
-      tags,
-      notes,
-      settings,
-    });
-    if (created) {
-      onNavigate('profiles');
+    if (!name.trim() || isDeploying) return;
+    setIsDeploying(true);
+    try {
+      const created = await createProfile({
+        name: name.trim(),
+        description,
+        folder,
+        tags,
+        notes,
+        settings,
+      });
+      if (created) {
+        onNavigate('profiles');
+      }
+    } finally {
+      setIsDeploying(false);
     }
   };
 
@@ -225,6 +234,106 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
                 placeholder="Add private notes for this environment..."
                 className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500 resize-none"
               />
+            </div>
+
+            {/* Express 1-Click Launch Bar (GoLogin Benchmark Refinement) */}
+            <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-teal-500/10 via-emerald-500/5 to-slate-50 dark:from-teal-950/30 dark:via-emerald-950/20 dark:to-slate-900 border border-teal-500/20">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-2">
+                  <Zap className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                    Express Quick Setup
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-500/20 text-teal-600 dark:text-teal-400">
+                    Instant 1-Click
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRandomize}
+                  className="text-[11px] text-teal-600 dark:text-teal-400 hover:underline flex items-center space-x-1"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>Randomize Fingerprint</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Proxy Attachment
+                  </label>
+                  <select
+                    value={settings.network.directConnection ? '' : (settings.network.proxyId || '')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) {
+                        setSettings({
+                          ...settings,
+                          network: { ...settings.network, directConnection: true, proxyId: undefined },
+                        });
+                      } else {
+                        setSettings({
+                          ...settings,
+                          network: { ...settings.network, directConnection: false, proxyId: val },
+                        });
+                      }
+                    }}
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500"
+                  >
+                    <option value="">Direct Connection (No Proxy)</option>
+                    {proxies.map((px) => (
+                      <option key={px.id} value={px.id}>
+                        {px.name} ({px.host}:{px.port})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Browser Engine
+                  </label>
+                  <select
+                    value={settings.browser.engine}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        browser: { ...settings.browser, engine: e.target.value as any },
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500 capitalize"
+                  >
+                    <option value="chrome">Google Chrome (Managed CfT)</option>
+                    <option value="chromium">Chromium Core</option>
+                    <option value="edge">Microsoft Edge</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-teal-500/10">
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Ready to go? Deploy immediately or click Continue for deep fine-tuning.
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCreate}
+                  disabled={!name.trim() || isDeploying}
+                  className="px-3.5 py-1.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm flex items-center space-x-1.5 active:scale-95 transition-all"
+                >
+                  {isDeploying ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Deploying...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-3.5 h-3.5 text-amber-300" />
+                      <span>1-Click Deploy</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -696,23 +805,56 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
         )}
 
         {step < 5 ? (
-          <button
-            type="button"
-            onClick={() => setStep(step + 1)}
-            disabled={!name.trim()}
-            className="px-5 py-2 bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-sm flex items-center space-x-1.5"
-          >
-            <span>Continue</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {step === 1 && (
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={!name.trim() || isDeploying}
+                className="px-4 py-2 bg-teal-600/15 hover:bg-teal-600/25 text-teal-600 dark:text-teal-400 border border-teal-500/30 font-bold text-xs rounded-xl flex items-center space-x-1.5 active:scale-95 transition-all disabled:opacity-50"
+                title="Create profile immediately with randomized stealth fingerprint and current settings"
+              >
+                {isDeploying ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deploying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-3.5 h-3.5 text-amber-400" />
+                    <span>1-Click Deploy</span>
+                  </>
+                )}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setStep(step + 1)}
+              disabled={!name.trim()}
+              className="px-5 py-2 bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-sm flex items-center space-x-1.5"
+            >
+              <span>Continue</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
         ) : (
           <button
             type="button"
             onClick={handleCreate}
-            className="px-6 py-2 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-600/20 flex items-center space-x-2 active:scale-95"
+            disabled={!name.trim() || isDeploying}
+            className="px-6 py-2 bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-600/20 flex items-center space-x-2 active:scale-95"
           >
-            <CheckCircle2 className="w-4 h-4" />
-            <span>Deploy Profile</span>
+            {isDeploying ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Deploying Profile...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Deploy Profile</span>
+              </>
+            )}
           </button>
         )}
       </div>

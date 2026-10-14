@@ -4,10 +4,8 @@
  * Served on http://127.0.0.1:32123/admin
  */
 
-import { getAdminWebSecret } from '../../08_SECURITY/install-secrets.js';
 
 export function getWebAdminHtml(): string {
-  const adminSecret = getAdminWebSecret();
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -174,7 +172,7 @@ export function getWebAdminHtml(): string {
       <div class="flex items-center space-x-3">
         <div class="flex items-center space-x-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
           <span class="text-slate-500 font-medium">Admin Key:</span>
-          <input type="password" id="admin-secret-input" value="${adminSecret}" placeholder="Admin Secret" class="bg-transparent text-slate-800 font-mono text-xs focus:outline-none w-32">
+          <input type="password" id="admin-secret-input" value="" placeholder="Enter Admin Secret" class="bg-transparent text-slate-800 font-mono text-xs focus:outline-none w-36">
         </div>
         <button onclick="refreshData()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center space-x-1.5">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
