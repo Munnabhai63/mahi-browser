@@ -83,10 +83,10 @@ export function saveUpdateConfig(config: UpdateConfig): void {
 function getSafeAppVersion(): string {
   try {
     if (app && typeof app.getVersion === 'function') {
-      return app.getVersion() || '1.1.3';
+      return app.getVersion() || '1.1.6';
     }
   } catch {}
-  return '1.1.3';
+  return '1.1.6';
 }
 
 function getAutoUpdater() {

@@ -496,7 +496,7 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     getUpdateStatus: async () => ({ state: 'IDLE' as const, currentVersion: '1.1.1', channel: 'STABLE' as const }),
     getUpdateConfig: async () => ({ channel: 'STABLE' as const, autoCheck: true, autoDownload: true, notifyBeforeRestart: true }),
     setUpdateConfig: async (config: any) => ({ channel: 'STABLE' as const, autoCheck: true, autoDownload: true, notifyBeforeRestart: true, ...config }),
-    getAppVersion: async () => '1.1.5',
+    getAppVersion: async () => '1.1.6',
 
     // Resource Monitoring & Memory Optimizer
     getFleetResources: async () => ({ totalMemoryMB: 0, totalCpuPercent: 0, activeProfilesCount: 0, profiles: {} }),

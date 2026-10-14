@@ -41,10 +41,14 @@ export function getProfiles(filter: ProfileFilterOptions = {}): Profile[] {
 
   // --- SECURITY: Profile Isolation by owner_id ---
   // If ownerId is provided, only return profiles owned by that user.
-  // SYSTEM_OWNER profiles are accessible to any authenticated user (pre-auth / machine-level profiles).
+  // SYSTEM_OWNER profiles are accessible ONLY to machine-level / guest sessions.
   if (filter.ownerId) {
-    query += ' AND (p.owner_id = ? OR p.owner_id = \'SYSTEM_OWNER\')';
-    params.push(filter.ownerId);
+    if (filter.ownerId === 'SYSTEM_OWNER' || filter.ownerId === 'LOCAL_CLIENT') {
+      query += " AND (p.owner_id = 'SYSTEM_OWNER' OR p.owner_id = 'LOCAL_CLIENT' OR p.owner_id IS NULL)";
+    } else {
+      query += " AND p.owner_id = ?";
+      params.push(filter.ownerId);
+    }
   }
 
   if (filter.status && filter.status !== 'ALL') {
@@ -185,14 +189,26 @@ export function findProfileByNumber(num: number): Profile | undefined {
 }
 
 
-export function getProfileById(id: string): Profile | null {
+export function getProfileById(id: string, ownerId?: string): Profile | null {
   const db = getDatabase();
-  const row = db.prepare(`
+  let query = `
     SELECT p.*, ps.settings_json 
     FROM profiles p 
     LEFT JOIN profile_settings ps ON p.id = ps.profile_id 
     WHERE p.id = ?
-  `).get(id) as {
+  `;
+  const params: unknown[] = [id];
+
+  if (ownerId) {
+    if (ownerId === 'SYSTEM_OWNER' || ownerId === 'LOCAL_CLIENT') {
+      query += " AND (p.owner_id = 'SYSTEM_OWNER' OR p.owner_id = 'LOCAL_CLIENT' OR p.owner_id IS NULL)";
+    } else {
+      query += " AND p.owner_id = ?";
+      params.push(ownerId);
+    }
+  }
+
+  const row = db.prepare(query).get(...params) as {
     id: string;
     name: string;
     description: string;
@@ -316,11 +332,11 @@ export function createProfile(dto: CreateProfileDTO): Profile {
   return getProfileById(id)!;
 }
 
-export function updateProfile(id: string, dto: UpdateProfileDTO): Profile {
+export function updateProfile(id: string, dto: UpdateProfileDTO, ownerId?: string): Profile {
   const db = getDatabase();
-  const existing = getProfileById(id);
+  const existing = getProfileById(id, ownerId);
   if (!existing) {
-    throw new Error(`Profile with ID ${id} not found`);
+    throw new Error(`Profile with ID ${id} not found or access denied`);
   }
 
   const now = new Date().toISOString();
@@ -398,9 +414,9 @@ export function updateProfileStatus(id: string, status: ProfileStatus, lastError
   }
 }
 
-export function deleteProfile(id: string): boolean {
+export function deleteProfile(id: string, ownerId?: string): boolean {
   const db = getDatabase();
-  const existing = getProfileById(id);
+  const existing = getProfileById(id, ownerId);
   if (!existing) return false;
 
   // Remove all related records from associated tables
@@ -425,12 +441,12 @@ export function deleteProfile(id: string): boolean {
   return true;
 }
 
-export function cloneProfile(dtoOrSourceId: CloneProfileDTO | string, maybeNewName?: string): Profile {
+export function cloneProfile(dtoOrSourceId: CloneProfileDTO | string, maybeNewName?: string, ownerId?: string): Profile {
   const dto: CloneProfileDTO = typeof dtoOrSourceId === 'string'
     ? { sourceProfileId: dtoOrSourceId, newName: maybeNewName || 'Cloned Profile', copyBrowserSettings: true, copyCookies: true, copyHistory: true }
     : dtoOrSourceId;
 
-  const source = getProfileById(dto.sourceProfileId);
+  const source = getProfileById(dto.sourceProfileId, ownerId);
   if (!source) {
     throw new Error(`Source profile ${dto.sourceProfileId} not found`);
   }
@@ -443,6 +459,7 @@ export function cloneProfile(dtoOrSourceId: CloneProfileDTO | string, maybeNewNa
     folder: source.folder,
     tags: [...source.tags],
     notes: source.notes,
+    ownerId: ownerId || source.ownerId,
     settings: newSettings,
   });
 
@@ -525,6 +542,7 @@ export interface BulkCreateProfileDTO {
   proxyId?: string;
   osType?: 'windows' | 'mac' | 'random';
   startingIndex?: number;
+  ownerId?: string;
 }
 
 export function bulkCreateProfiles(dto: BulkCreateProfileDTO): Profile[] {
@@ -578,6 +596,7 @@ export function bulkCreateProfiles(dto: BulkCreateProfileDTO): Profile[] {
       folder,
       tags,
       notes: `Batch created #${profileNum}`,
+      ownerId: dto.ownerId,
       settings: {
         ...defaults,
         browser: {
@@ -613,7 +632,7 @@ export interface BulkUpdateProfilesDTO {
   notes?: string;
 }
 
-export function bulkUpdateProfiles(dto: BulkUpdateProfilesDTO): { updatedCount: number; profiles: Profile[] } {
+export function bulkUpdateProfiles(dto: BulkUpdateProfilesDTO, ownerId?: string): { updatedCount: number; profiles: Profile[] } {
   const { profileIds, folder, addTags, removeTags, notes } = dto;
   if (!profileIds || profileIds.length === 0) {
     return { updatedCount: 0, profiles: [] };
@@ -621,7 +640,7 @@ export function bulkUpdateProfiles(dto: BulkUpdateProfilesDTO): { updatedCount: 
 
   const updatedProfiles: Profile[] = [];
   for (const id of profileIds) {
-    const existing = getProfileById(id);
+    const existing = getProfileById(id, ownerId);
     if (!existing) continue;
 
     let newTags = [...existing.tags];
@@ -638,7 +657,7 @@ export function bulkUpdateProfiles(dto: BulkUpdateProfilesDTO): { updatedCount: 
       folder: folder !== undefined ? folder : existing.folder,
       tags: newTags,
       notes: notes !== undefined ? notes : existing.notes,
-    });
+    }, ownerId);
     updatedProfiles.push(updated);
   }
 
@@ -652,7 +671,7 @@ export interface BulkAssignProxiesDTO {
   distributionMode: 'single' | 'round-robin' | 'clear';
 }
 
-export function bulkAssignProxies(dto: BulkAssignProxiesDTO): { assignedCount: number; profiles: Profile[] } {
+export function bulkAssignProxies(dto: BulkAssignProxiesDTO, ownerId?: string): { assignedCount: number; profiles: Profile[] } {
   const { profileIds, proxyIds, distributionMode } = dto;
   if (!profileIds || profileIds.length === 0) {
     return { assignedCount: 0, profiles: [] };
@@ -662,7 +681,7 @@ export function bulkAssignProxies(dto: BulkAssignProxiesDTO): { assignedCount: n
 
   for (let i = 0; i < profileIds.length; i++) {
     const pId = profileIds[i];
-    const existing = getProfileById(pId);
+    const existing = getProfileById(pId, ownerId);
     if (!existing) continue;
 
     let targetProxyId: string | undefined = undefined;
@@ -687,7 +706,7 @@ export function bulkAssignProxies(dto: BulkAssignProxiesDTO): { assignedCount: n
 
     const updated = updateProfile(pId, {
       settings: updatedSettings,
-    });
+    }, ownerId);
     updatedProfiles.push(updated);
   }
 
@@ -695,7 +714,7 @@ export function bulkAssignProxies(dto: BulkAssignProxiesDTO): { assignedCount: n
   return { assignedCount: updatedProfiles.length, profiles: updatedProfiles };
 }
 
-export function bulkDeleteProfiles(profileIds: string[]): { deletedCount: number; success: boolean } {
+export function bulkDeleteProfiles(profileIds: string[], ownerId?: string): { deletedCount: number; success: boolean } {
   if (!profileIds || profileIds.length === 0) {
     return { deletedCount: 0, success: true };
   }
@@ -703,7 +722,7 @@ export function bulkDeleteProfiles(profileIds: string[]): { deletedCount: number
   let deletedCount = 0;
   for (const id of profileIds) {
     try {
-      const ok = deleteProfile(id);
+      const ok = deleteProfile(id, ownerId);
       if (ok) deletedCount++;
     } catch {}
   }
@@ -715,9 +734,9 @@ export function bulkDeleteProfiles(profileIds: string[]): { deletedCount: number
 /**
  * Soft deletes a profile by moving it to the 30-Day Trash Bin (preserves files & settings).
  */
-export function softDeleteProfile(id: string): boolean {
+export function softDeleteProfile(id: string, ownerId?: string): boolean {
   const db = getDatabase();
-  const existing = getProfileById(id);
+  const existing = getProfileById(id, ownerId);
   if (!existing) return false;
 
   const now = new Date().toISOString();
@@ -735,10 +754,20 @@ export function softDeleteProfile(id: string): boolean {
 /**
  * Retrieves all soft-deleted profiles in the Trash Bin.
  */
-export function getTrashProfiles(): Profile[] {
+export function getTrashProfiles(ownerId?: string): Profile[] {
   const db = getDatabase();
-  const query = 'SELECT p.*, ps.settings_json FROM profiles p LEFT JOIN profile_settings ps ON p.id = ps.profile_id WHERE p.deleted_at IS NOT NULL ORDER BY p.deleted_at DESC';
-  const rows = db.prepare(query).all() as {
+  let query = 'SELECT p.*, ps.settings_json FROM profiles p LEFT JOIN profile_settings ps ON p.id = ps.profile_id WHERE p.deleted_at IS NOT NULL';
+  const params: unknown[] = [];
+  if (ownerId) {
+    if (ownerId === 'SYSTEM_OWNER' || ownerId === 'LOCAL_CLIENT') {
+      query += " AND (p.owner_id = 'SYSTEM_OWNER' OR p.owner_id = 'LOCAL_CLIENT' OR p.owner_id IS NULL)";
+    } else {
+      query += " AND p.owner_id = ?";
+      params.push(ownerId);
+    }
+  }
+  query += ' ORDER BY p.deleted_at DESC';
+  const rows = db.prepare(query).all(...params) as {
     id: string;
     name: string;
     description: string;
@@ -811,39 +840,101 @@ export function getTrashProfiles(): Profile[] {
 /**
  * Restores a soft-deleted profile from the Trash Bin back to active status.
  */
-export function restoreProfile(id: string): Profile {
+export function restoreProfile(id: string, ownerId?: string): Profile {
   const db = getDatabase();
-  const row = db.prepare('SELECT name FROM profiles WHERE id = ?').get(id) as { name: string } | undefined;
-  if (!row) {
-    throw new Error(`Profile ${id} not found`);
+  const existing = getProfileById(id, ownerId);
+  if (!existing) {
+    throw new Error(`Profile ${id} not found or access denied`);
   }
 
   const now = new Date().toISOString();
   db.prepare('UPDATE profiles SET deleted_at = NULL, updated_at = ? WHERE id = ?').run(now, id);
-  logActivity('PROFILE', 'SUCCESS', 'Restore Profile', `Restored profile "${row.name}" from Trash Bin`, id, row.name);
-  return getProfileById(id)!;
+  logActivity('PROFILE', 'SUCCESS', 'Restore Profile', `Restored profile "${existing.name}" from Trash Bin`, id, existing.name);
+  return getProfileById(id, ownerId)!;
 }
 
 /**
  * Permanently deletes a profile (purges database row and disk files).
  */
-export function permanentDeleteProfile(id: string): boolean {
-  return deleteProfile(id);
+export function permanentDeleteProfile(id: string, ownerId?: string): boolean {
+  return deleteProfile(id, ownerId);
 }
 
 /**
- * Empties the entire Trash Bin by permanently deleting all soft-deleted profiles.
+ * Empties the entire Trash Bin for the specified owner.
  */
-export function emptyTrash(): { deletedCount: number; success: boolean } {
-  const trash = getTrashProfiles();
+export function emptyTrash(ownerId?: string): { deletedCount: number; success: boolean } {
+  const trash = getTrashProfiles(ownerId);
   let deletedCount = 0;
   for (const p of trash) {
     try {
-      if (permanentDeleteProfile(p.id)) deletedCount++;
+      if (permanentDeleteProfile(p.id, ownerId)) deletedCount++;
     } catch {}
   }
   logActivity('PROFILE', 'WARNING', 'Empty Trash', `Permanently deleted ${deletedCount} profiles from Trash Bin.`);
   return { deletedCount, success: true };
+}
+
+/**
+ * Safe Owner-Claim process for legacy unassigned SYSTEM_OWNER profiles.
+ * Preserves unassigned profiles until their rightful owner explicitly claims them with confirmation.
+ */
+export interface ClaimLegacyProfilesResult {
+  success: boolean;
+  claimedCount: number;
+  claimedIds: string[];
+  skippedIds: string[];
+  error?: string;
+}
+
+export function claimLegacyProfiles(
+  targetOwnerId: string,
+  profileIds: string[],
+  evidence: {
+    userConfirmed: boolean;
+    machineHwid?: string;
+  }
+): ClaimLegacyProfilesResult {
+  if (!targetOwnerId || targetOwnerId === 'SYSTEM_OWNER' || targetOwnerId === 'LOCAL_CLIENT') {
+    return { success: false, claimedCount: 0, claimedIds: [], skippedIds: profileIds, error: 'Target owner must be an authenticated account' };
+  }
+  if (!evidence || !evidence.userConfirmed) {
+    return { success: false, claimedCount: 0, claimedIds: [], skippedIds: profileIds, error: 'User explicit confirmation required to claim unassigned legacy profiles' };
+  }
+
+  const db = getDatabase();
+  const claimedIds: string[] = [];
+  const skippedIds: string[] = [];
+
+  for (const id of profileIds) {
+    // Only allow claiming if the profile is currently unassigned (SYSTEM_OWNER or LOCAL_CLIENT or NULL)
+    const row = db.prepare(`
+      SELECT id, name, owner_id FROM profiles 
+      WHERE id = ? AND (owner_id = 'SYSTEM_OWNER' OR owner_id = 'LOCAL_CLIENT' OR owner_id IS NULL)
+    `).get(id) as { id: string; name: string; owner_id: string } | undefined;
+
+    if (row) {
+      db.prepare(`UPDATE profiles SET owner_id = ?, updated_at = ? WHERE id = ?`).run(targetOwnerId, new Date().toISOString(), id);
+      claimedIds.push(id);
+      logActivity('PROFILE', 'INFO', 'Claim Legacy Profile', `User ${targetOwnerId} claimed unassigned legacy profile "${row.name}" (${id})`, id, row.name);
+    } else {
+      skippedIds.push(id);
+    }
+  }
+
+  return {
+    success: true,
+    claimedCount: claimedIds.length,
+    claimedIds,
+    skippedIds,
+  };
+}
+
+/**
+ * Returns unassigned historical legacy profiles that are available to be claimed by an authenticated owner.
+ */
+export function getUnassignedLegacyProfiles(): Profile[] {
+  return getProfiles({ ownerId: 'SYSTEM_OWNER' });
 }
 
 

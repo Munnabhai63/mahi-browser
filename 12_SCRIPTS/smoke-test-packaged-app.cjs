@@ -49,6 +49,7 @@ async function runSmokeTest() {
       cwd: rootDir,
       env: { ...process.env, CI: 'true', ELECTRON_ENABLE_LOGGING: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
+      shell: process.platform === 'win32',
     });
 
     let output = '';

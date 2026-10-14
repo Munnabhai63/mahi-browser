@@ -324,6 +324,7 @@ export function importProfileFromArchive(options: ImportProfileOptions) {
     folder,
     tags: orig.tags,
     notes: orig.notes,
+    ownerId: options.ownerId || orig.ownerId,
     settings: orig.settings,
   });
 

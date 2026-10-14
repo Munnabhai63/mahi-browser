@@ -54,6 +54,7 @@ export const CreateProfileDTOSchema = z.object({
   folder: z.string().max(50).optional().default('General'),
   tags: z.array(z.string()).optional().default([]),
   notes: z.string().max(5000).optional().default(''),
+  ownerId: z.string().optional(),
   settings: ProfileSettingsSchema.partial().optional(),
 });
 

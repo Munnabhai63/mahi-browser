@@ -639,9 +639,9 @@ export async function handleRemoteApiRoutes(
     if (profileIdMatch && method === 'GET') {
       if (!requireAccess('profiles:read')) return true;
 
-      const profile = getProfileById(profileIdMatch[1]);
-      // IDOR Isolation: must belong to user or SYSTEM_OWNER
-      if (!profile || (profile.ownerId && profile.ownerId !== auth.userId && profile.ownerId !== 'SYSTEM_OWNER')) {
+      const profile = getProfileById(profileIdMatch[1], auth.userId);
+      // IDOR Isolation: must belong strictly to authenticated user
+      if (!profile || profile.ownerId !== auth.userId) {
         sendRemoteJSON(req, res, 404, { success: false, error: { code: 'NOT_FOUND', message: 'Profile not found' } }, requestId, rateLimit);
         return true;
       }
@@ -674,8 +674,8 @@ export async function handleRemoteApiRoutes(
     if (profileIdMatch && method === 'PUT') {
       if (!requireAccess('profiles:write')) return true;
 
-      const profile = getProfileById(profileIdMatch[1]);
-      if (!profile || (profile.ownerId && profile.ownerId !== auth.userId && profile.ownerId !== 'SYSTEM_OWNER')) {
+      const profile = getProfileById(profileIdMatch[1], auth.userId);
+      if (!profile || profile.ownerId !== auth.userId) {
         sendRemoteJSON(req, res, 404, { success: false, error: { code: 'NOT_FOUND', message: 'Profile not found' } }, requestId, rateLimit);
         return true;
       }
@@ -685,7 +685,7 @@ export async function handleRemoteApiRoutes(
         name: body.name,
         notes: body.notes,
         folder: body.folder,
-      });
+      }, auth.userId);
 
       webhookService.dispatchEvent('profile.updated', { profileId: profile.id, name: updated.name }, {
         userId: auth.userId,
@@ -699,13 +699,13 @@ export async function handleRemoteApiRoutes(
     if (profileIdMatch && method === 'DELETE') {
       if (!requireAccess('profiles:delete')) return true;
 
-      const profile = getProfileById(profileIdMatch[1]);
-      if (!profile || (profile.ownerId && profile.ownerId !== auth.userId && profile.ownerId !== 'SYSTEM_OWNER')) {
+      const profile = getProfileById(profileIdMatch[1], auth.userId);
+      if (!profile || profile.ownerId !== auth.userId) {
         sendRemoteJSON(req, res, 404, { success: false, error: { code: 'NOT_FOUND', message: 'Profile not found' } }, requestId, rateLimit);
         return true;
       }
 
-      deleteProfile(profile.id);
+      deleteProfile(profile.id, auth.userId);
 
       webhookService.dispatchEvent('profile.deleted', { profileId: profile.id }, {
         userId: auth.userId,
@@ -722,8 +722,8 @@ export async function handleRemoteApiRoutes(
       if (!requireAccess('profiles:run')) return true;
 
       const profileId = profileLaunchMatch[1];
-      const profile = getProfileById(profileId);
-      if (!profile || (profile.ownerId && profile.ownerId !== auth.userId && profile.ownerId !== 'SYSTEM_OWNER')) {
+      const profile = getProfileById(profileId, auth.userId);
+      if (!profile || profile.ownerId !== auth.userId) {
         sendRemoteJSON(req, res, 404, { success: false, error: { code: 'NOT_FOUND', message: 'Profile not found' } }, requestId, rateLimit);
         return true;
       }

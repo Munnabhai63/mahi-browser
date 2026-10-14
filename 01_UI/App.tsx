@@ -90,6 +90,7 @@ export const App: React.FC = () => {
 
       const unsubAccount = window.mahiAPI.onAccountStatusChanged?.(() => {
         useAccountStore.getState().fetchPlanLimits().catch(() => {});
+        fetchProfiles();
       });
 
       const handleWindowFocus = () => {
@@ -107,12 +108,10 @@ export const App: React.FC = () => {
   }, []);
 
 
-  // When commercial user state changes, refresh profiles
+  // When user auth state changes, refresh profiles
   useEffect(() => {
-    if (commercialUser) {
-      fetchProfiles();
-    }
-  }, [commercialUser]);
+    fetchProfiles();
+  }, [currentUser, commercialUser]);
 
   const [isSynchronizerOpen, setIsSynchronizerOpen] = useState(false);
 

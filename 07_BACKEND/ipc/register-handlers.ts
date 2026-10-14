@@ -68,6 +68,8 @@ import {
   updateProfile,
   deleteProfile,
   cloneProfile,
+  claimLegacyProfiles,
+  getUnassignedLegacyProfiles,
 } from '../../02_BROWSER/services/profile-service.js';
 import { warmProfile, warmBulkProfiles } from '../../09_AUTOMATION/cookie-warmer-service.js';
 import {
@@ -258,10 +260,25 @@ import { sanitizeError } from '../../08_SECURITY/sanitizer.js';
 import { getProfileStats } from '../services/stats-service.js';
 
 export function registerIpcHandlers(): void {
+  function getActiveOwnerId(): string {
+    const session = getAccountSession();
+    if (session?.account_id) return session.account_id;
+    const activeUid = getActiveUserId();
+    if (activeUid) return activeUid;
+    return 'SYSTEM_OWNER';
+  }
+
   // PROFILES
   ipcMain.handle('profiles:getAll', async (_event, filter) => {
     try {
-      return getProfiles(filter);
+      const activeOwnerId = getActiveOwnerId();
+      // SECURITY: Always enforce server-validated activeOwnerId!
+      // Renderer-supplied ownerId is ignored to prevent cross-account enumeration.
+      const effectiveFilter = {
+        ...(filter || {}),
+        ownerId: activeOwnerId,
+      };
+      return getProfiles(effectiveFilter);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -269,7 +286,12 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:getById', async (_event, id: string) => {
     try {
-      return getProfileById(id);
+      const activeOwnerId = getActiveOwnerId();
+      const profile = getProfileById(id, activeOwnerId);
+      if (!profile) {
+        throw new Error(`Profile ${id} not found or access denied`);
+      }
+      return profile;
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -278,8 +300,13 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('profiles:create', async (_event, dto) => {
     try {
       assertCanCreateProfile(1);
+      const activeOwnerId = getActiveOwnerId();
       const validated = CreateProfileDTOSchema.parse(dto);
-      return createProfile(validated);
+      // Strictly bind to server-validated session ID
+      return createProfile({
+        ...validated,
+        ownerId: activeOwnerId,
+      });
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -288,7 +315,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('profiles:bulkCreate', async (_event, dto) => {
     try {
       assertCanCreateProfile(dto?.count || 1);
-      return bulkCreateProfiles(dto);
+      const activeOwnerId = getActiveOwnerId();
+      return bulkCreateProfiles({
+        ...dto,
+        ownerId: activeOwnerId,
+      });
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -297,8 +328,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:update', async (_event, id: string, dto) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
       const validated = UpdateProfileDTOSchema.parse(dto);
-      return updateProfile(id, validated);
+      return updateProfile(id, validated, activeOwnerId);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -306,10 +338,15 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:delete', async (_event, id: string) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      const existing = getProfileById(id, activeOwnerId);
+      if (!existing) {
+        throw new Error(`Profile ${id} not found or access denied`);
+      }
       if (processManager.isRunning(id)) {
         await processManager.stopProfile(id);
       }
-      return softDeleteProfile(id);
+      return softDeleteProfile(id, activeOwnerId);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -317,7 +354,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:getTrash', async () => {
     try {
-      return getTrashProfiles();
+      const activeOwnerId = getActiveOwnerId();
+      return getTrashProfiles(activeOwnerId);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -325,7 +363,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:restore', async (_event, id: string) => {
     try {
-      return restoreProfile(id);
+      const activeOwnerId = getActiveOwnerId();
+      return restoreProfile(id, activeOwnerId);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -333,10 +372,15 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:permanentDelete', async (_event, id: string) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      const existing = getProfileById(id, activeOwnerId);
+      if (!existing) {
+        throw new Error(`Profile ${id} not found or access denied`);
+      }
       if (processManager.isRunning(id)) {
         await processManager.stopProfile(id);
       }
-      return permanentDeleteProfile(id);
+      return permanentDeleteProfile(id, activeOwnerId);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -344,7 +388,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:emptyTrash', async () => {
     try {
-      return emptyTrash();
+      const activeOwnerId = getActiveOwnerId();
+      return emptyTrash(activeOwnerId);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -354,8 +399,13 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('profiles:clone', async (_event, dto) => {
     try {
       assertCanCreateProfile(1);
+      const activeOwnerId = getActiveOwnerId();
+      const existing = getProfileById(dto.sourceProfileId, activeOwnerId);
+      if (!existing) {
+        throw new Error(`Source profile ${dto.sourceProfileId} not found or access denied`);
+      }
       const validated = CloneProfileDTOSchema.parse(dto);
-      return cloneProfile(validated);
+      return cloneProfile(validated, undefined, activeOwnerId);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -363,6 +413,11 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:start', async (_event, id: string) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      const existing = getProfileById(id, activeOwnerId);
+      if (!existing) {
+        return { success: false, error: `Profile ${id} not found or access denied` };
+      }
       const result = await processManager.startProfile(id);
       return result;
     } catch (err) {
@@ -372,6 +427,11 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:stop', async (_event, id: string) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      const existing = getProfileById(id, activeOwnerId);
+      if (!existing) {
+        return { success: false, error: `Profile ${id} not found or access denied` };
+      }
       return await processManager.stopProfile(id);
     } catch (err) {
       return { success: false, error: sanitizeError(err) };
@@ -380,7 +440,12 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:bulkStart', async (_event, profileIds: string[], delayMs?: number) => {
     try {
-      return await processManager.startProfilesBatch(profileIds, delayMs, (progress) => {
+      const activeOwnerId = getActiveOwnerId();
+      const authorizedIds = profileIds.filter((id) => Boolean(getProfileById(id, activeOwnerId)));
+      if (authorizedIds.length === 0 && profileIds.length > 0) {
+        return { results: [], error: 'Profiles not found or access denied' };
+      }
+      return await processManager.startProfilesBatch(authorizedIds, delayMs, (progress) => {
         try {
           const wins = BrowserWindow.getAllWindows();
           for (const win of wins) {
@@ -397,7 +462,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:bulkStop', async (_event, profileIds: string[]) => {
     try {
-      return await processManager.stopProfilesBatch(profileIds);
+      const activeOwnerId = getActiveOwnerId();
+      const authorizedIds = profileIds.filter((id) => Boolean(getProfileById(id, activeOwnerId)));
+      return await processManager.stopProfilesBatch(authorizedIds);
     } catch (err) {
       return { results: [], error: sanitizeError(err) };
     }
@@ -405,7 +472,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:bulkUpdate', async (_event, dto) => {
     try {
-      return bulkUpdateProfiles(dto);
+      const activeOwnerId = getActiveOwnerId();
+      return bulkUpdateProfiles(dto, activeOwnerId);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -413,12 +481,13 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:bulkDelete', async (_event, profileIds: string[]) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
       for (const id of profileIds) {
         if (processManager.isRunning(id)) {
           await processManager.stopProfile(id);
         }
       }
-      return bulkDeleteProfiles(profileIds);
+      return bulkDeleteProfiles(profileIds, activeOwnerId);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -426,13 +495,19 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:bulkAssignProxies', async (_event, dto) => {
     try {
-      return bulkAssignProxies(dto);
+      const activeOwnerId = getActiveOwnerId();
+      return bulkAssignProxies(dto, activeOwnerId);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
   });
 
   ipcMain.handle('profiles:getStatus', async (_event, id: string) => {
+    const activeOwnerId = getActiveOwnerId();
+    const existing = getProfileById(id, activeOwnerId);
+    if (!existing) {
+      return { status: 'STOPPED', pid: undefined, error: 'Access denied' };
+    }
     const isRunning = processManager.isRunning(id);
     const pid = processManager.getActivePid(id);
     return { status: isRunning ? 'RUNNING' : 'STOPPED', pid };
@@ -454,6 +529,11 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:getStats', async (_event, id: string) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      const existing = getProfileById(id, activeOwnerId);
+      if (!existing) {
+        throw new Error(`Profile ${id} not found or access denied`);
+      }
       return getProfileStats(id);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -463,6 +543,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('profiles:warm', async (_event, id: string, options?: any) => {
     try {
       assertCapability('automation.cookieWarmer');
+      const activeOwnerId = getActiveOwnerId();
+      const existing = getProfileById(id, activeOwnerId);
+      if (!existing) {
+        throw new Error(`Profile ${id} not found or access denied`);
+      }
       return await warmProfile(id, options);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -472,7 +557,33 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('profiles:warmBulk', async (_event, ids: string[], options?: any) => {
     try {
       assertCapability('automation.cookieWarmer');
-      return await warmBulkProfiles(ids, options);
+      const activeOwnerId = getActiveOwnerId();
+      const authorizedIds = ids.filter((id) => Boolean(getProfileById(id, activeOwnerId)));
+      if (authorizedIds.length === 0 && ids.length > 0) {
+        throw new Error('Profiles not found or access denied');
+      }
+      return await warmBulkProfiles(authorizedIds, options);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  // Safe Owner-Claim process for legacy unassigned SYSTEM_OWNER profiles
+  ipcMain.handle('profiles:claimLegacy', async (_event, dto: { profileIds: string[]; userConfirmed: boolean; machineHwid?: string }) => {
+    try {
+      const activeOwnerId = getActiveOwnerId();
+      return claimLegacyProfiles(activeOwnerId, dto.profileIds, {
+        userConfirmed: dto.userConfirmed,
+        machineHwid: dto.machineHwid,
+      });
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('profiles:getUnassignedLegacy', async () => {
+    try {
+      return getUnassignedLegacyProfiles();
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -481,7 +592,8 @@ export function registerIpcHandlers(): void {
 
   // DASHBOARD METRICS
   ipcMain.handle('dashboard:getMetrics', async (): Promise<DashboardMetrics> => {
-    const allProfiles = getProfiles();
+    const activeOwnerId = getActiveOwnerId();
+    const allProfiles = getProfiles({ ownerId: activeOwnerId });
     const runningCount = processManager.getRunningCount();
     const stoppedCount = Math.max(0, allProfiles.length - runningCount);
     const proxies = getProxies();
@@ -621,6 +733,11 @@ export function registerIpcHandlers(): void {
   // COOKIES
   ipcMain.handle('cookies:get', async (_event, options) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      if (options?.profileId) {
+        const p = getProfileById(options.profileId, activeOwnerId);
+        if (!p) return [];
+      }
       return getCookies(options);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -629,6 +746,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('cookies:delete', async (_event, profileId: string, cookieId: string) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      const p = getProfileById(profileId, activeOwnerId);
+      if (!p) throw new Error(`Profile ${profileId} not found or access denied`);
       return deleteCookie(profileId, cookieId);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -637,6 +757,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('cookies:deleteAll', async (_event, profileId: string) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      const p = getProfileById(profileId, activeOwnerId);
+      if (!p) throw new Error(`Profile ${profileId} not found or access denied`);
       return deleteAllCookies(profileId);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -645,6 +768,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('cookies:import', async (_event, profileId: string, content: string) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      const p = getProfileById(profileId, activeOwnerId);
+      if (!p) throw new Error(`Profile ${profileId} not found or access denied`);
       return importCookies(profileId, content);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -653,6 +779,11 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('cookies:export', async (_event, options) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      if (options?.profileId) {
+        const p = getProfileById(options.profileId, activeOwnerId);
+        if (!p) throw new Error(`Profile ${options.profileId} not found or access denied`);
+      }
       return exportCookies(options);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -662,6 +793,11 @@ export function registerIpcHandlers(): void {
   // HISTORY
   ipcMain.handle('history:get', async (_event, options) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      if (options?.profileId) {
+        const p = getProfileById(options.profileId, activeOwnerId);
+        if (!p) throw new Error(`Profile ${options.profileId} not found or access denied`);
+      }
       return getHistory(options);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -670,6 +806,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('history:delete', async (_event, profileId: string, historyId: string) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      const p = getProfileById(profileId, activeOwnerId);
+      if (!p) throw new Error(`Profile ${profileId} not found or access denied`);
       return deleteHistoryItem(profileId, historyId);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -678,6 +817,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('history:clear', async (_event, profileId: string) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      const p = getProfileById(profileId, activeOwnerId);
+      if (!p) throw new Error(`Profile ${profileId} not found or access denied`);
       return clearHistory(profileId);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -687,6 +829,9 @@ export function registerIpcHandlers(): void {
   // EXTENSIONS
   ipcMain.handle('extensions:get', async (_event, profileId: string) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      const p = getProfileById(profileId, activeOwnerId);
+      if (!p) throw new Error(`Profile ${profileId} not found or access denied`);
       return getExtensions(profileId);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -697,6 +842,11 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('extensions:install', async (_event, dto) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      if (dto?.profileId) {
+        const p = getProfileById(dto.profileId, activeOwnerId);
+        if (!p) throw new Error(`Profile ${dto.profileId} not found or access denied`);
+      }
       return installExtension(dto);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -713,6 +863,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('extensions:installFromWebStore', async (_event, profileId: string, webStoreUrl: string) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      const p = getProfileById(profileId, activeOwnerId);
+      if (!p) throw new Error(`Profile ${profileId} not found or access denied`);
       return await installFromWebStoreUrl(profileId, webStoreUrl);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -722,6 +875,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('extensions:toggle', async (_event, profileId: string, extensionId: string, enabled: boolean) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      const p = getProfileById(profileId, activeOwnerId);
+      if (!p) throw new Error(`Profile ${profileId} not found or access denied`);
       return toggleExtension(profileId, extensionId, enabled);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -730,6 +886,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('extensions:remove', async (_event, profileId: string, extensionId: string) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      const p = getProfileById(profileId, activeOwnerId);
+      if (!p) throw new Error(`Profile ${profileId} not found or access denied`);
       return removeExtension(profileId, extensionId);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -774,6 +933,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('automation:runWorkflow', async (_event, dto) => {
     try {
       assertCapability('automation.rpa');
+      const activeOwnerId = getActiveOwnerId();
+      if (dto?.profileId) {
+        const p = getProfileById(dto.profileId, activeOwnerId);
+        if (!p) throw new Error(`Profile ${dto.profileId} not found or access denied`);
+      }
       return await runWorkflow(dto);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -783,6 +947,13 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('automation:runWorkflowBatch', async (_event, dto) => {
     try {
       assertCapability('automation.multiProfile');
+      const activeOwnerId = getActiveOwnerId();
+      if (Array.isArray(dto?.profileIds)) {
+        for (const pid of dto.profileIds) {
+          const p = getProfileById(pid, activeOwnerId);
+          if (!p) throw new Error(`Profile ${pid} not found or access denied`);
+        }
+      }
       return await runWorkflowBatch(dto);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -818,7 +989,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('archive:import', async (_event, options) => {
     try {
       assertCanCreateProfile(1);
-      return importProfileFromArchive(options);
+      const activeOwnerId = getActiveOwnerId();
+      return importProfileFromArchive({
+        ...options,
+        ownerId: options?.ownerId || activeOwnerId,
+      });
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -826,6 +1001,11 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('archive:export', async (_event, options) => {
     try {
+      const activeOwnerId = getActiveOwnerId();
+      if (options?.profileId) {
+        const p = getProfileById(options.profileId, activeOwnerId);
+        if (!p) throw new Error(`Profile ${options.profileId} not found or access denied`);
+      }
       return exportProfileToArchive(options);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -2106,16 +2286,29 @@ export function registerIpcHandlers(): void {
 
   // Account & Subscription IPC Handlers (v1.1.0+)
   ipcMain.handle('account:signup', async (_e, dto: { email: string; password: string }) => {
-    return accountSignup(dto.email, dto.password);
+    const res = await accountSignup(dto.email, dto.password);
+    if (res.success && (res as any).user?.id) {
+      setActiveUserId((res as any).user.id);
+    }
+    return res;
   });
   ipcMain.handle('account:login', async (_e, dto: { email: string; password: string }) => {
-    return accountLogin(dto.email, dto.password);
+    const res = await accountLogin(dto.email, dto.password);
+    if (res.success && (res as any).user?.id) {
+      setActiveUserId((res as any).user.id);
+    }
+    return res;
   });
   ipcMain.handle('account:loginWithToken', async (_e, dto: { token: string } | string) => {
     const token = typeof dto === 'string' ? dto : dto.token;
-    return accountLoginWithToken(token);
+    const res = await accountLoginWithToken(token);
+    if (res.success && (res as any).user?.id) {
+      setActiveUserId((res as any).user.id);
+    }
+    return res;
   });
   ipcMain.handle('account:logout', async () => {
+    setActiveUserId(null);
     return accountLogout();
   });
   ipcMain.handle('account:getStatus', async () => {
@@ -2142,10 +2335,10 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('app:getVersion', async () => {
     try {
       if (app && typeof app.getVersion === 'function') {
-        return app.getVersion() || '1.1.3';
+        return app.getVersion() || '1.1.6';
       }
     } catch {}
-    return '1.1.3';
+    return '1.1.6';
   });
 
   ipcMain.handle('account:verifyEmail', async (_e, dto: { token: string }) => {

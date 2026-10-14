@@ -39,6 +39,7 @@ export interface ImportProfileOptions {
   password?: string;
   overrideName?: string;
   targetFolder?: string;
+  ownerId?: string;
 }
 
 export interface CrossPlatformImportDTO {

@@ -65,6 +65,15 @@ import { isValidApiToken, isValidAdminWebSecret, getApiAuthToken } from '../../0
 import { verifyLicense } from '../../08_SECURITY/license-service.js';
 import { CreateProfileDTOSchema } from '../../10_CONFIG/shared/validation/schemas.js';
 import { getAccountSession } from '../../08_SECURITY/account-service.js';
+import { getActiveUserId } from '../commercial/session-context.js';
+
+function getLocalApiOwnerId(): string {
+  const session = getAccountSession();
+  if (session?.account_id) return session.account_id;
+  const activeUser = getActiveUserId();
+  if (activeUser) return activeUser;
+  return 'SYSTEM_OWNER';
+}
 
 let apiServer: http.Server | null = null;
 
@@ -476,7 +485,8 @@ export function startApiServer(): void {
 
     // 7. Profiles V2 Endpoints
     if (pathname === '/api/v2/profiles' && method === 'GET') {
-      sendJSON(res, 200, { success: true, data: getProfiles() });
+      const activeOwnerId = getLocalApiOwnerId();
+      sendJSON(res, 200, { success: true, data: getProfiles({ ownerId: activeOwnerId }) });
       return;
     }
     if (pathname === '/api/v2/profiles' && method === 'POST') {
@@ -487,7 +497,8 @@ export function startApiServer(): void {
           return;
         }
         assertCanCreateProfile(1);
-        const profile = createProfile(body);
+        const activeOwnerId = getLocalApiOwnerId();
+        const profile = createProfile({ ...body, ownerId: activeOwnerId });
         sendJSON(res, 201, { success: true, data: profile });
       } catch (err: any) {
         sendJSON(res, 400, { success: false, error: err.message });
@@ -503,6 +514,12 @@ export function startApiServer(): void {
       }
       const profileId = profileV2Action[1];
       const action = profileV2Action[2];
+      const activeOwnerId = getLocalApiOwnerId();
+      const existing = getProfileById(profileId, activeOwnerId);
+      if (!existing) {
+        sendJSON(res, 404, { success: false, error: 'Profile not found or access denied.' });
+        return;
+      }
       if (action === 'start') {
         const result = await processManager.startProfile(profileId);
         sendJSON(res, result.success ? 200 : 500, result);
@@ -516,7 +533,7 @@ export function startApiServer(): void {
       if (action === 'clone') {
         try {
           assertCanCreateProfile(1);
-          const cloned = cloneProfile(profileId, body.name || undefined);
+          const cloned = cloneProfile(profileId, body.name || undefined, activeOwnerId);
           sendJSON(res, 201, { success: true, data: cloned });
         } catch (err: any) {
           sendJSON(res, 400, { success: false, error: err.message });
@@ -538,7 +555,7 @@ export function startApiServer(): void {
       if (pathname === '/profiles' && method === 'GET') {
         const search = parsedUrl.searchParams.get('search') || undefined;
         const status = (parsedUrl.searchParams.get('status') as any) || undefined;
-        const profiles = getProfiles({ searchQuery: search, status });
+        const profiles = getProfiles({ searchQuery: search, status, ownerId: getLocalApiOwnerId() });
         sendJSON(res, 200, { success: true, data: profiles });
         return;
       }
@@ -548,7 +565,7 @@ export function startApiServer(): void {
           const body = await parseBody(req);
           assertCanCreateProfile(1);
           const validated = CreateProfileDTOSchema.parse(body);
-          const result = createProfile(validated);
+          const result = createProfile({ ...validated, ownerId: getLocalApiOwnerId() });
           sendJSON(res, 201, { success: true, data: result });
         } catch (err: any) {
           sendJSON(res, 400, { success: false, error: sanitizeError(err) });
@@ -559,28 +576,28 @@ export function startApiServer(): void {
       if (pathname === '/profiles/bulk' && method === 'POST') {
         const body = await parseBody(req);
         assertCanCreateProfile(body?.count || 1);
-        const result = bulkCreateProfiles(body);
+        const result = bulkCreateProfiles({ ...body, ownerId: getLocalApiOwnerId() });
         sendJSON(res, 201, { success: true, data: result });
         return;
       }
 
       if (pathname === '/profiles/bulk-update' && method === 'POST') {
         const body = await parseBody(req);
-        const result = bulkUpdateProfiles(body);
+        const result = bulkUpdateProfiles(body, getLocalApiOwnerId());
         sendJSON(res, 200, { success: true, data: result });
         return;
       }
 
       if (pathname === '/profiles/bulk-delete' && method === 'POST') {
         const body = await parseBody(req);
-        const result = bulkDeleteProfiles(body.profileIds || []);
+        const result = bulkDeleteProfiles(body.profileIds || [], getLocalApiOwnerId());
         sendJSON(res, 200, { success: true, data: result });
         return;
       }
 
       if (pathname === '/profiles/bulk-assign-proxies' && method === 'POST') {
         const body = await parseBody(req);
-        const result = bulkAssignProxies(body);
+        const result = bulkAssignProxies(body, getLocalApiOwnerId());
         sendJSON(res, 200, { success: true, data: result });
         return;
       }
@@ -596,13 +613,13 @@ export function startApiServer(): void {
 
 
       if (pathname === '/profiles/trash' && method === 'GET') {
-        const trash = getTrashProfiles();
+        const trash = getTrashProfiles(getLocalApiOwnerId());
         sendJSON(res, 200, { success: true, data: trash });
         return;
       }
 
       if (pathname === '/profiles/trash/empty' && method === 'POST') {
-        const result = emptyTrash();
+        const result = emptyTrash(getLocalApiOwnerId());
         sendJSON(res, 200, { success: true, data: result });
         return;
       }
@@ -611,7 +628,7 @@ export function startApiServer(): void {
       const restoreMatch = pathname.match(/^\/profiles\/([^/]+)\/restore$/);
       if (restoreMatch && method === 'POST') {
         const id = restoreMatch[1];
-        const restored = restoreProfile(id);
+        const restored = restoreProfile(id, getLocalApiOwnerId());
         sendJSON(res, 200, { success: true, data: restored });
         return;
       }
@@ -620,10 +637,16 @@ export function startApiServer(): void {
       const permMatch = pathname.match(/^\/profiles\/([^/]+)\/permanent$/);
       if (permMatch && method === 'DELETE') {
         const id = permMatch[1];
+        const activeOwnerId = getLocalApiOwnerId();
+        const existing = getProfileById(id, activeOwnerId);
+        if (!existing) {
+          sendJSON(res, 404, { success: false, error: 'Profile not found or access denied' });
+          return;
+        }
         if (processManager.isRunning(id)) {
           await processManager.stopProfile(id);
         }
-        const ok = permanentDeleteProfile(id);
+        const ok = permanentDeleteProfile(id, activeOwnerId);
         sendJSON(res, 200, { success: ok });
         return;
       }
@@ -632,21 +655,24 @@ export function startApiServer(): void {
       const profileMatch = pathname.match(/^\/profiles\/([^/]+)$/);
       if (profileMatch) {
         const id = profileMatch[1];
+        const activeOwnerId = getLocalApiOwnerId();
         if (method === 'GET') {
-          const p = getProfileById(id);
-          if (!p) return sendJSON(res, 404, { error: 'Profile not found' });
+          const p = getProfileById(id, activeOwnerId);
+          if (!p) return sendJSON(res, 404, { error: 'Profile not found or access denied' });
           return sendJSON(res, 200, { success: true, data: p });
         }
         if (method === 'PUT') {
           const body = await parseBody(req);
-          const p = updateProfile(id, body);
+          const p = updateProfile(id, body, activeOwnerId);
           return sendJSON(res, 200, { success: true, data: p });
         }
         if (method === 'DELETE') {
+          const p = getProfileById(id, activeOwnerId);
+          if (!p) return sendJSON(res, 404, { error: 'Profile not found or access denied' });
           if (processManager.isRunning(id)) {
             await processManager.stopProfile(id);
           }
-          const ok = softDeleteProfile(id);
+          const ok = softDeleteProfile(id, activeOwnerId);
           return sendJSON(res, 200, { success: ok });
         }
       }
@@ -656,6 +682,9 @@ export function startApiServer(): void {
       const startMatch = pathname.match(/^\/profiles\/([^/]+)\/start$/);
       if (startMatch && method === 'POST') {
         const id = startMatch[1];
+        const activeOwnerId = getLocalApiOwnerId();
+        const p = getProfileById(id, activeOwnerId);
+        if (!p) return sendJSON(res, 404, { success: false, error: 'Profile not found or access denied' });
         const result = await processManager.startProfile(id);
         return sendJSON(res, result.success ? 200 : 500, result);
       }
@@ -664,6 +693,9 @@ export function startApiServer(): void {
       const stopMatch = pathname.match(/^\/profiles\/([^/]+)\/stop$/);
       if (stopMatch && method === 'POST') {
         const id = stopMatch[1];
+        const activeOwnerId = getLocalApiOwnerId();
+        const p = getProfileById(id, activeOwnerId);
+        if (!p) return sendJSON(res, 404, { success: false, error: 'Profile not found or access denied' });
         const result = await processManager.stopProfile(id);
         return sendJSON(res, result.success ? 200 : 500, result);
       }
@@ -672,6 +704,9 @@ export function startApiServer(): void {
       const cloneMatch = pathname.match(/^\/profiles\/([^/]+)\/clone$/);
       if (cloneMatch && method === 'POST') {
         const id = cloneMatch[1];
+        const activeOwnerId = getLocalApiOwnerId();
+        const existing = getProfileById(id, activeOwnerId);
+        if (!existing) return sendJSON(res, 404, { success: false, error: 'Source profile not found or access denied' });
         assertCanCreateProfile(1);
         const body = await parseBody(req);
         const p = cloneProfile({
@@ -681,7 +716,7 @@ export function startApiServer(): void {
           copyHistory: Boolean(body.copyHistory ?? false),
           copyExtensions: Boolean(body.copyExtensions ?? true),
           copyBrowserSettings: Boolean(body.copyBrowserSettings ?? true),
-        });
+        }, undefined, activeOwnerId);
         return sendJSON(res, 201, { success: true, data: p });
       }
 

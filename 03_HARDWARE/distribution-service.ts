@@ -77,7 +77,7 @@ export function getDistributionInfo(): DistributionInfo {
   const networkDownloadUrls = localIps.map((ip) => `http://${ip}:${port}/download`);
   const releaseDir = getReleaseDirectory();
 
-  let version = (app && typeof app.getVersion === 'function' ? app.getVersion() : null) || '1.1.1';
+  let version = (app && typeof app.getVersion === 'function' ? app.getVersion() : null) || '1.1.6';
   try {
     const pkgPath = path.join(process.cwd(), 'package.json');
     if (fs.existsSync(pkgPath)) {

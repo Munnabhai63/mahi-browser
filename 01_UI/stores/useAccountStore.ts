@@ -5,6 +5,7 @@ import {
   CommercialEntitlements,
   CommercialDevice,
 } from '../../10_CONFIG/shared/types/commercial.js';
+import { useProfileStore } from './useProfileStore.js';
 
 export interface UserAccount {
   email: string;
@@ -203,6 +204,7 @@ export const useAccountStore = create<AccountState>()(
           const res = await window.mahiAPI.accountLogin({ email, password });
           if (res.success) {
             await get().fetchPlanLimits();
+            useProfileStore.getState().fetchProfiles().catch(() => {});
             return { success: true };
           }
           return { success: false, error: res.error || 'Login failed', deviceMismatch: (res as any).device_limit };
@@ -217,6 +219,7 @@ export const useAccountStore = create<AccountState>()(
           const res = await window.mahiAPI.accountLoginWithToken(token);
           if (res.success) {
             await get().fetchPlanLimits();
+            useProfileStore.getState().fetchProfiles().catch(() => {});
             return { success: true };
           }
           return { success: false, error: res.error || 'Token login failed' };
@@ -235,6 +238,7 @@ export const useAccountStore = create<AccountState>()(
           currentUser: null,
           planLimits: { isPro: false, plan: 'free', maxProfiles: 15, expiresAt: null },
         });
+        useProfileStore.getState().fetchProfiles().catch(() => {});
       },
 
       accountSwitchDevice: async () => {
@@ -494,6 +498,7 @@ export const useAccountStore = create<AccountState>()(
           isAccountModalOpen: false,
           commercialError: null,
         });
+        useProfileStore.getState().fetchProfiles().catch(() => {});
       },
 
       switchAccount: (email) => {
