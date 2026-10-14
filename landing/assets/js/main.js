@@ -2806,16 +2806,9 @@ function initResourceModal() {
  * 8. Download Triggers & Toast Feeds
  */
 function initDownloadTriggers() {
-  document.querySelectorAll('.btn-download-trigger, a[href*="MAHI-Setup.exe"]').forEach(btn => {
+  document.querySelectorAll('.btn-download-trigger, a[href*="MAHI-Setup.exe"], a[href*="download/setup"]').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      const token = localStorage.getItem('mahi_access_token') || localStorage.getItem('mahi_auth_token');
-      if (!token) {
-        // Block anonymous direct file downloads from landing triggers
-        e.preventDefault();
-        window.location.href = '/download';
-        return;
-      }
-      showToast('Download started! MAHI-Setup.exe (v1.1.1) — Authenticated session active.', 'success', 4500);
+      showToast('Download started! MAHI-Browser-Setup-1.1.3.exe (v1.1.3)', 'success', 4500);
     });
   });
 }

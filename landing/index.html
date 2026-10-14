@@ -104,8 +104,8 @@
         </div>
 
         <a href="/login" class="nav-signin-clean" id="nav-btn-signin" data-i18n="nav_signin" style="background: none; border: none; cursor: pointer; font-family: inherit; text-decoration: none; display: inline-flex; align-items: center;">Sign in</a>
-        <a href="/signup?intent=trial" class="btn-trial-clean" id="nav-btn-trial">
-          <span data-i18n="nav_trial">7-day Trial</span>
+        <a href="/download/setup" class="btn-trial-clean" id="nav-btn-trial">
+          <span data-i18n="nav_trial">Download v1.1.3</span>
         </a>
 
         <!-- Authenticated Navbar State (Visible when session is active) -->
@@ -144,8 +144,8 @@
       <a href="https://wa.me/919376343629" class="dynamic-whatsapp-link" target="_blank" rel="noopener">WhatsApp Support</a>
     </div>
     <div style="margin-top: auto;">
-      <a href="/signup?intent=trial" class="btn-trial-clean" style="width: 100%; justify-content: center;">
-        <span>Start Free 7-Day Trial</span>
+      <a href="/download/setup" class="btn-trial-clean" style="width: 100%; justify-content: center;">
+        <span>Download MAHI Browser (v1.1.3)</span>
       </a>
     </div>
   </aside>
@@ -172,8 +172,9 @@
 
       <!-- CTA Row -->
       <div class="hero-clean-ctas">
-        <a href="/signup?intent=trial" class="btn-clean-primary">
-          <span data-i18n="cta_start_trial">Start Free 7-Day Trial</span>
+        <a href="/download/setup" class="btn-clean-primary" id="hero-download-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span data-i18n="cta_start_trial">Download MAHI Browser (v1.1.3)</span>
         </a>
 
         <a href="/book-demo" class="btn-clean-secondary">
@@ -188,7 +189,7 @@
 
       <!-- Microcopy -->
       <div class="hero-clean-microcopy" data-i18n="micro_no_card">
-        No card required
+        No card or registration required · Instant Windows x64 download
       </div>
 
       <!-- Platform Availability & Core Capabilities -->
@@ -196,12 +197,12 @@
         <div class="platform-avail-label" data-i18n="avail_label">Available for Windows · macOS &amp; Linux in development</div>
         <div class="platform-os-badges">
           <!-- Windows (Active / Available Now) -->
-          <a href="/download" class="hero-os-badge active" title="Download MAHI Browser for Windows 10 &amp; 11 64-bit">
+          <a href="/download/setup" class="hero-os-badge active" title="Direct Download MAHI Browser for Windows 10 &amp; 11 64-bit">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.551H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-13.051-1.802"/>
             </svg>
             <span class="os-name">Windows 10 / 11</span>
-            <span class="os-badge-status ready">Available Now</span>
+            <span class="os-badge-status ready">Direct Download</span>
           </a>
 
           <!-- macOS (Coming Soon) -->
@@ -560,7 +561,7 @@
               <p class="solution-card-desc" data-i18n="elem1_desc">
                 Connect any SOCKS5, HTTP, or HTTPS proxy in 1-click. Built-in local loopback authenticator eliminates browser authentication popups with real-time IP, ISP, and latency diagnostics.
               </p>
-              <a href="/signup?intent=trial" class="btn-feature-try" data-i18n="elem1_btn">Try this feature now</a>
+              <a href="/download/setup" class="btn-feature-try" data-i18n="elem1_btn">Download &amp; try feature</a>
             </div>
           </div>
 
@@ -571,7 +572,7 @@
               <p class="solution-card-desc" data-i18n="elem2_desc">
                 Organize browser profiles into dedicated local workspaces with custom tags and role-based permissions. Maintain complete profile partition so your campaigns never cross-contaminate.
               </p>
-              <a href="/signup?intent=trial" class="btn-feature-try" data-i18n="elem2_btn">Try this feature now</a>
+              <a href="/download/setup" class="btn-feature-try" data-i18n="elem2_btn">Download &amp; try feature</a>
             </div>
 
             <div class="mac-window-frame">
@@ -608,7 +609,7 @@
               <p class="solution-card-desc" data-i18n="elem3_desc">
                 Never lose session state. Automatic lockfiles prevent database corruption from simultaneous launches, and built-in trash bin allows instant 1-click recovery of deleted profiles.
               </p>
-              <a href="/signup?intent=trial" class="btn-feature-try" data-i18n="elem3_btn">Try this feature now</a>
+              <a href="/download/setup" class="btn-feature-try" data-i18n="elem3_btn">Download &amp; try feature</a>
             </div>
           </div>
 
@@ -1218,8 +1219,8 @@
               <span class="cta-title-bold" data-i18n="cta_banner_title_l2">from one device?</span>
             </h2>
             <div class="cta-banner-actions">
-              <a href="/signup?intent=trial" class="btn-cta-try-free" data-i18n="cta_banner_btn">
-                Try 7 days for Free
+              <a href="/download/setup" class="btn-cta-try-free" data-i18n="cta_banner_btn">
+                Download MAHI Browser (v1.1.3)
               </a>
             </div>
           </div>
@@ -1432,11 +1433,11 @@
         <span class="footer-dl-caption">Download MAHI for:</span>
         <div class="footer-dl-pills-wrap">
           
-          <a href="/download" class="footer-os-badge active-os">
+          <a href="/download/setup" class="footer-os-badge active-os">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
               <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.551H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-13.051-1.802"/>
             </svg>
-            <span>Windows (v1.0.0 Now)</span>
+            <span>Windows (v1.1.3 Now)</span>
           </a>
 
           <span class="footer-os-badge disabled-os" title="macOS (Apple Silicon &amp; Intel) — Coming Soon">

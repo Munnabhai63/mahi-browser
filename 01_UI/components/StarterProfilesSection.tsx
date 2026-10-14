@@ -23,6 +23,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
+import { useAccountStore } from '../stores/useAccountStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { NavigationPage } from './Sidebar.js';
 import { UpgradeModal } from './UpgradeModal.js';
@@ -156,6 +157,7 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
   isStandaloneTab = false,
   onSwitchToAllProfiles,
 }) => {
+  const { planLimits } = useAccountStore();
   const [templates, setTemplates] = useState<StarterTemplate[]>(FALLBACK_TEMPLATES);
   const [selectedTemplate, setSelectedTemplate] = useState<StarterTemplate | null>(null);
   const [customProfileName, setCustomProfileName] = useState('');
@@ -610,8 +612,12 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
           isOpen={quotaExceededModalOpen}
           onClose={() => setQuotaExceededModalOpen(false)}
           featureTitle="Profile Quota Reached"
-          featureDescription="Your current plan profile limit has been reached. Upgrade to MAHI PRO for 100 profiles and unlimited cloud synchronization."
-          requiredPlan="PRO"
+          featureDescription={
+            planLimits?.isPro || planLimits?.plan === 'pro' || planLimits?.plan?.startsWith('pro_')
+              ? 'Your PRO plan limit (100 profiles) has been reached. Upgrade to MAHI BUSINESS for up to 300+ profiles and Team Workspaces.'
+              : 'Your FREE plan limit (15 profiles) has been reached. Upgrade to MAHI PRO for 100 profiles and full anti-detect capabilities.'
+          }
+          requiredPlan={planLimits?.isPro || planLimits?.plan === 'pro' || planLimits?.plan?.startsWith('pro_') ? 'BUSINESS' : 'PRO'}
         />
       )}
     </div>

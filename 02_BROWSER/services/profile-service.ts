@@ -272,6 +272,7 @@ export function createProfile(dto: CreateProfileDTO): Profile {
     locale: { ...defaultSettings.locale, ...(dto.settings?.locale || {}) },
     network: { ...defaultSettings.network, ...(dto.settings?.network || {}) },
     permissions: { ...defaultSettings.permissions, ...(dto.settings?.permissions || {}) },
+    fingerprint: dto.settings?.fingerprint ? { ...(dto.settings?.fingerprint || {}) } : undefined,
   };
 
   db.prepare(`

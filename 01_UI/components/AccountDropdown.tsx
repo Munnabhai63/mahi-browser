@@ -58,8 +58,23 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
   const isPro = isLicensePro || isAccountPro;
 
   const currentPlan = (planLimits?.plan || currentUser?.planName || (isPro ? 'pro' : 'free')).toLowerCase();
-  const isPaidOrTrial = isPro || currentPlan === 'pro' || currentPlan === 'trial' || currentPlan === 'starter' || currentPlan === 'team';
-  const planBadgeText = currentPlan === 'trial' ? 'TRIAL' : currentPlan === 'pro' ? 'PRO' : currentPlan === 'starter' ? 'STARTER' : currentPlan === 'team' ? 'TEAM' : (isPro ? 'PRO' : 'FREE');
+  const isBusiness = Boolean(
+    planLimits?.tier === 'BUSINESS' ||
+    currentPlan === 'business' ||
+    currentPlan.startsWith('business_') ||
+    currentPlan === 'team' ||
+    currentPlan.startsWith('team_') ||
+    currentPlan === 'enterprise' ||
+    currentUser?.planName?.toUpperCase() === 'BUSINESS'
+  );
+
+  const isPaidOrTrial = isBusiness || isPro || currentPlan === 'pro' || currentPlan === 'trial' || currentPlan === 'starter' || currentPlan.startsWith('pro_');
+  const planBadgeText = isBusiness
+    ? (currentPlan === 'enterprise' ? 'ENTERPRISE' : currentPlan.includes('team') ? 'TEAM' : 'BUSINESS')
+    : currentPlan === 'trial' ? 'TRIAL'
+    : (currentPlan === 'pro' || currentPlan.startsWith('pro_')) ? 'PRO'
+    : currentPlan === 'starter' ? 'STARTER'
+    : (isPro ? 'PRO' : 'FREE');
 
   // Load authenticated session on mount
   useEffect(() => {
@@ -139,6 +154,8 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
                 isPaidOrTrial
                   ? currentPlan === 'trial'
                     ? 'text-sky-400 bg-sky-950/80 border border-sky-800/60'
+                    : isBusiness
+                    ? 'text-indigo-400 bg-indigo-950/80 border border-indigo-800/60'
                     : 'text-teal-400 bg-teal-950/80 border border-teal-800/60'
                   : 'text-slate-400 bg-slate-800 border border-slate-700'
               }`}>

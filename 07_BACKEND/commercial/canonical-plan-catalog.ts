@@ -481,19 +481,41 @@ export function findLowestPlanForCapability(
 export function resolveCapabilitiesForCanonicalPlan(
   planId: string
 ): Record<FeatureCapability, boolean> {
+  const normId = (planId || '').toLowerCase().trim();
+
   // Direct canonical lookup
-  const canonical = CANONICAL_PLAN_CATALOG[planId as CanonicalPlanId];
+  const canonical = CANONICAL_PLAN_CATALOG[normId as CanonicalPlanId];
   if (canonical) return { ...canonical.capabilities };
 
-  // Legacy plan ID mapping
+  // Comprehensive alias and legacy mapping
   const legacyMap: Record<string, CanonicalPlanId> = {
+    'free': 'free',
     'plan_free': 'free',
+    'starter': 'professional_10',
+    'pro_10': 'professional_10',
+    'pro_25': 'professional_25',
+    'pro_50': 'professional_50',
+    'pro_100': 'professional_100',
+    'pro': 'professional_100',
+    'trial': 'professional_100',
     'plan_pro': 'professional_100',
+    'team': 'business_growth',
+    'team_50': 'business_starter',
+    'team_100': 'business_growth',
+    'team_200': 'business_scale',
+    'team_300': 'business_enterprise',
+    'business': 'business_growth',
+    'business_starter': 'business_starter',
+    'business_growth': 'business_growth',
+    'business_scale': 'business_scale',
+    'business_enterprise': 'business_enterprise',
     'plan_business': 'business_growth',
+    'enterprise': 'business_enterprise',
+    'enterprise_custom': 'enterprise_custom',
     'plan_enterprise': 'enterprise_custom',
   };
 
-  const mappedId = legacyMap[planId];
+  const mappedId = legacyMap[normId];
   if (mappedId && CANONICAL_PLAN_CATALOG[mappedId]) {
     return { ...CANONICAL_PLAN_CATALOG[mappedId].capabilities };
   }
@@ -525,18 +547,35 @@ export function calculateAnnualPricePaise(monthlyPricePaise: number, discountPer
 }
 
 /**
- * Maps legacy plan IDs to canonical plan IDs.
+ * Maps legacy and short plan IDs to canonical plan IDs.
  */
 export function legacyPlanIdToCanonical(legacyId: string): CanonicalPlanId {
+  const norm = (legacyId || '').toLowerCase().trim();
   const map: Record<string, CanonicalPlanId> = {
+    'free': 'free',
     'plan_free': 'free',
+    'starter': 'professional_10',
+    'pro_10': 'professional_10',
+    'pro_25': 'professional_25',
+    'pro_50': 'professional_50',
+    'pro_100': 'professional_100',
+    'pro': 'professional_100',
+    'trial': 'professional_100',
     'plan_pro': 'professional_100',
+    'team': 'business_growth',
+    'team_50': 'business_starter',
+    'team_100': 'business_growth',
+    'team_200': 'business_scale',
+    'team_300': 'business_enterprise',
+    'business': 'business_growth',
+    'business_starter': 'business_starter',
+    'business_growth': 'business_growth',
+    'business_scale': 'business_scale',
+    'business_enterprise': 'business_enterprise',
     'plan_business': 'business_growth',
+    'enterprise': 'business_enterprise',
+    'enterprise_custom': 'enterprise_custom',
     'plan_enterprise': 'enterprise_custom',
-    'FREE': 'free',
-    'PRO': 'professional_100',
-    'BUSINESS': 'business_growth',
-    'ENTERPRISE': 'enterprise_custom',
   };
-  return map[legacyId] || (CANONICAL_PLAN_CATALOG[legacyId as CanonicalPlanId] ? legacyId as CanonicalPlanId : 'free');
+  return map[norm] || (CANONICAL_PLAN_CATALOG[norm as CanonicalPlanId] ? (norm as CanonicalPlanId) : 'free');
 }

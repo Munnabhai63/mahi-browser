@@ -6,7 +6,7 @@ import { verifyLicense } from './license-service.js';
 import { isOnlineRevoked, isGraceExpired } from './license-status-service.js';
 import { getDynamicPrice } from './price-service.js';
 import { getDatabase } from '../06_DATABASE/connection.js';
-import { hasValidAccountSubscription } from './account-service.js';
+import { hasValidAccountSubscription, getAccountPlanLimits, isBusinessPlan, readCachedStatus } from './account-service.js';
 
 function getUserDataPath(): string {
   try {
@@ -80,6 +80,12 @@ export function getNonDeletedProfileCount(): number {
   }
 }
 
+export function isUserBusiness(): boolean {
+  if (!hasValidAccountSubscription()) return false;
+  const cached = readCachedStatus();
+  return isBusinessPlan(cached?.plan);
+}
+
 export function isUserPro(): boolean {
   return hasValidAccountSubscription() || hasValidLicense();
 }
@@ -90,18 +96,22 @@ export function isUserPro(): boolean {
  */
 export function assertCanCreateProfile(additionalCount = 1): void {
   const currentCount = getNonDeletedProfileCount();
-  const isPro = isUserPro();
+  const limits = getPlanLimitsInfo();
 
-  if (!isPro) {
-    if (currentCount + additionalCount > FREE_PROFILE_LIMIT) {
+  if (currentCount + additionalCount > limits.maxProfiles) {
+    if (limits.maxProfiles <= FREE_PROFILE_LIMIT) {
       const price = getDynamicPrice();
       throw new Error(
         `Free plan limit reached (${FREE_PROFILE_LIMIT} profiles). Upgrade MAHI PRO (₹${price}/year) for ${PRO_PROFILE_LIMIT} profiles.`
       );
-    }
-  } else {
-    if (currentCount + additionalCount > PRO_PROFILE_LIMIT) {
-      throw new Error('Pro plan limit reached.');
+    } else if (limits.maxProfiles <= PRO_PROFILE_LIMIT) {
+      throw new Error(
+        `PRO plan limit reached (${PRO_PROFILE_LIMIT} profiles). Upgrade to BUSINESS to unlock up to 300+ profiles and Team Workspaces.`
+      );
+    } else {
+      throw new Error(
+        `Business plan limit reached (${limits.maxProfiles} profiles). Please contact support for an enterprise quota expansion.`
+      );
     }
   }
 }
@@ -112,20 +122,36 @@ export function assertCanCreateProfile(additionalCount = 1): void {
 export function getPlanLimitsInfo(): {
   isLicensed: boolean;
   isPro: boolean;
+  isBusiness: boolean;
   currentCount: number;
   maxProfiles: number;
   freeLimit: number;
   proLimit: number;
+  tier: 'FREE' | 'PRO' | 'BUSINESS';
 } {
   const isLicensed = hasValidLicense();
-  const isPro = isUserPro();
+  const isBiz = isUserBusiness();
+  const isPro = isBiz || isUserPro();
+  const accountLimits = getAccountPlanLimits();
+
+  let maxProfiles = FREE_PROFILE_LIMIT;
+  if (isBiz) {
+    maxProfiles = Math.max(accountLimits.maxProfiles, 100);
+  } else if (isPro) {
+    maxProfiles = accountLimits.maxProfiles > 15 ? accountLimits.maxProfiles : PRO_PROFILE_LIMIT;
+  }
+
+  const tier: 'FREE' | 'PRO' | 'BUSINESS' = isBiz ? 'BUSINESS' : isPro ? 'PRO' : 'FREE';
+
   return {
     isLicensed,
     isPro,
+    isBusiness: isBiz,
     currentCount: getNonDeletedProfileCount(),
-    maxProfiles: isPro ? PRO_PROFILE_LIMIT : FREE_PROFILE_LIMIT,
+    maxProfiles,
     freeLimit: FREE_PROFILE_LIMIT,
     proLimit: PRO_PROFILE_LIMIT,
+    tier,
   };
 }
 
@@ -133,11 +159,26 @@ export function getPlanLimitsInfo(): {
  * Asserts that the desktop environment has entitlement for a specific capability.
  */
 export function assertCapability(capability: string): void {
-  // Basic features available to all users
+  // 1. Basic features available to all users
   if (capability === 'profile.basic' || capability === 'proxy.custom') {
     return;
   }
 
+  // 2. Capabilities requiring BUSINESS tier
+  if (capability === 'workspace.team') {
+    if (!isUserBusiness()) {
+      const err = new Error(
+        `FEATURE_NOT_INCLUDED: Feature "${capability}" requires a MAHI BUSINESS subscription. Please upgrade to unlock team workspaces.`
+      );
+      (err as any).code = 'FEATURE_NOT_INCLUDED';
+      (err as any).capability = capability;
+      (err as any).requiredPlan = 'BUSINESS';
+      throw err;
+    }
+    return;
+  }
+
+  // 3. Capabilities requiring PRO or BUSINESS
   const isPro = isUserPro();
   if (!isPro) {
     const err = new Error(

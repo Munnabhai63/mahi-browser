@@ -42,6 +42,9 @@ export function getLocalIpAddresses(): string[] {
 }
 
 export function getReleaseDirectory(): string {
+  if (process.env.RELEASE_DIR && fs.existsSync(process.env.RELEASE_DIR)) {
+    return process.env.RELEASE_DIR;
+  }
   const cwd = process.cwd();
   const relDir = path.join(cwd, 'release');
   if (fs.existsSync(relDir)) {
@@ -53,8 +56,11 @@ export function getReleaseDirectory(): string {
     return relInApp;
   }
   const candidateDirs = [
+    path.join(os.homedir(), 'Desktop', 'MAHI_BROWSER_UPGRADE_INSTALLER'),
     path.join(os.homedir(), 'Desktop', 'mahai brouser', 'release'),
     path.join(os.homedir(), 'Desktop', 'mahi browser', 'release'),
+    '/var/www/mahibrowser.com/release',
+    '/var/www/mahibrowser/release',
   ];
   for (const cand of candidateDirs) {
     if (fs.existsSync(cand)) {

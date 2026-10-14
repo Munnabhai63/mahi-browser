@@ -23,7 +23,7 @@ import { getRealUserProfileCount } from '../../02_BROWSER/services/starter-profi
 import { processManager } from '../../02_BROWSER/process-manager.js';
 import { validateCurrentLicense, getLicenseById } from '../../04_LICENSING/license-engine.js';
 import { hasValidLicense } from '../../08_SECURITY/freemium-guard.js';
-import { hasValidAccountSubscription } from '../../08_SECURITY/account-service.js';
+import { hasValidAccountSubscription, readCachedStatus, getAccountSession, isBusinessPlan } from '../../08_SECURITY/account-service.js';
 
 export const CAPABILITY_REQUIREMENTS: Record<
   FeatureCapability,
@@ -95,20 +95,41 @@ export function evaluateUserEntitlements(
   // 1. Fetch User Record
   const user = getUserById(userId);
 
-  // If local / fallback user ID on desktop
-  if (!user && (userId === 'LOCAL_CLIENT' || userId === 'SYSTEM_OWNER' || !userId)) {
-    const isPro = hasValidLicense() || hasValidAccountSubscription();
-    const effectivePlan = isPro ? (getCommercialPlanById('plan_pro') || DEFAULT_COMMERCIAL_PLANS[1]) : defaultFreePlan;
-    const capabilities = resolveCapabilitiesForPlan(effectivePlan);
+  // If user not in legacy local database, resolve through central account session or license
+  if (!user) {
+    const isSubActive = hasValidAccountSubscription();
+    const isLicenseActive = hasValidLicense();
+    const session = getAccountSession();
+    const cached = readCachedStatus();
+
+    let effectivePlan = defaultFreePlan;
+    let capabilities = resolveCapabilitiesForPlan(defaultFreePlan);
+
+    if (isSubActive && cached?.plan) {
+      const planNorm = cached.plan.toLowerCase().trim();
+      const isBiz = isBusinessPlan(planNorm);
+      effectivePlan = isBiz
+        ? (getCommercialPlanById('plan_business') || DEFAULT_COMMERCIAL_PLANS[2])
+        : (getCommercialPlanById('plan_pro') || DEFAULT_COMMERCIAL_PLANS[1]);
+      capabilities = resolveCapabilitiesForCanonicalPlan(planNorm);
+    } else if (isLicenseActive) {
+      effectivePlan = getCommercialPlanById('plan_pro') || DEFAULT_COMMERCIAL_PLANS[1];
+      capabilities = resolveCapabilitiesForPlan(effectivePlan);
+    }
+
+    const maxProfiles = (cached?.profile_limit && cached.profile_limit > 0)
+      ? cached.profile_limit
+      : effectivePlan.limits.maxProfiles;
+
     const allProfiles = getProfiles({ includeTrash: false });
     const runningCount = processManager.getRunningCount();
 
     return {
       allowed: true,
       user: {
-        id: userId || 'LOCAL_CLIENT',
-        email: 'local@mahibrowser.local',
-        name: 'Local User',
+        id: userId || session?.account_id || 'LOCAL_CLIENT',
+        email: session?.email || 'local@mahibrowser.local',
+        name: session?.email ? session.email.split('@')[0] : 'Local User',
         role: 'USER',
         status: 'ACTIVE',
         planId: effectivePlan.id,
@@ -119,40 +140,15 @@ export function evaluateUserEntitlements(
         status: 'ACTIVE',
         isAuthorized: true,
       },
-      limits: effectivePlan.limits,
+      limits: {
+        ...effectivePlan.limits,
+        maxProfiles,
+      },
       capabilities,
       usage: {
         profilesCount: getRealUserProfileCount(userId),
         runningProfilesCount: runningCount,
         activeDevicesCount: 1,
-      },
-    };
-  }
-
-  if (!user) {
-    return {
-      allowed: false,
-      reason: 'User account not found.',
-      user: {
-        id: userId,
-        email: 'unknown@mahibrowser.local',
-        name: 'Unknown',
-        role: 'USER',
-        status: 'SUSPENDED',
-        planId: defaultFreePlan.id,
-      },
-      plan: defaultFreePlan,
-      device: {
-        deviceId: currentDeviceId,
-        status: 'REVOKED',
-        isAuthorized: false,
-      },
-      limits: defaultFreePlan.limits,
-      capabilities: resolveCapabilitiesForPlan(defaultFreePlan),
-      usage: {
-        profilesCount: 0,
-        runningProfilesCount: 0,
-        activeDevicesCount: 0,
       },
     };
   }

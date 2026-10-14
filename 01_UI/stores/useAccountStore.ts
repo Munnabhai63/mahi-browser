@@ -41,7 +41,7 @@ interface AccountState {
 
   // GoLogin-Style Account & Subscription System (v1.1.0+)
   accountSession: any | null;
-  planLimits: { isPro: boolean; plan: string; maxProfiles: number; expiresAt: string | null } | null;
+  planLimits: { isPro: boolean; plan: string; tier?: 'FREE' | 'PRO' | 'BUSINESS'; maxProfiles: number; expiresAt: string | null } | null;
   paymentInfo: any | null;
   pendingProfileDto: any | null;
 
@@ -406,14 +406,37 @@ export const useAccountStore = create<AccountState>()(
       },
 
       hasCapability: (cap: string) => {
-        const { entitlements, planLimits } = get();
+        const { entitlements, planLimits, currentUser } = get();
+        // 1. If explicit server-authoritative capabilities exist in entitlements, evaluate them
         if (entitlements?.capabilities && typeof (entitlements.capabilities as any)[cap] === 'boolean') {
           return (entitlements.capabilities as any)[cap];
         }
-        const isPro = planLimits?.isPro || false;
-        if (isPro) return true;
+
+        // 2. Basic capabilities available to everyone (FREE and up)
         if (cap === 'profile.basic' || cap === 'proxy.custom') return true;
-        return false;
+
+        // 3. Determine effective plan and tier
+        const plan = (planLimits?.plan || currentUser?.planName || '').toLowerCase().trim();
+        const isPro = planLimits?.isPro || false;
+
+        const isBusiness = (
+          plan === 'business' ||
+          plan === 'enterprise' ||
+          plan.startsWith('business_') ||
+          plan.startsWith('team_') ||
+          plan === 'team' ||
+          entitlements?.plan?.tier === 'BUSINESS' ||
+          entitlements?.plan?.tier === 'ENTERPRISE'
+        );
+
+        // Features requiring BUSINESS tier
+        if (cap === 'workspace.team') {
+          return isBusiness;
+        }
+
+        // Features requiring PRO tier (included in both PRO and BUSINESS)
+        const isProOrBusiness = isBusiness || isPro || plan === 'pro' || plan === 'trial' || plan.startsWith('pro_') || plan.startsWith('professional_') || plan === 'starter';
+        return isProOrBusiness;
       },
 
       fetchUserDevices: async () => {

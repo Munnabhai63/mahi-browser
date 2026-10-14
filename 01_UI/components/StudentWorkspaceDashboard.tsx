@@ -71,14 +71,30 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
   };
 
   const isLicensePro = Boolean(currentLicenseStatus?.isValid && currentLicenseStatus.status === 'ACTIVE');
-  const isAccountPro = Boolean(
+  const currentPlan = (planLimits?.plan || currentUser?.planName || '').toLowerCase();
+  const isBusiness = Boolean(
+    planLimits?.tier === 'BUSINESS' ||
+    currentPlan === 'business' ||
+    currentPlan.startsWith('business_') ||
+    currentPlan === 'team' ||
+    currentPlan.startsWith('team_') ||
+    currentPlan === 'enterprise' ||
+    currentUser?.planName?.toUpperCase() === 'BUSINESS'
+  );
+  const isAccountPaid = Boolean(
     planLimits?.isPro ||
-    planLimits?.plan === 'pro' ||
-    planLimits?.plan === 'trial' ||
+    isBusiness ||
+    currentPlan === 'pro' ||
+    currentPlan === 'trial' ||
+    currentPlan.startsWith('pro_') ||
     currentUser?.planName?.toUpperCase() === 'PRO' ||
     currentUser?.planName?.toUpperCase() === 'TRIAL'
   );
-  const isProActive = isLicensePro || isAccountPro;
+  const isProActive = isLicensePro || isAccountPaid;
+  const planBadgeTitle = isBusiness
+    ? (currentPlan === 'enterprise' ? 'MAHI ENTERPRISE' : currentPlan.includes('team') ? 'MAHI TEAM' : 'MAHI BUSINESS')
+    : currentPlan === 'trial' ? 'MAHI TRIAL'
+    : (isProActive ? 'MAHI PRO' : 'MAHI FREE');
 
   const expiryDate = planLimits?.expiresAt || currentLicenseStatus?.license?.expiresAt || null;
   const daysRemaining = expiryDate
@@ -94,7 +110,7 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
       <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-teal-950/40 border border-slate-800 rounded-3xl p-6 shadow-sm relative overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
           <div className="flex items-center space-x-4">
-            <div className={`w-14 h-14 rounded-2xl ${'bg-emerald-500'} flex items-center justify-center text-white font-black text-2xl shadow-lg shrink-0`}>
+            <div className={`w-14 h-14 rounded-2xl ${isBusiness ? 'bg-indigo-600' : 'bg-emerald-500'} flex items-center justify-center text-white font-black text-2xl shadow-lg shrink-0`}>
               M
             </div>
             <div>
@@ -102,8 +118,14 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
                 <h2 className="text-xl font-bold text-white">
                   Welcome back!
                 </h2>
-                <span className="px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-400 text-[10px] font-bold border border-teal-500/20">
-                  MAHI PRO
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                  isBusiness
+                    ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+                    : isProActive
+                    ? 'bg-teal-500/10 text-teal-400 border-teal-500/20'
+                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                }`}>
+                  {planBadgeTitle}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1 font-mono">

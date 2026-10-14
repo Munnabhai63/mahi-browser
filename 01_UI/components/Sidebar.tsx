@@ -217,7 +217,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
           )}
         </div>
         <div className="pt-2 text-center text-[10px] text-slate-500 font-medium">
-          By Munna Bhai • v1.1.3
+          By Munna Bhai • v1.1.4
         </div>
       </div>
 

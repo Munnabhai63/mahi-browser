@@ -1,7 +1,7 @@
 {
   "appId": "com.mahibrowser.app",
   "productName": "MAHI Browser",
-  "copyright": "Copyright © 2026 Mahi Browser Team",
+  "copyright": "Copyright © 2026 MAHI Browser — By Munna Bhai",
   "directories": {
     "output": "release",
     "buildResources": "13_ASSETS/resources"
@@ -110,7 +110,7 @@
     "artifactName": "MAHI-Browser-${version}-Linux-${arch}.${ext}",
     "synopsis": "Professional Cross-Platform Anti-Detect Browser",
     "description": "Multi-accounting antidetect browser with visual automation studio, session warming, and cloud synchronization.",
-    "maintainer": "Mahi Browser Team <support@mahibrowser.com>"
+    "maintainer": "Munna Bhai <support@mahibrowser.com>"
   },
   "deb": {
     "priority": "optional",

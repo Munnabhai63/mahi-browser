@@ -235,6 +235,15 @@ export function writeCachedStatus(status: CachedAccountStatus): void {
   }
 }
 
+export function clearCachedStatus(): void {
+  try {
+    const p = getStatusCacheFilePath();
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+    const legacyPath = path.join(getUserDataPath(), 'account-status-cache.json');
+    if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
+  } catch {}
+}
+
 export function verifyAccountStatusSignature(
   data: {
     account_id: string;
@@ -771,7 +780,7 @@ export function getAccountSession(): AccountSession | null {
 }
 
 export function getAccountProfileLimit(): number {
-  return hasValidAccountSubscription() ? 100 : 15;
+  return getAccountPlanLimits().maxProfiles;
 }
 
 export function isAccountSyncAllowed(): boolean {
@@ -779,7 +788,44 @@ export function isAccountSyncAllowed(): boolean {
 }
 
 /**
- * Returns true if user account has an active trial or pro plan
+ * Returns true if the plan string corresponds to a paid commercial subscription tier.
+ */
+export function isPaidPlan(plan?: string | null): boolean {
+  if (!plan) return false;
+  const p = plan.toLowerCase().trim();
+  return (
+    p === 'pro' ||
+    p === 'trial' ||
+    p === 'starter' ||
+    p.startsWith('pro_') ||
+    p.startsWith('professional_') ||
+    p === 'business' ||
+    p.startsWith('business_') ||
+    p === 'team' ||
+    p.startsWith('team_') ||
+    p === 'enterprise' ||
+    p === 'enterprise_custom'
+  );
+}
+
+/**
+ * Returns true if the plan string corresponds to a BUSINESS/TEAM tier.
+ */
+export function isBusinessPlan(plan?: string | null): boolean {
+  if (!plan) return false;
+  const p = plan.toLowerCase().trim();
+  return (
+    p === 'business' ||
+    p.startsWith('business_') ||
+    p === 'team' ||
+    p.startsWith('team_') ||
+    p === 'enterprise' ||
+    p === 'enterprise_custom'
+  );
+}
+
+/**
+ * Returns true if user account has an active trial, pro, or business plan
  * and offline grace period (7 days) has not expired.
  */
 export function hasValidAccountSubscription(): boolean {
@@ -789,8 +835,8 @@ export function hasValidAccountSubscription(): boolean {
   const cached = readCachedStatus();
   if (!cached) return false;
 
-  // Check plan
-  if (cached.plan !== 'pro' && cached.plan !== 'trial') {
+  // Check plan validity (all paid tiers: pro, trial, business, team, starter, enterprise)
+  if (!isPaidPlan(cached.plan)) {
     return false;
   }
 
@@ -807,14 +853,35 @@ export function hasValidAccountSubscription(): boolean {
   return true;
 }
 
-export function getAccountPlanLimits(): { isPro: boolean; plan: string; maxProfiles: number; expiresAt: string | null } {
-  const isPro = hasValidAccountSubscription();
+export function getAccountPlanLimits(): {
+  isPro: boolean;
+  plan: string;
+  tier: 'FREE' | 'PRO' | 'BUSINESS';
+  maxProfiles: number;
+  expiresAt: string | null;
+} {
+  const isValidSub = hasValidAccountSubscription();
   const cached = readCachedStatus();
+  const plan = (cached && isValidSub) ? cached.plan.toLowerCase() : 'free';
+  const isBiz = isValidSub && isBusinessPlan(plan);
+  const isPro = isValidSub;
+  const tier: 'FREE' | 'PRO' | 'BUSINESS' = isBiz ? 'BUSINESS' : isPro ? 'PRO' : 'FREE';
+
+  let maxProfiles = 15;
+  if (isValidSub && cached?.profile_limit && typeof cached.profile_limit === 'number' && cached.profile_limit > 0) {
+    maxProfiles = cached.profile_limit;
+  } else if (isBiz) {
+    maxProfiles = 200;
+  } else if (isPro) {
+    maxProfiles = 100;
+  }
+
   return {
     isPro,
-    plan: cached ? cached.plan : 'free',
-    maxProfiles: isPro ? 100 : 15,
-    expiresAt: cached?.expires_at || null
+    plan,
+    tier,
+    maxProfiles,
+    expiresAt: (isValidSub && cached?.expires_at) ? cached.expires_at : null
   };
 }
 

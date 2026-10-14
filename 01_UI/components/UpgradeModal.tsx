@@ -26,6 +26,13 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({
     openAccountModal();
   };
 
+  const isProUser = Boolean(
+    planLimits?.isPro ||
+    planLimits?.plan === 'pro' ||
+    planLimits?.plan === 'trial' ||
+    planLimits?.plan?.startsWith('pro_')
+  );
+
   const proFeatures = [
     'Up to 100 anti-detect browser profiles (vs 15 Free)',
     'End-to-end encrypted Cloud Sync & Multi-Device sync',
@@ -34,6 +41,19 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({
     'Multi-Window CDP Synchronizer Hub',
     'Real-time automated fingerprint randomization',
   ];
+
+  const businessFeatures = [
+    'Dedicated Team Workspaces with Multi-User Collaboration',
+    'Team Member Seats with Role-Based Access Control (Admin, Manager, Operator)',
+    'Granular Profile Sharing & Centralized Access Delegation',
+    'Expanded Profile Capacity (100 to 300+ Anti-Detect Profiles)',
+    'Organization Audit Logs & Centralized Activity Tracking',
+    'Shared Proxy Device Allocation & Priority Dedicated Support',
+  ];
+
+  const displayFeatures = requiredPlan === 'BUSINESS' || requiredPlan === 'ENTERPRISE'
+    ? businessFeatures
+    : proFeatures;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-in fade-in select-none">
@@ -75,13 +95,23 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({
             </p>
           </div>
 
+          {requiredPlan === 'BUSINESS' && isProUser && (
+            <div className="p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-800/50 flex items-start space-x-2.5 text-xs text-indigo-200">
+              <Users className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+              <p className="leading-relaxed">
+                Your current <strong className="text-indigo-300">PRO plan</strong> includes full single-user capabilities (100 profiles, Cloud Sync, and Automation). 
+                Multi-user collaboration, member seats, and team workspaces require a <strong className="text-white">BUSINESS</strong> subscription.
+              </p>
+            </div>
+          )}
+
           <div>
             <div className="flex items-center space-x-2 text-xs font-bold text-slate-300 mb-3">
               <Sparkles className="w-4 h-4 text-teal-400" />
               <span>Included in {requiredPlan} Plan</span>
             </div>
             <ul className="space-y-2 text-xs text-slate-300">
-              {proFeatures.map((feat, idx) => (
+              {displayFeatures.map((feat, idx) => (
                 <li key={idx} className="flex items-start space-x-2.5">
                   <div className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0 mt-0.5">
                     <Check className="w-3 h-3" />

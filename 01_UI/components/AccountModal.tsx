@@ -20,6 +20,7 @@ import {
   Trash2,
   ArrowLeft,
   Check,
+  Users,
 } from 'lucide-react';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
@@ -634,6 +635,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                     </h4>
                   </div>
                   <div>
+                    {(currentPlan === 'business' || currentPlan.startsWith('business_') || currentPlan === 'team' || currentPlan === 'enterprise') && (
+                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center gap-1">
+                        <Users size={13} /> {currentPlan.toUpperCase()} ACTIVE
+                      </span>
+                    )}
                     {currentPlan === 'pro' && (
                       <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                         <Zap size={13} /> PRO ACTIVE
@@ -644,7 +650,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                         <Sparkles size={13} /> 7-DAY TRIAL
                       </span>
                     )}
-                    {currentPlan === 'free' && (
+                    {currentPlan !== 'pro' && currentPlan !== 'trial' && !currentPlan.startsWith('pro_') && currentPlan !== 'business' && !currentPlan.startsWith('business_') && currentPlan !== 'team' && currentPlan !== 'enterprise' && (
                       <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-700 text-slate-300 border border-slate-600">
                         FREE PLAN (15/15)
                       </span>
