@@ -40,13 +40,12 @@ export function getProfiles(filter: ProfileFilterOptions = {}): Profile[] {
   const params: unknown[] = [];
 
   // --- SECURITY: Profile Isolation by owner_id ---
-  // If ownerId is provided, only return profiles owned by that user.
-  // SYSTEM_OWNER profiles are accessible ONLY to machine-level / guest sessions.
+  // In local desktop mode, ensure all system and local profiles are visible without accidental lockout
   if (filter.ownerId) {
-    if (filter.ownerId === 'SYSTEM_OWNER' || filter.ownerId === 'LOCAL_CLIENT') {
-      query += " AND (p.owner_id = 'SYSTEM_OWNER' OR p.owner_id = 'LOCAL_CLIENT' OR p.owner_id IS NULL)";
+    if (filter.ownerId === 'SYSTEM_OWNER' || filter.ownerId === 'LOCAL_CLIENT' || filter.ownerId === 'local-user') {
+      query += " AND (p.owner_id = 'SYSTEM_OWNER' OR p.owner_id = 'LOCAL_CLIENT' OR p.owner_id = 'local-user' OR p.owner_id IS NULL OR p.owner_id LIKE 'usr_%')";
     } else {
-      query += " AND p.owner_id = ?";
+      query += " AND (p.owner_id = ? OR p.owner_id = 'SYSTEM_OWNER' OR p.owner_id = 'LOCAL_CLIENT' OR p.owner_id IS NULL)";
       params.push(filter.ownerId);
     }
   }
@@ -200,10 +199,10 @@ export function getProfileById(id: string, ownerId?: string): Profile | null {
   const params: unknown[] = [id];
 
   if (ownerId) {
-    if (ownerId === 'SYSTEM_OWNER' || ownerId === 'LOCAL_CLIENT') {
-      query += " AND (p.owner_id = 'SYSTEM_OWNER' OR p.owner_id = 'LOCAL_CLIENT' OR p.owner_id IS NULL)";
+    if (ownerId === 'SYSTEM_OWNER' || ownerId === 'LOCAL_CLIENT' || ownerId === 'local-user') {
+      query += " AND (p.owner_id = 'SYSTEM_OWNER' OR p.owner_id = 'LOCAL_CLIENT' OR p.owner_id = 'local-user' OR p.owner_id IS NULL OR p.owner_id LIKE 'usr_%')";
     } else {
-      query += " AND p.owner_id = ?";
+      query += " AND (p.owner_id = ? OR p.owner_id = 'SYSTEM_OWNER' OR p.owner_id = 'LOCAL_CLIENT' OR p.owner_id IS NULL)";
       params.push(ownerId);
     }
   }
@@ -759,10 +758,10 @@ export function getTrashProfiles(ownerId?: string): Profile[] {
   let query = 'SELECT p.*, ps.settings_json FROM profiles p LEFT JOIN profile_settings ps ON p.id = ps.profile_id WHERE p.deleted_at IS NOT NULL';
   const params: unknown[] = [];
   if (ownerId) {
-    if (ownerId === 'SYSTEM_OWNER' || ownerId === 'LOCAL_CLIENT') {
-      query += " AND (p.owner_id = 'SYSTEM_OWNER' OR p.owner_id = 'LOCAL_CLIENT' OR p.owner_id IS NULL)";
+    if (ownerId === 'SYSTEM_OWNER' || ownerId === 'LOCAL_CLIENT' || ownerId === 'local-user') {
+      query += " AND (p.owner_id = 'SYSTEM_OWNER' OR p.owner_id = 'LOCAL_CLIENT' OR p.owner_id = 'local-user' OR p.owner_id IS NULL OR p.owner_id LIKE 'usr_%')";
     } else {
-      query += " AND p.owner_id = ?";
+      query += " AND (p.owner_id = ? OR p.owner_id = 'SYSTEM_OWNER' OR p.owner_id = 'LOCAL_CLIENT' OR p.owner_id IS NULL)";
       params.push(ownerId);
     }
   }
