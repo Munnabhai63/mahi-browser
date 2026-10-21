@@ -1,3 +1,48 @@
-=== MAHI BROWSER SESSION STARTED AT 2026-08-27T05:10:46.642Z ===
-[2026-08-27T05:10:46.643Z] [CHECKPOINT] Step 1: Application Initializing - Electron version: 33.4.11
-[2026-08-27T05:10:46.645Z] [CHECKPOINT] Step 1: Hardware Acceleration Disabled
+=== MAHI BROWSER SESSION STARTED AT 2026-10-21T08:01:38.856Z ===
+[2026-10-21T08:01:38.857Z] [CHECKPOINT] Step 1: Application Initializing - Electron version: 33.4.11
+[2026-10-21T08:01:38.858Z] [CHECKPOINT] Step 1: Hardware Acceleration Disabled
+[2026-10-21T08:01:38.859Z] [CHECKPOINT] Step 1: Custom protocol client "mahi" registered
+[2026-10-21T08:01:38.860Z] [CHECKPOINT] Step 2: Checking Instance Status
+[2026-10-21T08:01:38.861Z] [CHECKPOINT] Step 2: Multi-instance / parallel launch detected. Proceeding to launch UI window.
+[2026-10-21T08:01:38.902Z] [CHECKPOINT] Step 3: App whenReady fired
+[2026-10-21T08:01:38.903Z] [CHECKPOINT] Step 3: Setting Database Path - C:\Users\munaf\AppData\Roaming\mahi-browser\mahi_browser.sqlite
+
+==================== [CRASH / ERROR EVENT: DATABASE_INIT_ERROR] ====================
+Timestamp: 2026-10-21T08:01:38.907Z
+Process: Main Process (PID: 27512)
+Platform: win32 (x64) Node: v20.18.3 Electron: 33.4.11
+Message: [GLOBAL TEST SAFETY GUARD VIOLATION] Automated tests must NEVER target production user database in AppData! Attempted path: "C:\Users\munaf\AppData\Roaming\mahi-browser\mahi_browser.sqlite". Please use setCustomDatabasePath(...) with an isolated test directory or let the safety guard route to temporary storage.
+Stack Trace:
+Error: [GLOBAL TEST SAFETY GUARD VIOLATION] Automated tests must NEVER target production user database in AppData! Attempted path: "C:\Users\munaf\AppData\Roaming\mahi-browser\mahi_browser.sqlite". Please use setCustomDatabasePath(...) with an isolated test directory or let the safety guard route to temporary storage.
+    at kE (file:///C:/Users/munaf/Desktop/mahai%20brouser/release/win-unpacked/resources/app.asar/dist-electron/main/index.js:44:11)
+    at _p (file:///C:/Users/munaf/Desktop/mahai%20brouser/release/win-unpacked/resources/app.asar/dist-electron/main/index.js:59:11)
+    at file:///C:/Users/munaf/Desktop/mahai%20brouser/release/win-unpacked/resources/app.asar/dist-electron/main/index.js:41094:45
+========================================================================
+
+[2026-10-21T08:01:38.909Z] [CHECKPOINT] Step 3: Attempting recovery - deleting corrupted DB file
+
+==================== [CRASH / ERROR EVENT: DATABASE_RECOVERY_FAILED] ====================
+Timestamp: 2026-10-21T08:01:38.910Z
+Process: Main Process (PID: 27512)
+Platform: win32 (x64) Node: v20.18.3 Electron: 33.4.11
+Message: Error: [GLOBAL TEST SAFETY GUARD VIOLATION] Automated tests must NEVER target production user database in AppData! Attempted path: "C:\Users\munaf\AppData\Roaming\mahi-browser\mahi_browser.sqlite". Please use setCustomDatabasePath(...) with an isolated test directory or let the safety guard route to temporary storage.
+Stack Trace: None available
+========================================================================
+
+[2026-10-21T08:01:38.911Z] [CHECKPOINT] Step 4: Registering IPC Bridge Handlers
+[2026-10-21T08:01:38.926Z] [CHECKPOINT] Step 4: IPC Handlers Registered
+[2026-10-21T08:01:38.948Z] [CHECKPOINT] Step 4: Starting Local REST API Server (Port 32123)
+
+==================== [CRASH / ERROR EVENT: API_SERVER_START_ERROR] ====================
+Timestamp: 2026-10-21T08:01:38.950Z
+Process: Main Process (PID: 27512)
+Platform: win32 (x64) Node: v20.18.3 Electron: 33.4.11
+Message: Error: SQLite engine not initialized. Please await initSqlEngine() before getDatabase()
+Stack Trace: None available
+========================================================================
+
+[2026-10-21T08:01:38.951Z] [CHECKPOINT] SMOKE_TEST: Packaged Application Smoke Test Mode Triggered
+[2026-10-21T08:01:38.951Z] [CHECKPOINT] Event: performCleanExit - stopping services and closing app
+[2026-10-21T08:01:38.953Z] [CHECKPOINT] [ProcessManager] Stopping all running profiles (0)...
+[2026-10-21T08:01:38.954Z] [CHECKPOINT] Engine Provisioning - source=bundled ok=true path=C:\Users\munaf\Desktop\mahai brouser\release\win-unpacked\resources\engines\138.0.7204.0\chrome-win\chrome.exe
+[2026-10-21T08:01:38.955Z] [CHECKPOINT] Event: performCleanExit completed cleanly
