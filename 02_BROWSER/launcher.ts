@@ -1203,7 +1203,9 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
 
   if (loadExtensionsArg) {
     args.push(`--load-extension=${loadExtensionsArg}`);
-    args.push(`--disable-extensions-except=${loadExtensionsArg}`);
+    // DO NOT add --disable-extensions-except: it disables the extension system and
+    // triggers Chromium's IDS_EXTENSION_INSTALL_NOT_ENABLED ("Installation is not enabled")
+    // on Chrome Web Store installs and disables user-installed extensions on restart.
   }
 
   // Baseline Clean Production Arguments
