@@ -354,11 +354,32 @@ export function removeExtension(profileId: string, extensionId: string): boolean
 
   if (row?.source_path && fs.existsSync(row.source_path)) {
     try {
-      if (row.source_path.includes(path.join('Default', 'Extensions'))) {
-        const extParent = path.dirname(row.source_path);
-        fs.rmSync(extParent, { recursive: true, force: true });
+      const normalizedPath = path.normalize(row.source_path);
+      const extensionsSegment = path.normalize(path.join('Default', 'Extensions'));
+
+      if (normalizedPath.includes(extensionsSegment)) {
+        let targetToDelete = normalizedPath;
+        const parent = path.dirname(targetToDelete);
+        const grandParent = path.dirname(parent);
+
+        if (path.basename(parent) === 'Extensions') {
+          targetToDelete = normalizedPath;
+        } else if (path.basename(grandParent) === 'Extensions') {
+          targetToDelete = parent;
+        }
+
+        const base = path.basename(targetToDelete);
+        if (base !== 'Extensions' && base !== 'Default' && base !== 'profiles' && targetToDelete.includes(extensionsSegment)) {
+          fs.rmSync(targetToDelete, { recursive: true, force: true });
+        }
       } else {
-        fs.rmSync(row.source_path, { recursive: true, force: true });
+        const profile = getProfileById(profileId);
+        if (profile?.storagePath && normalizedPath.startsWith(path.normalize(profile.storagePath))) {
+          const base = path.basename(normalizedPath);
+          if (base !== 'Extensions' && base !== 'Default' && base !== 'profiles') {
+            fs.rmSync(normalizedPath, { recursive: true, force: true });
+          }
+        }
       }
     } catch (rmErr) {
       console.warn(`[ExtensionService] Could not remove files at ${row.source_path}:`, rmErr);

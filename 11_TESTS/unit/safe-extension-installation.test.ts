@@ -187,4 +187,38 @@ describe('Safe Extension Installation & Lifecycle Suite', () => {
     expect(list.length).toBe(0);
     expect(fs.existsSync(extDir)).toBe(false);
   });
+
+  it('guarantees removeExtension only deletes the target extension and NEVER deletes Default or Extensions parent directories', () => {
+    const extBase = path.join(storage1, 'Default', 'Extensions');
+    const ext1 = path.join(extBase, 'ext_target', '1.0.0');
+    const ext2 = path.join(extBase, 'ext_sibling', '1.0.0');
+    fs.mkdirSync(ext1, { recursive: true });
+    fs.mkdirSync(ext2, { recursive: true });
+
+    fs.writeFileSync(path.join(ext1, 'manifest.json'), JSON.stringify({ name: 'Target Ext', version: '1.0.0' }));
+    fs.writeFileSync(path.join(ext2, 'manifest.json'), JSON.stringify({ name: 'Sibling Ext', version: '1.0.0' }));
+
+    const exts = getExtensions(profileId1);
+    expect(exts.length).toBe(2);
+
+    const targetExt = exts.find(e => e.name === 'Target Ext')!;
+    const siblingExt = exts.find(e => e.name === 'Sibling Ext')!;
+
+    // Remove target extension
+    removeExtension(profileId1, targetExt.id);
+
+    // Assert target extension directory is gone
+    expect(fs.existsSync(path.join(extBase, 'ext_target'))).toBe(false);
+
+    // CRITICAL: Sibling extension must still exist
+    expect(fs.existsSync(path.join(extBase, 'ext_sibling'))).toBe(true);
+
+    // CRITICAL: Parent Default and Extensions directories must still exist
+    expect(fs.existsSync(extBase)).toBe(true);
+    expect(fs.existsSync(path.join(storage1, 'Default'))).toBe(true);
+
+    const remaining = getExtensions(profileId1);
+    expect(remaining.length).toBe(1);
+    expect(remaining[0].id).toBe(siblingExt.id);
+  });
 });
