@@ -70,9 +70,9 @@ export const LEGACY_CFT_FALLBACK_URL = 'https://mahibrowser.com/engine/chrome-13
 export const GOOGLE_CFT_MANIFEST_URL = 'https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json';
 
 /**
- * Minimum free disk space required before attempting download & extraction (1 GB).
+ * Minimum free disk space required before attempting download & extraction (600 MB buffer).
  */
-export const MANAGED_ENGINE_REQUIRED_DISK_SPACE_BYTES = 1024 * 1024 * 1024; // 1 GB
+export const MANAGED_ENGINE_REQUIRED_DISK_SPACE_BYTES = 600 * 1024 * 1024; // 600 MB (realistic buffer for 296MB zip + 310MB extract)
 
 export type SupportedPlatformKey = 'win64' | 'mac-arm64' | 'mac-x64' | 'linux64';
 

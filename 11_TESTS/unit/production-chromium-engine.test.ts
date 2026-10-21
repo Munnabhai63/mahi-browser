@@ -66,7 +66,7 @@ describe('Production Unbranded Chromium Engine Suite (P0 Batch 1)', () => {
 
   it('validates package.json and release artifact version consistency', () => {
     const pkg = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'));
-    expect(pkg.version).toMatch(/^1\.1\.[1-4]$/);
+    expect(pkg.version).toMatch(/^1\.1\.[0-9]$/);
     expect(pkg.name).toBe('mahi-browser');
   });
 
@@ -120,8 +120,8 @@ describe('Production Unbranded Chromium Engine Suite (P0 Batch 1)', () => {
     const ymlPath = path.resolve('release', 'latest.yml');
     expect(fs.existsSync(ymlPath)).toBe(true);
     const content = fs.readFileSync(ymlPath, 'utf8');
-    expect(content).toMatch(/version:\s*1\.1\.[1-3]/);
-    expect(content).toMatch(/MAHI-Browser-Setup-1\.1\.[1-3]\.exe/);
+    expect(content).toMatch(/version:\s*1\.1\.[0-9]/);
+    expect(content).toMatch(/MAHI-Browser-Setup-1\.1\.[0-9]\.exe/);
     expect(content).toContain('sha512:');
     expect(content).toContain('size:');
   });
@@ -130,7 +130,8 @@ describe('Production Unbranded Chromium Engine Suite (P0 Batch 1)', () => {
     const jsonPath = path.resolve('release', 'latest.json');
     expect(fs.existsSync(jsonPath)).toBe(true);
     const manifest = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-    expect(manifest.version).toBe('1.1.1');
+    const pkg = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'));
+    expect(manifest.version).toBe(pkg.version);
     expect(manifest.channel).toBe('STABLE');
     expect(manifest.files.length).toBeGreaterThanOrEqual(2);
 

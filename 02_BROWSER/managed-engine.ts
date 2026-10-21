@@ -5,6 +5,7 @@ import https from 'node:https';
 import http from 'node:http';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
+import { app } from 'electron';
 import {
   MANAGED_ENGINE_VERSION,
   MANAGED_ENGINE_SHA256,
@@ -89,17 +90,21 @@ function broadcastProgress(update: Partial<ManagedEngineProgress>) {
 
 /**
  * Resolves the root user data directory for MAHI BROWSER.
- * Uses Electron app.getPath('userData') in runtime, or .mahi_data in headless/test environments.
+ * Uses Electron app.getPath('userData') in runtime, or %APPDATA%/mahi-browser fallback.
  */
 export function getUserDataPath(): string {
   try {
-    // Dynamic require so module works cleanly in both main process and standalone tests
-    const electron = require('electron');
-    const app = electron?.app || electron?.default?.app;
     if (app && typeof app.getPath === 'function') {
-      return app.getPath('userData');
+      const p = app.getPath('userData');
+      if (p) return p;
     }
   } catch {}
+
+  if (process.env.APPDATA) {
+    return path.join(process.env.APPDATA, 'mahi-browser');
+  } else if (process.env.HOME) {
+    return path.join(process.env.HOME, '.mahi-browser');
+  }
 
   return path.join(process.cwd(), '.mahi_data');
 }
@@ -119,37 +124,51 @@ export function getBundledEngineExecutablePath(
   targetPlatform: string = process.platform,
   targetArch: string = process.arch
 ): string | null {
+  const archiveSubdir = CHROMIUM_PRODUCTION_CONFIG.archiveSubdir;
+  const executableName = targetPlatform === 'win32'
+    ? CHROMIUM_PRODUCTION_CONFIG.executableRelativePath
+    : (targetPlatform === 'darwin' ? (targetArch === 'arm64' ? 'chrome-mac-arm64/chrome' : 'chrome-mac-x64/chrome') : 'chrome');
+
+  const candidates: string[] = [];
+
+  // 1. process.resourcesPath (canonical Electron packaged resources folder: <install-dir>\resources)
   try {
-    const electron = require('electron');
-    const app = electron?.app || electron?.default?.app;
     const resourcesPath = (process as any).resourcesPath;
     if (resourcesPath && typeof resourcesPath === 'string') {
-      const candidate = path.join(
-        resourcesPath,
-        'engines',
-        version,
-        CHROMIUM_PRODUCTION_CONFIG.archiveSubdir,
-        CHROMIUM_PRODUCTION_CONFIG.executableRelativePath
-      );
+      candidates.push(path.join(resourcesPath, 'engines', version, archiveSubdir, executableName));
+    }
+  } catch {}
+
+  // 2. Relative to process.execPath (Windows installed app: <install-dir>\resources\engines\...)
+  try {
+    if (process.execPath && typeof process.execPath === 'string') {
+      const installDir = path.dirname(process.execPath);
+      candidates.push(path.join(installDir, 'resources', 'engines', version, archiveSubdir, executableName));
+    }
+  } catch {}
+
+  // 3. app.getAppPath() (when running inside app.asar: <install-dir>\resources\app.asar)
+  try {
+    if (app && typeof app.getAppPath === 'function') {
+      const appPath = app.getAppPath();
+      candidates.push(path.join(path.dirname(appPath), 'engines', version, archiveSubdir, executableName));
+      candidates.push(path.join(path.dirname(appPath), 'resources', 'engines', version, archiveSubdir, executableName));
+    }
+  } catch {}
+
+  // 4. Standard Windows local programs install location fallback
+  if (process.env.LOCALAPPDATA && targetPlatform === 'win32') {
+    candidates.push(path.join(process.env.LOCALAPPDATA, 'Programs', 'MAHI Browser', 'resources', 'engines', version, archiveSubdir, executableName));
+  }
+
+  for (const candidate of candidates) {
+    try {
       if (fs.existsSync(candidate)) {
         return candidate;
       }
-    }
-    if (app && typeof app.getAppPath === 'function') {
-      const appPath = app.getAppPath();
-      const candidateInApp = path.join(
-        path.dirname(appPath),
-        'resources',
-        'engines',
-        version,
-        CHROMIUM_PRODUCTION_CONFIG.archiveSubdir,
-        CHROMIUM_PRODUCTION_CONFIG.executableRelativePath
-      );
-      if (fs.existsSync(candidateInApp)) {
-        return candidateInApp;
-      }
-    }
-  } catch {}
+    } catch {}
+  }
+
   return null;
 }
 
@@ -169,18 +188,18 @@ export function getProductionChromiumExecutablePath(
 
   // 2. Check application-managed user engines directory (AppData/Roaming/mahi-browser/engines)
   const baseDir = path.join(getEnginesBaseDir(), CHROMIUM_PRODUCTION_VERSION);
-  let candidate: string;
+  let userManagedCandidate: string;
   if (targetPlatform === 'win32') {
-    candidate = path.join(baseDir, CHROMIUM_PRODUCTION_CONFIG.archiveSubdir, CHROMIUM_PRODUCTION_CONFIG.executableRelativePath);
+    userManagedCandidate = path.join(baseDir, CHROMIUM_PRODUCTION_CONFIG.archiveSubdir, CHROMIUM_PRODUCTION_CONFIG.executableRelativePath);
   } else if (targetPlatform === 'darwin') {
     const macSubdir = targetArch === 'arm64' ? 'chrome-mac-arm64' : 'chrome-mac-x64';
-    candidate = path.join(baseDir, macSubdir, 'chrome');
+    userManagedCandidate = path.join(baseDir, macSubdir, 'chrome');
   } else {
-    candidate = path.join(baseDir, 'chrome-linux64', 'chrome');
+    userManagedCandidate = path.join(baseDir, 'chrome-linux64', 'chrome');
   }
 
-  if (fs.existsSync(candidate)) {
-    return candidate;
+  if (fs.existsSync(userManagedCandidate)) {
+    return userManagedCandidate;
   }
 
   // 3. Check workspace directory (.mahi_data/engines) for dev/standalone runtime
@@ -196,7 +215,8 @@ export function getProductionChromiumExecutablePath(
     return localDevCandidate;
   }
 
-  return candidate;
+  // 4. Return canonical user-managed target path (where repair / provisioning will install if needed)
+  return userManagedCandidate;
 }
 
 /**

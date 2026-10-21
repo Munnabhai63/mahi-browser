@@ -9,6 +9,7 @@ import {
   ensureManagedEngineInstalled,
   isProductionChromiumInstalled,
   getProductionChromiumExecutablePath,
+  getBundledEngineExecutablePath,
 } from './managed-engine.js';
 import {
   MANAGED_ENGINE_VERSION,
@@ -1291,9 +1292,15 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
         executablePath = candidatePath;
         debugLog(`[Launcher Step 1/7] Production Chromium located on disk: "${executablePath}"`);
       } else {
-        const errMsg = `Browser engine is not installed or accessible at "${candidatePath}". Please run Engine Repair in Settings or reinstall MAHI Browser.`;
-        debugLog(`[Launcher Step 1/7 ERROR] ${errMsg}`);
-        throw new Error(errMsg);
+        const bundledCandidate = getBundledEngineExecutablePath();
+        if (bundledCandidate && fs.existsSync(bundledCandidate)) {
+          executablePath = bundledCandidate;
+          debugLog(`[Launcher Step 1/7] Production Chromium located in bundled resources: "${executablePath}"`);
+        } else {
+          const errMsg = `Browser engine is not installed or accessible at "${candidatePath}". Please run Engine Repair in Settings or reinstall MAHI Browser.`;
+          debugLog(`[Launcher Step 1/7 ERROR] ${errMsg}`);
+          throw new Error(errMsg);
+        }
       }
     }
 

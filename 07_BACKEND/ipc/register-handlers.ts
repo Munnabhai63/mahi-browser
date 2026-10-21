@@ -2335,10 +2335,10 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('app:getVersion', async () => {
     try {
       if (app && typeof app.getVersion === 'function') {
-        return app.getVersion() || '1.1.6';
+        return app.getVersion() || '1.1.7';
       }
     } catch {}
-    return '1.1.6';
+    return '1.1.7';
   });
 
   ipcMain.handle('account:verifyEmail', async (_e, dto: { token: string }) => {
