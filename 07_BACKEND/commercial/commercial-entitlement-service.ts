@@ -46,6 +46,11 @@ export const CAPABILITY_REQUIREMENTS: Record<
   'api.webhooks': { requiredTier: 'PRO', planName: 'Professional 100', featureName: 'Webhook Notifications' },
   'mobile.cloudBrowser': { requiredTier: 'PRO', planName: 'Professional 10', featureName: 'Mobile Cloud Browser Stream' },
   'advanced.fingerprint': { requiredTier: 'PRO', planName: 'Professional 10', featureName: 'Advanced Hardware Noise Spoofing' },
+  'stealth.nativeHooks117': { requiredTier: 'FREE', planName: 'Free', featureName: '117 C++ Native Stealth Hooks (ClientRects & WebGPU)' },
+  'stealth.aiHumanizer': { requiredTier: 'FREE', planName: 'Free', featureName: 'AI Humanizer Typing & Mouse Curves' },
+  'stealth.multiCore': { requiredTier: 'PRO', planName: 'Professional 50', featureName: 'Multi-Core Chromium Version Selector' },
+  'stealth.fakeVideoKYC': { requiredTier: 'PRO', planName: 'Professional 50', featureName: 'Virtual Video Camera Stream (KYC Bypass)' },
+  'api.localDaemon': { requiredTier: 'PRO', planName: 'Professional 100', featureName: 'Local Automation Daemon & Bot API' },
 };
 
 export function resolveCapabilitiesForPlan(

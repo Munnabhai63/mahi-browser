@@ -689,6 +689,32 @@ export function startApiServer(): void {
         return sendJSON(res, result.success ? 200 : 500, result);
       }
 
+      // MostLogin / GoLogin Compatibility Route: /api/v1/profile/start or /browser/start
+      if ((pathname === '/api/v1/profile/start' || pathname === '/browser/start') && (method === 'GET' || method === 'POST')) {
+        let id = parsedUrl.searchParams.get('profileId') || parsedUrl.searchParams.get('profile_id');
+        if (!id && method === 'POST') {
+          const body = await parseBody(req);
+          id = body.profileId || body.profile_id || body.id;
+        }
+        if (!id) return sendJSON(res, 400, { code: 400, success: false, error: 'Missing profileId' });
+        const activeOwnerId = getLocalApiOwnerId();
+        const p = getProfileById(id, activeOwnerId);
+        if (!p) return sendJSON(res, 404, { code: 404, success: false, error: 'Profile not found or access denied' });
+        const result = await processManager.startProfile(id);
+        const cdpPort = 9222;
+        return sendJSON(res, result.success ? 200 : 500, {
+          code: result.success ? 0 : 500,
+          success: result.success,
+          data: {
+            profileId: id,
+            pid: result.pid,
+            cdpPort,
+            wsEndpoint: `ws://127.0.0.1:${cdpPort}/devtools/browser`,
+          },
+          error: result.error,
+        });
+      }
+
       // /profiles/:id/stop
       const stopMatch = pathname.match(/^\/profiles\/([^/]+)\/stop$/);
       if (stopMatch && method === 'POST') {
@@ -698,6 +724,23 @@ export function startApiServer(): void {
         if (!p) return sendJSON(res, 404, { success: false, error: 'Profile not found or access denied' });
         const result = await processManager.stopProfile(id);
         return sendJSON(res, result.success ? 200 : 500, result);
+      }
+
+      // MostLogin / GoLogin Compatibility Route: /api/v1/profile/stop or /browser/stop
+      if ((pathname === '/api/v1/profile/stop' || pathname === '/browser/stop') && (method === 'GET' || method === 'POST')) {
+        let id = parsedUrl.searchParams.get('profileId') || parsedUrl.searchParams.get('profile_id');
+        if (!id && method === 'POST') {
+          const body = await parseBody(req);
+          id = body.profileId || body.profile_id || body.id;
+        }
+        if (!id) return sendJSON(res, 400, { code: 400, success: false, error: 'Missing profileId' });
+        const result = await processManager.stopProfile(id);
+        return sendJSON(res, result.success ? 200 : 500, {
+          code: result.success ? 0 : 500,
+          success: result.success,
+          data: { profileId: id },
+          error: result.error,
+        });
       }
 
       // /profiles/:id/clone

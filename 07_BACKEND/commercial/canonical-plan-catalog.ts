@@ -38,6 +38,11 @@ const FREE_CAPABILITIES: Record<FeatureCapability, boolean> = {
   'api.webhooks': false,
   'mobile.cloudBrowser': false,
   'advanced.fingerprint': false,
+  'stealth.nativeHooks117': true, // Reverse-engineered C++ hooks enabled on all tiers
+  'stealth.aiHumanizer': true,    // Natural Bezier mouse curves & typing jitter
+  'stealth.multiCore': false,
+  'stealth.fakeVideoKYC': false,
+  'api.localDaemon': false,
 };
 
 const PRO_10_CAPABILITIES: Record<FeatureCapability, boolean> = {
@@ -58,6 +63,11 @@ const PRO_10_CAPABILITIES: Record<FeatureCapability, boolean> = {
   'api.webhooks': false,
   'mobile.cloudBrowser': true,
   'advanced.fingerprint': true,
+  'stealth.nativeHooks117': true,
+  'stealth.aiHumanizer': true,
+  'stealth.multiCore': false,
+  'stealth.fakeVideoKYC': false,
+  'api.localDaemon': false,
 };
 
 const PRO_25_CAPABILITIES: Record<FeatureCapability, boolean> = {
@@ -73,6 +83,8 @@ const PRO_50_CAPABILITIES: Record<FeatureCapability, boolean> = {
   'automation.scheduler': true,
   'automation.multiProfile': true,
   'automation.cookieWarmer': true,
+  'stealth.multiCore': true,     // MostLogin multi-core resolution (Chrome 120-130)
+  'stealth.fakeVideoKYC': true,  // Virtual video stream KYC bypass
 };
 
 const PRO_100_CAPABILITIES: Record<FeatureCapability, boolean> = {
@@ -80,6 +92,7 @@ const PRO_100_CAPABILITIES: Record<FeatureCapability, boolean> = {
   'automation.synchronizer': true,  // CDP Action Synchronizer
   'api.remote': true,               // REST API & SDKs
   'api.webhooks': true,             // Webhook notifications
+  'api.localDaemon': true,          // MostLogin-compatible local daemon API
 };
 
 const BUSINESS_ALL_CAPABILITIES: Record<FeatureCapability, boolean> = {
@@ -100,6 +113,11 @@ const BUSINESS_ALL_CAPABILITIES: Record<FeatureCapability, boolean> = {
   'api.webhooks': true,
   'mobile.cloudBrowser': true,
   'advanced.fingerprint': true,
+  'stealth.nativeHooks117': true,
+  'stealth.aiHumanizer': true,
+  'stealth.multiCore': true,
+  'stealth.fakeVideoKYC': true,
+  'api.localDaemon': true,
 };
 
 // ─── Canonical Plan Definitions ────────────────────────────────────────────────

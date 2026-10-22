@@ -2850,10 +2850,11 @@ function initPricingSection() {
         popular: false,
         features: [
           'Up to 10 profiles',
+          '117 C++ Native Hooks (ClientRects & WebGPU)',
+          'AI Humanizer (Bezier Curves & Jitter)',
           '30 Cloud Android minutes/mo',
           'Unique fingerprints',
-          'Folders / Groups',
-          'Bulk actions'
+          'Folders / Groups & Bulk actions'
         ]
       },
       {
@@ -2864,11 +2865,11 @@ function initPricingSection() {
         popular: false,
         features: [
           'Up to 25 profiles',
+          '117 C++ Native Hooks',
+          'AI Humanizer Engine',
           '2 GB of residential proxy data',
           '30 Cloud Android minutes/mo',
-          'Unique fingerprints',
-          'Folders / Groups',
-          'Proxy devices',
+          'Unique fingerprints & Proxy devices',
           'Profile shares'
         ]
       },
@@ -2880,13 +2881,11 @@ function initPricingSection() {
         popular: true,
         features: [
           'Up to 50 profiles',
+          'Multi-Core Chromium (Chrome 120-130)',
+          'Virtual Video KYC Cam Feed',
+          '117 C++ Native Hooks',
+          'AI Humanizer Engine',
           '2 GB of residential proxy data',
-          '30 Cloud Android minutes/mo',
-          'Unique fingerprints',
-          'Folders / Groups',
-          'Proxy devices',
-          'Profile shares',
-          'Bulk actions',
           'Cloud Browser via web',
           'Cookies import and export'
         ]
@@ -2899,20 +2898,13 @@ function initPricingSection() {
         popular: false,
         features: [
           'Up to 100 profiles',
-          '2 GB of residential proxy data',
-          '30 Cloud Android minutes/mo',
-          'Unique fingerprints',
-          'Folders / Groups',
-          'Proxy devices',
-          'Profile shares',
-          'Bulk actions',
-          'Cloud Browser via web',
-          'Cookies import and export',
-          'Synchronizer',
-          'Cookie Bot',
-          'Custom extensions',
-          'REST API & SDKs',
-          'MCP server'
+          'Multi-Core Chromium (120-130)',
+          'Virtual Video KYC Cam Feed',
+          'Local Daemon API (MostLogin Compatible :30898)',
+          'Synchronizer & Cookie Bot',
+          '117 C++ Native Hooks',
+          'REST API & SDKs (1000 RPM)',
+          '2 GB residential proxy data'
         ]
       }
     ],
@@ -2926,11 +2918,11 @@ function initPricingSection() {
         features: [
           'Up to 50 profiles',
           '2 Team Member seats included',
+          'Multi-Core Chromium Selector',
+          'Virtual Video KYC Cam Feed',
+          '117 C++ Native Hooks & AI Humanizer',
           '5 GB of residential proxy data',
-          'Unique hardware fingerprints',
-          'Team Folders & Permissions',
-          'Bulk profile management',
-          'Proxy device sharing'
+          'Team Folders & Permissions'
         ]
       },
       {
@@ -2942,11 +2934,11 @@ function initPricingSection() {
         features: [
           'Up to 100 profiles',
           '5 Team Member seats included',
+          'Multi-Core Chromium & Fake Video',
+          'Local Daemon API (MostLogin Compatible)',
           '10 GB of residential proxy data',
-          'Unique hardware fingerprints',
           'Role-Based Access Control',
-          'Visual RPA Workflow Builder',
-          'Automated Cookie Warmer'
+          'Visual RPA Workflow Builder'
         ]
       },
       {
@@ -2958,11 +2950,11 @@ function initPricingSection() {
         features: [
           'Up to 200 profiles',
           '8 Team Member seats included',
+          'Multi-Core Chromium (All Engines)',
+          'Virtual Video KYC Cam Feed',
+          'Local Daemon API & Bot Control',
           '15 GB residential proxy data',
-          'Multi-Window Live Synchronizer',
-          '4G/5G Hotspot ADB IP Rotator',
-          'REST API & SDKs (1000 RPM)',
-          'Cloud Browser via web'
+          'Multi-Window Live Synchronizer'
         ]
       },
       {
@@ -2974,10 +2966,10 @@ function initPricingSection() {
         features: [
           'Up to 300 profiles',
           'Unlimited team members',
+          'Full Multi-Core Engine Matrix',
+          'Virtual Video KYC Cam Feed',
+          'Full Local Daemon & CDP Hub',
           '25 GB residential proxy data',
-          'Full Visual RPA & Cookie Warmer',
-          'Custom CDP & Headless automation',
-          'SLA 99.99% with dedicated manager',
           'Priority WhatsApp Developer Support'
         ]
       }
@@ -3067,6 +3059,11 @@ function initPricingSection() {
       popularCol: 2, // 0-indexed (Professional 50)
       rows: [
         { name: 'Browser profiles', vals: ['10', '25', '50', '100'] },
+        { name: '117 C++ Native Hooks (ClientRects & WebGPU)', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'AI Humanizer (Bezier Curves & Jitter)', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'Multi-Core Chromium (Chrome 120-130)', vals: ['—', '—', '✓', '✓'] },
+        { name: 'Virtual Video KYC Cam Feed', vals: ['—', '—', '✓', '✓'] },
+        { name: 'Local Daemon Bot API (:30898 Compatible)', vals: ['—', '—', '—', '✓'] },
         { name: 'Residential proxy data', vals: ['—', '2 GB', '2 GB', '2 GB'] },
         { name: 'Cloud Android minutes/mo', vals: ['30', '30', '30', '30'] },
         { name: 'Unique fingerprints', vals: ['✓', '✓', '✓', '✓'] },
@@ -3089,6 +3086,11 @@ function initPricingSection() {
       rows: [
         { name: 'Browser profiles', vals: ['50', '100', '200', '300'] },
         { name: 'Team member seats', vals: ['2', '5', '8', 'Unlimited'] },
+        { name: '117 C++ Native Hooks (ClientRects & WebGPU)', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'AI Humanizer (Bezier Curves & Jitter)', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'Multi-Core Chromium Selector (120-130)', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'Virtual Video KYC Cam Feed', vals: ['✓', '✓', '✓', '✓'] },
+        { name: 'Local Daemon Bot API (:30898 Compatible)', vals: ['✓', '✓', '✓', '✓'] },
         { name: 'Residential proxy data', vals: ['5 GB', '10 GB', '15 GB', '25 GB'] },
         { name: 'Cloud Android minutes/mo', vals: ['60', '120', '240', '500'] },
         { name: 'Unique fingerprints', vals: ['✓', '✓', '✓', '✓'] },

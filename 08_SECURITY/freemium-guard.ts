@@ -159,8 +159,13 @@ export function getPlanLimitsInfo(): {
  * Asserts that the desktop environment has entitlement for a specific capability.
  */
 export function assertCapability(capability: string): void {
-  // 1. Basic features available to all users
-  if (capability === 'profile.basic' || capability === 'proxy.custom') {
+  // 1. Basic features available to all users (including reverse-engineered native C++ hooks and humanizer)
+  if (
+    capability === 'profile.basic' ||
+    capability === 'proxy.custom' ||
+    capability === 'stealth.nativeHooks117' ||
+    capability === 'stealth.aiHumanizer'
+  ) {
     return;
   }
 

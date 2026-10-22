@@ -252,7 +252,12 @@ export type FeatureCapability =
   | 'api.remote'
   | 'api.webhooks'
   | 'mobile.cloudBrowser'
-  | 'advanced.fingerprint';
+  | 'advanced.fingerprint'
+  | 'stealth.nativeHooks117'
+  | 'stealth.aiHumanizer'
+  | 'stealth.multiCore'
+  | 'stealth.fakeVideoKYC'
+  | 'api.localDaemon';
 
 export interface CommercialPlanLimits {
   maxProfiles: number;
@@ -270,6 +275,11 @@ export interface CommercialPlanLimits {
   profileSharing?: boolean;
   webhooks?: boolean;
   builtinProxies?: boolean;
+  nativeHooks117?: boolean;
+  aiHumanizer?: boolean;
+  multiCoreEngines?: boolean;
+  fakeVideoCapture?: boolean;
+  localDaemonApi?: boolean;
 }
 
 export interface CommercialPlan {
