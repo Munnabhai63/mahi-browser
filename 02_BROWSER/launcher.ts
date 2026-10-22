@@ -127,18 +127,63 @@ export function ensureProfileStealthExtension(
   }
 
 
+  const numMatch = profileName.match(/\d+/);
+  const badgeNumber = numMatch ? numMatch[0] : '1';
+  const instanceLabel = numMatch ? `M${numMatch[0]}` : profileName;
+  const brandedLabel = `${instanceLabel} — MAHI SKILLS`;
+
+  // Detect platform and device metadata from settings and User-Agent
+  const ua = settings?.browser?.userAgent || '';
+  const isMac = ua.includes('Macintosh');
+  const isMobile = Boolean(
+    ua.includes('Android') ||
+    ua.includes('Mobile') ||
+    settings?.mobile?.enable
+  );
+
+  let mobileModel = 'Pixel 8';
+  let mobileOsVersion = '14.0.0';
+  if (isMobile) {
+    const match = ua.match(/Android\s+([0-9.]+)(?:;\s*([^;)build/]+))?/i);
+    if (match) {
+      if (match[1]) {
+        const parts = match[1].split('.');
+        mobileOsVersion = parts.length === 1 ? `${parts[0]}.0.0` : (parts.length === 2 ? `${parts[0]}.${parts[1]}.0` : match[1]);
+      }
+      if (match[2]) {
+        mobileModel = match[2].trim();
+      }
+    }
+  }
+
+  const clientHintsPlatform = isMobile ? 'Android' : (isMac ? 'macOS' : 'Windows');
+  const clientHintsMobile = isMobile ? '?1' : '?0';
+  const clientHintsModel = isMobile ? mobileModel : '';
+  const clientHintsPlatformVersion = isMobile ? mobileOsVersion : (isMac ? '14.5.0' : '15.0.0');
+  const clientHintsArch = isMobile ? 'arm' : (isMac ? 'arm' : 'x86');
+
+  // Manifest V3 Extension with declarativeNetRequest Client Hints spoofing
   const manifest = {
     manifest_version: 3,
     name: `${profileName}`,
     version: '2.0.0',
     description: `MAHI BROWSER Anti-Detect & Stealth Guard`,
-    permissions: ['tabs', 'activeTab', 'scripting', 'storage'],
+    permissions: ['tabs', 'activeTab', 'scripting', 'storage', 'declarativeNetRequest'],
     host_permissions: ['<all_urls>', 'http://127.0.0.1:32123/*'],
     background: {
       service_worker: 'background.js',
     },
     action: {
       default_title: `${profileName}`,
+    },
+    declarative_net_request: {
+      rule_resources: [
+        {
+          id: 'ruleset_1',
+          enabled: true,
+          path: 'rules.json',
+        },
+      ],
     },
     content_scripts: [
       {
@@ -157,20 +202,43 @@ export function ensureProfileStealthExtension(
     ],
   };
 
-
-
-  const numMatch = profileName.match(/\d+/);
-  const badgeNumber = numMatch ? numMatch[0] : '1';
-  const instanceLabel = numMatch ? `M${numMatch[0]}` : profileName;
-  const brandedLabel = `${instanceLabel} — MAHI SKILLS`;
-
-  // Select realistic GPU based on OS
-  const isMac = settings?.browser?.userAgent && settings.browser.userAgent.includes('Macintosh');
-  const isMobile = Boolean(
-    settings?.browser?.userAgent?.includes('Android') ||
-    settings?.browser?.userAgent?.includes('Mobile') ||
-    settings?.mobile?.enable
-  );
+  // Declarative Net Request rules to spoof HTTP request headers:
+  // Sec-CH-UA-Platform, Sec-CH-UA-Mobile, Sec-CH-UA-Model, Sec-CH-UA-Platform-Version
+  const dnrRules = [
+    {
+      id: 1,
+      priority: 1,
+      action: {
+        type: 'modifyHeaders',
+        requestHeaders: [
+          { header: 'sec-ch-ua-platform', operation: 'set', value: `"${clientHintsPlatform}"` },
+          { header: 'sec-ch-ua-mobile', operation: 'set', value: clientHintsMobile },
+          { header: 'sec-ch-ua-model', operation: 'set', value: `"${clientHintsModel}"` },
+          { header: 'sec-ch-ua-platform-version', operation: 'set', value: `"${clientHintsPlatformVersion}"` },
+          { header: 'sec-ch-ua-arch', operation: 'set', value: `"${clientHintsArch}"` },
+          { header: 'sec-ch-ua-bitness', operation: 'set', value: '"64"' },
+        ],
+      },
+      condition: {
+        urlFilter: '*',
+        resourceTypes: [
+          'main_frame',
+          'sub_frame',
+          'stylesheet',
+          'script',
+          'image',
+          'font',
+          'object',
+          'xmlhttprequest',
+          'ping',
+          'csp_report',
+          'media',
+          'websocket',
+          'other',
+        ],
+      },
+    },
+  ];
   const gpuVendor = isMobile ? 'ARM' : (isMac ? 'Google Inc. (Apple)' : 'Google Inc. (NVIDIA)');
   const gpuRenderer = isMobile
     ? 'Mali-G710 MC10'
@@ -265,8 +333,87 @@ export function ensureProfileStealthExtension(
     spoofNavigator('platform', ${JSON.stringify(platformStr)});
     spoofNavigator('maxTouchPoints', ${maxTouchPoints});
 
+    // -------------------------------------------------------------
+    // User-Agent Client Hints (navigator.userAgentData) Native Masking
+    // -------------------------------------------------------------
+    try {
+      var brandVersion = "138";
+      var chromeFullVer = "138.0.7204.183";
+      var defaultBrands = [
+        { brand: "Not/A)Brand", version: "8" },
+        { brand: "Chromium", version: brandVersion },
+        { brand: "Google Chrome", version: brandVersion }
+      ];
+      var defaultFullVersionList = [
+        { brand: "Not/A)Brand", version: "8.0.0.0" },
+        { brand: "Chromium", version: chromeFullVer },
+        { brand: "Google Chrome", version: chromeFullVer }
+      ];
+
+      var chPlatform = ${JSON.stringify(clientHintsPlatform)};
+      var chMobile = ${isMobile ? 'true' : 'false'};
+      var chModel = ${JSON.stringify(clientHintsModel)};
+      var chPlatformVersion = ${JSON.stringify(clientHintsPlatformVersion)};
+      var chArch = ${JSON.stringify(clientHintsArch)};
+      var chBitness = "64";
+
+      var uaDataObj = {
+        brands: defaultBrands,
+        mobile: chMobile,
+        platform: chPlatform,
+        getHighEntropyValues: function(hints) {
+          var res = {
+            brands: defaultBrands,
+            mobile: chMobile,
+            platform: chPlatform
+          };
+          if (!Array.isArray(hints)) return Promise.resolve(res);
+          for (var i = 0; i < hints.length; i++) {
+            var h = hints[i];
+            if (h === 'architecture') res.architecture = chArch;
+            if (h === 'bitness') res.bitness = chBitness;
+            if (h === 'model') res.model = chModel;
+            if (h === 'platformVersion') res.platformVersion = chPlatformVersion;
+            if (h === 'uaFullVersion') res.uaFullVersion = chromeFullVer;
+            if (h === 'fullVersionList') res.fullVersionList = defaultFullVersionList;
+          }
+          return Promise.resolve(res);
+        },
+        toJSON: function() {
+          return {
+            brands: defaultBrands,
+            mobile: chMobile,
+            platform: chPlatform
+          };
+        }
+      };
+
+      var origUaDataDesc = Object.getOwnPropertyDescriptor(Navigator.prototype, 'userAgentData');
+      var proxyUaData = new Proxy(origUaDataDesc && origUaDataDesc.get ? origUaDataDesc.get : function() { return uaDataObj; }, {
+        apply: function() { return uaDataObj; }
+      });
+
+      Object.defineProperty(Navigator.prototype, 'userAgentData', {
+        get: proxyUaData,
+        enumerable: true,
+        configurable: true
+      });
+
+      if (window.NavigatorUAData) {
+        try {
+          window.NavigatorUAData.prototype.getHighEntropyValues = uaDataObj.getHighEntropyValues;
+          window.NavigatorUAData.prototype.toJSON = uaDataObj.toJSON;
+        } catch(e) {}
+      }
+
+      window.__mahiProxies.push({ p: proxyUaData, o: origUaDataDesc ? origUaDataDesc.get : proxyUaData, n: 'get userAgentData' });
+    } catch(e) {}
+
     if (${isMobile}) {
       try {
+        if (!('ontouchstart' in window)) {
+          window.ontouchstart = null;
+        }
         Object.defineProperty(window, 'devicePixelRatio', {
           get: function() { return ${displayDpr}; },
           configurable: true,
@@ -630,15 +777,13 @@ export function ensureProfileStealthExtension(
 
   function injectTopBarPill() {
     try {
-      var existing = document.getElementById('__mahi_profile_pill');
-      if (existing) {
-        if (!document.contains(existing)) {
-          (document.body || document.documentElement).appendChild(existing);
-        }
-        return;
-      }
+      if (document.getElementById('__mahi_pill_host')) return;
+      var host = document.createElement('div');
+      host.id = '__mahi_pill_host';
+      host.style.cssText = 'all:initial !important;position:fixed;top:0;right:0;width:0;height:0;z-index:2147483647;pointer-events:none;';
+      var shadow = host.attachShadow ? host.attachShadow({ mode: 'closed' }) : host;
+
       var pill = document.createElement('div');
-      pill.id = '__mahi_profile_pill';
       pill.innerHTML = '<span style="background:rgba(0,0,0,0.35);padding:2px 8px;border-radius:12px;font-size:11px;font-weight:900;letter-spacing:0.5px;box-shadow:inset 0 1px 2px rgba(0,0,0,0.3);">#' + pNum + '</span><span>' + pName + '</span>';
       pill.style.cssText = 'position:fixed;top:12px;right:20px;z-index:2147483647;' +
         'background:' + profileColor + ';' +
@@ -660,7 +805,8 @@ export function ensureProfileStealthExtension(
           pill.style.padding = '6px 14px';
         }
       };
-      (document.body || document.documentElement).appendChild(pill);
+      shadow.appendChild(pill);
+      (document.body || document.documentElement).appendChild(host);
     } catch(e) {}
   }
   // In clean production mode, suppress the in-page badge unless explicitly enabled in settings.
@@ -1029,6 +1175,7 @@ export function ensureProfileStealthExtension(
 `;
 
   fs.writeFileSync(path.join(extDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
+  fs.writeFileSync(path.join(extDir, 'rules.json'), JSON.stringify(dnrRules, null, 2), 'utf8');
   fs.writeFileSync(path.join(extDir, 'stealth-core.js'), stealthCoreJs, 'utf8');
   fs.writeFileSync(path.join(extDir, 'background.js'), backgroundJs, 'utf8');
   fs.writeFileSync(path.join(extDir, 'content.js'), contentJs, 'utf8');
@@ -1412,7 +1559,10 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
     injectNativeStealthPreferences(storageDir, profile, settings);
     const debugPort = getProfileDebugPort(profile.id);
 
-    // Gather user-enabled extensions ONLY (no stealth extensions)
+    // Ensure the stealth extension (Client Hints, Canvas/WebGL Guard, Shortcuts) is loaded
+    const titleExtDir = ensureProfileStealthExtension(storageDir, profile.id, profile.name, settings);
+
+    // Gather user-enabled extensions
     let profileExtensionPaths: string[] = [];
     try {
       const exts = getExtensions(profile.id);
@@ -1424,7 +1574,8 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
       debugLog(`[Launcher Step 4/7 WARNING] Failed to load profile extensions: ${extErr.message}`);
     }
 
-    const loadExtensionsArg = profileExtensionPaths.join(',');
+    const allExtensionPaths = [titleExtDir, ...profileExtensionPaths];
+    const loadExtensionsArg = allExtensionPaths.join(',');
 
     const args = buildSanitizedLaunchArgs({
       storageDir,
