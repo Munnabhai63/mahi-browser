@@ -27,7 +27,7 @@ import { useProfileStore } from '../stores/useProfileStore.js';
 import { useProxyStore } from '../stores/useProxyStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { NavigationPage } from '../components/Sidebar.js';
-import { DEFAULT_USER_AGENTS } from '../../10_CONFIG/shared/constants/defaults.js';
+import { DEFAULT_USER_AGENTS, getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
 import { Profile } from '../../10_CONFIG/shared/types/profile.js';
 
 interface CloudPhoneManagerProps {
@@ -98,18 +98,23 @@ export const CloudPhoneManager: React.FC<CloudPhoneManagerProps> = ({ onNavigate
         ua = 'Mozilla/5.0 (Linux; Android 14; 23116PN5BC) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36';
       }
 
+      const base = getDefaultProfileSettings();
       const newProfile = await createProfile({
         name: `${name} #${Math.floor(Math.random() * 900 + 100)}`,
         folder: 'Android Devices',
         tags: ['Android', 'Mobile', deviceModel.toUpperCase()],
         notes: `Auto-generated cloud mobile profile for ${name}. Includes 5-point touch emulation, ARM Mali WebGL GPU, and mobile viewport.`,
         settings: {
+          ...base,
           browser: {
+            ...base.browser,
             engine: 'chrome',
             userAgent: ua,
             startupUrl: 'https://browserleaks.com/ip',
+            homepage: 'https://browserleaks.com/ip',
           },
           display: {
+            ...base.display,
             screenWidth: 412,
             screenHeight: 915,
             deviceScaleFactor: 2.625,
@@ -117,16 +122,21 @@ export const CloudPhoneManager: React.FC<CloudPhoneManagerProps> = ({ onNavigate
           },
           mobile: {
             enable: true,
+            width: 412,
+            height: 915,
+            deviceScaleFactor: 2.625,
+          },
+          fingerprint: {
+            ...base.fingerprint,
+            maxTouchPoints: 5,
+            webglVendor: 'ARM',
+            webglRenderer: 'Mali-G710 MC10',
           },
           network: {
+            ...base.network,
             directConnection: true,
           },
-          hardware: {
-            platform: 'Linux armv8l',
-            concurrency: 8,
-            deviceMemory: 8,
-          },
-        } as any,
+        },
       });
 
       if (newProfile) {

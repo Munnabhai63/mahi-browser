@@ -166,13 +166,22 @@ export function ensureProfileStealthExtension(
 
   // Select realistic GPU based on OS
   const isMac = settings?.browser?.userAgent && settings.browser.userAgent.includes('Macintosh');
-  const gpuVendor = isMac ? 'Google Inc. (Apple)' : 'Google Inc. (NVIDIA)';
-  const gpuRenderer = isMac
-    ? 'ANGLE (Apple, Apple M3 Pro, OpenGL 4.1 Metal - 88.1)'
-    : 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+  const isMobile = Boolean(
+    settings?.browser?.userAgent?.includes('Android') ||
+    settings?.browser?.userAgent?.includes('Mobile') ||
+    settings?.mobile?.enable
+  );
+  const gpuVendor = isMobile ? 'ARM' : (isMac ? 'Google Inc. (Apple)' : 'Google Inc. (NVIDIA)');
+  const gpuRenderer = isMobile
+    ? 'Mali-G710 MC10'
+    : (isMac
+      ? 'ANGLE (Apple, Apple M3 Pro, OpenGL 4.1 Metal - 88.1)'
+      : 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Direct3D11 vs_5_0 ps_5_0, D3D11)');
 
-  const hardwareConcurrency = isMac ? 12 : 16;
-  const deviceMemory = 16;
+  const hardwareConcurrency = isMobile ? 8 : (isMac ? 12 : 16);
+  const deviceMemory = isMobile ? 8 : 16;
+  const platformStr = isMobile ? 'Linux armv8l' : (isMac ? 'MacIntel' : 'Win32');
+  const maxTouchPoints = isMobile ? 5 : 0;
 
   // 1. Stealth Core Script (Runs in MAIN world at document_start)
   const stealthCoreJs = `
@@ -250,8 +259,8 @@ export function ensureProfileStealthExtension(
 
     spoofNavigator('hardwareConcurrency', ${hardwareConcurrency});
     spoofNavigator('deviceMemory', ${deviceMemory});
-    spoofNavigator('platform', ${JSON.stringify(isMac ? 'MacIntel' : 'Win32')});
-    spoofNavigator('maxTouchPoints', 0);
+    spoofNavigator('platform', ${JSON.stringify(platformStr)});
+    spoofNavigator('maxTouchPoints', ${maxTouchPoints});
   } catch(e) {}
 
   // -------------------------------------------------------------
@@ -1261,6 +1270,11 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
     settings?.mobile?.enable
   );
   args.push(`--font-masking-mode=${isMobileUa ? 1 : 2}`);
+  if (isMobileUa) {
+    const dsf = settings?.display?.deviceScaleFactor || 2.625;
+    args.push(`--force-device-scale-factor=${dsf}`);
+    args.push('--enable-features=TouchEvents,MobileViewport');
+  }
   args.push('--password-store=basic');
 
   // WebRTC Leak Prevention
