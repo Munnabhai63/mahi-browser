@@ -113,3 +113,18 @@ export function resolveMultiCoreExecutablePath(
     isExactVersionMatch: false,
   };
 }
+
+/**
+ * Returns a list of major Chromium versions available locally with exact binary match.
+ */
+export function getAvailableCores(): number[] {
+  const supported = [120, 124, 128, 130, 149, 150];
+  const available: number[] = [];
+  for (const major of supported) {
+    const res = resolveMultiCoreExecutablePath(`Chrome/${major}.0.0.0`);
+    if (res.isExactVersionMatch) {
+      available.push(major);
+    }
+  }
+  return available;
+}

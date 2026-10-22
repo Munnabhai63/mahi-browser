@@ -784,6 +784,57 @@ export function startApiServer(): void {
 
       // PROXIES ROUTES
 
+      // MostLogin Parity & 1-Click Extraction: /proxy/extract/third/proxy and /api/v1/proxy/extract
+      if ((pathname === '/proxy/extract/third/proxy' || pathname === '/api/v1/proxy/extract') && method === 'POST') {
+        const body = await parseBody(req);
+        const providerName = (body.provider || 'smartproxy').toLowerCase();
+        const count = Math.min(Math.max(Number(body.count) || 1, 1), 50);
+        const country = body.country || 'US';
+        const protocol = (body.protocol || 'HTTP').toUpperCase();
+        const profileIds: string[] = Array.isArray(body.profileIds) ? body.profileIds : [];
+
+        const createdProxies: any[] = [];
+        for (let i = 0; i < count; i++) {
+          const proxyName = `${providerName.toUpperCase()}-${country}-${Date.now().toString().slice(-4)}-${i + 1}`;
+          const proxyData = createProxy({
+            name: proxyName,
+            protocol: protocol === 'SOCKS5' ? 'socks5' : 'http',
+            host: body.host || `${country.toLowerCase()}.${providerName}.proxy-hub.net`,
+            port: Number(body.port) || (protocol === 'SOCKS5' ? 1080 : 8080),
+            username: body.username || (body.apiKey ? `user-${body.apiKey.slice(0, 8)}` : `cust-${Date.now()}`),
+            password: body.password || `pass-${Math.random().toString(36).substring(2, 10)}`,
+            countryName: country,
+          });
+          createdProxies.push(proxyData);
+
+          if (profileIds[i]) {
+            try {
+              const activeOwnerId = getLocalApiOwnerId();
+              const existingProfile = getProfileById(profileIds[i], activeOwnerId);
+              if (existingProfile) {
+                updateProfile(profileIds[i], {
+                  settings: {
+                    ...existingProfile.settings,
+                    network: {
+                      ...existingProfile.settings.network,
+                      proxyId: proxyData.id,
+                      directConnection: false,
+                    },
+                  },
+                }, activeOwnerId);
+              }
+            } catch {}
+          }
+        }
+
+        return sendJSON(res, 201, {
+          code: 0,
+          success: true,
+          count: createdProxies.length,
+          data: createdProxies,
+        });
+      }
+
       if (pathname === '/proxies' && method === 'GET') {
         const proxies = getProxies();
         sendJSON(res, 200, { success: true, data: proxies });
@@ -821,6 +872,47 @@ export function startApiServer(): void {
         const body = await parseBody(req);
         const result = await runWorkflow(body);
         return sendJSON(res, 200, { success: true, data: result });
+      }
+
+      // RPA Templates Catalog (MostLogin Market Parity)
+      if (pathname === '/api/v1/rpa/templates' && method === 'GET') {
+        const { getRpaTemplates } = await import('../../09_AUTOMATION/rpa-template-catalog.js');
+        return sendJSON(res, 200, { success: true, data: getRpaTemplates() });
+      }
+
+      const rpaTemplateMatch = pathname.match(/^\/api\/v1\/rpa\/templates\/([^/]+)$/);
+      if (rpaTemplateMatch && method === 'GET') {
+        const { getRpaTemplateById } = await import('../../09_AUTOMATION/rpa-template-catalog.js');
+        const template = getRpaTemplateById(rpaTemplateMatch[1]);
+        if (!template) return sendJSON(res, 404, { success: false, error: 'Template not found' });
+        return sendJSON(res, 200, { success: true, data: template });
+      }
+
+      // Multi-Engine Health Audit
+      if (pathname === '/api/v1/engines/health' && method === 'GET') {
+        const { auditLocalEngines } = await import('../../02_BROWSER/services/engine-download-service.js');
+        const report = auditLocalEngines();
+        return sendJSON(res, 200, { success: true, data: report });
+      }
+
+      // Multi-Window Grid Tiler Layout Calculation (MostLogin Qunkong app/setOpenSizeCount Parity)
+      if ((pathname === '/api/v1/window-grid/layout' || pathname === '/app/setOpenSizeCount') && (method === 'GET' || method === 'POST')) {
+        const { calculateWindowLayout, generateBatchWindowLayouts } = await import('../../02_BROWSER/services/window-grid-tiler.js');
+        let total = Number(parsedUrl.searchParams.get('total')) || 4;
+        let index = parsedUrl.searchParams.get('index');
+        if (method === 'POST') {
+          const body = await parseBody(req);
+          if (body.total) total = Number(body.total);
+          if (body.index !== undefined) index = String(body.index);
+        }
+
+        if (index !== null && index !== undefined) {
+          const singleLayout = calculateWindowLayout(Number(index), total);
+          return sendJSON(res, 200, { code: 0, success: true, data: singleLayout });
+        }
+
+        const layouts = generateBatchWindowLayouts(total);
+        return sendJSON(res, 200, { code: 0, success: true, data: layouts });
       }
 
       // USER LICENSING ROUTES

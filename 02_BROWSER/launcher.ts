@@ -1234,7 +1234,10 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
   // Window Dimensions
   const w = settings?.display?.screenWidth || 1280;
   const h = settings?.display?.screenHeight || 800;
-  args.push(`--window-size=${w},${h}`);
+  const hasWindowSizeArg = settings?.browser?.additionalArgs?.some((arg: string) => arg.startsWith('--window-size='));
+  if (!hasWindowSizeArg) {
+    args.push(`--window-size=${w},${h}`);
+  }
 
   // User Agent
   if (settings?.browser?.userAgent) {
