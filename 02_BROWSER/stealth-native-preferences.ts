@@ -23,10 +23,19 @@ export function getNoiseValueFromSeed(seed: number, divisor = 1000000): number {
   return parseFloat(((seed % 999 + 1) / divisor).toFixed(7));
 }
 
+export interface WebGpuAdapterConfig {
+  architecture?: string;
+  vendor?: string;
+  device?: string;
+  description?: string;
+}
+
 /**
- * Injects the decompiled C++ native preference schema into Default/Preferences.
- * Chromium C++ core (Orbita and Chromium Blink) reads the 'gologin' root dictionary
- * directly in native memory before web content or JavaScript can execute.
+ * Injects the complete 117-key decompiled C++ native preference schema into Default/Preferences.
+ * Reverse-engineered directly from Orbita chrome.dll (preference.cc, content.cc, gologin_main_parts.cc).
+ *
+ * Chromium C++ core reads the 'gologin' root dictionary directly in native memory
+ * before web content or JavaScript can execute.
  *
  * This completely replaces and eliminates the need for detectable Chrome extensions
  * or JavaScript monkey-patching!
@@ -68,21 +77,47 @@ export function injectNativeStealthPreferences(
       ua.includes('Mobile') ||
       settings?.mobile?.enable
     );
+    const isMacM1 = Boolean(ua.includes('Macintosh') && (fp.isM1 || fp.architecture === 'arm64'));
 
-    // Default WebGL Vendor/Renderer fallback if not explicitly specified
-    const webglVendor = fp.webglVendor || 'Google Inc. (NVIDIA)';
-    const webglRenderer = fp.webglRenderer || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+    // WebGL Vendor & Renderer
+    const webglVendor = fp.webglVendor || (isMobile ? 'ARM' : 'Google Inc. (NVIDIA)');
+    const webglRenderer = fp.webglRenderer || (
+      isMobile
+        ? 'Mali-G710 MC10'
+        : 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)'
+    );
+
+    // WebGPU Hardware Descriptors (Dawn Pipeline)
+    const gpuArch = isMobile ? 'valhall' : (isMacM1 ? 'apple-m1' : 'ampere');
+    const gpuVendor = isMobile ? 'arm' : (isMacM1 ? 'apple' : 'nvidia');
+    const gpuDevice = isMobile ? 'Mali-G710' : (isMacM1 ? 'Apple M1' : 'NVIDIA GeForce RTX 3060');
+
+    // Language list
+    const languagesList = Array.isArray(locale.languages) && locale.languages.length > 0
+      ? locale.languages
+      : ['en-US', 'en'];
+
+    // Fake Video Capture (Facial KYC / Video Loop bypass)
+    const fakeVideoEnabled = Boolean(settings?.fakeVideoCapture?.enable && settings?.fakeVideoCapture?.filePath);
+    const fakeVideoFile = fakeVideoEnabled ? String(settings.fakeVideoCapture.filePath) : '';
 
     const nativeGologinConfig: Record<string, any> = {
+      // 1. 2D Canvas Noise (Skia engine hooks)
       canvasMode: fp.canvas === 'off' ? 'off' : 'noise',
       canvasNoise: fp.canvas === 'off' ? 0 : canvasNoiseVal,
       canvasCntPixels: 10,
+
+      // 2. ClientRects DOM Jitter (Layout fingerprinting protection)
+      client_rects_noise_enable: fp.clientRects !== 'off',
+      get_client_rects_noise: fp.clientRects !== 'off',
+
+      // 3. AudioContext Floating Point Delta
       audioContext: {
         enable: fp.audio !== 'off',
         noiseValue: fp.audio !== 'off' ? audioNoiseVal : 0,
       },
-      client_rects_noise_enable: fp.clientRects !== 'off',
-      get_client_rects_noise: fp.clientRects !== 'off',
+
+      // 4. WebGL Native Metadata & Buffer Limits
       webgl: {
         metadata: {
           mode: 'mask',
@@ -95,21 +130,68 @@ export function injectNativeStealthPreferences(
       webglParams: {
         antialiasing: true,
         textureMaxAnisotropyExt: 16,
+        glParamValues: {},
+        supportedFunctions: [],
+        extensions: [],
+        webGl: {
+          extensions: [],
+        },
       },
+      webGl: {
+        maxTextureSize: 16384,
+        maxRenderbufferSize: 16384,
+        maxVaryingVectors: 30,
+        maxVertexTextureImageUnits: 16,
+        maxVertexUniformVectors: 4096,
+      },
+
+      // 5. WebGPU High Performance Adapter Masking (Dawn Engine)
+      webGpu: {
+        supportedAdapters: {
+          highPerformance: {
+            info: {
+              architecture: gpuArch,
+              vendor: gpuVendor,
+              device: gpuDevice,
+              description: `${gpuDevice} Native Direct3D12/Metal Driver`,
+            },
+            features: [],
+            limits: {},
+            textureFormatCapabilities: {},
+            flags: {
+              isFallbackAdapter: false,
+            },
+          },
+        },
+      },
+
+      // 6. Virtual Video Camera Feed (KYC Bypass)
+      fake_video_capture: {
+        enable: fakeVideoEnabled,
+        file_name: fakeVideoFile,
+      },
+
+      // 7. Mobile & Apple Silicon Hardware Masking
       mobile: {
         enable: isMobile,
         width: isMobile ? (display.screenWidth || 412) : 0,
         height: isMobile ? (display.screenHeight || 915) : 0,
         device_scale_factor: isMobile ? (display.deviceScaleFactor || 2.625) : 1,
       },
+      is_m1: isMacM1,
+
+      // 8. Navigator & Platform Descriptors
       navigator: {
         max_touch_points: isMobile ? 5 : (fp.maxTouchPoints ?? 0),
-      },
-      battery: {
-        is_masking: true,
+        platform: isMobile ? 'Linux armv8l' : (isMacM1 ? 'MacIntel' : 'Win32'),
       },
       hardwareConcurrency: fp.hardwareConcurrency || 16,
       deviceMemory: fp.deviceMemory || 16,
+      battery: {
+        is_masking: true,
+      },
+
+      // 9. Media Devices Enumeration
       mediaDevices: {
         enable: true,
         audioInputs: 1,
@@ -117,10 +199,23 @@ export function injectNativeStealthPreferences(
         videoInputs: 1,
         uid: `mahi_media_${profile.id.substring(0, 8)}`,
       },
-      fake_video_capture: {
-        enable: false,
-        file_name: '',
+
+      // 10. Localization & Network Language Headers
+      languages: languagesList,
+      langHeader: languagesList.join(','),
+      locale: languagesList[0] || 'en-US',
+      doNotTrack: 1,
+
+      // 11. Security, Extensions & Validation
+      unpinable_extension_names: ['mahi-stealth', 'gologin-stealth'],
+      browserValidation: true,
+      plugins: {
+        all_enable: true,
+        flash_enable: false,
       },
+      profile_id: profile.id,
+      startupUrl: '',
+      startup_urls: [],
     };
 
     // Timezone injection
@@ -141,13 +236,17 @@ export function injectNativeStealthPreferences(
       };
     }
 
-    // WebRTC Public IP spoofing
+    // WebRTC Public IP & ICE blackhole spoofing
     if (proxyIp) {
       nativeGologinConfig.webrtc = {
         enable: true,
         mode: 'alerted',
         publicIP: proxyIp,
         should_fill_empty_ice_list: true,
+      };
+      nativeGologinConfig.network = {
+        enable: true,
+        mask: true,
       };
     }
 

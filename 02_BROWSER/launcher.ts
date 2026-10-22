@@ -21,6 +21,8 @@ import { getExtensions } from './services/extension-service.js';
 import { createProxyTunnel, ProxyTunnelHandle } from './proxy-tunnel.js';
 import { getApiAuthToken } from '../08_SECURITY/install-secrets.js';
 import { injectNativeStealthPreferences } from './stealth-native-preferences.js';
+import { resolveMultiCoreExecutablePath } from './services/multi-core-resolver.js';
+import { buildVideoCaptureFlags } from './services/video-capture-service.js';
 
 
 function debugLog(msg: string) {
@@ -1286,35 +1288,29 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
 
   try {
     // -------------------------------------------------------------
-    // Step 1: Resolve Browser Executable Path (Production Unbranded Chromium / Managed Engine)
+    // Step 1: Resolve Browser Executable Path (Multi-Core Resolution & Managed Engine)
     // -------------------------------------------------------------
-    const activeVersionLabel = CURRENT_ENGINE_DISTRIBUTION === 'CHROMIUM_PRODUCTION'
-      ? CHROMIUM_PRODUCTION_VERSION
-      : MANAGED_ENGINE_VERSION;
-    debugLog(`[Launcher Step 1/7] Resolving browser engine (${CURRENT_ENGINE_DISTRIBUTION} ${activeVersionLabel})...`);
-    
-    let executablePath: string;
-    if (CURRENT_ENGINE_DISTRIBUTION === 'CHROMIUM_PRODUCTION' && isProductionChromiumInstalled()) {
-      executablePath = getProductionChromiumExecutablePath();
-      debugLog(`[Launcher Step 1/7] Production unbranded Chromium located: "${executablePath}"`);
-    } else if (isManagedEngineInstalled()) {
-      executablePath = getManagedEngineExecutablePath();
-      debugLog(`[Launcher Step 1/7] Managed engine located: "${executablePath}"`);
-    } else {
-      // Step 14 Profile Run Contract: Profile Run must NEVER trigger on-the-fly downloads
-      const candidatePath = getProductionChromiumExecutablePath();
-      if (fs.existsSync(candidatePath)) {
-        executablePath = candidatePath;
-        debugLog(`[Launcher Step 1/7] Production Chromium located on disk: "${executablePath}"`);
+    const multiCore = resolveMultiCoreExecutablePath(
+      profile.settings?.browser?.userAgent,
+      profile.customExecutablePath
+    );
+    let executablePath: string = multiCore.executablePath;
+    debugLog(`[Launcher Step 1/7] Engine resolved via multi-core matcher (${multiCore.coreType}, matched=${multiCore.isExactVersionMatch}): "${executablePath}"`);
+
+    if (!fs.existsSync(executablePath)) {
+      if (CURRENT_ENGINE_DISTRIBUTION === 'CHROMIUM_PRODUCTION' && isProductionChromiumInstalled()) {
+        executablePath = getProductionChromiumExecutablePath();
+      } else if (isManagedEngineInstalled()) {
+        executablePath = getManagedEngineExecutablePath();
       } else {
-        const bundledCandidate = getBundledEngineExecutablePath();
-        if (bundledCandidate && fs.existsSync(bundledCandidate)) {
-          executablePath = bundledCandidate;
-          debugLog(`[Launcher Step 1/7] Production Chromium located in bundled resources: "${executablePath}"`);
+        const candidatePath = getProductionChromiumExecutablePath();
+        if (fs.existsSync(candidatePath)) {
+          executablePath = candidatePath;
         } else {
-          const errMsg = `Browser engine is not installed or accessible at "${candidatePath}". Please run Engine Repair in Settings or reinstall MAHI Browser.`;
-          debugLog(`[Launcher Step 1/7 ERROR] ${errMsg}`);
-          throw new Error(errMsg);
+          const bundledCandidate = getBundledEngineExecutablePath();
+          if (bundledCandidate && fs.existsSync(bundledCandidate)) {
+            executablePath = bundledCandidate;
+          }
         }
       }
     }
@@ -1376,6 +1372,21 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
       settings,
       mode: launchOptions?.mode || 'normal',
     });
+
+    // Virtual Video Capture Injection (KYC Facial Verification Bypass)
+    const videoCapture = buildVideoCaptureFlags(settings?.fakeVideoCapture);
+    if (videoCapture.isValid && videoCapture.flags.length > 0) {
+      args.push(...videoCapture.flags);
+      debugLog(`[Launcher Step 4/7] Injected virtual camera stream from: ${videoCapture.resolvedPath}`);
+    }
+
+    // Native Font Masking Flags (GoLogin Parity)
+    if (settings?.fingerprint?.fonts && Array.isArray(settings.fingerprint.fonts) && settings.fingerprint.fonts.length > 0) {
+      args.push('--font-masking-mode=1');
+      args.push(`--font-masking-list=${settings.fingerprint.fonts.join(';')}`);
+      debugLog(`[Launcher Step 4/7] Configured font masking list (${settings.fingerprint.fonts.length} fonts).`);
+    }
+
     debugLog(`[Launcher Step 4/7] Built ${args.length} sanitized production launch arguments.`);
 
     // -------------------------------------------------------------

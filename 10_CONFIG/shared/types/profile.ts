@@ -57,6 +57,8 @@ export interface FingerprintConfig {
   canvasNoise?: boolean;
   audioContextNoise?: boolean;
   maxTouchPoints?: number;
+  fonts?: string[];
+  isM1?: boolean;
 }
 
 export interface ProfileSettings {
@@ -66,6 +68,10 @@ export interface ProfileSettings {
   locale: LocaleConfig;
   network: NetworkConfig;
   permissions: PermissionsConfig;
+  fakeVideoCapture?: {
+    enable?: boolean;
+    filePath?: string;
+  };
 }
 
 export interface ProfileStats {
@@ -87,6 +93,7 @@ export interface Profile {
   createdAt: string;
   updatedAt: string;
   storagePath: string;
+  customExecutablePath?: string;
   settings: ProfileSettings;
   pinned: boolean;
   lastError?: string;
