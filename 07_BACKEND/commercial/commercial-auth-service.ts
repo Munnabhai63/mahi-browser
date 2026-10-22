@@ -282,6 +282,13 @@ export function getUserById(userId: string): CommercialUser | null {
   const db = getDatabase();
   const row = db.prepare('SELECT * FROM commercial_users WHERE id = ? OR email = ?').get(userId, userId) as any;
   if (row) {
+    let featureOverrides: Record<string, boolean> = {};
+    if (row.feature_overrides) {
+      try {
+        featureOverrides = JSON.parse(row.feature_overrides);
+      } catch {}
+    }
+
     return {
       id: row.id,
       email: row.email,
@@ -289,6 +296,9 @@ export function getUserById(userId: string): CommercialUser | null {
       role: row.role as CommercialRole,
       status: row.status as CommercialUserStatus,
       planId: row.plan_id || 'plan_free',
+      bonusProfiles: row.bonus_profiles || 0,
+      bonusProxyBytes: row.bonus_proxy_bytes || 0,
+      featureOverrides,
       trialStartedAt: row.trial_started_at || undefined,
       trialExpiresAt: row.trial_expires_at || undefined,
       trialUsed: Boolean(row.trial_used),
@@ -387,17 +397,28 @@ export function getAllUsers(filter?: { status?: string; role?: string; searchQue
   const total = (db.prepare(countQuery).get(...countParams) as any)?.count || 0;
   const rows = db.prepare(query).all(...params) as any[];
 
-  const users = rows.map((r) => ({
-    id: r.id,
-    email: r.email,
-    name: r.name,
-    role: r.role as CommercialRole,
-    status: r.status as CommercialUserStatus,
-    planId: r.plan_id,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-    lastLoginAt: r.last_login_at || undefined,
-  }));
+  const users = rows.map((r) => {
+    let featureOverrides: Record<string, boolean> = {};
+    if (r.feature_overrides) {
+      try {
+        featureOverrides = JSON.parse(r.feature_overrides);
+      } catch {}
+    }
+    return {
+      id: r.id,
+      email: r.email,
+      name: r.name,
+      role: r.role as CommercialRole,
+      status: r.status as CommercialUserStatus,
+      planId: r.plan_id,
+      bonusProfiles: r.bonus_profiles || 0,
+      bonusProxyBytes: r.bonus_proxy_bytes || 0,
+      featureOverrides,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      lastLoginAt: r.last_login_at || undefined,
+    };
+  });
 
   return { users, total };
 }
@@ -458,3 +479,121 @@ export function updateUserPlan(
   }
   return false;
 }
+
+/**
+ * Phase 23: GoLogin-Style Instant Quota Booster
+ * Grants immediate bonus profiles or proxy gigabytes without requiring a plan upgrade.
+ */
+export function boostUserQuota(
+  userId: string,
+  type: 'PROFILES' | 'PROXY_GB',
+  amount: number,
+  actor: { id: string; name: string; role: CommercialRole }
+): { success: boolean; bonusProfiles?: number; bonusProxyBytes?: number; error?: string } {
+  const db = getDatabase();
+  const current = getUserById(userId);
+  if (!current) {
+    return { success: false, error: 'User not found.' };
+  }
+
+  const now = new Date().toISOString();
+
+  if (type === 'PROFILES') {
+    const increment = Math.max(1, Math.floor(amount));
+    db.prepare(`
+      UPDATE commercial_users 
+      SET bonus_profiles = COALESCE(bonus_profiles, 0) + ?, updated_at = ? 
+      WHERE id = ?
+    `).run(increment, now, current.id);
+
+    const updated = getUserById(current.id);
+    logCommercialAudit({
+      actorId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: 'USER_QUOTA_BOOST_PROFILES',
+      targetType: 'USER',
+      targetId: current.id,
+      details: `Admin granted +${increment} bonus profiles to ${current.email}. Total bonus: ${updated?.bonusProfiles || 0}`,
+      result: 'SUCCESS',
+    });
+
+    return {
+      success: true,
+      bonusProfiles: updated?.bonusProfiles || 0,
+      bonusProxyBytes: updated?.bonusProxyBytes || 0,
+    };
+  }
+
+  if (type === 'PROXY_GB') {
+    const incrementGb = Math.max(1, Math.floor(amount));
+    const incrementBytes = incrementGb * 1024 * 1024 * 1024;
+    db.prepare(`
+      UPDATE commercial_users 
+      SET bonus_proxy_bytes = COALESCE(bonus_proxy_bytes, 0) + ?, updated_at = ? 
+      WHERE id = ?
+    `).run(incrementBytes, now, current.id);
+
+    const updated = getUserById(current.id);
+    logCommercialAudit({
+      actorId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: 'USER_QUOTA_BOOST_PROXY',
+      targetType: 'USER',
+      targetId: current.id,
+      details: `Admin granted +${incrementGb} GB proxy data to ${current.email}.`,
+      result: 'SUCCESS',
+    });
+
+    return {
+      success: true,
+      bonusProfiles: updated?.bonusProfiles || 0,
+      bonusProxyBytes: updated?.bonusProxyBytes || 0,
+    };
+  }
+
+  return { success: false, error: 'Invalid boost type. Expected PROFILES or PROXY_GB.' };
+}
+
+/**
+ * Phase 23: MostLogin-Style Enterprise Feature Overrides
+ * Grants or revokes specific enterprise features (Qunkong, Multi-Core, Bot Daemon, RPA)
+ * directly per user account without changing their plan tier.
+ */
+export function setUserFeatureOverrides(
+  userId: string,
+  overrides: Record<string, boolean>,
+  actor: { id: string; name: string; role: CommercialRole }
+): { success: boolean; overrides?: Record<string, boolean>; error?: string } {
+  const db = getDatabase();
+  const current = getUserById(userId);
+  if (!current) {
+    return { success: false, error: 'User not found.' };
+  }
+
+  const existingOverrides = current.featureOverrides || {};
+  const merged = { ...existingOverrides, ...overrides };
+  const json = JSON.stringify(merged);
+  const now = new Date().toISOString();
+
+  db.prepare(`
+    UPDATE commercial_users 
+    SET feature_overrides = ?, updated_at = ? 
+    WHERE id = ?
+  `).run(json, now, current.id);
+
+  logCommercialAudit({
+    actorId: actor.id,
+    actorName: actor.name,
+    actorRole: actor.role,
+    action: 'USER_FEATURE_OVERRIDES_UPDATE',
+    targetType: 'USER',
+    targetId: current.id,
+    details: `Updated enterprise feature overrides for ${current.email}: ${json}`,
+    result: 'SUCCESS',
+  });
+
+  return { success: true, overrides: merged };
+}
+

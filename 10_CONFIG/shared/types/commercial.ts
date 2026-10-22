@@ -221,6 +221,9 @@ export interface CommercialUser {
   role: CommercialRole;
   status: CommercialUserStatus;
   planId: string;
+  bonusProfiles?: number;
+  bonusProxyBytes?: number;
+  featureOverrides?: Record<string, boolean>;
   trialStartedAt?: string;
   trialExpiresAt?: string;
   trialUsed?: boolean;
@@ -422,4 +425,6 @@ export interface AdminDashboardStats {
   totalPlans: number;
   revenueEstMonthly: number;
   recentAuditLogs: CommercialAuditLog[];
+  openTickets?: number;
+  escalatedTickets?: number;
 }

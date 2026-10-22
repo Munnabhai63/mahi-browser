@@ -404,3 +404,87 @@ export function updateSupportTicketStatus(
     },
   };
 }
+
+/**
+ * Phase 23: Admin Live Reply Desk
+ * Dispatches an official resolution or reply to a customer support ticket and updates status.
+ */
+export function replySupportTicket(
+  id: string,
+  replyText: string,
+  status: SupportTicket['status'] = 'RESOLVED',
+  adminNotes?: string,
+  actorName: string = 'Admin'
+): { success: boolean; data?: SupportTicket; error?: string } {
+  const db = getDatabase();
+  const existing = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id) as any;
+  if (!existing) {
+    return { success: false, error: 'Support ticket not found.' };
+  }
+
+  const now = new Date().toISOString();
+  db.prepare(`
+    UPDATE support_tickets 
+    SET reply = ?, status = ?, admin_notes = COALESCE(?, admin_notes), updated_at = ?
+    WHERE id = ?
+  `).run(replyText, status, adminNotes || null, now, id);
+
+  try {
+    logCommercialAudit({
+      actorId: 'admin',
+      actorName: actorName,
+      actorRole: 'ADMIN',
+      action: 'SUPPORT_TICKET_REPLIED',
+      targetType: 'SUPPORT_TICKET',
+      targetId: id,
+      details: JSON.stringify({ ticketNumber: existing.ticket_number, status, replyPreview: replyText.substring(0, 80) }),
+      result: 'SUCCESS',
+    });
+  } catch (auditErr) {
+    console.warn('[SupportService] Audit logging warning:', auditErr);
+  }
+
+  const updated = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id) as any;
+  return {
+    success: true,
+    data: {
+      id: updated.id,
+      ticketNumber: updated.ticket_number,
+      category: updated.category,
+      userEmail: updated.user_email || undefined,
+      userName: updated.user_name || undefined,
+      message: updated.message,
+      reply: updated.reply || undefined,
+      source: updated.source,
+      status: updated.status,
+      isEscalated: Boolean(updated.is_escalated),
+      escalationReason: updated.escalation_reason || undefined,
+      emailSent: Boolean(updated.email_sent),
+      adminNotes: updated.admin_notes || undefined,
+      createdAt: updated.created_at,
+      updatedAt: updated.updated_at,
+    },
+  };
+}
+
+export function getSupportTicketMetrics(): {
+  total: number;
+  open: number;
+  inProgress: number;
+  resolved: number;
+  escalated: number;
+} {
+  const db = getDatabase();
+  try {
+    const total = (db.prepare('SELECT COUNT(*) as c FROM support_tickets').get() as any)?.c || 0;
+    const open = (db.prepare("SELECT COUNT(*) as c FROM support_tickets WHERE status = 'OPEN'").get() as any)?.c || 0;
+    const inProgress = (db.prepare("SELECT COUNT(*) as c FROM support_tickets WHERE status = 'IN_PROGRESS'").get() as any)?.c || 0;
+    const resolved = (db.prepare("SELECT COUNT(*) as c FROM support_tickets WHERE status IN ('RESOLVED', 'CLOSED')").get() as any)?.c || 0;
+    const escalated = (db.prepare("SELECT COUNT(*) as c FROM support_tickets WHERE is_escalated = 1 AND status != 'CLOSED'").get() as any)?.c || 0;
+
+    return { total, open, inProgress, resolved, escalated };
+  } catch {
+    return { total: 0, open: 0, inProgress: 0, resolved: 0, escalated: 0 };
+  }
+}
+

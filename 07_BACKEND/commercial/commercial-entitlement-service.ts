@@ -259,8 +259,27 @@ export function evaluateUserEntitlements(
   const effectivePlanObj = (isTrialUser && !isTrialActive && !isSubActive) ? defaultFreePlan : (isSubActive ? plan : defaultFreePlan);
   const capabilities = resolveCapabilitiesForPlan(effectivePlanObj, subscription);
 
+  // Phase 23: MostLogin-style Enterprise Feature Overrides per User
+  if (user.featureOverrides) {
+    if (user.featureOverrides['qunkong']) {
+      capabilities['automation.synchronizer'] = true;
+    }
+    if (user.featureOverrides['multiCore']) {
+      capabilities['stealth.multiCore'] = true;
+    }
+    if (user.featureOverrides['apiDaemon']) {
+      capabilities['api.localDaemon'] = true;
+    }
+    if (user.featureOverrides['rpa']) {
+      capabilities['automation.rpa'] = true;
+    }
+  }
+
   const trialPlanId = (isTrialUser && isTrialActive) ? 'trial_50' : (effectivePlanObj.id.replace('plan_', '') || 'free');
-  const effectiveMaxProfiles = (isTrialUser && isTrialActive) ? 50 : effectivePlanObj.limits.maxProfiles;
+  // Phase 23: Factor in GoLogin-style Quota Boosters (+10, +50 profiles)
+  const bonusProfiles = user.bonusProfiles || 0;
+  const baseMaxProfiles = (isTrialUser && isTrialActive) ? 50 : effectivePlanObj.limits.maxProfiles;
+  const effectiveMaxProfiles = baseMaxProfiles + bonusProfiles;
 
   return {
     allowed: isDeviceAuthorized,
@@ -277,9 +296,10 @@ export function evaluateUserEntitlements(
       status: isDeviceAuthorized ? 'ACTIVE' : 'REVOKED',
       isAuthorized: isDeviceAuthorized,
     },
-    limits: (user.signupIntent === 'trial' && isTrialActive)
-      ? { ...effectivePlanObj.limits, maxProfiles: 50 }
-      : effectivePlanObj.limits,
+    limits: {
+      ...effectivePlanObj.limits,
+      maxProfiles: effectiveMaxProfiles,
+    },
     capabilities,
     features: {
       ...capabilities,

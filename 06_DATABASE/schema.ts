@@ -1483,5 +1483,26 @@ export async function initializeDatabase(): Promise<void> {
       db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (22, ?)').run(new Date().toISOString());
     } catch {}
   }
+
+  // Migration v23: Phase 23 Admin Operations, Quota Boosters & Enterprise Overrides (GoLogin & MostLogin Parity)
+  const checkMigration23 = db.prepare('SELECT version FROM schema_migrations WHERE version = 23').get();
+  if (!checkMigration23) {
+    try {
+      const columns = db.prepare('PRAGMA table_info(commercial_users)').all() as any[];
+      const colNames = columns.map((c) => c.name);
+
+      if (!colNames.includes('bonus_profiles')) {
+        db.exec('ALTER TABLE commercial_users ADD COLUMN bonus_profiles INTEGER NOT NULL DEFAULT 0');
+      }
+      if (!colNames.includes('bonus_proxy_bytes')) {
+        db.exec('ALTER TABLE commercial_users ADD COLUMN bonus_proxy_bytes INTEGER NOT NULL DEFAULT 0');
+      }
+      if (!colNames.includes('feature_overrides')) {
+        db.exec("ALTER TABLE commercial_users ADD COLUMN feature_overrides TEXT NOT NULL DEFAULT '{}'");
+      }
+
+      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (23, ?)').run(new Date().toISOString());
+    } catch {}
+  }
 }
 

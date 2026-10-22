@@ -138,6 +138,14 @@ export function getWebAdminHtml(): string {
           </div>
           <span class="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-sky-500/20 text-sky-400">FUNNEL</span>
         </button>
+
+        <button onclick="switchPage('support_tickets')" id="nav-support_tickets" class="nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all">
+          <div class="flex items-center space-x-3">
+            <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+            <span>Support Tickets</span>
+          </div>
+          <span id="nav-tickets-count" class="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-rose-500/20 text-rose-400">0</span>
+        </button>
       </div>
     </div>
 
@@ -249,6 +257,8 @@ export function getWebAdminHtml(): string {
           dashboardData = res.data;
           document.getElementById('nav-users-count').innerText = res.data.totalUsers || 0;
           document.getElementById('nav-device-count').innerText = res.data.activeDevices || 0;
+          const ticketBadge = document.getElementById('nav-tickets-count');
+          if (ticketBadge) ticketBadge.innerText = res.data.openTickets || 0;
           renderDashboard(res.data);
         } else {
           container.innerHTML = \`<div class="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs font-bold">Error loading dashboard: \${res.error || 'Failed to authenticate'}</div>\`;
@@ -277,6 +287,9 @@ export function getWebAdminHtml(): string {
       } else if (currentPage === 'funnel') {
         title.innerText = 'Conversion Funnel Telemetry';
         renderFunnelTelemetry();
+      } else if (currentPage === 'support_tickets') {
+        title.innerText = 'Customer Support Desk & Ticket Inbox';
+        renderSupportTickets();
       }
     }
 
@@ -370,7 +383,11 @@ export function getWebAdminHtml(): string {
       container.innerHTML = \`
         <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
           <div class="p-4 border-b border-slate-200 flex items-center justify-between">
-            <h3 class="text-sm font-bold text-slate-900">Registered Users (\${res.total})</h3>
+            <div>
+              <h3 class="text-sm font-bold text-slate-900">Registered Users (\${res.total})</h3>
+              <p class="text-[11px] text-slate-400 mt-0.5">Manage customer quotas, GoLogin-style boosters, enterprise feature overrides & HWID locks</p>
+            </div>
+            <button onclick="renderUsers()" class="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition">🔄 Refresh</button>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full text-left text-xs">
@@ -378,7 +395,8 @@ export function getWebAdminHtml(): string {
                 <tr>
                   <th class="p-3">User</th>
                   <th class="p-3">Role</th>
-                  <th class="p-3">Plan</th>
+                  <th class="p-3">Plan & Quotas</th>
+                  <th class="p-3">Enterprise Overrides</th>
                   <th class="p-3">Status</th>
                   <th class="p-3">Joined</th>
                   <th class="p-3 text-right">Actions</th>
@@ -386,30 +404,46 @@ export function getWebAdminHtml(): string {
               </thead>
               <tbody class="divide-y divide-slate-100">
                 \${res.data && res.data.length > 0 ? res.data.map(u => \`
-                  <tr class="hover:bg-slate-50">
+                  <tr class="hover:bg-slate-50 transition">
                     <td class="p-3">
                       <div class="font-bold text-slate-800">\${u.name}</div>
                       <div class="text-[11px] text-slate-400 font-mono">\${u.email}</div>
                     </td>
                     <td class="p-3"><span class="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-700">\${u.role}</span></td>
-                    <td class="p-3 font-semibold text-emerald-700">\${u.planId}</td>
+                    <td class="p-3">
+                      <div class="font-semibold text-emerald-700">\${u.planId}</div>
+                      \${u.bonusProfiles > 0 ? \`<div class="text-[10px] text-amber-600 font-bold font-mono">+\${u.bonusProfiles} Boosted Profiles</div>\` : ''}
+                      \${u.bonusProxyBytes > 0 ? \`<div class="text-[10px] text-sky-600 font-bold font-mono">+\${Math.round(u.bonusProxyBytes / (1024*1024*1024))} GB Proxy</div>\` : ''}
+                    </td>
+                    <td class="p-3">
+                      <div class="flex flex-wrap gap-1">
+                        \${u.featureOverrides && u.featureOverrides.qunkong ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-50 text-purple-700 border border-purple-200">Qunkong</span>' : ''}
+                        \${u.featureOverrides && u.featureOverrides.multiCore ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200">MultiCore</span>' : ''}
+                        \${u.featureOverrides && u.featureOverrides.apiDaemon ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">BotAPI</span>' : ''}
+                        \${u.featureOverrides && u.featureOverrides.rpa ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-orange-50 text-orange-700 border border-orange-200">RPA</span>' : ''}
+                        \${!u.featureOverrides || (!u.featureOverrides.qunkong && !u.featureOverrides.multiCore && !u.featureOverrides.apiDaemon && !u.featureOverrides.rpa) ? '<span class="text-[10px] text-slate-400">Standard Tier</span>' : ''}
+                      </div>
+                    </td>
                     <td class="p-3">
                       <span class="px-2 py-0.5 rounded-full text-[10px] font-bold \${
                         u.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
                         u.status === 'SUSPENDED' ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
                       }">\${u.status}</span>
                     </td>
-                    <td class="p-3 text-slate-400 text-[11px]">\${new Date(u.createdAt).toLocaleDateString()}</td>
-                    <td class="p-3 text-right space-x-1.5">
+                    <td class="p-3 text-slate-400 text-[11px] font-mono">\${new Date(u.createdAt).toLocaleDateString()}</td>
+                    <td class="p-3 text-right space-x-1 whitespace-nowrap">
+                      <button onclick="openBoostModal('\${u.id}', '\${u.email}', \${u.bonusProfiles || 0})" class="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg font-bold text-[10px] border border-amber-200 transition" title="GoLogin-Style Quick Quota Boost">⚡ Boost</button>
+                      <button onclick='openFeaturesModal("\${u.id}", "\${u.email}", \${JSON.stringify(u.featureOverrides || {})})' class="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-800 rounded-lg font-bold text-[10px] border border-purple-200 transition" title="MostLogin-Style Feature Overrides">⚙️ Features</button>
+                      <button onclick="resetUserHardware('\${u.id}', '\${u.email}')" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-[10px] transition" title="1-Click Machine / HWID Unbind">🔓 HWID</button>
                       \${u.status === 'ACTIVE' ? \`
-                        <button onclick="changeUserStatus('\${u.id}', 'SUSPENDED')" class="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg font-bold text-[10px]">Suspend</button>
-                        <button onclick="changeUserStatus('\${u.id}', 'BANNED')" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-bold text-[10px]">Ban</button>
+                        <button onclick="changeUserStatus('\${u.id}', 'SUSPENDED')" class="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg font-bold text-[10px] transition">Suspend</button>
+                        <button onclick="changeUserStatus('\${u.id}', 'BANNED')" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-bold text-[10px] transition">Ban</button>
                       \` : \`
-                        <button onclick="changeUserStatus('\${u.id}', 'ACTIVE')" class="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg font-bold text-[10px]">Activate</button>
+                        <button onclick="changeUserStatus('\${u.id}', 'ACTIVE')" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg font-bold text-[10px] transition">Activate</button>
                       \`}
                     </td>
                   </tr>
-                \`).join('') : '<tr><td colspan="6" class="p-6 text-center text-slate-400 font-medium">No users registered yet.</td></tr>'}
+                \`).join('') : '<tr><td colspan="7" class="p-6 text-center text-slate-400 font-medium">No users registered yet.</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -427,6 +461,392 @@ export function getWebAdminHtml(): string {
         renderUsers();
       } else {
         showToast(res.error || 'Failed to update status', 'error');
+      }
+    }
+
+    async function openBoostModal(userId, email, currentBonus) {
+      const modal = document.createElement('div');
+      modal.id = 'boost-modal';
+      modal.className = 'fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4';
+      modal.innerHTML = \`
+        <div class="bg-white rounded-2xl max-w-md w-full border border-slate-200 shadow-2xl p-6 space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+              <h3 class="text-sm font-extrabold text-slate-900 flex items-center space-x-2">
+                <span class="text-amber-500">⚡</span>
+                <span>Instant Quota Booster (GoLogin Parity)</span>
+              </h3>
+              <p class="text-[11px] text-slate-500 font-mono mt-0.5">\${email}</p>
+            </div>
+            <button onclick="document.getElementById('boost-modal').remove()" class="text-slate-400 hover:text-slate-700 font-bold text-sm">✕</button>
+          </div>
+
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
+            <div class="flex justify-between">
+              <span class="font-semibold">Current Bonus Profiles:</span>
+              <span class="font-mono font-bold text-amber-600">+\${currentBonus} Profiles</span>
+            </div>
+            <p class="text-[10px] text-slate-400">Boosters immediately expand balance without changing subscription tier.</p>
+          </div>
+
+          <div class="space-y-2">
+            <div class="text-xs font-bold text-slate-700">1-Click Quick Boost:</div>
+            <div class="grid grid-cols-3 gap-2">
+              <button onclick="executeBoost('\${userId}', 'PROFILES', 10)" class="p-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold text-center transition">
+                +10 Profiles
+              </button>
+              <button onclick="executeBoost('\${userId}', 'PROFILES', 50)" class="p-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold text-center transition">
+                +50 Profiles
+              </button>
+              <button onclick="executeBoost('\${userId}', 'PROXY_GB', 5)" class="p-2.5 bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 rounded-xl text-xs font-bold text-center transition">
+                +5 GB Proxy
+              </button>
+            </div>
+          </div>
+
+          <div class="pt-2 border-t border-slate-100 space-y-2">
+            <label class="text-xs font-bold text-slate-700 block">Custom Profile Amount:</label>
+            <div class="flex space-x-2">
+              <input type="number" id="custom-boost-input" min="1" max="1000" placeholder="e.g. 25" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-emerald-500 font-mono">
+              <button onclick="const val = parseInt(document.getElementById('custom-boost-input').value, 10); if (val > 0) executeBoost('\${userId}', 'PROFILES', val);" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition">
+                Grant
+              </button>
+            </div>
+          </div>
+        </div>
+      \`;
+      document.body.appendChild(modal);
+    }
+
+    async function executeBoost(userId, type, amount) {
+      const res = await apiFetch(\`/api/v1/admin/users/\${userId}/boost\`, {
+        method: 'POST',
+        body: JSON.stringify({ type, amount })
+      });
+      if (res.success) {
+        showToast(\`Successfully granted +\${amount} \${type === 'PROFILES' ? 'Profiles' : 'GB Proxy'}!\`);
+        const m = document.getElementById('boost-modal');
+        if (m) m.remove();
+        renderUsers();
+      } else {
+        showToast(res.error || 'Failed to apply boost', 'error');
+      }
+    }
+
+    async function openFeaturesModal(userId, email, currentOverrides) {
+      const modal = document.createElement('div');
+      modal.id = 'features-modal';
+      modal.className = 'fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4';
+      const ov = currentOverrides || {};
+      modal.innerHTML = \`
+        <div class="bg-white rounded-2xl max-w-md w-full border border-slate-200 shadow-2xl p-6 space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+              <h3 class="text-sm font-extrabold text-slate-900 flex items-center space-x-2">
+                <span class="text-purple-600">⚙️</span>
+                <span>Enterprise Feature Overrides (MostLogin Parity)</span>
+              </h3>
+              <p class="text-[11px] text-slate-500 font-mono mt-0.5">\${email}</p>
+            </div>
+            <button onclick="document.getElementById('features-modal').remove()" class="text-slate-400 hover:text-slate-700 font-bold text-sm">✕</button>
+          </div>
+
+          <div class="space-y-3 text-xs">
+            <label class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+              <div>
+                <div class="font-bold text-slate-800">Qunkong Synchronizer (群控)</div>
+                <div class="text-[10px] text-slate-500">Multi-window real-time input mirroring & grid placement</div>
+              </div>
+              <input type="checkbox" id="feat-qunkong" \${ov.qunkong ? 'checked' : ''} class="w-4 h-4 rounded text-emerald-600">
+            </label>
+
+            <label class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+              <div>
+                <div class="font-bold text-slate-800">Multi-Core Chromium Selector</div>
+                <div class="text-[10px] text-slate-500">Orbita 130 / 140 / 150 kernel switching per profile</div>
+              </div>
+              <input type="checkbox" id="feat-multicore" \${ov.multiCore ? 'checked' : ''} class="w-4 h-4 rounded text-emerald-600">
+            </label>
+
+            <label class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+              <div>
+                <div class="font-bold text-slate-800">Local Bot API Daemon</div>
+                <div class="text-[10px] text-slate-500">REST API (:30898/:32123) for Puppeteer/Selenium</div>
+              </div>
+              <input type="checkbox" id="feat-apidaemon" \${ov.apiDaemon ? 'checked' : ''} class="w-4 h-4 rounded text-emerald-600">
+            </label>
+
+            <label class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+              <div>
+                <div class="font-bold text-slate-800">Visual RPA Automation Studio</div>
+                <div class="text-[10px] text-slate-500">Pre-built cookie warmer, KYC and scraping bot flows</div>
+              </div>
+              <input type="checkbox" id="feat-rpa" \${ov.rpa ? 'checked' : ''} class="w-4 h-4 rounded text-emerald-600">
+            </label>
+          </div>
+
+          <div class="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+            <button onclick="document.getElementById('features-modal').remove()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition">Cancel</button>
+            <button onclick="saveFeatures('\${userId}')" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs transition shadow-sm">Save Overrides</button>
+          </div>
+        </div>
+      \`;
+      document.body.appendChild(modal);
+    }
+
+    async function saveFeatures(userId) {
+      const overrides = {
+        qunkong: document.getElementById('feat-qunkong').checked,
+        multiCore: document.getElementById('feat-multicore').checked,
+        apiDaemon: document.getElementById('feat-apidaemon').checked,
+        rpa: document.getElementById('feat-rpa').checked,
+      };
+      const res = await apiFetch(\`/api/v1/admin/users/\${userId}/features\`, {
+        method: 'PUT',
+        body: JSON.stringify({ overrides })
+      });
+      if (res.success) {
+        showToast('Enterprise feature overrides updated successfully!');
+        const m = document.getElementById('features-modal');
+        if (m) m.remove();
+        renderUsers();
+      } else {
+        showToast(res.error || 'Failed to update overrides', 'error');
+      }
+    }
+
+    async function resetUserHardware(userId, email) {
+      if (!confirm(\`Are you sure you want to unbind all hardware and device locks for \${email}? User will be able to register new hardware immediately.\`)) {
+        return;
+      }
+      const res = await apiFetch(\`/api/v1/admin/users/\${userId}/reset-devices\`, {
+        method: 'POST'
+      });
+      if (res.success) {
+        showToast(\`Unbound \${res.unbindCount} device(s) successfully!\`);
+        renderUsers();
+      } else {
+        showToast(res.error || 'Failed to unbind devices', 'error');
+      }
+    }
+
+    let currentTicketFilter = { status: '', category: '' };
+
+    async function renderSupportTickets() {
+      const container = document.getElementById('content-container');
+      container.innerHTML = '<div class="text-slate-400 text-xs animate-pulse">Loading support ticket inbox...</div>';
+      
+      let url = '/api/v1/commercial/admin/support-tickets';
+      const params = [];
+      if (currentTicketFilter.status) params.push('status=' + encodeURIComponent(currentTicketFilter.status));
+      if (currentTicketFilter.category) params.push('category=' + encodeURIComponent(currentTicketFilter.category));
+      if (params.length) url += '?' + params.join('&');
+
+      const res = await apiFetch(url);
+      if (!res.success) {
+        container.innerHTML = \`<div class="p-4 bg-rose-50 text-rose-700 text-xs font-bold rounded-xl">\${res.error || 'Failed to load tickets'}</div>\`;
+        return;
+      }
+
+      const tickets = res.data || [];
+      const openCount = tickets.filter(t => t.status === 'OPEN').length;
+      const inProgCount = tickets.filter(t => t.status === 'IN_PROGRESS').length;
+      const paymentCount = tickets.filter(t => t.category === 'PAYMENT').length;
+      const resolvedCount = tickets.filter(t => t.status === 'RESOLVED' || t.status === 'CLOSED').length;
+
+      container.innerHTML = \`
+        <div class="space-y-4">
+          <!-- Stat Cards -->
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+              <div class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Total Tickets</div>
+              <div class="text-2xl font-black text-slate-900 mt-1 font-mono">\${tickets.length}</div>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-rose-100 shadow-xs">
+              <div class="text-rose-500 text-[10px] font-bold uppercase tracking-wider flex items-center justify-between">
+                <span>Open & Pending</span>
+                <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+              </div>
+              <div class="text-2xl font-black text-rose-600 mt-1 font-mono">\${openCount}</div>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-amber-100 shadow-xs">
+              <div class="text-amber-600 text-[10px] font-bold uppercase tracking-wider">Payment Escalations</div>
+              <div class="text-2xl font-black text-amber-600 mt-1 font-mono">\${paymentCount}</div>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-emerald-100 shadow-xs">
+              <div class="text-emerald-600 text-[10px] font-bold uppercase tracking-wider">Resolved</div>
+              <div class="text-2xl font-black text-emerald-600 mt-1 font-mono">\${resolvedCount}</div>
+            </div>
+          </div>
+
+          <!-- Filters & Actions -->
+          <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+            <div class="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center space-x-2">
+                <span class="text-xs font-bold text-slate-700">Filter Status:</span>
+                <select onchange="currentTicketFilter.status = this.value; renderSupportTickets();" class="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-slate-50 font-semibold focus:outline-emerald-500">
+                  <option value="" \${currentTicketFilter.status === '' ? 'selected' : ''}>All Statuses</option>
+                  <option value="OPEN" \${currentTicketFilter.status === 'OPEN' ? 'selected' : ''}>OPEN</option>
+                  <option value="IN_PROGRESS" \${currentTicketFilter.status === 'IN_PROGRESS' ? 'selected' : ''}>IN_PROGRESS</option>
+                  <option value="RESOLVED" \${currentTicketFilter.status === 'RESOLVED' ? 'selected' : ''}>RESOLVED</option>
+                  <option value="CLOSED" \${currentTicketFilter.status === 'CLOSED' ? 'selected' : ''}>CLOSED</option>
+                </select>
+
+                <span class="text-xs font-bold text-slate-700 ml-2">Category:</span>
+                <select onchange="currentTicketFilter.category = this.value; renderSupportTickets();" class="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-slate-50 font-semibold focus:outline-emerald-500">
+                  <option value="" \${currentTicketFilter.category === '' ? 'selected' : ''}>All Categories</option>
+                  <option value="PAYMENT" \${currentTicketFilter.category === 'PAYMENT' ? 'selected' : ''}>Payment / Billing</option>
+                  <option value="PRICING" \${currentTicketFilter.category === 'PRICING' ? 'selected' : ''}>Pricing & Plans</option>
+                  <option value="SETUP" \${currentTicketFilter.category === 'SETUP' ? 'selected' : ''}>Setup & Onboarding</option>
+                  <option value="FINGERPRINT" \${currentTicketFilter.category === 'FINGERPRINT' ? 'selected' : ''}>Fingerprint Engine</option>
+                  <option value="PROFILES" \${currentTicketFilter.category === 'PROFILES' ? 'selected' : ''}>Profiles & Vault</option>
+                  <option value="GENERAL" \${currentTicketFilter.category === 'GENERAL' ? 'selected' : ''}>General Support</option>
+                </select>
+              </div>
+              <button onclick="renderSupportTickets()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition">
+                🔄 Refresh Inbox
+              </button>
+            </div>
+
+            <!-- Table -->
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px]">
+                  <tr>
+                    <th class="p-3">Ticket #</th>
+                    <th class="p-3">Customer</th>
+                    <th class="p-3">Category</th>
+                    <th class="p-3">Message Preview</th>
+                    <th class="p-3">Status</th>
+                    <th class="p-3">Created</th>
+                    <th class="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  \${tickets.length > 0 ? tickets.map(t => \`
+                    <tr class="hover:bg-slate-50 transition">
+                      <td class="p-3 font-mono font-bold text-slate-900">\${t.ticketNumber}</td>
+                      <td class="p-3">
+                        <div class="font-bold text-slate-800">\${t.userName || 'Anonymous'}</div>
+                        <div class="text-[11px] text-slate-400 font-mono">\${t.userEmail || 'No email provided'}</div>
+                      </td>
+                      <td class="p-3">
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold \${
+                          t.category === 'PAYMENT' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                          t.category === 'PRICING' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                          'bg-slate-100 text-slate-700 border border-slate-200'
+                        }">\${t.category}</span>
+                        \${t.isEscalated ? '<span class="ml-1 text-[9px] font-extrabold text-rose-600">⚡ ESCALATED</span>' : ''}
+                      </td>
+                      <td class="p-3 text-slate-600 max-w-xs truncate" title="\${(t.message || '').replace(/"/g, '&quot;')}">
+                        \${t.message}
+                      </td>
+                      <td class="p-3">
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold \${
+                          t.status === 'OPEN' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                          t.status === 'IN_PROGRESS' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                          'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        }">\${t.status}</span>
+                      </td>
+                      <td class="p-3 text-slate-400 text-[11px] font-mono">\${new Date(t.createdAt).toLocaleDateString()} \${new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                      <td class="p-3 text-right">
+                        <button onclick='openTicketReplyModal(\${JSON.stringify(t)})' class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-[10px] transition shadow-xs">
+                          Reply & Manage
+                        </button>
+                      </td>
+                    </tr>
+                  \`).join('') : '<tr><td colspan="7" class="p-8 text-center text-slate-400 font-medium">No tickets match the selected filters.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      \`;
+    }
+
+    function openTicketReplyModal(ticket) {
+      const modal = document.createElement('div');
+      modal.id = 'ticket-reply-modal';
+      modal.className = 'fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4';
+      modal.innerHTML = \`
+        <div class="bg-white rounded-2xl max-w-xl w-full border border-slate-200 shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+              <h3 class="text-sm font-extrabold text-slate-900 flex items-center space-x-2">
+                <span>Ticket: \${ticket.ticketNumber}</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">\${ticket.category}</span>
+              </h3>
+              <p class="text-[11px] text-slate-500 font-mono mt-0.5">From: \${ticket.userName || 'User'} (\${ticket.userEmail || 'No email'})</p>
+            </div>
+            <button onclick="document.getElementById('ticket-reply-modal').remove()" class="text-slate-400 hover:text-slate-700 font-bold text-sm">✕</button>
+          </div>
+
+          <div class="space-y-3">
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Customer Message:</div>
+              <div class="text-xs text-slate-800 whitespace-pre-wrap">\${ticket.message}</div>
+            </div>
+
+            \${ticket.reply ? \`
+              <div class="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200">
+                <div class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Last Sent Reply:</div>
+                <div class="text-xs text-emerald-950 whitespace-pre-wrap">\${ticket.reply}</div>
+              </div>
+            \` : ''}
+
+            <div class="space-y-1.5">
+              <label class="text-xs font-bold text-slate-700 block">Dispatch Reply to Customer:</label>
+              <textarea id="reply-text-input" rows="4" placeholder="Write official resolution or answer..." class="w-full p-3 text-xs border border-slate-200 rounded-xl focus:outline-emerald-500 font-sans"></textarea>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs font-bold text-slate-700 block mb-1">Update Status:</label>
+                <select id="reply-status-select" class="w-full text-xs border border-slate-200 rounded-xl p-2 bg-slate-50 font-semibold focus:outline-emerald-500">
+                  <option value="RESOLVED" \${ticket.status === 'RESOLVED' ? 'selected' : ''}>RESOLVED</option>
+                  <option value="IN_PROGRESS" \${ticket.status === 'IN_PROGRESS' ? 'selected' : ''}>IN_PROGRESS</option>
+                  <option value="CLOSED" \${ticket.status === 'CLOSED' ? 'selected' : ''}>CLOSED</option>
+                  <option value="OPEN" \${ticket.status === 'OPEN' ? 'selected' : ''}>OPEN</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-xs font-bold text-slate-700 block mb-1">Internal Admin Notes:</label>
+                <input type="text" id="reply-admin-notes" value="\${ticket.adminNotes || ''}" placeholder="Optional private notes..." class="w-full text-xs border border-slate-200 rounded-xl p-2 bg-slate-50 focus:outline-emerald-500">
+              </div>
+            </div>
+          </div>
+
+          <div class="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+            <button onclick="document.getElementById('ticket-reply-modal').remove()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition">Cancel</button>
+            <button onclick="sendTicketReply('\${ticket.id}')" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition shadow-sm">Send Official Reply</button>
+          </div>
+        </div>
+      \`;
+      document.body.appendChild(modal);
+    }
+
+    async function sendTicketReply(ticketId) {
+      const reply = document.getElementById('reply-text-input').value.trim();
+      const status = document.getElementById('reply-status-select').value;
+      const adminNotes = document.getElementById('reply-admin-notes').value.trim();
+
+      if (!reply) {
+        showToast('Please type a reply message before submitting.', 'error');
+        return;
+      }
+
+      const res = await apiFetch(\`/api/v1/commercial/admin/support-tickets/\${ticketId}/reply\`, {
+        method: 'POST',
+        body: JSON.stringify({ reply, status, adminNotes })
+      });
+
+      if (res.success) {
+        showToast('Reply dispatched and ticket updated successfully!');
+        const m = document.getElementById('ticket-reply-modal');
+        if (m) m.remove();
+        renderSupportTickets();
+      } else {
+        showToast(res.error || 'Failed to dispatch reply', 'error');
       }
     }
 

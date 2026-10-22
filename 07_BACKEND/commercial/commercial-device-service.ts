@@ -178,6 +178,35 @@ export function deleteCommercialDevice(deviceId: string, userId: string): boolea
   return res.changes > 0;
 }
 
+/**
+ * Phase 23: 1-Click HWID & Machine Unbind (GoLogin Parity)
+ * Completely clears all device locks for a user so they can sign in from new hardware immediately.
+ */
+export function resetAllUserDevices(
+  userId: string,
+  actor?: { id: string; name: string; role: CommercialRole }
+): { success: boolean; unbindCount: number } {
+  const db = getDatabase();
+  const countRow = db.prepare('SELECT COUNT(*) as count FROM commercial_devices WHERE user_id = ?').get(userId) as any;
+  const unbindCount = typeof countRow?.count === 'number' ? countRow.count : 0;
+  db.prepare('DELETE FROM commercial_devices WHERE user_id = ?').run(userId);
+
+  if (actor) {
+    logCommercialAudit({
+      actorId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      action: 'USER_DEVICES_RESET_ALL',
+      targetType: 'USER',
+      targetId: userId,
+      details: `1-Click HWID unbind executed: removed ${unbindCount} active device bindings for user ${userId}`,
+      result: 'SUCCESS',
+    });
+  }
+
+  return { success: true, unbindCount };
+}
+
 function mapRowToDevice(r: any): CommercialDevice {
   return {
     id: r.id,

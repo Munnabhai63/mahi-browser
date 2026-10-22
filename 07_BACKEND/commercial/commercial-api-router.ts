@@ -10,6 +10,8 @@ import {
   getAllUsers,
   updateUserStatus,
   updateUserPlan,
+  boostUserQuota,
+  setUserFeatureOverrides,
 } from './commercial-auth-service.js';
 import {
   registerCentralUser,
@@ -62,6 +64,8 @@ import {
   handleSupportChatMessage,
   getSupportTickets,
   updateSupportTicketStatus,
+  replySupportTicket,
+  getSupportTicketMetrics,
 } from './support-ticket-service.js';
 import {
   recordFunnelEvent,
@@ -82,6 +86,7 @@ import {
   getUserDevices,
   getAllCommercialDevices,
   revokeCommercialDevice,
+  resetAllUserDevices,
 } from './commercial-device-service.js';
 import {
   getCommercialAuditLogs,
@@ -464,7 +469,7 @@ export async function handleCommercialApiRoutes(
 
   const routePath = isDirectAuth ? `/api/v1${pathname}` : isDirectSync ? `/api${pathname}` : pathname;
 
-  const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+  const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1';
 
   // -------------------------------------------------------------
   // 1. PUBLIC AUTHENTICATION & REGISTRATION
@@ -1167,6 +1172,25 @@ export async function handleCommercialApiRoutes(
     return true;
   }
 
+  // Phase 23: Admin: Reply to Support Ticket
+  const ticketReplyMatch = routePath.match(/^\/api\/v1\/commercial\/admin\/support-tickets\/([a-zA-Z0-9_-]+)\/reply$/);
+  if (ticketReplyMatch && method === 'POST') {
+    const adminAuth = checkAdminAuth(req);
+    if (!adminAuth.isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Admin authorization required' });
+      return true;
+    }
+    const ticketId = ticketReplyMatch[1];
+    const body = await parseBody(req);
+    if (!body.reply || typeof body.reply !== 'string' || !body.reply.trim()) {
+      sendJSON(res, 400, { success: false, error: 'Reply text is required.' });
+      return true;
+    }
+    const result = replySupportTicket(ticketId, body.reply.trim(), body.status || 'RESOLVED', body.adminNotes, adminAuth.actor.name);
+    sendJSON(res, result.success ? 200 : 400, result);
+    return true;
+  }
+
   // Funnel Event Tracking
   if (routePath === '/api/v1/funnel/track' && method === 'POST') {
     const body = await parseBody(req);
@@ -1294,6 +1318,7 @@ export async function handleCommercialApiRoutes(
 
     const plans = getCommercialPlans(true);
     const { logs: recentAuditLogs } = getCommercialAuditLogs({ limit: 10 });
+    const ticketMetrics = getSupportTicketMetrics();
 
     const stats = {
       totalUsers,
@@ -1307,6 +1332,8 @@ export async function handleCommercialApiRoutes(
       totalPlans: plans.length,
       revenueEstMonthly: activeLicenses * 29,
       recentAuditLogs,
+      openTickets: ticketMetrics.open,
+      escalatedTickets: ticketMetrics.escalated,
     };
 
     sendJSON(res, 200, { success: true, data: stats });
@@ -1358,6 +1385,50 @@ export async function handleCommercialApiRoutes(
     const body = await parseBody(req);
     const ok = updateUserPlan(userId, body.planId, actor);
     sendJSON(res, ok ? 200 : 404, { success: ok });
+    return true;
+  }
+
+  // Phase 23: Admin Quota Booster (GoLogin Parity)
+  const userBoostMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_-]+)\/boost$/);
+  if (userBoostMatch && method === 'POST') {
+    const { isAdmin, actor } = checkAdminAuth(req);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
+      return true;
+    }
+    const userId = userBoostMatch[1];
+    const body = await parseBody(req);
+    const result = boostUserQuota(userId, body.type, body.amount, actor);
+    sendJSON(res, result.success ? 200 : 400, result);
+    return true;
+  }
+
+  // Phase 23: Admin Enterprise Feature Overrides (MostLogin Parity)
+  const userFeaturesMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_-]+)\/features$/);
+  if (userFeaturesMatch && method === 'PUT') {
+    const { isAdmin, actor } = checkAdminAuth(req);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
+      return true;
+    }
+    const userId = userFeaturesMatch[1];
+    const body = await parseBody(req);
+    const result = setUserFeatureOverrides(userId, body.overrides || {}, actor);
+    sendJSON(res, result.success ? 200 : 400, result);
+    return true;
+  }
+
+  // Phase 23: 1-Click HWID & Machine Unbind (GoLogin Parity)
+  const userResetDevicesMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_-]+)\/reset-devices$/);
+  if (userResetDevicesMatch && method === 'POST') {
+    const { isAdmin, actor } = checkAdminAuth(req);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
+      return true;
+    }
+    const userId = userResetDevicesMatch[1];
+    const result = resetAllUserDevices(userId, actor);
+    sendJSON(res, 200, { success: true, unbindCount: result.unbindCount });
     return true;
   }
 
