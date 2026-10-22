@@ -253,6 +253,12 @@ export function injectNativeStealthPreferences(
     // Attach native schema to the root of Chromium Preferences
     prefs.gologin = nativeGologinConfig;
 
+    // Disable HTTPS-First Mode interstitial to allow seamless proxy & HTTP testing
+    if (!prefs.security || typeof prefs.security !== 'object') {
+      prefs.security = {};
+    }
+    prefs.security.https_first_mode_enabled = false;
+
     fs.writeFileSync(prefsPath, JSON.stringify(prefs, null, 2), { encoding: 'utf8', mode: 0o666 });
   } catch (err) {
     console.error(`[StealthNativePreferences] Failed to inject native preferences into ${storageDir}:`, err);

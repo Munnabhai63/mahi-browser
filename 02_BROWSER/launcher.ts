@@ -1223,7 +1223,7 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
     '--no-service-autorun',
     '--suppress-message-center-popups',
     '--disable-infobars',
-    '--disable-features=Translate,OptimizationHints,MediaRouter,ExtensionDeveloperModeWarning,PrivacySandboxSettings4,ChromeForTestingDisclaimer'
+    '--disable-features=Translate,OptimizationHints,MediaRouter,ExtensionDeveloperModeWarning,PrivacySandboxSettings4,ChromeForTestingDisclaimer,HttpsFirstMode,HttpsUpgrades'
   );
 
   // In Normal User Mode, NEVER add test automation switches
