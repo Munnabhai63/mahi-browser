@@ -9,6 +9,9 @@ import {
   ArrowLeft,
   Sparkles,
   Monitor,
+  Laptop,
+  Terminal,
+  Smartphone,
   Cpu,
   Plus,
   X,
@@ -258,6 +261,89 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
                 </button>
               </div>
 
+              <div className="mb-3">
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                  Operating System & Device Type
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { id: 'windows', name: 'Windows', icon: Monitor, sub: 'Win 10/11' },
+                    { id: 'mac', name: 'macOS', icon: Laptop, sub: 'Apple M-Series' },
+                    { id: 'linux', name: 'Linux', icon: Terminal, sub: 'Ubuntu' },
+                    { id: 'android', name: 'Android', icon: Smartphone, sub: 'Pixel 8 / S23' },
+                  ].map((os) => {
+                    const isAndroidSelected = settings.browser.userAgent.includes('Android') || settings.mobile?.enable;
+                    const isMacSelected = settings.browser.userAgent.includes('Macintosh');
+                    const isLinuxSelected = settings.browser.userAgent.includes('X11; Linux') && !isAndroidSelected;
+                    const isWinSelected = !isAndroidSelected && !isMacSelected && !isLinuxSelected;
+                    const isSelected = os.id === 'android' ? isAndroidSelected : os.id === 'mac' ? isMacSelected : os.id === 'linux' ? isLinuxSelected : isWinSelected;
+                    const Icon = os.icon;
+                    return (
+                      <button
+                        key={os.id}
+                        type="button"
+                        onClick={() => {
+                          if (os.id === 'android') {
+                            const androidUa = DEFAULT_USER_AGENTS.find((u) => u.value.includes('Pixel 8'))?.value ||
+                              DEFAULT_USER_AGENTS.find((u) => u.value.includes('Android'))?.value ||
+                              'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36';
+                            setSettings({
+                              ...settings,
+                              browser: { ...settings.browser, userAgent: androidUa },
+                              display: { ...settings.display, screenWidth: 412, screenHeight: 915, deviceScaleFactor: 2.625 },
+                              mobile: { enable: true },
+                              fingerprint: { ...settings.fingerprint, maxTouchPoints: 5 },
+                            });
+                            if (!tags.includes('Android')) setTags([...tags, 'Android']);
+                          } else if (os.id === 'mac') {
+                            const macUa = DEFAULT_USER_AGENTS.find((u) => u.value.includes('Macintosh'))?.value ||
+                              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
+                            setSettings({
+                              ...settings,
+                              browser: { ...settings.browser, userAgent: macUa },
+                              display: { ...settings.display, screenWidth: 1920, screenHeight: 1080, deviceScaleFactor: 2 },
+                              mobile: { enable: false },
+                              fingerprint: { ...settings.fingerprint, maxTouchPoints: 0 },
+                            });
+                          } else if (os.id === 'linux') {
+                            const linUa = DEFAULT_USER_AGENTS.find((u) => u.value.includes('X11; Linux'))?.value ||
+                              'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
+                            setSettings({
+                              ...settings,
+                              browser: { ...settings.browser, userAgent: linUa },
+                              display: { ...settings.display, screenWidth: 1920, screenHeight: 1080, deviceScaleFactor: 1 },
+                              mobile: { enable: false },
+                              fingerprint: { ...settings.fingerprint, maxTouchPoints: 0 },
+                            });
+                          } else {
+                            const winUa = DEFAULT_USER_AGENTS.find((u) => u.value.includes('Windows NT 10.0'))?.value ||
+                              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
+                            setSettings({
+                              ...settings,
+                              browser: { ...settings.browser, userAgent: winUa },
+                              display: { ...settings.display, screenWidth: 1920, screenHeight: 1080, deviceScaleFactor: 1 },
+                              mobile: { enable: false },
+                              fingerprint: { ...settings.fingerprint, maxTouchPoints: 0 },
+                            });
+                          }
+                        }}
+                        className={`p-2 rounded-lg border text-left flex items-center space-x-2 transition-all ${
+                          isSelected
+                            ? 'bg-teal-500/15 border-teal-500 text-teal-600 dark:text-teal-400 font-bold shadow-xs'
+                            : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5 shrink-0" />
+                        <div className="truncate">
+                          <div className="text-xs font-bold leading-tight">{os.name}</div>
+                          <div className="text-[9px] text-slate-400 truncate">{os.sub}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-3">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
@@ -341,6 +427,97 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
         {/* STEP 2: Browser Engine */}
         {step === 2 && (
           <div className="space-y-4 animate-in fade-in duration-150">
+            {/* Target Operating System (GoLogin & MostLogin OS Selector) */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+                Target Operating System
+              </label>
+              <div className="grid grid-cols-4 gap-3">
+                {[
+                  { id: 'windows', name: 'Windows', icon: Monitor, desc: 'PC & Laptop (Win 11 / 10)', badge: 'Desktop' },
+                  { id: 'mac', name: 'macOS', icon: Laptop, desc: 'Apple Silicon M1-M4', badge: 'Desktop' },
+                  { id: 'linux', name: 'Linux', icon: Terminal, desc: 'Ubuntu / Enterprise', badge: 'Desktop' },
+                  { id: 'android', name: 'Android', icon: Smartphone, desc: 'Pixel 8 / Galaxy S23', badge: 'Mobile Phone' },
+                ].map((os) => {
+                  const isAndroidSelected = settings.browser.userAgent.includes('Android') || settings.mobile?.enable;
+                  const isMacSelected = settings.browser.userAgent.includes('Macintosh');
+                  const isLinuxSelected = settings.browser.userAgent.includes('X11; Linux') && !isAndroidSelected;
+                  const isWinSelected = !isAndroidSelected && !isMacSelected && !isLinuxSelected;
+                  const isSelected = os.id === 'android' ? isAndroidSelected : os.id === 'mac' ? isMacSelected : os.id === 'linux' ? isLinuxSelected : isWinSelected;
+                  const Icon = os.icon;
+                  return (
+                    <div
+                      key={os.id}
+                      onClick={() => {
+                        if (os.id === 'android') {
+                          const androidUa = DEFAULT_USER_AGENTS.find((u) => u.value.includes('Pixel 8'))?.value ||
+                            DEFAULT_USER_AGENTS.find((u) => u.value.includes('Android'))?.value ||
+                            'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36';
+                          setSettings({
+                            ...settings,
+                            browser: { ...settings.browser, userAgent: androidUa },
+                            display: { ...settings.display, screenWidth: 412, screenHeight: 915, deviceScaleFactor: 2.625 },
+                            mobile: { enable: true },
+                            fingerprint: { ...settings.fingerprint, maxTouchPoints: 5 },
+                          });
+                          if (!tags.includes('Android')) setTags([...tags, 'Android']);
+                        } else if (os.id === 'mac') {
+                          const macUa = DEFAULT_USER_AGENTS.find((u) => u.value.includes('Macintosh'))?.value ||
+                            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
+                          setSettings({
+                            ...settings,
+                            browser: { ...settings.browser, userAgent: macUa },
+                            display: { ...settings.display, screenWidth: 1920, screenHeight: 1080, deviceScaleFactor: 2 },
+                            mobile: { enable: false },
+                            fingerprint: { ...settings.fingerprint, maxTouchPoints: 0 },
+                          });
+                        } else if (os.id === 'linux') {
+                          const linUa = DEFAULT_USER_AGENTS.find((u) => u.value.includes('X11; Linux'))?.value ||
+                            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
+                          setSettings({
+                            ...settings,
+                            browser: { ...settings.browser, userAgent: linUa },
+                            display: { ...settings.display, screenWidth: 1920, screenHeight: 1080, deviceScaleFactor: 1 },
+                            mobile: { enable: false },
+                            fingerprint: { ...settings.fingerprint, maxTouchPoints: 0 },
+                          });
+                        } else {
+                          const winUa = DEFAULT_USER_AGENTS.find((u) => u.value.includes('Windows NT 10.0'))?.value ||
+                            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
+                          setSettings({
+                            ...settings,
+                            browser: { ...settings.browser, userAgent: winUa },
+                            display: { ...settings.display, screenWidth: 1920, screenHeight: 1080, deviceScaleFactor: 1 },
+                            mobile: { enable: false },
+                            fingerprint: { ...settings.fingerprint, maxTouchPoints: 0 },
+                          });
+                        }
+                      }}
+                      className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                        isSelected
+                          ? 'bg-teal-500/10 border-teal-500 text-teal-600 dark:text-teal-400 font-bold shadow-xs'
+                          : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <Icon className="w-5 h-5" />
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
+                          os.id === 'android' ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                        }`}>
+                          {os.badge}
+                        </span>
+                      </div>
+                      <div className="text-xs font-bold">{os.name}</div>
+                      <div className="text-[11px] text-slate-400">{os.desc}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mt-2">
+              Browser Engine Architecture
+            </label>
             <div className="grid grid-cols-3 gap-3">
               {[
                 { id: 'chrome', name: 'Google Chrome', desc: 'Standard Chrome runtime' },

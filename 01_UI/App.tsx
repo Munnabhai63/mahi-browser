@@ -38,6 +38,7 @@ import { AppSettingsPage } from './pages/AppSettings.js';
 import { ActivityLogsPage } from './pages/ActivityLogs.js';
 import { MahiProLicensePage } from './pages/MahiProLicensePage.js';
 import { MobileRotator } from './pages/MobileRotator.js';
+import { CloudPhoneManager } from './pages/CloudPhoneManager.js';
 import { HelpAboutPage } from './pages/HelpAbout.js';
 
 
@@ -272,6 +273,7 @@ export const App: React.FC = () => {
           {currentPage === 'profile-settings' && <ProfileSettingsPage onNavigate={setCurrentPage} />}
           {currentPage === 'browser-environment' && <BrowserEnvironmentPage onNavigate={setCurrentPage} />}
           {currentPage === 'mobile-rotator' && <MobileRotator />}
+          {currentPage === 'cloud-phone' && <CloudPhoneManager onNavigate={setCurrentPage} />}
           {currentPage === 'proxies' && <ProxyManagerPage onNavigate={setCurrentPage} />}
 
           {currentPage === 'cookies' && <CookieManagerPage onNavigate={setCurrentPage} />}

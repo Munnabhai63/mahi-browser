@@ -30,6 +30,7 @@ import { UpgradeModal } from './UpgradeModal.js';
 export type NavigationPage =
   | 'dashboard'
   | 'profiles'
+  | 'cloud-phone'
   | 'diagnostics'
   | 'workspaces'
   | 'captcha'
@@ -75,6 +76,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
   const navItems = [
     { id: 'dashboard' as NavigationPage, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'profiles' as NavigationPage, label: 'Profiles', icon: Layers, badge: runningCount > 0 ? `${runningCount} Active` : undefined },
+    {
+      id: 'cloud-phone' as NavigationPage,
+      label: 'Cloud Phone (Android)',
+      icon: Smartphone,
+      badge: 'Android',
+    },
     { id: 'diagnostics' as NavigationPage, label: 'Diagnostics', icon: Activity },
     {
       id: 'workspaces' as NavigationPage,

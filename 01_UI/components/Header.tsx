@@ -15,6 +15,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenS
   const titles: Record<NavigationPage, { title: string; subtitle: string }> = {
     dashboard: { title: 'Dashboard', subtitle: 'Overview of environments, status, and activity' },
     profiles: { title: 'Browser Profiles', subtitle: 'Manage isolated multi-session environments' },
+    'cloud-phone': { title: 'Cloud Phone & Android (云手机)', subtitle: 'Isolated Android mobile devices, mobile anti-detect profiles, and cloud phone streaming' },
     diagnostics: { title: 'Stealth & Fingerprint Diagnostics', subtitle: 'Real-time anti-bot leak analysis and 1-click stealth optimization' },
     workspaces: { title: 'Team Workspaces & Roles', subtitle: 'Collaborative multi-user workspaces, member roles, and profile sharing' },
     captcha: { title: 'Automated Captcha Solver', subtitle: 'Multi-provider background bypass for Cloudflare Turnstile, reCAPTCHA & hCaptcha' },
