@@ -390,6 +390,15 @@ app.whenReady().then(async () => {
     writeCrashLog('CREATE_WINDOW_ERROR', String(winErr));
   }
 
+  // Check process.argv for initial cold deep-link launch (Windows/Linux)
+  if (Array.isArray(process.argv)) {
+    const coldDeepLink = process.argv.find(arg => typeof arg === 'string' && arg.startsWith('mahi://'));
+    if (coldDeepLink) {
+      logCheckpoint('Startup: Cold deep-link URL detected in process.argv', coldDeepLink);
+      handleDeepLinkUrl(coldDeepLink);
+    }
+  }
+
   app.on('activate', () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       createWindow();
@@ -402,13 +411,24 @@ app.whenReady().then(async () => {
 
 async function handleDeepLinkUrl(urlStr: string): Promise<void> {
   try {
-    logCheckpoint('DeepLink: Processing auth handoff signal');
+    logCheckpoint('DeepLink: Processing auth handoff signal', urlStr);
     const parsed = new URL(urlStr);
     if (parsed.protocol !== 'mahi:' || parsed.hostname !== 'auth') return;
 
+    const token = parsed.searchParams.get('token');
     const code = parsed.searchParams.get('code');
     const ticket = parsed.searchParams.get('ticket');
-    if (ticket && code) {
+
+    if (token) {
+      logCheckpoint('DeepLink: Direct session token received from web landing page');
+      const { loginWithToken } = await import('../08_SECURITY/account-service.js');
+      const res = await loginWithToken(token);
+      if (res.success) {
+        logCheckpoint('DeepLink: Direct token login succeeded and session persisted');
+      } else {
+        logCheckpoint('DeepLink: Direct token login rejected', res.error);
+      }
+    } else if (ticket && code) {
       const { exchangeDesktopAuthCode } = await import('../08_SECURITY/account-service.js');
       const res = await exchangeDesktopAuthCode(ticket, code);
       if (res.success) {
@@ -418,7 +438,7 @@ async function handleDeepLinkUrl(urlStr: string): Promise<void> {
       }
     }
   } catch (err: any) {
-    logCheckpoint('DeepLink: Failed to process deep link URL');
+    logCheckpoint('DeepLink: Failed to process deep link URL', err?.message || String(err));
   }
 }
 

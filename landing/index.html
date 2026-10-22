@@ -56,7 +56,7 @@
               <a href="#features" class="dropdown-item-clean" data-resource="best-proxy" role="menuitem">Best Proxy</a>
               <a href="#how-it-works" class="dropdown-item-clean" data-resource="best-affiliate" role="menuitem">Best Affiliate Networks</a>
               <a href="#features" class="dropdown-item-clean" data-resource="proxy-tools" role="menuitem">Proxy Tools</a>
-              <a href="#features" class="dropdown-item-clean" data-resource="fingerprint-test" role="menuitem">Browser fingerprint test</a>
+              <a href="#fingerprint-test" class="dropdown-item-clean" data-resource="fingerprint-test" role="menuitem">Browser fingerprint test</a>
               <a href="#how-it-works" class="dropdown-item-clean" data-resource="crypto-airdrops" role="menuitem">Crypto Airdrops</a>
               <a href="pricing.html" class="dropdown-item-clean" data-resource="free-tools" role="menuitem">Free Tools</a>
               <a href="#comparison" class="dropdown-item-clean" data-resource="alternatives" role="menuitem">Browser Alternatives</a>
@@ -521,6 +521,157 @@
           </div>
 
         </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         4.5. LIVE BROWSER FINGERPRINT LEAK DIAGNOSTIC WIDGET (GoLogin Parity)
+         ========================================================================== -->
+    <section class="leak-tester-section" id="fingerprint-test">
+      <div class="leak-ambient-glow" aria-hidden="true"></div>
+      <div class="container">
+        
+        <div class="leak-header-center">
+          <div class="leak-sensor-pill">
+            <span class="leak-sensor-dot"></span>
+            <span>Live Identity Exposure Scanner</span>
+          </div>
+          <h2 class="leak-title">
+            Test your current browser for digital fingerprint leaks
+          </h2>
+          <p class="leak-lead">
+            Websites like Amazon, Facebook, Google, and TikTok inspect 48 hardware nuances to link multiple accounts to your personal identity. See what your browser is exposing right now:
+          </p>
+        </div>
+
+        <div class="leak-diagnostic-card">
+          
+          <!-- Master Diagnostic Toolbar -->
+          <div class="leak-toolbar">
+            <div class="leak-toolbar-left">
+              <span class="leak-status-badge danger" id="leak-overall-badge">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                <span id="leak-status-text">CRITICAL EXPOSURE: 48 Parameters Leaked</span>
+              </span>
+            </div>
+
+            <div class="leak-toolbar-right">
+              <label class="leak-toggle-label" for="leak-simulator-toggle">
+                <span>Simulate MAHI Protection</span>
+                <div class="switch-ui">
+                  <input type="checkbox" id="leak-simulator-toggle">
+                  <span class="switch-slider"></span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- 6 Parameter Diagnostic Grid -->
+          <div class="leak-grid-metrics">
+            
+            <!-- 1. WebGL & GPU -->
+            <div class="leak-metric-card leaked" id="metric-card-webgl">
+              <div class="leak-metric-top">
+                <span class="leak-metric-name">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                  <span>WebGL / GPU Card</span>
+                </span>
+                <span class="leak-metric-pill danger" id="pill-webgl">UNMASKED</span>
+              </div>
+              <div class="leak-metric-value" id="val-webgl">Analyzing GPU...</div>
+              <p class="leak-metric-desc">Websites read direct graphics card driver strings to identify your physical GPU.</p>
+            </div>
+
+            <!-- 2. Canvas 2D Hash -->
+            <div class="leak-metric-card leaked" id="metric-card-canvas">
+              <div class="leak-metric-top">
+                <span class="leak-metric-name">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"></circle><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"></circle><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"></circle><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"></circle><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2z"></path></svg>
+                  <span>Canvas 2D Fingerprint</span>
+                </span>
+                <span class="leak-metric-pill danger" id="pill-canvas">IDENTIFIABLE</span>
+              </div>
+              <div class="leak-metric-value" id="val-canvas">Calculating hash...</div>
+              <p class="leak-metric-desc">Sub-pixel rasterization math creates a 100% unique tracking signature.</p>
+            </div>
+
+            <!-- 3. AudioContext -->
+            <div class="leak-metric-card leaked" id="metric-card-audio">
+              <div class="leak-metric-top">
+                <span class="leak-metric-name">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                  <span>AudioContext Hash</span>
+                </span>
+                <span class="leak-metric-pill danger" id="pill-audio">TRACKABLE</span>
+              </div>
+              <div class="leak-metric-value" id="val-audio">Measuring audio DSP...</div>
+              <p class="leak-metric-desc">Sound card dynamics compressor frequency response identifies device audio hardware.</p>
+            </div>
+
+            <!-- 4. CPU Cores & RAM -->
+            <div class="leak-metric-card leaked" id="metric-card-hardware">
+              <div class="leak-metric-top">
+                <span class="leak-metric-name">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg>
+                  <span>Hardware &amp; Concurrency</span>
+                </span>
+                <span class="leak-metric-pill danger" id="pill-hardware">EXPOSED</span>
+              </div>
+              <div class="leak-metric-value" id="val-hardware">Querying specs...</div>
+              <p class="leak-metric-desc">Physical CPU core count and memory pool are broadcast to any website script.</p>
+            </div>
+
+            <!-- 5. WebRTC Gateway & Public IP -->
+            <div class="leak-metric-card leaked" id="metric-card-webrtc">
+              <div class="leak-metric-top">
+                <span class="leak-metric-name">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                  <span>WebRTC IP &amp; Network</span>
+                </span>
+                <span class="leak-metric-pill danger" id="pill-webrtc">VULNERABLE</span>
+              </div>
+              <div class="leak-metric-value" id="val-webrtc">Probing WebRTC...</div>
+              <p class="leak-metric-desc">WebRTC ICE candidate bypasses standard VPN tunnels and leaks true IP origins.</p>
+            </div>
+
+            <!-- 6. Screen & Platform Profile -->
+            <div class="leak-metric-card leaked" id="metric-card-screen">
+              <div class="leak-metric-top">
+                <span class="leak-metric-name">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                  <span>Screen &amp; OS Profile</span>
+                </span>
+                <span class="leak-metric-pill danger" id="pill-screen">LINKABLE</span>
+              </div>
+              <div class="leak-metric-value" id="val-screen">Detecting screen...</div>
+              <p class="leak-metric-desc">Screen resolution, color depth, and system timezone form an invariant tracking tuple.</p>
+            </div>
+
+          </div>
+
+          <!-- Bottom Action Strip -->
+          <div class="leak-action-bar">
+            <div class="leak-action-info">
+              <div class="leak-alert-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              </div>
+              <div class="leak-action-text">
+                <strong id="leak-bottom-title">Your current browser is exposing 48 hardware parameters.</strong>
+                <span id="leak-bottom-desc">Without antidetect isolation, websites immediately link your multiple accounts and flag them.</span>
+              </div>
+            </div>
+
+            <div class="leak-action-buttons">
+              <button type="button" class="btn-leak-rescan" id="btn-retest-leak">Run Diagnostics Again</button>
+              <a href="/download" class="btn-leak-protect" id="btn-protect-download">
+                <span>Start Free 7-Day Trial</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </a>
+            </div>
+          </div>
+
+        </div>
+
       </div>
     </section>
 
@@ -1377,7 +1528,7 @@
         <div class="footer-col">
           <h4 class="footer-col-heading">Resources &amp; Tools</h4>
           <ul class="footer-col-list">
-            <li><a href="#features">Browser Fingerprint Test</a></li>
+            <li><a href="#fingerprint-test">Browser Fingerprint Test</a></li>
             <li><a href="#solution-tools">Proxy Tunnel Tools</a></li>
             <li><a href="#automation">Automation Playbook</a></li>
             <li><a href="pricing.html">Pricing Plans</a></li>

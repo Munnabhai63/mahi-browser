@@ -560,6 +560,12 @@
           <span>Download MAHI Browser (x64)</span>
         </button>
 
+        <!-- GoLogin Parity: 1-Click Desktop Protocol Magic Handoff -->
+        <a id="deepLinkLaunchBtn" href="#" class="btn-deep-launch" style="display: none; margin-top: 12px; width: 100%; text-align: center; justify-content: center; align-items: center; gap: 8px; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; font-weight: 600; padding: 0.75rem 1rem; border-radius: 12px; text-decoration: none; font-size: 0.95rem; transition: all 0.2s; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.1);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span>Open MAHI Desktop (1-Click Auto-Login)</span>
+        </a>
+
         <div class="download-meta">
           <span><strong>Version:</strong> v1.1.3 (Production Release)</span>
           <span>•</span>
@@ -730,6 +736,17 @@
           planBadge.style.background = 'rgba(148, 163, 184, 0.2)';
           planBadge.style.color = '#cbd5e1';
         }
+        const deepLinkBtn = document.getElementById('deepLinkLaunchBtn');
+        if (deepLinkBtn && token) {
+          deepLinkBtn.style.display = 'inline-flex';
+          deepLinkBtn.href = `mahi://auth?token=${encodeURIComponent(token)}`;
+          deepLinkBtn.addEventListener('click', (e) => {
+            // Optional fallback notice if protocol client isn't installed yet
+            setTimeout(() => {
+              console.log('Deep link protocol dispatched to desktop OS.');
+            }, 500);
+          });
+        }
       }
 
       function triggerDownload(type) {
@@ -752,6 +769,13 @@
           : (token ? `/download/setup?token=${encodeURIComponent(token)}` : '/download/setup');
 
         window.location.href = downloadUrl;
+
+        // Auto-show or prompt deep link launch after download initiation
+        const deepLinkBtn = document.getElementById('deepLinkLaunchBtn');
+        if (deepLinkBtn && token) {
+          deepLinkBtn.style.display = 'inline-flex';
+          deepLinkBtn.href = `mahi://auth?token=${encodeURIComponent(token)}`;
+        }
       }
 
       downloadBtn.addEventListener('click', () => triggerDownload('setup'));
