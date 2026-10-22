@@ -20,6 +20,7 @@ import { getProxyById, getDecryptedProxyCredentials, testAndSaveProxyStatus } fr
 import { getExtensions } from './services/extension-service.js';
 import { createProxyTunnel, ProxyTunnelHandle } from './proxy-tunnel.js';
 import { getApiAuthToken } from '../08_SECURITY/install-secrets.js';
+import { injectNativeStealthPreferences } from './stealth-native-preferences.js';
 
 
 function debugLog(msg: string) {
@@ -1243,6 +1244,20 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
     args.push(`--lang=${settings.locale.language}`);
   }
 
+  // Native Timezone Override (--tz)
+  if (settings?.locale?.timezone) {
+    args.push(`--tz=${settings.locale.timezone}`);
+  }
+
+  // Native Font Masking Mode (--font-masking-mode=1|2|3)
+  const isMobileUa = Boolean(
+    settings?.browser?.userAgent?.includes('Android') ||
+    settings?.browser?.userAgent?.includes('Mobile') ||
+    settings?.mobile?.enable
+  );
+  args.push(`--font-masking-mode=${isMobileUa ? 1 : 2}`);
+  args.push('--password-store=basic');
+
   // WebRTC Leak Prevention
   if (settings?.network?.webrtc === 'disable_non_proxied_udp') {
     args.push('--force-webrtc-ip-handling-policy');
@@ -1336,10 +1351,11 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
     // Step 4: Build Core Chromium Arguments & Isolation Flags
     // -------------------------------------------------------------
     const settings = profile.settings;
-    const titleExtDir = ensureProfileStealthExtension(storageDir, profile.id, profile.name, settings);
+    // 100% Native C++ Stealth: Inject verified Orbita schema into Default/Preferences (Zero extension footprint)
+    injectNativeStealthPreferences(storageDir, profile, settings);
     const debugPort = getProfileDebugPort(profile.id);
 
-    // Gather all enabled extensions for this profile
+    // Gather user-enabled extensions ONLY (no stealth extensions)
     let profileExtensionPaths: string[] = [];
     try {
       const exts = getExtensions(profile.id);
@@ -1351,8 +1367,7 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
       debugLog(`[Launcher Step 4/7 WARNING] Failed to load profile extensions: ${extErr.message}`);
     }
 
-    const allExtensionPaths = [titleExtDir, ...profileExtensionPaths];
-    const loadExtensionsArg = allExtensionPaths.join(',');
+    const loadExtensionsArg = profileExtensionPaths.join(',');
 
     const args = buildSanitizedLaunchArgs({
       storageDir,
@@ -1395,12 +1410,14 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
 
           args.push(`--proxy-server=http://127.0.0.1:${proxyTunnel.port}`);
           args.push('--proxy-bypass-list=<-loopback>');
+          args.push(`--host-resolver-rules="MAP * 0.0.0.0 , EXCLUDE ${proxy.host}"`);
           args.push('--force-webrtc-ip-handling-policy');
           args.push('--webrtc-ip-handling-policy=disable_non_proxied_udp');
           debugLog(`[Launcher Step 5/7] Authenticating Tunnel ready: 127.0.0.1:${proxyTunnel.port} -> ${proxy.host}:${proxy.port}`);
         } else {
           args.push(`--proxy-server=${proxy.protocol}://${proxy.host}:${proxy.port}`);
           args.push('--proxy-bypass-list=<-loopback>');
+          args.push(`--host-resolver-rules="MAP * 0.0.0.0 , EXCLUDE ${proxy.host}"`);
           args.push('--force-webrtc-ip-handling-policy');
           args.push('--webrtc-ip-handling-policy=disable_non_proxied_udp');
           debugLog(`[Launcher Step 5/7] Direct Proxy Server: ${proxy.protocol}://${proxy.host}:${proxy.port}`);

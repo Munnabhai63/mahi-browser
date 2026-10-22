@@ -939,3 +939,51 @@ export function getUnassignedLegacyProfiles(): Profile[] {
 
 
 
+
+
+/**
+ * Creates an enterprise-grade Android Mobile Profile preset.
+ * Matches GoLogin's exact mobile configuration (Mobile dimensions, touch points, device scale factor,
+ * and Android Client Hints).
+ */
+export function createAndroidMobileProfile(
+  name: string,
+  model: 'Pixel 7' | 'Galaxy S23' | 'Xiaomi 13' = 'Pixel 7',
+  options: Partial<CreateProfileDTO> = {}
+): Profile {
+  const defaultSettings = getDefaultProfileSettings();
+
+  const mobileSettings: Partial<ProfileSettings> = {
+    ...defaultSettings,
+    display: {
+      screenWidth: 412,
+      screenHeight: 915,
+      deviceScaleFactor: 2.625,
+      colorDepth: 24,
+    },
+    browser: {
+      ...defaultSettings.browser,
+      userAgent: `Mozilla/5.0 (Linux; Android 14; ${model}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36`,
+    },
+    fingerprint: {
+      ...defaultSettings.fingerprint,
+      canvas: 'noise',
+      webgl: 'noise',
+      audio: 'noise',
+      clientRects: 'noise',
+      maxTouchPoints: 5,
+      hardwareConcurrency: 8,
+      deviceMemory: 8,
+      webglVendor: 'ARM',
+      webglRenderer: 'Mali-G710 MC10',
+    },
+  };
+
+  return createProfile({
+    name: name || `Android - ${model}`,
+    description: `Mobile Android Emulation Profile (${model})`,
+    
+    settings: mobileSettings as any,
+    ...options,
+  });
+}

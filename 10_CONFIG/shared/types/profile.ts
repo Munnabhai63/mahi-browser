@@ -56,6 +56,7 @@ export interface FingerprintConfig {
   deviceMemory?: number;
   canvasNoise?: boolean;
   audioContextNoise?: boolean;
+  maxTouchPoints?: number;
 }
 
 export interface ProfileSettings {

@@ -94,9 +94,37 @@ export function detectSystemBrowsers(): DetectedBrowser[] {
   return detected;
 }
 
+/**
+ * Searches for an installed C++ stealth browser engine (such as GoLogin Orbita)
+ * to provide native C++ Blink level fingerprint spoofing without JavaScript extensions.
+ */
+export function getStealthOrbitaEnginePath(): string | null {
+  const home = os.homedir();
+  const gologinBrowserDir = path.join(home, '.gologin', 'browser');
+  if (fs.existsSync(gologinBrowserDir)) {
+    try {
+      const entries = fs.readdirSync(gologinBrowserDir).filter((d) => d.startsWith('orbita-browser-'));
+      entries.sort().reverse();
+      for (const entry of entries) {
+        const candidate = path.join(gologinBrowserDir, entry, os.platform() === 'win32' ? 'chrome.exe' : 'chrome');
+        if (fs.existsSync(candidate)) {
+          return candidate;
+        }
+      }
+    } catch {}
+  }
+  return null;
+}
+
 export function resolveExecutablePath(engine: BrowserEngine, customPath?: string): string {
   if (customPath && fs.existsSync(customPath)) {
     return customPath;
+  }
+
+  // 1. Prioritize native C++ stealth engine if available
+  const orbitaPath = getStealthOrbitaEnginePath();
+  if (orbitaPath) {
+    return orbitaPath;
   }
 
   if (isManagedEngineInstalled()) {
