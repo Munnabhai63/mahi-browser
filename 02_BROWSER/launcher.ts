@@ -241,6 +241,24 @@ export function ensureProfileStealthExtension(
         ],
       },
     },
+    {
+      id: 2,
+      priority: 2,
+      action: {
+        type: 'block',
+      },
+      condition: {
+        urlFilter: '||127.0.0.1:9222',
+        resourceTypes: [
+          'xmlhttprequest',
+          'websocket',
+          'script',
+          'image',
+          'sub_frame',
+          'other',
+        ],
+      },
+    },
   ];
   const gpuVendor = isMobile ? 'ARM' : (isMac ? 'Google Inc. (Apple)' : 'Google Inc. (NVIDIA)');
   const gpuRenderer = isMobile
@@ -442,6 +460,53 @@ export function ensureProfileStealthExtension(
           configurable: true,
           enumerable: true
         });
+
+        try {
+          Object.defineProperty(screen, 'orientation', {
+            get: function() {
+              return {
+                angle: 0,
+                type: 'portrait-primary',
+                onchange: null
+              };
+            },
+            configurable: true,
+            enumerable: true
+          });
+        } catch(e) {}
+
+        try {
+          if (navigator.connection) {
+            var fakeConn = {
+              effectiveType: '4g',
+              rtt: 50,
+              downlink: 10,
+              saveData: false,
+              type: 'cellular'
+            };
+            Object.defineProperty(navigator, 'connection', {
+              get: function() { return fakeConn; },
+              configurable: true,
+              enumerable: true
+            });
+          }
+        } catch(e) {}
+
+        try {
+          var mobileBattLevel = 0.65 + ((pSeed % 30) / 100);
+          navigator.getBattery = function() {
+            return Promise.resolve({
+              charging: false,
+              chargingTime: Infinity,
+              dischargingTime: 14400,
+              level: mobileBattLevel,
+              onchargingchange: null,
+              onchargingtimechange: null,
+              ondischargingtimechange: null,
+              onlevelchange: null
+            });
+          };
+        } catch(e) {}
       } catch(e) {}
     }
   } catch(e) {}
@@ -516,6 +581,26 @@ export function ensureProfileStealthExtension(
       }
     });
     Function.prototype.toString = proxyToString;
+  } catch(e) {}
+
+  // -------------------------------------------------------------
+  // 3.5 ClientRects DOM Subpixel Jitter (Layout Fingerprinting Protection)
+  // -------------------------------------------------------------
+  try {
+    var origGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+    var crShift = ((pSeed % 5) - 2) * 0.0001;
+    if (crShift !== 0) {
+      Element.prototype.getBoundingClientRect = function() {
+        var rect = origGetBoundingClientRect.apply(this, arguments);
+        if (!rect) return rect;
+        return new DOMRect(
+          rect.x + crShift,
+          rect.y + crShift,
+          rect.width,
+          rect.height
+        );
+      };
+    }
   } catch(e) {}
 
   // -------------------------------------------------------------
@@ -1465,10 +1550,11 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
   args.push('--password-store=basic');
 
   // WebRTC Leak Prevention
-  if (settings?.network?.webrtc === 'disable_non_proxied_udp') {
+  const webrtcOpt = settings?.network?.webrtc;
+  if (webrtcOpt === 'disable_non_proxied_udp' || webrtcOpt === 'disabled' || webrtcOpt === 'proxy_only') {
     args.push('--force-webrtc-ip-handling-policy');
     args.push('--webrtc-ip-handling-policy=disable_non_proxied_udp');
-  } else if (settings?.network?.webrtc === 'default_public_interface_only') {
+  } else if (webrtcOpt === 'default_public_interface_only' || webrtcOpt === 'public_interface_only') {
     args.push('--force-webrtc-ip-handling-policy');
     args.push('--webrtc-ip-handling-policy=default_public_interface_only');
   }
