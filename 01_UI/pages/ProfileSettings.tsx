@@ -298,9 +298,33 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                User Agent String
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  User Agent String
+                </label>
+                <select
+                  onChange={(e) => {
+                    const uaVal = e.target.value;
+                    if (!uaVal) return;
+                    const isAndroid = uaVal.includes('Android') || uaVal.includes('Mobile');
+                    setSettings({
+                      ...settings,
+                      browser: { ...settings.browser, userAgent: uaVal },
+                      display: isAndroid
+                        ? { ...settings.display, screenWidth: 412, screenHeight: 915, deviceScaleFactor: 2.625 }
+                        : settings.display,
+                      mobile: { enable: isAndroid },
+                    });
+                    setIsDirty(true);
+                  }}
+                  className="text-xs bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-slate-700 dark:text-slate-300"
+                >
+                  <option value="">-- Load Preset (Android, Windows, Mac) --</option>
+                  {DEFAULT_USER_AGENTS.map((ua) => (
+                    <option key={ua.value} value={ua.value}>{ua.label}</option>
+                  ))}
+                </select>
+              </div>
               <textarea
                 rows={2}
                 value={settings.browser.userAgent}

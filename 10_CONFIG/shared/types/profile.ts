@@ -72,6 +72,12 @@ export interface ProfileSettings {
     enable?: boolean;
     filePath?: string;
   };
+  mobile?: {
+    enable?: boolean;
+    width?: number;
+    height?: number;
+    deviceScaleFactor?: number;
+  };
 }
 
 export interface ProfileStats {

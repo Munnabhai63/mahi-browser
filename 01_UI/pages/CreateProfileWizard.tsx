@@ -374,12 +374,18 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
               </label>
               <select
                 value={settings.browser.userAgent}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const uaVal = e.target.value;
+                  const isAndroid = uaVal.includes('Android') || uaVal.includes('Mobile');
                   setSettings({
                     ...settings,
-                    browser: { ...settings.browser, userAgent: e.target.value },
-                  })
-                }
+                    browser: { ...settings.browser, userAgent: uaVal },
+                    display: isAndroid
+                      ? { ...settings.display, screenWidth: 412, screenHeight: 915, deviceScaleFactor: 2.625 }
+                      : settings.display,
+                    mobile: { enable: isAndroid },
+                  });
+                }}
                 className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500"
               >
                 {DEFAULT_USER_AGENTS.map((ua) => (

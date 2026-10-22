@@ -28,6 +28,18 @@ export const DEFAULT_USER_AGENTS = [
     platform: 'Linux x86_64',
     os: 'Linux',
   },
+  {
+    label: `Chrome ${majorVersion} on Android 14 (Google Pixel 8)`,
+    value: `Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${MANAGED_ENGINE_VERSION} Mobile Safari/537.36`,
+    platform: 'Linux armv8l',
+    os: 'Android 14',
+  },
+  {
+    label: `Chrome ${majorVersion} on Android 13 (Samsung Galaxy S23)`,
+    value: `Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${MANAGED_ENGINE_VERSION} Mobile Safari/537.36`,
+    platform: 'Linux armv8l',
+    os: 'Android 13',
+  },
 ];
 
 export const SCREEN_RESOLUTIONS = [
@@ -37,6 +49,8 @@ export const SCREEN_RESOLUTIONS = [
   { width: 1536, height: 864, label: '1536 x 864 (Laptop 125%, 16:9)', scale: 1.25 },
   { width: 1366, height: 768, label: '1366 x 768 (Standard Laptop, 16:9)', scale: 1 },
   { width: 3840, height: 2160, label: '3840 x 2160 (4K UHD, 16:9)', scale: 2 },
+  { width: 412, height: 915, label: '412 x 915 (Android / Pixel 8, 20:9)', scale: 2.625 },
+  { width: 393, height: 852, label: '393 x 852 (Android / Galaxy S23, 19.5:9)', scale: 3 },
 ];
 
 export const TIMEZONES = [
