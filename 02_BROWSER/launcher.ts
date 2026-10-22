@@ -144,14 +144,17 @@ export function ensureProfileStealthExtension(
   let mobileModel = 'Pixel 8';
   let mobileOsVersion = '14.0.0';
   if (isMobile) {
-    const match = ua.match(/Android\s+([0-9.]+)(?:;\s*([^;)build/]+))?/i);
+    const match = ua.match(/Android\s+([0-9.]+)(?:;\s*([^;)]+))?/i);
     if (match) {
       if (match[1]) {
         const parts = match[1].split('.');
         mobileOsVersion = parts.length === 1 ? `${parts[0]}.0.0` : (parts.length === 2 ? `${parts[0]}.${parts[1]}.0` : match[1]);
       }
       if (match[2]) {
-        mobileModel = match[2].trim();
+        const rawModel = match[2].replace(/\s*Build\/.*$/i, '').trim();
+        if (rawModel) {
+          mobileModel = rawModel;
+        }
       }
     }
   }
@@ -1688,10 +1691,19 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
     debugLog(`[Launcher Step 6/7] Spawning browser executable: ${executablePath}`);
     debugLog(`[Launcher Step 6/7] Target: ${executablePath} | Args count: ${args.length}`);
 
+    // Clean execution environment: Suppress Chromium API keys missing banner
+    const browserEnv: Record<string, string | undefined> = {
+      ...process.env,
+      GOOGLE_API_KEY: 'no',
+      GOOGLE_DEFAULT_CLIENT_ID: 'no',
+      GOOGLE_DEFAULT_CLIENT_SECRET: 'no',
+    };
+
     const child = spawn(executablePath, args, {
       detached: true,
       windowsHide: false,
       stdio: 'ignore',
+      env: browserEnv,
     });
 
     if (!child.pid) {
