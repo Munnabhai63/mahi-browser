@@ -3,11 +3,19 @@ import path from 'node:path';
 import os from 'node:os';
 import { BrowserEngine } from '../../10_CONFIG/shared/types/profile.js';
 import { getStealthOrbitaEnginePath, detectSystemBrowsers } from '../detector.js';
+import {
+  getBundledEngineExecutablePath,
+  getProductionChromiumExecutablePath,
+  isProductionChromiumInstalled,
+  getManagedEngineExecutablePath,
+  isManagedEngineInstalled,
+} from '../managed-engine.js';
+import { CHROMIUM_PRODUCTION_VERSION } from '../../10_CONFIG/engine-config.js';
 
 export interface MultiCoreResolution {
   executablePath: string;
   majorVersion: number | null;
-  coreType: 'exact-multi-core' | 'stealth-orbita' | 'system-chromium';
+  coreType: 'exact-multi-core' | 'mahi-bundled' | 'mahi-managed' | 'stealth-orbita' | 'system-chromium';
   isExactVersionMatch: boolean;
 }
 
@@ -22,8 +30,16 @@ export function extractChromeMajorVersion(userAgent?: string): number | null {
 }
 
 /**
- * Discovers and resolves the exact Chromium / Orbita binary matching the profile's User-Agent.
- * Provides 100% parity with MostLogin's multi-core architecture (preventing UA vs V8 version leaks).
+ * Discovers and resolves the exact Chromium / core binary matching the profile's User-Agent.
+ * Prioritizes:
+ * 1. Custom user-specified path (if valid)
+ * 2. MAHI dedicated multi-cores (~/.mahi/cores/)
+ * 3. Authoritative bundled production Chromium (shipped with MAHI Browser)
+ * 4. Authoritative managed engine (%APPDATA%/mahi-browser/engines/)
+ * 5. MAHI custom core (~/.mahi/cores)
+ * 6. System Chrome / Chromium
+ *
+ * NOTE: Never attempts to spawn 3rd-party proprietary GoLogin binaries which crash with Exit Code 403.
  */
 export function resolveMultiCoreExecutablePath(
   userAgent?: string,
@@ -42,8 +58,8 @@ export function resolveMultiCoreExecutablePath(
   const home = os.homedir();
   const exeName = os.platform() === 'win32' ? 'chrome.exe' : 'chrome';
 
+  // 1. Search in MAHI multi-core storage directory (~/.mahi/cores/)
   if (major) {
-    // 1. Search in MAHI multi-core storage directory
     const mahiCoreCandidates = [
       path.join(home, '.mahi', 'cores', `chrome-${major}`, exeName),
       path.join(home, '.mahi', 'cores', `orbita-${major}`, exeName),
@@ -59,28 +75,49 @@ export function resolveMultiCoreExecutablePath(
         };
       }
     }
+  }
 
-    // 2. Search in MostLogin / GoLogin local cached version directories
-    const externalEngineCandidates = [
-      path.join(home, '.gologin', 'browser', `orbita-browser-${major}`, exeName),
-      path.join(home, '.mostlogin', 'core', `${major}`, exeName),
-      path.join(home, '.mostlogin', 'core', `chrome-${major}`, exeName),
-    ];
-    for (const cand of externalEngineCandidates) {
-      if (fs.existsSync(cand)) {
-        return {
-          executablePath: cand,
-          majorVersion: major,
-          coreType: 'exact-multi-core',
-          isExactVersionMatch: true,
-        };
-      }
+  // 2. Bundled production engine (Clean Chromium 138 shipped inside MAHI Browser package)
+  const bundled = getBundledEngineExecutablePath();
+  if (bundled && fs.existsSync(bundled)) {
+    const isExact = major ? CHROMIUM_PRODUCTION_VERSION.startsWith(`${major}.`) : false;
+    return {
+      executablePath: bundled,
+      majorVersion: major,
+      coreType: 'mahi-bundled',
+      isExactVersionMatch: isExact,
+    };
+  }
+
+  // 3. Managed production engine (%APPDATA%/mahi-browser/engines/)
+  if (isProductionChromiumInstalled()) {
+    const prod = getProductionChromiumExecutablePath();
+    if (fs.existsSync(prod)) {
+      const isExact = major ? CHROMIUM_PRODUCTION_VERSION.startsWith(`${major}.`) : false;
+      return {
+        executablePath: prod,
+        majorVersion: major,
+        coreType: 'mahi-managed',
+        isExactVersionMatch: isExact,
+      };
     }
   }
 
-  // 3. Fallback to primary C++ stealth engine (Orbita)
+  if (isManagedEngineInstalled()) {
+    const managed = getManagedEngineExecutablePath();
+    if (fs.existsSync(managed)) {
+      return {
+        executablePath: managed,
+        majorVersion: major,
+        coreType: 'mahi-managed',
+        isExactVersionMatch: false,
+      };
+    }
+  }
+
+  // 4. Fallback to primary C++ stealth engine if configured in ~/.mahi/cores
   const orbitaPath = getStealthOrbitaEnginePath();
-  if (orbitaPath) {
+  if (orbitaPath && fs.existsSync(orbitaPath)) {
     return {
       executablePath: orbitaPath,
       majorVersion: major,
@@ -89,7 +126,7 @@ export function resolveMultiCoreExecutablePath(
     };
   }
 
-  // 4. Fallback to system Chromium / Google Chrome
+  // 5. Fallback to system Chromium / Google Chrome
   const systemBrowsers = detectSystemBrowsers();
   const chromeSys = systemBrowsers.find((b) => b.engine === 'chrome' || b.engine === 'chromium');
   if (chromeSys && fs.existsSync(chromeSys.path)) {
@@ -101,7 +138,7 @@ export function resolveMultiCoreExecutablePath(
     };
   }
 
-  // 5. Hardcoded platform default
+  // 6. Hardcoded platform default
   const defaultPath = os.platform() === 'win32'
     ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
     : '/usr/bin/google-chrome';
@@ -118,7 +155,7 @@ export function resolveMultiCoreExecutablePath(
  * Returns a list of major Chromium versions available locally with exact binary match.
  */
 export function getAvailableCores(): number[] {
-  const supported = [120, 124, 128, 130, 149, 150];
+  const supported = [120, 124, 128, 130, 138, 149, 150];
   const available: number[] = [];
   for (const major of supported) {
     const res = resolveMultiCoreExecutablePath(`Chrome/${major}.0.0.0`);

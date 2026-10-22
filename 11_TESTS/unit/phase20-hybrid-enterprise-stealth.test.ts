@@ -141,7 +141,7 @@ describe('Phase 20 — Hybrid Enterprise Stealth & Multi-Core Engine', () => {
       );
       expect(resolution.executablePath).toBeDefined();
       expect(resolution.majorVersion).toBe(124);
-      expect(['exact-multi-core', 'stealth-orbita', 'system-chromium']).toContain(resolution.coreType);
+      expect(['exact-multi-core', 'mahi-bundled', 'mahi-managed', 'stealth-orbita', 'system-chromium']).toContain(resolution.coreType);
     });
   });
 

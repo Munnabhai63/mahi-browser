@@ -2,7 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { BrowserEngine } from '../10_CONFIG/shared/types/profile.js';
-import { isManagedEngineInstalled, getManagedEngineExecutablePath } from './managed-engine.js';
+import {
+  isManagedEngineInstalled,
+  getManagedEngineExecutablePath,
+  getBundledEngineExecutablePath,
+  isProductionChromiumInstalled,
+  getProductionChromiumExecutablePath
+} from './managed-engine.js';
 
 export interface DetectedBrowser {
   name: string;
@@ -95,18 +101,17 @@ export function detectSystemBrowsers(): DetectedBrowser[] {
 }
 
 /**
- * Searches for an installed C++ stealth browser engine (such as GoLogin Orbita)
- * to provide native C++ Blink level fingerprint spoofing without JavaScript extensions.
+ * Searches for an authorized MAHI custom core in ~/.mahi/cores
+ * to provide native multi-core spoofing.
  */
 export function getStealthOrbitaEnginePath(): string | null {
   const home = os.homedir();
-  const gologinBrowserDir = path.join(home, '.gologin', 'browser');
-  if (fs.existsSync(gologinBrowserDir)) {
+  const mahiCoresDir = path.join(home, '.mahi', 'cores');
+  if (fs.existsSync(mahiCoresDir)) {
     try {
-      const entries = fs.readdirSync(gologinBrowserDir).filter((d) => d.startsWith('orbita-browser-'));
-      entries.sort().reverse();
+      const entries = fs.readdirSync(mahiCoresDir);
       for (const entry of entries) {
-        const candidate = path.join(gologinBrowserDir, entry, os.platform() === 'win32' ? 'chrome.exe' : 'chrome');
+        const candidate = path.join(mahiCoresDir, entry, os.platform() === 'win32' ? 'chrome.exe' : 'chrome');
         if (fs.existsSync(candidate)) {
           return candidate;
         }
@@ -121,23 +126,36 @@ export function resolveExecutablePath(engine: BrowserEngine, customPath?: string
     return customPath;
   }
 
-  // 1. Prioritize native C++ stealth engine if available
-  const orbitaPath = getStealthOrbitaEnginePath();
-  if (orbitaPath) {
-    return orbitaPath;
+  // 1. Authoritative Bundled Production Chromium Engine (Packaged with MAHI Browser)
+  const bundled = getBundledEngineExecutablePath();
+  if (bundled && fs.existsSync(bundled)) {
+    return bundled;
   }
 
+  // 2. Authoritative Managed Engine (Provisioned in user data)
+  if (isProductionChromiumInstalled()) {
+    const prod = getProductionChromiumExecutablePath();
+    if (fs.existsSync(prod)) return prod;
+  }
   if (isManagedEngineInstalled()) {
-    return getManagedEngineExecutablePath();
+    const managed = getManagedEngineExecutablePath();
+    if (fs.existsSync(managed)) return managed;
   }
 
+  // 3. User custom MAHI cores (~/.mahi/cores)
+  const mahiOrbita = getStealthOrbitaEnginePath();
+  if (mahiOrbita && fs.existsSync(mahiOrbita)) {
+    return mahiOrbita;
+  }
+
+  // 4. Detected System Browsers (Chrome, Edge, Chromium)
   const detected = detectSystemBrowsers();
   const match = detected.find((b) => b.engine === engine) || detected[0];
   if (match) {
     return match.path;
   }
 
-  // Fallback defaults
+  // 5. Fallback defaults
   if (os.platform() === 'win32') {
     return 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
   } else if (os.platform() === 'darwin') {

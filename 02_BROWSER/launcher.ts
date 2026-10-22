@@ -1298,6 +1298,13 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
       profile.customExecutablePath
     );
     let executablePath: string = multiCore.executablePath;
+
+    // Safeguard: Never spawn 3rd-party proprietary GoLogin Orbita binary which aborts with exit code 403
+    if (executablePath && executablePath.toLowerCase().includes('.gologin')) {
+      debugLog(`[Launcher Step 1/7 WARNING] Blocked proprietary GoLogin binary "${executablePath}". Switching to authoritative MAHI engine.`);
+      executablePath = getBundledEngineExecutablePath() || getProductionChromiumExecutablePath();
+    }
+
     debugLog(`[Launcher Step 1/7] Engine resolved via multi-core matcher (${multiCore.coreType}, matched=${multiCore.isExactVersionMatch}): "${executablePath}"`);
 
     if (!fs.existsSync(executablePath)) {
