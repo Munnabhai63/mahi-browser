@@ -182,6 +182,9 @@ export function ensureProfileStealthExtension(
   const deviceMemory = isMobile ? 8 : 16;
   const platformStr = isMobile ? 'Linux armv8l' : (isMac ? 'MacIntel' : 'Win32');
   const maxTouchPoints = isMobile ? 5 : 0;
+  const displayDpr = settings?.display?.deviceScaleFactor || (isMobile ? 2.625 : 1);
+  const mobileWidth = settings?.display?.screenWidth || (isMobile ? 412 : 1920);
+  const mobileHeight = settings?.display?.screenHeight || (isMobile ? 915 : 1080);
 
   // 1. Stealth Core Script (Runs in MAIN world at document_start)
   const stealthCoreJs = `
@@ -261,6 +264,36 @@ export function ensureProfileStealthExtension(
     spoofNavigator('deviceMemory', ${deviceMemory});
     spoofNavigator('platform', ${JSON.stringify(platformStr)});
     spoofNavigator('maxTouchPoints', ${maxTouchPoints});
+
+    if (${isMobile}) {
+      try {
+        Object.defineProperty(window, 'devicePixelRatio', {
+          get: function() { return ${displayDpr}; },
+          configurable: true,
+          enumerable: true
+        });
+        Object.defineProperty(screen, 'width', {
+          get: function() { return ${mobileWidth}; },
+          configurable: true,
+          enumerable: true
+        });
+        Object.defineProperty(screen, 'height', {
+          get: function() { return ${mobileHeight}; },
+          configurable: true,
+          enumerable: true
+        });
+        Object.defineProperty(screen, 'availWidth', {
+          get: function() { return ${mobileWidth}; },
+          configurable: true,
+          enumerable: true
+        });
+        Object.defineProperty(screen, 'availHeight', {
+          get: function() { return ${mobileHeight}; },
+          configurable: true,
+          enumerable: true
+        });
+      } catch(e) {}
+    }
   } catch(e) {}
 
   // -------------------------------------------------------------
@@ -1240,9 +1273,21 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
     // Automation mode retains clean flags unless automation script requests specific flags
   }
 
+  // Native Font Masking Mode (--font-masking-mode=1|2|3)
+  const isMobileUa = Boolean(
+    settings?.browser?.userAgent?.includes('Android') ||
+    settings?.browser?.userAgent?.includes('Mobile') ||
+    settings?.mobile?.enable
+  );
+
   // Window Dimensions
-  const w = settings?.display?.screenWidth || 1280;
-  const h = settings?.display?.screenHeight || 800;
+  let w = settings?.display?.screenWidth || 1280;
+  let h = settings?.display?.screenHeight || 800;
+  if (isMobileUa) {
+    // Elegant phone window dimensions for desktop usage
+    w = 460;
+    h = 920;
+  }
   const hasWindowSizeArg = settings?.browser?.additionalArgs?.some((arg: string) => arg.startsWith('--window-size='));
   if (!hasWindowSizeArg) {
     args.push(`--window-size=${w},${h}`);
@@ -1263,16 +1308,8 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
     args.push(`--tz=${settings.locale.timezone}`);
   }
 
-  // Native Font Masking Mode (--font-masking-mode=1|2|3)
-  const isMobileUa = Boolean(
-    settings?.browser?.userAgent?.includes('Android') ||
-    settings?.browser?.userAgent?.includes('Mobile') ||
-    settings?.mobile?.enable
-  );
   args.push(`--font-masking-mode=${isMobileUa ? 1 : 2}`);
   if (isMobileUa) {
-    const dsf = settings?.display?.deviceScaleFactor || 2.625;
-    args.push(`--force-device-scale-factor=${dsf}`);
     args.push('--enable-features=TouchEvents,MobileViewport');
   }
   args.push('--password-store=basic');
