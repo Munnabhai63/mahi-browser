@@ -21,3 +21,6 @@ _ADMIN_KEYGEN/
 *.jks
 crash-log.txt
 scratch/
+Mahi terabox/
+release-candidate/
+electron-builder-candidate.json

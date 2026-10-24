@@ -1,3 +1,0 @@
-=== MAHI BROWSER SESSION STARTED AT 2026-08-27T05:10:46.642Z ===
-[2026-08-27T05:10:46.643Z] [CHECKPOINT] Step 1: Application Initializing - Electron version: 33.4.11
-[2026-08-27T05:10:46.645Z] [CHECKPOINT] Step 1: Hardware Acceleration Disabled
