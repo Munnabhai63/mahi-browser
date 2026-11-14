@@ -16,16 +16,29 @@ import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getCommercialPlans, getCommercialPlanById } from './commercial-plan-service.js';
 import { CommercialPlan } from '../../10_CONFIG/shared/types/commercial.js';
+import { calculateAuthoritativeOrderTotal } from './canonical-plan-catalog.js';
 
 export type PaymentProviderType = 'stripe' | 'razorpay' | 'simulation';
+
+export class PaymentGatewayNotConfiguredError extends Error {
+  public readonly provider: string;
+  constructor(provider: string, message?: string) {
+    super(message || `Payment provider "${provider}" is not configured with required API keys.`);
+    this.name = 'PaymentGatewayNotConfiguredError';
+    this.provider = provider;
+  }
+}
 
 export interface CheckoutSessionRequest {
   userId: string;
   planId: string;
   billingCycle: 'MONTHLY' | 'ANNUAL';
+  currency?: 'INR' | 'USD';
   successUrl?: string;
   cancelUrl?: string;
   idempotencyKey?: string;
+  extraMembers?: number;
+  extraProxyGb?: number;
 }
 
 export interface CheckoutSessionResponse {
@@ -38,6 +51,7 @@ export interface CheckoutSessionResponse {
   planId: string;
   billingCycle: 'MONTHLY' | 'ANNUAL';
   createdAt: string;
+  gatewayMeta?: Record<string, any>;
 }
 
 export interface PaymentWebhookEvent {
@@ -108,20 +122,88 @@ export class StripePaymentAdapter implements PaymentProvider {
     plan: CommercialPlan,
     amountCents: number
   ): Promise<CheckoutSessionResponse> {
-    const sessionId = `cs_test_${crypto.randomBytes(16).toString('hex')}`;
-    const checkoutUrl = `https://checkout.stripe.com/c/pay/${sessionId}`;
+    const stripeApiKey = process.env.STRIPE_SECRET_KEY;
+    const isTest = process.env.NODE_ENV === 'test' || !stripeApiKey;
 
-    return {
-      sessionId,
-      checkoutUrl,
-      orderId: `ord_stripe_${Date.now()}`,
-      amountCents,
-      currency: 'USD',
-      provider: 'stripe',
-      planId: plan.id,
-      billingCycle: req.billingCycle,
-      createdAt: new Date().toISOString(),
-    };
+    // Fast deterministic simulation fallback for unit tests when live API key is not provided
+    if (isTest && !stripeApiKey) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new PaymentGatewayNotConfiguredError('stripe');
+      }
+      const sessionId = `cs_test_${crypto.randomBytes(16).toString('hex')}`;
+      const checkoutUrl = `https://checkout.stripe.com/c/pay/${sessionId}`;
+
+      return {
+        sessionId,
+        checkoutUrl,
+        orderId: `ord_stripe_${Date.now()}`,
+        amountCents,
+        currency: 'USD',
+        provider: 'stripe',
+        planId: plan.id,
+        billingCycle: req.billingCycle,
+        createdAt: new Date().toISOString(),
+        gatewayMeta: {
+          stripeSessionId: sessionId,
+          stripePublicKey: process.env.STRIPE_PUBLISHABLE_KEY || 'pk_test_mock',
+        },
+      };
+    }
+
+    if (!stripeApiKey) {
+      throw new PaymentGatewayNotConfiguredError('stripe');
+    }
+
+    try {
+      const params = new URLSearchParams();
+      params.append('payment_method_types[0]', 'card');
+      params.append('mode', 'payment');
+      params.append('client_reference_id', req.userId);
+      params.append('line_items[0][price_data][currency]', (req.currency || 'USD').toLowerCase());
+      params.append('line_items[0][price_data][unit_amount]', String(Math.round(amountCents)));
+      params.append('line_items[0][price_data][product_data][name]', `MAHI Browser — ${plan.name}`);
+      params.append('line_items[0][price_data][product_data][description]', `Billing Cycle: ${req.billingCycle}`);
+      params.append('line_items[0][quantity]', '1');
+      params.append('metadata[userId]', req.userId);
+      params.append('metadata[planId]', plan.id);
+      params.append('metadata[billingCycle]', req.billingCycle);
+      params.append('success_url', req.successUrl || 'https://mahibrowser.com/checkout/success?session_id={CHECKOUT_SESSION_ID}');
+      params.append('cancel_url', req.cancelUrl || 'https://mahibrowser.com/pricing');
+
+      const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${stripeApiKey}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Stripe API error (${response.status}): ${errText}`);
+      }
+
+      const sessionData = await response.json() as any;
+      return {
+        sessionId: sessionData.id,
+        checkoutUrl: sessionData.url || `https://checkout.stripe.com/c/pay/${sessionData.id}`,
+        orderId: sessionData.id,
+        amountCents,
+        currency: (sessionData.currency || 'USD').toUpperCase(),
+        provider: 'stripe',
+        planId: plan.id,
+        billingCycle: req.billingCycle,
+        createdAt: new Date().toISOString(),
+        gatewayMeta: {
+          stripeSessionId: sessionData.id,
+          stripePublicKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
+        },
+      };
+    } catch (err: any) {
+      if (err instanceof PaymentGatewayNotConfiguredError) throw err;
+      throw new Error(`Failed to create Stripe checkout session: ${err.message}`);
+    }
   }
 
   public verifyWebhookSignature(rawBody: string, signature: string, secret?: string): boolean {
@@ -184,8 +266,26 @@ export class StripePaymentAdapter implements PaymentProvider {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RAZORPAY ADAPTER
+// RAZORPAY ADAPTER & SIGNATURE VERIFICATION
 // ─────────────────────────────────────────────────────────────────────────────
+
+export function verifyRazorpayPaymentSignature(
+  orderId: string,
+  paymentId: string,
+  signature: string,
+  secret?: string
+): boolean {
+  if (!orderId || !paymentId || !signature) return false;
+  const effectiveSecret =
+    secret || process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_WEBHOOK_SECRET || 'rzp_sec_mahi_production_secret';
+  const text = `${orderId}|${paymentId}`;
+  const expectedSig = crypto.createHmac('sha256', effectiveSecret).update(text).digest('hex');
+
+  const expectedBuf = Buffer.from(expectedSig);
+  const actualBuf = Buffer.from(signature);
+  if (expectedBuf.length !== actualBuf.length) return false;
+  return crypto.timingSafeEqual(expectedBuf, actualBuf);
+}
 
 export class RazorpayPaymentAdapter implements PaymentProvider {
   public readonly name: PaymentProviderType = 'razorpay';
@@ -196,20 +296,94 @@ export class RazorpayPaymentAdapter implements PaymentProvider {
     plan: CommercialPlan,
     amountCents: number
   ): Promise<CheckoutSessionResponse> {
-    const orderId = `order_${crypto.randomBytes(12).toString('hex')}`;
-    const checkoutUrl = `https://api.razorpay.com/v1/checkout/${orderId}`;
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    const isTest = process.env.NODE_ENV === 'test' || !keyId || !keySecret;
 
-    return {
-      sessionId: orderId,
-      checkoutUrl,
-      orderId,
-      amountCents,
-      currency: 'INR',
-      provider: 'razorpay',
-      planId: plan.id,
-      billingCycle: req.billingCycle,
-      createdAt: new Date().toISOString(),
-    };
+    if (isTest && (!keyId || !keySecret)) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new PaymentGatewayNotConfiguredError('razorpay');
+      }
+      const orderId = `order_${crypto.randomBytes(12).toString('hex')}`;
+      const checkoutUrl = `https://api.razorpay.com/v1/checkout/${orderId}`;
+
+      return {
+        sessionId: orderId,
+        checkoutUrl,
+        orderId,
+        amountCents,
+        currency: 'INR',
+        provider: 'razorpay',
+        planId: plan.id,
+        billingCycle: req.billingCycle,
+        createdAt: new Date().toISOString(),
+        gatewayMeta: {
+          razorpayKeyId: 'rzp_test_mock_key',
+          razorpayOrderId: orderId,
+          amount: amountCents,
+          currency: 'INR',
+          name: 'MAHI Browser',
+          description: `Subscription: ${plan.name} (${req.billingCycle})`,
+        },
+      };
+    }
+
+    if (!keyId || !keySecret) {
+      throw new PaymentGatewayNotConfiguredError('razorpay');
+    }
+
+    try {
+      const basicAuth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+      const orderPayload = {
+        amount: Math.round(amountCents), // In paise (minor units)
+        currency: 'INR',
+        receipt: `rcpt_${Date.now()}_${req.userId.slice(-6)}`,
+        notes: {
+          userId: req.userId,
+          planId: plan.id,
+          billingCycle: req.billingCycle,
+        },
+      };
+
+      const response = await fetch('https://api.razorpay.com/v1/orders', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${basicAuth}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(orderPayload),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Razorpay API error (${response.status}): ${errText}`);
+      }
+
+      const orderData = await response.json() as any;
+      return {
+        sessionId: orderData.id,
+        checkoutUrl: `https://checkout.razorpay.com/v1/checkout.html?order_id=${orderData.id}`,
+        orderId: orderData.id,
+        amountCents: orderData.amount,
+        currency: 'INR',
+        provider: 'razorpay',
+        planId: plan.id,
+        billingCycle: req.billingCycle,
+        createdAt: new Date().toISOString(),
+        gatewayMeta: {
+          razorpayKeyId: keyId,
+          razorpayOrderId: orderData.id,
+          amount: orderData.amount,
+          currency: 'INR',
+          name: 'MAHI Browser',
+          description: `Subscription: ${plan.name} (${req.billingCycle})`,
+          notes: orderPayload.notes,
+        },
+      };
+    } catch (err: any) {
+      if (err instanceof PaymentGatewayNotConfiguredError) throw err;
+      throw new Error(`Failed to create Razorpay order: ${err.message}`);
+    }
   }
 
   public verifyWebhookSignature(rawBody: string, signature: string, secret?: string): boolean {
@@ -514,108 +688,18 @@ export class PaymentService {
 
     // 5. Execute Business State Transition Atomically
     if (event.type === 'payment.succeeded') {
-      const durationDays = event.billingCycle === 'ANNUAL' ? 365 : 30;
-      const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
-      const subId = `sub_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-      const invoiceNumber = `INV-${new Date().getFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-
-      // A. Update or Insert Payment Transaction
-      const existingPayment = db.prepare('SELECT id FROM commercial_payments WHERE external_payment_id = ?').get(event.externalPaymentId) as any;
-      if (existingPayment) {
-        db.prepare(`
-          UPDATE commercial_payments
-          SET status = 'SUCCEEDED', receipt_url = ?, updated_at = ?
-          WHERE id = ?
-        `).run(event.receiptUrl || null, now, existingPayment.id);
-      } else {
-        db.prepare(`
-          INSERT INTO commercial_payments (
-            id, user_id, subscription_id, provider, external_order_id, external_payment_id,
-            amount_cents, currency, status, plan_id, billing_cycle, receipt_url, metadata_json,
-            created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SUCCEEDED', ?, ?, ?, ?, ?, ?)
-        `).run(
-          `pay_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
-          event.userId,
-          subId,
-          event.provider,
-          event.externalOrderId || null,
-          event.externalPaymentId,
-          event.amountCents,
-          event.currency,
-          event.planId,
-          event.billingCycle,
-          event.receiptUrl || null,
-          JSON.stringify(event.metadata || {}),
-          now,
-          now
-        );
-      }
-
-      // B. Create Invoice Record
-      db.prepare(`
-        INSERT INTO commercial_billing_invoices (
-          id, user_id, payment_id, invoice_number, amount_cents, currency, status,
-          period_start, period_end, pdf_url, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'PAID', ?, ?, ?, ?)
-      `).run(
-        `inv_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
-        event.userId,
-        event.externalPaymentId,
-        invoiceNumber,
-        event.amountCents,
-        event.currency,
-        now,
-        expiresAt,
-        event.receiptUrl || null,
-        now
-      );
-
-      // Ensure commercial_users and commercial_plans rows exist to satisfy FK constraints under PRAGMA foreign_keys = ON
-      db.prepare(`
-        INSERT OR IGNORE INTO commercial_users (id, email, password_hash, salt, name, plan_id, created_at, updated_at)
-        VALUES (?, ?, 'placeholder', 'placeholder', 'Subscriber', ?, ?, ?)
-      `).run(event.userId, `${event.userId}@commercial.local`, event.planId, now, now);
-      db.prepare(`
-        INSERT OR IGNORE INTO commercial_plans (id, name, tier, limits_json, created_at)
-        VALUES (?, 'Plan', 'pro', '{}', ?)
-      `).run(event.planId, now);
-
-      // C. Activate Subscription in Database
-      db.prepare(`
-        INSERT INTO commercial_subscriptions (
-          id, user_id, plan_id, status, billing_cycle, starts_at, expires_at,
-          payment_provider, external_sub_id, created_at
-        ) VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?)
-      `).run(
-        subId,
-        event.userId,
-        event.planId,
-        event.billingCycle,
-        now,
-        expiresAt,
-        event.provider,
-        event.externalSubscriptionId || null,
-        now
-      );
-
-      // D. Update User Plan & Quotas in auth_users
-      try {
-        db.prepare(`
-          UPDATE auth_users
-          SET plan_id = ?, profile_quota = ?, updated_at = ?
-          WHERE id = ?
-        `).run(event.planId, targetPlan.limits.maxProfiles, now, event.userId);
-      } catch {}
-
-      // E. Update User Plan in commercial_users
-      try {
-        db.prepare(`
-          UPDATE commercial_users
-          SET plan_id = ?
-          WHERE id = ?
-        `).run(event.planId, event.userId);
-      } catch {}
+      await this.activateSubscriptionFromPayment({
+        userId: event.userId,
+        planId: event.planId,
+        billingCycle: event.billingCycle,
+        amountCents: event.amountCents,
+        currency: event.currency,
+        provider: event.provider,
+        externalPaymentId: event.externalPaymentId,
+        externalOrderId: event.externalOrderId,
+        receiptUrl: event.receiptUrl,
+        metadata: event.metadata,
+      });
 
     } else if (event.type === 'payment.failed') {
       db.prepare(`
@@ -660,6 +744,171 @@ export class PaymentService {
       type: event.type,
       message: `Successfully processed ${event.type} event.`,
     };
+  }
+
+  /**
+   * Atomically updates commercial_payments, commercial_subscriptions, commercial_users,
+   * auth_users, and commercial_billing_invoices upon verified checkout/payment completion.
+   */
+  public async activateSubscriptionFromPayment(params: {
+    userId: string;
+    planId: string;
+    billingCycle: 'MONTHLY' | 'ANNUAL';
+    amountCents: number;
+    currency: string;
+    provider: PaymentProviderType;
+    externalPaymentId: string;
+    externalOrderId?: string;
+    receiptUrl?: string;
+    metadata?: Record<string, any>;
+  }): Promise<{ subscription: UserSubscriptionSummary; invoice: PaymentInvoiceRecord }> {
+    const db = getDatabase();
+    const targetPlan = getCommercialPlanById(params.planId);
+    if (!targetPlan) {
+      throw new Error(`PLAN_NOT_FOUND: Unknown plan "${params.planId}".`);
+    }
+
+    const now = new Date().toISOString();
+    const durationDays = params.billingCycle === 'ANNUAL' ? 365 : 30;
+    const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+    const subId = `sub_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const invoiceNumber = `INV-${new Date().getFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+    const invoiceId = `inv_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+
+    const runUpdates = () => {
+      // 1. Payment Record
+      const existingPayment = db.prepare('SELECT id FROM commercial_payments WHERE external_payment_id = ?').get(params.externalPaymentId) as any;
+      if (existingPayment) {
+        db.prepare(`
+          UPDATE commercial_payments
+          SET status = 'SUCCEEDED', receipt_url = ?, updated_at = ?
+          WHERE id = ?
+        `).run(params.receiptUrl || null, now, existingPayment.id);
+      } else {
+        db.prepare(`
+          INSERT INTO commercial_payments (
+            id, user_id, subscription_id, provider, external_order_id, external_payment_id,
+            amount_cents, currency, status, plan_id, billing_cycle, receipt_url, metadata_json,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SUCCEEDED', ?, ?, ?, ?, ?, ?)
+        `).run(
+          `pay_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+          params.userId,
+          subId,
+          params.provider,
+          params.externalOrderId || null,
+          params.externalPaymentId,
+          params.amountCents,
+          params.currency,
+          params.planId,
+          params.billingCycle,
+          params.receiptUrl || null,
+          JSON.stringify(params.metadata || {}),
+          now,
+          now
+        );
+      }
+
+      // 2. Create Invoice Record
+      db.prepare(`
+        INSERT INTO commercial_billing_invoices (
+          id, user_id, payment_id, invoice_number, amount_cents, currency, status,
+          period_start, period_end, pdf_url, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'PAID', ?, ?, ?, ?)
+      `).run(
+        invoiceId,
+        params.userId,
+        params.externalPaymentId,
+        invoiceNumber,
+        params.amountCents,
+        params.currency,
+        now,
+        expiresAt,
+        params.receiptUrl || null,
+        now
+      );
+
+      // 3. Ensure commercial_users and commercial_plans rows exist to satisfy FK constraints under PRAGMA foreign_keys = ON
+      db.prepare(`
+        INSERT OR IGNORE INTO commercial_users (id, email, password_hash, salt, name, plan_id, created_at, updated_at)
+        VALUES (?, ?, 'placeholder', 'placeholder', 'Subscriber', ?, ?, ?)
+      `).run(params.userId, `${params.userId}@commercial.local`, params.planId, now, now);
+      db.prepare(`
+        INSERT OR IGNORE INTO commercial_plans (id, name, tier, limits_json, created_at)
+        VALUES (?, 'Plan', 'pro', '{}', ?)
+      `).run(params.planId, now);
+
+      // 4. Activate Subscription in Database
+      db.prepare(`
+        INSERT INTO commercial_subscriptions (
+          id, user_id, plan_id, status, billing_cycle, starts_at, expires_at,
+          payment_provider, external_sub_id, created_at
+        ) VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?)
+      `).run(
+        subId,
+        params.userId,
+        params.planId,
+        params.billingCycle,
+        now,
+        expiresAt,
+        params.provider,
+        params.externalOrderId || null,
+        now
+      );
+
+      // 5. Update User Plan & Quotas in auth_users
+      try {
+        db.prepare(`
+          UPDATE auth_users
+          SET plan_id = ?, profile_quota = ?, updated_at = ?
+          WHERE id = ?
+        `).run(params.planId, targetPlan.limits.maxProfiles, now, params.userId);
+      } catch {}
+
+      // 6. Update User Plan in commercial_users
+      try {
+        db.prepare(`
+          UPDATE commercial_users
+          SET plan_id = ?
+          WHERE id = ?
+        `).run(params.planId, params.userId);
+      } catch {}
+    };
+
+    if (typeof (db as any).transaction === 'function') {
+      (db as any).transaction(runUpdates)();
+    } else {
+      runUpdates();
+    }
+
+    const subSummary: UserSubscriptionSummary = {
+      userId: params.userId,
+      planId: params.planId,
+      planName: targetPlan.name,
+      status: 'ACTIVE',
+      billingCycle: params.billingCycle,
+      startsAt: now,
+      expiresAt,
+      maxProfiles: targetPlan.limits.maxProfiles,
+      maxDevices: targetPlan.limits.maxDevices,
+      paymentProvider: params.provider,
+    };
+
+    const invoiceRecord: PaymentInvoiceRecord = {
+      id: invoiceId,
+      userId: params.userId,
+      paymentId: params.externalPaymentId,
+      invoiceNumber,
+      amountCents: params.amountCents,
+      currency: params.currency,
+      status: 'PAID',
+      periodStart: now,
+      periodEnd: expiresAt,
+      pdfUrl: params.receiptUrl || undefined,
+      createdAt: now,
+    };
+
+    return { subscription: subSummary, invoice: invoiceRecord };
   }
 
   /**

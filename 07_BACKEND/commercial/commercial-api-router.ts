@@ -90,6 +90,13 @@ import {
   registerOrUpdateDevice,
 } from './commercial-device-service.js';
 import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
+import { getDatabase } from '../../06_DATABASE/connection.js';
+import {
+  paymentService,
+  PaymentProviderType,
+  PaymentGatewayNotConfiguredError,
+  verifyRazorpayPaymentSignature,
+} from './payment-service.js';
 import {
   getCommercialAuditLogs,
   logCommercialAudit,
@@ -656,6 +663,145 @@ export async function handleCommercialApiRoutes(
       status: 'PENDING_VERIFICATION',
       message: 'Payment submitted successfully for verification.',
     });
+    return true;
+  }
+
+  // -------------------------------------------------------------
+  // 0.1 CENTRAL JWT BILLING & CHECKOUT ENDPOINTS
+  // -------------------------------------------------------------
+  if (routePath === '/api/v1/billing/gateways' && method === 'GET') {
+    const hasStripe = Boolean(process.env.STRIPE_SECRET_KEY);
+    const hasRazorpay = Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
+    const isTest = process.env.NODE_ENV === 'test';
+    const gateways = [
+      { id: 'razorpay', name: 'Razorpay (Cards, NetBanking, UPI)', enabled: hasRazorpay || isTest, currency: 'INR' },
+      { id: 'stripe', name: 'Stripe (Credit / Debit Cards)', enabled: hasStripe || isTest, currency: 'USD' },
+      { id: 'upi_manual', name: 'Direct UPI & QR Code', enabled: true, currency: 'INR' },
+    ];
+    sendJSON(res, 200, { success: true, gateways });
+    return true;
+  }
+
+  if (routePath === '/api/v1/billing/checkout' && method === 'POST') {
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
+    const body = await parseBody(req);
+    const planId = body.planId || body.plan;
+    if (!planId) {
+      sendJSON(res, 400, { success: false, error: 'Missing required field: planId.' });
+      return true;
+    }
+    const billingCycle = ((body.billingCycle || body.billing || 'MONTHLY') as string).toUpperCase() as 'MONTHLY' | 'ANNUAL';
+    const provider = ((body.provider || 'razorpay') as string).toLowerCase() as PaymentProviderType;
+    const currency = body.currency || (provider === 'razorpay' ? 'INR' : 'USD');
+    const extraMembers = Number(body.extraMembers || 0);
+    const extraProxyGb = Number(body.extraProxyGb || 0);
+
+    try {
+      const session = await paymentService.createCheckoutSession({
+        userId: auth.userId,
+        planId,
+        billingCycle,
+        currency,
+        extraMembers,
+        extraProxyGb,
+        successUrl: body.successUrl,
+        cancelUrl: body.cancelUrl,
+        idempotencyKey: body.idempotencyKey,
+      }, provider);
+
+      sendJSON(res, 200, {
+        success: true,
+        sessionId: session.sessionId,
+        checkoutUrl: session.checkoutUrl,
+        orderId: session.orderId,
+        gatewayMeta: session.gatewayMeta,
+        amountMinor: session.amountCents,
+        currency: session.currency,
+        provider: session.provider,
+        planId: session.planId,
+        billingCycle: session.billingCycle,
+      });
+      return true;
+    } catch (err: any) {
+      const status = err instanceof PaymentGatewayNotConfiguredError ? 503 : 400;
+      sendJSON(res, status, { success: false, error: err.message });
+      return true;
+    }
+  }
+
+  if (routePath === '/api/v1/billing/verify-razorpay' && method === 'POST') {
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
+    const body = await parseBody(req);
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body;
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      sendJSON(res, 400, { success: false, error: 'Missing required Razorpay verification fields.' });
+      return true;
+    }
+
+    const isVerified = verifyRazorpayPaymentSignature(razorpay_order_id, razorpay_payment_id, razorpay_signature);
+    if (!isVerified) {
+      sendJSON(res, 400, { success: false, error: 'Invalid Razorpay payment signature.' });
+      return true;
+    }
+
+    const db = getDatabase();
+    const pending = db.prepare('SELECT * FROM commercial_payments WHERE external_order_id = ? OR id = ?').get(razorpay_order_id, razorpay_order_id) as any;
+    const planId = pending?.plan_id || body.planId || 'professional_10';
+    const billingCycle = (pending?.billing_cycle || body.billingCycle || 'MONTHLY') as 'MONTHLY' | 'ANNUAL';
+    const amountCents = pending?.amount_cents || 59900;
+
+    const result = await paymentService.activateSubscriptionFromPayment({
+      userId: auth.userId,
+      planId,
+      billingCycle,
+      amountCents,
+      currency: 'INR',
+      provider: 'razorpay',
+      externalPaymentId: razorpay_payment_id,
+      externalOrderId: razorpay_order_id,
+    });
+
+    sendJSON(res, 200, {
+      success: true,
+      message: 'Payment verified and subscription activated successfully.',
+      subscription: result.subscription,
+      invoice: result.invoice,
+    });
+    return true;
+  }
+
+  if (routePath === '/api/v1/billing/subscription' && method === 'GET') {
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
+    const sub = paymentService.getUserSubscription(auth.userId);
+    const entitlements = evaluateUserEntitlements(auth.userId);
+    sendJSON(res, 200, {
+      success: true,
+      subscription: sub,
+      entitlements,
+    });
+    return true;
+  }
+
+  if (routePath === '/api/v1/billing/invoices' && method === 'GET') {
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
+    const invoices = paymentService.getUserInvoices(auth.userId);
+    sendJSON(res, 200, { success: true, invoices });
     return true;
   }
 
