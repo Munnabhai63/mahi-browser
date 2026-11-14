@@ -1515,6 +1515,20 @@ export class PaymentService {
       if (res.ok) {
         const details = await res.json() as any;
         if (details.status === 'SUCCESS') {
+          // Verify returned gateway details.amount (if provided) matches payment.amount_cents
+          if (details.amount !== undefined && details.amount !== null) {
+            const parsedNum = Number(details.amount);
+            const matchesRupees = Math.round(parsedNum * 100) === payment.amount_cents;
+            const matchesPaise = Math.round(parsedNum) === payment.amount_cents;
+            if (!matchesRupees && !matchesPaise) {
+              return {
+                success: false,
+                status: 'AMOUNT_MISMATCH',
+                error: `AMOUNT_TAMPERING_DETECTED: Gateway verified amount (${details.amount}) does not match payment record (${payment.amount_cents} paise).`,
+              };
+            }
+          }
+
           const act = await this.activateSubscriptionFromPayment({
             userId: payment.user_id,
             planId: payment.plan_id,

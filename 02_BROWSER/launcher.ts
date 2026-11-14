@@ -127,19 +127,23 @@ export function ensureProfileStealthExtension(
   }
 
 
-  const numMatch = profileName.match(/\d+/);
+  const safeProfileName = profileName || profileId || 'Profile 1';
+  const numMatch = safeProfileName.match(/\d+/);
   const badgeNumber = numMatch ? numMatch[0] : '1';
-  const instanceLabel = numMatch ? `M${numMatch[0]}` : profileName;
+  const instanceLabel = numMatch ? `M${numMatch[0]}` : safeProfileName;
   const brandedLabel = `${instanceLabel} — MAHI SKILLS`;
 
-  // Detect platform and device metadata from settings and User-Agent
+  // Detect platform and device metadata from settings, fingerprint and User-Agent
   const ua = settings?.browser?.userAgent || '';
-  const isMac = ua.includes('Macintosh');
+  const fp = settings?.fingerprint || {};
   const isMobile = Boolean(
     ua.includes('Android') ||
     ua.includes('Mobile') ||
     settings?.mobile?.enable
   );
+  const isMac = !isMobile && ua.includes('Macintosh');
+  const isLinux = !isMobile && !isMac && (ua.includes('Linux') || ua.includes('X11'));
+  const isMacArm = isMac && Boolean(fp.isM1 || fp.architecture === 'arm64' || ua.includes('arm64') || ua.includes('aarch64'));
 
   let mobileModel = 'Pixel 8';
   let mobileOsVersion = '14.0.0';
@@ -159,14 +163,24 @@ export function ensureProfileStealthExtension(
     }
   }
 
-  const clientHintsPlatform = isMobile ? 'Android' : (isMac ? 'macOS' : 'Windows');
+  const clientHintsPlatform = isMobile ? 'Android' : (isMac ? 'macOS' : (isLinux ? 'Linux' : 'Windows'));
   const clientHintsMobile = isMobile ? '?1' : '?0';
   const clientHintsModel = isMobile ? mobileModel : '';
-  const clientHintsPlatformVersion = isMobile ? mobileOsVersion : (isMac ? '14.5.0' : '15.0.0');
-  const clientHintsArch = isMobile ? 'arm' : (isMac ? 'arm' : 'x86');
+  const clientHintsPlatformVersion = isMobile ? mobileOsVersion : (isMac ? '14.5.0' : (isLinux ? '6.5.0' : '15.0.0'));
+  const clientHintsArch = isMobile ? 'arm' : (isMac ? (isMacArm ? 'arm' : 'x86') : (isLinux ? 'x86_64' : 'x86'));
   const chromeVerMatch = ua.match(/Chrome\/([0-9.]+)/i);
-  const chromeFullVer = chromeVerMatch ? chromeVerMatch[1] : '130.0.6723.117';
-  const chromeMajorVer = chromeFullVer.split('.')[0] || '130';
+  const chromeFullVer = chromeVerMatch ? chromeVerMatch[1] : CHROMIUM_PRODUCTION_VERSION;
+  const chromeMajorVer = chromeFullVer.split('.')[0] || '138';
+
+  const rawLangs = settings?.locale?.languagesList || settings?.locale?.languages || settings?.locale?.language;
+  const languagesList: string[] = Array.isArray(rawLangs)
+    ? rawLangs
+    : (typeof rawLangs === 'string' && rawLangs.trim().length > 0
+      ? rawLangs.split(',').map((s: string) => s.trim()).filter(Boolean)
+      : ['en-US', 'en']);
+  const acceptLanguageHeader = languagesList.map((l: string, idx: number) => idx === 0 ? l : `${l};q=${Math.max(0.1, 1 - idx * 0.1).toFixed(1)}`).join(', ');
+
+  const profileDebugPort = getProfileDebugPort(profileId);
 
   // Manifest V3 Extension with declarativeNetRequest Client Hints spoofing
   const manifest = {
@@ -209,7 +223,8 @@ export function ensureProfileStealthExtension(
   };
 
   // Declarative Net Request rules to spoof HTTP request headers:
-  // Sec-CH-UA, Sec-CH-UA-Full-Version-List, Sec-CH-UA-Platform, Sec-CH-UA-Mobile, Sec-CH-UA-Model, Sec-CH-UA-Platform-Version
+  // Sec-CH-UA, Sec-CH-UA-Full-Version-List, Sec-CH-UA-Platform, Sec-CH-UA-Mobile, Sec-CH-UA-Model, Sec-CH-UA-Platform-Version, Accept-Language
+  // and block remote CDP debugging port leakage (both 9222 and profile-specific debugPort)
   const dnrRules = [
     {
       id: 1,
@@ -225,6 +240,7 @@ export function ensureProfileStealthExtension(
           { header: 'sec-ch-ua-platform-version', operation: 'set', value: `"${clientHintsPlatformVersion}"` },
           { header: 'sec-ch-ua-arch', operation: 'set', value: `"${clientHintsArch}"` },
           { header: 'sec-ch-ua-bitness', operation: 'set', value: '"64"' },
+          { header: 'accept-language', operation: 'set', value: acceptLanguageHeader },
         ],
       },
       condition: {
@@ -264,22 +280,66 @@ export function ensureProfileStealthExtension(
         ],
       },
     },
+    {
+      id: 3,
+      priority: 2,
+      action: {
+        type: 'block',
+      },
+      condition: {
+        urlFilter: `||127.0.0.1:${profileDebugPort}`,
+        resourceTypes: [
+          'xmlhttprequest',
+          'websocket',
+          'script',
+          'image',
+          'sub_frame',
+          'other',
+        ],
+      },
+    },
+    {
+      id: 4,
+      priority: 2,
+      action: {
+        type: 'block',
+      },
+      condition: {
+        urlFilter: `||localhost:${profileDebugPort}`,
+        resourceTypes: [
+          'xmlhttprequest',
+          'websocket',
+          'script',
+          'image',
+          'sub_frame',
+          'other',
+        ],
+      },
+    },
   ];
-  const gpuVendor = isMobile ? 'ARM' : (isMac ? 'Google Inc. (Apple)' : 'Google Inc. (NVIDIA)');
-  const gpuRenderer = isMobile
+
+  const gpuVendor = fp.webglVendor || (isMobile ? 'ARM' : (isMac ? 'Google Inc. (Apple)' : (isLinux ? 'Google Inc. (Mesa)' : 'Google Inc. (NVIDIA)')));
+  const gpuRenderer = fp.webglRenderer || (isMobile
     ? 'Mali-G710 MC10'
     : (isMac
-      ? 'ANGLE (Apple, Apple M3 Pro, OpenGL 4.1 Metal - 88.1)'
-      : 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Direct3D11 vs_5_0 ps_5_0, D3D11)');
+      ? (isMacArm ? 'ANGLE (Apple, Apple M3 Pro, OpenGL 4.1 Metal - 88.1)' : 'ANGLE (Intel, Intel(R) Iris(TM) Plus Graphics OpenGL Engine, OpenGL 4.1)')
+      : (isLinux
+        ? 'Mesa Intel(R) UHD Graphics 620 (KBL GT2)'
+        : 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Direct3D11 vs_5_0 ps_5_0, D3D11)')));
 
-  const hardwareConcurrency = isMobile ? 8 : (isMac ? 12 : 16);
-  const deviceMemory = isMobile ? 8 : 16;
-  const platformStr = isMobile ? 'Linux armv8l' : (isMac ? 'MacIntel' : 'Win32');
-  const maxTouchPoints = isMobile ? 5 : 0;
+  const hardwareConcurrency = fp.hardwareConcurrency || (isMobile ? 8 : (isMac ? (isMacArm ? 12 : 8) : (isLinux ? 8 : 16)));
+  const deviceMemory = fp.deviceMemory || (isMobile ? 8 : (isLinux ? 8 : 16));
+  const platformStr = isMobile ? 'Linux armv8l' : (isMac ? 'MacIntel' : (isLinux ? 'Linux x86_64' : 'Win32'));
+  const maxTouchPoints = fp.maxTouchPoints !== undefined ? fp.maxTouchPoints : (isMobile ? 5 : 0);
   const displayDpr = settings?.display?.deviceScaleFactor || (isMobile ? 2.625 : 1);
   const mobileWidth = settings?.display?.screenWidth || (isMobile ? 412 : 1920);
   const mobileHeight = settings?.display?.screenHeight || (isMobile ? 915 : 1080);
-
+  const targetTimezone = settings?.locale?.timezone || '';
+  const canvasMode = fp.canvas || 'noise';
+  const audioMode = fp.audio || 'noise';
+  const webglMode = fp.webgl || 'noise';
+  const clientRectsMode = fp.clientRects || 'noise';
+  const webrtcOpt = settings?.network?.webrtc || fp.webrtc || 'default';
   // 1. Stealth Core Script (Runs in MAIN world at document_start)
   const stealthCoreJs = `
 (function() {
@@ -345,12 +405,20 @@ export function ensureProfileStealthExtension(
       });
       registerNative(proxyWebdriver, 'get webdriver');
     }
+    if (typeof navigator !== 'undefined') {
+      try { delete navigator.webdriver; } catch(e) {}
+    }
   } catch(e) {}
 
-  // Remove Chromedriver / automation artifacts
+  // Remove Chromedriver / automation artifacts (pattern-based sweep)
   try {
-    var cdcKeys = ['cdc_adoQpoasnfa76pfcZLmcfl_Array', 'cdc_adoQpoasnfa76pfcZLmcfl_Promise', 'cdc_adoQpoasnfa76pfcZLmcfl_Symbol'];
-    cdcKeys.forEach(function(k) { delete window[k]; });
+    var windowPropNames = Object.getOwnPropertyNames(window);
+    var autoRegex = /^(\\$?cdc_|__webdriver|__selenium|__fxdriver)/;
+    for (var aIdx = 0; aIdx < windowPropNames.length; aIdx++) {
+      if (autoRegex.test(windowPropNames[aIdx])) {
+        try { delete window[windowPropNames[aIdx]]; } catch(e) {}
+      }
+    }
   } catch(e) {}
 
   // Chrome Runtime Mocking
@@ -376,10 +444,13 @@ export function ensureProfileStealthExtension(
   } catch(e) {}
 
   // -------------------------------------------------------------
-  // 2. Hardware Navigator Overrides
+  // 2. Hardware Navigator Overrides & Locale/Languages
   // -------------------------------------------------------------
   try {
     function spoofNavigator(prop, value) {
+      if (typeof navigator !== 'undefined') {
+        try { delete navigator[prop]; } catch(e) {}
+      }
       var desc = Object.getOwnPropertyDescriptor(Navigator.prototype, prop);
       var getter = (desc && typeof desc.get === 'function') ? desc.get : function() { return value; };
       var proxy = new Proxy(getter, {
@@ -398,6 +469,61 @@ export function ensureProfileStealthExtension(
     spoofNavigator('deviceMemory', ${deviceMemory});
     spoofNavigator('platform', ${JSON.stringify(platformStr)});
     spoofNavigator('maxTouchPoints', ${maxTouchPoints});
+    spoofNavigator('language', ${JSON.stringify(languagesList[0] || 'en-US')});
+    spoofNavigator('languages', Object.freeze(${JSON.stringify(languagesList)}));
+
+    // -------------------------------------------------------------
+    // Timezone Spoofing (Intl.DateTimeFormat & Date.prototype.getTimezoneOffset)
+    // -------------------------------------------------------------
+    var targetTz = ${JSON.stringify(targetTimezone)};
+    if (targetTz) {
+      try {
+        var getTzOffset = function(date, tz) {
+          try {
+            var formatter = new Intl.DateTimeFormat('en-US', {
+              timeZone: tz,
+              year: 'numeric', month: 'numeric', day: 'numeric',
+              hour: 'numeric', minute: 'numeric', second: 'numeric',
+              hour12: false
+            });
+            var parts = formatter.formatToParts(date);
+            var map = {};
+            for (var pIdx = 0; pIdx < parts.length; pIdx++) map[parts[pIdx].type] = parseInt(parts[pIdx].value, 10);
+            var tzDate = Date.UTC(map.year, map.month - 1, map.day, map.hour === 24 ? 0 : map.hour, map.minute, map.second);
+            var utcDate = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds());
+            return Math.round((utcDate - tzDate) / 60000);
+          } catch(e) {
+            return 0;
+          }
+        };
+
+        var origGetTimezoneOffset = Date.prototype.getTimezoneOffset;
+        var proxyGetTimezoneOffset = new Proxy(origGetTimezoneOffset, {
+          apply: function(target, thisArg, args) {
+            if (thisArg instanceof Date && !isNaN(thisArg.getTime())) {
+              return getTzOffset(thisArg, targetTz);
+            }
+            return target.apply(thisArg, args);
+          }
+        });
+        Date.prototype.getTimezoneOffset = proxyGetTimezoneOffset;
+        registerNative(proxyGetTimezoneOffset, 'getTimezoneOffset');
+        registerNative(origGetTimezoneOffset, 'getTimezoneOffset');
+
+        var origDTF = Intl.DateTimeFormat;
+        var origResolved = origDTF.prototype.resolvedOptions;
+        var proxyResolved = new Proxy(origResolved, {
+          apply: function(target, thisArg, args) {
+            var res = target.apply(thisArg, args);
+            if (res) res.timeZone = targetTz;
+            return res;
+          }
+        });
+        origDTF.prototype.resolvedOptions = proxyResolved;
+        registerNative(proxyResolved, 'resolvedOptions');
+        registerNative(origResolved, 'resolvedOptions');
+      } catch(e) {}
+    }
 
     // -------------------------------------------------------------
     // User-Agent Client Hints (navigator.userAgentData) Native Masking
@@ -580,49 +706,26 @@ export function ensureProfileStealthExtension(
   // -------------------------------------------------------------
   // 3. Canvas Dynamic Hash Perturbation (Single-Pass Noise)
   // -------------------------------------------------------------
-  try {
-    var shiftVal = (pSeed % 3) - 1 || 1;
-    
-    function applyNoise(imgData) {
-      var data = imgData.data;
-      var step = Math.max(16, (imgData.width * imgData.height) >> 4);
-      for (var i = 0; i < data.length; i += step) {
-        if (data[i + 3] === 0) continue;
-        data[i] = Math.min(255, Math.max(0, data[i] + shiftVal));
+  if (${canvasMode !== 'off'}) {
+    try {
+      var shiftVal = (pSeed % 3) - 1 || 1;
+      
+      function applyNoise(imgData) {
+        var data = imgData.data;
+        var step = Math.max(16, (imgData.width * imgData.height) >> 4);
+        for (var i = 0; i < data.length; i += step) {
+          if (data[i + 3] === 0) continue;
+          data[i] = Math.min(255, Math.max(0, data[i] + shiftVal));
+        }
+        return imgData;
       }
-      return imgData;
-    }
 
-    var origToDataURL = HTMLCanvasElement.prototype.toDataURL;
-    var origToBlob = HTMLCanvasElement.prototype.toBlob;
-    var origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
-    var origPutImageData = CanvasRenderingContext2D.prototype.putImageData;
+      var origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+      var origToBlob = HTMLCanvasElement.prototype.toBlob;
+      var origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+      var origPutImageData = CanvasRenderingContext2D.prototype.putImageData;
 
-    var proxyToDataURL = new Proxy(origToDataURL, {
-      apply: function(target, thisArg, argumentsList) {
-        try {
-          if (thisArg.width > 0 && thisArg.height > 0) {
-            var clone = document.createElement('canvas');
-            clone.width = thisArg.width;
-            clone.height = thisArg.height;
-            var ctx = clone.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(thisArg, 0, 0);
-              var imgData = origGetImageData.call(ctx, 0, 0, clone.width, clone.height);
-              origPutImageData.call(ctx, applyNoise(imgData), 0, 0);
-              return target.apply(clone, argumentsList);
-            }
-          }
-        } catch(e) {}
-        return target.apply(thisArg, argumentsList);
-      }
-    });
-    HTMLCanvasElement.prototype.toDataURL = proxyToDataURL;
-    registerNative(proxyToDataURL, 'toDataURL');
-    registerNative(origToDataURL, 'toDataURL');
-
-    if (origToBlob) {
-      var proxyToBlob = new Proxy(origToBlob, {
+      var proxyToDataURL = new Proxy(origToDataURL, {
         apply: function(target, thisArg, argumentsList) {
           try {
             if (thisArg.width > 0 && thisArg.height > 0) {
@@ -641,135 +744,130 @@ export function ensureProfileStealthExtension(
           return target.apply(thisArg, argumentsList);
         }
       });
-      HTMLCanvasElement.prototype.toBlob = proxyToBlob;
-      registerNative(proxyToBlob, 'toBlob');
-      registerNative(origToBlob, 'toBlob');
-    }
-    
-    var proxyGetImageData = new Proxy(origGetImageData, {
-      apply: function(target, thisArg, argumentsList) {
-        var imgData = target.apply(thisArg, argumentsList);
-        try {
-          if (imgData.width > 8 && imgData.height > 8) {
-            imgData = applyNoise(imgData);
-          }
-        } catch(e) {}
-        return imgData;
-      }
-    });
-    CanvasRenderingContext2D.prototype.getImageData = proxyGetImageData;
-    registerNative(proxyGetImageData, 'getImageData');
-    registerNative(origGetImageData, 'getImageData');
+      HTMLCanvasElement.prototype.toDataURL = proxyToDataURL;
+      registerNative(proxyToDataURL, 'toDataURL');
+      registerNative(origToDataURL, 'toDataURL');
 
-    if (typeof OffscreenCanvas !== 'undefined' && OffscreenCanvas.prototype) {
-      if (typeof OffscreenCanvasRenderingContext2D !== 'undefined' && OffscreenCanvasRenderingContext2D.prototype) {
-        var origOffscreenGetImageData = OffscreenCanvasRenderingContext2D.prototype.getImageData;
-        if (origOffscreenGetImageData) {
-          var proxyOffscreenGetImageData = new Proxy(origOffscreenGetImageData, {
-            apply: function(target, thisArg, argumentsList) {
-              var imgData = target.apply(thisArg, argumentsList);
-              try {
-                if (imgData.width > 8 && imgData.height > 8) {
-                  imgData = applyNoise(imgData);
-                }
-              } catch(e) {}
-              return imgData;
-            }
-          });
-          OffscreenCanvasRenderingContext2D.prototype.getImageData = proxyOffscreenGetImageData;
-          registerNative(proxyOffscreenGetImageData, 'getImageData');
-          registerNative(origOffscreenGetImageData, 'getImageData');
-        }
-      }
-
-      if (OffscreenCanvas.prototype.convertToBlob) {
-        var origConvertToBlob = OffscreenCanvas.prototype.convertToBlob;
-        var proxyConvertToBlob = new Proxy(origConvertToBlob, {
+      if (origToBlob) {
+        var proxyToBlob = new Proxy(origToBlob, {
           apply: function(target, thisArg, argumentsList) {
             try {
-              var ctx = thisArg.getContext('2d');
-              if (ctx) {
-                var imgData = ctx.getImageData(0, 0, thisArg.width, thisArg.height);
-                ctx.putImageData(applyNoise(imgData), 0, 0);
+              if (thisArg.width > 0 && thisArg.height > 0) {
+                var clone = document.createElement('canvas');
+                clone.width = thisArg.width;
+                clone.height = thisArg.height;
+                var ctx = clone.getContext('2d');
+                if (ctx) {
+                  ctx.drawImage(thisArg, 0, 0);
+                  var imgData = origGetImageData.call(ctx, 0, 0, clone.width, clone.height);
+                  origPutImageData.call(ctx, applyNoise(imgData), 0, 0);
+                  return target.apply(clone, argumentsList);
+                }
               }
             } catch(e) {}
             return target.apply(thisArg, argumentsList);
           }
         });
-        OffscreenCanvas.prototype.convertToBlob = proxyConvertToBlob;
-        registerNative(proxyConvertToBlob, 'convertToBlob');
-        registerNative(origConvertToBlob, 'convertToBlob');
+        HTMLCanvasElement.prototype.toBlob = proxyToBlob;
+        registerNative(proxyToBlob, 'toBlob');
+        registerNative(origToBlob, 'toBlob');
       }
-    }
-  } catch(e) {}
+      
+      var proxyGetImageData = new Proxy(origGetImageData, {
+        apply: function(target, thisArg, argumentsList) {
+          var imgData = target.apply(thisArg, argumentsList);
+          try {
+            if (imgData.width > 8 && imgData.height > 8) {
+              imgData = applyNoise(imgData);
+            }
+          } catch(e) {}
+          return imgData;
+        }
+      });
+      CanvasRenderingContext2D.prototype.getImageData = proxyGetImageData;
+      registerNative(proxyGetImageData, 'getImageData');
+      registerNative(origGetImageData, 'getImageData');
+
+      if (typeof OffscreenCanvas !== 'undefined' && OffscreenCanvas.prototype) {
+        if (typeof OffscreenCanvasRenderingContext2D !== 'undefined' && OffscreenCanvasRenderingContext2D.prototype) {
+          var origOffscreenGetImageData = OffscreenCanvasRenderingContext2D.prototype.getImageData;
+          if (origOffscreenGetImageData) {
+            var proxyOffscreenGetImageData = new Proxy(origOffscreenGetImageData, {
+              apply: function(target, thisArg, argumentsList) {
+                var imgData = target.apply(thisArg, argumentsList);
+                try {
+                  if (imgData.width > 8 && imgData.height > 8) {
+                    imgData = applyNoise(imgData);
+                  }
+                } catch(e) {}
+                return imgData;
+              }
+            });
+            OffscreenCanvasRenderingContext2D.prototype.getImageData = proxyOffscreenGetImageData;
+            registerNative(proxyOffscreenGetImageData, 'getImageData');
+            registerNative(origOffscreenGetImageData, 'getImageData');
+          }
+        }
+
+        if (OffscreenCanvas.prototype.convertToBlob) {
+          var origConvertToBlob = OffscreenCanvas.prototype.convertToBlob;
+          var proxyConvertToBlob = new Proxy(origConvertToBlob, {
+            apply: function(target, thisArg, argumentsList) {
+              try {
+                var ctx = thisArg.getContext('2d');
+                if (ctx) {
+                  var imgData = ctx.getImageData(0, 0, thisArg.width, thisArg.height);
+                  ctx.putImageData(applyNoise(imgData), 0, 0);
+                }
+              } catch(e) {}
+              return target.apply(thisArg, argumentsList);
+            }
+          });
+          OffscreenCanvas.prototype.convertToBlob = proxyConvertToBlob;
+          registerNative(proxyConvertToBlob, 'convertToBlob');
+          registerNative(origConvertToBlob, 'convertToBlob');
+        }
+      }
+    } catch(e) {}
+  }
 
   // -------------------------------------------------------------
   // 3.5 ClientRects DOM Subpixel Jitter (Multi-Method Parity)
   // -------------------------------------------------------------
-  try {
-    function shiftDOMRectList(origList, shift) {
-      if (!origList || shift === 0) return origList;
-      var count = origList.length || 0;
-      var shifted = [];
-      for (var i = 0; i < count; i++) {
-        var r = origList[i] || (origList.item && origList.item(i));
-        if (r) {
-          shifted.push(new DOMRect(r.x + shift, r.y + shift, r.width, r.height));
-        }
-      }
-      return new Proxy(origList, {
-        get: function(target, prop, receiver) {
-          if (prop === 'length') return shifted.length;
-          if (prop === 'item') {
-            return function(idx) { return shifted[idx] || null; };
+  if (${clientRectsMode !== 'off'}) {
+    try {
+      function shiftDOMRectList(origList, shift) {
+        if (!origList || shift === 0) return origList;
+        var count = origList.length || 0;
+        var shifted = [];
+        for (var i = 0; i < count; i++) {
+          var r = origList[i] || (origList.item && origList.item(i));
+          if (r) {
+            shifted.push(new DOMRect(r.x + shift, r.y + shift, r.width, r.height));
           }
-          if (prop === Symbol.iterator) {
-            return function() { return shifted[Symbol.iterator](); };
-          }
-          var idx = Number(prop);
-          if (!isNaN(idx) && idx >= 0 && idx < shifted.length) {
-            return shifted[idx];
-          }
-          return Reflect.get(target, prop, receiver);
         }
-      });
-    }
-
-    var origGetBoundingClientRect = Element.prototype.getBoundingClientRect;
-    var crShift = ((pSeed % 5) - 2) * 0.0001;
-    if (crShift !== 0) {
-      var proxyGetBoundingClientRect = new Proxy(origGetBoundingClientRect, {
-        apply: function(target, thisArg, argumentsList) {
-          var rect = target.apply(thisArg, argumentsList);
-          if (!rect) return rect;
-          return new DOMRect(
-            rect.x + crShift,
-            rect.y + crShift,
-            rect.width,
-            rect.height
-          );
-        }
-      });
-      Element.prototype.getBoundingClientRect = proxyGetBoundingClientRect;
-      registerNative(proxyGetBoundingClientRect, 'getBoundingClientRect');
-      registerNative(origGetBoundingClientRect, 'getBoundingClientRect');
-
-      if (Element.prototype.getClientRects) {
-        var origGetClientRects = Element.prototype.getClientRects;
-        var proxyGetClientRects = new Proxy(origGetClientRects, {
-          apply: function(target, thisArg, argumentsList) {
-            var rects = target.apply(thisArg, argumentsList);
-            return shiftDOMRectList(rects, crShift);
+        return new Proxy(origList, {
+          get: function(target, prop, receiver) {
+            if (prop === 'length') return shifted.length;
+            if (prop === 'item') {
+              return function(idx) { return shifted[idx] || null; };
+            }
+            if (prop === Symbol.iterator) {
+              return function() { return shifted[Symbol.iterator](); };
+            }
+            var idx = Number(prop);
+            if (!isNaN(idx) && idx >= 0 && idx < shifted.length) {
+              return shifted[idx];
+            }
+            return Reflect.get(target, prop, receiver);
           }
         });
-        Element.prototype.getClientRects = proxyGetClientRects;
-        registerNative(proxyGetClientRects, 'getClientRects');
-        registerNative(origGetClientRects, 'getClientRects');
       }
 
-      if (window.Range && Range.prototype.getBoundingClientRect) {
-        var origRangeGetBoundingClientRect = Range.prototype.getBoundingClientRect;
-        var proxyRangeGetBoundingClientRect = new Proxy(origRangeGetBoundingClientRect, {
+      var origGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+      var crShift = ((pSeed % 5) - 2) * 0.0001;
+      if (crShift !== 0) {
+        var proxyGetBoundingClientRect = new Proxy(origGetBoundingClientRect, {
           apply: function(target, thisArg, argumentsList) {
             var rect = target.apply(thisArg, argumentsList);
             if (!rect) return rect;
@@ -781,28 +879,60 @@ export function ensureProfileStealthExtension(
             );
           }
         });
-        Range.prototype.getBoundingClientRect = proxyRangeGetBoundingClientRect;
-        registerNative(proxyRangeGetBoundingClientRect, 'getBoundingClientRect');
-        registerNative(origRangeGetBoundingClientRect, 'getBoundingClientRect');
-      }
+        Element.prototype.getBoundingClientRect = proxyGetBoundingClientRect;
+        registerNative(proxyGetBoundingClientRect, 'getBoundingClientRect');
+        registerNative(origGetBoundingClientRect, 'getBoundingClientRect');
 
-      if (window.Range && Range.prototype.getClientRects) {
-        var origRangeGetClientRects = Range.prototype.getClientRects;
-        var proxyRangeGetClientRects = new Proxy(origRangeGetClientRects, {
-          apply: function(target, thisArg, argumentsList) {
-            var rects = target.apply(thisArg, argumentsList);
-            return shiftDOMRectList(rects, crShift);
-          }
-        });
-        Range.prototype.getClientRects = proxyRangeGetClientRects;
-        registerNative(proxyRangeGetClientRects, 'getClientRects');
-        registerNative(origRangeGetClientRects, 'getClientRects');
+        if (Element.prototype.getClientRects) {
+          var origGetClientRects = Element.prototype.getClientRects;
+          var proxyGetClientRects = new Proxy(origGetClientRects, {
+            apply: function(target, thisArg, argumentsList) {
+              var rects = target.apply(thisArg, argumentsList);
+              return shiftDOMRectList(rects, crShift);
+            }
+          });
+          Element.prototype.getClientRects = proxyGetClientRects;
+          registerNative(proxyGetClientRects, 'getClientRects');
+          registerNative(origGetClientRects, 'getClientRects');
+        }
+
+        if (window.Range && Range.prototype.getBoundingClientRect) {
+          var origRangeGetBoundingClientRect = Range.prototype.getBoundingClientRect;
+          var proxyRangeGetBoundingClientRect = new Proxy(origRangeGetBoundingClientRect, {
+            apply: function(target, thisArg, argumentsList) {
+              var rect = target.apply(thisArg, argumentsList);
+              if (!rect) return rect;
+              return new DOMRect(
+                rect.x + crShift,
+                rect.y + crShift,
+                rect.width,
+                rect.height
+              );
+            }
+          });
+          Range.prototype.getBoundingClientRect = proxyRangeGetBoundingClientRect;
+          registerNative(proxyRangeGetBoundingClientRect, 'getBoundingClientRect');
+          registerNative(origRangeGetBoundingClientRect, 'getBoundingClientRect');
+        }
+
+        if (window.Range && Range.prototype.getClientRects) {
+          var origRangeGetClientRects = Range.prototype.getClientRects;
+          var proxyRangeGetClientRects = new Proxy(origRangeGetClientRects, {
+            apply: function(target, thisArg, argumentsList) {
+              var rects = target.apply(thisArg, argumentsList);
+              return shiftDOMRectList(rects, crShift);
+            }
+          });
+          Range.prototype.getClientRects = proxyRangeGetClientRects;
+          registerNative(proxyRangeGetClientRects, 'getClientRects');
+          registerNative(origRangeGetClientRects, 'getClientRects');
+        }
       }
-    }
-  } catch(e) {}
+    } catch(e) {}
+  }
 
   // -------------------------------------------------------------
-  // 4. WebGL GPU Hardware & Renderer Spoofing
+  // 4. WebGL GPU Hardware & Renderer Spoofing + Buffer Limits
   // -------------------------------------------------------------
   try {
     var spoofVendor = ${JSON.stringify(gpuVendor)};
@@ -821,6 +951,16 @@ export function ensureProfileStealthExtension(
           if (param === 7936) return 'WebKit';
           // RENDERER
           if (param === 7937) return 'WebKit WebGL';
+          // MAX_TEXTURE_SIZE
+          if (param === 3379) return 16384;
+          // MAX_RENDERBUFFER_SIZE
+          if (param === 34024) return 16384;
+          // MAX_VERTEX_UNIFORM_VECTORS
+          if (param === 36347) return 4096;
+          // MAX_VARYING_VECTORS
+          if (param === 36348) return 30;
+          // MAX_VERTEX_ATTRIBS
+          if (param === 34921) return 16;
           return target.apply(thisArg, argumentsList);
         }
       });
@@ -845,6 +985,28 @@ export function ensureProfileStealthExtension(
       proto.getExtension = proxyGetExtension;
       registerNative(proxyGetExtension, 'getExtension');
       registerNative(origGetExtension, 'getExtension');
+
+      // Deterministic readPixels micro-jitter if webgl noise is enabled
+      if (${webglMode !== 'off'} && proto.readPixels) {
+        var origReadPixels = proto.readPixels;
+        var proxyReadPixels = new Proxy(origReadPixels, {
+          apply: function(target, thisArg, args) {
+            var res = target.apply(thisArg, args);
+            var pixels = args[6];
+            if (pixels && pixels.length > 0) {
+              var step = Math.max(16, (pixels.length >> 4));
+              var jitter = ((pSeed % 3) - 1) || 1;
+              for (var i = 0; i < pixels.length; i += step) {
+                pixels[i] = (pixels[i] + jitter) & 0xFF;
+              }
+            }
+            return res;
+          }
+        });
+        proto.readPixels = proxyReadPixels;
+        registerNative(proxyReadPixels, 'readPixels');
+        registerNative(origReadPixels, 'readPixels');
+      }
     };
 
     if (window.WebGLRenderingContext) hookWebGL(WebGLRenderingContext.prototype);
@@ -852,28 +1014,141 @@ export function ensureProfileStealthExtension(
   } catch(e) {}
 
   // -------------------------------------------------------------
-  // 5. AudioContext Acoustic Frequency Jitter (No In-Place Drift)
+  // 4.5 WebGPU Hardware Descriptors (Dawn Engine)
   // -------------------------------------------------------------
   try {
-    if (window.AudioBuffer) {
-      var perturbedBuffers = new WeakSet();
-      var origGetChannelData = AudioBuffer.prototype.getChannelData;
-      var proxyGetChannelData = new Proxy(origGetChannelData, {
-        apply: function(target, thisArg, argumentsList) {
-          var buffer = target.apply(thisArg, argumentsList);
-          if (!perturbedBuffers.has(buffer)) {
-            perturbedBuffers.add(buffer);
-            var offset = ((pSeed % 7) + 1) * 0.0000001;
-            for (var i = 0; i < buffer.length; i += 100) {
-              buffer[i] += offset;
-            }
-          }
-          return buffer;
+    if (navigator.gpu && navigator.gpu.requestAdapter) {
+      var origRequestAdapter = navigator.gpu.requestAdapter;
+      var proxyRequestAdapter = new Proxy(origRequestAdapter, {
+        apply: function(target, thisArg, args) {
+          return target.apply(thisArg, args).then(function(adapter) {
+            if (!adapter) return adapter;
+            var gpuInfo = {
+              architecture: ${JSON.stringify(isMobile ? 'valhall' : (isMacArm ? 'apple-m1' : 'ampere'))},
+              vendor: ${JSON.stringify(isMobile ? 'arm' : (isMacArm ? 'apple' : (isLinux ? 'mesa' : 'nvidia')))},
+              device: ${JSON.stringify(isMobile ? 'Mali-G710' : (isMacArm ? 'Apple M1' : (isLinux ? 'Intel UHD 620' : 'NVIDIA GeForce RTX 4070')))},
+              description: ${JSON.stringify(gpuRenderer)},
+            };
+            try {
+              Object.defineProperty(adapter, 'info', {
+                get: function() { return gpuInfo; },
+                configurable: true,
+                enumerable: true
+              });
+            } catch(e) {}
+            return adapter;
+          });
         }
       });
-      AudioBuffer.prototype.getChannelData = proxyGetChannelData;
-      registerNative(proxyGetChannelData, 'getChannelData');
-      registerNative(origGetChannelData, 'getChannelData');
+      navigator.gpu.requestAdapter = proxyRequestAdapter;
+      registerNative(proxyRequestAdapter, 'requestAdapter');
+      registerNative(origRequestAdapter, 'requestAdapter');
+    }
+  } catch(e) {}
+
+  // -------------------------------------------------------------
+  // 5. AudioContext Acoustic Frequency Jitter (No In-Place Drift)
+  // -------------------------------------------------------------
+  if (${audioMode !== 'off'}) {
+    try {
+      if (window.AudioBuffer) {
+        var perturbedBuffers = new WeakSet();
+        var origGetChannelData = AudioBuffer.prototype.getChannelData;
+        var proxyGetChannelData = new Proxy(origGetChannelData, {
+          apply: function(target, thisArg, argumentsList) {
+            var buffer = target.apply(thisArg, argumentsList);
+            if (!perturbedBuffers.has(buffer)) {
+              perturbedBuffers.add(buffer);
+              var offset = ((pSeed % 7) + 1) * 0.0000001;
+              for (var i = 0; i < buffer.length; i += 100) {
+                buffer[i] += offset;
+              }
+            }
+            return buffer;
+          }
+        });
+        AudioBuffer.prototype.getChannelData = proxyGetChannelData;
+        registerNative(proxyGetChannelData, 'getChannelData');
+        registerNative(origGetChannelData, 'getChannelData');
+      }
+    } catch(e) {}
+  }
+
+  // -------------------------------------------------------------
+  // 6. WebRTC JS Leak Guard (Relay Policy & Local IP Sanitization)
+  // -------------------------------------------------------------
+  try {
+    var rtcMode = ${JSON.stringify(webrtcOpt)};
+    if (rtcMode === 'proxy_only' || rtcMode === 'disabled' || rtcMode === 'disable_non_proxied_udp') {
+      var hookPeerConnection = function(RTCClass, name) {
+        if (!RTCClass) return;
+        var OrigPC = RTCClass;
+        var ProxyPC = function(config, constraints) {
+          var conf = Object.assign({}, config);
+          if (rtcMode === 'proxy_only' || rtcMode === 'disable_non_proxied_udp') {
+            conf.iceTransportPolicy = 'relay';
+          }
+          var pc = new OrigPC(conf, constraints);
+
+          if (pc.addIceCandidate) {
+            var origAddIce = pc.addIceCandidate;
+            pc.addIceCandidate = new Proxy(origAddIce, {
+              apply: function(target, thisArg, args) {
+                var cand = args[0];
+                if (cand && cand.candidate) {
+                  if (cand.candidate.indexOf('typ host') !== -1 || cand.candidate.indexOf('typ srflx') !== -1) {
+                    return Promise.resolve();
+                  }
+                }
+                return target.apply(thisArg, args);
+              }
+            });
+            registerNative(pc.addIceCandidate, 'addIceCandidate');
+          }
+
+          function filterSDP(desc) {
+            if (desc && desc.sdp) {
+              var lines = desc.sdp.split('\\r\\n');
+              var filtered = lines.filter(function(line) {
+                if (line.startsWith('a=candidate:') && (line.indexOf('typ host') !== -1 || line.indexOf('typ srflx') !== -1)) {
+                  return false;
+                }
+                return true;
+              });
+              return new RTCSessionDescription({ type: desc.type, sdp: filtered.join('\\r\\n') });
+            }
+            return desc;
+          }
+
+          if (pc.createOffer) {
+            var origCreateOffer = pc.createOffer;
+            pc.createOffer = new Proxy(origCreateOffer, {
+              apply: function(target, thisArg, args) {
+                return target.apply(thisArg, args).then(filterSDP);
+              }
+            });
+            registerNative(pc.createOffer, 'createOffer');
+          }
+
+          if (pc.createAnswer) {
+            var origCreateAnswer = pc.createAnswer;
+            pc.createAnswer = new Proxy(origCreateAnswer, {
+              apply: function(target, thisArg, args) {
+                return target.apply(thisArg, args).then(filterSDP);
+              }
+            });
+            registerNative(pc.createAnswer, 'createAnswer');
+          }
+
+          return pc;
+        };
+        ProxyPC.prototype = OrigPC.prototype;
+        window[name] = ProxyPC;
+        registerNative(ProxyPC, name);
+      };
+
+      if (window.RTCPeerConnection) hookPeerConnection(window.RTCPeerConnection, 'RTCPeerConnection');
+      if (window.webkitRTCPeerConnection) hookPeerConnection(window.webkitRTCPeerConnection, 'webkitRTCPeerConnection');
     }
   } catch(e) {}
 })();

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { CommercialPlan, CommercialPlanLimits, CommercialPlanTier, CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
-import { CANONICAL_PLAN_CATALOG, legacyPlanIdToCanonical } from './canonical-plan-catalog.js';
+import { CANONICAL_PLAN_CATALOG, legacyPlanIdToCanonical, INITIAL_PLAN_PRICES } from './canonical-plan-catalog.js';
 
 export const DEFAULT_COMMERCIAL_PLANS: CommercialPlan[] = [
   {
@@ -125,12 +125,18 @@ export function getCommercialPlanById(planId: string): CommercialPlan | null {
     const canonicalId = legacyPlanIdToCanonical(planId);
     const canonical = canonicalId ? (CANONICAL_PLAN_CATALOG as any)[canonicalId] : null;
     if (canonical) {
+      const priceEntry = INITIAL_PLAN_PRICES.find((p) => p.planId === canonicalId);
+      const monthlyPaise = priceEntry?.monthlyPricePaise || 0;
+      const annualMonthlyPaise = priceEntry?.annualPricePaise || Math.round(monthlyPaise * 0.5);
+      const priceMonthly = Math.round(monthlyPaise / 100);
+      const priceAnnual = Math.round((annualMonthlyPaise * 12) / 100);
+
       return {
         id: canonical.planId,
         name: canonical.displayName,
         tier: canonical.tier,
-        priceMonthly: 0,
-        priceAnnual: 0,
+        priceMonthly,
+        priceAnnual,
         limits: {
           maxProfiles: canonical.profileLimit,
           maxDevices: canonical.seatLimit || 1,

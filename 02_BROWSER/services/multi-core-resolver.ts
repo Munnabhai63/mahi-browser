@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { BrowserEngine } from '../../10_CONFIG/shared/types/profile.js';
-import { getStealthOrbitaEnginePath, detectSystemBrowsers } from '../detector.js';
+import { getMahiCustomCorePath, getStealthOrbitaEnginePath, detectSystemBrowsers } from '../detector.js';
 import {
   getBundledEngineExecutablePath,
   getProductionChromiumExecutablePath,
@@ -15,7 +15,7 @@ import { CHROMIUM_PRODUCTION_VERSION } from '../../10_CONFIG/engine-config.js';
 export interface MultiCoreResolution {
   executablePath: string;
   majorVersion: number | null;
-  coreType: 'exact-multi-core' | 'mahi-bundled' | 'mahi-managed' | 'stealth-orbita' | 'system-chromium';
+  coreType: 'exact-multi-core' | 'mahi-bundled' | 'mahi-managed' | 'mahi-custom-core' | 'stealth-orbita' | 'system-chromium';
   isExactVersionMatch: boolean;
 }
 
@@ -62,6 +62,7 @@ export function resolveMultiCoreExecutablePath(
   if (major) {
     const mahiCoreCandidates = [
       path.join(home, '.mahi', 'cores', `chrome-${major}`, exeName),
+      path.join(home, '.mahi', 'cores', `mahi-${major}`, exeName),
       path.join(home, '.mahi', 'cores', `orbita-${major}`, exeName),
       path.join(home, '.mahi', 'cores', `${major}`, exeName),
     ];
@@ -115,13 +116,14 @@ export function resolveMultiCoreExecutablePath(
     }
   }
 
-  // 4. Fallback to primary C++ stealth engine if configured in ~/.mahi/cores
-  const orbitaPath = getStealthOrbitaEnginePath();
-  if (orbitaPath && fs.existsSync(orbitaPath)) {
+  // 4. Fallback to primary custom stealth engine if configured in ~/.mahi/cores
+  const customCorePath = getMahiCustomCorePath();
+  if (customCorePath && fs.existsSync(customCorePath)) {
+    const isMahi = customCorePath.includes('mahi-') || customCorePath.includes('chrome-');
     return {
-      executablePath: orbitaPath,
+      executablePath: customCorePath,
       majorVersion: major,
-      coreType: 'stealth-orbita',
+      coreType: isMahi ? 'mahi-custom-core' : 'stealth-orbita',
       isExactVersionMatch: false,
     };
   }

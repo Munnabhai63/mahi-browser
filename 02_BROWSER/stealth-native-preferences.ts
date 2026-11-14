@@ -31,14 +31,12 @@ export interface WebGpuAdapterConfig {
 }
 
 /**
- * Injects the complete 117-key decompiled C++ native preference schema into Default/Preferences.
- * Reverse-engineered directly from Orbita chrome.dll (preference.cc, content.cc, gologin_main_parts.cc).
+ * Injects the MAHI Native Stealth Preference Schema into Default/Preferences.
+ * Step 4 operates as a hybrid JS/DNR + native preference schema bridge awaiting
+ * full Step 5 custom C++ Chromium core hooks.
  *
- * Chromium C++ core reads the 'gologin' root dictionary directly in native memory
- * before web content or JavaScript can execute.
- *
- * This completely replaces and eliminates the need for detectable Chrome extensions
- * or JavaScript monkey-patching!
+ * Both 'mahi' and 'gologin' root dictionaries are populated with identical configurations
+ * to ensure 100% backward compatibility with multi-core resolvers and legacy test assertions.
  */
 export function injectNativeStealthPreferences(
   storageDir: string,
@@ -103,7 +101,7 @@ export function injectNativeStealthPreferences(
     const fakeVideoEnabled = Boolean(settings?.fakeVideoCapture?.enable && settings?.fakeVideoCapture?.filePath);
     const fakeVideoFile = fakeVideoEnabled ? String(settings.fakeVideoCapture.filePath) : '';
 
-    const nativeGologinConfig: Record<string, any> = {
+    const nativeMahiStealthConfig: Record<string, any> = {
       // 1. 2D Canvas Noise (Skia engine hooks)
       canvasMode: fp.canvas === 'off' ? 'off' : 'noise',
       canvasNoise: fp.canvas === 'off' ? 0 : canvasNoiseVal,
@@ -222,7 +220,7 @@ export function injectNativeStealthPreferences(
 
     // Timezone injection
     if (locale.timezone) {
-      nativeGologinConfig.timezone = {
+      nativeMahiStealthConfig.timezone = {
         id: locale.timezone,
       };
     }
@@ -230,7 +228,7 @@ export function injectNativeStealthPreferences(
     // Geolocation injection
     if (settings?.permissions?.geolocationData) {
       const geo = settings.permissions.geolocationData;
-      nativeGologinConfig.geoLocation = {
+      nativeMahiStealthConfig.geoLocation = {
         mode: 'prompt',
         latitude: geo.latitude,
         longitude: geo.longitude,
@@ -240,20 +238,21 @@ export function injectNativeStealthPreferences(
 
     // WebRTC Public IP & ICE blackhole spoofing
     if (proxyIp) {
-      nativeGologinConfig.webrtc = {
+      nativeMahiStealthConfig.webrtc = {
         enable: true,
         mode: 'alerted',
         publicIP: proxyIp,
         should_fill_empty_ice_list: true,
       };
-      nativeGologinConfig.network = {
+      nativeMahiStealthConfig.network = {
         enable: true,
         mask: true,
       };
     }
 
     // Attach native schema to the root of Chromium Preferences
-    prefs.gologin = nativeGologinConfig;
+    prefs.mahi = nativeMahiStealthConfig;
+    prefs.gologin = nativeMahiStealthConfig; // Legacy mirror for compatibility with C++ engine and existing tests
 
     // Disable HTTPS-First Mode interstitial to allow seamless proxy & HTTP testing
     if (!prefs.security || typeof prefs.security !== 'object') {

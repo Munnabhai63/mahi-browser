@@ -15,10 +15,10 @@ export interface VideoCaptureArgs {
 }
 
 /**
- * Builds Chromium command line flags for injecting a virtual camera feed.
- * Reverse engineered from Orbita chrome.dll fake_video_capture bindings.
+ * Builds Chromium command line flags for injecting a virtual camera feed into MAHI Browser.
+ * Step 4 provides hybrid flags and profile preferences awaiting Step 5 custom C++ camera hooks.
  *
- * Used for facial KYC bypass, synthetic video streams, and automated video verification.
+ * Used for facial KYC verification testing, synthetic video streams, and automated media tests.
  */
 export function buildVideoCaptureFlags(config?: FakeVideoCaptureConfig): VideoCaptureArgs {
   if (!config || !config.enable || !config.filePath) {

@@ -102,15 +102,21 @@ export function detectSystemBrowsers(): DetectedBrowser[] {
 
 /**
  * Searches for an authorized MAHI custom core in ~/.mahi/cores
- * to provide native multi-core spoofing.
+ * to provide native multi-core spoofing (checking chrome-* / mahi-* before orbita-*).
  */
-export function getStealthOrbitaEnginePath(): string | null {
+export function getMahiCustomCorePath(): string | null {
   const home = os.homedir();
   const mahiCoresDir = path.join(home, '.mahi', 'cores');
   if (fs.existsSync(mahiCoresDir)) {
     try {
       const entries = fs.readdirSync(mahiCoresDir);
-      for (const entry of entries) {
+      // Prioritize chrome-* and mahi-* over orbita-*
+      const sortedEntries = entries.sort((a, b) => {
+        const aPrefix = a.startsWith('chrome-') ? 0 : (a.startsWith('mahi-') ? 1 : (a.startsWith('orbita-') ? 3 : 2));
+        const bPrefix = b.startsWith('chrome-') ? 0 : (b.startsWith('mahi-') ? 1 : (b.startsWith('orbita-') ? 3 : 2));
+        return aPrefix - bPrefix;
+      });
+      for (const entry of sortedEntries) {
         const candidate = path.join(mahiCoresDir, entry, os.platform() === 'win32' ? 'chrome.exe' : 'chrome');
         if (fs.existsSync(candidate)) {
           return candidate;
@@ -120,6 +126,8 @@ export function getStealthOrbitaEnginePath(): string | null {
   }
   return null;
 }
+
+export const getStealthOrbitaEnginePath = getMahiCustomCorePath;
 
 export function resolveExecutablePath(engine: BrowserEngine, customPath?: string): string {
   if (customPath && fs.existsSync(customPath)) {
@@ -143,9 +151,9 @@ export function resolveExecutablePath(engine: BrowserEngine, customPath?: string
   }
 
   // 3. User custom MAHI cores (~/.mahi/cores)
-  const mahiOrbita = getStealthOrbitaEnginePath();
-  if (mahiOrbita && fs.existsSync(mahiOrbita)) {
-    return mahiOrbita;
+  const mahiCustom = getMahiCustomCorePath();
+  if (mahiCustom && fs.existsSync(mahiCustom)) {
+    return mahiCustom;
   }
 
   // 4. Detected System Browsers (Chrome, Edge, Chromium)

@@ -154,6 +154,29 @@ function initAuthSessionState() {
       document.cookie = 'mahi_session=; path=/; max-age=0; SameSite=Lax';
       window.location.href = '/';
     });
+
+    // Handle any pending return order verification that occurred prior to sign in
+    const pendingOrder = sessionStorage.getItem('mahi_pending_order_id');
+    if (pendingOrder) {
+      showToast('Verifying your pending payment with bank...', 'info', 4000);
+      fetch('/api/v1/billing/verify-youpi', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ orderId: pendingOrder })
+      })
+        .then(res => res.json())
+        .then(resData => {
+          if (resData.success && resData.status === 'SUCCEEDED') {
+            sessionStorage.removeItem('mahi_pending_order_id');
+            showToast('Payment verified! Your subscription has been activated.', 'success', 6000);
+            setTimeout(() => window.location.reload(), 1500);
+          }
+        })
+        .catch(() => {});
+    }
   })
   .catch(() => {});
 }
@@ -2721,11 +2744,11 @@ function initResourceModal() {
       `
     },
     'cloud-browser': {
-      category: 'Cloud Architecture',
-      title: 'MAHI Cloud Browser Profile Synchronization',
+      category: 'Cloud Architecture (Self-Hosted Roadmap)',
+      title: 'MAHI Cloud Browser Profile Synchronization (Roadmap)',
       html: `
         <p style="color: #64748b; font-size: 0.925rem; line-height: 1.6; margin-bottom: 1rem;">
-          Synchronize profile session cookies, local storage, extensions, and bookmarks securely across multiple team workstations with end-to-end AES-256-GCM encryption.
+          Self-hosted encrypted profile synchronization roadmap: Synchronize profile session cookies, local storage, extensions, and bookmarks securely across multiple team workstations with end-to-end AES-256-GCM encryption.
         </p>
         <ul style="color: #475569; font-size: 0.875rem; line-height: 1.7; padding-left: 1.25rem; margin-bottom: 1.25rem;">
           <li>Zero credentials shared with server — offline sync key encryption</li>
@@ -2747,11 +2770,11 @@ function initResourceModal() {
       `
     },
     'web-unlocker': {
-      category: 'Antibot Bypass',
-      title: 'AI Web Unlocker & Captcha Resolution',
+      category: 'Antibot Bypass (Roadmap)',
+      title: 'AI Web Unlocker & Captcha Resolution (Roadmap)',
       html: `
         <p style="color: #64748b; font-size: 0.925rem; line-height: 1.6; margin-bottom: 1rem;">
-          Built-in human behavioral cursor movement and automated resolution of Cloudflare Turnstile, reCAPTCHA v2/v3, and hCaptcha.
+          Roadmap antibot resolution: Built-in human behavioral cursor movement and automated resolution of Cloudflare Turnstile, reCAPTCHA v2/v3, and hCaptcha.
         </p>
       `
     },
@@ -2906,7 +2929,7 @@ function initPricingSection() {
           '117 C++ Native Hooks',
           'AI Humanizer Engine',
           '2 GB of residential proxy data included',
-          'Cloud Browser via web',
+          'Cloud Browser via web (Roadmap)',
           'Cookies import and export'
         ]
       },
@@ -3513,17 +3536,6 @@ function calculateDrawerTotals() {
   };
 }
 
-function ensureRazorpaySdk() {
-  if (window.Razorpay) return Promise.resolve(true);
-  return new Promise(resolve => {
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.head.appendChild(script);
-  });
-}
-
 function initCheckoutDrawer() {
   // Inject Drawer CSS if not present
   if (!document.getElementById('mahi-checkout-styles')) {
@@ -3643,6 +3655,14 @@ function initCheckoutDrawer() {
         .catch(() => {
           showToast('Payment verification check could not be completed.', 'warning', 4000);
         });
+    } else {
+      sessionStorage.setItem('mahi_pending_order_id', returnOrderId);
+      showToast('Payment received! Please sign in or create an account to activate your subscription.', 'info', 6000);
+      const authModal = document.getElementById('auth-modal');
+      if (authModal) {
+        authModal.classList.add('open');
+        document.body.style.overflow = 'hidden';
+      }
     }
   }
 }
@@ -3693,6 +3713,11 @@ function openCheckoutDrawer(planId, billingCycle, extraMembers, extraProxyGb) {
     .then(res => {
       if (res && res.gateways) {
         window.__mahiGateways = res.gateways;
+        const enabledGw = res.gateways.filter(g => g.enabled);
+        if (enabledGw.length > 0 && !enabledGw.some(g => g.id === checkoutDrawerState.selectedGateway)) {
+          checkoutDrawerState.selectedGateway = enabledGw[0].id;
+        }
+        renderDrawerContent();
       }
     })
     .catch(() => {});
@@ -3711,12 +3736,25 @@ function renderDrawerContent() {
   if (!drawer) return;
 
   const totals = calculateDrawerTotals();
-  const gateway = checkoutDrawerState.selectedGateway;
   const payInfo = checkoutDrawerState.paymentInfo || {
     upi_id: '6375823589@slc',
     upi_account_holder: 'MAHI Browser Commercial',
     upi_qr_asset: '/assets/img/payments/mahi-upi-qr.png'
   };
+
+  const allGateways = (window.__mahiGateways && Array.isArray(window.__mahiGateways))
+    ? window.__mahiGateways.filter(g => g.enabled !== false)
+    : [
+        { id: 'youpi_pg', name: 'Instant UPI', subtitle: '0% Fee · QR / App' },
+        { id: 'stripe', name: 'Stripe', subtitle: 'Intl Cards ($)' },
+        { id: 'upi_manual', name: 'Direct UPI', subtitle: 'QR Code & UTR' }
+      ];
+
+  let gateway = checkoutDrawerState.selectedGateway;
+  if (allGateways.length > 0 && !allGateways.some(g => g.id === gateway)) {
+    gateway = allGateways[0].id;
+    checkoutDrawerState.selectedGateway = gateway;
+  }
 
   drawer.innerHTML = `
     <!-- Header -->
@@ -3832,19 +3870,19 @@ function renderDrawerContent() {
       <!-- Payment Gateway Selector -->
       <div>
         <span style="font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 10px;">Select Payment Gateway</span>
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-          <button type="button" onclick="onDrawerGatewayChange('youpi_pg')" class="drawer-gateway-btn ${gateway === 'youpi_pg' ? 'active' : ''}" style="padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); cursor: pointer; text-align: center; transition: all 0.15s;">
-            <div style="font-size: 12px; font-weight: 800; color: #f8fafc;">Instant UPI</div>
-            <div style="font-size: 9px; color: #34d399; margin-top: 2px;">0% Fee · QR / App</div>
-          </button>
-          <button type="button" onclick="onDrawerGatewayChange('stripe')" class="drawer-gateway-btn ${gateway === 'stripe' ? 'active' : ''}" style="padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); cursor: pointer; text-align: center; transition: all 0.15s;">
-            <div style="font-size: 12px; font-weight: 800; color: #f8fafc;">Stripe</div>
-            <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">Intl Cards ($)</div>
-          </button>
-          <button type="button" onclick="onDrawerGatewayChange('upi_manual')" class="drawer-gateway-btn ${gateway === 'upi_manual' ? 'active' : ''}" style="padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); cursor: pointer; text-align: center; transition: all 0.15s;">
-            <div style="font-size: 12px; font-weight: 800; color: #f8fafc;">Direct UPI</div>
-            <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">QR Code & UTR</div>
-          </button>
+        <div style="display: grid; grid-template-columns: repeat(${Math.max(1, Math.min(3, allGateways.length))}, 1fr); gap: 8px;">
+          ${allGateways.map(gw => {
+            const isSelected = gw.id === gateway;
+            const label = gw.id === 'youpi_pg' ? 'Instant UPI' : gw.id === 'stripe' ? 'Stripe' : 'Direct UPI';
+            const subtitle = gw.subtitle || (gw.id === 'youpi_pg' ? '0% Fee · QR / App' : gw.id === 'stripe' ? 'Intl Cards ($)' : 'QR Code & UTR');
+            const subColor = gw.id === 'youpi_pg' ? '#34d399' : '#94a3b8';
+            return `
+              <button type="button" onclick="onDrawerGatewayChange('${gw.id}')" class="drawer-gateway-btn ${isSelected ? 'active' : ''}" style="padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); cursor: pointer; text-align: center; transition: all 0.15s;">
+                <div style="font-size: 12px; font-weight: 800; color: #f8fafc;">${label}</div>
+                <div style="font-size: 9px; color: ${subColor}; margin-top: 2px;">${subtitle}</div>
+              </button>
+            `;
+          }).join('')}
         </div>
       </div>
 
@@ -3964,86 +4002,6 @@ async function executeYoupiPayment() {
   } catch (err) {
     showToast(err.message || 'UPI initialization failed', 'error');
     if (btn) { btn.disabled = false; btn.innerText = 'Pay via Instant UPI / QR →'; }
-  }
-}
-
-async function executeRazorpayPayment() {
-  const btn = document.getElementById('btn-drawer-pay-razorpay');
-  if (btn) {
-    btn.disabled = true;
-    btn.innerText = 'Initializing Razorpay...';
-  }
-
-  const token = localStorage.getItem('mahi_access_token') || localStorage.getItem('mahi_auth_token');
-  try {
-    const res = await fetch('/api/v1/billing/checkout', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        planId: checkoutDrawerState.planId,
-        billingCycle: checkoutDrawerState.billingCycle,
-        provider: 'razorpay',
-        currency: 'INR',
-        extraMembers: checkoutDrawerState.extraMembers,
-        extraProxyGb: checkoutDrawerState.extraProxyGb
-      })
-    });
-
-    const data = await res.json();
-    if (!data.success) {
-      showToast(data.error || 'Failed to initialize Razorpay order', 'error');
-      if (btn) { btn.disabled = false; btn.innerText = 'Pay via Razorpay →'; }
-      return;
-    }
-
-    await ensureRazorpaySdk();
-    if (!window.Razorpay) {
-      if (data.checkoutUrl) window.location.href = data.checkoutUrl;
-      return;
-    }
-
-    const meta = data.gatewayMeta || {};
-    const rzp = new window.Razorpay({
-      key: meta.razorpayKeyId,
-      amount: meta.amount,
-      currency: meta.currency || 'INR',
-      name: meta.name || 'MAHI Browser',
-      description: meta.description || 'Subscription',
-      order_id: meta.razorpayOrderId,
-      notes: meta.notes || {},
-      handler: async function (response) {
-        showToast('Payment captured! Verifying signature...', 'info');
-        const vRes = await fetch('/api/v1/billing/verify-razorpay', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify(response)
-        });
-        const vData = await vRes.json();
-        if (vData.success) {
-          showToast('Payment verified successfully! Subscription activated.', 'success');
-          closeCheckoutDrawer();
-          setTimeout(() => window.location.reload(), 1500);
-        } else {
-          showToast(vData.error || 'Payment signature verification failed', 'error');
-        }
-      },
-      modal: {
-        ondismiss: function () {
-          if (btn) { btn.disabled = false; renderDrawerContent(); }
-        }
-      }
-    });
-
-    rzp.open();
-  } catch (err) {
-    showToast(err.message || 'Razorpay initialization failed', 'error');
-    if (btn) { btn.disabled = false; btn.innerText = 'Pay via Razorpay →'; }
   }
 }
 
@@ -4170,7 +4128,6 @@ window.onDrawerMembersChange = onDrawerMembersChange;
 window.onDrawerProxyChange = onDrawerProxyChange;
 window.onDrawerGatewayChange = onDrawerGatewayChange;
 window.executeYoupiPayment = executeYoupiPayment;
-window.executeRazorpayPayment = executeRazorpayPayment;
 window.executeStripePayment = executeStripePayment;
 window.executeManualUpiSubmission = executeManualUpiSubmission;
 
