@@ -5,9 +5,32 @@ import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
 let SQL: SqlJsStatic | null = null;
 let dbInstance: Database | null = null;
 let currentDbPath: string | null = null;
-let inTransaction = false;
+let transactionDepth = 0;
 let isSaving = false;
+let savePending = false;
 let saveTimeout: NodeJS.Timeout | null = null;
+let exitHookRegistered = false;
+
+function registerProcessExitFlush(): void {
+  if (exitHookRegistered) return;
+  exitHookRegistered = true;
+
+  const onExit = () => {
+    try {
+      flushDatabaseToDisk();
+    } catch {}
+  };
+
+  process.on('beforeExit', onExit);
+  process.on('SIGINT', () => {
+    onExit();
+    process.exit(130);
+  });
+  process.on('SIGTERM', () => {
+    onExit();
+    process.exit(143);
+  });
+}
 
 export function isTestRunnerEnvironment(): boolean {
   return (
@@ -77,14 +100,17 @@ export function setCustomDatabasePath(dbPath: string): void {
   if (isTestRunnerEnvironment()) {
     assertPathIsNotProduction(dbPath);
   }
+  if (dbInstance) {
+    try {
+      flushDatabaseToDisk();
+      dbInstance.close();
+    } catch {}
+    dbInstance = null;
+  }
   currentDbPath = dbPath;
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
-  }
-  if (dbInstance) {
-    try { dbInstance.close(); } catch {}
-    dbInstance = null;
   }
 }
 
@@ -108,11 +134,16 @@ export async function initSqlEngine(): Promise<SqlJsStatic> {
       }
     });
   }
+  registerProcessExitFlush();
   return SQL;
 }
 
 export function saveDatabaseToDisk(): void {
-  if (!dbInstance || inTransaction || isSaving) return;
+  if (!dbInstance || transactionDepth > 0) return;
+  if (isSaving) {
+    savePending = true;
+    return;
+  }
   isSaving = true;
   try {
     const data = dbInstance.export();
@@ -120,12 +151,32 @@ export function saveDatabaseToDisk(): void {
     const dbPath = getDatabasePath();
     const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(dbPath, buffer);
+
+    // Atomic write pattern: write to tmp file with fsync, then atomic rename
+    const tmpPath = `${dbPath}.tmp.${process.pid}.${Date.now()}`;
+    const fd = fs.openSync(tmpPath, 'w');
+    fs.writeSync(fd, buffer);
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+
+    fs.renameSync(tmpPath, dbPath);
   } catch (err) {
-    console.error('Failed to save SQLite database to disk:', err);
+    console.error('[DATABASE ATOMIC SAVE ERROR] Failed to save SQLite database to disk:', err);
   } finally {
     isSaving = false;
+    if (savePending) {
+      savePending = false;
+      saveDatabaseToDisk();
+    }
   }
+}
+
+export function flushDatabaseToDisk(): void {
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+  }
+  saveDatabaseToDisk();
 }
 
 export function requestDatabaseSave(): void {
@@ -159,13 +210,32 @@ export function getDatabase(): SqliteWrapper {
     if (fs.existsSync(dbPath)) {
       try {
         const fileBuffer = fs.readFileSync(dbPath);
-        dbInstance = new SQL.Database(fileBuffer);
-      } catch {
+        if (fileBuffer.length > 0) {
+          const testDb = new SQL.Database(fileBuffer);
+          testDb.exec('PRAGMA schema_version;');
+          dbInstance = testDb;
+        } else {
+          dbInstance = new SQL.Database();
+        }
+      } catch (loadErr) {
+        // CORRUPTION PRESERVATION: Never silently overwrite! Preserve corrupt copy.
+        const bakPath = `${dbPath}.corrupt.${Date.now()}.bak`;
+        try {
+          fs.copyFileSync(dbPath, bakPath);
+          console.error(`[DATABASE CRITICAL] Database at "${dbPath}" failed to load. Preserved copy at "${bakPath}":`, loadErr);
+        } catch (copyErr) {
+          console.error(`[DATABASE CRITICAL] Failed to create backup of corrupted database at "${dbPath}":`, copyErr);
+        }
         dbInstance = new SQL.Database();
       }
     } else {
       dbInstance = new SQL.Database();
     }
+
+    // Always enforce foreign key constraints
+    try {
+      dbInstance.exec('PRAGMA foreign_keys = ON;');
+    } catch {}
   }
 
   const rawDb = dbInstance;
@@ -173,17 +243,23 @@ export function getDatabase(): SqliteWrapper {
   return {
     transaction: <T extends (...args: any[]) => any>(fn: T): T => {
       return ((...args: any[]) => {
-        rawDb.exec('BEGIN TRANSACTION;');
-        inTransaction = true;
+        const spName = `sp_${transactionDepth}`;
+        rawDb.exec(`SAVEPOINT ${spName};`);
+        transactionDepth++;
         try {
           const res = fn(...args);
-          rawDb.exec('COMMIT;');
-          inTransaction = false;
-          requestDatabaseSave();
+          rawDb.exec(`RELEASE ${spName};`);
+          transactionDepth--;
+          if (transactionDepth === 0) {
+            requestDatabaseSave();
+          }
           return res;
         } catch (err) {
-          try { rawDb.exec('ROLLBACK;'); } catch {}
-          inTransaction = false;
+          try {
+            rawDb.exec(`ROLLBACK TO ${spName};`);
+            rawDb.exec(`RELEASE ${spName};`);
+          } catch {}
+          transactionDepth--;
           throw err;
         }
       }) as T;
@@ -192,11 +268,11 @@ export function getDatabase(): SqliteWrapper {
       const isBegin = /BEGIN/i.test(sql);
       const isCommitOrRollback = /COMMIT|ROLLBACK/i.test(sql);
 
-      if (isBegin) inTransaction = true;
+      if (isBegin) transactionDepth++;
       rawDb.exec(sql);
-      if (isCommitOrRollback) inTransaction = false;
+      if (isCommitOrRollback && transactionDepth > 0) transactionDepth--;
 
-      if (!inTransaction) {
+      if (transactionDepth === 0) {
         requestDatabaseSave();
       }
     },
@@ -205,10 +281,23 @@ export function getDatabase(): SqliteWrapper {
         run: (...params: unknown[]) => {
           const safeParams = params.map((p) => (p === undefined ? null : p));
           rawDb.run(sql, safeParams as any);
-          if (!inTransaction) {
+          const changes = rawDb.getRowsModified();
+          let lastInsertRowid: number | bigint = 0;
+          if (/^\s*INSERT\b/i.test(sql)) {
+            try {
+              const res = rawDb.exec('SELECT last_insert_rowid() AS id;');
+              if (res.length > 0 && res[0].values.length > 0) {
+                const val = res[0].values[0][0];
+                if (typeof val === 'number') lastInsertRowid = val;
+                else if (typeof val === 'bigint') lastInsertRowid = val;
+                else if (typeof val === 'string') lastInsertRowid = parseInt(val, 10) || 0;
+              }
+            } catch {}
+          }
+          if (transactionDepth === 0) {
             requestDatabaseSave();
           }
-          return { changes: 1, lastInsertRowid: 0 };
+          return { changes, lastInsertRowid };
         },
         get: (...params: unknown[]) => {
           const safeParams = params.map((p) => (p === undefined ? null : p));
@@ -240,8 +329,8 @@ export function getDatabase(): SqliteWrapper {
       };
     },
     close: () => {
-      inTransaction = false;
-      saveDatabaseToDisk();
+      transactionDepth = 0;
+      flushDatabaseToDisk();
       try {
         rawDb.close();
       } catch {}
@@ -253,8 +342,8 @@ export function getDatabase(): SqliteWrapper {
 
 export function closeDatabase(): void {
   if (dbInstance) {
-    inTransaction = false;
-    saveDatabaseToDisk();
+    transactionDepth = 0;
+    flushDatabaseToDisk();
     try {
       dbInstance.close();
     } catch {}

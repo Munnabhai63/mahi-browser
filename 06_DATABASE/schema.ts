@@ -186,6 +186,54 @@ CREATE TABLE IF NOT EXISTS local_license_cache (
 );
 `;
 
+export function tableExists(db: any, tableName: string): boolean {
+  try {
+    const row = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(tableName);
+    return !!row;
+  } catch {
+    return false;
+  }
+}
+
+export function columnExists(db: any, tableName: string, columnName: string): boolean {
+  try {
+    if (!tableExists(db, tableName)) return false;
+    const columns = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+    return columns.some((c) => c.name.toLowerCase() === columnName.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+export function addColumnIfNotExists(db: any, tableName: string, columnName: string, columnDef: string): void {
+  if (tableExists(db, tableName) && !columnExists(db, tableName, columnName)) {
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDef}`);
+  }
+}
+
+export function runMigration(db: any, version: number, name: string, fn: () => void): void {
+  const check = db.prepare('SELECT version FROM schema_migrations WHERE version = ?').get(version);
+  if (check) return;
+
+  const spName = `mig_${version}`;
+  db.exec(`SAVEPOINT ${spName}`);
+  try {
+    fn();
+    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
+      version,
+      new Date().toISOString()
+    );
+    db.exec(`RELEASE SAVEPOINT ${spName}`);
+  } catch (err) {
+    try {
+      db.exec(`ROLLBACK TO SAVEPOINT ${spName}`);
+      db.exec(`RELEASE SAVEPOINT ${spName}`);
+    } catch {}
+    console.error(`[MIGRATION] Migration v${version} (${name}) failed and was rolled back:`, err);
+    throw err;
+  }
+}
+
 export async function initializeDatabase(): Promise<void> {
   await initSqlEngine();
   const db = getDatabase();
@@ -197,1077 +245,947 @@ export async function initializeDatabase(): Promise<void> {
   }
 
   // Migration v2: Add country_name and public_ip columns to proxies
-  const checkMigration2 = db.prepare('SELECT version FROM schema_migrations WHERE version = 2').get();
-  if (!checkMigration2) {
-    try { db.exec(`ALTER TABLE proxies ADD COLUMN country_name TEXT`); } catch {}
-    try { db.exec(`ALTER TABLE proxies ADD COLUMN public_ip TEXT`); } catch {}
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (2, ?)').run(new Date().toISOString());
-  }
+  runMigration(db, 2, 'proxies country_name and public_ip', () => {
+    addColumnIfNotExists(db, 'proxies', 'country_name', 'TEXT');
+    addColumnIfNotExists(db, 'proxies', 'public_ip', 'TEXT');
+  });
 
   // Migration v3: Create profile_statistics table for persistent historical session data.
-  const checkMigration3 = db.prepare('SELECT version FROM schema_migrations WHERE version = 3').get();
-  if (!checkMigration3) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS profile_statistics (
-          profile_id TEXT PRIMARY KEY,
-          total_sessions INTEGER NOT NULL DEFAULT 0,
-          total_uptime_seconds INTEGER NOT NULL DEFAULT 0,
-          last_session_started_at TEXT,
-          last_session_stopped_at TEXT,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        )
-      `);
-    } catch {}
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (3, ?)').run(new Date().toISOString());
-  }
+  runMigration(db, 3, 'profile_statistics table', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS profile_statistics (
+        profile_id TEXT PRIMARY KEY,
+        total_sessions INTEGER NOT NULL DEFAULT 0,
+        total_uptime_seconds INTEGER NOT NULL DEFAULT 0,
+        last_session_started_at TEXT,
+        last_session_stopped_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+  });
 
   // Migration v4: Licensing tables
-  const checkMigration4 = db.prepare('SELECT version FROM schema_migrations WHERE version = 4').get();
-  if (!checkMigration4) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS licenses (
-          id TEXT PRIMARY KEY,
-          license_key_hash TEXT NOT NULL UNIQUE,
-          key_masked TEXT NOT NULL,
-          customer_name TEXT NOT NULL,
-          account_id TEXT,
-          status TEXT NOT NULL DEFAULT 'NOT_ACTIVATED',
-          duration_type TEXT NOT NULL,
-          max_devices INTEGER NOT NULL DEFAULT 1,
-          starts_at TEXT NOT NULL,
-          expires_at TEXT,
-          created_at TEXT NOT NULL,
-          created_by TEXT NOT NULL DEFAULT 'OWNER',
-          revoked_at TEXT,
-          last_validation_at TEXT,
-          notes TEXT
-        );
+  runMigration(db, 4, 'licensing tables', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS licenses (
+        id TEXT PRIMARY KEY,
+        license_key_hash TEXT NOT NULL UNIQUE,
+        key_masked TEXT NOT NULL,
+        customer_name TEXT NOT NULL,
+        account_id TEXT,
+        status TEXT NOT NULL DEFAULT 'NOT_ACTIVATED',
+        duration_type TEXT NOT NULL,
+        max_devices INTEGER NOT NULL DEFAULT 1,
+        starts_at TEXT NOT NULL,
+        expires_at TEXT,
+        created_at TEXT NOT NULL,
+        created_by TEXT NOT NULL DEFAULT 'OWNER',
+        revoked_at TEXT,
+        last_validation_at TEXT,
+        notes TEXT
+      );
 
-        CREATE TABLE IF NOT EXISTS license_devices (
-          id TEXT PRIMARY KEY,
-          license_id TEXT NOT NULL,
-          device_id TEXT NOT NULL,
-          device_name TEXT NOT NULL,
-          ip_address TEXT,
-          activated_at TEXT NOT NULL,
-          last_seen_at TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          FOREIGN KEY (license_id) REFERENCES licenses(id) ON DELETE CASCADE
-        );
+      CREATE TABLE IF NOT EXISTS license_devices (
+        id TEXT PRIMARY KEY,
+        license_id TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        device_name TEXT NOT NULL,
+        ip_address TEXT,
+        activated_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        FOREIGN KEY (license_id) REFERENCES licenses(id) ON DELETE CASCADE
+      );
 
-        CREATE TABLE IF NOT EXISTS local_license_cache (
-          id TEXT PRIMARY KEY,
-          license_id TEXT NOT NULL,
-          license_key_hash TEXT NOT NULL,
-          device_id TEXT NOT NULL,
-          cached_status TEXT NOT NULL,
-          last_verified_at TEXT NOT NULL,
-          grace_expires_at TEXT NOT NULL,
-          signature TEXT NOT NULL
-        );
-      `);
-    } catch {}
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (4, ?)').run(new Date().toISOString());
-  }
+      CREATE TABLE IF NOT EXISTS local_license_cache (
+        id TEXT PRIMARY KEY,
+        license_id TEXT NOT NULL,
+        license_key_hash TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        cached_status TEXT NOT NULL,
+        last_verified_at TEXT NOT NULL,
+        grace_expires_at TEXT NOT NULL,
+        signature TEXT NOT NULL
+      );
+    `);
+  });
 
   // Migration v5: Profile Trash Bin & Soft Deletion
-  const checkMigration5 = db.prepare('SELECT version FROM schema_migrations WHERE version = 5').get();
-  if (!checkMigration5) {
-    try {
-      db.exec(`ALTER TABLE profiles ADD COLUMN deleted_at TEXT DEFAULT NULL`);
-    } catch {}
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (5, ?)').run(new Date().toISOString());
-  }
+  runMigration(db, 5, 'profile soft deletion deleted_at', () => {
+    addColumnIfNotExists(db, 'profiles', 'deleted_at', 'TEXT DEFAULT NULL');
+  });
 
   // Migration v6: Team Workspaces, Members, and Profile Workspace Mappings
-  const checkMigration6 = db.prepare('SELECT version FROM schema_migrations WHERE version = 6').get();
-  if (!checkMigration6) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS workspaces (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          description TEXT DEFAULT '',
-          color TEXT DEFAULT '#14b8a6',
-          is_default INTEGER NOT NULL DEFAULT 0,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        );
+  runMigration(db, 6, 'workspaces and members', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS workspaces (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        color TEXT DEFAULT '#14b8a6',
+        is_default INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
 
-        CREATE TABLE IF NOT EXISTS workspace_members (
-          id TEXT PRIMARY KEY,
-          workspace_id TEXT NOT NULL,
-          name TEXT NOT NULL,
-          email TEXT NOT NULL,
-          role TEXT NOT NULL DEFAULT 'EDITOR',
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          assigned_profiles_json TEXT NOT NULL DEFAULT '[]',
-          created_at TEXT NOT NULL,
-          FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
-        );
+      CREATE TABLE IF NOT EXISTS workspace_members (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'MEMBER',
+        avatar_color TEXT DEFAULT '#6366f1',
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        invited_at TEXT NOT NULL,
+        joined_at TEXT,
+        last_active_at TEXT,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+      );
 
-        CREATE TABLE IF NOT EXISTS profile_workspaces (
-          profile_id TEXT NOT NULL,
-          workspace_id TEXT NOT NULL,
-          assigned_member_id TEXT,
-          is_locked_by TEXT,
-          PRIMARY KEY (profile_id, workspace_id)
-        );
-      `);
-    } catch {}
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (6, ?)').run(new Date().toISOString());
-  }
+      CREATE TABLE IF NOT EXISTS profile_workspace_map (
+        profile_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        assigned_by TEXT NOT NULL DEFAULT 'OWNER',
+        assigned_at TEXT NOT NULL,
+        PRIMARY KEY (profile_id, workspace_id),
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+      );
+    `);
+  });
 
   // Migration v7: Enterprise V2 Tables (Folders, Locks, Sync, Feature Flags, Fleet, API Keys)
-  const checkMigration7 = db.prepare('SELECT version FROM schema_migrations WHERE version = 7').get();
-  if (!checkMigration7) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS profile_folders (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          parent_id TEXT DEFAULT NULL,
-          color TEXT DEFAULT '#14b8a6',
-          icon TEXT DEFAULT 'Folder',
-          workspace_id TEXT DEFAULT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        );
+  runMigration(db, 7, 'enterprise v2 tables', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS profile_folders (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        parent_id TEXT DEFAULT NULL,
+        color TEXT DEFAULT '#14b8a6',
+        icon TEXT DEFAULT 'Folder',
+        workspace_id TEXT DEFAULT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
 
-        CREATE TABLE IF NOT EXISTS profile_locks (
-          profile_id TEXT PRIMARY KEY,
-          locked_by_user_id TEXT NOT NULL,
-          locked_by_user_name TEXT NOT NULL,
-          locked_by_device_id TEXT NOT NULL,
-          locked_at TEXT NOT NULL,
-          expires_at TEXT NOT NULL
-        );
+      CREATE TABLE IF NOT EXISTS profile_locks (
+        profile_id TEXT PRIMARY KEY,
+        locked_by_user_id TEXT NOT NULL,
+        locked_by_user_name TEXT NOT NULL,
+        locked_by_device_id TEXT NOT NULL,
+        locked_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      );
 
-        CREATE TABLE IF NOT EXISTS profile_sync_state (
-          profile_id TEXT PRIMARY KEY,
-          status TEXT NOT NULL DEFAULT 'LOCAL_ONLY',
-          last_synced_at TEXT,
-          local_version INTEGER NOT NULL DEFAULT 1,
-          remote_version INTEGER NOT NULL DEFAULT 1,
-          checksum TEXT,
-          error TEXT
-        );
+      CREATE TABLE IF NOT EXISTS profile_sync_state (
+        profile_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'LOCAL_ONLY',
+        last_synced_at TEXT,
+        local_version INTEGER NOT NULL DEFAULT 1,
+        remote_version INTEGER NOT NULL DEFAULT 1,
+        checksum TEXT,
+        error TEXT
+      );
 
-        CREATE TABLE IF NOT EXISTS feature_flags (
-          key TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          description TEXT DEFAULT '',
-          enabled_global INTEGER NOT NULL DEFAULT 1,
-          min_plan_tier TEXT NOT NULL DEFAULT 'free',
-          rollout_percentage INTEGER NOT NULL DEFAULT 100,
-          allowed_user_ids_json TEXT NOT NULL DEFAULT '[]',
-          allowed_org_ids_json TEXT NOT NULL DEFAULT '[]',
-          kill_switch_active INTEGER NOT NULL DEFAULT 0,
-          updated_at TEXT NOT NULL
-        );
+      CREATE TABLE IF NOT EXISTS feature_flags (
+        key TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        enabled_global INTEGER NOT NULL DEFAULT 1,
+        min_plan_tier TEXT NOT NULL DEFAULT 'free',
+        rollout_percentage INTEGER NOT NULL DEFAULT 100,
+        allowed_user_ids_json TEXT NOT NULL DEFAULT '[]',
+        allowed_org_ids_json TEXT NOT NULL DEFAULT '[]',
+        kill_switch_active INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL
+      );
 
-        CREATE TABLE IF NOT EXISTS fleet_devices (
-          id TEXT PRIMARY KEY,
-          device_id TEXT NOT NULL UNIQUE,
-          user_id TEXT NOT NULL,
-          device_name TEXT NOT NULL,
-          os TEXT NOT NULL,
-          client_version TEXT NOT NULL,
-          ip_address TEXT,
-          status TEXT NOT NULL DEFAULT 'ONLINE',
-          last_seen_at TEXT NOT NULL,
-          registered_at TEXT NOT NULL
-        );
+      CREATE TABLE IF NOT EXISTS fleet_devices (
+        id TEXT PRIMARY KEY,
+        device_id TEXT NOT NULL UNIQUE,
+        user_id TEXT NOT NULL,
+        device_name TEXT NOT NULL,
+        os TEXT NOT NULL,
+        client_version TEXT NOT NULL,
+        ip_address TEXT,
+        status TEXT NOT NULL DEFAULT 'ONLINE',
+        last_seen_at TEXT NOT NULL,
+        registered_at TEXT NOT NULL
+      );
 
-        CREATE TABLE IF NOT EXISTS api_keys_v2 (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          name TEXT NOT NULL,
-          key_prefix TEXT NOT NULL,
-          key_hash TEXT NOT NULL UNIQUE,
-          scopes_json TEXT NOT NULL DEFAULT '["profiles:read","profiles:write"]',
-          rate_limit_per_min INTEGER NOT NULL DEFAULT 60,
-          requests_count_month INTEGER NOT NULL DEFAULT 0,
-          last_used_at TEXT,
-          expires_at TEXT,
-          created_at TEXT NOT NULL,
-          revoked_at TEXT
-        );
-      `);
-    } catch {}
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (7, ?)').run(new Date().toISOString());
-  }
+      CREATE TABLE IF NOT EXISTS api_keys_v2 (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        key_prefix TEXT NOT NULL,
+        key_hash TEXT NOT NULL UNIQUE,
+        scopes_json TEXT NOT NULL DEFAULT '["profiles:read","profiles:write"]',
+        rate_limit_per_min INTEGER NOT NULL DEFAULT 60,
+        requests_count_month INTEGER NOT NULL DEFAULT 0,
+        last_used_at TEXT,
+        expires_at TEXT,
+        created_at TEXT NOT NULL,
+        revoked_at TEXT
+      );
+    `);
+  });
 
   // Migration v8: Commercial User + Admin + Plan + Subscription + Device Architecture
-  const checkMigration8 = db.prepare('SELECT version FROM schema_migrations WHERE version = 8').get();
-  if (!checkMigration8) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS commercial_users (
-          id TEXT PRIMARY KEY,
-          email TEXT NOT NULL UNIQUE,
-          password_hash TEXT NOT NULL,
-          salt TEXT NOT NULL,
-          name TEXT NOT NULL,
-          role TEXT NOT NULL DEFAULT 'USER',
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          plan_id TEXT NOT NULL DEFAULT 'plan_free',
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          last_login_at TEXT
-        );
+  runMigration(db, 8, 'commercial user admin plan tables', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS commercial_users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'USER',
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        plan_id TEXT NOT NULL DEFAULT 'plan_free',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_login_at TEXT
+      );
 
-        CREATE TABLE IF NOT EXISTS commercial_plans (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          tier TEXT NOT NULL,
-          price_monthly REAL NOT NULL DEFAULT 0,
-          price_annual REAL NOT NULL DEFAULT 0,
-          limits_json TEXT NOT NULL,
-          is_active INTEGER NOT NULL DEFAULT 1,
-          created_at TEXT NOT NULL
-        );
+      CREATE TABLE IF NOT EXISTS commercial_plans (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        tier TEXT NOT NULL,
+        price_monthly REAL NOT NULL DEFAULT 0,
+        price_annual REAL NOT NULL DEFAULT 0,
+        limits_json TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
 
-        CREATE TABLE IF NOT EXISTS commercial_subscriptions (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          plan_id TEXT NOT NULL,
-          license_id TEXT,
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          billing_cycle TEXT NOT NULL DEFAULT 'MONTHLY',
-          starts_at TEXT NOT NULL,
-          expires_at TEXT,
-          payment_provider TEXT,
-          external_sub_id TEXT,
-          created_at TEXT NOT NULL,
-          FOREIGN KEY (user_id) REFERENCES commercial_users(id) ON DELETE CASCADE
-        );
+      CREATE TABLE IF NOT EXISTS commercial_subscriptions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        plan_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        billing_cycle TEXT NOT NULL DEFAULT 'monthly',
+        starts_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        auto_renew INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES commercial_users(id) ON DELETE CASCADE,
+        FOREIGN KEY (plan_id) REFERENCES commercial_plans(id)
+      );
 
-        CREATE TABLE IF NOT EXISTS commercial_devices (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          license_id TEXT,
-          device_id TEXT NOT NULL,
-          device_name TEXT NOT NULL,
-          os_info TEXT NOT NULL,
-          client_version TEXT NOT NULL,
-          ip_address TEXT,
-          activated_at TEXT NOT NULL,
-          last_seen_at TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'ACTIVE'
-        );
+      CREATE TABLE IF NOT EXISTS commercial_devices (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        device_name TEXT NOT NULL,
+        platform TEXT NOT NULL,
+        ip_address TEXT,
+        last_seen_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES commercial_users(id) ON DELETE CASCADE,
+        UNIQUE (user_id, device_id)
+      );
 
-        CREATE TABLE IF NOT EXISTS commercial_audit_logs (
-          id TEXT PRIMARY KEY,
-          actor_id TEXT NOT NULL,
-          actor_name TEXT NOT NULL,
-          actor_role TEXT NOT NULL,
-          action TEXT NOT NULL,
-          target_type TEXT NOT NULL,
-          target_id TEXT,
-          details TEXT NOT NULL,
-          ip_address TEXT,
-          result TEXT NOT NULL DEFAULT 'SUCCESS',
-          created_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS software_versions (
-          id TEXT PRIMARY KEY,
-          version TEXT NOT NULL UNIQUE,
-          release_notes TEXT NOT NULL DEFAULT '',
-          min_supported_version TEXT NOT NULL DEFAULT '1.0.0',
-          download_url_setup TEXT,
-          download_url_portable TEXT,
-          is_mandatory INTEGER NOT NULL DEFAULT 0,
-          released_at TEXT NOT NULL
-        );
-      `);
-    } catch {}
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (8, ?)').run(new Date().toISOString());
-  }
+      CREATE TABLE IF NOT EXISTS app_updates (
+        id TEXT PRIMARY KEY,
+        version TEXT NOT NULL UNIQUE,
+        release_channel TEXT NOT NULL DEFAULT 'stable',
+        release_notes TEXT NOT NULL DEFAULT '',
+        min_supported_version TEXT NOT NULL DEFAULT '1.0.0',
+        download_url_setup TEXT,
+        download_url_portable TEXT,
+        is_mandatory INTEGER NOT NULL DEFAULT 0,
+        released_at TEXT NOT NULL
+      );
+    `);
+  });
 
   // Migration v9: Add owner_id for profile isolation per commercial user
-  const checkMigration9 = db.prepare('SELECT version FROM schema_migrations WHERE version = 9').get();
-  if (!checkMigration9) {
-    try {
-      // Add owner_id column — default SYSTEM_OWNER means "belongs to the machine owner / pre-auth profiles"
-      db.exec(`ALTER TABLE profiles ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'SYSTEM_OWNER'`);
-    } catch {}
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (9, ?)').run(new Date().toISOString());
-  }
+  runMigration(db, 9, 'profiles owner_id column', () => {
+    addColumnIfNotExists(db, 'profiles', 'owner_id', "TEXT NOT NULL DEFAULT 'SYSTEM_OWNER'");
+  });
 
   // Migration v10: Phase 1 Central Account & Authentication Architecture
-  const checkMigration10 = db.prepare('SELECT version FROM schema_migrations WHERE version = 10').get();
-  if (!checkMigration10) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS auth_users (
-          id TEXT PRIMARY KEY,
-          email TEXT NOT NULL UNIQUE,
-          normalized_email TEXT NOT NULL UNIQUE,
-          password_hash TEXT NOT NULL,
-          salt TEXT NOT NULL,
-          name TEXT NOT NULL,
-          role TEXT NOT NULL DEFAULT 'USER',
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          email_verified INTEGER NOT NULL DEFAULT 0,
-          email_verified_at TEXT,
-          plan_id TEXT NOT NULL DEFAULT 'plan_free',
-          profile_quota INTEGER NOT NULL DEFAULT 10,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          last_login_at TEXT
-        );
+  runMigration(db, 10, 'central auth architecture tables', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS auth_users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        normalized_email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'USER',
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        email_verified INTEGER NOT NULL DEFAULT 0,
+        email_verified_at TEXT,
+        plan_id TEXT NOT NULL DEFAULT 'plan_free',
+        profile_quota INTEGER NOT NULL DEFAULT 10,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_login_at TEXT
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_auth_users_normalized_email ON auth_users(normalized_email);
+      CREATE INDEX IF NOT EXISTS idx_auth_users_normalized_email ON auth_users(normalized_email);
 
-        CREATE TABLE IF NOT EXISTS auth_sessions (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          refresh_token_hash TEXT NOT NULL UNIQUE,
-          device_id TEXT NOT NULL,
-          device_name TEXT NOT NULL,
-          platform TEXT NOT NULL,
-          ip_address TEXT,
-          is_revoked INTEGER NOT NULL DEFAULT 0,
-          created_at TEXT NOT NULL,
-          last_used_at TEXT NOT NULL,
-          expires_at TEXT NOT NULL,
-          FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE
-        );
+      CREATE TABLE IF NOT EXISTS auth_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        refresh_token_hash TEXT NOT NULL UNIQUE,
+        device_id TEXT NOT NULL,
+        device_name TEXT NOT NULL,
+        platform TEXT NOT NULL,
+        ip_address TEXT,
+        is_revoked INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        last_used_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);
-        CREATE INDEX IF NOT EXISTS idx_auth_sessions_token_hash ON auth_sessions(refresh_token_hash);
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_token_hash ON auth_sessions(refresh_token_hash);
 
-        CREATE TABLE IF NOT EXISTS auth_verification_tokens (
-          id TEXT PRIMARY KEY,
-          token_hash TEXT NOT NULL UNIQUE,
-          user_id TEXT NOT NULL,
-          email TEXT NOT NULL,
-          type TEXT NOT NULL,
-          expires_at TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          used_at TEXT,
-          FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE
-        );
+      CREATE TABLE IF NOT EXISTS auth_verification_tokens (
+        id TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL UNIQUE,
+        user_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        type TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        used_at TEXT,
+        FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_auth_tokens_hash ON auth_verification_tokens(token_hash);
+      CREATE INDEX IF NOT EXISTS idx_auth_tokens_hash ON auth_verification_tokens(token_hash);
 
-        CREATE TABLE IF NOT EXISTS auth_security_logs (
-          id TEXT PRIMARY KEY,
-          user_id TEXT,
-          action TEXT NOT NULL,
-          ip_address TEXT,
-          details TEXT,
-          result TEXT NOT NULL,
-          created_at TEXT NOT NULL
-        );
-      `);
-    } catch {}
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (10, ?)').run(new Date().toISOString());
-  }
+      CREATE TABLE IF NOT EXISTS auth_security_logs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        action TEXT NOT NULL,
+        ip_address TEXT,
+        details TEXT,
+        result TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+    `);
+  });
 
   // Migration v11: Phase 2 Zero-Knowledge Cloud Profile Storage & Multi-Device Sync
-  const checkMigration11 = db.prepare('SELECT version FROM schema_migrations WHERE version = 11').get();
-  if (!checkMigration11) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS cloud_profiles (
-          id TEXT PRIMARY KEY,
-          owner_id TEXT NOT NULL,
-          local_profile_id TEXT NOT NULL,
-          name TEXT NOT NULL,
-          current_version INTEGER NOT NULL DEFAULT 1,
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          storage_bytes INTEGER NOT NULL DEFAULT 0,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          FOREIGN KEY (owner_id) REFERENCES auth_users(id) ON DELETE CASCADE
-        );
+  runMigration(db, 11, 'cloud profile storage and sync tables', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS cloud_profiles (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        local_profile_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        current_version INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        storage_bytes INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (owner_id) REFERENCES auth_users(id) ON DELETE CASCADE
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_cloud_profiles_owner ON cloud_profiles(owner_id);
-        CREATE INDEX IF NOT EXISTS idx_cloud_profiles_local ON cloud_profiles(owner_id, local_profile_id);
+      CREATE INDEX IF NOT EXISTS idx_cloud_profiles_owner ON cloud_profiles(owner_id);
+      CREATE INDEX IF NOT EXISTS idx_cloud_profiles_local ON cloud_profiles(owner_id, local_profile_id);
 
-        CREATE TABLE IF NOT EXISTS cloud_profile_versions (
-          id TEXT PRIMARY KEY,
-          cloud_profile_id TEXT NOT NULL,
-          version INTEGER NOT NULL,
-          object_key TEXT NOT NULL,
-          file_size INTEGER NOT NULL,
-          checksum_sha256 TEXT NOT NULL,
-          encrypted_data_key TEXT NOT NULL,
-          iv TEXT NOT NULL,
-          auth_tag TEXT NOT NULL,
-          source_device_id TEXT NOT NULL,
-          source_device_name TEXT,
-          created_at TEXT NOT NULL,
-          FOREIGN KEY (cloud_profile_id) REFERENCES cloud_profiles(id) ON DELETE CASCADE
-        );
+      CREATE TABLE IF NOT EXISTS cloud_profile_versions (
+        id TEXT PRIMARY KEY,
+        cloud_profile_id TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        object_key TEXT NOT NULL,
+        file_size INTEGER NOT NULL,
+        checksum_sha256 TEXT NOT NULL,
+        encrypted_data_key TEXT NOT NULL,
+        iv TEXT NOT NULL,
+        auth_tag TEXT NOT NULL,
+        source_device_id TEXT NOT NULL,
+        source_device_name TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (cloud_profile_id) REFERENCES cloud_profiles(id) ON DELETE CASCADE
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_cloud_versions_profile ON cloud_profile_versions(cloud_profile_id);
-        CREATE INDEX IF NOT EXISTS idx_cloud_versions_profile_ver ON cloud_profile_versions(cloud_profile_id, version);
+      CREATE INDEX IF NOT EXISTS idx_cloud_versions_profile ON cloud_profile_versions(cloud_profile_id);
+      CREATE INDEX IF NOT EXISTS idx_cloud_versions_profile_ver ON cloud_profile_versions(cloud_profile_id, version);
 
-        CREATE TABLE IF NOT EXISTS cloud_profile_locks (
-          cloud_profile_id TEXT PRIMARY KEY,
-          device_id TEXT NOT NULL,
-          device_name TEXT NOT NULL,
-          user_id TEXT NOT NULL,
-          locked_at TEXT NOT NULL,
-          expires_at TEXT NOT NULL,
-          FOREIGN KEY (cloud_profile_id) REFERENCES cloud_profiles(id) ON DELETE CASCADE
-        );
+      CREATE TABLE IF NOT EXISTS cloud_profile_locks (
+        cloud_profile_id TEXT PRIMARY KEY,
+        device_id TEXT NOT NULL,
+        device_name TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        locked_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        FOREIGN KEY (cloud_profile_id) REFERENCES cloud_profiles(id) ON DELETE CASCADE
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_cloud_locks_expires ON cloud_profile_locks(expires_at);
+      CREATE INDEX IF NOT EXISTS idx_cloud_locks_expires ON cloud_profile_locks(expires_at);
 
-        CREATE TABLE IF NOT EXISTS cloud_sync_upload_sessions (
-          id TEXT PRIMARY KEY,
-          cloud_profile_id TEXT NOT NULL,
-          user_id TEXT NOT NULL,
-          target_version INTEGER NOT NULL,
-          base_version INTEGER NOT NULL,
-          object_key TEXT NOT NULL,
-          expected_size INTEGER NOT NULL,
-          expected_checksum TEXT NOT NULL,
-          encrypted_data_key TEXT NOT NULL,
-          iv TEXT NOT NULL,
-          auth_tag TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'PENDING',
-          expires_at TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE
-        );
+      CREATE TABLE IF NOT EXISTS cloud_sync_upload_sessions (
+        id TEXT PRIMARY KEY,
+        cloud_profile_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        target_version INTEGER NOT NULL,
+        base_version INTEGER NOT NULL,
+        object_key TEXT NOT NULL,
+        expected_size INTEGER NOT NULL,
+        expected_checksum TEXT NOT NULL,
+        encrypted_data_key TEXT NOT NULL,
+        iv TEXT NOT NULL,
+        auth_tag TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_upload_sessions_status ON cloud_sync_upload_sessions(status);
+      CREATE INDEX IF NOT EXISTS idx_upload_sessions_status ON cloud_sync_upload_sessions(status);
 
-        CREATE TABLE IF NOT EXISTS cloud_sync_audit_logs (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          cloud_profile_id TEXT,
-          action TEXT NOT NULL,
-          device_id TEXT,
-          details TEXT,
-          created_at TEXT NOT NULL
-        );
+      CREATE TABLE IF NOT EXISTS cloud_sync_audit_logs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        cloud_profile_id TEXT,
+        action TEXT NOT NULL,
+        device_id TEXT,
+        details TEXT,
+        created_at TEXT NOT NULL
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_cloud_logs_user ON cloud_sync_audit_logs(user_id);
-        CREATE INDEX IF NOT EXISTS idx_cloud_logs_action ON cloud_sync_audit_logs(action);
-      `);
-    } catch {}
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (11, ?)').run(new Date().toISOString());
-  }
+      CREATE INDEX IF NOT EXISTS idx_cloud_logs_user ON cloud_sync_audit_logs(user_id);
+      CREATE INDEX IF NOT EXISTS idx_cloud_logs_action ON cloud_sync_audit_logs(action);
+    `);
+  });
 
   // Migration v12: Phase 3 Multi-User Team Workspaces, Secure Profile Sharing & RBAC
-  const checkMigration12 = db.prepare('SELECT version FROM schema_migrations WHERE version = 12').get();
-  if (!checkMigration12) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS team_workspaces (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          description TEXT DEFAULT '',
-          owner_user_id TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          FOREIGN KEY (owner_user_id) REFERENCES auth_users(id) ON DELETE CASCADE
-        );
+  runMigration(db, 12, 'team workspaces and sharing tables', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS team_workspaces (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        owner_user_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (owner_user_id) REFERENCES auth_users(id) ON DELETE CASCADE
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_team_ws_owner ON team_workspaces(owner_user_id);
-        CREATE INDEX IF NOT EXISTS idx_team_ws_status ON team_workspaces(status);
+      CREATE INDEX IF NOT EXISTS idx_team_ws_owner ON team_workspaces(owner_user_id);
+      CREATE INDEX IF NOT EXISTS idx_team_ws_status ON team_workspaces(status);
 
-        CREATE TABLE IF NOT EXISTS team_workspace_members (
-          id TEXT PRIMARY KEY,
-          workspace_id TEXT NOT NULL,
-          user_id TEXT NOT NULL,
-          role TEXT NOT NULL DEFAULT 'MEMBER',
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          invited_by TEXT,
-          joined_at TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          FOREIGN KEY (workspace_id) REFERENCES team_workspaces(id) ON DELETE CASCADE,
-          FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE,
-          UNIQUE (workspace_id, user_id)
-        );
+      CREATE TABLE IF NOT EXISTS team_workspace_members (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'MEMBER',
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        invited_by TEXT,
+        joined_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (workspace_id) REFERENCES team_workspaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE,
+        UNIQUE (workspace_id, user_id)
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_team_ws_members_user ON team_workspace_members(user_id);
-        CREATE INDEX IF NOT EXISTS idx_team_ws_members_ws ON team_workspace_members(workspace_id);
-        CREATE INDEX IF NOT EXISTS idx_team_ws_members_status ON team_workspace_members(workspace_id, status);
+      CREATE INDEX IF NOT EXISTS idx_team_ws_members_user ON team_workspace_members(user_id);
+      CREATE INDEX IF NOT EXISTS idx_team_ws_members_ws ON team_workspace_members(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_team_ws_members_status ON team_workspace_members(workspace_id, status);
 
-        CREATE TABLE IF NOT EXISTS team_workspace_invitations (
-          id TEXT PRIMARY KEY,
-          workspace_id TEXT NOT NULL,
-          email TEXT NOT NULL,
-          role TEXT NOT NULL DEFAULT 'MEMBER',
-          token_hash TEXT NOT NULL UNIQUE,
-          invited_by TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'PENDING',
-          expires_at TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          FOREIGN KEY (workspace_id) REFERENCES team_workspaces(id) ON DELETE CASCADE
-        );
+      CREATE TABLE IF NOT EXISTS team_workspace_invitations (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'MEMBER',
+        token_hash TEXT NOT NULL UNIQUE,
+        invited_by TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (workspace_id) REFERENCES team_workspaces(id) ON DELETE CASCADE
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_team_ws_invites_hash ON team_workspace_invitations(token_hash);
-        CREATE INDEX IF NOT EXISTS idx_team_ws_invites_ws ON team_workspace_invitations(workspace_id);
-        CREATE INDEX IF NOT EXISTS idx_team_ws_invites_email ON team_workspace_invitations(email);
-        CREATE INDEX IF NOT EXISTS idx_team_ws_invites_status ON team_workspace_invitations(status);
+      CREATE INDEX IF NOT EXISTS idx_team_ws_invites_hash ON team_workspace_invitations(token_hash);
+      CREATE INDEX IF NOT EXISTS idx_team_ws_invites_ws ON team_workspace_invitations(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_team_ws_invites_email ON team_workspace_invitations(email);
+      CREATE INDEX IF NOT EXISTS idx_team_ws_invites_status ON team_workspace_invitations(status);
 
-        CREATE TABLE IF NOT EXISTS team_profile_shares (
-          id TEXT PRIMARY KEY,
-          workspace_id TEXT NOT NULL,
-          cloud_profile_id TEXT NOT NULL,
-          shared_by TEXT NOT NULL,
-          permission_level TEXT NOT NULL DEFAULT 'RUN',
-          encrypted_key_envelope TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          revoked_at TEXT DEFAULT NULL,
-          FOREIGN KEY (workspace_id) REFERENCES team_workspaces(id) ON DELETE CASCADE,
-          FOREIGN KEY (cloud_profile_id) REFERENCES cloud_profiles(id) ON DELETE CASCADE
-        );
+      CREATE TABLE IF NOT EXISTS team_profile_shares (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        cloud_profile_id TEXT NOT NULL,
+        shared_by TEXT NOT NULL,
+        permission_level TEXT NOT NULL DEFAULT 'RUN',
+        encrypted_key_envelope TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        revoked_at TEXT DEFAULT NULL,
+        FOREIGN KEY (workspace_id) REFERENCES team_workspaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (cloud_profile_id) REFERENCES cloud_profiles(id) ON DELETE CASCADE
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_team_shares_ws ON team_profile_shares(workspace_id);
-        CREATE INDEX IF NOT EXISTS idx_team_shares_profile ON team_profile_shares(cloud_profile_id);
+      CREATE INDEX IF NOT EXISTS idx_team_shares_ws ON team_profile_shares(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_team_shares_profile ON team_profile_shares(cloud_profile_id);
 
-        CREATE TABLE IF NOT EXISTS team_workspace_keys (
-          id TEXT PRIMARY KEY,
-          workspace_id TEXT NOT NULL,
-          user_id TEXT NOT NULL,
-          encrypted_workspace_key TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          FOREIGN KEY (workspace_id) REFERENCES team_workspaces(id) ON DELETE CASCADE,
-          FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE,
-          UNIQUE (workspace_id, user_id)
-        );
+      CREATE TABLE IF NOT EXISTS team_workspace_keys (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        encrypted_workspace_key TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (workspace_id) REFERENCES team_workspaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE,
+        UNIQUE (workspace_id, user_id)
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_team_ws_keys_user ON team_workspace_keys(workspace_id, user_id);
+      CREATE INDEX IF NOT EXISTS idx_team_ws_keys_user ON team_workspace_keys(workspace_id, user_id);
 
-        CREATE TABLE IF NOT EXISTS team_workspace_audit_logs (
-          id TEXT PRIMARY KEY,
-          workspace_id TEXT NOT NULL,
-          user_id TEXT NOT NULL,
-          action TEXT NOT NULL,
-          target_id TEXT,
-          details TEXT,
-          created_at TEXT NOT NULL,
-          FOREIGN KEY (workspace_id) REFERENCES team_workspaces(id) ON DELETE CASCADE
-        );
+      CREATE TABLE IF NOT EXISTS team_workspace_audit_logs (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target_id TEXT,
+        details TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (workspace_id) REFERENCES team_workspaces(id) ON DELETE CASCADE
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_team_ws_audit_ws ON team_workspace_audit_logs(workspace_id);
-        CREATE INDEX IF NOT EXISTS idx_team_ws_audit_user ON team_workspace_audit_logs(user_id);
-        CREATE INDEX IF NOT EXISTS idx_team_ws_audit_action ON team_workspace_audit_logs(action);
-      `);
-    } catch {}
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (12, ?)').run(new Date().toISOString());
-  }
+      CREATE INDEX IF NOT EXISTS idx_team_ws_audit_ws ON team_workspace_audit_logs(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_team_ws_audit_user ON team_workspace_audit_logs(user_id);
+      CREATE INDEX IF NOT EXISTS idx_team_ws_audit_action ON team_workspace_audit_logs(action);
+    `);
+  });
 
   // Migration v13: Phase 5 Commercial Proxy Provider Integration & Catalog
-  const checkMigration13 = db.prepare('SELECT version FROM schema_migrations WHERE version = 13').get();
-  if (!checkMigration13) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS proxy_providers (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          description TEXT,
-          website TEXT,
-          is_enabled INTEGER NOT NULL DEFAULT 1,
-          priority INTEGER NOT NULL DEFAULT 100,
-          capabilities_json TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        );
+  runMigration(db, 13, 'proxy providers and columns', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS proxy_providers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        website TEXT,
+        is_enabled INTEGER NOT NULL DEFAULT 1,
+        priority INTEGER NOT NULL DEFAULT 100,
+        capabilities_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
 
-        CREATE TABLE IF NOT EXISTS proxy_provider_sessions (
-          id TEXT PRIMARY KEY,
-          provider_id TEXT NOT NULL,
-          proxy_id TEXT NOT NULL,
-          user_id TEXT NOT NULL,
-          workspace_id TEXT,
-          profile_id TEXT,
-          network_type TEXT NOT NULL,
-          country TEXT NOT NULL,
-          region TEXT,
-          city TEXT,
-          session_type TEXT NOT NULL,
-          upstream_session_id TEXT NOT NULL,
-          ttl_minutes INTEGER,
-          expires_at TEXT,
-          rotatable INTEGER NOT NULL DEFAULT 1,
-          rotation_count INTEGER NOT NULL DEFAULT 0,
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          bytes_used INTEGER NOT NULL DEFAULT 0,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          FOREIGN KEY (proxy_id) REFERENCES proxies(id) ON DELETE CASCADE
-        );
+      CREATE TABLE IF NOT EXISTS proxy_provider_sessions (
+        id TEXT PRIMARY KEY,
+        provider_id TEXT NOT NULL,
+        proxy_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        workspace_id TEXT,
+        profile_id TEXT,
+        network_type TEXT NOT NULL,
+        country TEXT NOT NULL,
+        region TEXT,
+        city TEXT,
+        session_type TEXT NOT NULL,
+        upstream_session_id TEXT NOT NULL,
+        ttl_minutes INTEGER,
+        expires_at TEXT,
+        rotatable INTEGER NOT NULL DEFAULT 1,
+        rotation_count INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        bytes_used INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (proxy_id) REFERENCES proxies(id) ON DELETE CASCADE
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_proxy_sessions_user ON proxy_provider_sessions(user_id);
-        CREATE INDEX IF NOT EXISTS idx_proxy_sessions_ws ON proxy_provider_sessions(workspace_id);
-        CREATE INDEX IF NOT EXISTS idx_proxy_sessions_proxy ON proxy_provider_sessions(proxy_id);
-        CREATE INDEX IF NOT EXISTS idx_proxy_sessions_provider ON proxy_provider_sessions(provider_id);
-        CREATE INDEX IF NOT EXISTS idx_proxy_sessions_status ON proxy_provider_sessions(status);
+      CREATE INDEX IF NOT EXISTS idx_proxy_sessions_user ON proxy_provider_sessions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_proxy_sessions_ws ON proxy_provider_sessions(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_proxy_sessions_proxy ON proxy_provider_sessions(proxy_id);
+      CREATE INDEX IF NOT EXISTS idx_proxy_sessions_provider ON proxy_provider_sessions(provider_id);
+      CREATE INDEX IF NOT EXISTS idx_proxy_sessions_status ON proxy_provider_sessions(status);
 
-        CREATE TABLE IF NOT EXISTS proxy_usage_records (
-          id TEXT PRIMARY KEY,
-          session_id TEXT,
-          provider_id TEXT NOT NULL,
-          user_id TEXT NOT NULL,
-          bytes_used INTEGER NOT NULL DEFAULT 0,
-          recorded_at TEXT NOT NULL,
-          FOREIGN KEY (session_id) REFERENCES proxy_provider_sessions(id) ON DELETE SET NULL
-        );
+      CREATE TABLE IF NOT EXISTS proxy_usage_records (
+        id TEXT PRIMARY KEY,
+        session_id TEXT,
+        provider_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        bytes_used INTEGER NOT NULL DEFAULT 0,
+        recorded_at TEXT NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES proxy_provider_sessions(id) ON DELETE SET NULL
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_proxy_usage_user ON proxy_usage_records(user_id);
-        CREATE INDEX IF NOT EXISTS idx_proxy_usage_session ON proxy_usage_records(session_id);
+      CREATE INDEX IF NOT EXISTS idx_proxy_usage_user ON proxy_usage_records(user_id);
+      CREATE INDEX IF NOT EXISTS idx_proxy_usage_session ON proxy_usage_records(session_id);
 
-        CREATE TABLE IF NOT EXISTS proxy_provider_health (
-          provider_id TEXT PRIMARY KEY,
-          status TEXT NOT NULL DEFAULT 'UNCONFIGURED',
-          latency_ms INTEGER,
-          last_checked_at TEXT NOT NULL,
-          error_message TEXT
-        );
-      `);
+      CREATE TABLE IF NOT EXISTS proxy_provider_health (
+        provider_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'UNCONFIGURED',
+        latency_ms INTEGER,
+        last_checked_at TEXT NOT NULL,
+        error_message TEXT
+      );
+    `);
 
-      // Additive columns to existing proxies table
-      try { db.exec('ALTER TABLE proxies ADD COLUMN provider_id TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE proxies ADD COLUMN network_type TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE proxies ADD COLUMN session_type TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE proxies ADD COLUMN city TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE proxies ADD COLUMN region TEXT;'); } catch {}
-
-      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (13, ?)').run(new Date().toISOString());
-    } catch {}
-  }
+    // Additive columns to existing proxies table
+    addColumnIfNotExists(db, 'proxies', 'provider_id', 'TEXT');
+    addColumnIfNotExists(db, 'proxies', 'network_type', 'TEXT');
+    addColumnIfNotExists(db, 'proxies', 'session_type', 'TEXT');
+    addColumnIfNotExists(db, 'proxies', 'city', 'TEXT');
+    addColumnIfNotExists(db, 'proxies', 'region', 'TEXT');
+  });
 
   // Migration v14: Phase 6 Remote Cloud API, API Keys, Webhooks & Idempotency
-  const checkMigration14 = db.prepare('SELECT version FROM schema_migrations WHERE version = 14').get();
-  if (!checkMigration14) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS remote_api_keys (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          workspace_id TEXT,
-          name TEXT NOT NULL,
-          key_prefix TEXT NOT NULL,
-          key_hash TEXT NOT NULL UNIQUE,
-          scopes_json TEXT NOT NULL DEFAULT '["profiles:read"]',
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          rate_limit_per_min INTEGER NOT NULL DEFAULT 120,
-          requests_count_month INTEGER NOT NULL DEFAULT 0,
-          last_used_at TEXT,
-          expires_at TEXT,
-          created_at TEXT NOT NULL,
-          revoked_at TEXT
-        );
+  runMigration(db, 14, 'remote api keys and webhooks', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS remote_api_keys (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        workspace_id TEXT,
+        name TEXT NOT NULL,
+        key_prefix TEXT NOT NULL,
+        key_hash TEXT NOT NULL UNIQUE,
+        scopes_json TEXT NOT NULL DEFAULT '["profiles:read"]',
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        rate_limit_per_min INTEGER NOT NULL DEFAULT 120,
+        requests_count_month INTEGER NOT NULL DEFAULT 0,
+        last_used_at TEXT,
+        expires_at TEXT,
+        created_at TEXT NOT NULL,
+        revoked_at TEXT
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_remote_keys_user ON remote_api_keys(user_id);
-        CREATE INDEX IF NOT EXISTS idx_remote_keys_ws ON remote_api_keys(workspace_id);
-        CREATE INDEX IF NOT EXISTS idx_remote_keys_hash ON remote_api_keys(key_hash);
-        CREATE INDEX IF NOT EXISTS idx_remote_keys_status ON remote_api_keys(status);
+      CREATE INDEX IF NOT EXISTS idx_remote_keys_user ON remote_api_keys(user_id);
+      CREATE INDEX IF NOT EXISTS idx_remote_keys_ws ON remote_api_keys(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_remote_keys_hash ON remote_api_keys(key_hash);
+      CREATE INDEX IF NOT EXISTS idx_remote_keys_status ON remote_api_keys(status);
 
-        CREATE TABLE IF NOT EXISTS remote_api_key_audits (
-          id TEXT PRIMARY KEY,
-          key_id TEXT NOT NULL,
-          user_id TEXT NOT NULL,
-          action TEXT NOT NULL,
-          ip_address TEXT,
-          details TEXT,
-          created_at TEXT NOT NULL
-        );
+      CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        workspace_id TEXT,
+        url TEXT NOT NULL,
+        secret TEXT NOT NULL,
+        events_json TEXT NOT NULL DEFAULT '["profile.status_changed"]',
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        consecutive_failures INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        last_delivery_at TEXT
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_remote_key_audits_user ON remote_api_key_audits(user_id);
-        CREATE INDEX IF NOT EXISTS idx_remote_key_audits_key ON remote_api_key_audits(key_id);
+      CREATE INDEX IF NOT EXISTS idx_webhooks_user ON webhook_subscriptions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_webhooks_ws ON webhook_subscriptions(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_webhooks_status ON webhook_subscriptions(status);
 
-        CREATE TABLE IF NOT EXISTS webhook_endpoints (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          workspace_id TEXT,
-          url TEXT NOT NULL,
-          description TEXT,
-          secret_hash TEXT NOT NULL,
-          secret_encrypted TEXT NOT NULL,
-          events_json TEXT NOT NULL DEFAULT '["*"]',
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          failure_count INTEGER NOT NULL DEFAULT 0,
-          last_delivery_at TEXT,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        );
+      CREATE TABLE IF NOT EXISTS webhook_delivery_logs (
+        id TEXT PRIMARY KEY,
+        subscription_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        response_code INTEGER,
+        response_body TEXT,
+        duration_ms INTEGER,
+        status TEXT NOT NULL DEFAULT 'DELIVERED',
+        error_message TEXT,
+        attempt_number INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (subscription_id) REFERENCES webhook_subscriptions(id) ON DELETE CASCADE
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_webhooks_user ON webhook_endpoints(user_id);
-        CREATE INDEX IF NOT EXISTS idx_webhooks_ws ON webhook_endpoints(workspace_id);
-        CREATE INDEX IF NOT EXISTS idx_webhooks_status ON webhook_endpoints(status);
+      CREATE INDEX IF NOT EXISTS idx_webhook_logs_sub ON webhook_delivery_logs(subscription_id);
+      CREATE INDEX IF NOT EXISTS idx_webhook_logs_status ON webhook_delivery_logs(status);
 
-        CREATE TABLE IF NOT EXISTS webhook_deliveries (
-          id TEXT PRIMARY KEY,
-          endpoint_id TEXT NOT NULL,
-          event_id TEXT NOT NULL,
-          event_type TEXT NOT NULL,
-          payload_json TEXT NOT NULL,
-          destination_url TEXT NOT NULL,
-          status_code INTEGER,
-          response_body TEXT,
-          duration_ms INTEGER,
-          attempt_count INTEGER NOT NULL DEFAULT 1,
-          success INTEGER NOT NULL DEFAULT 0,
-          error_message TEXT,
-          delivered_at TEXT NOT NULL
-        );
+      CREATE TABLE IF NOT EXISTS api_idempotency_records (
+        id TEXT PRIMARY KEY,
+        idempotency_key TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        method TEXT NOT NULL,
+        path TEXT NOT NULL,
+        status_code INTEGER NOT NULL,
+        response_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        UNIQUE (idempotency_key, user_id)
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_wh_deliveries_endpoint ON webhook_deliveries(endpoint_id);
-        CREATE INDEX IF NOT EXISTS idx_wh_deliveries_event ON webhook_deliveries(event_id);
-        CREATE INDEX IF NOT EXISTS idx_wh_deliveries_success ON webhook_deliveries(success);
-
-        CREATE TABLE IF NOT EXISTS api_idempotency_records (
-          idempotency_key TEXT NOT NULL,
-          user_id TEXT NOT NULL,
-          endpoint TEXT NOT NULL,
-          status_code INTEGER NOT NULL,
-          response_json TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          expires_at TEXT NOT NULL,
-          PRIMARY KEY (idempotency_key, user_id)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_idempotency_lookup ON api_idempotency_records(idempotency_key, user_id);
-      `);
-
-      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (14, ?)').run(new Date().toISOString());
-    } catch {}
-  }
+      CREATE INDEX IF NOT EXISTS idx_idempotency_lookup ON api_idempotency_records(idempotency_key, user_id);
+    `);
+  });
 
   // Migration v15: Phase 8 Production Automation & RPA Platform
-  const checkMigration15 = db.prepare('SELECT version FROM schema_migrations WHERE version = 15').get();
-  if (!checkMigration15) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS automation_versions (
-          id TEXT PRIMARY KEY,
-          workflow_id TEXT NOT NULL,
-          version INTEGER NOT NULL,
-          definition_json TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          created_by TEXT,
-          FOREIGN KEY (workflow_id) REFERENCES automation_workflows(id) ON DELETE CASCADE
-        );
+  runMigration(db, 15, 'automation platform and columns', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS automation_versions (
+        id TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        definition_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        created_by TEXT,
+        FOREIGN KEY (workflow_id) REFERENCES automation_workflows(id) ON DELETE CASCADE
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_auto_versions_wf ON automation_versions(workflow_id);
+      CREATE INDEX IF NOT EXISTS idx_auto_versions_wf ON automation_versions(workflow_id);
 
-        CREATE TABLE IF NOT EXISTS automation_runs (
-          id TEXT PRIMARY KEY,
-          workflow_id TEXT NOT NULL,
-          workflow_version INTEGER NOT NULL DEFAULT 1,
-          profile_id TEXT NOT NULL,
-          workspace_id TEXT,
-          status TEXT NOT NULL DEFAULT 'QUEUED',
-          started_at TEXT NOT NULL,
-          completed_at TEXT,
-          duration_ms INTEGER,
-          failed_step_id TEXT,
-          retry_count INTEGER NOT NULL DEFAULT 0,
-          summary TEXT,
-          variables_snapshot_json TEXT,
-          step_logs_json TEXT NOT NULL DEFAULT '[]',
-          created_at TEXT NOT NULL
-        );
+      CREATE TABLE IF NOT EXISTS automation_runs (
+        id TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL,
+        workflow_version INTEGER NOT NULL DEFAULT 1,
+        profile_id TEXT NOT NULL,
+        workspace_id TEXT,
+        status TEXT NOT NULL DEFAULT 'QUEUED',
+        started_at TEXT NOT NULL,
+        completed_at TEXT,
+        duration_ms INTEGER,
+        failed_step_id TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        summary TEXT,
+        variables_snapshot_json TEXT,
+        step_logs_json TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_auto_runs_wf ON automation_runs(workflow_id);
-        CREATE INDEX IF NOT EXISTS idx_auto_runs_prof ON automation_runs(profile_id);
-        CREATE INDEX IF NOT EXISTS idx_auto_runs_ws ON automation_runs(workspace_id);
-        CREATE INDEX IF NOT EXISTS idx_auto_runs_status ON automation_runs(status);
+      CREATE INDEX IF NOT EXISTS idx_auto_runs_wf ON automation_runs(workflow_id);
+      CREATE INDEX IF NOT EXISTS idx_auto_runs_prof ON automation_runs(profile_id);
+      CREATE INDEX IF NOT EXISTS idx_auto_runs_ws ON automation_runs(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_auto_runs_status ON automation_runs(status);
 
-        CREATE TABLE IF NOT EXISTS automation_schedules (
-          id TEXT PRIMARY KEY,
-          workflow_id TEXT NOT NULL,
-          profile_id TEXT,
-          profile_ids_json TEXT,
-          workspace_id TEXT,
-          schedule_type TEXT NOT NULL,
-          cron_expression TEXT,
-          timezone TEXT NOT NULL DEFAULT 'UTC',
-          next_run_at TEXT,
-          last_run_at TEXT,
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          FOREIGN KEY (workflow_id) REFERENCES automation_workflows(id) ON DELETE CASCADE
-        );
+      CREATE TABLE IF NOT EXISTS automation_schedules (
+        id TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL,
+        profile_id TEXT,
+        profile_ids_json TEXT,
+        workspace_id TEXT,
+        schedule_type TEXT NOT NULL,
+        cron_expression TEXT,
+        timezone TEXT NOT NULL DEFAULT 'UTC',
+        next_run_at TEXT,
+        last_run_at TEXT,
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (workflow_id) REFERENCES automation_workflows(id) ON DELETE CASCADE
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_auto_sched_wf ON automation_schedules(workflow_id);
-        CREATE INDEX IF NOT EXISTS idx_auto_sched_status ON automation_schedules(status);
+      CREATE INDEX IF NOT EXISTS idx_auto_sched_wf ON automation_schedules(workflow_id);
+      CREATE INDEX IF NOT EXISTS idx_auto_sched_status ON automation_schedules(status);
 
-        CREATE TABLE IF NOT EXISTS automation_templates (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          category TEXT NOT NULL,
-          description TEXT,
-          icon TEXT,
-          is_builtin INTEGER NOT NULL DEFAULT 0,
-          workspace_id TEXT,
-          workflow_json TEXT NOT NULL,
-          created_at TEXT NOT NULL
-        );
-      `);
+      CREATE TABLE IF NOT EXISTS automation_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        description TEXT,
+        icon TEXT,
+        is_builtin INTEGER NOT NULL DEFAULT 0,
+        workspace_id TEXT,
+        workflow_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+    `);
 
-      // Additive columns to existing automation tables
-      try { db.exec('ALTER TABLE automation_workflows ADD COLUMN version INTEGER NOT NULL DEFAULT 1;'); } catch {}
-      try { db.exec('ALTER TABLE automation_workflows ADD COLUMN workspace_id TEXT;'); } catch {}
-      try { db.exec("ALTER TABLE automation_workflows ADD COLUMN variables_json TEXT NOT NULL DEFAULT '[]';"); } catch {}
-      try { db.exec("ALTER TABLE automation_workflows ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}';"); } catch {}
-      try { db.exec("ALTER TABLE automation_workflows ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]';"); } catch {}
+    // Additive columns to existing automation tables
+    addColumnIfNotExists(db, 'automation_workflows', 'version', 'INTEGER NOT NULL DEFAULT 1');
+    addColumnIfNotExists(db, 'automation_workflows', 'workspace_id', 'TEXT');
+    addColumnIfNotExists(db, 'automation_workflows', 'variables_json', "TEXT NOT NULL DEFAULT '[]'");
+    addColumnIfNotExists(db, 'automation_workflows', 'settings_json', "TEXT NOT NULL DEFAULT '{}'");
+    addColumnIfNotExists(db, 'automation_workflows', 'tags_json', "TEXT NOT NULL DEFAULT '[]'");
 
-      try { db.exec('ALTER TABLE automation_steps ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0;'); } catch {}
-      try { db.exec('ALTER TABLE automation_steps ADD COLUMN retry_delay_ms INTEGER NOT NULL DEFAULT 1000;'); } catch {}
-      try { db.exec('ALTER TABLE automation_steps ADD COLUMN condition_json TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE automation_steps ADD COLUMN loop_config_json TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE automation_steps ADD COLUMN output_variable_name TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE automation_steps ADD COLUMN is_secret INTEGER NOT NULL DEFAULT 0;'); } catch {}
-
-      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (15, ?)').run(new Date().toISOString());
-    } catch {}
-  }
+    addColumnIfNotExists(db, 'automation_steps', 'retry_count', 'INTEGER NOT NULL DEFAULT 0');
+    addColumnIfNotExists(db, 'automation_steps', 'retry_delay_ms', 'INTEGER NOT NULL DEFAULT 1000');
+    addColumnIfNotExists(db, 'automation_steps', 'condition_json', 'TEXT');
+    addColumnIfNotExists(db, 'automation_steps', 'loop_config_json', 'TEXT');
+    addColumnIfNotExists(db, 'automation_steps', 'output_variable_name', 'TEXT');
+    addColumnIfNotExists(db, 'automation_steps', 'is_secret', 'INTEGER NOT NULL DEFAULT 0');
+  });
 
   // Migration v16: Phase 10 Real Cloud Browser Infrastructure & Remote Interactive Sessions
-  const checkMigration16 = db.prepare('SELECT version FROM schema_migrations WHERE version = 16').get();
-  if (!checkMigration16) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS cloud_browser_regions (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          endpoint_url TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          is_default INTEGER NOT NULL DEFAULT 0,
-          created_at TEXT NOT NULL
-        );
+  runMigration(db, 16, 'cloud browser infrastructure', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS cloud_browser_regions (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        gateway_url TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
 
-        CREATE TABLE IF NOT EXISTS cloud_browser_workers (
-          id TEXT PRIMARY KEY,
-          region_id TEXT NOT NULL,
-          hostname TEXT NOT NULL,
-          ip_address TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'ONLINE',
-          capacity INTEGER NOT NULL DEFAULT 10,
-          active_sessions INTEGER NOT NULL DEFAULT 0,
-          cpu_usage_pct REAL DEFAULT 0.0,
-          memory_usage_mb REAL DEFAULT 0.0,
-          last_heartbeat_at TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          FOREIGN KEY (region_id) REFERENCES cloud_browser_regions(id) ON DELETE RESTRICT
-        );
+      CREATE TABLE IF NOT EXISTS cloud_browser_workers (
+        id TEXT PRIMARY KEY,
+        region_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        ip_address TEXT,
+        capacity_slots INTEGER NOT NULL DEFAULT 10,
+        used_slots INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'READY',
+        cpu_usage_pct REAL,
+        ram_usage_pct REAL,
+        last_heartbeat_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (region_id) REFERENCES cloud_browser_regions(id) ON DELETE CASCADE
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_cb_workers_region ON cloud_browser_workers(region_id);
-        CREATE INDEX IF NOT EXISTS idx_cb_workers_status ON cloud_browser_workers(status);
+      CREATE TABLE IF NOT EXISTS cloud_browser_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        workspace_id TEXT,
+        profile_id TEXT NOT NULL,
+        worker_id TEXT,
+        region_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'REQUESTED',
+        resource_class TEXT NOT NULL DEFAULT 'STANDARD',
+        profile_version INTEGER NOT NULL DEFAULT 1,
+        lock_id TEXT,
+        session_token_hash TEXT,
+        stream_gateway_url TEXT,
+        cdp_port INTEGER,
+        duration_seconds INTEGER NOT NULL DEFAULT 0,
+        max_duration_seconds INTEGER NOT NULL DEFAULT 3600,
+        idle_timeout_seconds INTEGER NOT NULL DEFAULT 600,
+        last_activity_at TEXT NOT NULL,
+        started_at TEXT,
+        ended_at TEXT,
+        termination_reason TEXT,
+        error_message TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE,
+        FOREIGN KEY (region_id) REFERENCES cloud_browser_regions(id),
+        FOREIGN KEY (worker_id) REFERENCES cloud_browser_workers(id) ON DELETE SET NULL
+      );
+    `);
 
-        CREATE TABLE IF NOT EXISTS cloud_browser_sessions (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          workspace_id TEXT,
-          profile_id TEXT NOT NULL,
-          worker_id TEXT,
-          region_id TEXT NOT NULL DEFAULT 'in-west',
-          status TEXT NOT NULL DEFAULT 'REQUESTED',
-          resource_class TEXT NOT NULL DEFAULT 'STANDARD',
-          profile_version INTEGER NOT NULL DEFAULT 1,
-          lock_id TEXT,
-          session_token_hash TEXT,
-          stream_gateway_url TEXT,
-          cdp_port INTEGER,
-          duration_seconds INTEGER NOT NULL DEFAULT 0,
-          max_duration_seconds INTEGER NOT NULL DEFAULT 3600,
-          idle_timeout_seconds INTEGER NOT NULL DEFAULT 600,
-          last_activity_at TEXT NOT NULL,
-          started_at TEXT,
-          ended_at TEXT,
-          termination_reason TEXT,
-          error_message TEXT,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_cb_sessions_user ON cloud_browser_sessions(user_id);
-        CREATE INDEX IF NOT EXISTS idx_cb_sessions_prof ON cloud_browser_sessions(profile_id);
-        CREATE INDEX IF NOT EXISTS idx_cb_sessions_status ON cloud_browser_sessions(status);
-        CREATE INDEX IF NOT EXISTS idx_cb_sessions_worker ON cloud_browser_sessions(worker_id);
-
-        CREATE TABLE IF NOT EXISTS cloud_browser_events (
-          id TEXT PRIMARY KEY,
-          session_id TEXT NOT NULL,
-          user_id TEXT NOT NULL,
-          event_type TEXT NOT NULL,
-          details_json TEXT,
-          created_at TEXT NOT NULL,
-          FOREIGN KEY (session_id) REFERENCES cloud_browser_sessions(id) ON DELETE CASCADE
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_cb_events_session ON cloud_browser_events(session_id);
-        CREATE INDEX IF NOT EXISTS idx_cb_events_type ON cloud_browser_events(event_type);
-
-        CREATE TABLE IF NOT EXISTS cloud_browser_usage (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          workspace_id TEXT,
-          session_id TEXT NOT NULL,
-          duration_seconds INTEGER NOT NULL,
-          resource_class TEXT NOT NULL,
-          region_id TEXT NOT NULL,
-          created_at TEXT NOT NULL
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_cb_usage_user ON cloud_browser_usage(user_id);
-        CREATE INDEX IF NOT EXISTS idx_cb_usage_ws ON cloud_browser_usage(workspace_id);
-      `);
-
-      // Seed default cloud browser regions
-      const now = new Date().toISOString();
-      const insertRegion = db.prepare(`
-        INSERT OR IGNORE INTO cloud_browser_regions (id, name, endpoint_url, status, is_default, created_at)
-        VALUES (?, ?, ?, 'ACTIVE', ?, ?)
-      `);
-      insertRegion.run('in-west', 'India (Mumbai) - Local Node', 'https://in-west.cloud.mahibrowser.com', 1, now);
-      insertRegion.run('sg-central', 'Singapore (Central)', 'https://sg-central.cloud.mahibrowser.com', 0, now);
-      insertRegion.run('us-east', 'US East (N. Virginia)', 'https://us-east.cloud.mahibrowser.com', 0, now);
-      insertRegion.run('eu-central', 'EU Central (Frankfurt)', 'https://eu-central.cloud.mahibrowser.com', 0, now);
-
-      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (16, ?)').run(now);
-    } catch {}
-  }
+    // Seed default cloud browser regions
+    const now = new Date().toISOString();
+    const insertRegion = db.prepare(`
+      INSERT OR IGNORE INTO cloud_browser_regions (id, name, gateway_url, is_default, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    insertRegion.run('in-west', 'India (Mumbai) - Local Node', 'https://in-west.cloud.mahibrowser.com', 1, now, now);
+    insertRegion.run('sg-central', 'Singapore (Central)', 'https://sg-central.cloud.mahibrowser.com', 0, now, now);
+    insertRegion.run('us-east', 'US East (N. Virginia)', 'https://us-east.cloud.mahibrowser.com', 0, now, now);
+    insertRegion.run('eu-central', 'EU Central (Frankfurt)', 'https://eu-central.cloud.mahibrowser.com', 0, now, now);
+  });
 
   // Migration v17: Phase 11 Android Mobile Companion & Push Notifications
-  const checkMigration17 = db.prepare('SELECT version FROM schema_migrations WHERE version = 17').get();
-  if (!checkMigration17) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS mobile_device_tokens (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          device_id TEXT NOT NULL,
-          push_token TEXT NOT NULL,
-          platform TEXT NOT NULL DEFAULT 'android',
-          device_model TEXT,
-          os_version TEXT,
-          app_version TEXT,
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          last_seen_at TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        );
+  runMigration(db, 17, 'mobile device tokens and notifications', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mobile_device_tokens (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        push_token TEXT NOT NULL,
+        platform TEXT NOT NULL DEFAULT 'android',
+        device_model TEXT,
+        os_version TEXT,
+        app_version TEXT,
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        last_seen_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_mobile_tokens_user ON mobile_device_tokens(user_id);
-        CREATE INDEX IF NOT EXISTS idx_mobile_tokens_dev ON mobile_device_tokens(device_id);
+      CREATE INDEX IF NOT EXISTS idx_mobile_tokens_user ON mobile_device_tokens(user_id);
+      CREATE INDEX IF NOT EXISTS idx_mobile_tokens_dev ON mobile_device_tokens(device_id);
 
-        CREATE TABLE IF NOT EXISTS mobile_notification_preferences (
-          user_id TEXT PRIMARY KEY,
-          security_alerts INTEGER NOT NULL DEFAULT 1,
-          cloud_sessions INTEGER NOT NULL DEFAULT 1,
-          automation_alerts INTEGER NOT NULL DEFAULT 1,
-          workspace_alerts INTEGER NOT NULL DEFAULT 1,
-          proxy_alerts INTEGER NOT NULL DEFAULT 1,
-          updated_at TEXT NOT NULL
-        );
+      CREATE TABLE IF NOT EXISTS mobile_notification_preferences (
+        user_id TEXT PRIMARY KEY,
+        security_alerts INTEGER NOT NULL DEFAULT 1,
+        cloud_sessions INTEGER NOT NULL DEFAULT 1,
+        automation_alerts INTEGER NOT NULL DEFAULT 1,
+        workspace_alerts INTEGER NOT NULL DEFAULT 1,
+        proxy_alerts INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL
+      );
 
-        CREATE TABLE IF NOT EXISTS mobile_notifications (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          category TEXT NOT NULL,
-          title TEXT NOT NULL,
-          body TEXT NOT NULL,
-          data_json TEXT,
-          read INTEGER NOT NULL DEFAULT 0,
-          created_at TEXT NOT NULL
-        );
+      CREATE TABLE IF NOT EXISTS mobile_notifications (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        category TEXT NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        data_json TEXT,
+        read INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_mobile_notif_user ON mobile_notifications(user_id);
-        CREATE INDEX IF NOT EXISTS idx_mobile_notif_cat ON mobile_notifications(category);
-      `);
-
-      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (17, ?)').run(new Date().toISOString());
-    } catch {}
-  }
+      CREATE INDEX IF NOT EXISTS idx_mobile_notif_user ON mobile_notifications(user_id);
+      CREATE INDEX IF NOT EXISTS idx_mobile_notif_cat ON mobile_notifications(category);
+    `);
+  });
 
   // Migration v18: Commercial Payment Platform, Billing Invoices & Webhook Idempotency
-  const checkMigration18 = db.prepare('SELECT version FROM schema_migrations WHERE version = 18').get();
-  if (!checkMigration18) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS commercial_payments (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          subscription_id TEXT,
-          provider TEXT NOT NULL DEFAULT 'stripe',
-          external_order_id TEXT,
-          external_payment_id TEXT UNIQUE,
-          amount_cents INTEGER NOT NULL,
-          currency TEXT NOT NULL DEFAULT 'USD',
-          status TEXT NOT NULL DEFAULT 'PENDING',
-          plan_id TEXT NOT NULL,
-          billing_cycle TEXT NOT NULL DEFAULT 'MONTHLY',
-          receipt_url TEXT,
-          metadata_json TEXT,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        );
+  runMigration(db, 18, 'commercial payments and billing invoices', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS commercial_payments (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        subscription_id TEXT,
+        provider TEXT NOT NULL DEFAULT 'stripe',
+        external_order_id TEXT,
+        external_payment_id TEXT UNIQUE,
+        amount_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'USD',
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        plan_id TEXT NOT NULL,
+        billing_cycle TEXT NOT NULL DEFAULT 'MONTHLY',
+        receipt_url TEXT,
+        metadata_json TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_comm_payments_user ON commercial_payments(user_id);
-        CREATE INDEX IF NOT EXISTS idx_comm_payments_ext ON commercial_payments(external_payment_id);
-        CREATE INDEX IF NOT EXISTS idx_comm_payments_status ON commercial_payments(status);
+      CREATE INDEX IF NOT EXISTS idx_comm_payments_user ON commercial_payments(user_id);
+      CREATE INDEX IF NOT EXISTS idx_comm_payments_ext ON commercial_payments(external_payment_id);
+      CREATE INDEX IF NOT EXISTS idx_comm_payments_status ON commercial_payments(status);
 
-        CREATE TABLE IF NOT EXISTS commercial_billing_invoices (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          payment_id TEXT,
-          invoice_number TEXT NOT NULL UNIQUE,
-          amount_cents INTEGER NOT NULL,
-          currency TEXT NOT NULL DEFAULT 'USD',
-          status TEXT NOT NULL DEFAULT 'PAID',
-          period_start TEXT NOT NULL,
-          period_end TEXT NOT NULL,
-          pdf_url TEXT,
-          created_at TEXT NOT NULL
-        );
+      CREATE TABLE IF NOT EXISTS commercial_billing_invoices (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        payment_id TEXT,
+        invoice_number TEXT NOT NULL UNIQUE,
+        amount_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'USD',
+        status TEXT NOT NULL DEFAULT 'PAID',
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        pdf_url TEXT,
+        created_at TEXT NOT NULL
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_comm_invoices_user ON commercial_billing_invoices(user_id);
+      CREATE INDEX IF NOT EXISTS idx_comm_invoices_user ON commercial_billing_invoices(user_id);
 
-        CREATE TABLE IF NOT EXISTS commercial_webhook_events (
-          id TEXT PRIMARY KEY,
-          provider TEXT NOT NULL,
-          event_type TEXT NOT NULL,
-          payload_json TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'PROCESSED',
-          created_at TEXT NOT NULL
-        );
+      CREATE TABLE IF NOT EXISTS commercial_webhook_events (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PROCESSED',
+        created_at TEXT NOT NULL
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_comm_webhooks_prov ON commercial_webhook_events(provider, event_type);
-      `);
-
-      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (18, ?)').run(new Date().toISOString());
-    } catch {}
-  }
+      CREATE INDEX IF NOT EXISTS idx_comm_webhooks_prov ON commercial_webhook_events(provider, event_type);
+    `);
+  });
 
   // Ensure additive columns exist regardless of migration cache
-  try { db.exec('ALTER TABLE proxies ADD COLUMN city TEXT;'); } catch {}
-  try { db.exec('ALTER TABLE proxies ADD COLUMN region TEXT;'); } catch {}
-  try { db.exec('ALTER TABLE proxies ADD COLUMN provider_id TEXT;'); } catch {}
-  try { db.exec('ALTER TABLE proxies ADD COLUMN network_type TEXT;'); } catch {}
-  try { db.exec('ALTER TABLE proxies ADD COLUMN session_type TEXT;'); } catch {}
+  addColumnIfNotExists(db, 'proxies', 'city', 'TEXT');
+  addColumnIfNotExists(db, 'proxies', 'region', 'TEXT');
+  addColumnIfNotExists(db, 'proxies', 'provider_id', 'TEXT');
+  addColumnIfNotExists(db, 'proxies', 'network_type', 'TEXT');
+  addColumnIfNotExists(db, 'proxies', 'session_type', 'TEXT');
 
-  try { db.exec('ALTER TABLE automation_workflows ADD COLUMN version INTEGER NOT NULL DEFAULT 1;'); } catch {}
-  try { db.exec('ALTER TABLE automation_workflows ADD COLUMN workspace_id TEXT;'); } catch {}
-  try { db.exec("ALTER TABLE automation_workflows ADD COLUMN variables_json TEXT NOT NULL DEFAULT '[]';"); } catch {}
-  try { db.exec("ALTER TABLE automation_workflows ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}';"); } catch {}
-  try { db.exec("ALTER TABLE automation_workflows ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]';"); } catch {}
+  addColumnIfNotExists(db, 'automation_workflows', 'version', 'INTEGER NOT NULL DEFAULT 1');
+  addColumnIfNotExists(db, 'automation_workflows', 'workspace_id', 'TEXT');
+  addColumnIfNotExists(db, 'automation_workflows', 'variables_json', "TEXT NOT NULL DEFAULT '[]'");
+  addColumnIfNotExists(db, 'automation_workflows', 'settings_json', "TEXT NOT NULL DEFAULT '{}'");
+  addColumnIfNotExists(db, 'automation_workflows', 'tags_json', "TEXT NOT NULL DEFAULT '[]'");
 
-  try { db.exec('ALTER TABLE automation_steps ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0;'); } catch {}
-  try { db.exec('ALTER TABLE automation_steps ADD COLUMN retry_delay_ms INTEGER NOT NULL DEFAULT 1000;'); } catch {}
-  try { db.exec('ALTER TABLE automation_steps ADD COLUMN condition_json TEXT;'); } catch {}
-  try { db.exec('ALTER TABLE automation_steps ADD COLUMN loop_config_json TEXT;'); } catch {}
-  try { db.exec('ALTER TABLE automation_steps ADD COLUMN output_variable_name TEXT;'); } catch {}
-  try { db.exec('ALTER TABLE automation_steps ADD COLUMN is_secret INTEGER NOT NULL DEFAULT 0;'); } catch {}
+  addColumnIfNotExists(db, 'automation_steps', 'retry_count', 'INTEGER NOT NULL DEFAULT 0');
+  addColumnIfNotExists(db, 'automation_steps', 'retry_delay_ms', 'INTEGER NOT NULL DEFAULT 1000');
+  addColumnIfNotExists(db, 'automation_steps', 'condition_json', 'TEXT');
+  addColumnIfNotExists(db, 'automation_steps', 'loop_config_json', 'TEXT');
+  addColumnIfNotExists(db, 'automation_steps', 'output_variable_name', 'TEXT');
+  addColumnIfNotExists(db, 'automation_steps', 'is_secret', 'INTEGER NOT NULL DEFAULT 0');
 
   // Clean legacy auto-warmed status lines from user notes
   try {
@@ -1279,230 +1197,147 @@ export async function initializeDatabase(): Promise<void> {
   } catch {}
 
   // Migration v19: Production Business Model — Pricing Versioning, Provider Mapping, Usage Ledger
-  const checkMigration19 = db.prepare('SELECT version FROM schema_migrations WHERE version = 19').get();
-  if (!checkMigration19) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS pricing_versions (
-          version INTEGER PRIMARY KEY,
-          status TEXT NOT NULL DEFAULT 'DRAFT',
-          prices_json TEXT NOT NULL,
-          annual_discount_percent INTEGER NOT NULL DEFAULT 50,
-          existing_subscriber_policy TEXT NOT NULL DEFAULT 'GRANDFATHER',
-          published_at TEXT,
-          published_by TEXT,
-          effective_at TEXT,
-          provider_sync_status_json TEXT NOT NULL DEFAULT '{}',
-          created_at TEXT NOT NULL
-        );
+  runMigration(db, 19, 'pricing versioning and audit log', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS pricing_audit_log (
+        id TEXT PRIMARY KEY,
+        admin_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        old_data TEXT,
+        new_data TEXT,
+        subscriber_policy TEXT,
+        pricing_version INTEGER,
+        provider_sync_result TEXT,
+        created_at TEXT NOT NULL
+      );
 
-        CREATE TABLE IF NOT EXISTS provider_price_mappings (
-          id TEXT PRIMARY KEY,
-          provider TEXT NOT NULL,
-          plan_id TEXT NOT NULL,
-          billing_cycle TEXT NOT NULL,
-          pricing_version INTEGER NOT NULL,
-          provider_product_id TEXT NOT NULL,
-          provider_price_id TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          created_at TEXT NOT NULL
-        );
+      CREATE INDEX IF NOT EXISTS idx_pricing_audit_version ON pricing_audit_log(pricing_version);
+    `);
 
-        CREATE INDEX IF NOT EXISTS idx_ppm_plan ON provider_price_mappings(plan_id, billing_cycle);
-        CREATE INDEX IF NOT EXISTS idx_ppm_version ON provider_price_mappings(pricing_version);
-        CREATE INDEX IF NOT EXISTS idx_ppm_status ON provider_price_mappings(status);
+    // Additive columns to commercial_subscriptions for pricing versioning
+    addColumnIfNotExists(db, 'commercial_subscriptions', 'pricing_version', 'INTEGER');
+    addColumnIfNotExists(db, 'commercial_subscriptions', 'cancel_at_period_end', 'INTEGER NOT NULL DEFAULT 0');
 
-        CREATE TABLE IF NOT EXISTS usage_ledger (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          resource_type TEXT NOT NULL,
-          current_usage REAL NOT NULL DEFAULT 0,
-          max_allowed REAL NOT NULL DEFAULT 0,
-          billing_period_start TEXT NOT NULL,
-          billing_period_end TEXT NOT NULL,
-          last_updated_at TEXT NOT NULL
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_usage_user ON usage_ledger(user_id, resource_type);
-        CREATE INDEX IF NOT EXISTS idx_usage_period ON usage_ledger(billing_period_start);
-
-        CREATE TABLE IF NOT EXISTS pricing_audit_log (
-          id TEXT PRIMARY KEY,
-          actor_id TEXT NOT NULL,
-          actor_name TEXT NOT NULL,
-          action TEXT NOT NULL,
-          plan_id TEXT,
-          old_price_paise INTEGER,
-          new_price_paise INTEGER,
-          annual_discount_old INTEGER,
-          annual_discount_new INTEGER,
-          effective_date TEXT,
-          subscriber_policy TEXT,
-          pricing_version INTEGER,
-          provider_sync_result TEXT,
-          created_at TEXT NOT NULL
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_pricing_audit_version ON pricing_audit_log(pricing_version);
-      `);
-
-      // Additive columns to commercial_subscriptions for pricing versioning
-      try { db.exec('ALTER TABLE commercial_subscriptions ADD COLUMN pricing_version INTEGER;'); } catch {}
-      try { db.exec('ALTER TABLE commercial_subscriptions ADD COLUMN cancel_at_period_end INTEGER NOT NULL DEFAULT 0;'); } catch {}
-
-      // Additive columns to commercial_billing_invoices for pricing snapshot
-      try { db.exec('ALTER TABLE commercial_billing_invoices ADD COLUMN pricing_version INTEGER;'); } catch {}
-      try { db.exec('ALTER TABLE commercial_billing_invoices ADD COLUMN plan_id TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE commercial_billing_invoices ADD COLUMN plan_name TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE commercial_billing_invoices ADD COLUMN discount_paise INTEGER NOT NULL DEFAULT 0;'); } catch {}
-      try { db.exec('ALTER TABLE commercial_billing_invoices ADD COLUMN tax_paise INTEGER NOT NULL DEFAULT 0;'); } catch {}
-
-      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (19, ?)').run(new Date().toISOString());
-    } catch {}
-  }
+    // Additive columns to commercial_billing_invoices for pricing snapshot
+    addColumnIfNotExists(db, 'commercial_billing_invoices', 'pricing_version', 'INTEGER');
+    addColumnIfNotExists(db, 'commercial_billing_invoices', 'plan_id', 'TEXT');
+    addColumnIfNotExists(db, 'commercial_billing_invoices', 'plan_name', 'TEXT');
+    addColumnIfNotExists(db, 'commercial_billing_invoices', 'discount_paise', 'INTEGER NOT NULL DEFAULT 0');
+    addColumnIfNotExists(db, 'commercial_billing_invoices', 'tax_paise', 'INTEGER NOT NULL DEFAULT 0');
+  });
 
   // Migration v20: Website CTA -> Auth -> Trial / Demo / Funnel Infrastructure
-  const checkMigration20 = db.prepare('SELECT version FROM schema_migrations WHERE version = 20').get();
-  if (!checkMigration20) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS demo_requests (
-          id TEXT PRIMARY KEY,
-          full_name TEXT NOT NULL,
-          email TEXT NOT NULL,
-          company_name TEXT,
-          team_size TEXT,
-          use_case TEXT,
-          contact_method TEXT DEFAULT 'Email',
-          preferred_datetime TEXT,
-          message TEXT,
-          status TEXT NOT NULL DEFAULT 'NEW',
-          admin_notes TEXT,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        );
+  runMigration(db, 20, 'demo requests funnel events and trial columns', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS demo_requests (
+        id TEXT PRIMARY KEY,
+        full_name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        company_name TEXT,
+        team_size TEXT,
+        use_case TEXT,
+        contact_method TEXT DEFAULT 'Email',
+        preferred_datetime TEXT,
+        message TEXT,
+        status TEXT NOT NULL DEFAULT 'NEW',
+        admin_notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_demo_status ON demo_requests(status);
-        CREATE INDEX IF NOT EXISTS idx_demo_email ON demo_requests(email);
+      CREATE INDEX IF NOT EXISTS idx_demo_status ON demo_requests(status);
+      CREATE INDEX IF NOT EXISTS idx_demo_email ON demo_requests(email);
 
-        CREATE TABLE IF NOT EXISTS funnel_events (
-          id TEXT PRIMARY KEY,
-          event_name TEXT NOT NULL,
-          user_id TEXT,
-          anonymous_id TEXT,
-          plan_id TEXT,
-          billing_cycle TEXT,
-          source_url TEXT,
-          ip_address TEXT,
-          metadata_json TEXT NOT NULL DEFAULT '{}',
-          created_at TEXT NOT NULL
-        );
+      CREATE TABLE IF NOT EXISTS funnel_events (
+        id TEXT PRIMARY KEY,
+        event_name TEXT NOT NULL,
+        user_id TEXT,
+        anonymous_id TEXT,
+        plan_id TEXT,
+        billing_cycle TEXT,
+        source_url TEXT,
+        ip_address TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_funnel_event_name ON funnel_events(event_name);
-        CREATE INDEX IF NOT EXISTS idx_funnel_created ON funnel_events(created_at);
-      `);
+      CREATE INDEX IF NOT EXISTS idx_funnel_event_name ON funnel_events(event_name);
+      CREATE INDEX IF NOT EXISTS idx_funnel_created ON funnel_events(created_at);
+    `);
 
-      // Additive columns for trial tracking and intent continuation
-      try { db.exec('ALTER TABLE commercial_users ADD COLUMN trial_started_at TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE commercial_users ADD COLUMN trial_expires_at TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE commercial_users ADD COLUMN trial_used INTEGER NOT NULL DEFAULT 0;'); } catch {}
-      try { db.exec('ALTER TABLE commercial_users ADD COLUMN signup_intent TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE commercial_users ADD COLUMN pending_plan_id TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE commercial_users ADD COLUMN pending_billing_cycle TEXT;'); } catch {}
+    // Additive columns for trial tracking and intent continuation
+    addColumnIfNotExists(db, 'commercial_users', 'trial_started_at', 'TEXT');
+    addColumnIfNotExists(db, 'commercial_users', 'trial_expires_at', 'TEXT');
+    addColumnIfNotExists(db, 'commercial_users', 'trial_used', 'INTEGER NOT NULL DEFAULT 0');
+    addColumnIfNotExists(db, 'commercial_users', 'signup_intent', 'TEXT');
+    addColumnIfNotExists(db, 'commercial_users', 'pending_plan_id', 'TEXT');
+    addColumnIfNotExists(db, 'commercial_users', 'pending_billing_cycle', 'TEXT');
 
-      try { db.exec('ALTER TABLE auth_users ADD COLUMN trial_started_at TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE auth_users ADD COLUMN trial_expires_at TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE auth_users ADD COLUMN trial_used INTEGER NOT NULL DEFAULT 0;'); } catch {}
-      try { db.exec('ALTER TABLE auth_users ADD COLUMN signup_intent TEXT;'); } catch {}
-
-      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (20, ?)').run(new Date().toISOString());
-    } catch {}
-  }
+    addColumnIfNotExists(db, 'auth_users', 'trial_started_at', 'TEXT');
+    addColumnIfNotExists(db, 'auth_users', 'trial_expires_at', 'TEXT');
+    addColumnIfNotExists(db, 'auth_users', 'trial_used', 'INTEGER NOT NULL DEFAULT 0');
+    addColumnIfNotExists(db, 'auth_users', 'signup_intent', 'TEXT');
+  });
 
   // Migration v21: Phase 19 Production Google OAuth SSO Architecture
-  const checkMigration21 = db.prepare('SELECT version FROM schema_migrations WHERE version = 21').get();
-  if (!checkMigration21) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS oauth_states (
-          state TEXT PRIMARY KEY,
-          nonce TEXT NOT NULL,
-          provider TEXT NOT NULL DEFAULT 'google',
-          intent TEXT NOT NULL DEFAULT 'trial',
-          plan_id TEXT,
-          billing_cycle TEXT,
-          return_url TEXT,
-          expires_at TEXT NOT NULL,
-          created_at TEXT NOT NULL
-        );
+  runMigration(db, 21, 'google oauth sso and avatar columns', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS oauth_states (
+        state TEXT PRIMARY KEY,
+        nonce TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'google',
+        intent TEXT NOT NULL DEFAULT 'trial',
+        plan_id TEXT,
+        billing_cycle TEXT,
+        return_url TEXT,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_oauth_states_expires ON oauth_states(expires_at);
-      `);
+      CREATE INDEX IF NOT EXISTS idx_oauth_states_expires ON oauth_states(expires_at);
+    `);
 
-      // Additive columns for Google identity and avatar
-      try { db.exec('ALTER TABLE commercial_users ADD COLUMN google_sub TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE commercial_users ADD COLUMN avatar_url TEXT;'); } catch {}
-      try { db.exec("ALTER TABLE commercial_users ADD COLUMN auth_provider TEXT DEFAULT 'LOCAL';"); } catch {}
+    // Additive columns for Google identity and avatar
+    addColumnIfNotExists(db, 'commercial_users', 'google_sub', 'TEXT');
+    addColumnIfNotExists(db, 'commercial_users', 'avatar_url', 'TEXT');
+    addColumnIfNotExists(db, 'commercial_users', 'auth_provider', "TEXT DEFAULT 'LOCAL'");
 
-      try { db.exec('ALTER TABLE auth_users ADD COLUMN google_sub TEXT;'); } catch {}
-      try { db.exec('ALTER TABLE auth_users ADD COLUMN avatar_url TEXT;'); } catch {}
-      try { db.exec("ALTER TABLE auth_users ADD COLUMN auth_provider TEXT DEFAULT 'LOCAL';"); } catch {}
-
-      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (21, ?)').run(new Date().toISOString());
-    } catch {}
-  }
+    addColumnIfNotExists(db, 'auth_users', 'google_sub', 'TEXT');
+    addColumnIfNotExists(db, 'auth_users', 'avatar_url', 'TEXT');
+    addColumnIfNotExists(db, 'auth_users', 'auth_provider', "TEXT DEFAULT 'LOCAL'");
+  });
 
   // Migration v22: Phase 20 Support Tickets & Payment Escalation Architecture
-  const checkMigration22 = db.prepare('SELECT version FROM schema_migrations WHERE version = 22').get();
-  if (!checkMigration22) {
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS support_tickets (
-          id TEXT PRIMARY KEY,
-          ticket_number TEXT NOT NULL UNIQUE,
-          category TEXT NOT NULL,
-          user_email TEXT,
-          user_name TEXT,
-          message TEXT NOT NULL,
-          reply TEXT,
-          source TEXT DEFAULT 'landing_ai_chat',
-          status TEXT DEFAULT 'OPEN',
-          is_escalated INTEGER NOT NULL DEFAULT 0,
-          escalation_reason TEXT,
-          email_sent INTEGER NOT NULL DEFAULT 0,
-          admin_notes TEXT,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        );
+  runMigration(db, 22, 'support tickets and escalation', () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id TEXT PRIMARY KEY,
+        ticket_number TEXT NOT NULL UNIQUE,
+        category TEXT NOT NULL,
+        user_email TEXT,
+        user_name TEXT,
+        message TEXT NOT NULL,
+        reply TEXT,
+        source TEXT DEFAULT 'landing_ai_chat',
+        status TEXT DEFAULT 'OPEN',
+        is_escalated INTEGER NOT NULL DEFAULT 0,
+        escalation_reason TEXT,
+        email_sent INTEGER NOT NULL DEFAULT 0,
+        admin_notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_support_tickets_category ON support_tickets(category);
-        CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
-        CREATE INDEX IF NOT EXISTS idx_support_tickets_created ON support_tickets(created_at);
-      `);
-
-      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (22, ?)').run(new Date().toISOString());
-    } catch {}
-  }
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_category ON support_tickets(category);
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
+      CREATE INDEX IF NOT EXISTS idx_support_tickets_created ON support_tickets(created_at);
+    `);
+  });
 
   // Migration v23: Phase 23 Admin Operations, Quota Boosters & Enterprise Overrides (GoLogin & MostLogin Parity)
-  const checkMigration23 = db.prepare('SELECT version FROM schema_migrations WHERE version = 23').get();
-  if (!checkMigration23) {
-    try {
-      const columns = db.prepare('PRAGMA table_info(commercial_users)').all() as any[];
-      const colNames = columns.map((c) => c.name);
-
-      if (!colNames.includes('bonus_profiles')) {
-        db.exec('ALTER TABLE commercial_users ADD COLUMN bonus_profiles INTEGER NOT NULL DEFAULT 0');
-      }
-      if (!colNames.includes('bonus_proxy_bytes')) {
-        db.exec('ALTER TABLE commercial_users ADD COLUMN bonus_proxy_bytes INTEGER NOT NULL DEFAULT 0');
-      }
-      if (!colNames.includes('feature_overrides')) {
-        db.exec("ALTER TABLE commercial_users ADD COLUMN feature_overrides TEXT NOT NULL DEFAULT '{}'");
-      }
-
-      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (23, ?)').run(new Date().toISOString());
-    } catch {}
-  }
+  runMigration(db, 23, 'quota boosters and enterprise overrides', () => {
+    addColumnIfNotExists(db, 'commercial_users', 'bonus_profiles', 'INTEGER NOT NULL DEFAULT 0');
+    addColumnIfNotExists(db, 'commercial_users', 'bonus_proxy_bytes', 'INTEGER NOT NULL DEFAULT 0');
+    addColumnIfNotExists(db, 'commercial_users', 'feature_overrides', "TEXT NOT NULL DEFAULT '{}'");
+  });
 }
-

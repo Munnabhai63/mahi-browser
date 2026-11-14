@@ -332,6 +332,15 @@ app.whenReady().then(async () => {
     try {
       const userDataPath = app.getPath('userData');
       const dbPath = path.join(userDataPath, 'mahi_browser.sqlite');
+      if (fs.existsSync(dbPath)) {
+        const bakPath = `${dbPath}.corrupt.${Date.now()}.bak`;
+        try {
+          fs.copyFileSync(dbPath, bakPath);
+          logCheckpoint('Step 3: Corrupt database backed up to', bakPath);
+        } catch (copyErr) {
+          console.error('[DATABASE RECOVERY] Failed to create backup of corrupted database:', copyErr);
+        }
+      }
       logCheckpoint('Step 3: Attempting recovery - deleting corrupted DB file');
       try { fs.unlinkSync(dbPath); } catch {}
       setCustomDatabasePath(dbPath);

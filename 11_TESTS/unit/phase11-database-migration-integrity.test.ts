@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
 import {
@@ -6,8 +6,15 @@ import {
   getDatabase,
   setCustomDatabasePath,
   closeDatabase,
+  flushDatabaseToDisk,
+  saveDatabaseToDisk,
 } from '../../06_DATABASE/connection.js';
-import { initializeDatabase } from '../../06_DATABASE/schema.js';
+import {
+  initializeDatabase,
+  columnExists,
+  addColumnIfNotExists,
+  runMigration,
+} from '../../06_DATABASE/schema.js';
 
 describe('Phase 11 — Database Migration Integrity & Dual-Path Verification', () => {
   const tempDir = path.resolve('.mahi_data', 'test-migration-integrity');
@@ -17,6 +24,10 @@ describe('Phase 11 — Database Migration Integrity & Dual-Path Verification', (
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
+  });
+
+  afterEach(() => {
+    closeDatabase();
   });
 
   afterAll(() => {
@@ -34,7 +45,7 @@ describe('Phase 11 — Database Migration Integrity & Dual-Path Verification', (
   describe('Path A: Fresh Database Installation', () => {
     const freshDbPath = path.join(tempDir, 'fresh_install.sqlite');
 
-    it('creates all tables from scratch and advances sequentially to v17', async () => {
+    it('creates all tables from scratch and advances sequentially to v23', async () => {
       if (fs.existsSync(freshDbPath)) fs.unlinkSync(freshDbPath);
       setCustomDatabasePath(freshDbPath);
 
@@ -42,12 +53,12 @@ describe('Phase 11 — Database Migration Integrity & Dual-Path Verification', (
       await initializeDatabase();
       const db = getDatabase();
 
-      // Verify schema_migrations versions 1 through 17
+      // Verify schema_migrations versions 1 through 23
       const migrations = db.prepare('SELECT version FROM schema_migrations ORDER BY version ASC').all() as { version: number }[];
       const versions = migrations.map((m) => m.version);
 
-      expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]);
-      expect(Math.max(...versions)).toBe(22);
+      expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]);
+      expect(Math.max(...versions)).toBe(23);
 
       // Verify Phase 11 Mobile Tables exist
       const checkTokens = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='mobile_device_tokens'").get();
@@ -69,6 +80,11 @@ describe('Phase 11 — Database Migration Integrity & Dual-Path Verification', (
       const checkSessions = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cloud_browser_sessions'").get();
       expect(checkSessions).toBeDefined();
 
+      // Verify Phase 23 columns exist
+      expect(columnExists(db, 'commercial_users', 'bonus_profiles')).toBe(true);
+      expect(columnExists(db, 'commercial_users', 'bonus_proxy_bytes')).toBe(true);
+      expect(columnExists(db, 'commercial_users', 'feature_overrides')).toBe(true);
+
       // Verify default cloud regions were seeded
       const regionsCount = db.prepare('SELECT COUNT(*) as count FROM cloud_browser_regions').get() as any;
       expect(regionsCount?.count).toBeGreaterThanOrEqual(4);
@@ -80,10 +96,10 @@ describe('Phase 11 — Database Migration Integrity & Dual-Path Verification', (
   // =========================================================================
   // 2. UPGRADE FROM EXISTING v16 DATABASE PATH
   // =========================================================================
-  describe('Path B: Existing v16 Database Upgrade to Phase 11 (v17)', () => {
+  describe('Path B: Existing v16 Database Upgrade to Phase 11 (v23)', () => {
     const upgradeDbPath = path.join(tempDir, 'v16_upgrade.sqlite');
 
-    it('upgrades a v16 database to v17 without data loss or schema conflict', async () => {
+    it('upgrades a v16 database to v23 without data loss or schema conflict', async () => {
       if (fs.existsSync(upgradeDbPath)) fs.unlinkSync(upgradeDbPath);
       setCustomDatabasePath(upgradeDbPath);
 
@@ -128,6 +144,51 @@ describe('Phase 11 — Database Migration Integrity & Dual-Path Verification', (
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           last_login_at TEXT
+        );
+        CREATE TABLE commercial_users (
+          id TEXT PRIMARY KEY,
+          email TEXT NOT NULL UNIQUE,
+          password_hash TEXT NOT NULL,
+          salt TEXT NOT NULL,
+          name TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'USER',
+          status TEXT NOT NULL DEFAULT 'ACTIVE',
+          plan_id TEXT NOT NULL DEFAULT 'plan_free',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          last_login_at TEXT
+        );
+        CREATE TABLE commercial_plans (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          tier TEXT NOT NULL,
+          price_monthly REAL NOT NULL DEFAULT 0,
+          price_annual REAL NOT NULL DEFAULT 0,
+          limits_json TEXT NOT NULL,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE proxies (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          protocol TEXT NOT NULL,
+          host TEXT NOT NULL,
+          port INTEGER NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE automation_workflows (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        CREATE TABLE automation_steps (
+          id TEXT PRIMARY KEY,
+          workflow_id TEXT NOT NULL,
+          step_order INTEGER NOT NULL,
+          action_type TEXT NOT NULL,
+          created_at TEXT NOT NULL
         );
         CREATE TABLE cloud_browser_sessions (
           id TEXT PRIMARY KEY,
@@ -189,9 +250,9 @@ describe('Phase 11 — Database Migration Integrity & Dual-Path Verification', (
 
       const db = getDatabase();
 
-      // Verify schema version is now 22
+      // Verify schema version is now 23
       const versionRow = db.prepare('SELECT MAX(version) as maxVersion FROM schema_migrations').get() as any;
-      expect(versionRow.maxVersion).toBe(22);
+      expect(versionRow.maxVersion).toBe(23);
 
       // Verify Phase 11 mobile tables were created during upgrade
       const checkTokens = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='mobile_device_tokens'").get();
@@ -248,10 +309,255 @@ describe('Phase 11 — Database Migration Integrity & Dual-Path Verification', (
 
       const db = getDatabase();
       const countMigrations = db.prepare('SELECT COUNT(*) as count FROM schema_migrations').get() as any;
-      expect(countMigrations.count).toBe(22);
+      expect(countMigrations.count).toBe(23);
 
       const maxVer = db.prepare('SELECT MAX(version) as maxVer FROM schema_migrations').get() as any;
-      expect(maxVer.maxVer).toBe(22);
+      expect(maxVer.maxVer).toBe(23);
+
+      closeDatabase();
+    });
+  });
+
+  // =========================================================================
+  // 4. ACCURATE ROW CHANGES COUNT (sql.js getRowsModified)
+  // =========================================================================
+  describe('Path D: Accurate Row Changes Count (No Hardcoded changes: 1)', () => {
+    const changesDbPath = path.join(tempDir, 'changes_test.sqlite');
+
+    it('returns changes: 0 for non-matching UPDATE/DELETE and real count for matching', async () => {
+      if (fs.existsSync(changesDbPath)) fs.unlinkSync(changesDbPath);
+      setCustomDatabasePath(changesDbPath);
+      await initializeDatabase();
+      const db = getDatabase();
+
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT INTO profiles (id, name, storage_path, created_at, updated_at)
+        VALUES ('prof_change_target', 'Original Target', '/data/profiles/target', ?, ?)
+      `).run(now, now);
+
+      // Non-matching update must return changes: 0
+      const noMatchUpdate = db.prepare("UPDATE profiles SET name = 'Ghost' WHERE id = 'prof_does_not_exist'").run();
+      expect(noMatchUpdate.changes).toBe(0);
+
+      // Non-matching delete must return changes: 0
+      const noMatchDelete = db.prepare("DELETE FROM profiles WHERE id = 'prof_does_not_exist'").run();
+      expect(noMatchDelete.changes).toBe(0);
+
+      // Matching update must return changes: 1
+      const matchUpdate = db.prepare("UPDATE profiles SET name = 'Real Name' WHERE id = 'prof_change_target'").run();
+      expect(matchUpdate.changes).toBe(1);
+
+      // Matching delete must return changes: 1
+      const matchDelete = db.prepare("DELETE FROM profiles WHERE id = 'prof_change_target'").run();
+      expect(matchDelete.changes).toBe(1);
+
+      closeDatabase();
+    });
+  });
+
+  // =========================================================================
+  // 5. PRAGMA foreign_keys = ON & Cascading Deletions
+  // =========================================================================
+  describe('Path E: Foreign Key Enforcement & Cascading Deletion', () => {
+    const fkDbPath = path.join(tempDir, 'fk_test.sqlite');
+
+    it('enforces foreign keys and cascades deletions automatically', async () => {
+      if (fs.existsSync(fkDbPath)) fs.unlinkSync(fkDbPath);
+      setCustomDatabasePath(fkDbPath);
+      await initializeDatabase();
+      const db = getDatabase();
+
+      // Check PRAGMA foreign_keys is 1
+      const fkPragma = db.prepare('PRAGMA foreign_keys').get() as any;
+      expect(fkPragma.foreign_keys).toBe(1);
+
+      const now = new Date().toISOString();
+      // Insert valid parent license
+      db.prepare(`
+        INSERT INTO licenses (id, license_key_hash, key_masked, customer_name, status, duration_type, starts_at, created_at)
+        VALUES ('lic_parent_1', 'hash_parent_1', 'XXXX-1111', 'Test Customer', 'ACTIVE', 'LIFETIME', ?, ?)
+      `).run(now, now);
+
+      // Insert child license_devices referencing parent
+      db.prepare(`
+        INSERT INTO license_devices (id, license_id, device_id, device_name, activated_at, last_seen_at)
+        VALUES ('dev_child_1', 'lic_parent_1', 'dev_hw_1', 'MacBook Pro', ?, ?)
+      `).run(now, now);
+
+      const childBefore = db.prepare("SELECT * FROM license_devices WHERE id = 'dev_child_1'").get();
+      expect(childBefore).toBeDefined();
+
+      // Delete parent license - cascade should delete child
+      db.prepare("DELETE FROM licenses WHERE id = 'lic_parent_1'").run();
+
+      const childAfter = db.prepare("SELECT * FROM license_devices WHERE id = 'dev_child_1'").get();
+      expect(childAfter).toBeUndefined();
+
+      // Inserting child with non-existent parent should throw FOREIGN KEY constraint failed
+      expect(() => {
+        db.prepare(`
+          INSERT INTO license_devices (id, license_id, device_id, device_name, activated_at, last_seen_at)
+          VALUES ('dev_orphan', 'non_existent_lic', 'dev_hw_orphan', 'Orphan PC', ?, ?)
+        `).run(now, now);
+      }).toThrow(/FOREIGN KEY constraint failed/i);
+
+      closeDatabase();
+    });
+  });
+
+  // =========================================================================
+  // 6. NESTED TRANSACTIONS & SAVEPOINTS
+  // =========================================================================
+  describe('Path F: Nested Transactions with Savepoint Rollback', () => {
+    const txDbPath = path.join(tempDir, 'tx_test.sqlite');
+
+    it('rolls back inner transaction without aborting outer transaction', async () => {
+      if (fs.existsSync(txDbPath)) fs.unlinkSync(txDbPath);
+      setCustomDatabasePath(txDbPath);
+      await initializeDatabase();
+      const db = getDatabase();
+
+      const now = new Date().toISOString();
+
+      // Outer transaction
+      db.transaction(() => {
+        db.prepare(`
+          INSERT INTO profiles (id, name, storage_path, created_at, updated_at)
+          VALUES ('prof_outer_keep', 'Outer Profile', '/data/outer', ?, ?)
+        `).run(now, now);
+
+        // Inner transaction that fails and is caught
+        try {
+          db.transaction(() => {
+            db.prepare(`
+              INSERT INTO profiles (id, name, storage_path, created_at, updated_at)
+              VALUES ('prof_inner_drop', 'Inner Profile', '/data/inner', ?, ?)
+            `).run(now, now);
+
+            throw new Error('Simulated inner failure');
+          })();
+        } catch (err: any) {
+          expect(err.message).toBe('Simulated inner failure');
+        }
+      })();
+
+      // Confirm outer row exists and inner row was rolled back
+      const outerRow = db.prepare("SELECT * FROM profiles WHERE id = 'prof_outer_keep'").get();
+      expect(outerRow).toBeDefined();
+
+      const innerRow = db.prepare("SELECT * FROM profiles WHERE id = 'prof_inner_drop'").get();
+      expect(innerRow).toBeUndefined();
+
+      closeDatabase();
+    });
+  });
+
+  // =========================================================================
+  // 7. ATOMIC PERSISTENCE & FLUSH
+  // =========================================================================
+  describe('Path G: Atomic Disk Persistence & Sync Flush', () => {
+    const flushDbPath = path.join(tempDir, 'flush_test.sqlite');
+
+    it('persists changes to disk via temp file + atomic rename without leftover tmp files', async () => {
+      if (fs.existsSync(flushDbPath)) fs.unlinkSync(flushDbPath);
+      setCustomDatabasePath(flushDbPath);
+      await initializeDatabase();
+      const db = getDatabase();
+
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT INTO profiles (id, name, storage_path, created_at, updated_at)
+        VALUES ('prof_flush_check', 'Flush Check', '/data/flush', ?, ?)
+      `).run(now, now);
+
+      // Force synchronous flush to disk
+      flushDatabaseToDisk();
+
+      // Verify the file exists on disk and is non-empty
+      expect(fs.existsSync(flushDbPath)).toBe(true);
+      const stats = fs.statSync(flushDbPath);
+      expect(stats.size).toBeGreaterThan(0);
+
+      // Verify no temporary files remain in tempDir
+      const files = fs.readdirSync(tempDir);
+      const tmpFiles = files.filter(f => f.startsWith('flush_test.sqlite.tmp.'));
+      expect(tmpFiles).toHaveLength(0);
+
+      closeDatabase();
+    });
+  });
+
+  // =========================================================================
+  // 8. CORRUPT DATABASE PRESERVATION (ZERO-WIPE SAFETY)
+  // =========================================================================
+  describe('Path H: Corrupt Database Preservation (Zero Silent Wipe)', () => {
+    const corruptDbPath = path.join(tempDir, 'corrupt_sample.sqlite');
+
+    it('preserves corrupt file to .corrupt.<timestamp>.bak instead of wiping it silently', async () => {
+      // Create a non-empty file with corrupted contents
+      const corruptPayload = 'CRITICAL_USER_DATA_THAT_WAS_CORRUPTED_ON_POWER_LOSS';
+      fs.writeFileSync(corruptDbPath, corruptPayload, 'utf-8');
+
+      setCustomDatabasePath(corruptDbPath);
+
+      // getDatabase should detect non-SQLite bytes, preserve the corrupt file, and initialize clean fallback
+      const db = getDatabase();
+      expect(db).toBeDefined();
+
+      // Check that a .corrupt.<timestamp>.bak file exists
+      const files = fs.readdirSync(tempDir);
+      const bakFiles = files.filter(f => f.startsWith('corrupt_sample.sqlite.corrupt.'));
+      expect(bakFiles.length).toBeGreaterThanOrEqual(1);
+
+      // Check that backup file content matches original corrupted payload
+      const backupContent = fs.readFileSync(path.join(tempDir, bakFiles[0]), 'utf-8');
+      expect(backupContent).toBe(corruptPayload);
+
+      closeDatabase();
+    });
+  });
+
+  // =========================================================================
+  // 9. MIGRATION ROLLBACK ON DDL FAILURE
+  // =========================================================================
+  describe('Path I: Migration Rollback on DDL Failure & Helper Idempotency', () => {
+    const migDbPath = path.join(tempDir, 'mig_fail_test.sqlite');
+
+    it('rolls back failed migration without recording it in schema_migrations', async () => {
+      if (fs.existsSync(migDbPath)) fs.unlinkSync(migDbPath);
+      setCustomDatabasePath(migDbPath);
+      await initializeDatabase();
+      const db = getDatabase();
+
+      // Verify columnExists helper
+      expect(columnExists(db, 'profiles', 'name')).toBe(true);
+      expect(columnExists(db, 'profiles', 'non_existent_col')).toBe(false);
+
+      // Verify addColumnIfNotExists helper
+      addColumnIfNotExists(db, 'profiles', 'test_idempotent_col', 'TEXT DEFAULT NULL');
+      expect(columnExists(db, 'profiles', 'test_idempotent_col')).toBe(true);
+
+      // Calling again should not throw
+      expect(() => {
+        addColumnIfNotExists(db, 'profiles', 'test_idempotent_col', 'TEXT DEFAULT NULL');
+      }).not.toThrow();
+
+      // Test runMigration with failure
+      expect(() => {
+        runMigration(db, 999, 'intentional failure', () => {
+          db.exec('CREATE TABLE temp_fail_test (id TEXT PRIMARY KEY);');
+          throw new Error('Simulated DDL crash mid-migration');
+        });
+      }).toThrow(/Simulated DDL crash mid-migration/);
+
+      // Verify version 999 was NOT recorded
+      const checkMig = db.prepare('SELECT version FROM schema_migrations WHERE version = 999').get();
+      expect(checkMig).toBeUndefined();
+
+      // Verify temp_fail_test table was rolled back
+      const checkTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='temp_fail_test'").get();
+      expect(checkTable).toBeUndefined();
 
       closeDatabase();
     });

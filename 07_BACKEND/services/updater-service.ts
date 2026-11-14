@@ -22,7 +22,7 @@ import {
 } from './updater-validator.js';
 import { getActiveUpdateProvider } from './updater-provider.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
-import { getDatabase } from '../../06_DATABASE/connection.js';
+import { getDatabase, flushDatabaseToDisk } from '../../06_DATABASE/connection.js';
 
 function safeLogActivity(level: 'INFO' | 'WARNING' | 'ERROR', action: string, details: string) {
   try {
@@ -472,11 +472,10 @@ export async function applyAndRestartUpdate(options?: UpdateInstallOptions): Pro
 
   // Pre-Update Flush: Ensure database and storage state are flushed to disk
   try {
-    const db = getDatabase();
-    if (db && typeof (db as any).exec === 'function') {
-      try { (db as any).exec('PRAGMA wal_checkpoint(FULL);'); } catch {}
-    }
-  } catch {}
+    flushDatabaseToDisk();
+  } catch (flushErr) {
+    safeLogActivity('WARNING', 'Auto-Updater', `Pre-update database flush notice: ${flushErr}`);
+  }
 
   broadcastStatus({
     state: 'INSTALLING',
