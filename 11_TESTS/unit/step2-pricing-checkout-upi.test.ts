@@ -981,7 +981,7 @@ describe('STEP 2 COMMERCIAL MISSION — Unified Pricing, Checkout & UPI Lifecycl
         event: 'PAYMENT_SUCCESS',
         orderId: `ord_remote_${Date.now()}`,
         paymentId: `pay_remote_${Date.now()}`,
-        amountPaise: 149900,
+        amountPaise: calculateAuthoritativeOrderTotal({ planId: 'professional_25', billingCycle: 'ANNUAL' }).totalChargeMinor,
         currency: 'INR',
         metadata: {
           userId: userBId,

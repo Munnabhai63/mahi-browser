@@ -899,12 +899,31 @@ export class PaymentService {
     }
 
     // 4. Validate Amount & Currency Consistency against target plan
-    const targetPlan = getCommercialPlanById(event.planId);
-    if (!targetPlan) {
-      throw new Error(`PLAN_NOT_FOUND: Webhook references unknown plan "${event.planId}".`);
+    const isUsd = event.currency === 'USD';
+    let expectedAmount: number;
+    if (event.planId.startsWith('plan_')) {
+      const targetPlan = getCommercialPlanById(event.planId);
+      if (!targetPlan) {
+        throw new Error(`PLAN_NOT_FOUND: Webhook references unknown plan "${event.planId}".`);
+      }
+      expectedAmount = this.calculatePlanAmountCents(targetPlan, event.billingCycle);
+    } else {
+      try {
+        const orderTotal = calculateAuthoritativeOrderTotal({
+          planId: event.planId,
+          billingCycle: event.billingCycle,
+          currency: isUsd ? 'USD' : 'INR',
+        });
+        expectedAmount = orderTotal.totalChargeMinor;
+      } catch {
+        const targetPlan = getCommercialPlanById(event.planId);
+        if (!targetPlan) {
+          throw new Error(`PLAN_NOT_FOUND: Webhook references unknown plan "${event.planId}".`);
+        }
+        expectedAmount = this.calculatePlanAmountCents(targetPlan, event.billingCycle);
+      }
     }
 
-    const expectedAmount = this.calculatePlanAmountCents(targetPlan, event.billingCycle);
     if (event.type === 'payment.succeeded' && event.amountCents < expectedAmount) {
       throw new Error(
         `AMOUNT_TAMPERING_DETECTED: Paid amount (${event.amountCents}) is less than required plan price (${expectedAmount}).`

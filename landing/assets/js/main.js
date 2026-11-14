@@ -3496,25 +3496,37 @@ function calculateDrawerTotals() {
   const proxyAddonInr = 199;
   const proxyAddonUsd = 3;
 
-  // Annual 50% discount applies to base plan rate only
-  const discountedBaseMonthlyInr = isAnnual ? Math.round(meta.baseInr * 0.5) : meta.baseInr;
-  const discountedBaseMonthlyUsd = isAnnual ? Math.round(meta.baseUsd * 0.5) : meta.baseUsd;
+  const baseMonthlyPaise = meta.baseInr * 100;
+  const baseMonthlyCents = meta.baseUsd * 100;
+
+  // Annual 50% discount applies to base plan rate only in minor units
+  const discountedBaseMonthlyPaise = isAnnual ? Math.round(baseMonthlyPaise * 0.5) : baseMonthlyPaise;
+  const discountedBaseMonthlyCents = isAnnual ? Math.round(baseMonthlyCents * 0.5) : baseMonthlyCents;
 
   const billingMonths = isAnnual ? 12 : 1;
-  const baseChargeInr = discountedBaseMonthlyInr * billingMonths;
-  const baseChargeUsd = discountedBaseMonthlyUsd * billingMonths;
+  const baseChargePaise = discountedBaseMonthlyPaise * billingMonths;
+  const baseChargeCents = discountedBaseMonthlyCents * billingMonths;
 
-  const extraMembersTotalInr = members * memberAddonInr * billingMonths;
-  const extraMembersTotalUsd = members * memberAddonUsd * billingMonths;
+  const extraMembersTotalPaise = members * (memberAddonInr * 100) * billingMonths;
+  const extraMembersTotalCents = members * (memberAddonUsd * 100) * billingMonths;
 
-  const extraProxyGbTotalInr = proxyGb * proxyAddonInr * billingMonths;
-  const extraProxyGbTotalUsd = proxyGb * proxyAddonUsd * billingMonths;
+  const extraProxyGbTotalPaise = proxyGb * (proxyAddonInr * 100) * billingMonths;
+  const extraProxyGbTotalCents = proxyGb * (proxyAddonUsd * 100) * billingMonths;
+
+  const finalPaise = baseChargePaise + extraMembersTotalPaise + extraProxyGbTotalPaise;
+  const finalCents = baseChargeCents + extraMembersTotalCents + extraProxyGbTotalCents;
+
+  const finalInr = Math.round(finalPaise / 100);
+  const finalUsd = Math.round(finalCents / 100);
+
+  const baseChargeInr = Math.round(baseChargePaise / 100);
+  const baseChargeUsd = Math.round(baseChargeCents / 100);
+
+  const discountedBaseMonthlyInr = Math.round(discountedBaseMonthlyPaise / 100);
+  const discountedBaseMonthlyUsd = Math.round(discountedBaseMonthlyCents / 100);
 
   const totalMonthlyInr = discountedBaseMonthlyInr + (members * memberAddonInr) + (proxyGb * proxyAddonInr);
   const totalMonthlyUsd = discountedBaseMonthlyUsd + (members * memberAddonUsd) + (proxyGb * proxyAddonUsd);
-
-  const finalInr = baseChargeInr + extraMembersTotalInr + extraProxyGbTotalInr;
-  const finalUsd = baseChargeUsd + extraMembersTotalUsd + extraProxyGbTotalUsd;
 
   const monthlyEquivalentInr = isAnnual ? Math.round(finalInr / 12) : finalInr;
   const monthlyEquivalentUsd = isAnnual ? Math.round(finalUsd / 12) : finalUsd;
@@ -3662,6 +3674,8 @@ function initCheckoutDrawer() {
       if (authModal) {
         authModal.classList.add('open');
         document.body.style.overflow = 'hidden';
+      } else {
+        window.location.href = '/login?checkout=1';
       }
     }
   }

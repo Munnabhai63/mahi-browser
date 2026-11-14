@@ -4,7 +4,8 @@ import path from 'node:path';
 import os from 'node:os';
 import vm from 'node:vm';
 import http from 'node:http';
-import { ensureProfileStealthExtension } from '../../02_BROWSER/launcher.js';
+import crypto from 'node:crypto';
+import { ensureProfileStealthExtension, getProfileDebugPort } from '../../02_BROWSER/launcher.js';
 import { injectNativeStealthPreferences } from '../../02_BROWSER/stealth-native-preferences.js';
 import { getMahiCustomCorePath, getStealthOrbitaEnginePath } from '../../02_BROWSER/detector.js';
 import { resolveMultiCoreExecutablePath } from '../../02_BROWSER/services/multi-core-resolver.js';
@@ -28,7 +29,7 @@ describe('Step 4: Pre-C++ Browser Stealth Hardening, 02_BROWSER Cleanup & Commer
     } catch {}
   });
 
-  it('1. ensureProfileStealthExtension honors profile fingerprint settings, Linux UA, dynamic CDP port DNR, and Accept-Language', () => {
+  it('1. ensureProfileStealthExtension honors profile fingerprint settings, Linux UA, dynamic CDP port DNR (rules 2, 3, 4), and Accept-Language', () => {
     const profileDir = path.join(tempBaseDir, 'profile-linux-stealth');
     fs.mkdirSync(profileDir, { recursive: true });
 
@@ -87,11 +88,23 @@ describe('Step 4: Pre-C++ Browser Stealth Hardening, 02_BROWSER Cleanup & Commer
     expect(acceptLangHeader).toBeDefined();
     expect(acceptLangHeader.value).toContain('fr-FR');
 
-    // Rule 2: Dynamic CDP port blocking (profile debug port)
-    const cdpBlockRule = rules.find((r: any) => r.id === 2);
-    expect(cdpBlockRule).toBeDefined();
-    expect(cdpBlockRule.action.type).toBe('block');
-    expect(cdpBlockRule.condition.urlFilter).toContain('127.0.0.1');
+    // Rule 2: Static CDP port 9222 blocking
+    const cdpBlockRule2 = rules.find((r: any) => r.id === 2);
+    expect(cdpBlockRule2).toBeDefined();
+    expect(cdpBlockRule2.action.type).toBe('block');
+    expect(cdpBlockRule2.condition.urlFilter).toBe('||127.0.0.1:9222');
+
+    // Rules 3 & 4: Dynamic CDP port blocking using getProfileDebugPort(profileId)
+    const expectedPort = getProfileDebugPort(mockProfile.id);
+    const cdpBlockRule3 = rules.find((r: any) => r.id === 3);
+    expect(cdpBlockRule3).toBeDefined();
+    expect(cdpBlockRule3.action.type).toBe('block');
+    expect(cdpBlockRule3.condition.urlFilter).toBe(`||127.0.0.1:${expectedPort}`);
+
+    const cdpBlockRule4 = rules.find((r: any) => r.id === 4);
+    expect(cdpBlockRule4).toBeDefined();
+    expect(cdpBlockRule4.action.type).toBe('block');
+    expect(cdpBlockRule4.condition.urlFilter).toBe(`||localhost:${expectedPort}`);
 
     // Verify stealth-core.js content
     const coreScriptPath = path.join(extPath, 'stealth-core.js');
@@ -107,7 +120,7 @@ describe('Step 4: Pre-C++ Browser Stealth Hardening, 02_BROWSER Cleanup & Commer
     expect(coreScript).toContain('fr-FR');
   });
 
-  it('2. stealth-core.js execution in VM context masks navigator, Date, Intl, WebGL, WebRTC, and sweeps automation flags', () => {
+  it('2. stealth-core.js execution in VM context masks navigator, Date, Intl, WebGL, WebGPU, WebRTC, and sweeps automation flags', () => {
     const profileDir = path.join(tempBaseDir, 'profile-vm-exec');
     fs.mkdirSync(profileDir, { recursive: true });
 
@@ -165,6 +178,15 @@ describe('Step 4: Pre-C++ Browser Stealth Hardening, 02_BROWSER Cleanup & Commer
       language: 'en-US',
       languages: ['en-US', 'en'],
       userAgent: mockProfile.settings?.browser?.userAgent,
+      gpu: {
+        requestAdapter: function () {
+          return Promise.resolve({
+            requestAdapterInfo: function () {
+              return Promise.resolve({ vendor: 'mock-vendor', device: 'mock-device' });
+            },
+          });
+        },
+      },
     };
 
     function MockWebGLRenderingContext() {}
@@ -187,8 +209,19 @@ describe('Step 4: Pre-C++ Browser Stealth Hardening, 02_BROWSER Cleanup & Commer
       this.config = config;
       this.localDescription = null;
       this.onicecandidate = null;
+      this.listeners = {} as Record<string, Function[]>;
     }
     MockRTCPeerConnection.prototype = {
+      addEventListener: function (type: string, fn: Function) {
+        if (!this.listeners[type]) this.listeners[type] = [];
+        this.listeners[type].push(fn);
+      },
+      dispatchEvent: function (event: any) {
+        if (this.onicecandidate) this.onicecandidate(event);
+        if (this.listeners[event.type]) {
+          this.listeners[event.type].forEach((cb: Function) => cb(event));
+        }
+      },
       setLocalDescription: function (desc: any) {
         this.localDescription = desc;
       },
@@ -206,6 +239,7 @@ describe('Step 4: Pre-C++ Browser Stealth Hardening, 02_BROWSER Cleanup & Commer
     navigatorInstance.deviceMemory = 4;
     navigatorInstance.platform = 'Win32';
     navigatorInstance.userAgent = mockProfile.settings?.browser?.userAgent;
+    navigatorInstance.gpu = MockNavigator.prototype.gpu;
 
     const sandbox: Record<string, any> = {
       window: {
@@ -244,6 +278,9 @@ describe('Step 4: Pre-C++ Browser Stealth Hardening, 02_BROWSER Cleanup & Commer
     // 2. Intl timezone & Date offset
     const resolvedTz = context.Intl.DateTimeFormat().resolvedOptions().timeZone;
     expect(resolvedTz).toBe('Europe/Paris');
+    // Ensure default Intl.DateTimeFormat constructor adopts target timezone
+    const dtf = new context.Intl.DateTimeFormat();
+    expect(dtf.resolvedOptions().timeZone).toBe('Europe/Paris');
 
     // 3. Automation flag sweep
     expect(context.window.cdc_adoQpoasnfa76pfcZLmcfl_Array).toBeUndefined();
@@ -260,9 +297,24 @@ describe('Step 4: Pre-C++ Browser Stealth Hardening, 02_BROWSER Cleanup & Commer
     const toStringOutput = Function.prototype.toString.call(gl.getParameter);
     expect(toStringOutput).toContain('[native code]');
 
-    // 6. WebRTC relay policy enforcement
+    // 6. WebRTC relay policy & candidate filtering
     const pc = new context.window.RTCPeerConnection({ iceServers: [] });
     expect(pc.config?.iceTransportPolicy).toBe('relay');
+
+    let candidateDropped = true;
+    pc.onicecandidate = (e: any) => {
+      candidateDropped = false;
+    };
+    pc.dispatchEvent({ type: 'icecandidate', candidate: { candidate: 'candidate:1 1 UDP 123 192.168.1.1 5000 typ host' } });
+    expect(candidateDropped).toBe(true);
+
+    // 7. WebGPU adapter info spoofing
+    return context.navigator.gpu.requestAdapter().then(async (adapter: any) => {
+      expect(adapter).toBeDefined();
+      expect(adapter.info.description).toContain('RTX 3080');
+      const reqInfo = await adapter.requestAdapterInfo();
+      expect(reqInfo.description).toContain('RTX 3080');
+    });
   });
 
   it('3. stealth-core.js respects fingerprint: off settings without injecting overrides', () => {
@@ -305,6 +357,34 @@ describe('Step 4: Pre-C++ Browser Stealth Hardening, 02_BROWSER Cleanup & Commer
 
     // Canvas, audio, webgl noise hooks must be compiled out with if (false) blocks
     expect(coreScript).toContain('if (false)');
+
+    // In VM context, verify WebGL getParameter is NOT hooked when webgl: 'off'
+    function MockWebGLContext() {}
+    MockWebGLContext.prototype = {
+      getParameter: function () {
+        return 'RawOriginalParam';
+      },
+    };
+
+    const sandbox: Record<string, any> = {
+      window: {},
+      navigator: { userAgent: mockProfile.settings?.browser?.userAgent },
+      Navigator: function () {},
+      WebGLRenderingContext: MockWebGLContext,
+      WebGL2RenderingContext: MockWebGLContext,
+      Date: Date,
+      Intl: Intl,
+      Function: Function,
+      console: console,
+    };
+    sandbox.window.window = sandbox.window;
+    sandbox.window.WebGLRenderingContext = MockWebGLContext;
+
+    const ctx = vm.createContext(sandbox);
+    vm.runInContext(coreScript, ctx);
+
+    const gl = new ctx.WebGLRenderingContext();
+    expect(gl.getParameter(0x9245)).toBe('RawOriginalParam');
   });
 
   it('4. injectNativeStealthPreferences writes identical deterministic configs to both prefs.mahi and prefs.gologin', () => {
@@ -353,7 +433,7 @@ describe('Step 4: Pre-C++ Browser Stealth Hardening, 02_BROWSER Cleanup & Commer
     expect(prefs.mahi.webgl_noise_enable).toBe(true);
   });
 
-  it('5. detector.ts and multi-core-resolver.ts resolve getMahiCustomCorePath and preserve backward-compatible aliases', () => {
+  it('5. detector.ts and multi-core-resolver.ts resolve getMahiCustomCorePath and accept all valid coreType values', () => {
     // getMahiCustomCorePath() is exported alongside getStealthOrbitaEnginePath alias
     expect(typeof getMahiCustomCorePath).toBe('function');
     expect(typeof getStealthOrbitaEnginePath).toBe('function');
@@ -365,15 +445,16 @@ describe('Step 4: Pre-C++ Browser Stealth Hardening, 02_BROWSER Cleanup & Commer
     );
     expect(resolution).toBeDefined();
     expect(resolution.majorVersion).toBe(130);
-    expect(['exact-multi-core', 'mahi-custom-core', 'mahi-bundled', 'stealth-orbita', 'stock-chromium']).toContain(resolution.coreType);
+    // Accepts all valid MultiCoreResolution['coreType'] targets on clean Linux, Windows & CI runners
+    expect(['exact-multi-core', 'mahi-custom-core', 'mahi-bundled', 'mahi-managed', 'stealth-orbita', 'system-chromium']).toContain(resolution.coreType);
   });
 
   it('6. commercial-plan-service returns non-zero prices, and verifyYoupiPgOrder detects amount tampering', async () => {
-    // 1. Plan service non-zero prices
+    // 1. Plan service non-zero prices matching canonical calculation
     const plan = getCommercialPlanById('professional_10');
     expect(plan).toBeDefined();
     expect(plan?.priceMonthly).toBe(599);
-    expect(plan?.priceAnnual).toBe(3588);
+    expect(plan?.priceAnnual).toBe(3594);
 
     // 2. YouPI-PG amount tampering prevention
     const db = getDatabase();
@@ -438,5 +519,71 @@ describe('Step 4: Pre-C++ Browser Stealth Hardening, 02_BROWSER Cleanup & Commer
         delete process.env.YOUPI_PG_API_KEY;
       }
     }
+  });
+
+  it('7. Stripe USD canonical webhook verification succeeds without AMOUNT_TAMPERING_DETECTED error', async () => {
+    const db = getDatabase();
+    const testUserId = `user_stripe_usd_${Date.now()}`;
+    const testOrderId = `order_stripe_usd_${Date.now()}`;
+
+    // Ensure user exists
+    db.prepare(`
+      INSERT OR IGNORE INTO commercial_users (id, email, password_hash, status, created_at, updated_at)
+      VALUES (?, ?, 'dummy_hash', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `).run(testUserId, `${testUserId}@example.com`);
+
+    const secret = 'whsec_stripe_test_secret_for_usd';
+    const nowSec = Math.floor(Date.now() / 1000);
+
+    // 1. Legitimate USD Stripe event: professional_10 monthly = $7 (700 cents)
+    const legitPayloadObj = {
+      id: `evt_stripe_${Date.now()}`,
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: testOrderId,
+          client_reference_id: testUserId,
+          amount_total: 700, // $7.00 USD
+          currency: 'usd',
+          metadata: {
+            userId: testUserId,
+            planId: 'professional_10',
+            billingCycle: 'MONTHLY',
+          },
+        },
+      },
+    };
+    const legitPayload = JSON.stringify(legitPayloadObj);
+    const legitSig = crypto.createHmac('sha256', secret).update(`${nowSec}.${legitPayload}`).digest('hex');
+    const legitHeader = `t=${nowSec},v1=${legitSig}`;
+
+    const legitResult = await paymentService.handleWebhook('stripe', legitPayload, legitHeader, { secret });
+    expect(legitResult.success).toBe(true);
+
+    // 2. Tampered USD Stripe event: professional_10 monthly paying only $5 (500 cents instead of 700)
+    const tamperedPayloadObj = {
+      id: `evt_stripe_tampered_${Date.now()}`,
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: `order_tampered_${Date.now()}`,
+          client_reference_id: testUserId,
+          amount_total: 500, // Tampered: $5.00 USD (< $7.00 required)
+          currency: 'usd',
+          metadata: {
+            userId: testUserId,
+            planId: 'professional_10',
+            billingCycle: 'MONTHLY',
+          },
+        },
+      },
+    };
+    const tamperedPayload = JSON.stringify(tamperedPayloadObj);
+    const tamperedSig = crypto.createHmac('sha256', secret).update(`${nowSec}.${tamperedPayload}`).digest('hex');
+    const tamperedHeader = `t=${nowSec},v1=${tamperedSig}`;
+
+    await expect(
+      paymentService.handleWebhook('stripe', tamperedPayload, tamperedHeader, { secret })
+    ).rejects.toThrow('AMOUNT_TAMPERING_DETECTED');
   });
 });

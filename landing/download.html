@@ -737,6 +737,27 @@
         const welcomeBar = document.querySelector('.user-welcome-bar');
         if (welcomeBar) welcomeBar.style.display = 'flex';
 
+        // Check for pending order verification from unauthenticated return flow
+        const pendingOrderId = sessionStorage.getItem('mahi_pending_order_id') || urlParams.get('orderId') || urlParams.get('order_id');
+        if (pendingOrderId && token) {
+          sessionStorage.removeItem('mahi_pending_order_id');
+          fetch('/api/v1/billing/verify-youpi', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ orderId: pendingOrderId })
+          })
+            .then(res => res.json())
+            .then(data => {
+              if (data.success && data.status === 'SUCCEEDED') {
+                window.location.reload();
+              }
+            })
+            .catch(() => {});
+        }
+
         userEmail.textContent = user.email || 'Registered User';
         avatarInitial.textContent = (user.name || user.email || 'M').charAt(0).toUpperCase();
 

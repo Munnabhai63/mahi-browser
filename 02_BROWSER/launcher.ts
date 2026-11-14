@@ -511,6 +511,24 @@ export function ensureProfileStealthExtension(
         registerNative(origGetTimezoneOffset, 'getTimezoneOffset');
 
         var origDTF = Intl.DateTimeFormat;
+        var ProxyDTF = function(locales, options) {
+          var opts = Object.assign({}, options);
+          if (!opts.timeZone) {
+            opts.timeZone = targetTz;
+          }
+          if (!(this instanceof ProxyDTF)) {
+            return origDTF(locales, opts);
+          }
+          return new origDTF(locales, opts);
+        };
+        ProxyDTF.prototype = origDTF.prototype;
+        if (origDTF.supportedLocalesOf) {
+          ProxyDTF.supportedLocalesOf = origDTF.supportedLocalesOf;
+        }
+        registerNative(ProxyDTF, 'DateTimeFormat');
+        registerNative(origDTF, 'DateTimeFormat');
+        Intl.DateTimeFormat = ProxyDTF;
+
         var origResolved = origDTF.prototype.resolvedOptions;
         var proxyResolved = new Proxy(origResolved, {
           apply: function(target, thisArg, args) {
@@ -934,84 +952,86 @@ export function ensureProfileStealthExtension(
   // -------------------------------------------------------------
   // 4. WebGL GPU Hardware & Renderer Spoofing + Buffer Limits
   // -------------------------------------------------------------
-  try {
-    var spoofVendor = ${JSON.stringify(gpuVendor)};
-    var spoofRenderer = ${JSON.stringify(gpuRenderer)};
+  if (${webglMode !== 'off'}) {
+    try {
+      var spoofVendor = ${JSON.stringify(gpuVendor)};
+      var spoofRenderer = ${JSON.stringify(gpuRenderer)};
 
-    var hookWebGL = function(proto) {
-      var origGetParam = proto.getParameter;
-      var proxyGetParam = new Proxy(origGetParam, {
-        apply: function(target, thisArg, argumentsList) {
-          var param = argumentsList[0];
-          // UNMASKED_VENDOR_WEBGL
-          if (param === 37445) return spoofVendor;
-          // UNMASKED_RENDERER_WEBGL
-          if (param === 37446) return spoofRenderer;
-          // VENDOR
-          if (param === 7936) return 'WebKit';
-          // RENDERER
-          if (param === 7937) return 'WebKit WebGL';
-          // MAX_TEXTURE_SIZE
-          if (param === 3379) return 16384;
-          // MAX_RENDERBUFFER_SIZE
-          if (param === 34024) return 16384;
-          // MAX_VERTEX_UNIFORM_VECTORS
-          if (param === 36347) return 4096;
-          // MAX_VARYING_VECTORS
-          if (param === 36348) return 30;
-          // MAX_VERTEX_ATTRIBS
-          if (param === 34921) return 16;
-          return target.apply(thisArg, argumentsList);
-        }
-      });
-      proto.getParameter = proxyGetParam;
-      registerNative(proxyGetParam, 'getParameter');
-      registerNative(origGetParam, 'getParameter');
-
-      var origGetExtension = proto.getExtension;
-      var proxyGetExtension = new Proxy(origGetExtension, {
-        apply: function(target, thisArg, argumentsList) {
-          var name = argumentsList[0];
-          var ext = target.apply(thisArg, argumentsList);
-          if (name === 'WEBGL_debug_renderer_info' && ext) {
-            return {
-              UNMASKED_VENDOR_WEBGL: 37445,
-              UNMASKED_RENDERER_WEBGL: 37446
-            };
-          }
-          return ext;
-        }
-      });
-      proto.getExtension = proxyGetExtension;
-      registerNative(proxyGetExtension, 'getExtension');
-      registerNative(origGetExtension, 'getExtension');
-
-      // Deterministic readPixels micro-jitter if webgl noise is enabled
-      if (${webglMode !== 'off'} && proto.readPixels) {
-        var origReadPixels = proto.readPixels;
-        var proxyReadPixels = new Proxy(origReadPixels, {
-          apply: function(target, thisArg, args) {
-            var res = target.apply(thisArg, args);
-            var pixels = args[6];
-            if (pixels && pixels.length > 0) {
-              var step = Math.max(16, (pixels.length >> 4));
-              var jitter = ((pSeed % 3) - 1) || 1;
-              for (var i = 0; i < pixels.length; i += step) {
-                pixels[i] = (pixels[i] + jitter) & 0xFF;
-              }
-            }
-            return res;
+      var hookWebGL = function(proto) {
+        var origGetParam = proto.getParameter;
+        var proxyGetParam = new Proxy(origGetParam, {
+          apply: function(target, thisArg, argumentsList) {
+            var param = argumentsList[0];
+            // UNMASKED_VENDOR_WEBGL
+            if (param === 37445) return spoofVendor;
+            // UNMASKED_RENDERER_WEBGL
+            if (param === 37446) return spoofRenderer;
+            // VENDOR
+            if (param === 7936) return 'WebKit';
+            // RENDERER
+            if (param === 7937) return 'WebKit WebGL';
+            // MAX_TEXTURE_SIZE
+            if (param === 3379) return 16384;
+            // MAX_RENDERBUFFER_SIZE
+            if (param === 34024) return 16384;
+            // MAX_VERTEX_UNIFORM_VECTORS
+            if (param === 36347) return 4096;
+            // MAX_VARYING_VECTORS
+            if (param === 36348) return 30;
+            // MAX_VERTEX_ATTRIBS
+            if (param === 34921) return 16;
+            return target.apply(thisArg, argumentsList);
           }
         });
-        proto.readPixels = proxyReadPixels;
-        registerNative(proxyReadPixels, 'readPixels');
-        registerNative(origReadPixels, 'readPixels');
-      }
-    };
+        proto.getParameter = proxyGetParam;
+        registerNative(proxyGetParam, 'getParameter');
+        registerNative(origGetParam, 'getParameter');
 
-    if (window.WebGLRenderingContext) hookWebGL(WebGLRenderingContext.prototype);
-    if (window.WebGL2RenderingContext) hookWebGL(WebGL2RenderingContext.prototype);
-  } catch(e) {}
+        var origGetExtension = proto.getExtension;
+        var proxyGetExtension = new Proxy(origGetExtension, {
+          apply: function(target, thisArg, argumentsList) {
+            var name = argumentsList[0];
+            var ext = target.apply(thisArg, argumentsList);
+            if (name === 'WEBGL_debug_renderer_info' && ext) {
+              return {
+                UNMASKED_VENDOR_WEBGL: 37445,
+                UNMASKED_RENDERER_WEBGL: 37446
+              };
+            }
+            return ext;
+          }
+        });
+        proto.getExtension = proxyGetExtension;
+        registerNative(proxyGetExtension, 'getExtension');
+        registerNative(origGetExtension, 'getExtension');
+
+        // Deterministic readPixels micro-jitter if webgl noise is enabled
+        if (proto.readPixels) {
+          var origReadPixels = proto.readPixels;
+          var proxyReadPixels = new Proxy(origReadPixels, {
+            apply: function(target, thisArg, args) {
+              var res = target.apply(thisArg, args);
+              var pixels = args[6];
+              if (pixels && pixels.length > 0) {
+                var step = Math.max(16, (pixels.length >> 4));
+                var jitter = ((pSeed % 3) - 1) || 1;
+                for (var i = 0; i < pixels.length; i += step) {
+                  pixels[i] = (pixels[i] + jitter) & 0xFF;
+                }
+              }
+              return res;
+            }
+          });
+          proto.readPixels = proxyReadPixels;
+          registerNative(proxyReadPixels, 'readPixels');
+          registerNative(origReadPixels, 'readPixels');
+        }
+      };
+
+      if (window.WebGLRenderingContext) hookWebGL(WebGLRenderingContext.prototype);
+      if (window.WebGL2RenderingContext) hookWebGL(WebGL2RenderingContext.prototype);
+    } catch(e) {}
+  }
 
   // -------------------------------------------------------------
   // 4.5 WebGPU Hardware Descriptors (Dawn Engine)
@@ -1030,11 +1050,22 @@ export function ensureProfileStealthExtension(
               description: ${JSON.stringify(gpuRenderer)},
             };
             try {
+              var infoGetter = function() { return gpuInfo; };
+              registerNative(infoGetter, 'get info');
               Object.defineProperty(adapter, 'info', {
-                get: function() { return gpuInfo; },
+                get: infoGetter,
                 configurable: true,
                 enumerable: true
               });
+              if (adapter.requestAdapterInfo) {
+                var origReqInfo = adapter.requestAdapterInfo;
+                var proxyReqInfo = new Proxy(origReqInfo, {
+                  apply: function() { return Promise.resolve(gpuInfo); }
+                });
+                adapter.requestAdapterInfo = proxyReqInfo;
+                registerNative(proxyReqInfo, 'requestAdapterInfo');
+                registerNative(origReqInfo, 'requestAdapterInfo');
+              }
             } catch(e) {}
             return adapter;
           });
@@ -1085,7 +1116,7 @@ export function ensureProfileStealthExtension(
         var OrigPC = RTCClass;
         var ProxyPC = function(config, constraints) {
           var conf = Object.assign({}, config);
-          if (rtcMode === 'proxy_only' || rtcMode === 'disable_non_proxied_udp') {
+          if (rtcMode === 'proxy_only' || rtcMode === 'disabled' || rtcMode === 'disable_non_proxied_udp') {
             conf.iceTransportPolicy = 'relay';
           }
           var pc = new OrigPC(conf, constraints);
@@ -1106,6 +1137,50 @@ export function ensureProfileStealthExtension(
             registerNative(pc.addIceCandidate, 'addIceCandidate');
           }
 
+          if (pc.addEventListener) {
+            var origAddEv = pc.addEventListener;
+            pc.addEventListener = function(type, listener, options) {
+              if (type === 'icecandidate' && typeof listener === 'function') {
+                var wrapped = function(event) {
+                  if (event && event.candidate && event.candidate.candidate) {
+                    var c = event.candidate.candidate;
+                    if (c.indexOf('typ host') !== -1 || c.indexOf('typ srflx') !== -1) {
+                      return;
+                    }
+                  }
+                  return listener.call(this, event);
+                };
+                return origAddEv.call(this, type, wrapped, options);
+              }
+              return origAddEv.apply(this, arguments);
+            };
+            registerNative(pc.addEventListener, 'addEventListener');
+          }
+
+          var _userOnIce = null;
+          try {
+            Object.defineProperty(pc, 'onicecandidate', {
+              get: function() { return _userOnIce; },
+              set: function(fn) {
+                if (typeof fn === 'function') {
+                  _userOnIce = function(event) {
+                    if (event && event.candidate && event.candidate.candidate) {
+                      var c = event.candidate.candidate;
+                      if (c.indexOf('typ host') !== -1 || c.indexOf('typ srflx') !== -1) {
+                        return;
+                      }
+                    }
+                    return fn.call(this, event);
+                  };
+                } else {
+                  _userOnIce = fn;
+                }
+              },
+              enumerable: true,
+              configurable: true
+            });
+          } catch(e) {}
+
           function filterSDP(desc) {
             if (desc && desc.sdp) {
               var lines = desc.sdp.split('\\r\\n');
@@ -1115,7 +1190,13 @@ export function ensureProfileStealthExtension(
                 }
                 return true;
               });
-              return new RTCSessionDescription({ type: desc.type, sdp: filtered.join('\\r\\n') });
+              var newSdp = filtered.join('\\r\\n');
+              if (typeof RTCSessionDescription !== 'undefined') {
+                try {
+                  return new RTCSessionDescription({ type: desc.type, sdp: newSdp });
+                } catch(e) {}
+              }
+              return { type: desc.type, sdp: newSdp };
             }
             return desc;
           }
