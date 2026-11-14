@@ -77,6 +77,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
   const [deviceMismatchError, setDeviceMismatchError] = useState(false);
 
   // Manual UPI payment submission states
+  const [selectedPlanId, setSelectedPlanId] = useState('professional_10');
+  const [selectedBillingCycle, setSelectedBillingCycle] = useState<'MONTHLY' | 'ANNUAL'>('ANNUAL');
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [utrInput, setUtrInput] = useState('');
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
@@ -537,7 +539,21 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
   const currentPlan = planLimits?.plan || 'free';
   const isProActive = planLimits?.isPro || false;
 
-  const priceInr = paymentInfo?.price_inr || 1499;
+  const DESKTOP_PLANS = [
+    { id: 'professional_10', name: 'Professional 10', profiles: 10, rateMonthly: 599 },
+    { id: 'professional_25', name: 'Professional 25', profiles: 25, rateMonthly: 1499 },
+    { id: 'professional_50', name: 'Professional 50', profiles: 50, rateMonthly: 2999 },
+    { id: 'professional_100', name: 'Professional 100', profiles: 100, rateMonthly: 5999 },
+    { id: 'business_starter', name: 'Team 50 (5 Seats)', profiles: 50, rateMonthly: 2999 },
+    { id: 'business_growth', name: 'Team 100 (10 Seats)', profiles: 100, rateMonthly: 3999 },
+    { id: 'business_scale', name: 'Team 200 (20 Seats)', profiles: 200, rateMonthly: 4999 },
+    { id: 'business_enterprise', name: 'Team 300 (Unlimited)', profiles: 300, rateMonthly: 5999 },
+  ];
+
+  const activePlanMeta = DESKTOP_PLANS.find(p => p.id === selectedPlanId) || DESKTOP_PLANS[0];
+  const effectiveMonthlyInr = selectedBillingCycle === 'ANNUAL' ? Math.round(activePlanMeta.rateMonthly * 0.5) : activePlanMeta.rateMonthly;
+  const priceInr = selectedBillingCycle === 'ANNUAL' ? effectiveMonthlyInr * 12 : effectiveMonthlyInr;
+
   const upiId = paymentInfo?.upi_id || CONTACT_CONFIG.UPI_ID;
   const upiHolder = paymentInfo?.upi_account_holder || CONTACT_CONFIG.UPI_ACCOUNT_HOLDER;
   const upiQrAsset = paymentInfo?.upi_qr_asset || CONTACT_CONFIG.UPI_QR_ASSET;
@@ -559,7 +575,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     setIsSubmittingPayment(true);
     try {
       const res = await submitManualUpiPayment({
-        plan_id: 'pro',
+        plan_id: selectedPlanId,
+        billing_cycle: selectedBillingCycle,
+        amount_paise: priceInr * 100,
         utr: cleanUtr,
       });
 
@@ -568,7 +586,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
         showToast({
           type: 'success',
           title: 'Payment Submitted',
-          message: 'Your payment record is PENDING_VERIFICATION. Admin will activate your PRO plan.',
+          message: 'Your payment record is PENDING_VERIFICATION. Admin will activate your subscription.',
         });
       } else {
         showToast({
@@ -748,8 +766,52 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                   </div>
 
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Unlock 100 isolated anti-detect browser containers, automated profile warming, and encrypted cloud sync.
+                    Unlock isolated anti-detect browser containers, automated profile warming, and encrypted cloud sync.
                   </p>
+
+                  {/* Plan Selector & Billing Cycle Toggle */}
+                  <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-300">Choose Upgrade Tier</span>
+                      <select
+                        value={selectedPlanId}
+                        onChange={(e) => setSelectedPlanId(e.target.value)}
+                        className="bg-slate-900 border border-slate-700 text-teal-300 font-bold text-xs rounded-lg px-2.5 py-1.5 outline-none cursor-pointer"
+                      >
+                        {DESKTOP_PLANS.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.profiles} Profiles) — ₹{p.rateMonthly}/mo
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBillingCycle('ANNUAL')}
+                        className={`py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                          selectedBillingCycle === 'ANNUAL'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-xs'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <span>Annual Commitment</span>
+                        <span className="text-[9px] bg-emerald-500 text-slate-950 px-1 rounded font-extrabold">50% OFF</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBillingCycle('MONTHLY')}
+                        className={`py-1.5 px-3 rounded-lg text-xs font-bold transition ${
+                          selectedBillingCycle === 'MONTHLY'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-xs'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Monthly Billing
+                      </button>
+                    </div>
+                  </div>
 
                   {/* UPI Payment Container */}
                   <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
@@ -802,15 +864,28 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                       </div>
                     </div>
 
-                    {/* Action Buttons: Copy UPI ID & I Have Paid */}
+                    {/* Action Buttons: Copy UPI ID, Online Checkout & I Have Paid */}
                     <div className="pt-2 flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => copyToClipboard(upiId, 'UPI ID')}
-                        className="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition flex items-center justify-center gap-1.5"
+                        className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition flex items-center justify-center gap-1.5"
                       >
                         <Copy size={13} />
-                        <span>Copy UPI ID</span>
+                        <span>Copy UPI</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = `https://mahibrowser.com/pricing?checkout=1&plan=${selectedPlanId}&billing=${selectedBillingCycle.toLowerCase()}`;
+                          window.open(url, '_blank');
+                        }}
+                        className="py-2 px-3 rounded-xl bg-indigo-600/90 hover:bg-indigo-600 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5"
+                        title="Checkout via Cards / Stripe / Razorpay in browser"
+                      >
+                        <Sparkles size={13} />
+                        <span>Online Cards</span>
                       </button>
 
                       <button

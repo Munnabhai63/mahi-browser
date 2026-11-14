@@ -405,7 +405,10 @@ export interface MahiBrowserAPI {
   accountGetStatus: () => Promise<any>;
   accountSwitchDevice: () => Promise<{ success: boolean; message: string }>;
   accountGetPaymentInfo: () => Promise<any>;
-  accountSubmitManualUpiPayment: (payload: { plan_id: string; utr: string; proof_asset?: string }) => Promise<{ success: boolean; payment_id?: string; status?: string; message?: string; error?: string }>;
+  accountGetPricingCatalog?: () => Promise<{ success: boolean; catalog?: any; error?: string }>;
+  accountCreateCheckoutSession?: (payload: any) => Promise<{ success: boolean; session?: any; error?: string }>;
+  accountSubmitManualUpiPayment: (payload: { plan_id: string; utr: string; proof_asset?: string; billing_cycle?: string; amount_paise?: number; extra_members?: number; extra_proxy_gb?: number }) => Promise<{ success: boolean; payment_id?: string; status?: string; message?: string; error?: string }>;
+  accountGetPaymentStatus?: () => Promise<{ success: boolean; payments?: any[]; error?: string }>;
   accountGetSession: () => Promise<any>;
   accountGetPlanLimits: (dto?: { force?: boolean }) => Promise<{ isPro: boolean; plan: string; maxProfiles: number; expiresAt: string | null }>;
   accountRefreshPlanLimits: () => Promise<{ isPro: boolean; plan: string; maxProfiles: number; expiresAt: string | null }>;

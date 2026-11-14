@@ -7,6 +7,8 @@ import { isOnlineRevoked, isGraceExpired, getOnlineStatusSummary, checkLicenseSt
 import { assertCanCreateProfile, getPlanLimitsInfo, assertCapability } from '../../08_SECURITY/freemium-guard.js';
 import { getStarterTemplates, getStarterTemplateById, createProfileFromStarter, isUserNew } from '../../02_BROWSER/services/starter-profiles-service.js';
 import { evaluateUserEntitlements, checkCapability, assertEntitled } from '../commercial/commercial-entitlement-service.js';
+import { buildPlanCatalog } from '../commercial/pricing-admin-service.js';
+import { paymentService } from '../commercial/payment-service.js';
 import { getDynamicPrice, fetchDynamicPrice } from '../../08_SECURITY/price-service.js';
 import {
   signup as accountSignup,
@@ -2327,8 +2329,71 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('account:getPaymentInfo', async () => {
     return accountGetPaymentInfo();
   });
+  ipcMain.handle('account:getPricingCatalog', async () => {
+    try {
+      return { success: true, catalog: buildPlanCatalog() };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+  ipcMain.handle('account:createCheckoutSession', async (_e, payload: any) => {
+    try {
+      const session = getAccountSession();
+      const userId = session?.account_id || getActiveUserId() || 'SYSTEM_OWNER';
+      const result = await paymentService.createCheckoutSession({
+        userId,
+        planId: payload.planId || payload.plan_id,
+        billingCycle: (payload.billingCycle || payload.billing_cycle || 'ANNUAL').toUpperCase(),
+        currency: payload.currency || (payload.provider === 'razorpay' ? 'INR' : 'USD'),
+        extraMembers: payload.extraMembers,
+        extraProxyGb: payload.extraProxyGb,
+        successUrl: payload.successUrl,
+        cancelUrl: payload.cancelUrl,
+      }, payload.provider || 'razorpay');
+      return { success: true, session: result };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
   ipcMain.handle('account:submitManualUpiPayment', async (_e, payload: any) => {
-    return accountSubmitManualUpiPayment(payload);
+    try {
+      const session = getAccountSession();
+      const userId = session?.account_id || getActiveUserId() || 'SYSTEM_OWNER';
+      const res = await paymentService.submitManualUpiPayment({
+        userId,
+        planId: payload.plan_id || payload.planId,
+        billingCycle: (payload.billing_cycle || payload.billingCycle || 'MONTHLY').toUpperCase() as any,
+        utr: payload.utr,
+        amountPaise: payload.amount_paise || payload.amountPaise,
+        proofAsset: payload.proof_asset || payload.proofAsset,
+        extraMembers: payload.extra_members || payload.extraMembers,
+        extraProxyGb: payload.extra_proxy_gb || payload.extraProxyGb,
+      });
+      return {
+        success: true,
+        payment_id: res.paymentId,
+        status: res.status,
+        utr: res.utr,
+        amount_paise: res.amountPaise,
+        message: 'Payment submitted successfully for verification.'
+      };
+    } catch (err: any) {
+      try {
+        return await accountSubmitManualUpiPayment(payload);
+      } catch (remoteErr: any) {
+        return { success: false, error: err.message || remoteErr.message };
+      }
+    }
+  });
+  ipcMain.handle('account:getPaymentStatus', async () => {
+    try {
+      const session = getAccountSession();
+      const userId = session?.account_id || getActiveUserId() || 'SYSTEM_OWNER';
+      const history = paymentService.getUserPaymentHistory(userId);
+      return { success: true, payments: history };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   });
   ipcMain.handle('account:getSession', async () => {
     return getAccountSession();

@@ -44,6 +44,8 @@ interface AccountState {
   accountSession: any | null;
   planLimits: { isPro: boolean; plan: string; tier?: 'FREE' | 'PRO' | 'BUSINESS'; maxProfiles: number; expiresAt: string | null } | null;
   paymentInfo: any | null;
+  pricingCatalog: any | null;
+  paymentHistory: any[];
   pendingProfileDto: any | null;
 
   setDashboardRole: (role: 'ADMIN' | 'STUDENT') => void;
@@ -58,7 +60,10 @@ interface AccountState {
 
   fetchPlanLimits: (dto?: { force?: boolean }) => Promise<void>;
   fetchPaymentInfo: () => Promise<void>;
-  submitManualUpiPayment: (payload: { plan_id: string; utr: string; proof_asset?: string }) => Promise<{ success: boolean; payment_id?: string; status?: string; message?: string; error?: string }>;
+  fetchPricingCatalog: () => Promise<any>;
+  createCheckoutSession: (payload: any) => Promise<any>;
+  fetchPaymentHistory: () => Promise<any>;
+  submitManualUpiPayment: (payload: { plan_id: string; utr: string; proof_asset?: string; billing_cycle?: string; amount_paise?: number; extra_members?: number; extra_proxy_gb?: number }) => Promise<{ success: boolean; payment_id?: string; status?: string; message?: string; error?: string }>;
   accountSignup: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   accountLogin: (email: string, password: string) => Promise<{ success: boolean; error?: string; deviceMismatch?: boolean }>;
   accountLoginWithToken: (token: string) => Promise<{ success: boolean; error?: string }>;
@@ -127,6 +132,8 @@ export const useAccountStore = create<AccountState>()(
       accountSession: null,
       planLimits: null,
       paymentInfo: null,
+      pricingCatalog: null,
+      paymentHistory: [],
       pendingProfileDto: null,
       activeSessions: [],
 
@@ -170,6 +177,45 @@ export const useAccountStore = create<AccountState>()(
           const info = await window.mahiAPI.accountGetPaymentInfo();
           set({ paymentInfo: info });
         } catch {}
+      },
+
+      fetchPricingCatalog: async () => {
+        if (!window.mahiAPI?.accountGetPricingCatalog) return null;
+        try {
+          const res = await window.mahiAPI.accountGetPricingCatalog();
+          if (res?.success && res.catalog) {
+            set({ pricingCatalog: res.catalog });
+            return res.catalog;
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      },
+
+      createCheckoutSession: async (payload: any) => {
+        if (!window.mahiAPI?.accountCreateCheckoutSession) {
+          return { success: false, error: 'Checkout API unavailable' };
+        }
+        try {
+          return await window.mahiAPI.accountCreateCheckoutSession(payload);
+        } catch (err: any) {
+          return { success: false, error: err.message || 'Checkout session creation failed' };
+        }
+      },
+
+      fetchPaymentHistory: async () => {
+        if (!window.mahiAPI?.accountGetPaymentStatus) return [];
+        try {
+          const res = await window.mahiAPI.accountGetPaymentStatus();
+          if (res?.success && res.payments) {
+            set({ paymentHistory: res.payments });
+            return res.payments;
+          }
+          return [];
+        } catch {
+          return [];
+        }
       },
 
       submitManualUpiPayment: async (payload) => {

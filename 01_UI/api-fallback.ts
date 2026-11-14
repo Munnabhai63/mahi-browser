@@ -713,11 +713,33 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
       usdt_enabled: false,
       whatsapp_number: CONTACT_CONFIG.WHATSAPP_NUMBER,
     }),
+    accountGetPricingCatalog: async () => ({
+      success: true,
+      catalog: { personal: [], business: [] },
+    }),
+    accountCreateCheckoutSession: async () => ({
+      success: true,
+      session: {
+        sessionId: 'sim_cs_mock',
+        checkoutUrl: 'https://checkout.mahibrowser.com/sim/pay/mock',
+        orderId: 'sim_ord_mock',
+        amountCents: 299900,
+        currency: 'INR',
+        provider: 'simulation',
+        planId: 'professional_50',
+        billingCycle: 'ANNUAL',
+        createdAt: new Date().toISOString(),
+      },
+    }),
     accountSubmitManualUpiPayment: async () => ({
       success: true,
       payment_id: 'pay_mock_123',
       status: 'PENDING_VERIFICATION',
       message: 'Submitted for verification',
+    }),
+    accountGetPaymentStatus: async () => ({
+      success: true,
+      payments: [],
     }),
     accountGetPlanLimits: async () => ({ isPro: false, plan: 'free', maxProfiles: 15, expiresAt: null }),
     accountRefreshPlanLimits: async () => ({ isPro: false, plan: 'free', maxProfiles: 15, expiresAt: null }),
