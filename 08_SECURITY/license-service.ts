@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 import os from 'node:os';
+import child_process from 'node:child_process';
+import fs from 'node:fs';
 
 const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzYel0Zuz0vYdzszLm2z5
@@ -11,17 +13,60 @@ dGocQFs1hIUa/8KolAFRcoORmpBdOcVDdcwGvsoE6JIBgHy7kPlFOMJHUcVd7bPT
 kQIDAQAB
 -----END PUBLIC KEY-----`;
 
+let cachedHwid: string | null = null;
+
+function getMachineGuid(): string {
+  try {
+    if (process.platform === 'win32') {
+      const output = child_process.execSync(
+        'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography" /v MachineGuid',
+        { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] }
+      );
+      const match = output.match(/MachineGuid\s+REG_SZ\s+([A-Fa-f0-9-]+)/i);
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+    } else if (process.platform === 'darwin') {
+      const output = child_process.execSync(
+        'ioreg -rd1 -c IOPlatformExpertDevice',
+        { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] }
+      );
+      const match = output.match(/"IOPlatformUUID"\s*=\s*"([^"]+)"/i);
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+    } else {
+      if (fs.existsSync('/etc/machine-id')) {
+        return fs.readFileSync('/etc/machine-id', 'utf8').trim();
+      }
+      if (fs.existsSync('/var/lib/dbus/machine-id')) {
+        return fs.readFileSync('/var/lib/dbus/machine-id', 'utf8').trim();
+      }
+    }
+  } catch {}
+  return '';
+}
+
+export function resetHwidCacheForTesting(): void {
+  cachedHwid = null;
+}
+
 /**
  * Gets the unique Hardware ID (HWID) for this computer.
- * It hashes the CPU model and total memory to create a static identifier.
+ * It combines OS machine GUID, CPU model, and total memory to create a machine-bound static identifier.
  */
 export function getHWID(): string {
+  if (cachedHwid) return cachedHwid;
   try {
-    const raw = os.cpus()[0].model + os.totalmem();
+    const machineGuid = getMachineGuid();
+    const cpuModel = (os.cpus() && os.cpus()[0]?.model) || '';
+    const mem = os.totalmem ? os.totalmem() : 0;
+    const raw = `${machineGuid}:${cpuModel}:${mem}`;
     const hash = crypto.createHash('sha256').update(raw).digest('hex').toUpperCase();
     const short = hash.substring(0, 16);
     // Format as XXXX-XXXX-XXXX-XXXX
-    return `MAHI-${short.substring(0,4)}-${short.substring(4,8)}-${short.substring(8,12)}-${short.substring(12,16)}`;
+    cachedHwid = `MAHI-${short.substring(0,4)}-${short.substring(4,8)}-${short.substring(8,12)}-${short.substring(12,16)}`;
+    return cachedHwid;
   } catch (e) {
     return 'MAHI-UNKNOWN-HWID';
   }

@@ -5,6 +5,7 @@ import https from 'node:https';
 import http from 'node:http';
 import { app, BrowserWindow, safeStorage } from 'electron';
 import { getHWID } from './license-service.js';
+import { getInstallSecrets } from './install-secrets.js';
 import { ADMIN_API_BASE_URL } from './license-status-service.js';
 import { CONTACT_CONFIG } from '../10_CONFIG/contact-config.js';
 
@@ -88,6 +89,10 @@ function getUserDataPath(): string {
 export const ACCOUNT_SERVICE_MODULE = 'account-service';
 console.log('[account-service] Account & subscription module initialized');
 
+export function getAdminApiBaseUrl(): string {
+  return process.env.MAHI_ADMIN_URL || ADMIN_API_BASE_URL;
+}
+
 function getSessionFilePath(): string {
   return path.join(getUserDataPath(), 'account-session.enc');
 }
@@ -102,14 +107,21 @@ function getStatusCacheFilePath(): string {
 function encryptPayload(plainText: string): Buffer {
   try {
     if (safeStorage && safeStorage.isEncryptionAvailable()) {
-      return safeStorage.encryptString(plainText);
+      const encrypted = safeStorage.encryptString(plainText);
+      return Buffer.from('SAFE_STORAGE_V1:' + encrypted.toString('base64'), 'utf8');
     }
   } catch (err: any) {
     console.warn('[AccountService] safeStorage failed, using machine AES fallback:', err?.message);
   }
 
-  // Fallback: AES-256-GCM keyed by hardware ID (never plaintext on disk)
-  const key = crypto.createHash('sha256').update(getHWID() + 'mahi-account-enc-2026').digest();
+  // Fallback: AES-256-GCM keyed with CSPRNG install secrets or hardware ID (never plaintext on disk)
+  let secretKey = '';
+  try {
+    secretKey = getInstallSecrets().jwtSecret;
+  } catch {
+    secretKey = getHWID() + 'mahi-account-enc-2026';
+  }
+  const key = crypto.createHash('sha256').update(secretKey || (getHWID() + 'mahi-account-enc-2026')).digest();
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const ciphertext = Buffer.concat([cipher.update(plainText, 'utf8'), cipher.final()]);
@@ -118,7 +130,19 @@ function encryptPayload(plainText: string): Buffer {
 }
 
 function decryptPayload(rawBuffer: Buffer): string | null {
-  // Try safeStorage first
+  const str = rawBuffer.toString('utf8');
+
+  // Try SAFE_STORAGE_V1: envelope
+  if (str.startsWith('SAFE_STORAGE_V1:')) {
+    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+      try {
+        const b64 = str.slice('SAFE_STORAGE_V1:'.length);
+        return safeStorage.decryptString(Buffer.from(b64, 'base64'));
+      } catch {}
+    }
+  }
+
+  // Try legacy raw safeStorage
   if (safeStorage && safeStorage.isEncryptionAvailable() && !rawBuffer.subarray(0, 7).equals(Buffer.from('AESGCM:'))) {
     try {
       return safeStorage.decryptString(rawBuffer);
@@ -127,16 +151,33 @@ function decryptPayload(rawBuffer: Buffer): string | null {
 
   // Try AES-GCM fallback
   if (rawBuffer.subarray(0, 7).equals(Buffer.from('AESGCM:'))) {
+    const iv = rawBuffer.subarray(7, 19);
+    const tag = rawBuffer.subarray(19, 35);
+    const ciphertext = rawBuffer.subarray(35);
+
+    // Try with install secrets key
     try {
-      const iv = rawBuffer.subarray(7, 19);
-      const tag = rawBuffer.subarray(19, 35);
-      const ciphertext = rawBuffer.subarray(35);
+      const secretKey = getInstallSecrets().jwtSecret;
+      const key = crypto.createHash('sha256').update(secretKey).digest();
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+      decipher.setAuthTag(tag);
+      return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+    } catch {}
+
+    // Try with HWID fallback key
+    try {
       const key = crypto.createHash('sha256').update(getHWID() + 'mahi-account-enc-2026').digest();
       const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
       decipher.setAuthTag(tag);
       return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
     } catch {}
   }
+
+  // Plain JSON fallback (e.g. test environments without safeStorage)
+  try {
+    const parsed = JSON.parse(str);
+    if (parsed && typeof parsed === 'object') return str;
+  } catch {}
 
   return null;
 }
@@ -312,12 +353,12 @@ export async function signup(email: string, password: string, name?: string): Pr
   let res: any;
   try {
     // Try primary Central Auth endpoint
-    res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/register`, {
+    res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/register`, {
       method: 'POST'
     }, { email, password, name, deviceId: hwid });
   } catch {
     // Fallback to legacy endpoint if admin URL routes differently
-    res = await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/signup`, {
+    res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/signup`, {
       method: 'POST'
     }, { email, password, hwid });
   }
@@ -357,11 +398,11 @@ export async function login(email: string, password: string): Promise<{ success:
   const hwid = getHWID();
   let res: any;
   try {
-    res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/login`, {
+    res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/login`, {
       method: 'POST'
     }, { email, password, deviceId: hwid, deviceName: 'Windows Desktop', platform: process.platform || 'windows' });
   } catch {
-    res = await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/login`, {
+    res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/login`, {
       method: 'POST'
     }, { email, password, hwid });
   }
@@ -399,13 +440,13 @@ export async function login(email: string, password: string): Promise<{ success:
   return { success: true, token, user };
 }
 
-export async function loginWithToken(rawToken: string): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
+export async function loginWithToken(rawToken: string, refreshToken?: string): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
   const token = (rawToken || '').trim();
   if (!token) throw new Error('Token is required');
 
   let res: any;
   try {
-    res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/me`, {
+    res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/me`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`
@@ -423,9 +464,11 @@ export async function loginWithToken(rawToken: string): Promise<{ success: boole
   const user = res.body.user;
   const trialStatus = res.body.trialStatus;
   const plan = trialStatus?.isTrialActive ? 'trial' : (user.plan || user.planId || 'free');
+  const finalRefreshToken = refreshToken || res.body.refreshToken || res.body.tokens?.refreshToken;
 
   saveEncryptedSession({
     token,
+    refreshToken: finalRefreshToken,
     account_id: user.id || `usr_${Date.now()}`,
     email: user.email,
     name: user.name,
@@ -445,6 +488,25 @@ export async function loginWithToken(rawToken: string): Promise<{ success: boole
   return { success: true, token, user };
 }
 
+let refreshPromise: Promise<boolean> | null = null;
+
+export async function refreshAccountTokenWithMutex(): Promise<boolean> {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+  refreshPromise = (async () => {
+    try {
+      const res = await refreshAccountToken();
+      return !!res.success;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
+
 export async function refreshAccountToken(): Promise<{ success: boolean; token?: string; error?: string }> {
   const session = loadEncryptedSession();
   if (!session?.refreshToken) {
@@ -452,7 +514,7 @@ export async function refreshAccountToken(): Promise<{ success: boolean; token?:
   }
 
   try {
-    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/refresh`, {
+    const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/refresh`, {
       method: 'POST'
     }, { refreshToken: session.refreshToken });
 
@@ -475,7 +537,7 @@ export async function logout(): Promise<{ success: boolean }> {
   const session = loadEncryptedSession();
   if (session?.token) {
     try {
-      await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/logout`, {
+      await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/logout`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.token}`
@@ -490,7 +552,7 @@ export async function logout(): Promise<{ success: boolean }> {
 
 export async function verifyEmail(token: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/verify-email`, {
+    const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/verify-email`, {
       method: 'POST'
     }, { token });
     if (res.statusCode === 200) {
@@ -504,7 +566,7 @@ export async function verifyEmail(token: string): Promise<{ success: boolean; er
 
 export async function resendVerificationEmail(email: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/resend-verification`, {
+    const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/resend-verification`, {
       method: 'POST'
     }, { email });
     if (res.statusCode === 200) {
@@ -518,7 +580,7 @@ export async function resendVerificationEmail(email: string): Promise<{ success:
 
 export async function forgotPassword(email: string): Promise<{ success: boolean; message?: string; error?: string }> {
   try {
-    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/forgot-password`, {
+    const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/forgot-password`, {
       method: 'POST'
     }, { email });
     if (res.statusCode === 200) {
@@ -532,7 +594,7 @@ export async function forgotPassword(email: string): Promise<{ success: boolean;
 
 export async function resetPassword(token: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/reset-password`, {
+    const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/reset-password`, {
       method: 'POST'
     }, { token, newPassword });
     if (res.statusCode === 200) {
@@ -550,7 +612,7 @@ export async function listActiveSessions(): Promise<{ success: boolean; sessions
     return { success: false, error: 'No active session' };
   }
   try {
-    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/sessions`, {
+    const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/sessions`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${session.token}`
@@ -571,7 +633,7 @@ export async function revokeSession(sessionId: string): Promise<{ success: boole
     return { success: false, error: 'No active session' };
   }
   try {
-    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/sessions/revoke`, {
+    const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/sessions/revoke`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${session.token}`
@@ -592,7 +654,7 @@ export async function revokeAllSessions(keepCurrent: boolean = true): Promise<{ 
     return { success: false, error: 'No active session' };
   }
   try {
-    const res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/sessions/revoke-all`, {
+    const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/sessions/revoke-all`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${session.token}`
@@ -612,7 +674,7 @@ export async function switchDevice(): Promise<{ success: boolean; message: strin
   if (!session?.token) throw new Error('No active account session');
 
   const hwid = getHWID();
-  const res = await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/switch-device`, {
+  const res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/switch-device`, {
     method: 'POST'
   }, { token: session.token, hwid });
 
@@ -626,7 +688,7 @@ export async function switchDevice(): Promise<{ success: boolean; message: strin
 
 export async function getPaymentInfo(): Promise<PaymentInfo> {
   try {
-    const res = await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/payment-info`, { method: 'GET' });
+    const res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/payment-info`, { method: 'GET' });
     if (res.statusCode === 200 && res.body) {
       return {
         ...res.body,
@@ -667,7 +729,7 @@ export async function submitManualUpiPayment(payload: {
   }
 
   try {
-    const res = await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/payments/upi/submit`, {
+    const res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/payments/upi/submit`, {
       method: 'POST',
       headers: {
         'x-mahi-token': session.token,
@@ -708,18 +770,52 @@ export async function fetchAndCacheStatus(): Promise<CachedAccountStatus | null>
   if (!session?.token) return null;
 
   const hwid = getHWID();
-  const res = await makeRequest(`${ADMIN_API_BASE_URL}/v1/account/status?hwid=${encodeURIComponent(hwid)}`, {
-    method: 'GET',
-    headers: {
-      'x-mahi-token': session.token
+  let res: any;
+  try {
+    res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/status?hwid=${encodeURIComponent(hwid)}`, {
+      method: 'GET',
+      headers: {
+        'x-mahi-token': session.token
+      }
+    });
+  } catch (err: any) {
+    // Transient network error / timeout - return cached status, do NOT clear session!
+    console.warn('[AccountService] Status check network error:', err?.message);
+    return readCachedStatus();
+  }
+
+  // If 401 Unauthorized, attempt refresh once via mutex before clearing
+  if (res.statusCode === 401 && session.refreshToken) {
+    const refreshed = await refreshAccountTokenWithMutex();
+    if (refreshed) {
+      const newSession = loadEncryptedSession();
+      if (newSession?.token) {
+        try {
+          res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/status?hwid=${encodeURIComponent(hwid)}`, {
+            method: 'GET',
+            headers: {
+              'x-mahi-token': newSession.token
+            }
+          });
+        } catch (err: any) {
+          console.warn('[AccountService] Post-refresh status check network error:', err?.message);
+          return readCachedStatus();
+        }
+      }
     }
-  });
+  }
 
   if (res.statusCode === 401 || res.statusCode === 403) {
-    // Session revoked or device mismatch
+    // Session revoked or refresh failed
     clearEncryptedSession();
     broadcastAccountChanged();
     return null;
+  }
+
+  if (res.statusCode >= 500) {
+    // Server error - return cached status, do NOT clear session!
+    console.warn(`[AccountService] Status check server error (HTTP ${res.statusCode}), using cached status`);
+    return readCachedStatus();
   }
 
   if (res.statusCode !== 200 || !res.body) {
@@ -984,7 +1080,7 @@ export function createDesktopOAuthRequest(planId?: string): { success: boolean; 
   });
 
   const planParam = planId ? `&plan=${encodeURIComponent(planId)}` : '';
-  const authUrl = `${ADMIN_API_BASE_URL}/api/v1/auth/google/start?intent=desktop_login&handoff=${encodeURIComponent(ticket)}&code_challenge=${encodeURIComponent(codeChallenge)}${planParam}`;
+  const authUrl = `${getAdminApiBaseUrl()}/api/v1/auth/google/start?intent=desktop_login&handoff=${encodeURIComponent(ticket)}&code_challenge=${encodeURIComponent(codeChallenge)}${planParam}`;
 
   return { success: true, ticket, authUrl };
 }
@@ -1009,7 +1105,7 @@ export async function exchangeDesktopAuthCode(ticket: string, code: string): Pro
 
   let res: any;
   try {
-    res = await makeRequest(`${ADMIN_API_BASE_URL}/api/v1/auth/desktop-exchange`, {
+    res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/desktop-exchange`, {
       method: 'POST'
     }, {
       ticket,
@@ -1025,6 +1121,8 @@ export async function exchangeDesktopAuthCode(ticket: string, code: string): Pro
   }
 
   // Session token received over secure TLS. Ingest into DPAPI-encrypted storage.
-  return loginWithToken(res.body.token);
+  const token = res.body.token || res.body.tokens?.accessToken;
+  const refreshToken = res.body.refreshToken || res.body.tokens?.refreshToken;
+  return loginWithToken(token, refreshToken);
 }
 

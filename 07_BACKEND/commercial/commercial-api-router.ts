@@ -87,7 +87,9 @@ import {
   getAllCommercialDevices,
   revokeCommercialDevice,
   resetAllUserDevices,
+  registerOrUpdateDevice,
 } from './commercial-device-service.js';
+import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
 import {
   getCommercialAuditLogs,
   logCommercialAudit,
@@ -229,6 +231,17 @@ function checkAdminAuth(req: http.IncomingMessage, body?: any): { isAdmin: boole
     isAdmin: false,
     actor: { id: 'unknown', name: 'Unauthorized', role: 'USER' },
   };
+}
+
+function signAccountStatus(canonical: string): string {
+  if (process.env.MAHI_STATUS_PRIVATE_KEY) {
+    try {
+      const signer = crypto.createSign('SHA256');
+      signer.update(canonical);
+      return signer.sign(process.env.MAHI_STATUS_PRIVATE_KEY, 'base64');
+    } catch {}
+  }
+  return '';
 }
 
 // ============================================================================
@@ -492,8 +505,10 @@ export async function handleCommercialApiRoutes(
     return false;
   }
 
-  // Delegate remote cloud API, cloud browser & webhooks
-  if (
+  // Support direct /v1/account/* endpoints before remote API delegation
+  if (pathname.startsWith('/v1/account/')) {
+    // handled directly below in commercial router
+  } else if (
     pathname.startsWith('/api/v1/remote/') ||
     pathname.startsWith('/api/v1/cloud-browser') ||
     pathname.startsWith('/api/v1/webhooks') ||
@@ -506,6 +521,143 @@ export async function handleCommercialApiRoutes(
   const routePath = isDirectAuth ? `/api/v1${pathname}` : isDirectSync ? `/api${pathname}` : pathname;
 
   const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1';
+
+  // -------------------------------------------------------------
+  // 0. ACCOUNT CLIENT DESKTOP ENDPOINTS (/v1/account/*)
+  // -------------------------------------------------------------
+  if (routePath === '/v1/account/status' && method === 'GET') {
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Valid token required.' });
+      return true;
+    }
+    const hwidParam = (parsedUrl.searchParams.get('hwid') || '').trim();
+    const entitlements = evaluateUserEntitlements(auth.userId, hwidParam);
+    const plan = entitlements?.plan?.id || entitlements?.planId || 'free';
+    const profile_limit = entitlements?.maxProfiles || entitlements?.limits?.maxProfiles || 15;
+    const sync_allowed = entitlements?.features?.['cloud.sync'] ?? (plan !== 'free' && plan !== 'plan_free');
+    const expires_at = entitlements?.subscription?.expiresAt || null;
+    const server_time = Date.now();
+    const canonical = `${auth.userId}:${hwidParam}:${plan}:${profile_limit}:${sync_allowed ? 1 : 0}:${expires_at || ''}:${server_time}`;
+    const sig = signAccountStatus(canonical);
+
+    sendJSON(res, 200, {
+      success: true,
+      account_id: auth.userId,
+      hwid: hwidParam,
+      plan,
+      profile_limit,
+      sync_allowed,
+      expires_at,
+      server_time,
+      sig,
+    });
+    return true;
+  }
+
+  if (routePath === '/v1/account/signup' && method === 'POST') {
+    const body = await parseBody(req);
+    const { email, password, name } = body;
+    if (!email || !password) {
+      sendJSON(res, 400, { success: false, error: 'Email and password required' });
+      return true;
+    }
+    const result = await registerCentralUser({ email, password, name, ipAddress: clientIp });
+    if (!result.success) {
+      sendJSON(res, 400, { success: false, error: result.error });
+      return true;
+    }
+    sendJSON(res, 201, {
+      success: true,
+      token: result.tokens?.accessToken,
+      refreshToken: result.tokens?.refreshToken,
+      user: result.user,
+    });
+    return true;
+  }
+
+  if (routePath === '/v1/account/login' && method === 'POST') {
+    const body = await parseBody(req);
+    const { email, password, hwid } = body;
+    if (!email || !password) {
+      sendJSON(res, 400, { success: false, error: 'Email and password required' });
+      return true;
+    }
+    const result = await loginCentralUser({ email, password, deviceId: hwid, ipAddress: clientIp });
+    if (!result.success) {
+      const isDeviceErr = !!result.error?.toLowerCase().includes('device');
+      sendJSON(res, 401, { success: false, error: result.error, device_ok: !isDeviceErr });
+      return true;
+    }
+    sendJSON(res, 200, {
+      success: true,
+      token: result.tokens?.accessToken,
+      refreshToken: result.tokens?.refreshToken,
+      user: result.user,
+    });
+    return true;
+  }
+
+  if (routePath === '/v1/account/switch-device' && method === 'POST') {
+    const body = await parseBody(req);
+    const auth = getAuthUser(req);
+    const token = body.token || (req.headers['x-mahi-token'] as string);
+    const userId = auth?.userId || (token ? verifyAccessToken(token)?.userId : null);
+    if (!userId) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized' });
+      return true;
+    }
+    const hwid = body.hwid || '';
+    if (hwid) {
+      registerOrUpdateDevice({
+        userId,
+        deviceId: hwid,
+        deviceName: body.deviceName || 'Windows Desktop',
+        ipAddress: clientIp,
+      });
+    }
+    sendJSON(res, 200, { success: true, message: 'Device rebound successfully' });
+    return true;
+  }
+
+  if (routePath === '/v1/account/payment-info' && method === 'GET') {
+    sendJSON(res, 200, {
+      success: true,
+      upi_id: CONTACT_CONFIG.UPI_ID,
+      upi_account_holder: CONTACT_CONFIG.UPI_ACCOUNT_HOLDER,
+      upi_qr_asset: CONTACT_CONFIG.UPI_QR_ASSET,
+      price_inr: 1499,
+      price_usd: 19,
+      price_usdt: 0,
+      usdt_address: '',
+      usdt_network: '',
+      usdt_enabled: false,
+      whatsapp_number: CONTACT_CONFIG.WHATSAPP_NUMBER,
+    });
+    return true;
+  }
+
+  if (routePath === '/v1/account/payments/upi/submit' && method === 'POST') {
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
+    const body = await parseBody(req);
+    const utr = (body.utr || '').trim();
+    if (!utr || utr.length < 6) {
+      sendJSON(res, 400, { success: false, error: 'Invalid UTR: Transaction reference must be at least 6 characters.' });
+      return true;
+    }
+    const paymentId = 'pay_' + crypto.randomUUID().replace(/-/g, '').substring(0, 16);
+    sendJSON(res, 200, {
+      success: true,
+      payment_id: paymentId,
+      status: 'PENDING_VERIFICATION',
+      message: 'Payment submitted successfully for verification.',
+    });
+    return true;
+  }
 
   // -------------------------------------------------------------
   // 1. PUBLIC AUTHENTICATION & REGISTRATION

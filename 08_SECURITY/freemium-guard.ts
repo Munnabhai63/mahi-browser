@@ -69,11 +69,21 @@ export function hasValidLicense(): boolean {
 
 /**
  * Returns current number of active (non-deleted) profiles in the database.
+ * Supports isolation by owner_id (defaults to 'SYSTEM_OWNER' for desktop guest profiles).
  */
-export function getNonDeletedProfileCount(): number {
+export function getNonDeletedProfileCount(ownerId?: string): number {
   try {
+    const targetOwner = ownerId || 'SYSTEM_OWNER';
     const db = getDatabase();
-    const row = db.prepare('SELECT COUNT(*) as count FROM profiles WHERE deleted_at IS NULL').get() as { count: number } | undefined;
+    if (targetOwner === 'SYSTEM_OWNER') {
+      const row = db.prepare(
+        "SELECT COUNT(*) as count FROM profiles WHERE deleted_at IS NULL AND (owner_id = 'SYSTEM_OWNER' OR owner_id = 'LOCAL_CLIENT' OR owner_id IS NULL)"
+      ).get() as { count: number } | undefined;
+      return typeof row?.count === 'number' ? row.count : 0;
+    }
+    const row = db.prepare(
+      'SELECT COUNT(*) as count FROM profiles WHERE deleted_at IS NULL AND owner_id = ?'
+    ).get(targetOwner) as { count: number } | undefined;
     return typeof row?.count === 'number' ? row.count : 0;
   } catch {
     return 0;
@@ -94,9 +104,9 @@ export function isUserPro(): boolean {
  * Validates whether creating `additionalCount` profiles is permitted under current plan.
  * Throws a user-friendly error if the limit is exceeded.
  */
-export function assertCanCreateProfile(additionalCount = 1): void {
-  const currentCount = getNonDeletedProfileCount();
-  const limits = getPlanLimitsInfo();
+export function assertCanCreateProfile(additionalCount = 1, ownerId?: string): void {
+  const currentCount = getNonDeletedProfileCount(ownerId);
+  const limits = getPlanLimitsInfo(ownerId);
 
   if (currentCount + additionalCount > limits.maxProfiles) {
     if (limits.maxProfiles <= FREE_PROFILE_LIMIT) {
@@ -119,7 +129,7 @@ export function assertCanCreateProfile(additionalCount = 1): void {
 /**
  * Helper to query plan information without throwing.
  */
-export function getPlanLimitsInfo(): {
+export function getPlanLimitsInfo(ownerId?: string): {
   isLicensed: boolean;
   isPro: boolean;
   isBusiness: boolean;
@@ -147,7 +157,7 @@ export function getPlanLimitsInfo(): {
     isLicensed,
     isPro,
     isBusiness: isBiz,
-    currentCount: getNonDeletedProfileCount(),
+    currentCount: getNonDeletedProfileCount(ownerId),
     maxProfiles,
     freeLimit: FREE_PROFILE_LIMIT,
     proLimit: PRO_PROFILE_LIMIT,
