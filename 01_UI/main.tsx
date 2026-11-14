@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import './api-fallback.js';
 import { App } from './App.js';
 import { WebDashboardApp } from './web/WebDashboardApp.js';
+import { ErrorBoundary } from './components/ErrorBoundary.js';
 import './index.css';
 
 const isWebDashboard =
@@ -15,6 +16,8 @@ const isWebDashboard =
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {isWebDashboard ? <WebDashboardApp /> : <App />}
+    <ErrorBoundary>
+      {isWebDashboard ? <WebDashboardApp /> : <App />}
+    </ErrorBoundary>
   </React.StrictMode>
 );

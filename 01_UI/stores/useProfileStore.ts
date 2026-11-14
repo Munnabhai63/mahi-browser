@@ -67,16 +67,17 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     try {
       if (window.mahiAPI) {
         const profiles = await window.mahiAPI.getProfiles(get().filter);
-        set({ profiles, loading: false });
+        set({ profiles });
       }
     } catch (err: unknown) {
-      set({ loading: false });
       const msg = err instanceof Error ? err.message : String(err);
       useToastStore.getState().showToast({
         type: 'error',
         title: 'Failed to load profiles',
         message: msg,
       });
+    } finally {
+      set({ loading: false });
     }
   },
 

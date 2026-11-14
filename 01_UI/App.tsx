@@ -69,10 +69,14 @@ export const App: React.FC = () => {
         localStorage.setItem('mahi_first_launch_seen', 'true');
         useAccountStore.getState().openAccountModal();
       }
-    }).catch(() => {});
+    }).catch((err) => {
+      console.warn('[App] Entitlements evaluation notice:', err);
+    });
 
     // Attempt auto-login if saved license exists
-    useAccountStore.getState().commercialLogin('AUTO', 'LICENSE_MODE').catch(() => {});
+    useAccountStore.getState().commercialLogin('AUTO', 'LICENSE_MODE').catch((err) => {
+      console.debug('[App] Auto commercial login notice:', err);
+    });
 
     // Initial data load for all users (Free and Pro)
     fetchProfiles();
@@ -90,12 +94,16 @@ export const App: React.FC = () => {
       });
 
       const unsubAccount = window.mahiAPI.onAccountStatusChanged?.(() => {
-        useAccountStore.getState().fetchPlanLimits().catch(() => {});
+        useAccountStore.getState().fetchPlanLimits({ force: true }).catch((err) => {
+          console.debug('[App] Account limits sync notice:', err);
+        });
         fetchProfiles();
       });
 
       const handleWindowFocus = () => {
-        useAccountStore.getState().fetchPlanLimits().catch(() => {});
+        useAccountStore.getState().fetchPlanLimits({ force: true }).catch((err) => {
+          console.debug('[App] Focus limits sync notice:', err);
+        });
       };
       window.addEventListener('focus', handleWindowFocus);
 

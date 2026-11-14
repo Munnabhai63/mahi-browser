@@ -86,7 +86,9 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
 
   useEffect(() => {
     if (window.mahiAPI?.getAllProfilesSyncStatus) {
-      window.mahiAPI.getAllProfilesSyncStatus().then(setSyncStatuses).catch(() => {});
+      window.mahiAPI.getAllProfilesSyncStatus().then(setSyncStatuses).catch((err) => {
+        console.debug('[ProfilesList] Non-critical sync status fetch notice:', err);
+      });
     }
   }, [profiles]);
 

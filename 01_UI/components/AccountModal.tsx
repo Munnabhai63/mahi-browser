@@ -85,7 +85,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
   useEffect(() => {
     if (isOpen) {
-      fetchPlanLimits().catch(() => {});
+      fetchPlanLimits({ force: true }).catch(() => {});
       fetchPaymentInfo().catch(() => {});
       if (isUserLoggedIn) {
         fetchActiveSessions().catch(() => {});
@@ -498,7 +498,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
         });
         setDeviceMismatchError(false);
         setErrorMessage(null);
-        await fetchPlanLimits();
+        await fetchPlanLimits({ force: true });
       } else {
         setErrorMessage(res.error || 'Device switch rejected by cooldown.');
       }

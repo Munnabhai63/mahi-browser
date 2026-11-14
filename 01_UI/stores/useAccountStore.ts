@@ -56,7 +56,7 @@ interface AccountState {
   addWorkspace: (name: string) => void;
   setRememberMe: (val: boolean) => void;
 
-  fetchPlanLimits: () => Promise<void>;
+  fetchPlanLimits: (dto?: { force?: boolean }) => Promise<void>;
   fetchPaymentInfo: () => Promise<void>;
   submitManualUpiPayment: (payload: { plan_id: string; utr: string; proof_asset?: string }) => Promise<{ success: boolean; payment_id?: string; status?: string; message?: string; error?: string }>;
   accountSignup: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -135,10 +135,10 @@ export const useAccountStore = create<AccountState>()(
       closeAccountModal: () => set({ isAccountModalOpen: false, pendingProfileDto: null }),
       clearPendingProfileDto: () => set({ pendingProfileDto: null }),
 
-      fetchPlanLimits: async () => {
+      fetchPlanLimits: async (dto?: { force?: boolean }) => {
         if (!window.mahiAPI) return;
         try {
-          const limits = await window.mahiAPI.accountGetPlanLimits();
+          const limits = await window.mahiAPI.accountGetPlanLimits(dto);
           set({ planLimits: limits });
           const sess = await window.mahiAPI.accountGetSession();
           set({ accountSession: sess });
@@ -189,7 +189,7 @@ export const useAccountStore = create<AccountState>()(
         try {
           const res = await window.mahiAPI.accountSignup({ email, password });
           if (res.success) {
-            await get().fetchPlanLimits();
+            await get().fetchPlanLimits({ force: true });
             return { success: true };
           }
           return { success: false, error: res.error || 'Signup failed' };
@@ -203,7 +203,7 @@ export const useAccountStore = create<AccountState>()(
         try {
           const res = await window.mahiAPI.accountLogin({ email, password });
           if (res.success) {
-            await get().fetchPlanLimits();
+            await get().fetchPlanLimits({ force: true });
             useProfileStore.getState().fetchProfiles().catch(() => {});
             return { success: true };
           }
@@ -218,7 +218,7 @@ export const useAccountStore = create<AccountState>()(
         try {
           const res = await window.mahiAPI.accountLoginWithToken(token);
           if (res.success) {
-            await get().fetchPlanLimits();
+            await get().fetchPlanLimits({ force: true });
             useProfileStore.getState().fetchProfiles().catch(() => {});
             return { success: true };
           }
@@ -246,7 +246,7 @@ export const useAccountStore = create<AccountState>()(
         try {
           const res = await window.mahiAPI.accountSwitchDevice();
           if (res.success) {
-            await get().fetchPlanLimits();
+            await get().fetchPlanLimits({ force: true });
             return { success: true };
           }
           return { success: false, error: (res as any).message || 'Device switch failed' };

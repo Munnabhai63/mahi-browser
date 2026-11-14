@@ -111,17 +111,27 @@ export const ExtensionManagerPage: React.FC<ExtensionManagerProps> = ({ onNaviga
   };
 
   const handleToggle = async (ext: ExtensionItem) => {
-    if (!activeProfileId) return;
-    await window.mahiAPI.toggleExtension(activeProfileId, ext.id, !ext.enabled);
-    loadExtensions();
+    if (!activeProfileId || !window.mahiAPI) return;
+    try {
+      await window.mahiAPI.toggleExtension(activeProfileId, ext.id, !ext.enabled);
+      loadExtensions();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast({ type: 'error', title: 'Failed to toggle extension', message: msg });
+    }
   };
 
   const handleDelete = async () => {
-    if (!activeProfileId || !deleteTarget) return;
-    await window.mahiAPI.removeExtension(activeProfileId, deleteTarget.id);
-    showToast({ type: 'info', title: 'Extension Removed', message: 'Extension deleted.' });
-    setDeleteTarget(null);
-    loadExtensions();
+    if (!activeProfileId || !deleteTarget || !window.mahiAPI) return;
+    try {
+      await window.mahiAPI.removeExtension(activeProfileId, deleteTarget.id);
+      showToast({ type: 'info', title: 'Extension Removed', message: 'Extension deleted.' });
+      setDeleteTarget(null);
+      loadExtensions();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast({ type: 'error', title: 'Failed to remove extension', message: msg });
+    }
   };
 
   return (

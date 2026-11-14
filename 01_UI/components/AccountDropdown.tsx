@@ -93,7 +93,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
   // Refresh session when dropdown opens
   useEffect(() => {
     if (isOpen) {
-      fetchPlanLimits().catch(() => {});
+      fetchPlanLimits({ force: true }).catch(() => {});
     }
   }, [isOpen, fetchPlanLimits]);
 
