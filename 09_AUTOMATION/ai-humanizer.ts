@@ -36,14 +36,31 @@ function cubicBezierPoint(p0: Point, p1: Point, p2: Point, p3: Point, t: number)
 }
 
 /**
- * Generates an organic trajectory of Points between start and end using random Bezier control points.
+ * Generates an organic trajectory of Points between start and end using random Bezier control points,
+ * enhanced with ghost-cursor style Fitts's Law ballistic movement and overshoot micro-corrections.
  */
 export function generateHumanPath(start: Point, end: Point, steps = 25, jitter = 2): Point[] {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const distance = Math.sqrt(dx * dx + dy * dy);
 
-  // Generate randomized control points with human arc deviation
+  if (distance < 1) {
+    return [{ x: Math.round(end.x), y: Math.round(end.y) }];
+  }
+
+  // Fitts's Law: For longer movements (distance > 70px), humans produce a ballistic
+  // initial impulse with a slight overshoot (2% - 5%), followed by a corrective phase.
+  const hasOvershoot = distance > 70 && steps >= 12;
+  const overshootMag = hasOvershoot ? Math.min(distance * 0.04, 12) : 0;
+  const overshootAngle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.2;
+  const intermediateTarget: Point = hasOvershoot
+    ? {
+        x: end.x + Math.cos(overshootAngle) * overshootMag,
+        y: end.y + Math.sin(overshootAngle) * overshootMag,
+      }
+    : end;
+
+  // Arc deviation
   const deviation = Math.min(distance * 0.35, 120);
   const sign = Math.random() > 0.5 ? 1 : -1;
 
@@ -57,22 +74,44 @@ export function generateHumanPath(start: Point, end: Point, steps = 25, jitter =
     y: start.y + dy * 0.75 + sign * (Math.random() * deviation * 0.5),
   };
 
+  const ballisticSteps = hasOvershoot ? Math.floor(steps * 0.8) : steps;
   const path: Point[] = [];
-  for (let i = 0; i <= steps; i++) {
-    // Non-linear easing (smooth acceleration and deceleration)
-    const t = i / steps;
-    // Ease in-out sine
-    const easedT = -(Math.cos(Math.PI * t) - 1) / 2;
-    const pt = cubicBezierPoint(start, cp1, cp2, end, easedT);
 
-    // Apply micro-jitter (tremors in human muscle control)
-    if (i > 0 && i < steps) {
+  for (let i = 0; i <= ballisticSteps; i++) {
+    const t = i / ballisticSteps;
+    // Asymmetric human acceleration profile: fast ballistic acceleration, gradual deceleration
+    const easedT = t < 0.4
+      ? 2.5 * t * t
+      : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    const clampedT = Math.max(0, Math.min(1, easedT));
+    const pt = cubicBezierPoint(start, cp1, cp2, intermediateTarget, clampedT);
+
+    if (i > 0 && i < ballisticSteps) {
       pt.x += (Math.random() - 0.5) * jitter;
       pt.y += (Math.random() - 0.5) * jitter;
     }
 
     path.push({ x: Math.round(pt.x), y: Math.round(pt.y) });
   }
+
+  // Corrective phase: micro-correction from intermediateTarget to actual end
+  if (hasOvershoot) {
+    const correctionSteps = steps - ballisticSteps;
+    const correctionStart = path[path.length - 1];
+    for (let j = 1; j <= correctionSteps; j++) {
+      const ct = j / correctionSteps;
+      const easedCt = -(Math.cos(Math.PI * ct) - 1) / 2; // smooth settle
+      const cx = correctionStart.x + (end.x - correctionStart.x) * easedCt;
+      const cy = correctionStart.y + (end.y - correctionStart.y) * easedCt;
+      path.push({
+        x: Math.round(cx + (j < correctionSteps ? (Math.random() - 0.5) * (jitter * 0.5) : 0)),
+        y: Math.round(cy + (j < correctionSteps ? (Math.random() - 0.5) * (jitter * 0.5) : 0)),
+      });
+    }
+  }
+
+  // Ensure exact final coordinate matches destination end
+  path[path.length - 1] = { x: Math.round(end.x), y: Math.round(end.y) };
 
   return path;
 }
@@ -108,8 +147,8 @@ export async function humanClick(page: any, selector: string, options?: Humanize
     await new Promise((r) => setTimeout(r, stepDelay));
   }
 
-  // Pre-click hesitation (50ms - 140ms)
-  await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 90) + 50));
+  // Pre-click hover dwell & hesitation (ghost-cursor cognitive settling: 80ms - 180ms)
+  await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 100) + 80));
 
   await page.mouse.down();
   // Hold click for realistic human duration (60ms - 120ms)

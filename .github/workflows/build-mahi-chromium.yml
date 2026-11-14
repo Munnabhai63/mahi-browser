@@ -1,0 +1,201 @@
+name: Build MAHI Chromium Engine
+
+on:
+  workflow_dispatch:
+    inputs:
+      chromium_version:
+        description: 'Target Chromium Version'
+        required: true
+        default: '138.0.7204.0'
+      clean_cache:
+        description: 'Bypass CCache / Sccache'
+        type: boolean
+        required: false
+        default: false
+  push:
+    tags:
+      - 'engine-v*'
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-engine:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: win64
+            os: windows-2022
+            platform_key: win64
+            archive_subdir: chrome-win
+            archive_name: chrome-win.zip
+            binary_name: chrome.exe
+          - target: mac-arm64
+            os: macos-14
+            platform_key: mac-arm64
+            archive_subdir: chrome-mac-arm64
+            archive_name: chrome-mac-arm64.zip
+            binary_name: chrome
+          - target: mac-x64
+            os: macos-13
+            platform_key: mac-x64
+            archive_subdir: chrome-mac-x64
+            archive_name: chrome-mac-x64.zip
+            binary_name: chrome
+          - target: linux64
+            os: ubuntu-22.04
+            platform_key: linux64
+            archive_subdir: chrome-linux64
+            archive_name: chrome-linux64.zip
+            binary_name: chrome
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout MAHI Browser Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Cache depot_tools
+        uses: actions/cache@v4
+        with:
+          path: ~/depot_tools
+          key: depot-tools-${{ runner.os }}-${{ hashFiles('14_ENGINE_PATCHES/chromium-138/series') }}
+
+      - name: Install depot_tools (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: |
+          if [ ! -d "$HOME/depot_tools" ]; then
+            git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git "$HOME/depot_tools"
+          fi
+          echo "$HOME/depot_tools" >> $GITHUB_PATH
+
+      - name: Install depot_tools (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $depotPath = "$HOME\depot_tools"
+          if (-not (Test-Path $depotPath)) {
+            git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git $depotPath
+          }
+          [Environment]::SetEnvironmentVariable("DEPOT_TOOLS_WIN_TOOLCHAIN", "0", "User")
+          echo "$depotPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Fetch Chromium Source (${{ github.event.inputs.chromium_version || '138.0.7204.0' }})
+        shell: bash
+        run: |
+          VERSION="${{ github.event.inputs.chromium_version || '138.0.7204.0' }}"
+          mkdir -p ../chromium && cd ../chromium
+          if [ ! -d "src" ]; then
+            fetch --nohooks --no-history chromium
+          fi
+          cd src
+          git checkout -f "$VERSION" || git checkout -f tags/"$VERSION" || git checkout -b "mahi-138" "$VERSION"
+          gclient sync -D --force --reset
+
+      - name: Apply MAHI C++ Anti-Detect Patches (Linux / macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cd $GITHUB_WORKSPACE/14_ENGINE_PATCHES/chromium-138
+          bash apply-patches.sh ../../../chromium/src
+
+      - name: Apply MAHI C++ Anti-Detect Patches (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $srcPath = (Resolve-Path "$env:GITHUB_WORKSPACE\..\chromium\src").Path
+          & "$env:GITHUB_WORKSPACE\14_ENGINE_PATCHES\chromium-138\apply-patches.ps1" -ChromiumSrc $srcPath
+
+      - name: Configure GN Build Args
+        shell: bash
+        run: |
+          cd ../chromium/src
+          mkdir -p out/Default
+          cp "$GITHUB_WORKSPACE/14_ENGINE_PATCHES/chromium-138/args.gn" out/Default/args.gn
+          gn gen out/Default
+
+      - name: Compile Custom Chromium Engine (chrome)
+        shell: bash
+        run: |
+          cd ../chromium/src
+          autoninja -C out/Default chrome
+
+      - name: Embed mahi-engine.json Manifest
+        shell: bash
+        run: |
+          cp "$GITHUB_WORKSPACE/14_ENGINE_PATCHES/chromium-138/mahi-engine.json" ../chromium/src/out/Default/mahi-engine.json
+
+      - name: Package Engine Archive
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist-engine/${{ matrix.archive_subdir }}"
+          cp -r ../chromium/src/out/Default/* "$GITHUB_WORKSPACE/dist-engine/${{ matrix.archive_subdir }}/"
+          cd "$GITHUB_WORKSPACE/dist-engine"
+          zip -r "${{ matrix.archive_name }}" "${{ matrix.archive_subdir }}"
+          
+          # Compute cryptographic SHA-256 hash
+          sha256sum "${{ matrix.archive_name }}" > "${{ matrix.archive_name }}.sha256"
+          echo "ARCHIVE_SHA256=$(awk '{print $1}' "${{ matrix.archive_name }}.sha256")" >> $GITHUB_ENV
+
+      - name: Generate Engine Release Manifest Entry
+        shell: node
+        run: |
+          const fs = require('fs');
+          const path = require('path');
+          const crypto = require('crypto');
+          
+          const archivePath = path.join(process.env.GITHUB_WORKSPACE, 'dist-engine', '${{ matrix.archive_name }}');
+          const fileBytes = fs.readFileSync(archivePath);
+          const sha256 = crypto.createHash('sha256').update(fileBytes).digest('hex');
+          const size = fs.statSync(archivePath).size;
+          
+          const entry = {
+            target: '${{ matrix.target }}',
+            platformKey: '${{ matrix.platform_key }}',
+            version: '${{ github.event.inputs.chromium_version || '138.0.7204.0' }}',
+            archiveName: '${{ matrix.archive_name }}',
+            archiveSubdir: '${{ matrix.archive_subdir }}',
+            fileSizeBytes: size,
+            sha256: sha256,
+            downloadUrl: `https://mahibrowser.com/engine/${encodeURIComponent('${{ matrix.archive_name }}')}`,
+            nativeStealth: true,
+            createdAt: new Date().toISOString()
+          };
+          
+          fs.writeFileSync(
+            path.join(process.env.GITHUB_WORKSPACE, 'dist-engine', '${{ matrix.target }}-manifest.json'),
+            JSON.stringify(entry, null, 2),
+            'utf8'
+          );
+          console.log('Engine manifest generated for ${{ matrix.target }}:', entry);
+
+      - name: Upload Engine Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahi-chromium-${{ matrix.target }}
+          path: |
+            dist-engine/${{ matrix.archive_name }}
+            dist-engine/${{ matrix.archive_name }}.sha256
+            dist-engine/${{ matrix.target }}-manifest.json
+
+      - name: Publish Release Asset (Tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist-engine/${{ matrix.archive_name }}
+            dist-engine/${{ matrix.archive_name }}.sha256
+            dist-engine/${{ matrix.target }}-manifest.json

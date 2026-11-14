@@ -19,6 +19,8 @@ import {
   CHROMIUM_PRODUCTION_VERSION,
   CHROMIUM_PRODUCTION_SHA256,
   CHROMIUM_PRODUCTION_DOWNLOAD_URL,
+  DEFAULT_MAHI_ENGINE_MANIFEST,
+  type MahiEngineManifest,
 } from '../10_CONFIG/engine-config.js';
 
 const execAsync = promisify(exec);
@@ -828,3 +830,52 @@ export async function repairManagedEngine(): Promise<{
     return { success: false, error: errorMsg };
   }
 }
+
+/**
+ * Resolves the MahiEngineManifest (`mahi-engine.json`) associated with a given executable path.
+ * Checks alongside the binary (and parent directories up to 3 levels for macOS bundle structures).
+ */
+export function resolveEngineManifest(executablePath: string): MahiEngineManifest | null {
+  if (!executablePath || typeof executablePath !== 'string') return null;
+
+  try {
+    const candidateDirs: string[] = [];
+    const directDir = path.dirname(executablePath);
+    candidateDirs.push(directDir);
+
+    // macOS .app structure: /Applications/MAHI.app/Contents/MacOS/chrome -> check Contents/ and .app root
+    let cur = directDir;
+    for (let i = 0; i < 3; i++) {
+      const parent = path.dirname(cur);
+      if (parent && parent !== cur) {
+        candidateDirs.push(parent);
+        cur = parent;
+      }
+    }
+
+    for (const dir of candidateDirs) {
+      const manifestPath = path.join(dir, 'mahi-engine.json');
+      if (fs.existsSync(manifestPath)) {
+        try {
+          const raw = fs.readFileSync(manifestPath, 'utf8');
+          const data = JSON.parse(raw);
+          if (data && (data.engine === 'mahi-chromium' || data.nativeStealth === true)) {
+            return data as MahiEngineManifest;
+          }
+        } catch {}
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
+/**
+ * Checks if the given Chromium executable has native C++ stealth capabilities enabled via `mahi-engine.json`.
+ */
+export function hasNativeStealthEngine(executablePath: string): boolean {
+  const manifest = resolveEngineManifest(executablePath);
+  return Boolean(manifest && manifest.nativeStealth === true);
+}
+export { DEFAULT_MAHI_ENGINE_MANIFEST };
+export type { MahiEngineManifest };

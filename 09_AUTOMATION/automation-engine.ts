@@ -173,14 +173,18 @@ export async function evaluateCondition(
 
     case 'SELECTOR_EXISTS': {
       if (!target) return false;
-      const el = await page.$(target);
-      return el !== null;
+      const el = await page.$(target).catch(() => null);
+      const exists = el !== null;
+      if (el) await el.dispose().catch(() => {});
+      return exists;
     }
 
     case 'SELECTOR_NOT_EXISTS': {
       if (!target) return true;
-      const el = await page.$(target);
-      return el === null;
+      const el = await page.$(target).catch(() => null);
+      const notExists = el === null;
+      if (el) await el.dispose().catch(() => {});
+      return notExists;
     }
 
     case 'TEXT_CONTAINS': {

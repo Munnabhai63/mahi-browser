@@ -7,7 +7,10 @@ import {
   getManagedEngineExecutablePath,
   getBundledEngineExecutablePath,
   isProductionChromiumInstalled,
-  getProductionChromiumExecutablePath
+  getProductionChromiumExecutablePath,
+  resolveEngineManifest,
+  hasNativeStealthEngine,
+  type MahiEngineManifest,
 } from './managed-engine.js';
 
 export interface DetectedBrowser {
@@ -171,3 +174,6 @@ export function resolveExecutablePath(engine: BrowserEngine, customPath?: string
   }
   return '/usr/bin/google-chrome';
 }
+
+export { resolveEngineManifest, hasNativeStealthEngine };
+export type { MahiEngineManifest };

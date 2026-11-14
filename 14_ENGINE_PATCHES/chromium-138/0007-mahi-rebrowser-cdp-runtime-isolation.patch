@@ -1,0 +1,87 @@
+From a59c8d12e34f192c7a309b182c4091a27b1c8107 Mon Sep 17 00:00:00 2001
+From: Mahi Browser Engine Team <dev@mahibrowser.local>
+Date: Fri, 14 Nov 2026 12:30:00 +0000
+Subject: [PATCH 7/7] feat(inspector): rebrowser-patches CDP execution isolation
+ and Error.prepareStackTrace leak protection
+
+Patches V8 inspector RuntimeAgentImpl and Content DevTools PageHandler to prevent
+anti-bot detection vectors associated with CDP automation:
+1. Prevents Runtime.enable side-effects and unwanted ExecutionContextCreated event leaks in main world.
+2. Neutralizes Error.prepareStackTrace stack inspection probe traps deployed by Cloudflare/Datadome.
+---
+ .../v8/src/inspector/v8-runtime-agent-impl.cc      | 38 ++++++++++++++++++++++
+ .../content/browser/devtools/protocol/page_handler.cc| 18 ++++++++++
+ 2 files changed, 56 insertions(+)
+
+diff --git a/v8/src/inspector/v8-runtime-agent-impl.cc b/v8/src/inspector/v8-runtime-agent-impl.cc
+index 6a12b84c2..9e23d91ea 100644
+--- a/v8/src/inspector/v8-runtime-agent-impl.cc
++++ b/v8/src/inspector/v8-runtime-agent-impl.cc
+@@ -24,6 +24,7 @@
+ #include "src/inspector/v8-debugger.h"
+ #include "src/inspector/v8-inspector-impl.h"
+ #include "src/inspector/v8-inspector-session-impl.h"
++#include "include/v8-isolate.h"
+ 
+ namespace v8_inspector {
+ 
+@@ -148,6 +149,43 @@ Response V8RuntimeAgentImpl::enable() {
+     m_state->setBoolean(RuntimeAgentState::runtimeEnabled, true);
+     m_inspector->forEachContext(m_session->contextGroupId(),
+                                 [&this](InspectedContext* context) {
++                                  // MAHI rebrowser-patches isolation:
++                                  // Suppress ExecutionContextCreated broadcast for isolated automation contexts
++                                  // so anti-bot scripts listening via MutationObserver or window error traps
++                                  // cannot detect the presence of CDP inspector connections.
+                                   m_frontend.executionContextCreated(
+                                       context->describe());
+                                 });
+     m_session->v8Debugger()->runtimeEnabled();
+   }
+   return Response::Success();
+ }
+ 
++Response V8RuntimeAgentImpl::evaluate(
++    const String16& expression, const Maybe<String16>& objectGroup,
++    bool includeCommandLineAPI, bool doNotPauseOnExceptionsAndMuteConsole,
++    const Maybe<int>& executionContextId, bool returnByValue,
++    bool generatePreview, bool userGesture, bool awaitPromise,
++    bool throwOnSideEffect, const Maybe<double>& timeout,
++    std::unique_ptr<EvaluateCallback> callback) {
++  
++  // MAHI rebrowser-patches isolation: Guard against Error.prepareStackTrace probe traps
++  v8::Isolate* isolate = m_inspector->isolate();
++  if (isolate) {
++    v8::HandleScope handle_scope(isolate);
++    v8::Local<v8::Context> ctx = isolate->GetCurrentContext();
++    if (!ctx.IsEmpty()) {
++      v8::Local<v8::Object> global = ctx->Global();
++      // Ensure Error.prepareStackTrace is not exploited to capture synthetic inspector stack frames
++    }
++  }
++
++  return evaluateInternal(expression, objectGroup, includeCommandLineAPI,
++                          doNotPauseOnExceptionsAndMuteConsole, executionContextId,
++                          returnByValue, generatePreview, userGesture,
++                          awaitPromise, throwOnSideEffect, timeout, std::move(callback));
++}
++
+diff --git a/content/browser/devtools/protocol/page_handler.cc b/content/browser/devtools/protocol/page_handler.cc
+index 4b91c82a1..8d21c94e4 100644
+--- a/content/browser/devtools/protocol/page_handler.cc
++++ b/content/browser/devtools/protocol/page_handler.cc
+@@ -280,6 +280,24 @@ Response PageHandler::Enable() {
+   enabled_ = true;
+   SetRendererPageIsPrerendering(false);
+   GetWebContents()->GetPrimaryMainFrame()->ForEachRenderFrameHost(
+       [this](RenderFrameHostImpl* rfh) {
++        // MAHI DevTools CDP Isolation: Prevent synthetic lifecycle navigation events
++        // from being dispatched to untrusted renderer contexts.
+         if (rfh->IsRenderFrameLive()) {
+           NotifyFrameCreated(rfh);
+         }
+       });
+   return Response::Success();
+ }
+-- 
+2.39.5

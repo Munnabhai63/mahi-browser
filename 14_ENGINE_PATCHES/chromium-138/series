@@ -1,0 +1,11 @@
+# MAHI BROWSER — Custom C++ Chromium 138 Anti-Detect Patch Series
+# Target: Chromium 138.0.7204.0 (Milestone 138, commit position 1465706)
+# Format: quilt / git patch series
+
+0001-mahi-canvas-skia-fingerprint-noise.patch
+0002-mahi-webgl-webgpu-metadata-and-noise.patch
+0003-mahi-webaudio-acoustic-jitter.patch
+0004-mahi-clientrects-and-fontcache-masking.patch
+0005-mahi-icu-timezone-locale-hardware-ch.patch
+0006-mahi-ungoogled-privacy-telemetry-webrtc.patch
+0007-mahi-rebrowser-cdp-runtime-isolation.patch

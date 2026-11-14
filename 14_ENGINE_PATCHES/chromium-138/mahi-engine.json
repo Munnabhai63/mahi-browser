@@ -1,0 +1,20 @@
+{
+  "engine": "mahi-chromium",
+  "version": "1.0.0",
+  "chromiumVersion": "138.0.7204.0",
+  "nativeStealth": true,
+  "capabilities": {
+    "canvas": true,
+    "webgl": true,
+    "webgpu": true,
+    "audio": true,
+    "clientRects": true,
+    "fonts": true,
+    "timezone": true,
+    "webrtc": true,
+    "cdpIsolation": true
+  },
+  "buildChannel": "stable",
+  "targetMilestone": 138,
+  "commitPosition": 1465706
+}

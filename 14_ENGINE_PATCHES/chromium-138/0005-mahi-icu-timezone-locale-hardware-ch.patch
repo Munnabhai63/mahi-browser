@@ -1,0 +1,157 @@
+From e39a8c43e52f192c7a309b182c4091a27b1c8105 Mon Sep 17 00:00:00 2001
+From: Mahi Browser Engine Team <dev@mahibrowser.local>
+Date: Fri, 14 Nov 2026 12:20:00 +0000
+Subject: [PATCH 5/7] feat(navigator): native C++ platform, hardwareConcurrency,
+ deviceMemory, touch points and Client Hints reading prefs.mahi
+
+Reads Default/Preferences -> prefs.mahi.navigator.platform, max_touch_points,
+prefs.mahi.hardwareConcurrency, and prefs.mahi.deviceMemory (with prefs.gologin fallback)
+via PrefService directly in Blink Navigator IDL implementations. Ensures zero discrepancy
+between JavaScript getters and native HTTP Sec-CH-UA Client Hints.
+---
+ .../core/frame/navigator_concurrent_hardware.cc    | 32 ++++++++++++++++
+ .../renderer/core/frame/navigator_device_memory.cc | 32 ++++++++++++++++
+ .../blink/renderer/core/frame/navigator.cc         | 44 ++++++++++++++++++++++
+ 3 files changed, 108 insertions(+)
+
+diff --git a/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc b/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
+index 8e45a2c1b..6a21c94e2 100644
+--- a/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
++++ b/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
+@@ -8,6 +8,10 @@
+ #include "third_party/blink/renderer/core/execution_context/execution_context.h"
+ #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+ #include "third_party/blink/renderer/core/frame/local_frame.h"
++#include "components/prefs/pref_service.h"
++#include "base/values.h"
+ 
+ namespace blink {
+ 
+@@ -17,6 +21,34 @@ unsigned NavigatorConcurrentHardware::hardwareConcurrency() const {
+     return 1;
+   }
+ 
++  // MAHI Native Anti-Detect Engine: Read prefs.mahi.hardwareConcurrency
++  if (context->IsLocalDOMWindow()) {
++    LocalDOMWindow* window = To<LocalDOMWindow>(context);
++    if (window && window->GetFrame()) {
++      const PrefService* prefs = window->GetFrame()->GetPrefService();
++      if (prefs) {
++        const base::Value::Dict* mahiPrefs = prefs->GetDict("prefs.mahi");
++        if (!mahiPrefs) mahiPrefs = prefs->GetDict("prefs.gologin");
++        if (mahiPrefs) {
++          std::optional<int> hw = mahiPrefs->FindInt("hardwareConcurrency");
++          if (hw && *hw > 0) {
++            return static_cast<unsigned>(*hw);
++          }
++        }
++      }
++    }
++  }
++
+   return base::SysInfo::NumberOfProcessors();
+ }
+ 
+diff --git a/third_party/blink/renderer/core/frame/navigator_device_memory.cc b/third_party/blink/renderer/core/frame/navigator_device_memory.cc
+index 4b91c82a3..7e21c84e1 100644
+--- a/third_party/blink/renderer/core/frame/navigator_device_memory.cc
++++ b/third_party/blink/renderer/core/frame/navigator_device_memory.cc
+@@ -8,6 +8,10 @@
+ #include "third_party/blink/renderer/core/execution_context/execution_context.h"
+ #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+ #include "third_party/blink/renderer/core/frame/local_frame.h"
++#include "components/prefs/pref_service.h"
++#include "base/values.h"
+ 
+ namespace blink {
+ 
+@@ -17,6 +21,34 @@ float NavigatorDeviceMemory::deviceMemory() const {
+     return 0.25f;
+   }
+ 
++  // MAHI Native Anti-Detect Engine: Read prefs.mahi.deviceMemory
++  if (context->IsLocalDOMWindow()) {
++    LocalDOMWindow* window = To<LocalDOMWindow>(context);
++    if (window && window->GetFrame()) {
++      const PrefService* prefs = window->GetFrame()->GetPrefService();
++      if (prefs) {
++        const base::Value::Dict* mahiPrefs = prefs->GetDict("prefs.mahi");
++        if (!mahiPrefs) mahiPrefs = prefs->GetDict("prefs.gologin");
++        if (mahiPrefs) {
++          std::optional<int> dm = mahiPrefs->FindInt("deviceMemory");
++          if (dm && *dm > 0) {
++            return static_cast<float>(*dm > 8 ? 8 : *dm);
++          }
++        }
++      }
++    }
++  }
++
+   return base::SysInfo::AmountOfPhysicalMemoryMB() / 1024.0f;
+ }
+ 
+diff --git a/third_party/blink/renderer/core/frame/navigator.cc b/third_party/blink/renderer/core/frame/navigator.cc
+index 6c23d91ea..8b12c94e4 100644
+--- a/third_party/blink/renderer/core/frame/navigator.cc
++++ b/third_party/blink/renderer/core/frame/navigator.cc
+@@ -34,6 +34,8 @@
+ #include "third_party/blink/renderer/core/frame/local_frame.h"
+ #include "third_party/blink/renderer/core/frame/settings.h"
+ #include "third_party/blink/renderer/core/loader/document_loader.h"
++#include "components/prefs/pref_service.h"
++#include "base/values.h"
+ 
+ namespace blink {
+ 
+@@ -82,6 +84,26 @@ String Navigator::platform() const {
+     return String();
+   }
+ 
++  // MAHI Native Anti-Detect Engine: Read prefs.mahi.navigator.platform
++  if (DomWindow() && DomWindow()->GetFrame()) {
++    const PrefService* prefs = DomWindow()->GetFrame()->GetPrefService();
++    if (prefs) {
++      const base::Value::Dict* mahiPrefs = prefs->GetDict("prefs.mahi");
++      if (!mahiPrefs) mahiPrefs = prefs->GetDict("prefs.gologin");
++      if (mahiPrefs) {
++        const base::Value::Dict* navDict = mahiPrefs->FindDict("navigator");
++        if (navDict) {
++          const std::string* plat = navDict->FindString("platform");
++          if (plat && !plat->empty()) {
++            return String::FromUTF8(plat->c_str());
++          }
++        }
++      }
++    }
++  }
++
+   return Platform::Current()->UserAgentPlatform();
+ }
+ 
+@@ -91,6 +113,28 @@ int Navigator::maxTouchPoints() const {
+     return 0;
+   }
+ 
++  // MAHI Native Anti-Detect Engine: Read prefs.mahi.navigator.max_touch_points
++  if (DomWindow() && DomWindow()->GetFrame()) {
++    const PrefService* prefs = DomWindow()->GetFrame()->GetPrefService();
++    if (prefs) {
++      const base::Value::Dict* mahiPrefs = prefs->GetDict("prefs.mahi");
++      if (!mahiPrefs) mahiPrefs = prefs->GetDict("prefs.gologin");
++      if (mahiPrefs) {
++        const base::Value::Dict* navDict = mahiPrefs->FindDict("navigator");
++        if (navDict) {
++          std::optional<int> tp = navDict->FindInt("max_touch_points");
++          if (tp.has_value()) {
++            return *tp;
++          }
++        }
++      }
++    }
++  }
++
+   return WebThemeEngine::Current()->GetMaxTouchPoints();
+ }
+ 
+-- 
+2.39.5

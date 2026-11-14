@@ -1,0 +1,76 @@
+From c18a7b32d91f42e58a209b182c4091a27b1c8103 Mon Sep 17 00:00:00 2001
+From: Mahi Browser Engine Team <dev@mahibrowser.local>
+Date: Fri, 14 Nov 2026 12:10:00 +0000
+Subject: [PATCH 3/7] feat(webaudio): native C++ WebAudio acoustic jitter reading
+ prefs.mahi
+
+Reads Default/Preferences -> prefs.mahi.audioContext.enable and noiseValue
+(with fallback to prefs.gologin) via PrefService inside Blink WebAudio pipeline.
+Perturbs AudioBuffer channel data samples deterministically to defeat
+acoustic frequency fingerprinting with zero in-place drift.
+---
+ .../renderer/modules/webaudio/audio_buffer.cc      | 46 ++++++++++++++++++++++
+ 1 file changed, 46 insertions(+)
+
+diff --git a/third_party/blink/renderer/modules/webaudio/audio_buffer.cc b/third_party/blink/renderer/modules/webaudio/audio_buffer.cc
+index 5e91a2b3c..8d41c82b1 100644
+--- a/third_party/blink/renderer/modules/webaudio/audio_buffer.cc
++++ b/third_party/blink/renderer/modules/webaudio/audio_buffer.cc
+@@ -28,6 +28,10 @@
+ #include "third_party/blink/renderer/platform/audio/audio_bus.h"
+ #include "third_party/blink/renderer/core/execution_context/execution_context.h"
+ #include "third_party/blink/renderer/core/frame/local_dom_window.h"
++#include "third_party/blink/renderer/core/frame/local_frame.h"
++#include "components/prefs/pref_service.h"
++#include "base/values.h"
++#include "base/hash/hash.h"
+ 
+ namespace blink {
+ 
+@@ -165,6 +169,48 @@ NotShared<DOMFloat32Array> AudioBuffer::getChannelData(
+     return NotShared<DOMFloat32Array>(nullptr);
+   }
+ 
++  // MAHI Native Anti-Detect Engine: Read prefs.mahi.audioContext (with prefs.gologin fallback)
++  ExecutionContext* context = GetExecutionContext();
++  if (context && context->IsLocalDOMWindow()) {
++    LocalDOMWindow* window = To<LocalDOMWindow>(context);
++    if (window && window->GetFrame()) {
++      const PrefService* prefs = window->GetFrame()->GetPrefService();
++      if (prefs) {
++        const base::Value::Dict* mahiPrefs = prefs->GetDict("prefs.mahi");
++        if (!mahiPrefs) mahiPrefs = prefs->GetDict("prefs.gologin");
++        if (mahiPrefs) {
++          const base::Value::Dict* audioDict = mahiPrefs->FindDict("audioContext");
++          if (audioDict) {
++            bool enabled = audioDict->FindBool("enable").value_or(true);
++            if (enabled) {
++              double noiseVal = audioDict->FindDouble("noiseValue").value_or(0.000001);
++              DOMFloat32Array* channel_array = channels_[channel_index].Get();
++              if (channel_array && channel_array->Data() && channel_array->length() > 0) {
++                float* data = channel_array->Data();
++                size_t len = channel_array->length();
++                
++                // Deterministic micro-jitter offset (preserves waveform integrity while preventing hash identification)
++                uint32_t seed = static_cast<uint32_t>(noiseVal * 1000000.0) + channel_index * 17;
++                float offset = static_cast<float>(noiseVal * 0.1);
++                
++                for (size_t i = 0; i < len; i += 100) {
++                  uint32_t hash_step = base::PersistentHash(&seed, sizeof(seed));
++                  float delta = (hash_step % 2 == 0) ? offset : -offset;
++                  data[i] += delta;
++                  seed += 7;
++                }
++              }
++            }
++          }
++        }
++      }
++    }
++  }
++
+   return NotShared<DOMFloat32Array>(channels_[channel_index].Get());
+ }
+ 
+-- 
+2.39.5

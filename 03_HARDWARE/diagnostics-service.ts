@@ -2,6 +2,10 @@ import { getProfileById, updateProfile } from '../02_BROWSER/services/profile-se
 import { getProxyById } from '../02_BROWSER/services/proxy-service.js';
 import { DiagnosticCheck, ProfileAuditReport, StealthGrade } from '../10_CONFIG/shared/types/diagnostics.js';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
+import {
+  validateAndNormalizeFingerprintCoherence,
+  type FingerprintCoherenceReport,
+} from '../02_BROWSER/stealth-native-preferences.js';
 
 /**
  * Runs a comprehensive multi-vector anti-bot & fingerprint stealth audit on a profile.
@@ -164,6 +168,20 @@ export function auditProfileFingerprint(profileId: string): ProfileAuditReport {
     recommendation: !screenOk ? 'Set standard resolution like 1920x1080.' : undefined,
   });
 
+  // 9. Statistical Cross-Signal Coherence (browserforge parity)
+  const coherence = validateAndNormalizeFingerprintCoherence(s);
+  checks.push({
+    id: 'check-coherence',
+    category: 'HARDWARE',
+    name: 'Cross-Signal Statistical Coherence',
+    description: 'Validates cross-signal consistency across User-Agent, platform, GPU renderer, touch points, and hardware specs.',
+    status: coherence.valid ? 'PASS' : 'WARN',
+    score: coherence.valid ? 100 : 75,
+    actualValue: coherence.valid ? 'Coherent Fingerprint' : `${coherence.warnings.length} contradictions detected`,
+    expectedValue: 'Zero Contradictory Signals',
+    recommendation: coherence.valid ? undefined : coherence.warnings.join('; '),
+  });
+
   // Calculate Overall Stealth Score
   const totalScore = checks.reduce((acc, c) => acc + c.score, 0);
   const overallScore = Math.round(totalScore / checks.length);
@@ -243,3 +261,6 @@ export function autoFixProfileFingerprint(profileId: string): ProfileAuditReport
   // Return fresh audit report
   return auditProfileFingerprint(profileId);
 }
+
+export { validateAndNormalizeFingerprintCoherence };
+export type { FingerprintCoherenceReport };

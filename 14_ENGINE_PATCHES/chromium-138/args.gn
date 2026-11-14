@@ -1,0 +1,31 @@
+# MAHI BROWSER — Authoritative Chromium 138 Production GN Build Arguments
+# Target: Chromium 138.0.7204.0 (Milestone 138, commit position 1465706)
+# Build Mode: Release Official Clean (Zero Testing Banners, Zero Google Telemetry)
+
+is_official_build = true
+is_debug = false
+symbol_level = 0
+blink_symbol_level = 0
+is_component_build = false
+
+# Disable Google telemetry, crash reporting and tracking pings
+enable_nacl = false
+enable_remoting = false
+enable_reporting = false
+enable_service_discovery = false
+google_api_key = ""
+google_default_client_id = ""
+google_default_client_secret = ""
+
+# Neutral Branding & Media Playback Capabilities
+is_chrome_for_testing = false
+fieldtrial_testing_like_official_build = true
+enable_widevine = true
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+
+# Compiler and Performance Optimizations
+treat_warnings_as_errors = false
+chrome_pgo_phase = 0
+dcheck_always_on = false
+exclude_unwind_tables = true

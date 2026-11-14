@@ -13,6 +13,50 @@ export const MANAGED_ENGINE_VERSION = '138.0.7204.183';
 export const LEGACY_CFT_VERSION = '138.0.7204.183';
 
 /**
+ * Manifest schema for compiled MAHI C++ Chromium Engine (`mahi-engine.json`).
+ * Placed alongside the compiled Chromium binary to advertise native anti-detect capabilities.
+ */
+export interface MahiEngineManifest {
+  engine: 'mahi-chromium';
+  version: string;
+  chromiumVersion: string;
+  nativeStealth: boolean;
+  capabilities: {
+    canvas: boolean;
+    webgl: boolean;
+    webgpu: boolean;
+    audio: boolean;
+    clientRects: boolean;
+    fonts: boolean;
+    timezone: boolean;
+    webrtc: boolean;
+    cdpIsolation: boolean;
+  };
+  buildId?: string;
+  platform?: string;
+  arch?: string;
+  target?: string;
+}
+
+export const DEFAULT_MAHI_ENGINE_MANIFEST: MahiEngineManifest = {
+  engine: 'mahi-chromium',
+  version: '1.0.0',
+  chromiumVersion: AUTHORITATIVE_PRODUCTION_VERSION,
+  nativeStealth: true,
+  capabilities: {
+    canvas: true,
+    webgl: true,
+    webgpu: true,
+    audio: true,
+    clientRects: true,
+    fonts: true,
+    timezone: true,
+    webrtc: true,
+    cdpIsolation: true,
+  },
+};
+
+/**
  * Engine Distribution & Launch Identity Policy:
  * - 'CHROMIUM_PRODUCTION': Branded-neutral, clean Chromium distribution suitable for production browsing without testing banners.
  * - 'MANAGED_CFT': Google Chrome for Testing baseline engine for automated tasks, RPA workflows, and regression benchmarking.

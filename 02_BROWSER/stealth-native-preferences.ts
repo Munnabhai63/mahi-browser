@@ -30,6 +30,109 @@ export interface WebGpuAdapterConfig {
   description?: string;
 }
 
+export interface FingerprintCoherenceReport {
+  valid: boolean;
+  normalizedSettings: any;
+  warnings: string[];
+}
+
+/**
+ * browserforge-style Statistical Cross-Signal Coherence Validator and Normalizer.
+ * Detects and corrects contradictory fingerprint tuples across OS platform, GPU renderer,
+ * WebGPU Dawn descriptors, touch points, screen resolution, and hardware capacity.
+ */
+export function validateAndNormalizeFingerprintCoherence(settings: any): FingerprintCoherenceReport {
+  const warnings: string[] = [];
+  const normalized = JSON.parse(JSON.stringify(settings || {}));
+
+  normalized.browser = normalized.browser || {};
+  normalized.fingerprint = normalized.fingerprint || {};
+  normalized.display = normalized.display || {};
+  normalized.locale = normalized.locale || {};
+
+  const ua = String(normalized.browser.userAgent || '');
+  const fp = normalized.fingerprint;
+  const isMobile = Boolean(
+    ua.includes('Android') ||
+    ua.includes('Mobile') ||
+    normalized.mobile?.enable
+  );
+  const isMac = !isMobile && ua.includes('Macintosh');
+  const isLinux = !isMobile && !isMac && (ua.includes('Linux') || ua.includes('X11'));
+  const isWindows = !isMobile && !isMac && !isLinux; // default desktop Windows
+
+  // 1. OS & Platform Coherence
+  if (isWindows) {
+    if (fp.platform && fp.platform !== 'Win32') {
+      warnings.push(`Platform "${fp.platform}" contradicts Windows User-Agent. Normalized to "Win32".`);
+      fp.platform = 'Win32';
+    }
+    if (fp.isM1 || fp.architecture === 'arm64') {
+      warnings.push('Apple Silicon / ARM64 flag contradicts Windows x86_64 User-Agent. Cleared isM1.');
+      fp.isM1 = false;
+      fp.architecture = 'x86_64';
+    }
+    if (fp.webglRenderer && (fp.webglRenderer.includes('Apple') || fp.webglRenderer.includes('Mali') || fp.webglRenderer.includes('Adreno'))) {
+      warnings.push(`WebGL renderer "${fp.webglRenderer}" contradicts Windows platform. Normalized to Direct3D11 NVIDIA.`);
+      fp.webglVendor = 'Google Inc. (NVIDIA)';
+      fp.webglRenderer = 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+    }
+  } else if (isMac) {
+    if (fp.platform && fp.platform !== 'MacIntel') {
+      warnings.push(`Platform "${fp.platform}" contradicts macOS User-Agent. Normalized to "MacIntel".`);
+      fp.platform = 'MacIntel';
+    }
+    if (fp.webglRenderer && (fp.webglRenderer.includes('Direct3D') || fp.webglRenderer.includes('Mali') || fp.webglRenderer.includes('Adreno'))) {
+      warnings.push(`WebGL renderer "${fp.webglRenderer}" contradicts macOS. Normalized to Apple Metal.`);
+      fp.webglVendor = 'Google Inc. (Apple)';
+      fp.webglRenderer = 'ANGLE (Apple, Apple M1, Metal)';
+    }
+  } else if (isMobile) {
+    if (fp.platform && !fp.platform.includes('Linux') && !fp.platform.includes('Android') && !fp.platform.includes('arm')) {
+      warnings.push(`Platform "${fp.platform}" contradicts Android/Mobile User-Agent. Normalized to "Linux armv8l".`);
+      fp.platform = 'Linux armv8l';
+    }
+    if (fp.maxTouchPoints === 0 || fp.maxTouchPoints === undefined) {
+      warnings.push('maxTouchPoints: 0 contradicts Mobile/Android User-Agent. Normalized to 5.');
+      fp.maxTouchPoints = 5;
+    }
+    if (fp.webglRenderer && (fp.webglRenderer.includes('Direct3D') || fp.webglRenderer.includes('NVIDIA'))) {
+      warnings.push(`Desktop WebGL renderer "${fp.webglRenderer}" contradicts Mobile User-Agent. Normalized to ARM Mali.`);
+      fp.webglVendor = 'ARM';
+      fp.webglRenderer = 'Mali-G710 MC10';
+    }
+    if (!normalized.mobile?.enable) {
+      normalized.mobile = normalized.mobile || {};
+      normalized.mobile.enable = true;
+    }
+  }
+
+  // 2. Hardware Capacity Bounds (Prevent unrealistic synthetic values)
+  const validConcurrency = [2, 4, 6, 8, 12, 16, 24, 32];
+  if (fp.hardwareConcurrency && !validConcurrency.includes(fp.hardwareConcurrency)) {
+    const closest = validConcurrency.reduce((prev, curr) =>
+      Math.abs(curr - fp.hardwareConcurrency) < Math.abs(prev - fp.hardwareConcurrency) ? curr : prev
+    );
+    warnings.push(`hardwareConcurrency ${fp.hardwareConcurrency} is an unnatural anomaly. Clamped to ${closest}.`);
+    fp.hardwareConcurrency = closest;
+  }
+
+  const validDeviceMemory = [1, 2, 4, 8, 16];
+  if (fp.deviceMemory && !validDeviceMemory.includes(fp.deviceMemory)) {
+    const closest = validDeviceMemory.reduce((prev, curr) =>
+      Math.abs(curr - fp.deviceMemory) < Math.abs(prev - fp.deviceMemory) ? curr : prev
+    );
+    warnings.push(`deviceMemory ${fp.deviceMemory} is an unnatural anomaly. Clamped to ${closest}.`);
+    fp.deviceMemory = closest;
+  }
+
+  return {
+    valid: warnings.length === 0,
+    normalizedSettings: normalized,
+    warnings,
+  };
+}
+
 /**
  * Injects the MAHI Native Stealth Preference Schema into Default/Preferences.
  * Step 4 operates as a hybrid JS/DNR + native preference schema bridge awaiting
@@ -65,15 +168,18 @@ export function injectNativeStealthPreferences(
     const audioNoiseVal = getNoiseValueFromSeed(seed, 1000000);
     const webglNoiseVal = getNoiseValueFromSeed(seed, 750000);
 
-    const fp = settings?.fingerprint || {};
-    const display = settings?.display || {};
-    const locale = settings?.locale || {};
-    const browser = settings?.browser || {};
+    const { normalizedSettings } = validateAndNormalizeFingerprintCoherence(settings);
+    const effectiveSettings = normalizedSettings;
+
+    const fp = effectiveSettings?.fingerprint || {};
+    const display = effectiveSettings?.display || {};
+    const locale = effectiveSettings?.locale || {};
+    const browser = effectiveSettings?.browser || {};
     const ua = browser.userAgent || '';
     const isMobile = Boolean(
       ua.includes('Android') ||
       ua.includes('Mobile') ||
-      settings?.mobile?.enable
+      effectiveSettings?.mobile?.enable
     );
     const isMacM1 = Boolean(ua.includes('Macintosh') && (fp.isM1 || fp.architecture === 'arm64'));
 

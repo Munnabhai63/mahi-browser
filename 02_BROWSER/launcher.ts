@@ -10,6 +10,7 @@ import {
   isProductionChromiumInstalled,
   getProductionChromiumExecutablePath,
   getBundledEngineExecutablePath,
+  hasNativeStealthEngine,
 } from './managed-engine.js';
 import {
   MANAGED_ENGINE_VERSION,
@@ -119,8 +120,10 @@ export function ensureProfileStealthExtension(
   storageDir: string,
   profileId: string,
   profileName: string,
-  settings?: any
+  settings?: any,
+  options?: { nativeStealthActive?: boolean } | boolean
 ): string {
+  const isNativeStealth = typeof options === 'boolean' ? options : Boolean(options?.nativeStealthActive);
   const extDir = path.join(storageDir, 'mahi_title_extension');
   if (!fs.existsSync(extDir)) {
     fs.mkdirSync(extDir, { recursive: true });
@@ -205,21 +208,30 @@ export function ensureProfileStealthExtension(
         },
       ],
     },
-    content_scripts: [
-      {
-        matches: ['http://*/*', 'https://*/*', '<all_urls>'],
-        js: ['stealth-core.js'],
-        run_at: 'document_start',
-        world: 'MAIN',
-        all_frames: true,
-      },
-      {
-        matches: ['http://*/*', 'https://*/*', '<all_urls>'],
-        js: ['content.js'],
-        run_at: 'document_start',
-        all_frames: true,
-      },
-    ],
+    content_scripts: isNativeStealth
+      ? [
+          {
+            matches: ['http://*/*', 'https://*/*', '<all_urls>'],
+            js: ['content.js'],
+            run_at: 'document_start',
+            all_frames: true,
+          },
+        ]
+      : [
+          {
+            matches: ['http://*/*', 'https://*/*', '<all_urls>'],
+            js: ['stealth-core.js'],
+            run_at: 'document_start',
+            world: 'MAIN',
+            all_frames: true,
+          },
+          {
+            matches: ['http://*/*', 'https://*/*', '<all_urls>'],
+            js: ['content.js'],
+            run_at: 'document_start',
+            all_frames: true,
+          },
+        ],
   };
 
   // Declarative Net Request rules to spoof HTTP request headers:
@@ -1114,12 +1126,70 @@ export function ensureProfileStealthExtension(
       var hookPeerConnection = function(RTCClass, name) {
         if (!RTCClass) return;
         var OrigPC = RTCClass;
+
+        var userIceHandlers = new WeakMap();
+        var protoDesc = Object.getOwnPropertyDescriptor(OrigPC.prototype, 'onicecandidate');
+        var origProtoSet = protoDesc ? protoDesc.set : null;
+        var origProtoGet = protoDesc ? protoDesc.get : null;
+
+        var proxyProtoSet = function(fn) {
+          if (typeof fn === 'function') {
+            var self = this;
+            var wrapped = function(event) {
+              if (event && event.candidate && event.candidate.candidate) {
+                var c = event.candidate.candidate;
+                if (c.indexOf('typ host') !== -1 || c.indexOf('typ srflx') !== -1) {
+                  return;
+                }
+              }
+              return fn.call(self, event);
+            };
+            wrapped._userFn = fn;
+            userIceHandlers.set(this, wrapped);
+            if (origProtoSet) {
+              return origProtoSet.call(this, wrapped);
+            }
+          } else {
+            userIceHandlers.delete(this);
+            if (origProtoSet) {
+              return origProtoSet.call(this, fn);
+            }
+          }
+        };
+
+        var proxyProtoGet = function() {
+          var h = userIceHandlers.get(this);
+          if (h) return h._userFn || h;
+          if (origProtoGet) return origProtoGet.call(this);
+          return null;
+        };
+
+        registerNative(proxyProtoSet, 'set onicecandidate');
+        registerNative(proxyProtoGet, 'get onicecandidate');
+        if (origProtoSet) registerNative(origProtoSet, 'set onicecandidate');
+        if (origProtoGet) registerNative(origProtoGet, 'get onicecandidate');
+
+        try {
+          Object.defineProperty(OrigPC.prototype, 'onicecandidate', {
+            get: proxyProtoGet,
+            set: proxyProtoSet,
+            enumerable: protoDesc ? protoDesc.enumerable : true,
+            configurable: protoDesc ? protoDesc.configurable : true
+          });
+        } catch(e) {}
+
         var ProxyPC = function(config, constraints) {
           var conf = Object.assign({}, config);
           if (rtcMode === 'proxy_only' || rtcMode === 'disabled' || rtcMode === 'disable_non_proxied_udp') {
             conf.iceTransportPolicy = 'relay';
           }
           var pc = new OrigPC(conf, constraints);
+
+          try {
+            if (Object.prototype.hasOwnProperty.call(pc, 'onicecandidate')) {
+              delete pc.onicecandidate;
+            }
+          } catch(e) {}
 
           if (pc.addIceCandidate) {
             var origAddIce = pc.addIceCandidate;
@@ -1157,29 +1227,19 @@ export function ensureProfileStealthExtension(
             registerNative(pc.addEventListener, 'addEventListener');
           }
 
-          var _userOnIce = null;
-          try {
-            Object.defineProperty(pc, 'onicecandidate', {
-              get: function() { return _userOnIce; },
-              set: function(fn) {
-                if (typeof fn === 'function') {
-                  _userOnIce = function(event) {
-                    if (event && event.candidate && event.candidate.candidate) {
-                      var c = event.candidate.candidate;
-                      if (c.indexOf('typ host') !== -1 || c.indexOf('typ srflx') !== -1) {
-                        return;
-                      }
-                    }
-                    return fn.call(this, event);
-                  };
-                } else {
-                  _userOnIce = fn;
+          if (pc.dispatchEvent) {
+            var origDispatch = pc.dispatchEvent;
+            pc.dispatchEvent = function(event) {
+              if (event && event.candidate && event.candidate.candidate) {
+                var c = event.candidate.candidate;
+                if (c.indexOf('typ host') !== -1 || c.indexOf('typ srflx') !== -1) {
+                  return true;
                 }
-              },
-              enumerable: true,
-              configurable: true
-            });
-          } catch(e) {}
+              }
+              return origDispatch.apply(this, arguments);
+            };
+            registerNative(pc.dispatchEvent, 'dispatchEvent');
+          }
 
           function filterSDP(desc) {
             if (desc && desc.sdp) {
@@ -1805,7 +1865,14 @@ export function ensureProfileStealthExtension(
 
   fs.writeFileSync(path.join(extDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
   fs.writeFileSync(path.join(extDir, 'rules.json'), JSON.stringify(dnrRules, null, 2), 'utf8');
-  fs.writeFileSync(path.join(extDir, 'stealth-core.js'), stealthCoreJs, 'utf8');
+  if (!isNativeStealth) {
+    fs.writeFileSync(path.join(extDir, 'stealth-core.js'), stealthCoreJs, 'utf8');
+  } else {
+    const oldStealthCore = path.join(extDir, 'stealth-core.js');
+    if (fs.existsSync(oldStealthCore)) {
+      try { fs.unlinkSync(oldStealthCore); } catch {}
+    }
+  }
   fs.writeFileSync(path.join(extDir, 'background.js'), backgroundJs, 'utf8');
   fs.writeFileSync(path.join(extDir, 'content.js'), contentJs, 'utf8');
   return extDir;
@@ -2203,7 +2270,11 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
     const debugPort = getProfileDebugPort(profile.id);
 
     // Ensure the stealth extension (Client Hints, Canvas/WebGL Guard, Shortcuts) is loaded
-    const titleExtDir = ensureProfileStealthExtension(storageDir, profile.id, profile.name, settings);
+    // When native C++ stealth engine is active via mahi-engine.json, omit stealth-core.js (zero double noise)
+    const isNativeStealth = hasNativeStealthEngine(executablePath);
+    const titleExtDir = ensureProfileStealthExtension(storageDir, profile.id, profile.name, settings, {
+      nativeStealthActive: isNativeStealth,
+    });
 
     // Gather user-enabled extensions
     let profileExtensionPaths: string[] = [];

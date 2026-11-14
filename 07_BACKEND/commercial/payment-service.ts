@@ -16,7 +16,7 @@ import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getCommercialPlans, getCommercialPlanById } from './commercial-plan-service.js';
 import { CommercialPlan } from '../../10_CONFIG/shared/types/commercial.js';
-import { calculateAuthoritativeOrderTotal } from './canonical-plan-catalog.js';
+import { calculateAuthoritativeOrderTotal, legacyPlanIdToCanonical } from './canonical-plan-catalog.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 
 export type PaymentProviderType = 'stripe' | 'razorpay' | 'youpi_pg' | 'simulation';
@@ -908,9 +908,13 @@ export class PaymentService {
       }
       expectedAmount = this.calculatePlanAmountCents(targetPlan, event.billingCycle);
     } else {
+      const canonicalId = legacyPlanIdToCanonical(event.planId);
+      if (!canonicalId) {
+        throw new Error(`PLAN_NOT_FOUND: Webhook references unknown plan "${event.planId}".`);
+      }
       try {
         const orderTotal = calculateAuthoritativeOrderTotal({
-          planId: event.planId,
+          planId: canonicalId,
           billingCycle: event.billingCycle,
           currency: isUsd ? 'USD' : 'INR',
         });
