@@ -449,7 +449,7 @@ export class SimulationPaymentAdapter implements PaymentProvider {
       checkoutUrl,
       orderId: `sim_ord_${Date.now()}`,
       amountCents,
-      currency: req.currency || (plan.currency as any) || 'USD',
+      currency: req.currency || (plan.id.startsWith('plan_') ? 'USD' : 'INR'),
       provider: 'simulation',
       planId: plan.id,
       billingCycle: req.billingCycle,

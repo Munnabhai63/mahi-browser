@@ -605,13 +605,29 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
         planId: selectedPlanId,
         billingCycle: selectedBillingCycle,
       });
-      if (res?.success && res.checkoutUrl) {
-        window.open(res.checkoutUrl, '_blank');
+      if (res?.success) {
+        showToast({
+          type: 'success',
+          title: 'Checkout Opened',
+          message: 'Secure checkout session launched in your browser.',
+        });
+        if (!window.mahiAPI?.accountCreateCheckoutSession && res.session?.checkoutUrl) {
+          window.open(res.session.checkoutUrl, '_blank');
+        }
         return;
       }
-    } catch {}
-    const url = `https://mahibrowser.com/pricing?checkout=1&plan=${selectedPlanId}&billing=${selectedBillingCycle.toLowerCase()}`;
-    window.open(url, '_blank');
+      showToast({
+        type: 'error',
+        title: 'Checkout Failed',
+        message: res?.error || 'Failed to initialize checkout session.',
+      });
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Checkout Error',
+        message: err.message || 'Failed to start online checkout.',
+      });
+    }
   };
 
   const upiId = paymentInfo?.upi_id || CONTACT_CONFIG.UPI_ID;
@@ -989,14 +1005,14 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                             <span>Refresh Status</span>
                           </button>
                         </div>
-                        {latestPayment?.external_payment_id && (
+                        {(latestPayment?.externalPaymentId || latestPayment?.external_payment_id) && (
                           <div className="text-[11px] font-mono text-slate-400">
-                            Ref: {latestPayment.external_payment_id}
+                            Ref: {latestPayment.externalPaymentId || latestPayment.external_payment_id}
                           </div>
                         )}
                         {(latestPayment?.status === 'REJECTED' || latestPayment?.status === 'FAILED') && (
                           <p className="text-[11px] text-rose-300 leading-relaxed font-semibold">
-                            Rejection Reason: {latestPayment?.rejection_reason || 'Verification was declined. Please verify your UTR and resubmit.'}
+                            Rejection Reason: {latestPayment?.metadata?.rejectionReason || latestPayment?.rejection_reason || 'Verification was declined. Please verify your UTR and resubmit.'}
                           </p>
                         )}
                         {(latestPayment?.status === 'PENDING_VERIFICATION' || paymentSubmittedStatus === 'PENDING_VERIFICATION') && (

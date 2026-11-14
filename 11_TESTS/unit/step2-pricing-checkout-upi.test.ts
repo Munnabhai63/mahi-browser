@@ -29,6 +29,7 @@ import { handleCommercialApiRoutes } from '../../07_BACKEND/commercial/commercia
 import { registerCentralUser } from '../../05_AUTH/central-auth-service.js';
 import { getAdminWebSecret } from '../../08_SECURITY/install-secrets.js';
 import { getWebAdminHtml } from '../../07_BACKEND/server/web-admin-html.js';
+import { getCommercialPlanById } from '../../07_BACKEND/commercial/commercial-plan-service.js';
 
 describe('STEP 2 COMMERCIAL MISSION — Unified Pricing, Checkout & UPI Lifecycle', () => {
   let userAId: string;
@@ -549,8 +550,7 @@ describe('STEP 2 COMMERCIAL MISSION — Unified Pricing, Checkout & UPI Lifecycl
         currency: 'INR',
         extraMembers: 2,
         extraProxyGb: 10,
-        gateway: 'simulation',
-      });
+      }, 'simulation');
       const expectedMonthly = calculateAuthoritativeOrderTotal({
         planId: 'professional_50',
         billingCycle: 'MONTHLY',
@@ -569,8 +569,7 @@ describe('STEP 2 COMMERCIAL MISSION — Unified Pricing, Checkout & UPI Lifecycl
         currency: 'INR',
         extraMembers: 2,
         extraProxyGb: 10,
-        gateway: 'simulation',
-      });
+      }, 'simulation');
       const expectedAnnual = calculateAuthoritativeOrderTotal({
         planId: 'professional_50',
         billingCycle: 'ANNUAL',
@@ -605,26 +604,33 @@ describe('STEP 2 COMMERCIAL MISSION — Unified Pricing, Checkout & UPI Lifecycl
         delete (process.env as any).NODE_ENV;
         delete (process.env as any).PAYMENT_ALLOW_TEST_ADAPTERS;
 
+        const plan = getCommercialPlanById('professional_10')!;
         const stripeAdapter = new StripePaymentAdapter();
         await expect(
-          stripeAdapter.createCheckoutSession({
-            userId: userAId,
-            planId: 'professional_10',
-            billingCycle: 'MONTHLY',
-            amountCents: 59900,
-            currency: 'INR',
-          })
+          stripeAdapter.createCheckoutSession(
+            {
+              userId: userAId,
+              planId: 'professional_10',
+              billingCycle: 'MONTHLY',
+              currency: 'INR',
+            },
+            plan,
+            59900
+          )
         ).rejects.toThrow(PaymentGatewayNotConfiguredError);
 
         const razorpayAdapter = new RazorpayPaymentAdapter();
         await expect(
-          razorpayAdapter.createCheckoutSession({
-            userId: userAId,
-            planId: 'professional_10',
-            billingCycle: 'MONTHLY',
-            amountCents: 59900,
-            currency: 'INR',
-          })
+          razorpayAdapter.createCheckoutSession(
+            {
+              userId: userAId,
+              planId: 'professional_10',
+              billingCycle: 'MONTHLY',
+              currency: 'INR',
+            },
+            plan,
+            59900
+          )
         ).rejects.toThrow(PaymentGatewayNotConfiguredError);
       } finally {
         process.env.NODE_ENV = oldEnv;
