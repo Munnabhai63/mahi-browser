@@ -213,24 +213,58 @@ describe('Step 5: Native C++ Chromium Anti-Detect Engine & Build Pipeline', () =
       expect(content).toMatch(/index [0-9a-f]{7}\.\.[0-9a-f]{7} 100644/);
     }
 
+    // 0002 must read dotted paths for webgl metadata, check webgl noise, and construct GPUAdapterInfo
+    const p2Content = fs.readFileSync(path.join(patchesDir, '0002-mahi-webgl-webgpu-metadata-and-noise.patch'), 'utf8');
+    expect(p2Content).toContain('FindStringByDottedPath("webgl.metadata.renderer")');
+    expect(p2Content).toContain('FindStringByDottedPath("webgl.metadata.vendor")');
+    expect(p2Content).toContain('webgl_noise_enable');
+    expect(p2Content).toContain('webgl_noise_value');
+    expect(p2Content).toContain('FindDictByDottedPath("webGpu.supportedAdapters.highPerformance.info")');
+    expect(p2Content).toContain('MakeGarbageCollected<GPUAdapterInfo>(');
+
+    // 0003 must read audioContext dotted paths and derive persistent seed without hardcoded constant
+    const p3Content = fs.readFileSync(path.join(patchesDir, '0003-mahi-webaudio-acoustic-jitter.patch'), 'utf8');
+    expect(p3Content).toContain('FindBoolByDottedPath("audioContext.enable")');
+    expect(p3Content).toContain('FindDoubleByDottedPath("audioContext.noiseValue")');
+    expect(p3Content).toContain('noise_val * 1000000.0');
+    expect(p3Content).not.toContain('0x1337c0de');
+
     // 0004 must preserve GetFontPlatformData fallback and split on ';'
     const p4Content = fs.readFileSync(path.join(patchesDir, '0004-mahi-clientrects-and-fontcache-masking.patch'), 'utf8');
     expect(p4Content).toContain('SplitString(raw_list, ";",');
     expect(p4Content).toContain('mode == "1" || mode == "2"');
     expect(p4Content).toContain('GetFontPlatformData(');
 
-    // 0005 must use exact Chromium 138 AppendExtraCommandLineSwitches signature and RenderProcessHost
+    // 0005 must register/read root 'mahi'/'gologin' prefs, include json_writer, and restore hardware/locale getters
     const p5Content = fs.readFileSync(path.join(patchesDir, '0005-mahi-icu-timezone-locale-hardware-ch.patch'), 'utf8');
     expect(p5Content).toContain('int child_process_id');
     expect(p5Content).toContain('RenderProcessHost::FromID(child_process_id)');
+    expect(p5Content).toContain('RegisterDictionaryPref("mahi")');
+    expect(p5Content).toContain('RegisterDictionaryPref("gologin")');
+    expect(p5Content).not.toContain('RegisterDictionaryPref("prefs.mahi")');
+    expect(p5Content).not.toContain('RegisterDictionaryPref("prefs.gologin")');
+    expect(p5Content).toContain('HasPrefPath("mahi")');
+    expect(p5Content).toContain('HasPrefPath("gologin")');
+    expect(p5Content).not.toContain('HasPrefPath("prefs.mahi")');
+    expect(p5Content).not.toContain('HasPrefPath("prefs.gologin")');
+    expect(p5Content).toContain('#include "base/json/json_writer.h"');
+    expect(p5Content).toContain('FindStringByDottedPath("navigator.platform")');
+    expect(p5Content).toContain('FindIntByDottedPath("navigator.max_touch_points")');
+    expect(p5Content).toContain('FindInt("hardwareConcurrency")');
+    expect(p5Content).toContain('FindDouble("deviceMemory")');
+    expect(p5Content).toContain('FindString("langHeader")');
+    expect(p5Content).toContain('FindList("languages")');
+    expect(p5Content).toContain('FindStringByDottedPath("timezone.id")');
 
-    // 0006 must patch core/frame/navigator_automation_information.cc, check webrtc.mode and set kRelay
+    // 0006 must patch core/frame/navigator_automation_information.cc, use dotted path for webrtc.mode and set kRelay
     const p6Content = fs.readFileSync(path.join(patchesDir, '0006-mahi-ungoogled-privacy-telemetry-webrtc.patch'), 'utf8');
     expect(p6Content).toContain('core/frame/navigator_automation_information.cc');
-    expect(p6Content).toContain('webrtc.mode');
+    expect(p6Content).toContain('FindStringByDottedPath("webrtc.mode")');
+    expect(p6Content).toContain('FindBoolByDottedPath("webrtc.should_fill_empty_ice_list")');
+    expect(p6Content).toContain('FindStringByDottedPath("network.webrtc")');
     expect(p6Content).toContain('webrtc::PeerConnectionInterface::IceTransportsType::kRelay');
 
-    // 0007 must have valid signature, no evaluateInternal, no bare return;, and not delete window.Error
+    // 0007 must have valid signature, use orig_prepare_stack_trace restoration, gate reportAllContexts, and gate navigation events
     const p7Content = fs.readFileSync(path.join(patchesDir, '0007-mahi-rebrowser-cdp-runtime-isolation.patch'), 'utf8');
     expect(p7Content).toContain('void V8RuntimeAgentImpl::evaluate(');
     expect(p7Content).not.toContain('Response V8RuntimeAgentImpl::evaluate');
@@ -238,6 +272,11 @@ describe('Step 5: Native C++ Chromium Anti-Detect Engine & Build Pipeline', () =
     expect(p7Content).not.toMatch(/Delete\(ctx,\s*pst_key\)/);
     expect(p7Content).not.toMatch(/\s+return;\s*\n\s*}\s*\n\s*diff --git/);
     expect(p7Content).toContain('v8::Isolate* isolate = m_inspector->isolate()');
+    expect(p7Content).toContain('orig_prepare_stack_trace');
+    expect(p7Content).toContain('error_obj->Set(eval_ctx, pst_key, orig_prepare_stack_trace)');
+    expect(p7Content).toContain('suppressContextCreated');
+    expect(p7Content).toContain('m_session->reportAllContexts(this)');
+    expect(p7Content).toContain('mahi-cdp-isolated');
 
     // Check args.gn
     const argsGnPath = path.join(patchesDir, 'args.gn');

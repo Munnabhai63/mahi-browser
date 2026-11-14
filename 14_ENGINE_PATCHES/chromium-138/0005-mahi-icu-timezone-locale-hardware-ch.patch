@@ -3,9 +3,9 @@ From: Mahi Browser Engine Team <dev@mahibrowser.local>
 Date: Fri, 14 Nov 2026 12:00:00 +0000
 Subject: [PATCH 5/7] feat(system): ICU timezone, locale, hardware concurrency, and client hints from prefs.mahi
 
-Registers prefs.mahi and prefs.gologin dictionaries in browser_prefs.cc.
+Registers mahi and gologin dictionaries in browser_prefs.cc.
 Transfers profile settings to renderer via AppendExtraCommandLineSwitches and --mahi-config.
-Applies timezone override via TimeZoneController and overrides platform and languages.
+Applies timezone override via TimeZoneController, overrides platform, languages, and hardware capacity.
 ---
 diff --git a/chrome/browser/prefs/browser_prefs.cc b/chrome/browser/prefs/browser_prefs.cc
 index 1ade93d..7c21e90 100644
@@ -16,8 +16,8 @@ index 1ade93d..7c21e90 100644
                            const std::string& locale) {
    TRACE_EVENT0("browser", "chrome::RegisterProfilePrefs");
 +  // MAHI Native Anti-Detect Engine: Register profile preferences
-+  registry->RegisterDictionaryPref("prefs.mahi");
-+  registry->RegisterDictionaryPref("prefs.gologin");
++  registry->RegisterDictionaryPref("mahi");
++  registry->RegisterDictionaryPref("gologin");
    // User prefs. Please keep this list alphabetized.
    AccessibilityLabelsService::RegisterProfilePrefs(registry);
    AccessibilityUIMessageHandler::RegisterProfilePrefs(registry);
@@ -25,6 +25,10 @@ diff --git a/chrome/browser/chrome_content_browser_client.cc b/chrome/browser/ch
 index e856d9c..4b71fa0 100644
 --- a/chrome/browser/chrome_content_browser_client.cc
 +++ b/chrome/browser/chrome_content_browser_client.cc
+@@ -20,2 +20,3 @@
+ #include "base/command_line.h"
++#include "base/json/json_writer.h"
+ #include "base/containers/contains.h"
 @@ -2628,6 +2628,26 @@
  void ChromeContentBrowserClient::AppendExtraCommandLineSwitches(
      base::CommandLine* command_line,
@@ -36,10 +40,10 @@ index e856d9c..4b71fa0 100644
 +    if (profile && profile->GetPrefs()) {
 +      PrefService* prefs = profile->GetPrefs();
 +      const base::Value::Dict* mahi_prefs = nullptr;
-+      if (prefs->HasPrefPath("prefs.mahi")) {
-+        mahi_prefs = &prefs->GetDict("prefs.mahi");
-+      } else if (prefs->HasPrefPath("prefs.gologin")) {
-+        mahi_prefs = &prefs->GetDict("prefs.gologin");
++      if (prefs->HasPrefPath("mahi")) {
++        mahi_prefs = &prefs->GetDict("mahi");
++      } else if (prefs->HasPrefPath("gologin")) {
++        mahi_prefs = &prefs->GetDict("gologin");
 +      }
 +      if (mahi_prefs) {
 +        std::string json_str;
@@ -77,14 +81,14 @@ index 1a73d4a..9a3f2b1 100644
 +    return std::optional<base::Value::Dict>();
 +  }());
 +  if (s_config->has_value()) {
-+    const std::string* plat = (*s_config)->FindString("os");
-+    if (!plat) plat = (*s_config)->FindStringByDottedPath("navigator.platform");
++    const std::string* plat = (*s_config)->FindStringByDottedPath("navigator.platform");
++    if (!plat) plat = (*s_config)->FindString("os");
 +    if (plat && !plat->empty()) return String::FromUTF8(plat->c_str());
 +  }
    // TODO(955620): Consider changing devtools overrides to only allow overriding
    // the platform with a frozen platform to distinguish between
    // mobile and desktop when ReduceUserAgent is enabled.
-@@ -103,8 +117,4 @@
+@@ -103,12 +117,50 @@
  bool Navigator::webdriver() const {
 -  if (RuntimeEnabledFeatures::AutomationControlledEnabled())
 -    return true;
@@ -95,7 +99,25 @@ index 1a73d4a..9a3f2b1 100644
 +  // MAHI Ungoogled Privacy: navigator.webdriver always reports false to avoid bot flags
 +  return false;
  }
-@@ -112,3 +118,14 @@
++
++int Navigator::maxTouchPoints() const {
++  // MAHI Native Anti-Detect Engine: Read maxTouchPoints from prefs.mahi via cached renderer config
++  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
++    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++    if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();
++    auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
++    if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));
++    return std::optional<base::Value::Dict>();
++  }());
++  if (s_config->has_value()) {
++    std::optional<int> tp = (*s_config)->FindIntByDottedPath("navigator.max_touch_points");
++    if (tp) return *tp;
++  }
++  if (!DomWindow() || !DomWindow()->GetFrame()) return 0;
++  Settings* settings = DomWindow()->GetFrame()->GetSettings();
++  return settings ? settings->GetMaxTouchPoints() : 0;
++}
+ 
  String Navigator::GetAcceptLanguages() {
 +  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
 +    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
@@ -105,6 +127,19 @@ index 1a73d4a..9a3f2b1 100644
 +    return std::optional<base::Value::Dict>();
 +  }());
 +  if (s_config->has_value()) {
++    const std::string* header = (*s_config)->FindString("langHeader");
++    if (header && !header->empty()) return String::FromUTF8(header->c_str());
++    const base::Value::List* langs_list = (*s_config)->FindList("languages");
++    if (langs_list && !langs_list->empty()) {
++      std::string joined_langs;
++      for (size_t i = 0; i < langs_list->size(); ++i) {
++        if ((*langs_list)[i].is_string()) {
++          if (!joined_langs.empty()) joined_langs += ",";
++          joined_langs += (*langs_list)[i].GetString();
++        }
++      }
++      if (!joined_langs.empty()) return String::FromUTF8(joined_langs.c_str());
++    }
 +    const std::string* langs = (*s_config)->FindString("languages");
 +    if (langs && !langs->empty()) return String::FromUTF8(langs->c_str());
 +  }
@@ -114,21 +149,94 @@ diff --git a/third_party/blink/renderer/core/timezone/timezone_controller.cc b/t
 index 8e4166b..3e5917a 100644
 --- a/third_party/blink/renderer/core/timezone/timezone_controller.cc
 +++ b/third_party/blink/renderer/core/timezone/timezone_controller.cc
-@@ -8,5 +8,6 @@
+@@ -8,5 +8,7 @@
  #include "third_party/blink/renderer/core/timezone/timezone_controller.h"
  
 +#include "base/command_line.h"
++#include "base/json/json_reader.h"
  #include "base/feature_list.h"
  #include "mojo/public/cpp/bindings/pending_remote.h"
  #include "mojo/public/cpp/bindings/remote.h"
-@@ -118,4 +119,8 @@
+@@ -118,4 +119,18 @@
  void TimeZoneController::Init() {
 +  const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
-+  if (cmd && cmd->HasSwitch("tz")) {
-+    SetIcuTimeZoneAndNotifyV8(String::FromUTF8(cmd->GetSwitchValueASCII("tz")));
++  if (cmd) {
++    if (cmd->HasSwitch("tz")) {
++      SetIcuTimeZoneAndNotifyV8(String::FromUTF8(cmd->GetSwitchValueASCII("tz")));
++    } else if (cmd->HasSwitch("mahi-config")) {
++      auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
++      if (parsed && parsed->is_dict()) {
++        const std::string* tz = parsed->GetDict().FindStringByDottedPath("timezone.id");
++        if (tz && !tz->empty()) {
++          SetIcuTimeZoneAndNotifyV8(String::FromUTF8(tz->c_str()));
++        }
++      }
++    }
 +  }
    // monitor must not use HeapMojoRemote. TimeZoneController is not managed by
    // Oilpan. monitor is only used to bind receiver_ here and never used
    // again.
+diff --git a/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc b/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
+index f5c0db2..5a9e2d1 100644
+--- a/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
++++ b/third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc
+@@ -6,5 +6,9 @@
+ #include "third_party/blink/renderer/core/frame/navigator_concurrent_hardware.h"
+ 
++#include "base/command_line.h"
++#include "base/json/json_reader.h"
++#include "base/no_destructor.h"
++#include "base/values.h"
+ #include "base/system/sys_info.h"
+ 
+ namespace blink {
+@@ -12,3 +16,14 @@
+ unsigned NavigatorConcurrentHardware::hardwareConcurrency() const {
++  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
++    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++    if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();
++    auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
++    if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));
++    return std::optional<base::Value::Dict>();
++  }());
++  if (s_config->has_value()) {
++    std::optional<int> hc = (*s_config)->FindInt("hardwareConcurrency");
++    if (hc && *hc > 0) return static_cast<unsigned>(*hc);
++  }
+   return static_cast<unsigned>(base::SysInfo::NumberOfProcessors());
+ }
+diff --git a/third_party/blink/renderer/core/frame/navigator_device_memory.cc b/third_party/blink/renderer/core/frame/navigator_device_memory.cc
+index 2876aad..6b1c8f4 100644
+--- a/third_party/blink/renderer/core/frame/navigator_device_memory.cc
++++ b/third_party/blink/renderer/core/frame/navigator_device_memory.cc
+@@ -6,4 +6,8 @@
+ #include "third_party/blink/renderer/core/frame/navigator_device_memory.h"
+ 
++#include "base/command_line.h"
++#include "base/json/json_reader.h"
++#include "base/no_destructor.h"
++#include "base/values.h"
+ #include "third_party/blink/public/common/device_memory/approximated_device_memory.h"
+ #include "third_party/blink/public/common/privacy_budget/identifiability_metric_builder.h"
+@@ -17,3 +21,19 @@
+ float NavigatorDeviceMemory::deviceMemory() const {
++  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
++    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++    if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();
++    auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
++    if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));
++    return std::optional<base::Value::Dict>();
++  }());
++  if (s_config->has_value()) {
++    std::optional<double> dm = (*s_config)->FindDouble("deviceMemory");
++    if (!dm) {
++      if (std::optional<int> dm_int = (*s_config)->FindInt("deviceMemory")) {
++        dm = static_cast<double>(*dm_int);
++      }
++    }
++    if (dm && *dm > 0) return static_cast<float>(*dm);
++  }
+   return ApproximatedDeviceMemory::GetApproximatedDeviceMemory();
+ }
 -- 
 2.39.5

@@ -5,7 +5,7 @@ Subject: [PATCH 6/7] feat(privacy): ungoogled telemetry suppression and WebRTC r
 
 Forces navigator.webdriver to return false in navigator_automation_information.cc and navigator.cc.
 Suppresses Google UMA/RLZ metrics reporting and telemetry ping dispatch.
-Mutates parsed WebRTC configuration in rtc_peer_connection.cc checking webrtc.mode and network.webrtc to enforce kRelay.
+Mutates parsed WebRTC configuration in rtc_peer_connection.cc checking webrtc.mode, network.webrtc, and should_fill_empty_ice_list to enforce kRelay.
 ---
 diff --git a/third_party/blink/renderer/core/frame/navigator_automation_information.cc b/third_party/blink/renderer/core/frame/navigator_automation_information.cc
 index fa101ba..2f87a19 100644
@@ -43,7 +43,7 @@ index 7c5915b..8d2491a 100644
  #include <utility>
  
  #include "base/compiler_specific.h"
-@@ -407,4 +411,31 @@
+@@ -407,4 +411,32 @@
    }
  
 +  // MAHI Privacy & Anti-Detect: Mutate parsed web_configuration to enforce kRelay & drop host/srflx candidates (prefs.mahi)
@@ -60,9 +60,10 @@ index 7c5915b..8d2491a 100644
 +        return std::optional<base::Value::Dict>();
 +      }());
 +      if (s_config->has_value()) {
-+        const std::string* rtc_mode = (*s_config)->FindString("webrtc.mode");
++        const std::string* rtc_mode = (*s_config)->FindStringByDottedPath("webrtc.mode");
 +        if (!rtc_mode) rtc_mode = (*s_config)->FindStringByDottedPath("network.webrtc");
-+        if (rtc_mode && (*rtc_mode == "disabled" || *rtc_mode == "proxy_only" || *rtc_mode == "block")) {
++        bool fill_empty = (*s_config)->FindBoolByDottedPath("webrtc.should_fill_empty_ice_list").value_or(false);
++        if (fill_empty || (rtc_mode && (*rtc_mode == "disabled" || *rtc_mode == "proxy_only" || *rtc_mode == "block" || *rtc_mode == "alerted"))) {
 +          enforce_relay = true;
 +        }
 +      }

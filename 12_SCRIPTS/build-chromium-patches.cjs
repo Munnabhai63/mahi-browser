@@ -5,7 +5,7 @@ const { formatHunk, formatFileDiff, formatPatch, validatePatch } = require('./ge
 const outDir = path.resolve('14_ENGINE_PATCHES/chromium-138');
 
 // ===========================================================================
-// PATCH 0001
+// PATCH 0001: 2D Canvas Skia Readout Perturbation
 // ===========================================================================
 const p1_f1_path = 'third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc';
 const p1_f1 = formatFileDiff(
@@ -140,7 +140,7 @@ const patch0001 = formatPatch(
 );
 
 // ===========================================================================
-// PATCH 0002
+// PATCH 0002: WebGL Vendor/Renderer Spoofing & WebGPU Adapter Masking
 // ===========================================================================
 const p2_f1_path = 'third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc';
 const p2_f1 = formatFileDiff(
@@ -172,7 +172,8 @@ const p2_f1 = formatFileDiff(
       '+        }());',
       '+        if (s_config->has_value()) {',
       '+          const base::Value::Dict& root = **s_config;',
-      '+          const std::string* r = root.FindString("webglRenderer");',
+      '+          const std::string* r = root.FindStringByDottedPath("webgl.metadata.renderer");',
+      '+          if (!r) r = root.FindString("webglRenderer");',
       '+          if (!r) r = root.FindString("gpuRenderer");',
       '+          if (r && !r->empty()) {',
       '+            return WebGLAny(script_state, String::FromUTF8(r->c_str()));',
@@ -194,7 +195,8 @@ const p2_f1 = formatFileDiff(
       '+        }());',
       '+        if (s_config->has_value()) {',
       '+          const base::Value::Dict& root = **s_config;',
-      '+          const std::string* v = root.FindString("webglVendor");',
+      '+          const std::string* v = root.FindStringByDottedPath("webgl.metadata.vendor");',
+      '+          if (!v) v = root.FindString("webglVendor");',
       '+          if (!v) v = root.FindString("gpuVendor");',
       '+          if (v && !v->empty()) {',
       '+            return WebGLAny(script_state, String::FromUTF8(v->c_str()));',
@@ -226,11 +228,13 @@ const p2_f1 = formatFileDiff(
       '+    }());',
       '+    if (s_config->has_value()) {',
       '+      const base::Value::Dict& root = **s_config;',
+      '+      bool noise_enable = root.FindBool("webgl_noise_enable").value_or(false);',
       '+      const std::string* mode = root.FindString("webglMode");',
-      '+      if (mode && *mode != "off") {',
+      '+      if (noise_enable || (mode && *mode != "off")) {',
+      '+        double noise_val = root.FindDouble("webgl_noise_value").value_or(0.00001);',
       '+        uint8_t* byte_ptr = static_cast<uint8_t*>(data);',
       '+        size_t byte_len = pixels->byteLength();',
-      '+        uint32_t seed = 0x9e3779b9 ^ (width * 37 + height);',
+      '+        uint32_t seed = static_cast<uint32_t>(noise_val * 1000000.0) ^ (width * 37 + height);',
       '+        for (size_t i = 0; i < byte_len; i += 128) {',
       '+          uint32_t j = base::PersistentHash(&seed, sizeof(seed)) % 3;',
       '+          byte_ptr[i] ^= static_cast<uint8_t>(j);',
@@ -267,6 +271,29 @@ const p2_f2 = formatFileDiff(
     formatHunk(186, 190, [
       ' GPUAdapterInfo* GPUAdapter::info() const {',
       '+  // MAHI Native Anti-Detect Engine: Read prefs.mahi via cached renderer config for WebGPU adapter spoofing',
+      '+  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {',
+      '+    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();',
+      '+    if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();',
+      '+    auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));',
+      '+    if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));',
+      '+    return std::optional<base::Value::Dict>();',
+      '+  }());',
+      '+  if (s_config->has_value()) {',
+      '+    const base::Value::Dict* gpu_info = (*s_config)->FindDictByDottedPath("webGpu.supportedAdapters.highPerformance.info");',
+      '+    if (gpu_info) {',
+      '+      const std::string* v = gpu_info->FindString("vendor");',
+      '+      const std::string* a = gpu_info->FindString("architecture");',
+      '+      const std::string* d = gpu_info->FindString("device");',
+      '+      const std::string* desc = gpu_info->FindString("description");',
+      '+      String vendor = v ? String::FromUTF8(v->c_str()) : vendor_;',
+      '+      String arch = a ? String::FromUTF8(a->c_str()) : architecture_;',
+      '+      String device = d ? String::FromUTF8(d->c_str()) : device_;',
+      '+      String desc_str = desc ? String::FromUTF8(desc->c_str()) : description_;',
+      '+      return MakeGarbageCollected<GPUAdapterInfo>(',
+      '+          vendor, arch, subgroup_min_size_, subgroup_max_size_,',
+      '+          is_fallback_adapter_, device, desc_str);',
+      '+    }',
+      '+  }',
       '   return info_.Get();',
       ' }'
     ])
@@ -287,7 +314,7 @@ const patch0002 = formatPatch(
 );
 
 // ===========================================================================
-// PATCH 0003
+// PATCH 0003: WebAudio Micro-Jitter (Per-Profile Persistent Seed)
 // ===========================================================================
 const p3_f1_path = 'third_party/blink/renderer/modules/webaudio/audio_buffer.h';
 const p3_f1 = formatFileDiff(
@@ -340,11 +367,17 @@ const p3_f2 = formatFileDiff(
       '+    }());',
       '+    if (s_config->has_value()) {',
       '+      const base::Value::Dict& root = **s_config;',
-      '+      bool noise_enabled = root.FindBool("audioNoise").value_or(true);',
+      '+      bool noise_enabled = true;',
+      '+      if (auto enabled = root.FindBoolByDottedPath("audioContext.enable")) {',
+      '+        noise_enabled = *enabled;',
+      '+      } else if (auto legacy = root.FindBool("audioNoise")) {',
+      '+        noise_enabled = *legacy;',
+      '+      }',
+      '+      double noise_val = root.FindDoubleByDottedPath("audioContext.noiseValue").value_or(0.00001);',
       '+      if (noise_enabled && channels_[channel_index]) {',
       '+        float* data = channels_[channel_index]->Data();',
       '+        size_t len = channels_[channel_index]->length();',
-      '+        uint32_t seed = 0x1337c0de ^ (channel_index * 1337);',
+      '+        uint32_t seed = static_cast<uint32_t>(noise_val * 1000000.0) ^ (channel_index * 1337);',
       '+        for (size_t i = 0; i < len; i += 100) {',
       '+          uint32_t j = base::PersistentHash(&seed, sizeof(seed)) % 5;',
       '+          float delta = (static_cast<float>(j) - 2.0f) * 1e-7f;',
@@ -375,7 +408,7 @@ const patch0003 = formatPatch(
 );
 
 // ===========================================================================
-// PATCH 0004
+// PATCH 0004: ClientRects Subpixel Jitter & FontCache Whitelist Masking
 // ===========================================================================
 const p4_f1_path = 'third_party/blink/renderer/core/dom/element.cc';
 const p4_f1 = formatFileDiff(
@@ -517,7 +550,7 @@ const patch0004 = formatPatch(
 );
 
 // ===========================================================================
-// PATCH 0005
+// PATCH 0005: ICU Timezone, Locale, Hardware Concurrency, and Device Memory
 // ===========================================================================
 const p5_f1_path = 'chrome/browser/prefs/browser_prefs.cc';
 const p5_f1 = formatFileDiff(
@@ -529,8 +562,8 @@ const p5_f1 = formatFileDiff(
       '                           const std::string& locale) {',
       '   TRACE_EVENT0("browser", "chrome::RegisterProfilePrefs");',
       '+  // MAHI Native Anti-Detect Engine: Register profile preferences',
-      '+  registry->RegisterDictionaryPref("prefs.mahi");',
-      '+  registry->RegisterDictionaryPref("prefs.gologin");',
+      '+  registry->RegisterDictionaryPref("mahi");',
+      '+  registry->RegisterDictionaryPref("gologin");',
       '   // User prefs. Please keep this list alphabetized.',
       '   AccessibilityLabelsService::RegisterProfilePrefs(registry);',
       '   AccessibilityUIMessageHandler::RegisterProfilePrefs(registry);'
@@ -544,6 +577,11 @@ const p5_f2 = formatFileDiff(
   p5_f2_path,
   p5_f2_path,
   [
+    formatHunk(20, 20, [
+      ' #include "base/command_line.h"',
+      '+#include "base/json/json_writer.h"',
+      ' #include "base/containers/contains.h"'
+    ]),
     formatHunk(2628, 2628, [
       ' void ChromeContentBrowserClient::AppendExtraCommandLineSwitches(',
       '     base::CommandLine* command_line,',
@@ -555,10 +593,10 @@ const p5_f2 = formatFileDiff(
       '+    if (profile && profile->GetPrefs()) {',
       '+      PrefService* prefs = profile->GetPrefs();',
       '+      const base::Value::Dict* mahi_prefs = nullptr;',
-      '+      if (prefs->HasPrefPath("prefs.mahi")) {',
-      '+        mahi_prefs = &prefs->GetDict("prefs.mahi");',
-      '+      } else if (prefs->HasPrefPath("prefs.gologin")) {',
-      '+        mahi_prefs = &prefs->GetDict("prefs.gologin");',
+      '+      if (prefs->HasPrefPath("mahi")) {',
+      '+        mahi_prefs = &prefs->GetDict("mahi");',
+      '+      } else if (prefs->HasPrefPath("gologin")) {',
+      '+        mahi_prefs = &prefs->GetDict("gologin");',
       '+      }',
       '+      if (mahi_prefs) {',
       '+        std::string json_str;',
@@ -603,8 +641,8 @@ const p5_f3 = formatFileDiff(
       '+    return std::optional<base::Value::Dict>();',
       '+  }());',
       '+  if (s_config->has_value()) {',
-      '+    const std::string* plat = (*s_config)->FindString("os");',
-      '+    if (!plat) plat = (*s_config)->FindStringByDottedPath("navigator.platform");',
+      '+    const std::string* plat = (*s_config)->FindStringByDottedPath("navigator.platform");',
+      '+    if (!plat) plat = (*s_config)->FindString("os");',
       '+    if (plat && !plat->empty()) return String::FromUTF8(plat->c_str());',
       '+  }',
       '   // TODO(955620): Consider changing devtools overrides to only allow overriding',
@@ -621,9 +659,26 @@ const p5_f3 = formatFileDiff(
       '-  return automation_enabled;',
       '+  // MAHI Ungoogled Privacy: navigator.webdriver always reports false to avoid bot flags',
       '+  return false;',
-      ' }'
-    ]),
-    formatHunk(112, 118, [
+      ' }',
+      '+',
+      '+int Navigator::maxTouchPoints() const {',
+      '+  // MAHI Native Anti-Detect Engine: Read maxTouchPoints from prefs.mahi via cached renderer config',
+      '+  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {',
+      '+    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();',
+      '+    if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();',
+      '+    auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));',
+      '+    if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));',
+      '+    return std::optional<base::Value::Dict>();',
+      '+  }());',
+      '+  if (s_config->has_value()) {',
+      '+    std::optional<int> tp = (*s_config)->FindIntByDottedPath("navigator.max_touch_points");',
+      '+    if (tp) return *tp;',
+      '+  }',
+      '+  if (!DomWindow() || !DomWindow()->GetFrame()) return 0;',
+      '+  Settings* settings = DomWindow()->GetFrame()->GetSettings();',
+      '+  return settings ? settings->GetMaxTouchPoints() : 0;',
+      '+}',
+      ' ',
       ' String Navigator::GetAcceptLanguages() {',
       '+  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {',
       '+    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();',
@@ -633,6 +688,19 @@ const p5_f3 = formatFileDiff(
       '+    return std::optional<base::Value::Dict>();',
       '+  }());',
       '+  if (s_config->has_value()) {',
+      '+    const std::string* header = (*s_config)->FindString("langHeader");',
+      '+    if (header && !header->empty()) return String::FromUTF8(header->c_str());',
+      '+    const base::Value::List* langs_list = (*s_config)->FindList("languages");',
+      '+    if (langs_list && !langs_list->empty()) {',
+      '+      std::string joined_langs;',
+      '+      for (size_t i = 0; i < langs_list->size(); ++i) {',
+      '+        if ((*langs_list)[i].is_string()) {',
+      '+          if (!joined_langs.empty()) joined_langs += ",";',
+      '+          joined_langs += (*langs_list)[i].GetString();',
+      '+        }',
+      '+      }',
+      '+      if (!joined_langs.empty()) return String::FromUTF8(joined_langs.c_str());',
+      '+    }',
       '+    const std::string* langs = (*s_config)->FindString("languages");',
       '+    if (langs && !langs->empty()) return String::FromUTF8(langs->c_str());',
       '+  }',
@@ -652,6 +720,7 @@ const p5_f4 = formatFileDiff(
       ' #include "third_party/blink/renderer/core/timezone/timezone_controller.h"',
       ' ',
       '+#include "base/command_line.h"',
+      '+#include "base/json/json_reader.h"',
       ' #include "base/feature_list.h"',
       ' #include "mojo/public/cpp/bindings/pending_remote.h"',
       ' #include "mojo/public/cpp/bindings/remote.h"'
@@ -659,8 +728,18 @@ const p5_f4 = formatFileDiff(
     formatHunk(118, 119, [
       ' void TimeZoneController::Init() {',
       '+  const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();',
-      '+  if (cmd && cmd->HasSwitch("tz")) {',
-      '+    SetIcuTimeZoneAndNotifyV8(String::FromUTF8(cmd->GetSwitchValueASCII("tz")));',
+      '+  if (cmd) {',
+      '+    if (cmd->HasSwitch("tz")) {',
+      '+      SetIcuTimeZoneAndNotifyV8(String::FromUTF8(cmd->GetSwitchValueASCII("tz")));',
+      '+    } else if (cmd->HasSwitch("mahi-config")) {',
+      '+      auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));',
+      '+      if (parsed && parsed->is_dict()) {',
+      '+        const std::string* tz = parsed->GetDict().FindStringByDottedPath("timezone.id");',
+      '+        if (tz && !tz->empty()) {',
+      '+          SetIcuTimeZoneAndNotifyV8(String::FromUTF8(tz->c_str()));',
+      '+        }',
+      '+      }',
+      '+    }',
       '+  }',
       '   // monitor must not use HeapMojoRemote. TimeZoneController is not managed by',
       '   // Oilpan. monitor is only used to bind receiver_ here and never used',
@@ -670,20 +749,96 @@ const p5_f4 = formatFileDiff(
   '8e4166b..3e5917a 100644'
 );
 
+const p5_f5_path = 'third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc';
+const p5_f5 = formatFileDiff(
+  p5_f5_path,
+  p5_f5_path,
+  [
+    formatHunk(6, 6, [
+      ' #include "third_party/blink/renderer/core/frame/navigator_concurrent_hardware.h"',
+      ' ',
+      '+#include "base/command_line.h"',
+      '+#include "base/json/json_reader.h"',
+      '+#include "base/no_destructor.h"',
+      '+#include "base/values.h"',
+      ' #include "base/system/sys_info.h"',
+      ' ',
+      ' namespace blink {'
+    ]),
+    formatHunk(12, 16, [
+      ' unsigned NavigatorConcurrentHardware::hardwareConcurrency() const {',
+      '+  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {',
+      '+    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();',
+      '+    if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();',
+      '+    auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));',
+      '+    if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));',
+      '+    return std::optional<base::Value::Dict>();',
+      '+  }());',
+      '+  if (s_config->has_value()) {',
+      '+    std::optional<int> hc = (*s_config)->FindInt("hardwareConcurrency");',
+      '+    if (hc && *hc > 0) return static_cast<unsigned>(*hc);',
+      '+  }',
+      '   return static_cast<unsigned>(base::SysInfo::NumberOfProcessors());',
+      ' }'
+    ])
+  ],
+  'f5c0db2..5a9e2d1 100644'
+);
+
+const p5_f6_path = 'third_party/blink/renderer/core/frame/navigator_device_memory.cc';
+const p5_f6 = formatFileDiff(
+  p5_f6_path,
+  p5_f6_path,
+  [
+    formatHunk(6, 6, [
+      ' #include "third_party/blink/renderer/core/frame/navigator_device_memory.h"',
+      ' ',
+      '+#include "base/command_line.h"',
+      '+#include "base/json/json_reader.h"',
+      '+#include "base/no_destructor.h"',
+      '+#include "base/values.h"',
+      ' #include "third_party/blink/public/common/device_memory/approximated_device_memory.h"',
+      ' #include "third_party/blink/public/common/privacy_budget/identifiability_metric_builder.h"'
+    ]),
+    formatHunk(17, 21, [
+      ' float NavigatorDeviceMemory::deviceMemory() const {',
+      '+  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {',
+      '+    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();',
+      '+    if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();',
+      '+    auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));',
+      '+    if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));',
+      '+    return std::optional<base::Value::Dict>();',
+      '+  }());',
+      '+  if (s_config->has_value()) {',
+      '+    std::optional<double> dm = (*s_config)->FindDouble("deviceMemory");',
+      '+    if (!dm) {',
+      '+      if (std::optional<int> dm_int = (*s_config)->FindInt("deviceMemory")) {',
+      '+        dm = static_cast<double>(*dm_int);',
+      '+      }',
+      '+    }',
+      '+    if (dm && *dm > 0) return static_cast<float>(*dm);',
+      '+  }',
+      '   return ApproximatedDeviceMemory::GetApproximatedDeviceMemory();',
+      ' }'
+    ])
+  ],
+  '2876aad..6b1c8f4 100644'
+);
+
 const patch0005 = formatPatch(
   'e5b91adeb98a31e28b7e283d5a2d109f02c98a31',
   5, 7,
   'feat(system): ICU timezone, locale, hardware concurrency, and client hints from prefs.mahi',
   [
-    'Registers prefs.mahi and prefs.gologin dictionaries in browser_prefs.cc.',
+    'Registers mahi and gologin dictionaries in browser_prefs.cc.',
     'Transfers profile settings to renderer via AppendExtraCommandLineSwitches and --mahi-config.',
-    'Applies timezone override via TimeZoneController and overrides platform and languages.'
+    'Applies timezone override via TimeZoneController, overrides platform, languages, and hardware capacity.'
   ].join('\n'),
-  [p5_f1, p5_f2, p5_f3, p5_f4]
+  [p5_f1, p5_f2, p5_f3, p5_f4, p5_f5, p5_f6]
 );
 
 // ===========================================================================
-// PATCH 0006
+// PATCH 0006: Ungoogled Privacy, Telemetry Suppression, and WebRTC Relay
 // ===========================================================================
 const p6_f1_path = 'third_party/blink/renderer/core/frame/navigator_automation_information.cc';
 const p6_f1 = formatFileDiff(
@@ -752,9 +907,10 @@ const p6_f3 = formatFileDiff(
       '+        return std::optional<base::Value::Dict>();',
       '+      }());',
       '+      if (s_config->has_value()) {',
-      '+        const std::string* rtc_mode = (*s_config)->FindString("webrtc.mode");',
+      '+        const std::string* rtc_mode = (*s_config)->FindStringByDottedPath("webrtc.mode");',
       '+        if (!rtc_mode) rtc_mode = (*s_config)->FindStringByDottedPath("network.webrtc");',
-      '+        if (rtc_mode && (*rtc_mode == "disabled" || *rtc_mode == "proxy_only" || *rtc_mode == "block")) {',
+      '+        bool fill_empty = (*s_config)->FindBoolByDottedPath("webrtc.should_fill_empty_ice_list").value_or(false);',
+      '+        if (fill_empty || (rtc_mode && (*rtc_mode == "disabled" || *rtc_mode == "proxy_only" || *rtc_mode == "block" || *rtc_mode == "alerted"))) {',
       '+          enforce_relay = true;',
       '+        }',
       '+      }',
@@ -779,13 +935,13 @@ const patch0006 = formatPatch(
   [
     'Forces navigator.webdriver to return false in navigator_automation_information.cc and navigator.cc.',
     'Suppresses Google UMA/RLZ metrics reporting and telemetry ping dispatch.',
-    'Mutates parsed WebRTC configuration in rtc_peer_connection.cc checking webrtc.mode and network.webrtc to enforce kRelay.'
+    'Mutates parsed WebRTC configuration in rtc_peer_connection.cc checking webrtc.mode, network.webrtc, and should_fill_empty_ice_list to enforce kRelay.'
   ].join('\n'),
   [p6_f1, p6_f2, p6_f3]
 );
 
 // ===========================================================================
-// PATCH 0007
+// PATCH 0007: rebrowser-patches CDP Runtime Isolation
 // ===========================================================================
 const p7_f1_path = 'v8/src/inspector/v8-runtime-agent-impl.cc';
 const p7_f1 = formatFileDiff(
@@ -820,7 +976,9 @@ const p7_f1 = formatFileDiff(
       '                "EvaluateScript");',
       '   int contextId = 0;'
     ]),
-    formatHunk(383, 386, [
+    formatHunk(378, 386, [
+      '   InjectedScript::ContextScope scope(m_session, contextId);',
+      '   response = scope.initialize();',
       '   if (!response.IsSuccess()) {',
       '     callback->sendFailure(response);',
       '     return;',
@@ -831,6 +989,7 @@ const p7_f1 = formatFileDiff(
       '+  v8::Local<v8::Value> orig_prepare_stack_trace;',
       '+  v8::Local<v8::Object> error_obj;',
       '+  v8::Local<v8::Context> eval_ctx = scope.context();',
+      '+  bool had_pst = false;',
       '+  if (isolate && !eval_ctx.IsEmpty()) {',
       '+    v8::HandleScope eval_handle_scope(isolate);',
       '+    v8::Local<v8::Object> global = eval_ctx->Global();',
@@ -840,7 +999,10 @@ const p7_f1 = formatFileDiff(
       '+      error_obj = error_val.As<v8::Object>();',
       '+      v8::Local<v8::String> pst_key = v8::String::NewFromUtf8(isolate, "prepareStackTrace").ToLocalChecked();',
       '+      if (error_obj->Has(eval_ctx, pst_key).FromMaybe(false)) {',
-      '+        error_obj->Get(eval_ctx, pst_key).ToLocal(&orig_prepare_stack_trace);',
+      '+        if (error_obj->Get(eval_ctx, pst_key).ToLocal(&orig_prepare_stack_trace)) {',
+      '+          had_pst = true;',
+      '+          error_obj->Set(eval_ctx, pst_key, v8::Undefined(isolate)).Check();',
+      '+        }',
       '+      }',
       '+    }',
       '+  }',
@@ -848,12 +1010,38 @@ const p7_f1 = formatFileDiff(
       '   if (silent.value_or(false)) scope.ignoreExceptionsAndMuteConsole();',
       '   if (userGesture.value_or(false)) scope.pretendUserGesture();'
     ]),
+    formatHunk(418, 420, [
+      '     maybeResultValue = v8::debug::EvaluateGlobal(m_inspector->isolate(), source,',
+      '                                                  mode, replMode);',
+      '   }  // Run microtasks before returning result.',
+      '+',
+      '+  if (had_pst && !error_obj.IsEmpty() && !orig_prepare_stack_trace.IsEmpty()) {',
+      '+    v8::HandleScope restore_scope(isolate);',
+      '+    v8::Local<v8::String> pst_key = v8::String::NewFromUtf8(isolate, "prepareStackTrace").ToLocalChecked();',
+      '+    error_obj->Set(eval_ctx, pst_key, orig_prepare_stack_trace).Check();',
+      '+  }',
+      ' ',
+      '   // Re-initialize after running client\'s code, as it could have destroyed',
+      '   // context or session.'
+    ]),
     formatHunk(1090, 1109, [
       '   m_state->setBoolean(V8RuntimeAgentImplState::runtimeEnabled, true);',
       '   m_inspector->debugger()->setMaxCallStackSizeToCapture(',
       '       this, V8StackTraceImpl::kDefaultMaxCallStackSizeToCapture);',
+      '-  m_session->reportAllContexts(this);',
       '+  // MAHI rebrowser-patches isolation: Suppress executionContextCreated leak to untrusted scripts',
-      '   m_session->reportAllContexts(this);',
+      '+  bool suppressContextCreated = false;',
+      '+  if (m_inspector && m_inspector->isolate()) {',
+      '+    v8::HandleScope hs(m_inspector->isolate());',
+      '+    v8::Local<v8::Context> root_ctx = m_inspector->isolate()->GetCurrentContext();',
+      '+    if (!root_ctx.IsEmpty()) {',
+      '+      v8::Local<v8::String> key = v8::String::NewFromUtf8(m_inspector->isolate(), "__mahi_isolate_cdp__").ToLocalChecked();',
+      '+      suppressContextCreated = root_ctx->Global()->Has(root_ctx, key).FromMaybe(false);',
+      '+    }',
+      '+  }',
+      '+  if (!suppressContextCreated) {',
+      '+    m_session->reportAllContexts(this);',
+      '+  }',
       '   V8ConsoleMessageStorage* storage ='
     ])
   ],
@@ -865,13 +1053,23 @@ const p7_f2 = formatFileDiff(
   p7_f2_path,
   p7_f2_path,
   [
-    formatHunk(675, 675, [
-      '   }',
+    formatHunk(16, 16, [
+      ' #include <vector>',
       ' ',
+      '+#include "base/command_line.h"',
+      ' #include "base/functional/bind.h"',
+      ' #include "base/location.h"'
+    ]),
+    formatHunk(656, 658, [
+      ' Response PageHandler::Enable(',
+      '     std::optional<bool> enable_file_chooser_opened_event) {',
       '+  // MAHI DevTools CDP Isolation: Prevent synthetic lifecycle navigation events',
-      '   enabled_ = true;',
-      '   return Response::FallThrough();',
-      ' }'
+      '+  const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();',
+      '+  bool suppress_nav = cmd && cmd->HasSwitch("mahi-cdp-isolated");',
+      '-  if (!enabled_ && !host_->GetParentOrOuterDocument() &&',
+      '+  if (!suppress_nav && !enabled_ && !host_->GetParentOrOuterDocument() &&',
+      '       host_->frame_tree_node() &&',
+      '       host_->frame_tree_node()->navigation_request()) {'
     ])
   ],
   '1fc8a5c..e91845c 100644'
