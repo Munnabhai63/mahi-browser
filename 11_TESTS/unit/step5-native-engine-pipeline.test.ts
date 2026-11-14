@@ -139,6 +139,84 @@ describe('Step 5: Native C++ Chromium Anti-Detect Engine & Build Pipeline', () =
       }
     }
 
+    // Strict Unified Diff Parsing: Validate all @@ -old,count +new,count @@ headers in all 7 patches
+    for (const patchFile of patchFiles) {
+      const fullPath = path.join(patchesDir, patchFile);
+      const content = fs.readFileSync(fullPath, 'utf8');
+      const lines = content.split(/\r?\n/);
+      let inHunk = false;
+      let expOld = 0, expNew = 0, actOld = 0, actNew = 0;
+      let hunkHeader = '';
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.startsWith('diff --git')) {
+          if (inHunk) {
+            expect(actOld).toBe(expOld);
+            expect(actNew).toBe(expNew);
+            inHunk = false;
+          }
+        } else if (line.startsWith('@@ ')) {
+          if (inHunk) {
+            expect(actOld).toBe(expOld);
+            expect(actNew).toBe(expNew);
+          }
+          const m = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+          expect(m).not.toBeNull();
+          expOld = m![2] !== undefined ? parseInt(m![2], 10) : 1;
+          expNew = m![4] !== undefined ? parseInt(m![4], 10) : 1;
+          actOld = 0;
+          actNew = 0;
+          hunkHeader = line;
+          inHunk = true;
+        } else if (inHunk) {
+          if (line.startsWith('-- ') || line.startsWith('diff --git')) {
+            expect(actOld).toBe(expOld);
+            expect(actNew).toBe(expNew);
+            inHunk = false;
+          } else if (line.startsWith(' ')) {
+            actOld++;
+            actNew++;
+          } else if (line.startsWith('-')) {
+            actOld++;
+          } else if (line.startsWith('+')) {
+            actNew++;
+          } else if (line.startsWith('\\')) {
+            // ignore \ No newline
+          } else {
+            expect(actOld).toBe(expOld);
+            expect(actNew).toBe(expNew);
+            inHunk = false;
+          }
+        }
+      }
+      if (inHunk) {
+        expect(actOld).toBe(expOld);
+        expect(actNew).toBe(expNew);
+      }
+    }
+
+    // Anti-Stub & Flag Parity Assertions
+    for (const patchFile of patchFiles) {
+      const content = fs.readFileSync(path.join(patchesDir, patchFile), 'utf8');
+      // Blink renderer modules must NOT include components/prefs or call GetPrefService()
+      if (patchFile !== '0005-mahi-icu-timezone-locale-hardware-ch.patch') {
+        expect(content).not.toContain('components/prefs/pref_service.h');
+      }
+      expect(content).not.toContain('GetPrefService()');
+    }
+
+    // 0004 must split --font-masking-list on ';' and handle mode '1'/'2'
+    const p4Content = fs.readFileSync(path.join(patchesDir, '0004-mahi-clientrects-and-fontcache-masking.patch'), 'utf8');
+    expect(p4Content).toContain('SplitString(raw_list, ";",');
+    expect(p4Content).toContain('mode == "1" || mode == "2"');
+
+    // 0007 must have valid signature and no evaluateInternal
+    const p7Content = fs.readFileSync(path.join(patchesDir, '0007-mahi-rebrowser-cdp-runtime-isolation.patch'), 'utf8');
+    expect(p7Content).toContain('void V8RuntimeAgentImpl::evaluate(');
+    expect(p7Content).not.toContain('Response V8RuntimeAgentImpl::evaluate');
+    expect(p7Content).not.toContain('evaluateInternal');
+
     // Check args.gn
     const argsGnPath = path.join(patchesDir, 'args.gn');
     expect(fs.existsSync(argsGnPath)).toBe(true);
@@ -227,6 +305,39 @@ describe('Step 5: Native C++ Chromium Anti-Detect Engine & Build Pipeline', () =
     const resultC = validateAndNormalizeFingerprintCoherence(coherentWindows);
     expect(resultC.valid).toBe(true);
     expect(resultC.warnings.length).toBe(0);
+
+    // Case D: Intel macOS Profile (Platform normalization to MacIntel & non-M1)
+    const intelMac = {
+      browser: {
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+      },
+      fingerprint: {
+        platform: 'Win32',
+        isM1: false,
+        architecture: 'x86_64',
+        webglRenderer: 'Direct3D11 vs_5_0',
+      },
+    };
+    const resultD = validateAndNormalizeFingerprintCoherence(intelMac);
+    expect(resultD.valid).toBe(false);
+    expect(resultD.normalizedSettings.fingerprint.platform).toBe('MacIntel');
+    expect(resultD.normalizedSettings.fingerprint.isM1).toBe(false);
+    expect(resultD.normalizedSettings.fingerprint.webglRenderer).toContain('Apple');
+
+    // Case E: Linux Desktop Profile (Normalizes Win32/Direct3D11 to Linux x86_64 / Mesa)
+    const linuxDesktop = {
+      browser: {
+        userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+      },
+      fingerprint: {
+        platform: 'Win32',
+        webglRenderer: 'Direct3D11 vs_5_0',
+      },
+    };
+    const resultE = validateAndNormalizeFingerprintCoherence(linuxDesktop);
+    expect(resultE.valid).toBe(false);
+    expect(resultE.normalizedSettings.fingerprint.platform).toBe('Linux x86_64');
+    expect(resultE.normalizedSettings.fingerprint.webglRenderer).toContain('Mesa');
   });
 
   // ==========================================================================
@@ -333,8 +444,59 @@ describe('Step 5: Native C++ Chromium Anti-Detect Engine & Build Pipeline', () =
     pc.dispatchEvent({ candidate: { candidate: 'candidate:3 1 UDP 41885695 198.51.100.1 54323 typ relay' } });
     expect(receivedCandidates.length).toBe(1);
 
-    // 5B: handleWebhook immediately rejects unknown planId with PLAN_NOT_FOUND on both succeeded and failed events
+    // Verify shared prototype (RTCPeerConnection === webkitRTCPeerConnection) does not double-wrap
+    const sandboxShared = {
+      window: {
+        RTCPeerConnection: MockRTCPeerConnection,
+        webkitRTCPeerConnection: MockRTCPeerConnection,
+      },
+      navigator: { userAgent: 'Mozilla/5.0' },
+      Intl: { DateTimeFormat: Intl.DateTimeFormat },
+      Date: Date,
+      console: console,
+    } as any;
+    const ctxShared = vm.createContext(sandboxShared);
+    vm.runInContext(coreScript, ctxShared);
+    const pcShared = new sandboxShared.window.RTCPeerConnection();
+    expect(Object.getOwnPropertyDescriptor(pcShared, 'onicecandidate')).toBeUndefined();
+    expect(Object.getOwnPropertyDescriptor(sandboxShared.window.RTCPeerConnection.prototype, 'onicecandidate')).toBeDefined();
+
+    // 5B: handleWebhook immediately rejects unknown or empty planId with PLAN_NOT_FOUND on both succeeded and failed events
     const secret = 'whsec_simulation_test_secret';
+
+    // Empty planId checks
+    const emptyPlanPayloadSucceeded = JSON.stringify({
+      id: `evt_empty_plan_${Date.now()}_1`,
+      type: 'payment.succeeded',
+      provider: 'simulation',
+      userId: 'test_user_id',
+      planId: '',
+      billingCycle: 'MONTHLY',
+      amountCents: 5000,
+      currency: 'INR',
+      externalPaymentId: `sim_pay_empty_${Date.now()}`,
+    });
+    const sigEmptySucceeded = crypto.createHmac('sha256', secret).update(emptyPlanPayloadSucceeded).digest('hex');
+    await expect(
+      paymentService.handleWebhook('simulation', emptyPlanPayloadSucceeded, sigEmptySucceeded, { secret })
+    ).rejects.toThrow('PLAN_NOT_FOUND');
+
+    const emptyPlanPayloadFailed = JSON.stringify({
+      id: `evt_empty_plan_${Date.now()}_2`,
+      type: 'payment.failed',
+      provider: 'simulation',
+      userId: 'test_user_id',
+      planId: '   ',
+      billingCycle: 'MONTHLY',
+      amountCents: 5000,
+      currency: 'INR',
+      externalPaymentId: `sim_pay_empty_fail_${Date.now()}`,
+    });
+    const sigEmptyFailed = crypto.createHmac('sha256', secret).update(emptyPlanPayloadFailed).digest('hex');
+    await expect(
+      paymentService.handleWebhook('simulation', emptyPlanPayloadFailed, sigEmptyFailed, { secret })
+    ).rejects.toThrow('PLAN_NOT_FOUND');
+
     const unknownPlanPayloadSucceeded = JSON.stringify({
       id: `evt_unknown_plan_${Date.now()}_1`,
       type: 'payment.succeeded',

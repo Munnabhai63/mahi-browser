@@ -1,102 +1,123 @@
-From d29b8c43e52f192c7a309b182c4091a27b1c8104 Mon Sep 17 00:00:00 2001
+From a4c9d345b98a31e28b7e283d5a2d109f02c98a31 Mon Sep 17 00:00:00 2001
 From: Mahi Browser Engine Team <dev@mahibrowser.local>
-Date: Fri, 14 Nov 2026 12:15:00 +0000
-Subject: [PATCH 4/7] feat(layout): native C++ ClientRects sub-pixel jitter and
- FontCache masking
+Date: Fri, 14 Nov 2026 12:00:00 +0000
+Subject: [PATCH 4/7] feat(layout): clientrects jitter and font-cache masking reading prefs.mahi
 
-Reads Default/Preferences -> prefs.mahi.client_rects_noise_enable
-(with fallback to prefs.gologin) in Element::getBoundingClientRect and Range::getClientRects.
-Natively honors command-line flags --font-masking-mode and --font-masking-list
-in Blink FontCache to prevent layout and font enumeration fingerprinting.
+Reads Default/Preferences -> prefs.mahi.client_rects_noise_enable and font masking options.
+Applies sub-pixel jitter to getBoundingClientRect and getClientRects DOMRect values.
+Restricts system font queries via FontCache whitelist splitting on ';' matching launcher.ts flags.
 ---
- .../renderer/core/dom/element.cc                   | 42 ++++++++++++++++++++++
- .../renderer/platform/fonts/font_cache.cc          | 32 ++++++++++++++++
- 2 files changed, 74 insertions(+)
-
 diff --git a/third_party/blink/renderer/core/dom/element.cc b/third_party/blink/renderer/core/dom/element.cc
-index 7a12b84c3..9c82b14e2 100644
+index 1111111..2222222 100644
 --- a/third_party/blink/renderer/core/dom/element.cc
 +++ b/third_party/blink/renderer/core/dom/element.cc
-@@ -48,6 +48,9 @@
- #include "third_party/blink/renderer/core/layout/layout_box.h"
- #include "third_party/blink/renderer/core/frame/local_dom_window.h"
- #include "third_party/blink/renderer/core/frame/local_frame.h"
-+#include "components/prefs/pref_service.h"
-+#include "base/values.h"
+@@ -30,6 +30,10 @@
+ #include "third_party/blink/renderer/core/dom/element.h"
+ #include "third_party/blink/renderer/core/geometry/dom_rect.h"
+ #include "third_party/blink/renderer/core/geometry/dom_rect_list.h"
++#include "base/command_line.h"
 +#include "base/hash/hash.h"
++#include "base/json/json_reader.h"
++#include "base/values.h"
  
  namespace blink {
  
-@@ -2185,6 +2188,45 @@ DOMRect* Element::getBoundingClientRect() {
-     return DOMRect::Create();
-   }
- 
-+  DOMRect* rect = DOMRect::Create(gfx::RectF(quad.BoundingBox()));
-+
-+  // MAHI Native Anti-Detect Engine: Read prefs.mahi.client_rects_noise_enable
-+  LocalDOMWindow* window = GetDocument().domWindow();
-+  if (window && window->GetFrame()) {
-+    const PrefService* prefs = window->GetFrame()->GetPrefService();
-+    if (prefs) {
-+      const base::Value::Dict* mahiPrefs = prefs->GetDict("prefs.mahi");
-+      if (!mahiPrefs) mahiPrefs = prefs->GetDict("prefs.gologin");
-+      if (mahiPrefs) {
-+        bool jitterEnabled = mahiPrefs->FindBool("client_rects_noise_enable").value_or(false);
-+        if (jitterEnabled && rect) {
-+          // Deterministic sub-pixel micro-jitter (< 0.005px) preserving visual layout while altering hash
-+          uint32_t seed = static_cast<uint32_t>(rect->width() * 100.0) ^ static_cast<uint32_t>(rect->height() * 100.0);
-+          uint32_t hash_w = base::PersistentHash(&seed, sizeof(seed));
-+          double delta_w = ((hash_w % 9) + 1) * 0.0001;
-+          rect->setWidth(rect->width() + delta_w);
+@@ -1800,4 +1804,22 @@
+ DOMRect* Element::getBoundingClientRect() {
+   GetDocument().UpdateStyleAndLayoutForNode(this, DocumentUpdateReason::kJavaScript);
+-  return GetBoundingClientRectNoLifecycleUpdate();
++  DOMRect* rect = GetBoundingClientRectNoLifecycleUpdate();
++  if (rect) {
++    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++    if (cmd && cmd->HasSwitch("mahi-config")) {
++      auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
++      if (parsed && parsed->is_dict()) {
++        bool noise_enable = parsed->GetDict().FindBool("client_rects_noise_enable").value_or(true);
++        if (noise_enable) {
++          uint32_t seed = base::PersistentHash(GetDocument().Url().GetString().Utf8());
++          double delta = ((seed % 10) - 5) * 0.0001;
++          rect->setX(rect->x() + delta);
++          rect->setY(rect->y() + delta);
++          rect->setWidth(rect->width() + delta);
++          rect->setHeight(rect->height() + delta);
 +        }
 +      }
 +    }
 +  }
-+
 +  return rect;
  }
- 
+@@ -1830,4 +1834,25 @@
+ DOMRectList* Element::getClientRects() {
+   GetDocument().UpdateStyleAndLayoutForNode(this, DocumentUpdateReason::kJavaScript);
+-  return GetClientRectsNoLifecycleUpdate();
++  DOMRectList* rect_list = GetClientRectsNoLifecycleUpdate();
++  if (rect_list && rect_list->length() > 0) {
++    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++    if (cmd && cmd->HasSwitch("mahi-config")) {
++      auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
++      if (parsed && parsed->is_dict()) {
++        bool noise_enable = parsed->GetDict().FindBool("client_rects_noise_enable").value_or(true);
++        if (noise_enable) {
++          uint32_t seed = base::PersistentHash(GetDocument().Url().GetString().Utf8());
++          for (unsigned i = 0; i < rect_list->length(); ++i) {
++            DOMRect* r = rect_list->item(i);
++            if (r) {
++              double delta = (((seed + i * 13) % 10) - 5) * 0.0001;
++              r->setX(r->x() + delta);
++              r->setY(r->y() + delta);
++            }
++          }
++        }
++      }
++    }
++  }
++  return rect_list;
+ }
 diff --git a/third_party/blink/renderer/platform/fonts/font_cache.cc b/third_party/blink/renderer/platform/fonts/font_cache.cc
-index 4b91c82a1..8d21c94e3 100644
+index 1111111..2222222 100644
 --- a/third_party/blink/renderer/platform/fonts/font_cache.cc
 +++ b/third_party/blink/renderer/platform/fonts/font_cache.cc
-@@ -24,6 +24,8 @@
+@@ -25,5 +25,8 @@
+ #include "third_party/blink/renderer/platform/fonts/font_cache.h"
  #include "third_party/blink/renderer/platform/fonts/font_description.h"
- #include "third_party/blink/renderer/platform/fonts/simple_font_data.h"
- #include "base/command_line.h"
++#include "base/command_line.h"
 +#include "base/strings/string_split.h"
-+#include <unordered_set>
++#include "base/strings/string_util.h"
  
  namespace blink {
  
-@@ -320,6 +322,36 @@ const SimpleFontData* FontCache::GetFontData(
+@@ -310,6 +314,32 @@
+ const FontData* FontCache::GetFontData(
      const FontDescription& font_description,
-     const AtomicString& family_name) {
- 
-+  // MAHI Native Anti-Detect Engine: Filter fonts via --font-masking-mode and --font-masking-list
+     const AtomicString& name,
+     AlternateFontName alternate_name) {
 +  const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
 +  if (cmd && cmd->HasSwitch("font-masking-mode")) {
 +    std::string mode = cmd->GetSwitchValueASCII("font-masking-mode");
-+    if (mode == "whitelist" && cmd->HasSwitch("font-masking-list")) {
-+      std::string list_str = cmd->GetSwitchValueASCII("font-masking-list");
-+      std::vector<std::string> allowed = base::SplitString(
-+          list_str, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
-+      std::unordered_set<std::string> allowed_set(allowed.begin(), allowed.end());
-+      
-+      std::string requested = family_name.Utf8();
-+      // Always permit essential system fallback fonts
-+      if (requested != "Arial" && requested != "Times New Roman" && 
-+          requested != "Courier New" && requested != "sans-serif" &&
-+          requested != "serif" && requested != "monospace") {
-+        if (allowed_set.find(requested) == allowed_set.end()) {
-+          return nullptr; // Masked font: behaves as absent on target system
++    if (mode == "1" || mode == "2" || mode == "whitelist") {
++      std::string raw_list = cmd->GetSwitchValueASCII("font-masking-list");
++      std::vector<std::string> allowed_fonts;
++      if (raw_list.find(';') != std::string::npos) {
++        allowed_fonts = base::SplitString(raw_list, ";", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
++      } else {
++        allowed_fonts = base::SplitString(raw_list, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
++      }
++      if (!allowed_fonts.empty() && !name.empty()) {
++        std::string font_name = name.Utf8();
++        bool is_allowed = false;
++        for (const auto& allowed : allowed_fonts) {
++          if (base::EqualsCaseInsensitiveASCII(font_name, allowed)) {
++            is_allowed = true;
++            break;
++          }
++        }
++        if (!is_allowed) {
++          return nullptr;
 +        }
 +      }
 +    }
 +  }
-+
-   return PlatformGetFontData(font_description, family_name);
+   return nullptr;
  }
- 
 -- 
 2.39.5

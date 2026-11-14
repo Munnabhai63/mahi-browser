@@ -37,7 +37,6 @@ echo "  Target: ${CHROMIUM_SRC}"
 echo "======================================================================"
 
 APPLIED_COUNT=0
-cd "${CHROMIUM_SRC}"
 
 while IFS= read -r line || [[ -n "$line" ]]; do
   # Strip whitespace and carriage returns
@@ -54,22 +53,31 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     exit 1
   fi
 
+  # Determine if patch targets the nested V8 repository (src/v8) or Chromium root (src)
+  if grep -qE "^(diff --git a/v8/|--- a/v8/)" "${patch_path}"; then
+    target_dir="${CHROMIUM_SRC}/v8"
+    strip_arg="-p2"
+  else
+    target_dir="${CHROMIUM_SRC}"
+    strip_arg="-p1"
+  fi
+
   echo -n "[+] Testing patch: ${patch_name} ... "
-  if git apply --check --whitespace=nowarn "${patch_path}" >/dev/null 2>&1; then
+  if (cd "${target_dir}" && git apply --check --whitespace=nowarn ${strip_arg} "${patch_path}") >/dev/null 2>&1; then
     echo "OK"
     echo -n "    Applying: ${patch_name} ... "
-    git apply --whitespace=nowarn "${patch_path}"
+    (cd "${target_dir}" && git apply --whitespace=nowarn ${strip_arg} "${patch_path}")
     echo "APPLIED"
     APPLIED_COUNT=$((APPLIED_COUNT + 1))
   else
-    # Check if patch is already applied
-    if git apply --reverse --check "${patch_path}" >/dev/null 2>&1; then
+    # Check if patch is already applied in reverse
+    if (cd "${target_dir}" && git apply --reverse --check ${strip_arg} "${patch_path}") >/dev/null 2>&1; then
       echo "ALREADY APPLIED (skipping)"
       APPLIED_COUNT=$((APPLIED_COUNT + 1))
     else
       echo "FAILED"
       echo "ERROR: git apply check failed for ${patch_name}"
-      git apply --check "${patch_path}" || true
+      (cd "${target_dir}" && git apply --check ${strip_arg} "${patch_path}") || true
       exit 1
     fi
   fi

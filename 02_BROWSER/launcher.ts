@@ -1123,60 +1123,64 @@ export function ensureProfileStealthExtension(
   try {
     var rtcMode = ${JSON.stringify(webrtcOpt)};
     if (rtcMode === 'proxy_only' || rtcMode === 'disabled' || rtcMode === 'disable_non_proxied_udp') {
+      var hookedProtos = new WeakSet();
       var hookPeerConnection = function(RTCClass, name) {
         if (!RTCClass) return;
         var OrigPC = RTCClass;
 
-        var userIceHandlers = new WeakMap();
-        var protoDesc = Object.getOwnPropertyDescriptor(OrigPC.prototype, 'onicecandidate');
-        var origProtoSet = protoDesc ? protoDesc.set : null;
-        var origProtoGet = protoDesc ? protoDesc.get : null;
+        if (OrigPC.prototype && !hookedProtos.has(OrigPC.prototype)) {
+          hookedProtos.add(OrigPC.prototype);
+          var userIceHandlers = new WeakMap();
+          var protoDesc = Object.getOwnPropertyDescriptor(OrigPC.prototype, 'onicecandidate');
+          var origProtoSet = protoDesc ? protoDesc.set : null;
+          var origProtoGet = protoDesc ? protoDesc.get : null;
 
-        var proxyProtoSet = function(fn) {
-          if (typeof fn === 'function') {
-            var self = this;
-            var wrapped = function(event) {
-              if (event && event.candidate && event.candidate.candidate) {
-                var c = event.candidate.candidate;
-                if (c.indexOf('typ host') !== -1 || c.indexOf('typ srflx') !== -1) {
-                  return;
+          var proxyProtoSet = function(fn) {
+            if (typeof fn === 'function') {
+              var self = this;
+              var wrapped = function(event) {
+                if (event && event.candidate && event.candidate.candidate) {
+                  var c = event.candidate.candidate;
+                  if (c.indexOf('typ host') !== -1 || c.indexOf('typ srflx') !== -1) {
+                    return;
+                  }
                 }
+                return fn.call(self, event);
+              };
+              wrapped._userFn = fn;
+              userIceHandlers.set(this, wrapped);
+              if (origProtoSet) {
+                return origProtoSet.call(this, wrapped);
               }
-              return fn.call(self, event);
-            };
-            wrapped._userFn = fn;
-            userIceHandlers.set(this, wrapped);
-            if (origProtoSet) {
-              return origProtoSet.call(this, wrapped);
+            } else {
+              userIceHandlers.delete(this);
+              if (origProtoSet) {
+                return origProtoSet.call(this, fn);
+              }
             }
-          } else {
-            userIceHandlers.delete(this);
-            if (origProtoSet) {
-              return origProtoSet.call(this, fn);
-            }
-          }
-        };
+          };
 
-        var proxyProtoGet = function() {
-          var h = userIceHandlers.get(this);
-          if (h) return h._userFn || h;
-          if (origProtoGet) return origProtoGet.call(this);
-          return null;
-        };
+          var proxyProtoGet = function() {
+            var h = userIceHandlers.get(this);
+            if (h) return h._userFn || h;
+            if (origProtoGet) return origProtoGet.call(this);
+            return null;
+          };
 
-        registerNative(proxyProtoSet, 'set onicecandidate');
-        registerNative(proxyProtoGet, 'get onicecandidate');
-        if (origProtoSet) registerNative(origProtoSet, 'set onicecandidate');
-        if (origProtoGet) registerNative(origProtoGet, 'get onicecandidate');
+          registerNative(proxyProtoSet, 'set onicecandidate');
+          registerNative(proxyProtoGet, 'get onicecandidate');
+          if (origProtoSet) registerNative(origProtoSet, 'set onicecandidate');
+          if (origProtoGet) registerNative(origProtoGet, 'get onicecandidate');
 
-        try {
-          Object.defineProperty(OrigPC.prototype, 'onicecandidate', {
-            get: proxyProtoGet,
-            set: proxyProtoSet,
-            enumerable: protoDesc ? protoDesc.enumerable : true,
-            configurable: protoDesc ? protoDesc.configurable : true
-          });
-        } catch(e) {}
+          try {
+            Object.defineProperty(OrigPC.prototype, 'onicecandidate', {
+              get: proxyProtoGet,
+              set: proxyProtoSet,
+              enumerable: protoDesc ? protoDesc.enumerable : true,
+              configurable: protoDesc ? protoDesc.configurable : true
+            });
+          } catch(e) {}
+        }
 
         var ProxyPC = function(config, constraints) {
           var conf = Object.assign({}, config);

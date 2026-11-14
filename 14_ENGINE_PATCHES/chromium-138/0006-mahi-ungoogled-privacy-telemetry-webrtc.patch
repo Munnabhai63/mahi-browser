@@ -1,86 +1,67 @@
-From f48b9c43e52f192c7a309b182c4091a27b1c8106 Mon Sep 17 00:00:00 2001
+From c6ebf567b98a31e28b7e283d5a2d109f02c98a31 Mon Sep 17 00:00:00 2001
 From: Mahi Browser Engine Team <dev@mahibrowser.local>
-Date: Fri, 14 Nov 2026 12:25:00 +0000
-Subject: [PATCH 6/7] feat(privacy): ungoogled telemetry suppression, navigator.webdriver
- removal, and native WebRTC leak hardening
+Date: Fri, 14 Nov 2026 12:00:00 +0000
+Subject: [PATCH 6/7] feat(privacy): ungoogled telemetry suppression and WebRTC relay concealment reading prefs.mahi
 
-Strips Google UMA/RLZ/FieldTrials background telemetry and removes
-navigator.webdriver automation flag in Blink C++.
-Enforces prefs.mahi.webrtc (publicIP, should_fill_empty_ice_list, disable_non_proxied_udp)
-and mDNS local IP concealment natively in WebRTC ICE gathering pipeline,
-guaranteeing zero host/srflx IP leaks while preserving authentic BoringSSL TLS JA3/JA4.
+Forces navigator.webdriver to return false.
+Suppresses Google UMA/RLZ metrics reporting and telemetry ping dispatch.
+Mutates parsed WebRTC configuration in rtc_peer_connection.cc to enforce kRelay and conceal host/srflx candidates.
 ---
- .../core/frame/navigator_automation_information.cc | 12 +++--
- .../modules/peerconnection/rtc_peer_connection.cc  | 48 ++++++++++++++++++++++
- 2 files changed, 56 insertions(+), 4 deletions(-)
-
-diff --git a/third_party/blink/renderer/core/frame/navigator_automation_information.cc b/third_party/blink/renderer/core/frame/navigator_automation_information.cc
-index 4a12b84c2..8c23d91ea 100644
---- a/third_party/blink/renderer/core/frame/navigator_automation_information.cc
-+++ b/third_party/blink/renderer/core/frame/navigator_automation_information.cc
-@@ -14,10 +14,14 @@ namespace blink {
- NavigatorAutomationInformation::NavigatorAutomationInformation(
-     Navigator& navigator)
-     : Supplement<Navigator>(navigator) {}
- 
+diff --git a/third_party/blink/renderer/core/execution_context/navigator_automation_information.cc b/third_party/blink/renderer/core/execution_context/navigator_automation_information.cc
+index 1111111..2222222 100644
+--- a/third_party/blink/renderer/core/execution_context/navigator_automation_information.cc
++++ b/third_party/blink/renderer/core/execution_context/navigator_automation_information.cc
+@@ -15,3 +15,4 @@
  bool NavigatorAutomationInformation::webdriver() const {
--  LocalDOMWindow* window = GetSupplementable()->DomWindow();
--  if (!window)
--    return false;
--  return window->GetFrame()->GetSettings()->GetWebdriverEnabled();
-+  // MAHI Native Anti-Detect Engine: Completely eliminate navigator.webdriver detection.
-+  // Always return false regardless of remote debugging port or CDP automation attachment.
+-  return RuntimeEnabledFeatures::AutomationControlledEnabled();
++  // MAHI Ungoogled Privacy: navigator.webdriver always reports false to avoid anti-bot flags
 +  return false;
  }
- 
- }  // namespace blink
+diff --git a/components/metrics/metrics_service.cc b/components/metrics/metrics_service.cc
+index 1111111..2222222 100644
+--- a/components/metrics/metrics_service.cc
++++ b/components/metrics/metrics_service.cc
+@@ -120,3 +120,5 @@
+ void MetricsService::Start() {
+-  state_ = ACTIVE;
++  // MAHI Ungoogled Privacy: completely disable background telemetry reporting
++  state_ = STOPPED;
++  return;
+ }
 diff --git a/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc b/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc
-index 9e45a2b1c..7a12b83e4 100644
+index 1111111..2222222 100644
 --- a/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc
 +++ b/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc
-@@ -34,6 +34,8 @@
- #include "third_party/blink/renderer/core/execution_context/execution_context.h"
- #include "third_party/blink/renderer/core/frame/local_dom_window.h"
- #include "third_party/blink/renderer/core/frame/local_frame.h"
-+#include "components/prefs/pref_service.h"
+@@ -35,5 +35,8 @@
+ #include "third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.h"
+ #include "third_party/blink/renderer/modules/peerconnection/rtc_peer_connection_controller.h"
++#include "base/command_line.h"
++#include "base/json/json_reader.h"
 +#include "base/values.h"
  
  namespace blink {
  
-@@ -380,6 +382,52 @@ webrtc::PeerConnectionInterface::RTCConfiguration
- RTCPeerConnection::ParseConfiguration(
-     ExecutionContext* context,
-     const RTCConfiguration* configuration,
-     ExceptionState& exception_state) {
-+  
-   webrtc::PeerConnectionInterface::RTCConfiguration web_configuration;
-+
-+  // MAHI Native Anti-Detect Engine: Read prefs.mahi.webrtc and enforce relay policy
-+  if (context && context->IsLocalDOMWindow()) {
-+    LocalDOMWindow* window = To<LocalDOMWindow>(context);
-+    if (window && window->GetFrame()) {
-+      const PrefService* prefs = window->GetFrame()->GetPrefService();
-+      if (prefs) {
-+        const base::Value::Dict* mahiPrefs = prefs->GetDict("prefs.mahi");
-+        if (!mahiPrefs) mahiPrefs = prefs->GetDict("prefs.gologin");
-+        if (mahiPrefs) {
-+          const base::Value::Dict* webrtcDict = mahiPrefs->FindDict("webrtc");
-+          if (webrtcDict) {
-+            const std::string* mode = webrtcDict->FindString("mode");
-+            bool disableUdp = webrtcDict->FindBool("disable_non_proxied_udp").value_or(false);
-+            
-+            if ((mode && (*mode == "proxy_only" || *mode == "disabled" || *mode == "block")) || disableUdp) {
-+              // Force RELAY-only ice transport policy at the native C++ WebRTC core
-+              web_configuration.type = webrtc::PeerConnectionInterface::kRelay;
-+            }
-+          }
+@@ -450,2 +454,20 @@
+-  RTCVoidRequest* request = MakeGarbageCollected<InitializeRequest>(this, web_configuration);
++  // MAHI Privacy & Anti-Detect: Mutate parsed web_configuration to enforce kRelay & conceal host candidates (prefs.mahi)
++  const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++  if (cmd) {
++    bool enforce_relay = cmd->HasSwitch("disable-non-proxied-udp") || cmd->HasSwitch("force-webrtc-ip-handling-policy");
++    if (cmd->HasSwitch("mahi-config")) {
++      auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
++      if (parsed && parsed->is_dict()) {
++        const std::string* rtc_mode = parsed->GetDict().FindStringByDottedPath("network.webrtc");
++        if (rtc_mode && (*rtc_mode == "disabled" || *rtc_mode == "proxy_only" || *rtc_mode == "block")) {
++          enforce_relay = true;
 +        }
 +      }
 +    }
++    if (enforce_relay) {
++      web_configuration.ice_transport_policy = webrtc::IceTransportsType::kRelay;
++      web_configuration.bundle_policy = webrtc::PeerConnectionInterface::kBundlePolicyMaxBundle;
++    }
 +  }
-+
-   return web_configuration;
- }
- 
++  RTCVoidRequest* request = MakeGarbageCollected<InitializeRequest>(this, web_configuration);
+   peer_connection_tracker_->RegisterPeerConnection(this, web_configuration);
 -- 
 2.39.5

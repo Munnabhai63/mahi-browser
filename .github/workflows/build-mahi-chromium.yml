@@ -69,6 +69,7 @@ jobs:
           node-version: 20
 
       - name: Cache depot_tools
+        if: ${{ github.event.inputs.clean_cache != true && github.event.inputs.clean_cache != 'true' }}
         uses: actions/cache@v4
         with:
           path: ~/depot_tools
@@ -99,10 +100,11 @@ jobs:
           VERSION="${{ github.event.inputs.chromium_version || '138.0.7204.0' }}"
           mkdir -p ../chromium && cd ../chromium
           if [ ! -d "src" ]; then
-            fetch --nohooks --no-history chromium
+            fetch --nohooks chromium
           fi
           cd src
-          git checkout -f "$VERSION" || git checkout -f tags/"$VERSION" || git checkout -b "mahi-138" "$VERSION"
+          git fetch --depth 1 origin "refs/tags/${VERSION}:refs/tags/${VERSION}" || true
+          git checkout -f "refs/tags/${VERSION}" || git checkout -f "$VERSION" || git checkout -b "mahi-138" "$VERSION"
           gclient sync -D --force --reset
 
       - name: Apply MAHI C++ Anti-Detect Patches (Linux / macOS)
@@ -118,6 +120,12 @@ jobs:
         run: |
           $srcPath = (Resolve-Path "$env:GITHUB_WORKSPACE\..\chromium\src").Path
           & "$env:GITHUB_WORKSPACE\14_ENGINE_PATCHES\chromium-138\apply-patches.ps1" -ChromiumSrc $srcPath
+
+      - name: Clean Output Directory if Clean Cache Requested
+        if: ${{ github.event.inputs.clean_cache == true || github.event.inputs.clean_cache == 'true' }}
+        shell: bash
+        run: |
+          rm -rf ../chromium/src/out/Default
 
       - name: Configure GN Build Args
         shell: bash
@@ -138,15 +146,63 @@ jobs:
         run: |
           cp "$GITHUB_WORKSPACE/14_ENGINE_PATCHES/chromium-138/mahi-engine.json" ../chromium/src/out/Default/mahi-engine.json
 
-      - name: Package Engine Archive
+      - name: Package Engine Archive (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $distSubdir = "$env:GITHUB_WORKSPACE\dist-engine\${{ matrix.archive_subdir }}"
+          New-Item -ItemType Directory -Force -Path $distSubdir | Out-Null
+          
+          # Copy runtime files excluding compiler intermediates and debug databases
+          Get-ChildItem -Path "..\chromium\src\out\Default" -Exclude "obj","gen",".ninja*","*.ninja","*.pdb","*.lib","*.exp","*.ilk" | ForEach-Object {
+              Copy-Item -Path $_.FullName -Destination (Join-Path $distSubdir $_.Name) -Recurse -Force
+          }
+          Copy-Item -Path "$env:GITHUB_WORKSPACE\14_ENGINE_PATCHES\chromium-138\mahi-engine.json" -Destination (Join-Path $distSubdir "mahi-engine.json") -Force
+          
+          Set-Location "$env:GITHUB_WORKSPACE\dist-engine"
+          if (Get-Command 7z -ErrorAction SilentlyContinue) {
+              7z a -tzip "${{ matrix.archive_name }}" "${{ matrix.archive_subdir }}"
+          } else {
+              Compress-Archive -Path "${{ matrix.archive_subdir }}\*" -DestinationPath "${{ matrix.archive_name }}" -Force
+          }
+          
+          $hash = (Get-FileHash -Algorithm SHA256 "${{ matrix.archive_name }}").Hash.ToLower()
+          "$hash  ${{ matrix.archive_name }}" | Out-File -FilePath "${{ matrix.archive_name }}.sha256" -Encoding ascii
+          echo "ARCHIVE_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Package Engine Archive (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/dist-engine/${{ matrix.archive_subdir }}"
-          cp -r ../chromium/src/out/Default/* "$GITHUB_WORKSPACE/dist-engine/${{ matrix.archive_subdir }}/"
-          cd "$GITHUB_WORKSPACE/dist-engine"
-          zip -r "${{ matrix.archive_name }}" "${{ matrix.archive_subdir }}"
+          DIST_DIR="$GITHUB_WORKSPACE/dist-engine/${{ matrix.archive_subdir }}"
+          mkdir -p "$DIST_DIR"
           
-          # Compute cryptographic SHA-256 hash
+          APP_DIR=$(find ../chromium/src/out/Default -maxdepth 1 -name "*.app" | head -n 1)
+          if [ -n "$APP_DIR" ]; then
+            cp -R "$APP_DIR" "$DIST_DIR/"
+            cp "$GITHUB_WORKSPACE/14_ENGINE_PATCHES/chromium-138/mahi-engine.json" "$DIST_DIR/mahi-engine.json"
+            cp "$GITHUB_WORKSPACE/14_ENGINE_PATCHES/chromium-138/mahi-engine.json" "$DIST_DIR/$(basename "$APP_DIR")/Contents/Resources/mahi-engine.json" 2>/dev/null || true
+          else
+            rsync -av --exclude="obj/" --exclude="gen/" --exclude=".ninja*" --exclude="*.ninja" --exclude="*.o" --exclude="*.a" --exclude="*.dSYM" ../chromium/src/out/Default/ "$DIST_DIR/"
+            cp "$GITHUB_WORKSPACE/14_ENGINE_PATCHES/chromium-138/mahi-engine.json" "$DIST_DIR/mahi-engine.json"
+          fi
+          
+          cd "$GITHUB_WORKSPACE/dist-engine"
+          zip -r -y "${{ matrix.archive_name }}" "${{ matrix.archive_subdir }}"
+          shasum -a 256 "${{ matrix.archive_name }}" > "${{ matrix.archive_name }}.sha256"
+          echo "ARCHIVE_SHA256=$(awk '{print $1}' "${{ matrix.archive_name }}.sha256")" >> $GITHUB_ENV
+
+      - name: Package Engine Archive (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          DIST_DIR="$GITHUB_WORKSPACE/dist-engine/${{ matrix.archive_subdir }}"
+          mkdir -p "$DIST_DIR"
+          rsync -av --exclude="obj/" --exclude="gen/" --exclude=".ninja*" --exclude="*.ninja" --exclude="*.o" --exclude="*.a" ../chromium/src/out/Default/ "$DIST_DIR/"
+          cp "$GITHUB_WORKSPACE/14_ENGINE_PATCHES/chromium-138/mahi-engine.json" "$DIST_DIR/mahi-engine.json"
+          
+          cd "$GITHUB_WORKSPACE/dist-engine"
+          zip -r -y "${{ matrix.archive_name }}" "${{ matrix.archive_subdir }}"
           sha256sum "${{ matrix.archive_name }}" > "${{ matrix.archive_name }}.sha256"
           echo "ARCHIVE_SHA256=$(awk '{print $1}' "${{ matrix.archive_name }}.sha256")" >> $GITHUB_ENV
 

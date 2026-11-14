@@ -87,6 +87,21 @@ export function validateAndNormalizeFingerprintCoherence(settings: any): Fingerp
       fp.webglVendor = 'Google Inc. (Apple)';
       fp.webglRenderer = 'ANGLE (Apple, Apple M1, Metal)';
     }
+  } else if (isLinux) {
+    if (fp.platform && fp.platform !== 'Linux x86_64') {
+      warnings.push(`Platform "${fp.platform}" contradicts Linux User-Agent. Normalized to "Linux x86_64".`);
+      fp.platform = 'Linux x86_64';
+    }
+    if (fp.isM1 || fp.architecture === 'arm64') {
+      warnings.push('Apple Silicon / ARM64 flag contradicts Linux x86_64 User-Agent. Cleared isM1.');
+      fp.isM1 = false;
+      fp.architecture = 'x86_64';
+    }
+    if (fp.webglRenderer && (fp.webglRenderer.includes('Direct3D') || fp.webglRenderer.includes('Apple') || fp.webglRenderer.includes('Mali') || fp.webglRenderer.includes('Adreno'))) {
+      warnings.push(`WebGL renderer "${fp.webglRenderer}" contradicts Linux platform. Normalized to Mesa.`);
+      fp.webglVendor = 'Google Inc. (Mesa)';
+      fp.webglRenderer = 'ANGLE (Mesa, Mesa Intel(R) UHD Graphics 630 (CFL GT2), OpenGL 4.6)';
+    }
   } else if (isMobile) {
     if (fp.platform && !fp.platform.includes('Linux') && !fp.platform.includes('Android') && !fp.platform.includes('arm')) {
       warnings.push(`Platform "${fp.platform}" contradicts Android/Mobile User-Agent. Normalized to "Linux armv8l".`);
@@ -181,7 +196,9 @@ export function injectNativeStealthPreferences(
       ua.includes('Mobile') ||
       effectiveSettings?.mobile?.enable
     );
-    const isMacM1 = Boolean(ua.includes('Macintosh') && (fp.isM1 || fp.architecture === 'arm64'));
+    const isMac = !isMobile && ua.includes('Macintosh');
+    const isLinux = !isMobile && !isMac && (ua.includes('Linux') || ua.includes('X11'));
+    const isMacM1 = Boolean(isMac && (fp.isM1 || fp.architecture === 'arm64'));
 
     // WebGL Vendor & Renderer
     const webglVendor = fp.webglVendor || (isMobile ? 'ARM' : 'Google Inc. (NVIDIA)');
@@ -289,7 +306,7 @@ export function injectNativeStealthPreferences(
       // 8. Navigator & Platform Descriptors
       navigator: {
         max_touch_points: isMobile ? 5 : (fp.maxTouchPoints ?? 0),
-        platform: isMobile ? 'Linux armv8l' : (isMacM1 ? 'MacIntel' : 'Win32'),
+        platform: fp.platform || (isMobile ? 'Linux armv8l' : (isMac ? 'MacIntel' : (isLinux ? 'Linux x86_64' : 'Win32'))),
       },
       hardwareConcurrency: fp.hardwareConcurrency || 16,
       deviceMemory: fp.deviceMemory || 16,

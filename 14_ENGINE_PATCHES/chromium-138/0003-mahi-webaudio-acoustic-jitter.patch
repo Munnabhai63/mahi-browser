@@ -1,76 +1,65 @@
-From c18a7b32d91f42e58a209b182c4091a27b1c8103 Mon Sep 17 00:00:00 2001
+From 93b8d234a98a31e28b7e283d5a2d109f02c98a31 Mon Sep 17 00:00:00 2001
 From: Mahi Browser Engine Team <dev@mahibrowser.local>
-Date: Fri, 14 Nov 2026 12:10:00 +0000
-Subject: [PATCH 3/7] feat(webaudio): native C++ WebAudio acoustic jitter reading
- prefs.mahi
+Date: Fri, 14 Nov 2026 12:00:00 +0000
+Subject: [PATCH 3/7] feat(webaudio): idempotent acoustic frequency jitter reading prefs.mahi
 
-Reads Default/Preferences -> prefs.mahi.audioContext.enable and noiseValue
-(with fallback to prefs.gologin) via PrefService inside Blink WebAudio pipeline.
-Perturbs AudioBuffer channel data samples deterministically to defeat
-acoustic frequency fingerprinting with zero in-place drift.
+Reads Default/Preferences -> prefs.mahi.audioContext (with prefs.gologin fallback)
+via renderer process config. Perturbs getChannelData buffer deterministically and
+guarantees idempotency via mahi_noise_applied_ to prevent drift across repeated queries.
 ---
- .../renderer/modules/webaudio/audio_buffer.cc      | 46 ++++++++++++++++++++++
- 1 file changed, 46 insertions(+)
-
+diff --git a/third_party/blink/renderer/modules/webaudio/audio_buffer.h b/third_party/blink/renderer/modules/webaudio/audio_buffer.h
+index 1111111..2222222 100644
+--- a/third_party/blink/renderer/modules/webaudio/audio_buffer.h
++++ b/third_party/blink/renderer/modules/webaudio/audio_buffer.h
+@@ -80,4 +80,7 @@
+   unsigned numberOfChannels() const { return channels_.size(); }
+   uint32_t length() const { return length_; }
+   float sampleRate() const { return sample_rate_; }
++
++ private:
++  mutable bool mahi_noise_applied_ = false;
+ };
 diff --git a/third_party/blink/renderer/modules/webaudio/audio_buffer.cc b/third_party/blink/renderer/modules/webaudio/audio_buffer.cc
-index 5e91a2b3c..8d41c82b1 100644
+index 1111111..2222222 100644
 --- a/third_party/blink/renderer/modules/webaudio/audio_buffer.cc
 +++ b/third_party/blink/renderer/modules/webaudio/audio_buffer.cc
-@@ -28,6 +28,10 @@
+@@ -20,5 +20,9 @@
+ #include "third_party/blink/renderer/modules/webaudio/audio_buffer.h"
  #include "third_party/blink/renderer/platform/audio/audio_bus.h"
- #include "third_party/blink/renderer/core/execution_context/execution_context.h"
- #include "third_party/blink/renderer/core/frame/local_dom_window.h"
-+#include "third_party/blink/renderer/core/frame/local_frame.h"
-+#include "components/prefs/pref_service.h"
-+#include "base/values.h"
++#include "base/command_line.h"
 +#include "base/hash/hash.h"
++#include "base/json/json_reader.h"
++#include "base/values.h"
  
  namespace blink {
  
-@@ -165,6 +169,48 @@ NotShared<DOMFloat32Array> AudioBuffer::getChannelData(
-     return NotShared<DOMFloat32Array>(nullptr);
-   }
- 
-+  // MAHI Native Anti-Detect Engine: Read prefs.mahi.audioContext (with prefs.gologin fallback)
-+  ExecutionContext* context = GetExecutionContext();
-+  if (context && context->IsLocalDOMWindow()) {
-+    LocalDOMWindow* window = To<LocalDOMWindow>(context);
-+    if (window && window->GetFrame()) {
-+      const PrefService* prefs = window->GetFrame()->GetPrefService();
-+      if (prefs) {
-+        const base::Value::Dict* mahiPrefs = prefs->GetDict("prefs.mahi");
-+        if (!mahiPrefs) mahiPrefs = prefs->GetDict("prefs.gologin");
-+        if (mahiPrefs) {
-+          const base::Value::Dict* audioDict = mahiPrefs->FindDict("audioContext");
-+          if (audioDict) {
-+            bool enabled = audioDict->FindBool("enable").value_or(true);
-+            if (enabled) {
-+              double noiseVal = audioDict->FindDouble("noiseValue").value_or(0.000001);
-+              DOMFloat32Array* channel_array = channels_[channel_index].Get();
-+              if (channel_array && channel_array->Data() && channel_array->length() > 0) {
-+                float* data = channel_array->Data();
-+                size_t len = channel_array->length();
-+                
-+                // Deterministic micro-jitter offset (preserves waveform integrity while preventing hash identification)
-+                uint32_t seed = static_cast<uint32_t>(noiseVal * 1000000.0) + channel_index * 17;
-+                float offset = static_cast<float>(noiseVal * 0.1);
-+                
-+                for (size_t i = 0; i < len; i += 100) {
-+                  uint32_t hash_step = base::PersistentHash(&seed, sizeof(seed));
-+                  float delta = (hash_step % 2 == 0) ? offset : -offset;
-+                  data[i] += delta;
-+                  seed += 7;
-+                }
-+              }
-+            }
+@@ -120,3 +124,27 @@
+   DOMFloat32Array* channel_data = channels_[channel_index].Get();
++  // MAHI Idempotent Acoustic Jitter (prefs.mahi.audioContext)
++  if (channel_data && !mahi_noise_applied_) {
++    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++    if (cmd && cmd->HasSwitch("mahi-config")) {
++      auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
++      if (parsed && parsed->is_dict()) {
++        const base::Value::Dict& root = parsed->GetDict();
++        bool audio_enable = root.FindBoolByDottedPath("audioContext.enable").value_or(true);
++        double noise_val = root.FindDoubleByDottedPath("audioContext.noiseValue").value_or(0.0);
++        if (audio_enable && noise_val > 0.0) {
++          float* data = channel_data->Data();
++          uint32_t len = channel_data->length();
++          uint32_t seed = static_cast<uint32_t>(noise_val * 10000000.0) ^ (channel_index * 37 + length_);
++          for (uint32_t i = 0; i < len; i += 64) {
++            uint32_t jitter = base::PersistentHash(&seed, sizeof(seed)) % 100;
++            float delta = (static_cast<float>(jitter) - 50.0f) * static_cast<float>(noise_val) * 0.000001f;
++            data[i] += delta;
++            seed += 23;
 +          }
++          mahi_noise_applied_ = true;
 +        }
 +      }
 +    }
 +  }
-+
-   return NotShared<DOMFloat32Array>(channels_[channel_index].Get());
+   return NotShared<DOMFloat32Array>(channel_data);
  }
- 
 -- 
 2.39.5

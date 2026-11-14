@@ -40,7 +40,6 @@ Write-Host "  MAHI BROWSER — Applying C++ Engine Patches to Chromium 138" -For
 Write-Host "  Target: $ChromiumSrc" -ForegroundColor Cyan
 Write-Host "======================================================================" -ForegroundColor Cyan
 
-Push-Location $ChromiumSrc
 $AppliedCount = 0
 
 try {
@@ -57,12 +56,24 @@ try {
             exit 1
         }
 
+        # Check if patch targets nested V8 repository (src/v8) or Chromium root (src)
+        $touchesV8 = Select-String -Path $patchFile -Pattern "^(diff --git a/v8/|--- a/v8/)" -Quiet
+        if ($touchesV8) {
+            $targetDir = Join-Path $ChromiumSrc "v8"
+            $stripArgs = @("-p2")
+        } else {
+            $targetDir = $ChromiumSrc
+            $stripArgs = @("-p1")
+        }
+
         Write-Host -NoNewline "[+] Testing patch: $line ... "
-        $checkProcess = Start-Process -FilePath "git" -ArgumentList @("apply", "--check", "--whitespace=nowarn", $patchFile) -NoNewWindow -Wait -PassThru
+        $checkArgs = @("apply", "--check", "--whitespace=nowarn") + $stripArgs + @($patchFile)
+        $checkProcess = Start-Process -FilePath "git" -ArgumentList $checkArgs -WorkingDirectory $targetDir -NoNewWindow -Wait -PassThru
         if ($checkProcess.ExitCode -eq 0) {
             Write-Host "OK" -ForegroundColor Green
             Write-Host -NoNewline "    Applying: $line ... "
-            $applyProcess = Start-Process -FilePath "git" -ArgumentList @("apply", "--whitespace=nowarn", $patchFile) -NoNewWindow -Wait -PassThru
+            $applyArgs = @("apply", "--whitespace=nowarn") + $stripArgs + @($patchFile)
+            $applyProcess = Start-Process -FilePath "git" -ArgumentList $applyArgs -WorkingDirectory $targetDir -NoNewWindow -Wait -PassThru
             if ($applyProcess.ExitCode -eq 0) {
                 Write-Host "APPLIED" -ForegroundColor Green
                 $AppliedCount++
@@ -72,7 +83,8 @@ try {
             }
         } else {
             # Check if patch is already applied in reverse
-            $reverseProcess = Start-Process -FilePath "git" -ArgumentList @("apply", "--reverse", "--check", $patchFile) -NoNewWindow -Wait -PassThru
+            $reverseArgs = @("apply", "--reverse", "--check") + $stripArgs + @($patchFile)
+            $reverseProcess = Start-Process -FilePath "git" -ArgumentList $reverseArgs -WorkingDirectory $targetDir -NoNewWindow -Wait -PassThru
             if ($reverseProcess.ExitCode -eq 0) {
                 Write-Host "ALREADY APPLIED (skipping)" -ForegroundColor Yellow
                 $AppliedCount++
@@ -87,6 +99,7 @@ try {
     Write-Host "======================================================================" -ForegroundColor Cyan
     Write-Host "  SUCCESS: Applied $AppliedCount MAHI C++ patches cleanly." -ForegroundColor Green
     Write-Host "======================================================================" -ForegroundColor Cyan
-} finally {
-    Pop-Location
+} catch {
+    Write-Error $_
+    exit 1
 }

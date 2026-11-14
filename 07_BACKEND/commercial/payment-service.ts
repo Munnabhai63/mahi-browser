@@ -899,6 +899,12 @@ export class PaymentService {
     }
 
     // 4. Validate Amount & Currency Consistency against target plan
+    if (event.type === 'payment.succeeded' || event.type === 'payment.failed') {
+      if (!event.planId || !event.planId.trim()) {
+        throw new Error('PLAN_NOT_FOUND: Webhook references missing or empty planId.');
+      }
+    }
+
     const isUsd = event.currency === 'USD';
     let expectedAmount: number;
     if (event.planId.startsWith('plan_')) {
