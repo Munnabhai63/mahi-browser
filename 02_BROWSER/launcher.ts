@@ -2325,6 +2325,12 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
       debugLog(`[Launcher Step 4/7] Configured font masking list (${settings.fingerprint.fonts.length} fonts).`);
     }
 
+    // Native C++ CDP Execution Isolation (rebrowser-patches parity)
+    if (isNativeStealth) {
+      args.push('--mahi-cdp-isolated');
+      debugLog(`[Launcher Step 4/7] Configured native CDP execution isolation (--mahi-cdp-isolated).`);
+    }
+
     debugLog(`[Launcher Step 4/7] Built ${args.length} sanitized production launch arguments.`);
 
     // -------------------------------------------------------------
@@ -2414,12 +2420,13 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
     debugLog(`[Launcher Step 6/7] Spawning browser executable: ${executablePath}`);
     debugLog(`[Launcher Step 6/7] Target: ${executablePath} | Args count: ${args.length}`);
 
-    // Clean execution environment: Suppress Chromium API keys missing banner
+    // Clean execution environment: Suppress Chromium API keys missing banner and propagate CDP isolation
     const browserEnv: Record<string, string | undefined> = {
       ...process.env,
       GOOGLE_API_KEY: 'no',
       GOOGLE_DEFAULT_CLIENT_ID: 'no',
       GOOGLE_DEFAULT_CLIENT_SECRET: 'no',
+      ...(isNativeStealth || args.includes('--mahi-cdp-isolated') ? { MAHI_CDP_ISOLATED: '1' } : {}),
     };
 
     const child = spawn(executablePath, args, {

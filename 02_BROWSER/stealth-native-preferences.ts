@@ -308,6 +308,9 @@ export function injectNativeStealthPreferences(
         max_touch_points: isMobile ? 5 : (fp.maxTouchPoints ?? 0),
         platform: fp.platform || (isMobile ? 'Linux armv8l' : (isMac ? 'MacIntel' : (isLinux ? 'Linux x86_64' : 'Win32'))),
       },
+      userAgent: ua,
+      os: fp.platform || (isMobile ? 'Linux armv8l' : (isMac ? 'MacIntel' : (isLinux ? 'Linux x86_64' : 'Win32'))),
+      hardwareArchitecture: isMobile ? 'arm' : (isMacM1 ? 'arm' : (fp.architecture || 'x86')),
       hardwareConcurrency: fp.hardwareConcurrency || 16,
       deviceMemory: fp.deviceMemory || 16,
       battery: {

@@ -29,7 +29,7 @@ index e856d9c..4b71fa0 100644
  #include "base/command_line.h"
 +#include "base/json/json_writer.h"
  #include "base/containers/contains.h"
-@@ -2628,6 +2629,26 @@
+@@ -2628,6 +2629,29 @@
  void ChromeContentBrowserClient::AppendExtraCommandLineSwitches(
      base::CommandLine* command_line,
      int child_process_id) {
@@ -52,6 +52,9 @@ index e856d9c..4b71fa0 100644
 +        }
 +      }
 +    }
++  }
++  if (base::CommandLine::ForCurrentProcess()->HasSwitch("mahi-cdp-isolated")) {
++    command_line->AppendSwitch("mahi-cdp-isolated");
 +  }
    crash_keys::AppendStringAnnotationsCommandLineSwitch(command_line);
  #if BUILDFLAG(IS_MAC)
@@ -162,7 +165,7 @@ diff --git a/third_party/blink/renderer/core/execution_context/navigator_base.cc
 index 64bdfb1..c3182ef 100644
 --- a/third_party/blink/renderer/core/execution_context/navigator_base.cc
 +++ b/third_party/blink/renderer/core/execution_context/navigator_base.cc
-@@ -11,5 +11,9 @@
+@@ -11,5 +11,10 @@
  #include "third_party/blink/renderer/core/frame/navigator_concurrent_hardware.h"
  #include "third_party/blink/renderer/core/probe/core_probes.h"
  #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
@@ -170,9 +173,10 @@ index 64bdfb1..c3182ef 100644
 +#include "base/json/json_reader.h"
 +#include "base/no_destructor.h"
 +#include "base/values.h"
++#include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
  
  #if !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_WIN)
-@@ -53,3 +57,16 @@
+@@ -53,3 +58,16 @@
  String NavigatorBase::platform() const {
 +  // MAHI Native Anti-Detect Engine: Read platform from prefs.mahi via cached renderer config
 +  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
@@ -189,6 +193,94 @@ index 64bdfb1..c3182ef 100644
 +  }
    ExecutionContext* execution_context = GetExecutionContext();
  
+@@ -95,7 +113,85 @@
+ UserAgentMetadata NavigatorBase::GetUserAgentMetadata() const {
+   ExecutionContext* execution_context = GetExecutionContext();
+-  return execution_context ? execution_context->GetUserAgentMetadata()
+-                           : blink::UserAgentMetadata();
++  UserAgentMetadata metadata = execution_context
++                                   ? execution_context->GetUserAgentMetadata()
++                                   : blink::UserAgentMetadata();
++  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
++    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++    if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();
++    auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
++    if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));
++    return std::optional<base::Value::Dict>();
++  }());
++  if (s_config->has_value()) {
++    const base::Value::Dict& cfg = **s_config;
++    const std::string* plat = cfg.FindStringByDottedPath("navigator.platform");
++    if (!plat) plat = cfg.FindString("os");
++    if (plat && !plat->empty()) {
++      if (plat->find("Win") != std::string::npos) {
++        metadata.platform = "Windows";
++        metadata.platform_version = "15.0.0";
++      } else if (plat->find("Mac") != std::string::npos) {
++        metadata.platform = "macOS";
++        metadata.platform_version = "15.0.0";
++      } else if (plat->find("Linux") != std::string::npos) {
++        metadata.platform = "Linux";
++        metadata.platform_version = "6.5.0";
++      } else if (plat->find("Android") != std::string::npos) {
++        metadata.platform = "Android";
++        metadata.platform_version = "14.0.0";
++      } else {
++        metadata.platform = *plat;
++      }
++    }
++    const std::string* os_ver = cfg.FindString("osVersion");
++    if (os_ver && !os_ver->empty()) {
++      metadata.platform_version = *os_ver;
++    }
++    std::optional<bool> mobile_enable = cfg.FindBoolByDottedPath("mobile.enable");
++    if (!mobile_enable) mobile_enable = cfg.FindBool("isMobile");
++    if (mobile_enable.has_value()) {
++      metadata.mobile = *mobile_enable;
++    }
++    const std::string* arch = cfg.FindString("hardwareArchitecture");
++    if (!arch) arch = cfg.FindString("cpuArchitecture");
++    if (arch && !arch->empty()) {
++      metadata.architecture = *arch;
++    } else {
++      bool is_m1 = cfg.FindBool("is_m1").value_or(false);
++      if (is_m1 || (plat && plat->find("Mac") != std::string::npos && cfg.FindBool("isAppleSilicon").value_or(false))) {
++        metadata.architecture = "arm";
++      } else {
++        metadata.architecture = "x86";
++      }
++    }
++    metadata.bitness = "64";
++    const std::string* ua = cfg.FindString("userAgent");
++    if (ua && !ua->empty()) {
++      size_t pos = ua->find("Chrome/");
++      if (pos != std::string::npos) {
++        size_t start = pos + 7;
++        size_t end = ua->find(' ', start);
++        if (end == std::string::npos) end = ua->length();
++        std::string full_ver = ua->substr(start, end - start);
++        if (!full_ver.empty()) {
++          metadata.full_version = full_ver;
++          size_t dot_pos = full_ver.find('.');
++          std::string major_ver = (dot_pos != std::string::npos) ? full_ver.substr(0, dot_pos) : full_ver;
++          UserAgentBrandList major_brands;
++          UserAgentBrandList full_brands;
++          major_brands.emplace_back("Chromium", major_ver);
++          major_brands.emplace_back("Not/A)Brand", "24");
++          major_brands.emplace_back("Google Chrome", major_ver);
++          full_brands.emplace_back("Chromium", full_ver);
++          full_brands.emplace_back("Not/A)Brand", "24.0.0.0");
++          full_brands.emplace_back("Google Chrome", full_ver);
++          metadata.brand_version_list = std::move(major_brands);
++          metadata.brand_full_version_list = std::move(full_brands);
++        }
++      }
++    }
++  }
++  return metadata;
+ }
+ 
+ }  // namespace blink
 diff --git a/third_party/blink/renderer/core/timezone/timezone_controller.cc b/third_party/blink/renderer/core/timezone/timezone_controller.cc
 index 8e4166b..3e5917a 100644
 --- a/third_party/blink/renderer/core/timezone/timezone_controller.cc

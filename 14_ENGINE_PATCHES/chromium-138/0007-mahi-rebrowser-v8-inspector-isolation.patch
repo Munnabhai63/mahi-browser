@@ -11,7 +11,15 @@ diff --git a/v8/src/inspector/v8-runtime-agent-impl.cc b/v8/src/inspector/v8-run
 index 24d69d3..98214fa 100644
 --- a/v8/src/inspector/v8-runtime-agent-impl.cc
 +++ b/v8/src/inspector/v8-runtime-agent-impl.cc
-@@ -37,6 +37,7 @@
+@@ -33,12 +33,15 @@
+ #include "src/inspector/v8-runtime-agent-impl.h"
+ 
+ #include <inttypes.h>
++#include <cstdlib>
++#include <cstring>
+ 
+ #include <memory>
+ 
  #include "../../third_party/inspector_protocol/crdtp/json.h"
  #include "include/v8-container.h"
  #include "include/v8-context.h"
@@ -19,7 +27,7 @@ index 24d69d3..98214fa 100644
  #include "include/v8-cppgc.h"
  #include "include/v8-function.h"
  #include "include/v8-inspector.h"
-@@ -355,16 +356,17 @@
+@@ -355,16 +358,17 @@
  void V8RuntimeAgentImpl::evaluate(
      const String16& expression, std::optional<String16> objectGroup,
      std::optional<bool> includeCommandLineAPI, std::optional<bool> silent,
@@ -37,7 +45,7 @@ index 24d69d3..98214fa 100644
    TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("devtools.timeline"),
                 "EvaluateScript");
    int contextId = 0;
-@@ -378,9 +380,35 @@
+@@ -378,9 +382,35 @@
    InjectedScript::ContextScope scope(m_session, contextId);
    response = scope.initialize();
    if (!response.IsSuccess()) {
@@ -73,7 +81,7 @@ index 24d69d3..98214fa 100644
  
    if (silent.value_or(false)) scope.ignoreExceptionsAndMuteConsole();
    if (userGesture.value_or(false)) scope.pretendUserGesture();
-@@ -417,6 +446,17 @@
+@@ -417,6 +449,17 @@
      maybeResultValue = v8::debug::EvaluateGlobal(m_inspector->isolate(), source,
                                                   mode, replMode);
    }  // Run microtasks before returning result.
@@ -91,17 +99,37 @@ index 24d69d3..98214fa 100644
  
    // Re-initialize after running client's code, as it could have destroyed
    // context or session.
-@@ -1090,5 +1132,10 @@
+@@ -1090,5 +1134,14 @@
    m_state->setBoolean(V8RuntimeAgentImplState::runtimeEnabled, true);
    m_inspector->debugger()->setMaxCallStackSizeToCapture(
        this, V8StackTraceImpl::kDefaultMaxCallStackSizeToCapture);
 -  m_session->reportAllContexts(this);
-+  // MAHI rebrowser-patches isolation: Gate reportAllContexts via inspector state property
++  // MAHI rebrowser-patches isolation: Gate reportAllContexts via inspector state property or MAHI_CDP_ISOLATED
 +  bool suppressContextCreated =
 +      m_state->booleanProperty("mahiSuppressContextCreated", false);
++  const char* env_isolated = std::getenv("MAHI_CDP_ISOLATED");
++  if (env_isolated && (std::strcmp(env_isolated, "1") == 0 || std::strcmp(env_isolated, "true") == 0)) {
++    suppressContextCreated = true;
++  }
 +  if (!suppressContextCreated) {
 +    m_session->reportAllContexts(this);
 +  }
    V8ConsoleMessageStorage* storage =
+@@ -1133,6 +1185,15 @@
+ void V8RuntimeAgentImpl::reportExecutionContextCreated(
+     InspectedContext* context) {
+   if (!m_enabled) return;
++  // MAHI rebrowser-patches isolation: Suppress executionContextCreated leak to prevent detection
++  bool suppressContextCreated =
++      m_state->booleanProperty("mahiSuppressContextCreated", false);
++  const char* env_isolated = std::getenv("MAHI_CDP_ISOLATED");
++  if (env_isolated && (std::strcmp(env_isolated, "1") == 0 || std::strcmp(env_isolated, "true") == 0)) {
++    suppressContextCreated = true;
++  }
++  if (suppressContextCreated) return;
++
+   context->setReported(m_session->sessionId(), true);
+   std::unique_ptr<protocol::Runtime::ExecutionContextDescription> description =
+       protocol::Runtime::ExecutionContextDescription::create()
 -- 
 2.39.5

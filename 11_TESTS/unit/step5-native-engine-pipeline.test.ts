@@ -13,6 +13,7 @@ import {
 } from '../../02_BROWSER/managed-engine.js';
 import {
   validateAndNormalizeFingerprintCoherence,
+  injectNativeStealthPreferences,
 } from '../../02_BROWSER/stealth-native-preferences.js';
 import { generateHumanPath } from '../../09_AUTOMATION/ai-humanizer.js';
 import { paymentService } from '../../07_BACKEND/commercial/payment-service.js';
@@ -276,6 +277,10 @@ describe('Step 5: Native C++ Chromium Anti-Detect Engine & Build Pipeline', () =
     expect(p5Content).toContain('FindString("langHeader")');
     expect(p5Content).toContain('FindList("languages")');
     expect(p5Content).toContain('FindStringByDottedPath("timezone.id")');
+    expect(p5Content).toContain('NavigatorBase::GetUserAgentMetadata()');
+    expect(p5Content).toContain('UserAgentMetadata metadata = execution_context');
+    expect(p5Content).toContain('major_brands.emplace_back("Chromium", major_ver);');
+    expect(p5Content).toContain('command_line->AppendSwitch("mahi-cdp-isolated");');
 
     // 0006 must omit navigator_automation_information.cc, use dotted path for webrtc.mode and set kRelay
     const p6Content = fs.readFileSync(path.join(patchesDir, '0006-mahi-ungoogled-privacy-telemetry-webrtc.patch'), 'utf8');
@@ -296,6 +301,10 @@ describe('Step 5: Native C++ Chromium Anti-Detect Engine & Build Pipeline', () =
     expect(p7Content).toContain('v8::Global<v8::Object> error_obj;');
     expect(p7Content).toContain('orig_prepare_stack_trace.Reset();');
     expect(p7Content).toContain('m_state->booleanProperty("mahiSuppressContextCreated", false)');
+    expect(p7Content).toContain('std::getenv("MAHI_CDP_ISOLATED")');
+    expect(p7Content).toContain('V8RuntimeAgentImpl::reportExecutionContextCreated(');
+    expect(p7Content).toContain('#include <cstdlib>');
+    expect(p7Content).toContain('#include <cstring>');
     expect(p7Content).not.toContain('__mahi_isolate_cdp__');
 
     // 0008 must contain ONLY PageHandler navigation lifecycle isolation
@@ -329,6 +338,12 @@ describe('Step 5: Native C++ Chromium Anti-Detect Engine & Build Pipeline', () =
     expect(workflow).toContain('linux64');
     expect(workflow).toContain('138.0.7204.0');
     expect(workflow).toContain('mahi-engine.json');
+    expect(workflow).toContain('timeout-minutes: 360');
+    expect(workflow).toContain('Free Disk Space (Ubuntu)');
+    expect(workflow).toContain('Free Disk Space (Windows)');
+    expect(workflow).toContain('--no-history');
+    expect(workflow).toContain('retention-days: 30');
+    expect(workflow).toContain('if-no-files-found: error');
   });
 
   // ==========================================================================
@@ -426,6 +441,19 @@ describe('Step 5: Native C++ Chromium Anti-Detect Engine & Build Pipeline', () =
     expect(resultE.valid).toBe(false);
     expect(resultE.normalizedSettings.fingerprint.platform).toBe('Linux x86_64');
     expect(resultE.normalizedSettings.fingerprint.webglRenderer).toContain('Mesa');
+
+    // Case F: Verify injectNativeStealthPreferences schema population for native C++ Client Hints
+    const storageDir = path.join(tempBaseDir, 'prefs-storage-test');
+    injectNativeStealthPreferences(
+      storageDir,
+      { id: 'test_prof_1', name: 'Profile 1' } as any,
+      intelMac
+    );
+    const prefsWritten = JSON.parse(fs.readFileSync(path.join(storageDir, 'Default', 'Preferences'), 'utf8'));
+    expect(prefsWritten.mahi.userAgent).toBe(intelMac.browser.userAgent);
+    expect(prefsWritten.mahi.os).toBe('MacIntel');
+    expect(prefsWritten.mahi.hardwareArchitecture).toBe('x86_64');
+    expect(prefsWritten.gologin.userAgent).toBe(intelMac.browser.userAgent);
   });
 
   // ==========================================================================
