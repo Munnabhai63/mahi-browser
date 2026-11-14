@@ -178,9 +178,39 @@ export function getSyncAuthHeaders(): Record<string, string> {
 }
 
 export function getEffectiveSyncPassphrase(): string {
+  // 1. Explicit user/account sync key
   const accountKey = getAccountSyncKey();
   if (accountKey) return accountKey;
-  return getSyncConfig().syncPassphrase;
+
+  // 2. User-configured custom sync passphrase (if non-default)
+  const config = getSyncConfig();
+  if (config.syncPassphrase && config.syncPassphrase !== DEFAULT_PASSPHRASE) {
+    return config.syncPassphrase;
+  }
+
+  // 3. User Account Isolation: Derive deterministic zero-knowledge secret from account identity
+  const session = loadEncryptedSession();
+  if (session?.account_id) {
+    return crypto
+      .createHash('sha256')
+      .update(`mahi-zk-sync-account:${session.account_id}:${session.email || ''}`)
+      .digest('hex');
+  }
+
+  // 4. Active License Isolation: Derive from hardware ID + signed license key
+  const lic = getActiveLicenseKey();
+  if (lic) {
+    return crypto
+      .createHash('sha256')
+      .update(`mahi-zk-sync-license:${getHWID()}:${lic}`)
+      .digest('hex');
+  }
+
+  // 5. Machine-isolated hardware key fallback
+  return crypto
+    .createHash('sha256')
+    .update(`mahi-zk-sync-device:${getHWID()}`)
+    .digest('hex');
 }
 
 export function isCloudSyncAllowed(): { allowed: boolean; reason?: string } {
@@ -1035,8 +1065,9 @@ export async function processSyncQueue(): Promise<void> {
 
         console.warn(`[CloudSync] Queue item ${item.profileId} failed (attempt ${item.attempts + 1}):`, err.message);
         item.attempts += 1;
-        if (item.attempts >= 3) {
-          queue.shift(); // drop after 3 attempts
+        if (item.attempts >= 5) {
+          updateLocalSyncStatus(item.profileId, 'ERROR');
+          queue.shift(); // drop after 5 failed attempts
         }
         saveQueue(queue);
         break; // Stop and retry later on network error

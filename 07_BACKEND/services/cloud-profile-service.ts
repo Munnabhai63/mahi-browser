@@ -548,6 +548,13 @@ export function acquireProfileLock(
     if (!access) {
       throw new Error('Access denied: Profile not found or not shared with you');
     }
+  } else {
+    // If cloud profile record does not exist yet, create placeholder record to preserve foreign key integrity
+    const nowIso = new Date().toISOString();
+    db.prepare(`
+      INSERT OR IGNORE INTO cloud_profiles (id, owner_id, local_profile_id, name, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(cloudProfileId, userId, cloudProfileId, 'Cloud Profile', nowIso, nowIso);
   }
 
   cleanupExpiredLocks();
@@ -604,6 +611,13 @@ export function renewProfileLock(
     if (!access) {
       throw new Error('Access denied: Profile not found or not shared with you');
     }
+  } else {
+    // If cloud profile record does not exist yet, create placeholder record to preserve foreign key integrity
+    const nowIso = new Date().toISOString();
+    db.prepare(`
+      INSERT OR IGNORE INTO cloud_profiles (id, owner_id, local_profile_id, name, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(cloudProfileId, userId, cloudProfileId, 'Cloud Profile', nowIso, nowIso);
   }
 
   cleanupExpiredLocks();

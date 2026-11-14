@@ -24,11 +24,28 @@ const PBKDF2_SALT = 'mahi-zero-knowledge-cloud-sync-salt-v1';
 
 /**
  * Derives a 256-bit user master encryption key from user passphrase or session secret.
+ * Optionally incorporates account/user identifier to ensure cross-user salt isolation.
  */
-export function deriveUserSyncKey(passphraseOrSecret: string, salt: string = PBKDF2_SALT): Buffer {
+export function deriveUserSyncKey(
+  passphraseOrSecret: string,
+  salt: string = PBKDF2_SALT,
+  userIdentifier?: string
+): Buffer {
+  if (!passphraseOrSecret || typeof passphraseOrSecret !== 'string') {
+    throw new Error('Sync passphrase or secret must be a non-empty string');
+  }
+
+  let effectiveSalt = salt;
+  if (userIdentifier && salt === PBKDF2_SALT) {
+    effectiveSalt = crypto
+      .createHash('sha256')
+      .update(`${PBKDF2_SALT}:${userIdentifier}`)
+      .digest('hex');
+  }
+
   return crypto.pbkdf2Sync(
     passphraseOrSecret,
-    salt,
+    effectiveSalt,
     PBKDF2_ITERATIONS,
     PBKDF2_KEY_LENGTH,
     PBKDF2_DIGEST
