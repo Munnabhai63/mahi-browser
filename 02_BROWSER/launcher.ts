@@ -1846,14 +1846,14 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
 
           args.push(`--proxy-server=http://127.0.0.1:${proxyTunnel.port}`);
           args.push('--proxy-bypass-list=<-loopback>');
-          args.push(`--host-resolver-rules="MAP * 0.0.0.0 , EXCLUDE ${proxy.host}"`);
+          args.push(`--host-resolver-rules=MAP * 0.0.0.0 , EXCLUDE ${proxy.host}`);
           args.push('--force-webrtc-ip-handling-policy');
           args.push('--webrtc-ip-handling-policy=disable_non_proxied_udp');
           debugLog(`[Launcher Step 5/7] Authenticating Tunnel ready: 127.0.0.1:${proxyTunnel.port} -> ${proxy.host}:${proxy.port}`);
         } else {
           args.push(`--proxy-server=${proxy.protocol}://${proxy.host}:${proxy.port}`);
           args.push('--proxy-bypass-list=<-loopback>');
-          args.push(`--host-resolver-rules="MAP * 0.0.0.0 , EXCLUDE ${proxy.host}"`);
+          args.push(`--host-resolver-rules=MAP * 0.0.0.0 , EXCLUDE ${proxy.host}`);
           args.push('--force-webrtc-ip-handling-policy');
           args.push('--webrtc-ip-handling-policy=disable_non_proxied_udp');
           debugLog(`[Launcher Step 5/7] Direct Proxy Server: ${proxy.protocol}://${proxy.host}:${proxy.port}`);

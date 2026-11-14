@@ -12,15 +12,16 @@ function downloadBuffer(url: string, maxRedirects = 5): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     if (maxRedirects <= 0) return reject(new Error('Too many redirects'));
     const parsedUrl = new URL(url);
+    const chromeVersion = (typeof process !== 'undefined' && process.versions && process.versions.chrome) || '130.0.0.0';
     const options = {
       hostname: parsedUrl.hostname,
       path: parsedUrl.pathname + parsedUrl.search,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'User-Agent': `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`,
         'Accept': 'application/x-chrome-extension,*/*',
       },
     };
-    https.get(options, (res) => {
+    const req = https.get(options, (res) => {
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         return downloadBuffer(res.headers.location, maxRedirects - 1).then(resolve).catch(reject);
       }
@@ -31,6 +32,10 @@ function downloadBuffer(url: string, maxRedirects = 5): Promise<Buffer> {
       res.on('data', (chunk) => chunks.push(chunk));
       res.on('end', () => resolve(Buffer.concat(chunks)));
       res.on('error', reject);
+    });
+    req.on('error', reject);
+    req.setTimeout(15000, () => {
+      req.destroy(new Error('CRX download timeout'));
     });
   });
 }
@@ -61,9 +66,10 @@ export function resolveLocalizedText(extDir: string, text: string | undefined): 
  * Downloads official CRX package from Google Web Store CDN and extracts pure ZIP payload
  */
 export async function downloadAndExtractCrx(extensionStoreId: string, targetDir: string): Promise<boolean> {
+  const chromeVersion = (typeof process !== 'undefined' && process.versions && process.versions.chrome) || '130.0.0.0';
   const urlTemplates = [
-    `https://clients2.google.com/service/update2/crx?response=redirect&os=win&arch=x64&os_arch=x86_64&nacl_arch=x86-64&prod=chromecrx&prodchannel=&prodversion=130.0.0.0&lang=en-US&acceptformat=crx2,crx3&x=id%3D${extensionStoreId}%26installsource%3Dondemand%26uc`,
-    `https://clients2.google.com/service/update2/crx?response=redirect&prodversion=130.0&acceptformat=crx2,crx3&x=id%3D${extensionStoreId}%26installsource%3Dondemand%26uc`,
+    `https://clients2.google.com/service/update2/crx?response=redirect&os=win&arch=x64&os_arch=x86_64&nacl_arch=x86-64&prod=chromecrx&prodchannel=&prodversion=${chromeVersion}&lang=en-US&acceptformat=crx2,crx3&x=id%3D${extensionStoreId}%26installsource%3Dondemand%26uc`,
+    `https://clients2.google.com/service/update2/crx?response=redirect&prodversion=${chromeVersion}&acceptformat=crx2,crx3&x=id%3D${extensionStoreId}%26installsource%3Dondemand%26uc`,
     `https://clients2.google.com/service/update2/crx?response=redirect&prodversion=138.0.7204.0&acceptformat=crx2,crx3&x=id%3D${extensionStoreId}%26installsource%3Dondemand%26uc`,
   ];
 

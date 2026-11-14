@@ -24,6 +24,7 @@ const api = {
   permanentDeleteProfile: (id) => ipcRenderer.invoke('profiles:permanentDelete', id),
   emptyTrash: () => ipcRenderer.invoke('profiles:emptyTrash'),
   cloneProfile: (dto) => ipcRenderer.invoke('profiles:clone', dto),
+  claimLegacy: (dto) => ipcRenderer.invoke('profiles:claimLegacy', dto),
 
 
   startProfile: (id) => ipcRenderer.invoke('profiles:start', id),

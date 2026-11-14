@@ -132,6 +132,7 @@ export interface MahiBrowserAPI {
   permanentDeleteProfile: (id: string) => Promise<boolean>;
   emptyTrash: () => Promise<{ deletedCount: number; success: boolean }>;
   cloneProfile: (dto: CloneProfileDTO) => Promise<Profile>;
+  claimLegacy: (dto: { targetOwnerId: string; profileIds?: string[] }) => Promise<{ success: boolean; claimedCount: number; message?: string }>;
 
 
   startProfile: (id: string) => Promise<{ success: boolean; pid?: number; error?: string }>;

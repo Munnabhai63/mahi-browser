@@ -156,6 +156,10 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
       const r = await apiPost('/profiles/clone', dto);
       return r.data || r;
     },
+    claimLegacy: async (dto) => {
+      const r = await apiPost('/profiles/claim-legacy', dto);
+      return r.data || r;
+    },
 
 
     // CRITICAL: startProfile and stopProfile must go through REST API

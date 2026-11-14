@@ -189,7 +189,7 @@ export function findProfileByNumber(num: number): Profile | undefined {
 }
 
 
-export function getProfileById(id: string, ownerId?: string): Profile | null {
+export function getProfileById(id: string, ownerId?: string, options?: { includeDeleted?: boolean }): Profile | null {
   const db = getDatabase();
   let query = `
     SELECT p.*, ps.settings_json 
@@ -198,6 +198,10 @@ export function getProfileById(id: string, ownerId?: string): Profile | null {
     WHERE p.id = ?
   `;
   const params: unknown[] = [id];
+
+  if (!options?.includeDeleted) {
+    query += " AND p.deleted_at IS NULL";
+  }
 
   if (ownerId) {
     if (ownerId === 'SYSTEM_OWNER' || ownerId === 'LOCAL_CLIENT') {
@@ -416,7 +420,7 @@ export function updateProfileStatus(id: string, status: ProfileStatus, lastError
 
 export function deleteProfile(id: string, ownerId?: string): boolean {
   const db = getDatabase();
-  const existing = getProfileById(id, ownerId);
+  const existing = getProfileById(id, ownerId, { includeDeleted: true });
   if (!existing) return false;
 
   // Remove all related records from associated tables
@@ -842,7 +846,7 @@ export function getTrashProfiles(ownerId?: string): Profile[] {
  */
 export function restoreProfile(id: string, ownerId?: string): Profile {
   const db = getDatabase();
-  const existing = getProfileById(id, ownerId);
+  const existing = getProfileById(id, ownerId, { includeDeleted: true });
   if (!existing) {
     throw new Error(`Profile ${id} not found or access denied`);
   }

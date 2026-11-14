@@ -40,12 +40,44 @@ export const PermissionsConfigSchema = z.object({
   midi: z.enum(['prompt', 'allow', 'block']).default('prompt'),
 });
 
+export const FingerprintConfigSchema = z.object({
+  canvas: z.string().optional(),
+  webgl: z.string().optional(),
+  audio: z.string().optional(),
+  clientRects: z.string().optional(),
+  webrtc: z.string().optional(),
+  webglVendor: z.string().optional(),
+  webglRenderer: z.string().optional(),
+  hardwareConcurrency: z.number().optional(),
+  deviceMemory: z.number().optional(),
+  canvasNoise: z.boolean().optional(),
+  audioContextNoise: z.boolean().optional(),
+  maxTouchPoints: z.number().optional(),
+  fonts: z.array(z.string()).optional(),
+  isM1: z.boolean().optional(),
+}).optional();
+
+export const FakeVideoCaptureSchema = z.object({
+  enable: z.boolean().optional(),
+  filePath: z.string().optional(),
+}).optional();
+
+export const MobileConfigSchema = z.object({
+  enable: z.boolean().optional(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  deviceScaleFactor: z.number().optional(),
+}).optional();
+
 export const ProfileSettingsSchema = z.object({
   browser: BrowserConfigSchema,
+  fingerprint: FingerprintConfigSchema,
   display: DisplayConfigSchema,
   locale: LocaleConfigSchema,
   network: NetworkConfigSchema,
   permissions: PermissionsConfigSchema,
+  fakeVideoCapture: FakeVideoCaptureSchema,
+  mobile: MobileConfigSchema,
 });
 
 export const CreateProfileDTOSchema = z.object({

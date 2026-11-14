@@ -24,6 +24,7 @@ interface ActiveProcessEntry {
   storageDir: string;
   proxyTunnel?: ProxyTunnelHandle;
   launchedAt: number;
+  closed?: boolean;
 }
 
 type StatusChangeListener = (event: { profileId: string; status: ProfileStatus; pid?: number; error?: string }) => void;
@@ -58,6 +59,7 @@ export function keepMainWindowActive(): void {
 
 class ProcessManager {
   private activeProcesses = new Map<string, ActiveProcessEntry>();
+  private startingProfiles = new Set<string>();
   private statusListeners = new Set<StatusChangeListener>();
 
   public addStatusListener(listener: StatusChangeListener): () => void {
@@ -111,6 +113,9 @@ class ProcessManager {
   }
 
   private handleProcessClosed(profileId: string, entry: ActiveProcessEntry, errorMsg?: string): void {
+    if (entry.closed) return;
+    entry.closed = true;
+
     this.activeProcesses.delete(profileId);
     try { recordSessionStop(profileId); } catch {}
     if (entry.proxyTunnel) {
@@ -157,84 +162,99 @@ class ProcessManager {
   public async startProfile(profileId: string): Promise<{ success: boolean; pid?: number; error?: string }> {
     debugLog(`[ProcessManager] Request received to start profile ID: ${profileId}`);
 
+    if (this.startingProfiles.has(profileId)) {
+      debugLog(`[ProcessManager] Profile ID ${profileId} is already in the process of starting.`);
+      return { success: false, error: `Profile ${profileId} is already starting` };
+    }
+
     if (this.isRunning(profileId)) {
       const active = this.activeProcesses.get(profileId);
       debugLog(`[ProcessManager] Profile ID ${profileId} is already running with PID: ${active?.pid}`);
       return { success: true, pid: active?.pid };
     }
 
-    const profile = getProfileById(profileId);
-    if (!profile) {
-      const errorMsg = `Profile ${profileId} not found in database.`;
-      debugLog(`[ProcessManager ERROR] ${errorMsg}`);
-      return { success: false, error: errorMsg };
-    }
+    this.startingProfiles.add(profileId);
 
-    debugLog(`[ProcessManager] Preparing to launch "${profile.name}"...`);
-
-    // Cloud lock coordination: if profile has active cloud binding, check/acquire distributed lock
     try {
-      const { getProfileCloudBinding, acquireCloudLock } = await import('../08_SECURITY/cloud-sync-service.js');
-      const binding = getProfileCloudBinding(profileId);
-      if (binding?.cloudProfileId) {
-        const lockRes = await acquireCloudLock(binding.cloudProfileId);
-        if (!lockRes.acquired) {
-          const errorMsg = `Profile is currently active on ${lockRes.heldBy || 'another device'}. Lock active until ${lockRes.expiresAt}`;
-          debugLog(`[ProcessManager ERROR] ${errorMsg}`);
-          this.notifyStatus(profileId, 'STOPPED', undefined, errorMsg);
-          return { success: false, error: errorMsg };
-        }
+      const profile = getProfileById(profileId);
+      if (!profile) {
+        const errorMsg = `Profile ${profileId} not found in database.`;
+        debugLog(`[ProcessManager ERROR] ${errorMsg}`);
+        return { success: false, error: errorMsg };
       }
-    } catch {
-      // Offline mode: never block local launch!
-    }
 
-    this.notifyStatus(profileId, 'STARTING');
+      debugLog(`[ProcessManager] Preparing to launch "${profile.name}"...`);
 
-    try {
-      const info = await launchBrowser(profile);
-      const child = info.process;
-      const pid = info.pid;
+      // Cloud lock coordination: if profile has active cloud binding, check/acquire distributed lock
+      try {
+        const { getProfileCloudBinding, acquireCloudLock } = await import('../08_SECURITY/cloud-sync-service.js');
+        const binding = getProfileCloudBinding(profileId);
+        if (binding?.cloudProfileId) {
+          const lockRes = await acquireCloudLock(binding.cloudProfileId);
+          if (!lockRes.acquired) {
+            const errorMsg = `Profile is currently active on ${lockRes.heldBy || 'another device'}. Lock active until ${lockRes.expiresAt}`;
+            debugLog(`[ProcessManager ERROR] ${errorMsg}`);
+            this.notifyStatus(profileId, 'STOPPED', undefined, errorMsg);
+            return { success: false, error: errorMsg };
+          }
+        }
+      } catch {
+        // Offline mode: never block local launch!
+      }
 
-      const entry: ActiveProcessEntry = {
-        process: child,
-        pid,
-        profileId,
-        profileName: profile.name,
-        storageDir: info.storageDir,
-        proxyTunnel: info.proxyTunnel,
-        launchedAt: Date.now(),
-      };
+      this.notifyStatus(profileId, 'STARTING');
 
-      this.activeProcesses.set(profileId, entry);
-      this.notifyStatus(profileId, 'RUNNING', pid);
+      try {
+        const info = await launchBrowser(profile);
+        const child = info.process;
+        const pid = info.pid;
 
-      // Keep MAHI Browser application window in focus so user screen does not shift away
-      keepMainWindowActive();
+        const entry: ActiveProcessEntry = {
+          process: child,
+          pid,
+          profileId,
+          profileName: profile.name,
+          storageDir: info.storageDir,
+          proxyTunnel: info.proxyTunnel,
+          launchedAt: Date.now(),
+        };
 
-      try { recordSessionStart(profileId); } catch {}
-      logActivity('PROFILE', 'SUCCESS', 'Start Browser', `Started "${profile.name}" [PID: ${pid}]`, profileId, profile.name);
+        this.activeProcesses.set(profileId, entry);
+        this.notifyStatus(profileId, 'RUNNING', pid);
 
+        // Keep MAHI Browser application window in focus so user screen does not shift away
+        keepMainWindowActive();
 
-      // Handle process termination cleanly
+        try { recordSessionStart(profileId); } catch {}
+        logActivity('PROFILE', 'SUCCESS', 'Start Browser', `Started "${profile.name}" [PID: ${pid}]`, profileId, profile.name);
 
-      child.on('exit', (code, signal) => {
-        debugLog(`[ProcessManager] Profile "${profile.name}" exited with code: ${code}, signal: ${signal}`);
-        this.handleProcessClosed(profileId, entry);
-      });
+        // Handle process termination cleanly
+        child.on('exit', (code, signal) => {
+          debugLog(`[ProcessManager] Profile "${profile.name}" exited with code: ${code}, signal: ${signal}`);
+          if (code !== 0 && code !== null) {
+            this.handleProcessClosed(profileId, entry, `Process exited abnormally with code ${code}`);
+          } else if (signal) {
+            this.handleProcessClosed(profileId, entry, `Process terminated by signal ${signal}`);
+          } else {
+            this.handleProcessClosed(profileId, entry);
+          }
+        });
 
-      child.on('error', (err) => {
-        debugLog(`[ProcessManager ERROR] Profile "${profile.name}" process error: ${err.message}`);
-        this.handleProcessClosed(profileId, entry, err.message);
-      });
+        child.on('error', (err) => {
+          debugLog(`[ProcessManager ERROR] Profile "${profile.name}" process error: ${err.message}`);
+          this.handleProcessClosed(profileId, entry, err.message);
+        });
 
-      return { success: true, pid };
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      debugLog(`[ProcessManager ERROR] Failed to start profile "${profile.name}": ${message}`);
-      this.notifyStatus(profileId, 'ERROR', undefined, message);
-      logActivity('PROFILE', 'ERROR', 'Launch Failed', `Launch failed for "${profile.name}": ${message}`, profileId, profile.name);
-      return { success: false, error: message };
+        return { success: true, pid };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        debugLog(`[ProcessManager ERROR] Failed to start profile "${profile.name}": ${message}`);
+        this.notifyStatus(profileId, 'ERROR', undefined, message);
+        logActivity('PROFILE', 'ERROR', 'Launch Failed', `Launch failed for "${profile.name}": ${message}`, profileId, profile.name);
+        return { success: false, error: message };
+      }
+    } finally {
+      this.startingProfiles.delete(profileId);
     }
   }
 
