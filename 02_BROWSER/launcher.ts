@@ -1482,8 +1482,21 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
   ];
 
   if (loadExtensionsArg) {
-    args.push(`--load-extension=${loadExtensionsArg}`);
-    args.push(`--disable-extensions-except=${loadExtensionsArg}`);
+    const cleanedExts = Array.from(
+      new Set(
+        loadExtensionsArg
+          .split(',')
+          .map((p) => p.trim().replace(/[/\\]+$/, ''))
+          .filter(Boolean)
+      )
+    ).join(',');
+
+    if (cleanedExts) {
+      args.push(`--load-extension=${cleanedExts}`);
+      // DO NOT add --disable-extensions-except: it disables the extension system and
+      // triggers Chromium's IDS_EXTENSION_INSTALL_NOT_ENABLED ("Installation is not enabled")
+      // on Chrome Web Store installs and disables user-installed extensions on restart.
+    }
   }
 
   // Baseline Clean Production Arguments
@@ -1664,7 +1677,15 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
     }
 
     const allExtensionPaths = [titleExtDir, ...profileExtensionPaths];
-    const loadExtensionsArg = allExtensionPaths.join(',');
+    const validExtensionPaths = Array.from(
+      new Set(
+        allExtensionPaths
+          .filter((p): p is string => Boolean(p && typeof p === 'string'))
+          .map((p) => path.resolve(p.trim()).replace(/[/\\]+$/, ''))
+          .filter((p) => fs.existsSync(p))
+      )
+    );
+    const loadExtensionsArg = validExtensionPaths.join(',');
 
     const args = buildSanitizedLaunchArgs({
       storageDir,

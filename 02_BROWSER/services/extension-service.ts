@@ -16,8 +16,8 @@ function downloadBuffer(url: string, maxRedirects = 5): Promise<Buffer> {
       hostname: parsedUrl.hostname,
       path: parsedUrl.pathname + parsedUrl.search,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Accept': '*/*',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Accept': 'application/x-chrome-extension,*/*',
       },
     };
     https.get(options, (res) => {
@@ -36,70 +36,157 @@ function downloadBuffer(url: string, maxRedirects = 5): Promise<Buffer> {
 }
 
 /**
- * Downloads official CRX package from Google Web Store CDN and extracts pure ZIP payload
+ * Resolves localized manifest strings (e.g. __MSG_appName__) from _locales directory
  */
-export async function downloadAndExtractCrx(extensionStoreId: string, targetDir: string): Promise<boolean> {
-  try {
-    const crxUrl = `https://clients2.google.com/service/update2/crx?response=redirect&prodversion=131.0.0.0&acceptformat=crx2,crx3&x=id%3D${extensionStoreId}%26installsource%3Dondemand%26uc&nacl_arch=x86-64`;
-    const crxBuffer = await downloadBuffer(crxUrl);
-
-    if (!crxBuffer || crxBuffer.length < 100) {
-      throw new Error(`CRX download returned empty or too small (${crxBuffer?.length || 0} bytes)`);
-    }
-
-    // Locate ZIP magic PK\x03\x04
-    const pkIndex = crxBuffer.indexOf(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
-    if (pkIndex < 0) {
-      throw new Error('Invalid CRX archive: ZIP header not found');
-    }
-
-    const zipBuffer = crxBuffer.subarray(pkIndex);
-    if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true });
-    }
-
-    const tempZipPath = path.join(targetDir, '__temp_pkg.zip');
-    fs.writeFileSync(tempZipPath, zipBuffer);
-
-    try {
-      execSync(`tar -xf "${tempZipPath}" -C "${targetDir}"`, { stdio: 'ignore' });
-    } catch {
-      execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${tempZipPath}' -DestinationPath '${targetDir}' -Force"`, { stdio: 'ignore' });
-    } finally {
-      if (fs.existsSync(tempZipPath)) {
-        fs.rmSync(tempZipPath, { force: true });
-      }
-    }
-
-    // Crucial for Chromium: Remove reserved _metadata directory and update_url from manifest
-    const metaDir = path.join(targetDir, '_metadata');
-    if (fs.existsSync(metaDir)) {
-      try { fs.rmSync(metaDir, { recursive: true, force: true }); } catch {}
-    }
-
-    const manifestPath = path.join(targetDir, 'manifest.json');
-    if (fs.existsSync(manifestPath)) {
+export function resolveLocalizedText(extDir: string, text: string | undefined): string {
+  if (!text) return '';
+  if (!text.startsWith('__MSG_')) return text;
+  const key = text.replace(/^__MSG_|__$/g, '');
+  const locales = ['en', 'en_US', 'en_GB'];
+  for (const loc of locales) {
+    const msgFile = path.join(extDir, '_locales', loc, 'messages.json');
+    if (fs.existsSync(msgFile)) {
       try {
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-        let modified = false;
-        if (manifest.update_url) {
-          delete manifest.update_url;
-          modified = true;
-        }
-        if (modified) {
-          fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+        const msgs = JSON.parse(fs.readFileSync(msgFile, 'utf8'));
+        if (msgs[key]?.message) {
+          return msgs[key].message;
         }
       } catch {}
     }
-
-    return fs.existsSync(manifestPath);
-  } catch (err: any) {
-    return false;
   }
+  return text;
+}
+
+/**
+ * Downloads official CRX package from Google Web Store CDN and extracts pure ZIP payload
+ */
+export async function downloadAndExtractCrx(extensionStoreId: string, targetDir: string): Promise<boolean> {
+  const urlTemplates = [
+    `https://clients2.google.com/service/update2/crx?response=redirect&os=win&arch=x64&os_arch=x86_64&nacl_arch=x86-64&prod=chromecrx&prodchannel=&prodversion=130.0.0.0&lang=en-US&acceptformat=crx2,crx3&x=id%3D${extensionStoreId}%26installsource%3Dondemand%26uc`,
+    `https://clients2.google.com/service/update2/crx?response=redirect&prodversion=130.0&acceptformat=crx2,crx3&x=id%3D${extensionStoreId}%26installsource%3Dondemand%26uc`,
+    `https://clients2.google.com/service/update2/crx?response=redirect&prodversion=138.0.7204.0&acceptformat=crx2,crx3&x=id%3D${extensionStoreId}%26installsource%3Dondemand%26uc`,
+  ];
+
+  for (const crxUrl of urlTemplates) {
+    try {
+      const crxBuffer = await downloadBuffer(crxUrl);
+
+      if (!crxBuffer || crxBuffer.length < 100) continue;
+
+      // Locate ZIP magic PK\x03\x04
+      const pkIndex = crxBuffer.indexOf(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+      if (pkIndex < 0) continue;
+
+      const zipBuffer = crxBuffer.subarray(pkIndex);
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+
+      const tempZipPath = path.join(targetDir, '__temp_pkg.zip');
+      fs.writeFileSync(tempZipPath, zipBuffer);
+
+      try {
+        execSync(`tar -xf "${tempZipPath}" -C "${targetDir}"`, { stdio: 'ignore' });
+      } catch {
+        execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${tempZipPath}' -DestinationPath '${targetDir}' -Force"`, { stdio: 'ignore' });
+      } finally {
+        if (fs.existsSync(tempZipPath)) {
+          fs.rmSync(tempZipPath, { force: true });
+        }
+      }
+
+      // Crucial for Chromium: Remove reserved _metadata directory and update_url from manifest
+      const metaDir = path.join(targetDir, '_metadata');
+      if (fs.existsSync(metaDir)) {
+        try { fs.rmSync(metaDir, { recursive: true, force: true }); } catch {}
+      }
+
+      const manifestPath = path.join(targetDir, 'manifest.json');
+      if (fs.existsSync(manifestPath)) {
+        try {
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+          let modified = false;
+          if (manifest.update_url) {
+            delete manifest.update_url;
+            modified = true;
+          }
+          if (modified) {
+            fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+          }
+        } catch {}
+        return true;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return false;
 }
 
 export function getExtensions(profileId: string): ExtensionItem[] {
   const db = getDatabase();
+
+  // Try to sync natively installed extensions from the profile directory
+  try {
+    const profile = getProfileById(profileId);
+    if (profile?.storagePath) {
+      const defaultExtDir = path.join(profile.storagePath, 'Default', 'Extensions');
+      if (fs.existsSync(defaultExtDir)) {
+        const extFolders = fs.readdirSync(defaultExtDir);
+        for (const extFolder of extFolders) {
+          const extPath = path.join(defaultExtDir, extFolder);
+          if (!fs.statSync(extPath).isDirectory()) continue;
+
+          const versions = fs.readdirSync(extPath).filter((v) => {
+            const vPath = path.join(extPath, v);
+            return fs.statSync(vPath).isDirectory() && fs.existsSync(path.join(vPath, 'manifest.json'));
+          });
+
+          if (versions.length === 0) continue;
+          versions.sort();
+          const latestVersion = versions[versions.length - 1];
+          const versionDir = path.join(extPath, latestVersion);
+          const manifestPath = path.join(versionDir, 'manifest.json');
+
+          try {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            const extName = resolveLocalizedText(versionDir, manifest.name) || extFolder;
+            const extVersion = manifest.version || latestVersion;
+            const extDesc = resolveLocalizedText(versionDir, manifest.description) || '';
+
+            let iconPath: string | undefined = undefined;
+            if (manifest.icons) {
+              const iconKey = Object.keys(manifest.icons).sort((a, b) => parseInt(b) - parseInt(a))[0];
+              if (iconKey && manifest.icons[iconKey]) {
+                iconPath = path.join(versionDir, manifest.icons[iconKey]);
+              }
+            }
+
+            const existing = db.prepare('SELECT id FROM extensions WHERE profile_id = ? AND extension_id = ?').get(profileId, extFolder) as { id: string } | undefined;
+            if (!existing) {
+              const newId = crypto.randomUUID();
+              db.prepare(`
+                INSERT INTO extensions (id, profile_id, extension_id, name, version, description, enabled, source_type, source_path, icon_path, installed_at)
+                VALUES (?, ?, ?, ?, ?, ?, 1, 'webstore', ?, ?, ?)
+              `).run(
+                newId,
+                profileId,
+                extFolder,
+                extName,
+                extVersion,
+                extDesc || null,
+                versionDir,
+                iconPath || null,
+                new Date().toISOString()
+              );
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch {}
+
   const rows = db.prepare('SELECT * FROM extensions WHERE profile_id = ? ORDER BY name ASC').all(profileId) as {
     id: string;
     profile_id: string;
@@ -147,9 +234,9 @@ export function installExtension(dto: InstallExtensionDTO): ExtensionItem {
     if (fs.existsSync(manifestPath)) {
       try {
         const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-        if (manifest.name) name = manifest.name;
+        if (manifest.name) name = resolveLocalizedText(srcPath, manifest.name) || manifest.name;
         if (manifest.version) version = manifest.version;
-        if (manifest.description) description = manifest.description;
+        if (manifest.description) description = resolveLocalizedText(srcPath, manifest.description) || manifest.description;
         if (manifest.icons) {
           const iconKey = Object.keys(manifest.icons).sort((a, b) => parseInt(b) - parseInt(a))[0];
           if (iconKey && manifest.icons[iconKey]) {
@@ -227,12 +314,14 @@ export async function installFromWebStoreUrl(profileId: string, webStoreUrl: str
 
   const manifestPath = path.join(extDir, 'manifest.json');
   let name = `Web Store Extension (${extId.slice(0, 8)})`;
+  let version = '1.0.0';
+  let description = '';
   if (fs.existsSync(manifestPath)) {
     try {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-      if (manifest.name && !manifest.name.startsWith('__MSG_')) {
-        name = manifest.name;
-      }
+      name = resolveLocalizedText(extDir, manifest.name) || name;
+      version = manifest.version || version;
+      description = resolveLocalizedText(extDir, manifest.description) || '';
     } catch {}
   }
 
@@ -240,6 +329,7 @@ export async function installFromWebStoreUrl(profileId: string, webStoreUrl: str
     profileId,
     sourcePath: extDir,
     name,
+    version,
   });
 }
 
@@ -256,7 +346,26 @@ export function toggleExtension(profileId: string, extensionId: string, enabled:
 
 export function removeExtension(profileId: string, extensionId: string): boolean {
   const db = getDatabase();
+  const row = db.prepare('SELECT * FROM extensions WHERE profile_id = ? AND id = ?').get(profileId, extensionId) as {
+    source_path?: string;
+    extension_id?: string;
+    name?: string;
+  } | undefined;
+
+  if (row?.source_path && fs.existsSync(row.source_path)) {
+    try {
+      if (row.source_path.includes(path.join('Default', 'Extensions'))) {
+        const extParent = path.dirname(row.source_path);
+        fs.rmSync(extParent, { recursive: true, force: true });
+      } else {
+        fs.rmSync(row.source_path, { recursive: true, force: true });
+      }
+    } catch (rmErr) {
+      console.warn(`[ExtensionService] Could not remove files at ${row.source_path}:`, rmErr);
+    }
+  }
+
   db.prepare('DELETE FROM extensions WHERE profile_id = ? AND id = ?').run(profileId, extensionId);
-  logActivity('EXTENSION', 'WARNING', 'Remove Extension', `Removed extension from profile`, profileId);
+  logActivity('EXTENSION', 'WARNING', 'Remove Extension', `Removed extension ${row?.name || extensionId} from profile`, profileId);
   return true;
 }
