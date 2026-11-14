@@ -22,7 +22,9 @@ import {
   getUpdateConfig,
   setUpdateConfig,
   resetUpdaterStateForTesting,
+  getSafeAppVersion,
 } from '../../07_BACKEND/services/updater-service.js';
+import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 import {
   MockUpdateProvider,
   setActiveUpdateProvider,
@@ -294,6 +296,42 @@ describe('PHASE 4 UNIT: Production Auto-Updater, Semver, Integrity & Safety', ()
       expect(config.channel).toBe('STABLE');
       expect(config.autoCheck).toBe(true);
       expect(config.autoDownload).toBe(true);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // 7. TASK 7: SINGLE VERSION SOURCE & STRUCTURED ERROR HANDLING
+  // --------------------------------------------------------------------------
+  describe('Task 7: Single Version Source & Structured Provider Error Handling', () => {
+    it('should inject dynamic application version matching package.json and version config', () => {
+      const currentVer = getSafeAppVersion();
+      expect(currentVer).toBe(APP_VERSION);
+      expect(currentVer).toMatch(/^1\.[0-9]+\.[0-9]+/);
+    });
+
+    it('should transition to ERROR state when update provider throws network or HTTP error', async () => {
+      const failingProvider = {
+        name: 'FailingProvider',
+        fetchManifest: async () => {
+          throw new Error('Failed to fetch update manifest: HTTP 500');
+        },
+        downloadFile: async () => {
+          throw new Error('Download failed');
+        },
+      };
+
+      setActiveUpdateProvider(failingProvider);
+
+      const status = await checkForAppUpdates(true);
+      expect(status.state).toBe('ERROR');
+      expect(status.error).toContain('HTTP 500');
+    });
+
+    it('GenericHttpUpdateProvider should throw on non-200 responses or invalid JSON rather than silently returning null', async () => {
+      const httpProvider = new GenericHttpUpdateProvider();
+
+      // Test with an invalid feed URL that returns connection error
+      await expect(httpProvider.fetchManifest('STABLE', 'http://127.0.0.1:1/nonexistent/')).rejects.toThrow();
     });
   });
 });

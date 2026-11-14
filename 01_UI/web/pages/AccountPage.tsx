@@ -12,6 +12,7 @@ import {
   Globe2,
 } from 'lucide-react';
 import { useWebAuthStore } from '../state/useWebAuthStore.js';
+import { APP_VERSION } from '../../../10_CONFIG/shared/version.js';
 
 interface AccountPageProps {
   profileCount: number;
@@ -103,7 +104,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
           </div>
           <div className="text-right">
             <span className="px-2.5 py-1 bg-teal-500/10 border border-teal-500/30 text-teal-400 font-mono text-xs font-bold rounded-lg">
-              v1.1.1 Latest
+              v{APP_VERSION} Latest
             </span>
           </div>
         </div>

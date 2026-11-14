@@ -193,8 +193,9 @@ describe('PHASE 4 INTEGRATION: Complete Update Pipeline, Checksum Integrity & Da
     serveOffline = true;
 
     const status = await checkForAppUpdates(true);
-    // Should safely yield NOT_AVAILABLE without throwing uncaught exceptions or crashing
-    expect(status.state).toBe('NOT_AVAILABLE');
+    // Under Task 7 structured error handling, unreachable server safely transitions to ERROR with details
+    expect(status.state).toBe('ERROR');
+    expect(status.error).toBeDefined();
 
     serveOffline = false;
   });

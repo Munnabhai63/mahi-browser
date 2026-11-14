@@ -15,6 +15,7 @@ import {
   Download,
 } from 'lucide-react';
 import { WebTab } from '../components/WebDashboardLayout.js';
+import { APP_VERSION } from '../../../10_CONFIG/shared/version.js';
 
 interface OverviewPageProps {
   metrics: {
@@ -205,7 +206,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-400">
             <span>Latest Windows Build</span>
-            <span className="font-mono text-teal-400 font-bold">v1.1.1 (Phase 4 Auto-Updater)</span>
+            <span className="font-mono text-teal-400 font-bold">v{APP_VERSION} (Phase 4 Auto-Updater)</span>
           </div>
         </div>
 

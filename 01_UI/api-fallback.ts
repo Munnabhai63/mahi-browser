@@ -1,6 +1,7 @@
 import { MahiBrowserAPI } from '../10_CONFIG/shared/types/ipc.js';
 import { Profile } from '../10_CONFIG/shared/types/profile.js';
 import { getDefaultProfileSettings } from '../10_CONFIG/shared/constants/defaults.js';
+import { APP_VERSION } from '../10_CONFIG/shared/version.js';
 
 // Resilient API fallback — routes ALL calls through the local REST API
 // This activates when preload/IPC is not available (e.g. ESM preload failure)
@@ -488,15 +489,15 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     // Auto-Updater
     checkForUpdates: async (channel?: 'STABLE' | 'BETA') => ({
       state: 'NOT_AVAILABLE' as const,
-      currentVersion: '1.1.1',
+      currentVersion: APP_VERSION,
       channel: channel || 'STABLE',
     }),
     downloadUpdate: async () => true,
     installUpdate: async (_options?: any) => ({ success: true }),
-    getUpdateStatus: async () => ({ state: 'IDLE' as const, currentVersion: '1.1.1', channel: 'STABLE' as const }),
+    getUpdateStatus: async () => ({ state: 'IDLE' as const, currentVersion: APP_VERSION, channel: 'STABLE' as const }),
     getUpdateConfig: async () => ({ channel: 'STABLE' as const, autoCheck: true, autoDownload: true, notifyBeforeRestart: true }),
     setUpdateConfig: async (config: any) => ({ channel: 'STABLE' as const, autoCheck: true, autoDownload: true, notifyBeforeRestart: true, ...config }),
-    getAppVersion: async () => '1.1.7',
+    getAppVersion: async () => APP_VERSION,
 
     // Resource Monitoring & Memory Optimizer
     getFleetResources: async () => ({ totalMemoryMB: 0, totalCpuPercent: 0, activeProfilesCount: 0, profiles: {} }),
@@ -520,7 +521,7 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     updateFeatureFlag: async () => null,
     checkFeatureFlag: async () => true,
     getFleetDevices: async () => [],
-    getFleetTelemetry: async () => ({ deviceId: 'local', deviceName: 'Local Machine', status: 'IDLE', activeProfilesCount: 0, runningProfilePids: [], cpuUsagePercent: 10, memoryUsageMb: 1024, diskFreeMb: 50000, uptimeSeconds: 3600, clientVersion: '1.1.1', syncState: 'SYNCED', timestamp: new Date().toISOString() }),
+    getFleetTelemetry: async () => ({ deviceId: 'local', deviceName: 'Local Machine', status: 'IDLE', activeProfilesCount: 0, runningProfilePids: [], cpuUsagePercent: 10, memoryUsageMb: 1024, diskFreeMb: 50000, uptimeSeconds: 3600, clientVersion: APP_VERSION, syncState: 'SYNCED', timestamp: new Date().toISOString() }),
     revokeDevice: async () => true,
 
     // V2 Platform: API Keys
@@ -541,13 +542,13 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
           networkDownloadUrls: ['http://127.0.0.1:32123/download'],
           setupAvailable: true,
           portableAvailable: true,
-          setupFileName: 'MAHI BROWSER-1.1.1-Setup.exe',
-          portableFileName: 'MAHI BROWSER-1.1.1-Portable.exe',
-          setupPath: 'release/MAHI BROWSER-1.1.1-Setup.exe',
-          portablePath: 'release/MAHI BROWSER-1.1.1-Portable.exe',
+          setupFileName: `MAHI-Browser-Setup-${APP_VERSION}.exe`,
+          portableFileName: `MAHI-Browser-Portable-${APP_VERSION}.exe`,
+          setupPath: `release/MAHI-Browser-Setup-${APP_VERSION}.exe`,
+          portablePath: `release/MAHI-Browser-Portable-${APP_VERSION}.exe`,
           setupSizeMB: 92.1,
           portableSizeMB: 91.9,
-          version: '1.1.1',
+          version: APP_VERSION,
         };
       }
     },

@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "npm run build && electron .",
     "dev:vite": "vite",
-    "build": "node -e \"const fs=require('fs'); fs.rmSync('dist-electron',{recursive:true,force:true});\" && tsc --noEmit && vite build && node 12_SCRIPTS/fix-preload.cjs",
+    "build": "node -e \"const fs=require('fs'); fs.rmSync('dist-electron',{recursive:true,force:true});\" && node 12_SCRIPTS/sync-landing-version.cjs && tsc --noEmit && vite build && node 12_SCRIPTS/fix-preload.cjs",
+    "sync:version": "node 12_SCRIPTS/sync-landing-version.cjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "lint": "node -e \"console.log('Linting passed')\"",
     "test": "vitest run",

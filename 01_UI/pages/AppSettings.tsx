@@ -19,6 +19,7 @@ import { useToastStore } from '../stores/useToastStore.js';
 import { AppSettings } from '../../10_CONFIG/shared/types/settings.js';
 import { UpdateConfig, UpdateStatusEvent } from '../../10_CONFIG/shared/types/updater.js';
 import { NavigationPage } from '../components/Sidebar.js';
+import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 
 interface AppSettingsPageProps {
   onNavigate: (page: NavigationPage) => void;
@@ -38,6 +39,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
   });
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusEvent | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [appVersion, setAppVersion] = useState<string>(APP_VERSION);
   const [engineStatus, setEngineStatus] = useState<{ installed: boolean; version: string } | null>(null);
   const [isRepairingEngine, setIsRepairingEngine] = useState(false);
 
@@ -48,6 +50,11 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
 
   useEffect(() => {
     fetchSettings();
+    if (window.mahiAPI?.getAppVersion) {
+      window.mahiAPI.getAppVersion().then((v) => {
+        if (v) setAppVersion(v);
+      }).catch(() => {});
+    }
     if (window.mahiAPI?.getUpdateConfig) {
       window.mahiAPI.getUpdateConfig().then((cfg) => {
         if (cfg) setUpdateConfig(cfg);
@@ -464,7 +471,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
                   MAHI BROWSER Client Updates
                 </h4>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Current Version: <span className="font-mono font-semibold text-teal-500">v1.1.3</span> • By Munna Bhai (x64)
+                  Current Version: <span className="font-mono font-semibold text-teal-500">v{appVersion}</span> • By Munna Bhai (x64)
                 </p>
               </div>
 

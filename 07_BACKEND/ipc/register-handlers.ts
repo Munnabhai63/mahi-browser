@@ -1,6 +1,7 @@
 import { ipcMain, dialog, BrowserWindow, app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 import { verifyLicense, getHWID } from '../../08_SECURITY/license-service.js';
 import { isOnlineRevoked, isGraceExpired, getOnlineStatusSummary, checkLicenseStatusOnline } from '../../08_SECURITY/license-status-service.js';
 import { assertCanCreateProfile, getPlanLimitsInfo, assertCapability } from '../../08_SECURITY/freemium-guard.js';
@@ -2339,10 +2340,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('app:getVersion', async () => {
     try {
       if (app && typeof app.getVersion === 'function') {
-        return app.getVersion() || '1.1.7';
+        const v = app.getVersion();
+        if (v) return v;
       }
     } catch {}
-    return '1.1.7';
+    return APP_VERSION;
   });
 
   ipcMain.handle('account:verifyEmail', async (_e, dto: { token: string }) => {

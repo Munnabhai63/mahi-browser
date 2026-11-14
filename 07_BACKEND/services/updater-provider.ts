@@ -3,6 +3,7 @@ import https from 'node:https';
 import fs from 'node:fs';
 import path from 'node:path';
 import { UpdateChannel, UpdateReleaseManifest, UpdateProgress } from '../../10_CONFIG/shared/types/updater.js';
+import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 
 export interface UpdateProvider {
   name: string;
@@ -28,7 +29,7 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
     const manifestFile = channel === 'BETA' ? 'latest-beta.json' : 'latest.json';
     const targetUrl = new URL(manifestFile, baseUrl).toString();
 
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       try {
         const urlObj = new URL(targetUrl);
         const client = urlObj.protocol === 'https:' ? https : http;
@@ -37,7 +38,7 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
           targetUrl,
           {
             headers: {
-              'User-Agent': 'MAHI-Browser-Updater/1.1.3 (Windows NT 10.0; Win64; x64)',
+              'User-Agent': `MAHI-Browser-Updater/${APP_VERSION} (Windows NT 10.0; Win64; x64)`,
               Accept: 'application/json',
             },
             timeout: 10000,
@@ -45,7 +46,7 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
           (res) => {
             if (res.statusCode !== 200) {
               res.resume(); // Consume stream to free memory
-              resolve(null);
+              reject(new Error(`Failed to fetch update manifest: HTTP ${res.statusCode}`));
               return;
             }
 
@@ -58,8 +59,8 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
               try {
                 const parsed = JSON.parse(data);
                 resolve(parsed);
-              } catch {
-                resolve(null);
+              } catch (parseErr: any) {
+                reject(new Error(`Failed to parse update manifest JSON: ${parseErr?.message || parseErr}`));
               }
             });
           }
@@ -67,14 +68,14 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
 
         req.on('timeout', () => {
           req.destroy(new Error('Update check request timed out'));
-          resolve(null);
+          reject(new Error('Update check request timed out'));
         });
 
-        req.on('error', () => {
-          resolve(null);
+        req.on('error', (err) => {
+          reject(new Error(`Update check network failure: ${err.message}`));
         });
-      } catch {
-        resolve(null);
+      } catch (err: any) {
+        reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
   }
@@ -103,7 +104,7 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
           fileUrl,
           {
             headers: {
-              'User-Agent': 'MAHI-Browser-Updater/1.1.3 (Windows NT 10.0; Win64; x64)',
+              'User-Agent': `MAHI-Browser-Updater/${APP_VERSION} (Windows NT 10.0; Win64; x64)`,
             },
             timeout: 60000,
           },

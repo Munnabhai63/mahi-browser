@@ -16,6 +16,7 @@ import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getEmailProvider } from '../../05_AUTH/email-service.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
+import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 
 export interface SupportTicket {
   id: string;
@@ -120,8 +121,8 @@ export function classifySupportQuery(query: string): {
       suggestedReply:
         'Installing MAHI Browser is fast and straightforward:\n' +
         '1. Create your account or log in at https://mahibrowser.com/login.\n' +
-        '2. Go to https://mahibrowser.com/download to get the official Windows x64 v1.1.1 installer (~85 MB).\n' +
-        '3. Run MAHI-Browser-Setup-1.1.1.exe. If Microsoft Defender SmartScreen appears, click "More info" → "Run anyway".\n' +
+        `2. Go to https://mahibrowser.com/download to get the official Windows x64 v${APP_VERSION} installer (~85 MB).\n` +
+        `3. Run MAHI-Browser-Setup-${APP_VERSION}.exe. If Microsoft Defender SmartScreen appears, click "More info" → "Run anyway".\n` +
         '4. Log into the desktop app with your credentials to sync your active trial or plan!',
     };
   }

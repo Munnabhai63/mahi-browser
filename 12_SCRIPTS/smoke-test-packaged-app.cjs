@@ -19,10 +19,17 @@ function resolveExecutable() {
   const arch = process.arch;
 
   if (platform === 'win32') {
-    const p = path.join(rootDir, 'release', 'win-unpacked', 'MAHI BROWSER.exe');
-    if (fs.existsSync(p)) return { cmd: p, args: ['--smoke-test'] };
+    const candidates = [
+      path.join(rootDir, 'release', 'win-unpacked', 'MAHI Browser.exe'),
+      path.join(rootDir, 'release', 'win-unpacked', 'MAHI BROWSER.exe'),
+    ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) return { cmd: p, args: ['--smoke-test'] };
+    }
   } else if (platform === 'darwin') {
     const candidates = [
+      path.join(rootDir, 'release', `mac-${arch}`, 'MAHI Browser.app', 'Contents', 'MacOS', 'MAHI Browser'),
+      path.join(rootDir, 'release', 'mac', 'MAHI Browser.app', 'Contents', 'MacOS', 'MAHI Browser'),
       path.join(rootDir, 'release', `mac-${arch}`, 'MAHI BROWSER.app', 'Contents', 'MacOS', 'MAHI BROWSER'),
       path.join(rootDir, 'release', 'mac', 'MAHI BROWSER.app', 'Contents', 'MacOS', 'MAHI BROWSER'),
     ];

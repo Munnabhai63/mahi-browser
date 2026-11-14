@@ -19,7 +19,9 @@ const path = require('node:path');
 
 exports.default = async function signMac(context) {
   const { appOutDir } = context;
-  const appPath = path.join(appOutDir, 'MAHI BROWSER.app');
+  const appPath = fs.existsSync(path.join(appOutDir, 'MAHI Browser.app'))
+    ? path.join(appOutDir, 'MAHI Browser.app')
+    : path.join(appOutDir, 'MAHI BROWSER.app');
 
   const appleCert = process.env.CSC_LINK || process.env.MAC_CSC_LINK;
   const certPassword = process.env.CSC_KEY_PASSWORD || process.env.MAC_CSC_KEY_PASSWORD;

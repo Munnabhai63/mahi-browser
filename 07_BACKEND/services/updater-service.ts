@@ -23,6 +23,7 @@ import {
 import { getActiveUpdateProvider } from './updater-provider.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
 import { getDatabase, flushDatabaseToDisk } from '../../06_DATABASE/connection.js';
+import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 
 function safeLogActivity(level: 'INFO' | 'WARNING' | 'ERROR', action: string, details: string) {
   try {
@@ -80,13 +81,14 @@ export function saveUpdateConfig(config: UpdateConfig): void {
   }
 }
 
-function getSafeAppVersion(): string {
+export function getSafeAppVersion(): string {
   try {
     if (app && typeof app.getVersion === 'function') {
-      return app.getVersion() || '1.1.7';
+      const v = app.getVersion();
+      if (v) return v;
     }
   } catch {}
-  return '1.1.7';
+  return APP_VERSION;
 }
 
 function getAutoUpdater() {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Laptop, Smartphone, Monitor, Trash2, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ConfirmModal } from '../components/ConfirmModal.js';
+import { APP_VERSION } from '../../../10_CONFIG/shared/version.js';
 
 export interface WebDeviceSession {
   sessionId: string;
@@ -128,7 +129,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({
                             )}
                           </div>
                           <div className="text-[10px] text-slate-500 font-mono">
-                            Client {d.clientVersion || 'v1.1.1'} • {d.sessionId.substring(0, 12)}...
+                            Client {d.clientVersion || `v${APP_VERSION}`} • {d.sessionId.substring(0, 12)}...
                           </div>
                         </div>
                       </div>

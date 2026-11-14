@@ -22,13 +22,14 @@ import { useToastStore } from '../stores/useToastStore.js';
 import { NavigationPage } from '../components/Sidebar.js';
 import { BrandLogo } from '../components/BrandLogo.js';
 import { UpdateStatusEvent } from '../../10_CONFIG/shared/types/updater.js';
+import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 
 interface HelpAboutProps {
   onNavigate: (page: NavigationPage) => void;
 }
 
 export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
-  const [appVersion, setAppVersion] = useState<string>('1.1.3');
+  const [appVersion, setAppVersion] = useState<string>(APP_VERSION);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusEvent | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);

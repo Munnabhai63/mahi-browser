@@ -15,6 +15,7 @@ import { AccountPage } from './pages/AccountPage.js';
 import { ProfileModal } from './components/ProfileModal.js';
 import { CreateWorkspaceModal } from './components/WorkspaceModal.js';
 import { CloudSessionViewer } from './components/CloudSessionViewer.js';
+import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 
 import {
   TeamWorkspace,
@@ -145,7 +146,7 @@ export const WebDashboardApp: React.FC = () => {
           ipAddress: s.ipAddress || '127.0.0.1',
           isOnline: s.isOnline !== undefined ? s.isOnline : true,
           lastSeenAt: s.lastSeenAt || new Date().toISOString(),
-          clientVersion: s.clientVersion || '1.1.1',
+          clientVersion: s.clientVersion || APP_VERSION,
           isCurrent: s.isCurrent,
         }));
         setDevices(mappedDevices);

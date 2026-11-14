@@ -125,7 +125,7 @@ describe('MAHI BROWSER — PHASE 17 VERIFICATION SUITE', () => {
       expect(status).toHaveProperty('state');
       expect(status).toHaveProperty('currentVersion');
       expect(status).toHaveProperty('channel');
-      expect(status.currentVersion).toMatch(/^1\.1\.[1-3]$/);
+      expect(status.currentVersion).toMatch(/^1\.[0-9]+\.[0-9]+/);
       expect(['IDLE', 'CHECKING', 'AVAILABLE', 'NOT_AVAILABLE', 'DOWNLOADING', 'DOWNLOADED', 'ERROR']).toContain(status.state);
     });
   });

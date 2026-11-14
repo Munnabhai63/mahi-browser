@@ -26,6 +26,7 @@ import { useSettingsStore } from '../stores/useSettingsStore.js';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { AccountDropdown } from './AccountDropdown.js';
 import { UpgradeModal } from './UpgradeModal.js';
+import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 
 export type NavigationPage =
   | 'dashboard'
@@ -224,7 +225,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
           )}
         </div>
         <div className="pt-2 text-center text-[10px] text-slate-500 font-medium">
-          By Munna Bhai • v1.1.7
+          By Munna Bhai • v{APP_VERSION}
         </div>
       </div>
 
