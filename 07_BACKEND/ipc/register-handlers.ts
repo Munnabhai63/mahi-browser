@@ -32,7 +32,7 @@ import {
   exchangeDesktopAuthCode
 } from '../../08_SECURITY/account-service.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import { setActiveUserId, getActiveUserId } from '../commercial/session-context.js';
+import { setActiveUserId, getActiveUserId, clearActiveSession } from '../commercial/session-context.js';
 import {
   createTeamWorkspace,
   listUserTeamWorkspaces,
@@ -2307,8 +2307,12 @@ export function registerIpcHandlers(): void {
     }
     return res;
   });
+  ipcMain.handle('commercial:logout', async () => {
+    clearActiveSession();
+    return accountLogout();
+  });
   ipcMain.handle('account:logout', async () => {
-    setActiveUserId(null);
+    clearActiveSession();
     return accountLogout();
   });
   ipcMain.handle('account:getStatus', async () => {

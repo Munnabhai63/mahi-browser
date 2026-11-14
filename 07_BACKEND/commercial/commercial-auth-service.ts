@@ -36,13 +36,12 @@ export function verifyToken(token: string): { userId: string; email: string; rol
   const [header, body, signature] = parts;
 
   const currentSecret = getJwtSecret();
-  let expectedSig = crypto.createHmac('sha256', currentSecret).update(`${header}.${body}`).digest('base64url');
-  if (signature !== expectedSig) {
-    // Backward compatibility check with legacy key for smooth migration
-    const legacySig = crypto.createHmac('sha256', 'mahi_commercial_jwt_secret_2026_x893k').update(`${header}.${body}`).digest('base64url');
-    if (signature !== legacySig) {
-      return null;
-    }
+  const expectedSig = crypto.createHmac('sha256', currentSecret).update(`${header}.${body}`).digest('base64url');
+
+  const sigA = Buffer.from(signature);
+  const sigB = Buffer.from(expectedSig);
+  if (sigA.length !== sigB.length || !crypto.timingSafeEqual(sigA, sigB)) {
+    return null;
   }
 
   try {
@@ -67,8 +66,8 @@ export function registerUser(dto: RegisterUserDTO, ipAddress?: string, explicitI
     return { success: false, error: 'A valid email address is required.' };
   }
 
-  if (!dto.password || dto.password.length < 6) {
-    return { success: false, error: 'Password must be at least 6 characters.' };
+  if (!dto.password || dto.password.length < 8) {
+    return { success: false, error: 'Password must be at least 8 characters long.' };
   }
 
   const existing = db.prepare('SELECT id FROM commercial_users WHERE email = ?').get(email) as any;

@@ -477,10 +477,15 @@ export async function initializeDatabase(): Promise<void> {
       CREATE TABLE IF NOT EXISTS commercial_devices (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
+        license_id TEXT,
         device_id TEXT NOT NULL,
         device_name TEXT NOT NULL,
-        platform TEXT NOT NULL,
+        platform TEXT,
+        os_info TEXT,
+        client_version TEXT,
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
         ip_address TEXT,
+        activated_at TEXT,
         last_seen_at TEXT NOT NULL,
         created_at TEXT NOT NULL,
         FOREIGN KEY (user_id) REFERENCES commercial_users(id) ON DELETE CASCADE,
@@ -1340,4 +1345,40 @@ export async function initializeDatabase(): Promise<void> {
     addColumnIfNotExists(db, 'commercial_users', 'bonus_proxy_bytes', 'INTEGER NOT NULL DEFAULT 0');
     addColumnIfNotExists(db, 'commercial_users', 'feature_overrides', "TEXT NOT NULL DEFAULT '{}'");
   });
+
+  // Migration v24: Task 3 - Commercial Devices Status, Audit Logs Table & Indexes
+  runMigration(db, 24, 'commercial devices status and audit logs', () => {
+    addColumnIfNotExists(db, 'commercial_devices', 'status', "TEXT NOT NULL DEFAULT 'ACTIVE'");
+    addColumnIfNotExists(db, 'commercial_devices', 'license_id', "TEXT");
+    addColumnIfNotExists(db, 'commercial_devices', 'os_info', "TEXT");
+    addColumnIfNotExists(db, 'commercial_devices', 'client_version', "TEXT");
+    addColumnIfNotExists(db, 'commercial_devices', 'activated_at', "TEXT");
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS commercial_audit_logs (
+        id TEXT PRIMARY KEY,
+        actor_id TEXT NOT NULL,
+        actor_name TEXT NOT NULL,
+        actor_role TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT,
+        details TEXT,
+        ip_address TEXT,
+        result TEXT NOT NULL DEFAULT 'SUCCESS',
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_comm_audit_actor ON commercial_audit_logs(actor_id);
+      CREATE INDEX IF NOT EXISTS idx_comm_audit_action ON commercial_audit_logs(action);
+      CREATE INDEX IF NOT EXISTS idx_comm_audit_created ON commercial_audit_logs(created_at);
+    `);
+  });
+
+  // Guarantee critical additive columns exist regardless of previous migration execution state
+  addColumnIfNotExists(db, 'commercial_devices', 'status', "TEXT NOT NULL DEFAULT 'ACTIVE'");
+  addColumnIfNotExists(db, 'commercial_devices', 'license_id', "TEXT");
+  addColumnIfNotExists(db, 'commercial_devices', 'os_info', "TEXT");
+  addColumnIfNotExists(db, 'commercial_devices', 'client_version', "TEXT");
+  addColumnIfNotExists(db, 'commercial_devices', 'activated_at', "TEXT");
 }

@@ -92,8 +92,8 @@ export function getCommercialPlans(includeInactive = false): CommercialPlan[] {
     for (const p of DEFAULT_COMMERCIAL_PLANS) {
       db.prepare(`
         INSERT OR REPLACE INTO commercial_plans (
-          id, name, tier, price_monthly, price_annual, limits_json, is_active, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          id, name, tier, price_monthly, price_annual, limits_json, is_active, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         p.id,
         p.name,
@@ -102,6 +102,7 @@ export function getCommercialPlans(includeInactive = false): CommercialPlan[] {
         p.priceAnnual,
         JSON.stringify(p.limits),
         p.isActive ? 1 : 0,
+        p.createdAt,
         p.createdAt
       );
     }

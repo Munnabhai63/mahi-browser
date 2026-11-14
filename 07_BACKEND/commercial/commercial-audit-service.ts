@@ -2,6 +2,29 @@ import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { CommercialAuditLog, CommercialAuditResult, CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
 
+function ensureAuditTable(db: any): void {
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS commercial_audit_logs (
+        id TEXT PRIMARY KEY,
+        actor_id TEXT NOT NULL,
+        actor_name TEXT NOT NULL,
+        actor_role TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT,
+        details TEXT,
+        ip_address TEXT,
+        result TEXT NOT NULL DEFAULT 'SUCCESS',
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_comm_audit_actor ON commercial_audit_logs(actor_id);
+      CREATE INDEX IF NOT EXISTS idx_comm_audit_action ON commercial_audit_logs(action);
+      CREATE INDEX IF NOT EXISTS idx_comm_audit_created ON commercial_audit_logs(created_at);
+    `);
+  } catch {}
+}
+
 export function logCommercialAudit(params: {
   actorId: string;
   actorName: string;
@@ -14,6 +37,7 @@ export function logCommercialAudit(params: {
   result?: CommercialAuditResult;
 }): CommercialAuditLog {
   const db = getDatabase();
+  ensureAuditTable(db);
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const result = params.result || 'SUCCESS';
@@ -67,6 +91,7 @@ export function getCommercialAuditLogs(filter?: {
   offset?: number;
 }): { logs: CommercialAuditLog[]; total: number } {
   const db = getDatabase();
+  ensureAuditTable(db);
   let query = 'SELECT * FROM commercial_audit_logs WHERE 1=1';
   let countQuery = 'SELECT COUNT(*) as count FROM commercial_audit_logs WHERE 1=1';
   const params: any[] = [];

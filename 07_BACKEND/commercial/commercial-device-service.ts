@@ -5,6 +5,18 @@ import { CommercialDevice, CommercialDeviceStatus, CommercialRole } from '../../
 import { getDeviceId, getDeviceName } from '../../03_HARDWARE/device-id.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 
+function ensureDeviceColumns(db: any): void {
+  try {
+    const cols = db.prepare('PRAGMA table_info(commercial_devices)').all() as { name: string }[];
+    const colNames = new Set(cols.map((c) => c.name));
+    if (!colNames.has('status')) db.exec("ALTER TABLE commercial_devices ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE'");
+    if (!colNames.has('license_id')) db.exec('ALTER TABLE commercial_devices ADD COLUMN license_id TEXT');
+    if (!colNames.has('os_info')) db.exec('ALTER TABLE commercial_devices ADD COLUMN os_info TEXT');
+    if (!colNames.has('client_version')) db.exec('ALTER TABLE commercial_devices ADD COLUMN client_version TEXT');
+    if (!colNames.has('activated_at')) db.exec('ALTER TABLE commercial_devices ADD COLUMN activated_at TEXT');
+  } catch {}
+}
+
 export function registerOrUpdateDevice(params: {
   userId: string;
   licenseId?: string;
@@ -14,6 +26,7 @@ export function registerOrUpdateDevice(params: {
   ipAddress?: string;
 }): { success: boolean; device?: CommercialDevice; message?: string } {
   const db = getDatabase();
+  ensureDeviceColumns(db);
   const deviceId = params.deviceId || getDeviceId();
   const deviceName = params.deviceName || getDeviceName();
   const osInfo = `${os.type()} ${os.release()} (${os.arch()})`;
@@ -75,8 +88,8 @@ export function registerOrUpdateDevice(params: {
   const id = `dev_${crypto.randomUUID()}`;
   db.prepare(`
     INSERT INTO commercial_devices (
-      id, user_id, license_id, device_id, device_name, os_info, client_version, ip_address, activated_at, last_seen_at, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE')
+      id, user_id, license_id, device_id, device_name, os_info, client_version, ip_address, activated_at, last_seen_at, status, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?)
   `).run(
     id,
     params.userId,
@@ -86,6 +99,7 @@ export function registerOrUpdateDevice(params: {
     osInfo,
     clientVersion,
     params.ipAddress || '127.0.0.1',
+    now,
     now,
     now
   );

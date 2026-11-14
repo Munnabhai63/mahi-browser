@@ -440,6 +440,42 @@ export function getDesktopAuthSuccessHtml(params: {
 </html>`;
 }
 
+// ============================================================================
+// RATE LIMITING FOR PUBLIC AUTH ENDPOINTS (Brute-Force & Stuffing Mitigation)
+// ============================================================================
+const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes window
+const AUTH_RATE_LIMIT_MAX_ATTEMPTS = 10;          // 10 attempts per window
+
+interface AuthRateLimitEntry {
+  attempts: number;
+  resetAt: number;
+}
+
+const authRateLimitMap = new Map<string, AuthRateLimitEntry>();
+
+export function checkAuthRateLimit(clientIp: string, action: string = 'auth'): { allowed: boolean; remaining: number; retryAfterSeconds: number } {
+  const key = `${clientIp}:${action}`;
+  const now = Date.now();
+  const entry = authRateLimitMap.get(key);
+
+  if (!entry || entry.resetAt <= now) {
+    authRateLimitMap.set(key, { attempts: 1, resetAt: now + AUTH_RATE_LIMIT_WINDOW_MS });
+    return { allowed: true, remaining: AUTH_RATE_LIMIT_MAX_ATTEMPTS - 1, retryAfterSeconds: 0 };
+  }
+
+  if (entry.attempts >= AUTH_RATE_LIMIT_MAX_ATTEMPTS) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+    return { allowed: false, remaining: 0, retryAfterSeconds };
+  }
+
+  entry.attempts += 1;
+  return { allowed: true, remaining: AUTH_RATE_LIMIT_MAX_ATTEMPTS - entry.attempts, retryAfterSeconds: 0 };
+}
+
+export function resetAuthRateLimitForTesting(): void {
+  authRateLimitMap.clear();
+}
+
 export async function handleCommercialApiRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -475,6 +511,17 @@ export async function handleCommercialApiRoutes(
   // 1. PUBLIC AUTHENTICATION & REGISTRATION
   // -------------------------------------------------------------
   if (routePath === '/api/v1/auth/register' && method === 'POST') {
+    const rate = checkAuthRateLimit(clientIp, 'register');
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+      sendJSON(res, 429, {
+        success: false,
+        error: 'Too many registration attempts. Please try again later.',
+        retryAfter: rate.retryAfterSeconds,
+      });
+      return true;
+    }
+
     const body = await parseBody(req);
     const result = await registerCentralUser({
       email: body.email,
@@ -545,6 +592,17 @@ export async function handleCommercialApiRoutes(
   }
 
   if (routePath === '/api/v1/auth/verify-email' && method === 'POST') {
+    const rate = checkAuthRateLimit(clientIp, 'verify-email');
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+      sendJSON(res, 429, {
+        success: false,
+        error: 'Too many verification attempts. Please try again later.',
+        retryAfter: rate.retryAfterSeconds,
+      });
+      return true;
+    }
+
     const body = await parseBody(req);
     const result = await verifyEmailToken(body.token, clientIp);
     sendJSON(res, result.success ? 200 : 400, result);
@@ -552,6 +610,17 @@ export async function handleCommercialApiRoutes(
   }
 
   if (routePath === '/api/v1/auth/resend-verification' && method === 'POST') {
+    const rate = checkAuthRateLimit(clientIp, 'resend-verification');
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+      sendJSON(res, 429, {
+        success: false,
+        error: 'Too many verification requests. Please try again later.',
+        retryAfter: rate.retryAfterSeconds,
+      });
+      return true;
+    }
+
     const body = await parseBody(req);
     const result = await resendEmailVerification(body.email, clientIp);
     sendJSON(res, result.success ? 200 : 400, result);
@@ -559,6 +628,17 @@ export async function handleCommercialApiRoutes(
   }
 
   if (routePath === '/api/v1/auth/login' && method === 'POST') {
+    const rate = checkAuthRateLimit(clientIp, 'login');
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+      sendJSON(res, 429, {
+        success: false,
+        error: 'Too many login attempts. Please try again later.',
+        retryAfter: rate.retryAfterSeconds,
+      });
+      return true;
+    }
+
     const body = await parseBody(req);
     const centralRes = await loginCentralUser({
       email: body.email,
@@ -975,6 +1055,17 @@ export async function handleCommercialApiRoutes(
   }
 
   if (routePath === '/api/v1/auth/forgot-password' && method === 'POST') {
+    const rate = checkAuthRateLimit(clientIp, 'forgot-password');
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+      sendJSON(res, 429, {
+        success: false,
+        error: 'Too many password reset requests. Please try again later.',
+        retryAfter: rate.retryAfterSeconds,
+      });
+      return true;
+    }
+
     const body = await parseBody(req);
     const result = await requestPasswordReset(body.email, clientIp);
     sendJSON(res, 200, result);
@@ -982,6 +1073,17 @@ export async function handleCommercialApiRoutes(
   }
 
   if (routePath === '/api/v1/auth/reset-password' && method === 'POST') {
+    const rate = checkAuthRateLimit(clientIp, 'reset-password');
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+      sendJSON(res, 429, {
+        success: false,
+        error: 'Too many password reset attempts. Please try again later.',
+        retryAfter: rate.retryAfterSeconds,
+      });
+      return true;
+    }
+
     const body = await parseBody(req);
     const result = await resetPasswordWithToken({
       token: body.token,
