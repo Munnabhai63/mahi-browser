@@ -87,6 +87,7 @@ export interface AutomationStep {
   loopConfig?: StepLoopConfig;
   outputVariableName?: string;
   isSecret?: boolean;
+  humanize?: boolean;
 }
 
 export type WorkflowExecutionStatus =

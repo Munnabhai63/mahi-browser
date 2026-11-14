@@ -39,6 +39,7 @@ import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { getProfileDebugPort, markCleanExit } from '../02_BROWSER/launcher.js';
 import { processManager } from '../02_BROWSER/process-manager.js';
 import { solveCaptcha, getCaptchaConfig } from './captcha-service.js';
+import { humanClick, humanType } from './ai-humanizer.js';
 
 // ============================================================================
 // IN-MEMORY ACTIVE EXECUTION REGISTRY & CONTROLLER
@@ -803,16 +804,27 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
 
             case 'CLICK': {
               if (!resolvedTarget) throw new Error('Click selector target is required');
-              await page.click(resolvedTarget, { timeout });
-              output = `Clicked ${resolvedTarget}`;
+              if (step.humanize) {
+                await humanClick(page, resolvedTarget);
+                output = `Humanized clicked ${resolvedTarget}`;
+              } else {
+                await page.click(resolvedTarget, { timeout });
+                output = `Clicked ${resolvedTarget}`;
+              }
               break;
             }
 
             case 'FILL': {
               if (!resolvedTarget) throw new Error('Fill selector target is required');
-              await page.fill(resolvedTarget, resolvedValue, { timeout });
-              const logVal = step.isSecret ? '[REDACTED]' : resolvedValue;
-              output = `Filled ${resolvedTarget} with "${logVal}"`;
+              if (step.humanize) {
+                await humanType(page, resolvedTarget, resolvedValue);
+                const logVal = step.isSecret ? '[REDACTED]' : resolvedValue;
+                output = `Humanized filled ${resolvedTarget} with "${logVal}"`;
+              } else {
+                await page.fill(resolvedTarget, resolvedValue, { timeout });
+                const logVal = step.isSecret ? '[REDACTED]' : resolvedValue;
+                output = `Filled ${resolvedTarget} with "${logVal}"`;
+              }
               break;
             }
 

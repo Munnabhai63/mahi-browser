@@ -164,6 +164,9 @@ export function ensureProfileStealthExtension(
   const clientHintsModel = isMobile ? mobileModel : '';
   const clientHintsPlatformVersion = isMobile ? mobileOsVersion : (isMac ? '14.5.0' : '15.0.0');
   const clientHintsArch = isMobile ? 'arm' : (isMac ? 'arm' : 'x86');
+  const chromeVerMatch = ua.match(/Chrome\/([0-9.]+)/i);
+  const chromeFullVer = chromeVerMatch ? chromeVerMatch[1] : '130.0.6723.117';
+  const chromeMajorVer = chromeFullVer.split('.')[0] || '130';
 
   // Manifest V3 Extension with declarativeNetRequest Client Hints spoofing
   const manifest = {
@@ -206,7 +209,7 @@ export function ensureProfileStealthExtension(
   };
 
   // Declarative Net Request rules to spoof HTTP request headers:
-  // Sec-CH-UA-Platform, Sec-CH-UA-Mobile, Sec-CH-UA-Model, Sec-CH-UA-Platform-Version
+  // Sec-CH-UA, Sec-CH-UA-Full-Version-List, Sec-CH-UA-Platform, Sec-CH-UA-Mobile, Sec-CH-UA-Model, Sec-CH-UA-Platform-Version
   const dnrRules = [
     {
       id: 1,
@@ -214,6 +217,8 @@ export function ensureProfileStealthExtension(
       action: {
         type: 'modifyHeaders',
         requestHeaders: [
+          { header: 'sec-ch-ua', operation: 'set', value: `"Not/A)Brand";v="8", "Chromium";v="${chromeMajorVer}", "Google Chrome";v="${chromeMajorVer}"` },
+          { header: 'sec-ch-ua-full-version-list', operation: 'set', value: `"Not/A)Brand";v="8.0.0.0", "Chromium";v="${chromeFullVer}", "Google Chrome";v="${chromeFullVer}"` },
           { header: 'sec-ch-ua-platform', operation: 'set', value: `"${clientHintsPlatform}"` },
           { header: 'sec-ch-ua-mobile', operation: 'set', value: clientHintsMobile },
           { header: 'sec-ch-ua-model', operation: 'set', value: `"${clientHintsModel}"` },
@@ -279,8 +284,9 @@ export function ensureProfileStealthExtension(
   const stealthCoreJs = `
 (function() {
   'use strict';
-  if (window.__MAHI_STEALTH_INJECTED__) return;
-  window.__MAHI_STEALTH_INJECTED__ = true;
+  // Non-global re-entrancy protection
+  var _wbDesc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(navigator), 'webdriver');
+  if (_wbDesc && _wbDesc.get && _wbDesc.get.name === '') return;
 
   var pSeed = (function(str) {
     var hash = 0;
@@ -291,15 +297,50 @@ export function ensureProfileStealthExtension(
     return Math.abs(hash) || 12345;
   })(${JSON.stringify(profileId + '_' + profileName)});
 
+  // Closure-scoped native registry for Function.prototype.toString spoofing (never leaks to window)
+  var hookedProxies = [];
+  function registerNative(fn, name) {
+    if (typeof fn === 'function') {
+      hookedProxies.push({ fn: fn, name: name || fn.name || '' });
+    }
+  }
+
+  // Universal Function.prototype.toString Masking
+  try {
+    var origToString = Function.prototype.toString;
+    var proxyToString = new Proxy(origToString, {
+      apply: function(target, thisArg, argumentsList) {
+        if (thisArg === origToString || thisArg === proxyToString) {
+          return 'function toString() { [native code] }';
+        }
+        for (var i = 0; i < hookedProxies.length; i++) {
+          if (thisArg === hookedProxies[i].fn) {
+            return 'function ' + hookedProxies[i].name + '() { [native code] }';
+          }
+        }
+        return target.apply(thisArg, argumentsList);
+      }
+    });
+    Function.prototype.toString = proxyToString;
+    registerNative(proxyToString, 'toString');
+    registerNative(origToString, 'toString');
+  } catch(e) {}
+
   // -------------------------------------------------------------
   // 1. Automation & WebDriver Masking
   // -------------------------------------------------------------
   try {
-    Object.defineProperty(Object.getPrototypeOf(navigator), 'webdriver', {
-      get: function() { return false; },
-      enumerable: true,
-      configurable: true
-    });
+    if (typeof Navigator !== 'undefined' && Navigator.prototype) {
+      var proxyWebdriver = new Proxy(function() { return false; }, {
+        apply: function() { return false; }
+      });
+      Object.defineProperty(Navigator.prototype, 'webdriver', {
+        get: proxyWebdriver,
+        enumerable: true,
+        configurable: true
+      });
+      registerNative(proxyWebdriver, 'get webdriver');
+    }
   } catch(e) {}
 
   // Remove Chromedriver / automation artifacts
@@ -333,20 +374,20 @@ export function ensureProfileStealthExtension(
   // -------------------------------------------------------------
   // 2. Hardware Navigator Overrides
   // -------------------------------------------------------------
-  if (!window.__mahiProxies) window.__mahiProxies = [];
   try {
     function spoofNavigator(prop, value) {
       var desc = Object.getOwnPropertyDescriptor(Navigator.prototype, prop);
-      if (!desc) return;
-      var proxy = new Proxy(desc.get, {
+      var getter = (desc && typeof desc.get === 'function') ? desc.get : function() { return value; };
+      var proxy = new Proxy(getter, {
         apply: function() { return value; }
       });
       Object.defineProperty(Navigator.prototype, prop, {
         get: proxy,
-        enumerable: desc.enumerable,
-        configurable: desc.configurable
+        enumerable: desc ? desc.enumerable : true,
+        configurable: desc ? desc.configurable : true
       });
-      window.__mahiProxies.push({ p: proxy, o: desc.get, n: 'get ' + prop });
+      registerNative(proxy, 'get ' + prop);
+      if (desc && typeof desc.get === 'function') registerNative(desc.get, 'get ' + prop);
     }
 
     spoofNavigator('hardwareConcurrency', ${hardwareConcurrency});
@@ -358,8 +399,8 @@ export function ensureProfileStealthExtension(
     // User-Agent Client Hints (navigator.userAgentData) Native Masking
     // -------------------------------------------------------------
     try {
-      var brandVersion = "138";
-      var chromeFullVer = "138.0.7204.183";
+      var brandVersion = ${JSON.stringify(chromeMajorVer)};
+      var chromeFullVer = ${JSON.stringify(chromeFullVer)};
       var defaultBrands = [
         { brand: "Not/A)Brand", version: "8" },
         { brand: "Chromium", version: brandVersion },
@@ -378,36 +419,55 @@ export function ensureProfileStealthExtension(
       var chArch = ${JSON.stringify(clientHintsArch)};
       var chBitness = "64";
 
-      var uaDataObj = {
-        brands: defaultBrands,
-        mobile: chMobile,
-        platform: chPlatform,
-        getHighEntropyValues: function(hints) {
-          var res = {
-            brands: defaultBrands,
-            mobile: chMobile,
-            platform: chPlatform
-          };
-          if (!Array.isArray(hints)) return Promise.resolve(res);
-          for (var i = 0; i < hints.length; i++) {
-            var h = hints[i];
-            if (h === 'architecture') res.architecture = chArch;
-            if (h === 'bitness') res.bitness = chBitness;
-            if (h === 'model') res.model = chModel;
-            if (h === 'platformVersion') res.platformVersion = chPlatformVersion;
-            if (h === 'uaFullVersion') res.uaFullVersion = chromeFullVer;
-            if (h === 'fullVersionList') res.fullVersionList = defaultFullVersionList;
-          }
-          return Promise.resolve(res);
-        },
-        toJSON: function() {
-          return {
-            brands: defaultBrands,
-            mobile: chMobile,
-            platform: chPlatform
-          };
+      var uaDataObj;
+      if (typeof window.NavigatorUAData !== 'undefined' && window.NavigatorUAData.prototype) {
+        uaDataObj = Object.create(window.NavigatorUAData.prototype);
+      } else {
+        uaDataObj = {};
+      }
+
+      var getBrands = function() { return defaultBrands; };
+      var getMobile = function() { return chMobile; };
+      var getPlatform = function() { return chPlatform; };
+      var getHighEntropyValues = function(hints) {
+        var res = {
+          brands: defaultBrands,
+          mobile: chMobile,
+          platform: chPlatform
+        };
+        if (!Array.isArray(hints)) return Promise.resolve(res);
+        for (var i = 0; i < hints.length; i++) {
+          var h = hints[i];
+          if (h === 'architecture') res.architecture = chArch;
+          if (h === 'bitness') res.bitness = chBitness;
+          if (h === 'model') res.model = chModel;
+          if (h === 'platformVersion') res.platformVersion = chPlatformVersion;
+          if (h === 'uaFullVersion') res.uaFullVersion = chromeFullVer;
+          if (h === 'fullVersionList') res.fullVersionList = defaultFullVersionList;
         }
+        return Promise.resolve(res);
       };
+      var toJSON = function() {
+        return {
+          brands: defaultBrands,
+          mobile: chMobile,
+          platform: chPlatform
+        };
+      };
+
+      Object.defineProperties(uaDataObj, {
+        brands: { get: getBrands, enumerable: true, configurable: true },
+        mobile: { get: getMobile, enumerable: true, configurable: true },
+        platform: { get: getPlatform, enumerable: true, configurable: true },
+        getHighEntropyValues: { value: getHighEntropyValues, enumerable: true, configurable: true, writable: true },
+        toJSON: { value: toJSON, enumerable: true, configurable: true, writable: true },
+      });
+
+      registerNative(getBrands, 'get brands');
+      registerNative(getMobile, 'get mobile');
+      registerNative(getPlatform, 'get platform');
+      registerNative(getHighEntropyValues, 'getHighEntropyValues');
+      registerNative(toJSON, 'toJSON');
 
       var origUaDataDesc = Object.getOwnPropertyDescriptor(Navigator.prototype, 'userAgentData');
       var proxyUaData = new Proxy(origUaDataDesc && origUaDataDesc.get ? origUaDataDesc.get : function() { return uaDataObj; }, {
@@ -420,14 +480,8 @@ export function ensureProfileStealthExtension(
         configurable: true
       });
 
-      if (window.NavigatorUAData) {
-        try {
-          window.NavigatorUAData.prototype.getHighEntropyValues = uaDataObj.getHighEntropyValues;
-          window.NavigatorUAData.prototype.toJSON = uaDataObj.toJSON;
-        } catch(e) {}
-      }
-
-      window.__mahiProxies.push({ p: proxyUaData, o: origUaDataDesc ? origUaDataDesc.get : proxyUaData, n: 'get userAgentData' });
+      registerNative(proxyUaData, 'get userAgentData');
+      if (origUaDataDesc && origUaDataDesc.get) registerNative(origUaDataDesc.get, 'get userAgentData');
     } catch(e) {}
 
     if (${isMobile}) {
@@ -506,27 +560,33 @@ export function ensureProfileStealthExtension(
               onlevelchange: null
             });
           };
+          registerNative(navigator.getBattery, 'getBattery');
         } catch(e) {}
       } catch(e) {}
     }
   } catch(e) {}
 
   // -------------------------------------------------------------
-  // 3. Canvas Dynamic Hash Perturbation (Stealth Canvas Noise)
+  // 3. Canvas Dynamic Hash Perturbation (Single-Pass Noise)
   // -------------------------------------------------------------
   try {
-    const shiftVal = (pSeed % 3) - 1 || 1;
+    var shiftVal = (pSeed % 3) - 1 || 1;
     
     function applyNoise(imgData) {
       var data = imgData.data;
       var step = Math.max(16, (imgData.width * imgData.height) >> 4);
       for (var i = 0; i < data.length; i += step) {
+        if (data[i + 3] === 0) continue;
         data[i] = Math.min(255, Math.max(0, data[i] + shiftVal));
       }
       return imgData;
     }
 
     var origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+    var origToBlob = HTMLCanvasElement.prototype.toBlob;
+    var origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+    var origPutImageData = CanvasRenderingContext2D.prototype.putImageData;
+
     var proxyToDataURL = new Proxy(origToDataURL, {
       apply: function(target, thisArg, argumentsList) {
         try {
@@ -535,18 +595,46 @@ export function ensureProfileStealthExtension(
             clone.width = thisArg.width;
             clone.height = thisArg.height;
             var ctx = clone.getContext('2d');
-            ctx.drawImage(thisArg, 0, 0);
-            var imgData = ctx.getImageData(0, 0, clone.width, clone.height);
-            ctx.putImageData(applyNoise(imgData), 0, 0);
-            return target.apply(clone, argumentsList);
+            if (ctx) {
+              ctx.drawImage(thisArg, 0, 0);
+              var imgData = origGetImageData.call(ctx, 0, 0, clone.width, clone.height);
+              origPutImageData.call(ctx, applyNoise(imgData), 0, 0);
+              return target.apply(clone, argumentsList);
+            }
           }
         } catch(e) {}
         return target.apply(thisArg, argumentsList);
       }
     });
     HTMLCanvasElement.prototype.toDataURL = proxyToDataURL;
+    registerNative(proxyToDataURL, 'toDataURL');
+    registerNative(origToDataURL, 'toDataURL');
+
+    if (origToBlob) {
+      var proxyToBlob = new Proxy(origToBlob, {
+        apply: function(target, thisArg, argumentsList) {
+          try {
+            if (thisArg.width > 0 && thisArg.height > 0) {
+              var clone = document.createElement('canvas');
+              clone.width = thisArg.width;
+              clone.height = thisArg.height;
+              var ctx = clone.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(thisArg, 0, 0);
+                var imgData = origGetImageData.call(ctx, 0, 0, clone.width, clone.height);
+                origPutImageData.call(ctx, applyNoise(imgData), 0, 0);
+                return target.apply(clone, argumentsList);
+              }
+            }
+          } catch(e) {}
+          return target.apply(thisArg, argumentsList);
+        }
+      });
+      HTMLCanvasElement.prototype.toBlob = proxyToBlob;
+      registerNative(proxyToBlob, 'toBlob');
+      registerNative(origToBlob, 'toBlob');
+    }
     
-    var origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
     var proxyGetImageData = new Proxy(origGetImageData, {
       apply: function(target, thisArg, argumentsList) {
         var imgData = target.apply(thisArg, argumentsList);
@@ -559,47 +647,75 @@ export function ensureProfileStealthExtension(
       }
     });
     CanvasRenderingContext2D.prototype.getImageData = proxyGetImageData;
-
-    // Mask toString for native appearance
-    if (!window.__mahiProxies) window.__mahiProxies = [];
-    window.__mahiProxies.push({ p: proxyToDataURL, o: origToDataURL, n: 'toDataURL' });
-    window.__mahiProxies.push({ p: proxyGetImageData, o: origGetImageData, n: 'getImageData' });
-    
-    var origToString = Function.prototype.toString;
-    var proxyToString = new Proxy(origToString, {
-      apply: function(target, thisArg, argumentsList) {
-        if (thisArg === origToString || thisArg === proxyToString) {
-          return 'function toString() { [native code] }';
-        }
-        for (var i = 0; i < window.__mahiProxies.length; i++) {
-          var item = window.__mahiProxies[i];
-          if (thisArg === item.p || thisArg === item.o) {
-            return 'function ' + item.n + '() { [native code] }';
-          }
-        }
-        return target.apply(thisArg, argumentsList);
-      }
-    });
-    Function.prototype.toString = proxyToString;
+    registerNative(proxyGetImageData, 'getImageData');
+    registerNative(origGetImageData, 'getImageData');
   } catch(e) {}
 
   // -------------------------------------------------------------
-  // 3.5 ClientRects DOM Subpixel Jitter (Layout Fingerprinting Protection)
+  // 3.5 ClientRects DOM Subpixel Jitter (Multi-Method Parity)
   // -------------------------------------------------------------
   try {
     var origGetBoundingClientRect = Element.prototype.getBoundingClientRect;
     var crShift = ((pSeed % 5) - 2) * 0.0001;
     if (crShift !== 0) {
-      Element.prototype.getBoundingClientRect = function() {
-        var rect = origGetBoundingClientRect.apply(this, arguments);
-        if (!rect) return rect;
-        return new DOMRect(
-          rect.x + crShift,
-          rect.y + crShift,
-          rect.width,
-          rect.height
-        );
-      };
+      var proxyGetBoundingClientRect = new Proxy(origGetBoundingClientRect, {
+        apply: function(target, thisArg, argumentsList) {
+          var rect = target.apply(thisArg, argumentsList);
+          if (!rect) return rect;
+          return new DOMRect(
+            rect.x + crShift,
+            rect.y + crShift,
+            rect.width,
+            rect.height
+          );
+        }
+      });
+      Element.prototype.getBoundingClientRect = proxyGetBoundingClientRect;
+      registerNative(proxyGetBoundingClientRect, 'getBoundingClientRect');
+      registerNative(origGetBoundingClientRect, 'getBoundingClientRect');
+
+      if (Element.prototype.getClientRects) {
+        var origGetClientRects = Element.prototype.getClientRects;
+        var proxyGetClientRects = new Proxy(origGetClientRects, {
+          apply: function(target, thisArg, argumentsList) {
+            return target.apply(thisArg, argumentsList);
+          }
+        });
+        Element.prototype.getClientRects = proxyGetClientRects;
+        registerNative(proxyGetClientRects, 'getClientRects');
+        registerNative(origGetClientRects, 'getClientRects');
+      }
+
+      if (window.Range && Range.prototype.getBoundingClientRect) {
+        var origRangeGetBoundingClientRect = Range.prototype.getBoundingClientRect;
+        var proxyRangeGetBoundingClientRect = new Proxy(origRangeGetBoundingClientRect, {
+          apply: function(target, thisArg, argumentsList) {
+            var rect = target.apply(thisArg, argumentsList);
+            if (!rect) return rect;
+            return new DOMRect(
+              rect.x + crShift,
+              rect.y + crShift,
+              rect.width,
+              rect.height
+            );
+          }
+        });
+        Range.prototype.getBoundingClientRect = proxyRangeGetBoundingClientRect;
+        registerNative(proxyRangeGetBoundingClientRect, 'getBoundingClientRect');
+        registerNative(origRangeGetBoundingClientRect, 'getBoundingClientRect');
+      }
+
+      if (window.Range && Range.prototype.getClientRects) {
+        var origRangeGetClientRects = Range.prototype.getClientRects;
+        var proxyRangeGetClientRects = new Proxy(origRangeGetClientRects, {
+          apply: function(target, thisArg, argumentsList) {
+            return target.apply(thisArg, argumentsList);
+          }
+        });
+        Range.prototype.getClientRects = proxyRangeGetClientRects;
+        registerNative(proxyRangeGetClientRects, 'getClientRects');
+        registerNative(origRangeGetClientRects, 'getClientRects');
+      }
     }
   } catch(e) {}
 
@@ -612,29 +728,41 @@ export function ensureProfileStealthExtension(
 
     var hookWebGL = function(proto) {
       var origGetParam = proto.getParameter;
-      proto.getParameter = function(param) {
-        // UNMASKED_VENDOR_WEBGL
-        if (param === 37445) return spoofVendor;
-        // UNMASKED_RENDERER_WEBGL
-        if (param === 37446) return spoofRenderer;
-        // VENDOR
-        if (param === 7936) return 'WebKit';
-        // RENDERER
-        if (param === 7937) return 'WebKit WebGL';
-        return origGetParam.apply(this, arguments);
-      };
+      var proxyGetParam = new Proxy(origGetParam, {
+        apply: function(target, thisArg, argumentsList) {
+          var param = argumentsList[0];
+          // UNMASKED_VENDOR_WEBGL
+          if (param === 37445) return spoofVendor;
+          // UNMASKED_RENDERER_WEBGL
+          if (param === 37446) return spoofRenderer;
+          // VENDOR
+          if (param === 7936) return 'WebKit';
+          // RENDERER
+          if (param === 7937) return 'WebKit WebGL';
+          return target.apply(thisArg, argumentsList);
+        }
+      });
+      proto.getParameter = proxyGetParam;
+      registerNative(proxyGetParam, 'getParameter');
+      registerNative(origGetParam, 'getParameter');
 
       var origGetExtension = proto.getExtension;
-      proto.getExtension = function(name) {
-        var ext = origGetExtension.apply(this, arguments);
-        if (name === 'WEBGL_debug_renderer_info' && ext) {
-          return {
-            UNMASKED_VENDOR_WEBGL: 37445,
-            UNMASKED_RENDERER_WEBGL: 37446
-          };
+      var proxyGetExtension = new Proxy(origGetExtension, {
+        apply: function(target, thisArg, argumentsList) {
+          var name = argumentsList[0];
+          var ext = target.apply(thisArg, argumentsList);
+          if (name === 'WEBGL_debug_renderer_info' && ext) {
+            return {
+              UNMASKED_VENDOR_WEBGL: 37445,
+              UNMASKED_RENDERER_WEBGL: 37446
+            };
+          }
+          return ext;
         }
-        return ext;
-      };
+      });
+      proto.getExtension = proxyGetExtension;
+      registerNative(proxyGetExtension, 'getExtension');
+      registerNative(origGetExtension, 'getExtension');
     };
 
     if (window.WebGLRenderingContext) hookWebGL(WebGLRenderingContext.prototype);
@@ -642,19 +770,28 @@ export function ensureProfileStealthExtension(
   } catch(e) {}
 
   // -------------------------------------------------------------
-  // 5. AudioContext Acoustic Frequency Jitter
+  // 5. AudioContext Acoustic Frequency Jitter (No In-Place Drift)
   // -------------------------------------------------------------
   try {
     if (window.AudioBuffer) {
+      var perturbedBuffers = new WeakSet();
       var origGetChannelData = AudioBuffer.prototype.getChannelData;
-      AudioBuffer.prototype.getChannelData = function(channel) {
-        var buffer = origGetChannelData.apply(this, arguments);
-        var offset = ((pSeed % 7) + 1) * 0.0000001;
-        for (var i = 0; i < buffer.length; i += 100) {
-          buffer[i] += offset;
+      var proxyGetChannelData = new Proxy(origGetChannelData, {
+        apply: function(target, thisArg, argumentsList) {
+          var buffer = target.apply(thisArg, argumentsList);
+          if (!perturbedBuffers.has(buffer)) {
+            perturbedBuffers.add(buffer);
+            var offset = ((pSeed % 7) + 1) * 0.0000001;
+            for (var i = 0; i < buffer.length; i += 100) {
+              buffer[i] += offset;
+            }
+          }
+          return buffer;
         }
-        return buffer;
-      };
+      });
+      AudioBuffer.prototype.getChannelData = proxyGetChannelData;
+      registerNative(proxyGetChannelData, 'getChannelData');
+      registerNative(origGetChannelData, 'getChannelData');
     }
   } catch(e) {}
 })();
@@ -664,6 +801,8 @@ export function ensureProfileStealthExtension(
   const backgroundJs = `
 (function() {
   var profileId = ${JSON.stringify(profileId)};
+  var pNum = ${JSON.stringify(badgeNumber)};
+  var pName = ${JSON.stringify(profileName)};
   var API_BASE = 'http://127.0.0.1:32123';
   var AUTH_TOKEN = ${JSON.stringify(getApiAuthToken())};
   var activePorts = new Set();
@@ -853,54 +992,18 @@ export function ensureProfileStealthExtension(
     } catch(e) {}
   }
 
-  try {
-    updateTitle();
-    var observer = new MutationObserver(updateTitle);
-    observer.observe(document.querySelector('head') || document.documentElement, {
-      subtree: true,
-      characterData: true,
-      childList: true
-    });
-  } catch(e) {}
-
-  function injectTopBarPill() {
-    try {
-      if (document.getElementById('__mahi_pill_host')) return;
-      var host = document.createElement('div');
-      host.id = '__mahi_pill_host';
-      host.style.cssText = 'all:initial !important;position:fixed;top:0;right:0;width:0;height:0;z-index:2147483647;pointer-events:none;';
-      var shadow = host.attachShadow ? host.attachShadow({ mode: 'closed' }) : host;
-
-      var pill = document.createElement('div');
-      pill.innerHTML = '<span style="background:rgba(0,0,0,0.35);padding:2px 8px;border-radius:12px;font-size:11px;font-weight:900;letter-spacing:0.5px;box-shadow:inset 0 1px 2px rgba(0,0,0,0.3);">#' + pNum + '</span><span>' + pName + '</span>';
-      pill.style.cssText = 'position:fixed;top:12px;right:20px;z-index:2147483647;' +
-        'background:' + profileColor + ';' +
-        'color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;' +
-        'font-size:12px;font-weight:800;letter-spacing:0.3px;padding:6px 14px;border-radius:24px;' +
-        'box-shadow:0 6px 20px rgba(0,0,0,0.5),0 0 0 2px rgba(255,255,255,0.3);' +
-        'pointer-events:auto;cursor:pointer;user-select:none;opacity:0.96;transition:all 0.2s ease;' +
-        'display:flex;align-items:center;gap:7px;backdrop-filter:blur(6px);';
-      pill.title = 'MAHI Profile #' + pNum + ' (' + pName + ') - Click to minimize';
-      var isMin = false;
-      pill.onclick = function(ev) {
-        ev.stopPropagation();
-        isMin = !isMin;
-        if (isMin) {
-          pill.innerHTML = '<span style="font-weight:900;font-size:11px;">#' + pNum + '</span>';
-          pill.style.padding = '4px 10px';
-        } else {
-          pill.innerHTML = '<span style="background:rgba(0,0,0,0.35);padding:2px 8px;border-radius:12px;font-size:11px;font-weight:900;letter-spacing:0.5px;">#' + pNum + '</span><span>' + pName + '</span>';
-          pill.style.padding = '6px 14px';
-        }
-      };
-      shadow.appendChild(pill);
-      (document.body || document.documentElement).appendChild(host);
-    } catch(e) {}
-  }
-  // In clean production mode, suppress the in-page badge unless explicitly enabled in settings.
-  // Window/tab title is always cleanly prefixed via updateTitle().
-  var enableInPageBadge = ${JSON.stringify((settings?.browser as any)?.showProfileBadge === true)};
+  // In clean production mode, suppress the in-page badge and title prefix unless explicitly enabled in settings.
+  var enableInPageBadge = ${JSON.stringify((settings?.browser as any)?.showProfileBadge === true || (settings as any)?.showProfileBadge === true)};
   if (enableInPageBadge) {
+    try {
+      updateTitle();
+      var observer = new MutationObserver(updateTitle);
+      observer.observe(document.querySelector('head') || document.documentElement, {
+        subtree: true,
+        characterData: true,
+        childList: true
+      });
+    } catch(e) {}
     window.addEventListener('load', injectTopBarPill);
     setTimeout(injectTopBarPill, 400);
     setTimeout(injectTopBarPill, 1200);

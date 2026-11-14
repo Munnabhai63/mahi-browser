@@ -92,10 +92,12 @@ export function injectNativeStealthPreferences(
     const gpuVendor = isMobile ? 'arm' : (isMacM1 ? 'apple' : 'nvidia');
     const gpuDevice = isMobile ? 'Mali-G710' : (isMacM1 ? 'Apple M1' : 'NVIDIA GeForce RTX 3060');
 
-    // Language list
-    const languagesList = Array.isArray(locale.languages) && locale.languages.length > 0
-      ? locale.languages
-      : ['en-US', 'en'];
+    // Language list (supports both locale.languagesList and locale.languages)
+    const languagesList = Array.isArray(locale.languagesList) && locale.languagesList.length > 0
+      ? locale.languagesList
+      : (Array.isArray(locale.languages) && locale.languages.length > 0
+        ? locale.languages
+        : ['en-US', 'en']);
 
     // Fake Video Capture (Facial KYC / Video Loop bypass)
     const fakeVideoEnabled = Boolean(settings?.fakeVideoCapture?.enable && settings?.fakeVideoCapture?.filePath);

@@ -22,20 +22,20 @@ export function auditProfileFingerprint(profileId: string): ProfileAuditReport {
   const checks: DiagnosticCheck[] = [];
 
   // 1. WebRTC Leak Shield
-  const webrtcMode = fp.webrtc || 'noise';
+  const webrtcMode: string = (net.webrtc as string) || (fp.webrtc as string) || 'noise';
   const hasProxy = Boolean(net.proxyId && !net.directConnection);
   let webrtcStatus: DiagnosticCheck['status'] = 'PASS';
   let webrtcScore = 100;
   let webrtcRec: string | undefined;
 
-  if (hasProxy && webrtcMode === 'off') {
+  if (hasProxy && (webrtcMode === 'off' || webrtcMode === 'default')) {
     webrtcStatus = 'FAIL';
     webrtcScore = 30;
-    webrtcRec = 'WebRTC is disabled while using a proxy — your real public IP may leak over STUN/TURN UDP requests. Enable WebRTC Noise or Block mode.';
-  } else if (webrtcMode === 'off') {
+    webrtcRec = 'WebRTC is disabled or default while using a proxy — your real public IP may leak over STUN/TURN UDP requests. Enable WebRTC Noise or proxy_only mode.';
+  } else if (webrtcMode === 'off' || webrtcMode === 'default') {
     webrtcStatus = 'WARN';
     webrtcScore = 60;
-    webrtcRec = 'WebRTC protection is off. Enable WebRTC noise spoofing.';
+    webrtcRec = 'WebRTC protection is off or default. Enable WebRTC noise spoofing.';
   }
 
   checks.push({

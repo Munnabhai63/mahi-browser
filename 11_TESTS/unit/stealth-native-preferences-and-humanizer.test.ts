@@ -5,12 +5,16 @@ import os from 'node:os';
 import { injectNativeStealthPreferences, getDeterministicSeed, getNoiseValueFromSeed } from '../../02_BROWSER/stealth-native-preferences.js';
 import { generateHumanPath } from '../../09_AUTOMATION/ai-humanizer.js';
 import { Profile } from '../../10_CONFIG/shared/types/profile.js';
+import { auditProfileFingerprint } from '../../03_HARDWARE/diagnostics-service.js';
+import { createProfile, deleteProfile } from '../../02_BROWSER/services/profile-service.js';
+import { initSqlEngine, getDatabase } from '../../06_DATABASE/connection.js';
 
 describe('MAHI BROWSER v2.0 Enterprise Anti-Detect Engine Unit Tests', () => {
   let tempDir: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi_stealth_test_'));
+    await initSqlEngine();
   });
 
   afterEach(() => {
@@ -105,6 +109,8 @@ describe('MAHI BROWSER v2.0 Enterprise Anti-Detect Engine Unit Tests', () => {
     expect(g.webrtc.publicIP).toBe('104.28.19.45');
     expect(g.hardwareConcurrency).toBe(16);
     expect(g.deviceMemory).toBe(16);
+    expect(g.languages).toEqual(['en-US', 'en']);
+    expect(g.langHeader).toBe('en-US,en');
   });
 
   it('generates realistic cubic Bezier human mouse paths without sharp linear jumps', () => {
@@ -120,9 +126,34 @@ describe('MAHI BROWSER v2.0 Enterprise Anti-Detect Engine Unit Tests', () => {
 
     // Verify non-linearity: middle points must deviate organically from the straight line
     const midPoint = path[Math.floor(path.length / 2)];
-    const straightLineMidY = (start.y + end.y) / 2;
-    // Curve must show natural deviation
     expect(midPoint.x).toBeGreaterThan(start.x);
     expect(midPoint.x).toBeLessThan(end.x);
+  });
+
+  it('diagnostics-service reads settings.network.webrtc accurately without false failures', () => {
+    const profile = createProfile({
+      name: 'WebRTC Diagnostics Test Profile',
+      settings: {
+        network: {
+          directConnection: false,
+          proxyId: 'dummy-proxy-id',
+          webrtc: 'proxy_only',
+        },
+        fingerprint: {
+          webrtc: undefined, // omitted from fingerprint to verify reading network.webrtc
+        },
+      } as any,
+    });
+
+    try {
+      const report = auditProfileFingerprint(profile.id);
+      const webrtcCheck = report.checks.find((c) => c.id === 'check-webrtc');
+      expect(webrtcCheck).toBeDefined();
+      expect(webrtcCheck?.status).toBe('PASS');
+      expect(webrtcCheck?.score).toBe(100);
+      expect(webrtcCheck?.actualValue).toContain('PROXY_ONLY');
+    } finally {
+      deleteProfile(profile.id);
+    }
   });
 });
