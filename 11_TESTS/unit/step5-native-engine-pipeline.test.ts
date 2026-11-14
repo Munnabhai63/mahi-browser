@@ -206,16 +206,38 @@ describe('Step 5: Native C++ Chromium Anti-Detect Engine & Build Pipeline', () =
       expect(content).not.toContain('GetPrefService()');
     }
 
-    // 0004 must split --font-masking-list on ';' and handle mode '1'/'2'
+    // Real upstream SHA headers: no placeholder hashes
+    for (const patchFile of patchFiles) {
+      const content = fs.readFileSync(path.join(patchesDir, patchFile), 'utf8');
+      expect(content).not.toContain('index 1111111..2222222');
+      expect(content).toMatch(/index [0-9a-f]{7}\.\.[0-9a-f]{7} 100644/);
+    }
+
+    // 0004 must preserve GetFontPlatformData fallback and split on ';'
     const p4Content = fs.readFileSync(path.join(patchesDir, '0004-mahi-clientrects-and-fontcache-masking.patch'), 'utf8');
     expect(p4Content).toContain('SplitString(raw_list, ";",');
     expect(p4Content).toContain('mode == "1" || mode == "2"');
+    expect(p4Content).toContain('GetFontPlatformData(');
 
-    // 0007 must have valid signature and no evaluateInternal
+    // 0005 must use exact Chromium 138 AppendExtraCommandLineSwitches signature and RenderProcessHost
+    const p5Content = fs.readFileSync(path.join(patchesDir, '0005-mahi-icu-timezone-locale-hardware-ch.patch'), 'utf8');
+    expect(p5Content).toContain('int child_process_id');
+    expect(p5Content).toContain('RenderProcessHost::FromID(child_process_id)');
+
+    // 0006 must patch core/frame/navigator_automation_information.cc, check webrtc.mode and set kRelay
+    const p6Content = fs.readFileSync(path.join(patchesDir, '0006-mahi-ungoogled-privacy-telemetry-webrtc.patch'), 'utf8');
+    expect(p6Content).toContain('core/frame/navigator_automation_information.cc');
+    expect(p6Content).toContain('webrtc.mode');
+    expect(p6Content).toContain('webrtc::PeerConnectionInterface::IceTransportsType::kRelay');
+
+    // 0007 must have valid signature, no evaluateInternal, no bare return;, and not delete window.Error
     const p7Content = fs.readFileSync(path.join(patchesDir, '0007-mahi-rebrowser-cdp-runtime-isolation.patch'), 'utf8');
     expect(p7Content).toContain('void V8RuntimeAgentImpl::evaluate(');
     expect(p7Content).not.toContain('Response V8RuntimeAgentImpl::evaluate');
     expect(p7Content).not.toContain('evaluateInternal');
+    expect(p7Content).not.toMatch(/Delete\(ctx,\s*pst_key\)/);
+    expect(p7Content).not.toMatch(/\s+return;\s*\n\s*}\s*\n\s*diff --git/);
+    expect(p7Content).toContain('v8::Isolate* isolate = m_inspector->isolate()');
 
     // Check args.gn
     const argsGnPath = path.join(patchesDir, 'args.gn');

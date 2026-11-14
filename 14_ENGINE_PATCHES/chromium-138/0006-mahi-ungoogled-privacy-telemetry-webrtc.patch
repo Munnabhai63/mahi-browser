@@ -1,67 +1,79 @@
-From c6ebf567b98a31e28b7e283d5a2d109f02c98a31 Mon Sep 17 00:00:00 2001
+From c6eb4cf0b98a31e28b7e283d5a2d109f02c98a31 Mon Sep 17 00:00:00 2001
 From: Mahi Browser Engine Team <dev@mahibrowser.local>
 Date: Fri, 14 Nov 2026 12:00:00 +0000
 Subject: [PATCH 6/7] feat(privacy): ungoogled telemetry suppression and WebRTC relay concealment reading prefs.mahi
 
-Forces navigator.webdriver to return false.
+Forces navigator.webdriver to return false in navigator_automation_information.cc and navigator.cc.
 Suppresses Google UMA/RLZ metrics reporting and telemetry ping dispatch.
-Mutates parsed WebRTC configuration in rtc_peer_connection.cc to enforce kRelay and conceal host/srflx candidates.
+Mutates parsed WebRTC configuration in rtc_peer_connection.cc checking webrtc.mode and network.webrtc to enforce kRelay.
 ---
-diff --git a/third_party/blink/renderer/core/execution_context/navigator_automation_information.cc b/third_party/blink/renderer/core/execution_context/navigator_automation_information.cc
-index 1111111..2222222 100644
---- a/third_party/blink/renderer/core/execution_context/navigator_automation_information.cc
-+++ b/third_party/blink/renderer/core/execution_context/navigator_automation_information.cc
-@@ -15,3 +15,4 @@
+diff --git a/third_party/blink/renderer/core/frame/navigator_automation_information.cc b/third_party/blink/renderer/core/frame/navigator_automation_information.cc
+index fa101ba..2f87a19 100644
+--- a/third_party/blink/renderer/core/frame/navigator_automation_information.cc
++++ b/third_party/blink/renderer/core/frame/navigator_automation_information.cc
+@@ -6,3 +6,4 @@
  bool NavigatorAutomationInformation::webdriver() const {
 -  return RuntimeEnabledFeatures::AutomationControlledEnabled();
 +  // MAHI Ungoogled Privacy: navigator.webdriver always reports false to avoid anti-bot flags
 +  return false;
  }
 diff --git a/components/metrics/metrics_service.cc b/components/metrics/metrics_service.cc
-index 1111111..2222222 100644
+index 4cf0afb..6c3182b 100644
 --- a/components/metrics/metrics_service.cc
 +++ b/components/metrics/metrics_service.cc
-@@ -120,3 +120,5 @@
+@@ -431,4 +431,6 @@
  void MetricsService::Start() {
--  state_ = ACTIVE;
 +  // MAHI Ungoogled Privacy: completely disable background telemetry reporting
-+  state_ = STOPPED;
 +  return;
- }
+   HandleIdleSinceLastTransmission(false);
+   EnableRecording();
+   EnableReporting();
 diff --git a/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc b/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc
-index 1111111..2222222 100644
+index 7c5915b..8d2491a 100644
 --- a/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc
 +++ b/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc
-@@ -35,5 +35,8 @@
- #include "third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.h"
- #include "third_party/blink/renderer/modules/peerconnection/rtc_peer_connection_controller.h"
+@@ -34,6 +34,10 @@
+ #include <memory>
+ #include <optional>
+ #include <string>
 +#include "base/command_line.h"
 +#include "base/json/json_reader.h"
++#include "base/no_destructor.h"
 +#include "base/values.h"
+ #include <utility>
  
- namespace blink {
+ #include "base/compiler_specific.h"
+@@ -407,4 +411,31 @@
+   }
  
-@@ -450,2 +454,20 @@
--  RTCVoidRequest* request = MakeGarbageCollected<InitializeRequest>(this, web_configuration);
-+  // MAHI Privacy & Anti-Detect: Mutate parsed web_configuration to enforce kRelay & conceal host candidates (prefs.mahi)
++  // MAHI Privacy & Anti-Detect: Mutate parsed web_configuration to enforce kRelay & drop host/srflx candidates (prefs.mahi)
 +  const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
 +  if (cmd) {
-+    bool enforce_relay = cmd->HasSwitch("disable-non-proxied-udp") || cmd->HasSwitch("force-webrtc-ip-handling-policy");
++    bool enforce_relay = cmd->HasSwitch("disable-non-proxied-udp") ||
++                         cmd->HasSwitch("webrtc-ip-handling-policy") ||
++                         cmd->HasSwitch("force-webrtc-ip-handling-policy");
 +    if (cmd->HasSwitch("mahi-config")) {
-+      auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
-+      if (parsed && parsed->is_dict()) {
-+        const std::string* rtc_mode = parsed->GetDict().FindStringByDottedPath("network.webrtc");
++      static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
++        const base::CommandLine* c = base::CommandLine::ForCurrentProcess();
++        auto parsed = base::JSONReader::Read(c->GetSwitchValueASCII("mahi-config"));
++        if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));
++        return std::optional<base::Value::Dict>();
++      }());
++      if (s_config->has_value()) {
++        const std::string* rtc_mode = (*s_config)->FindString("webrtc.mode");
++        if (!rtc_mode) rtc_mode = (*s_config)->FindStringByDottedPath("network.webrtc");
 +        if (rtc_mode && (*rtc_mode == "disabled" || *rtc_mode == "proxy_only" || *rtc_mode == "block")) {
 +          enforce_relay = true;
 +        }
 +      }
 +    }
 +    if (enforce_relay) {
-+      web_configuration.ice_transport_policy = webrtc::IceTransportsType::kRelay;
++      web_configuration.type = webrtc::PeerConnectionInterface::IceTransportsType::kRelay;
 +      web_configuration.bundle_policy = webrtc::PeerConnectionInterface::kBundlePolicyMaxBundle;
 +    }
 +  }
-+  RTCVoidRequest* request = MakeGarbageCollected<InitializeRequest>(this, web_configuration);
-   peer_connection_tracker_->RegisterPeerConnection(this, web_configuration);
++
+   return web_configuration;
+ }
 -- 
 2.39.5

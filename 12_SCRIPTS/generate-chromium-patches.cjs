@@ -31,10 +31,10 @@ function formatHunk(oldStart, newStart, entries) {
   return [header, ...lines].join('\n');
 }
 
-function formatFileDiff(oldPath, newPath, hunks) {
+function formatFileDiff(oldPath, newPath, hunks, indexLine = '1111111..2222222 100644') {
   return [
     `diff --git a/${oldPath} b/${newPath}`,
-    `index 1111111..2222222 100644`,
+    `index ${indexLine}`,
     `--- a/${oldPath}`,
     `+++ b/${newPath}`,
     hunks.join('\n')

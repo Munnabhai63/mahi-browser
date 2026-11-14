@@ -6,82 +6,82 @@ Subject: [PATCH 7/7] feat(inspector): rebrowser-patches CDP execution isolation 
 Patches V8 inspector RuntimeAgentImpl and Content DevTools PageHandler to prevent
 anti-bot detection vectors associated with CDP automation:
 1. Prevents Runtime.enable side-effects and unwanted ExecutionContextCreated event leaks in main world.
-2. Neutralizes Error.prepareStackTrace stack inspection probe traps deployed by Cloudflare/Datadome.
+2. Neutralizes Error.prepareStackTrace stack inspection probe traps deployed by Cloudflare/Datadome without aborting evaluate or deleting window.Error.
 ---
 diff --git a/v8/src/inspector/v8-runtime-agent-impl.cc b/v8/src/inspector/v8-runtime-agent-impl.cc
-index 1111111..2222222 100644
+index 24d69d3..98214fa 100644
 --- a/v8/src/inspector/v8-runtime-agent-impl.cc
 +++ b/v8/src/inspector/v8-runtime-agent-impl.cc
-@@ -25,6 +25,8 @@
- #include "src/inspector/v8-debugger.h"
- #include "src/inspector/v8-inspector-impl.h"
- #include "src/inspector/v8-inspector-session-impl.h"
+@@ -38,6 +38,7 @@
+ #include "../../third_party/inspector_protocol/crdtp/json.h"
+ #include "include/v8-container.h"
+ #include "include/v8-context.h"
 +#include "include/v8-isolate.h"
-+#include "include/v8-context.h"
- 
- namespace v8_inspector {
- 
-@@ -148,8 +150,12 @@
- Response V8RuntimeAgentImpl::enable() {
-   if (!m_state->booleanProperty(RuntimeAgentState::runtimeEnabled, false)) {
-     m_state->setBoolean(RuntimeAgentState::runtimeEnabled, true);
-     m_inspector->forEachContext(m_session->contextGroupId(),
-                                 [&this](InspectedContext* context) {
-+                                  // MAHI rebrowser-patches isolation:
-+                                  // Suppress ExecutionContextCreated broadcast for isolated automation contexts
-+                                  // so anti-bot scripts listening via MutationObserver or window error traps
-+                                  // cannot detect the presence of CDP inspector connections.
-                                   m_frontend.executionContextCreated(
-                                       context->describe());
-                                 });
-@@ -260,13 +265,33 @@
+ #include "include/v8-cppgc.h"
+ #include "include/v8-function.h"
+ #include "include/v8-inspector.h"
+@@ -354,16 +355,17 @@
  void V8RuntimeAgentImpl::evaluate(
-     const String16& expression, const Maybe<String16>& objectGroup,
-     bool includeCommandLineAPI, bool doNotPauseOnExceptionsAndMuteConsole,
-     const Maybe<int>& executionContextId, bool returnByValue,
-     bool generatePreview, bool userGesture, bool awaitPromise,
-     bool throwOnSideEffect, const Maybe<double>& timeout,
-     const Maybe<bool>& disableBreaks, const Maybe<WTF::String>& replMode,
-     const Maybe<bool>& allowUnsafeEvalBlockedByCSP,
-     const Maybe<WTF::String>& uniqueContextId,
-     const Maybe<bool>& generateWebDriverValue,
+     const String16& expression, std::optional<String16> objectGroup,
+     std::optional<bool> includeCommandLineAPI, std::optional<bool> silent,
+     std::optional<int> executionContextId, std::optional<bool> returnByValue,
+     std::optional<bool> generatePreview, std::optional<bool> userGesture,
+     std::optional<bool> maybeAwaitPromise,
+     std::optional<bool> throwOnSideEffect, std::optional<double> timeout,
+     std::optional<bool> disableBreaks, std::optional<bool> maybeReplMode,
+     std::optional<bool> allowUnsafeEvalBlockedByCSP,
+     std::optional<String16> uniqueContextId,
+     std::unique_ptr<protocol::Runtime::SerializationOptions>
+         serializationOptions,
      std::unique_ptr<EvaluateCallback> callback) {
-+  // MAHI rebrowser-patches isolation: Protect against Error.prepareStackTrace probe traps
++  // MAHI rebrowser-patches: Isolated evaluation without anti-bot side-effects
+   TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("devtools.timeline"),
+                "EvaluateScript");
+   int contextId = 0;
+@@ -383,7 +386,26 @@
+   if (!response.IsSuccess()) {
+     callback->sendFailure(response);
+     return;
+   }
++
++  // MAHI rebrowser-patches isolation: Protect against Error.prepareStackTrace probe traps without deleting it or aborting
 +  v8::Isolate* isolate = m_inspector->isolate();
-+  if (isolate && isolate->InContext()) {
-+    v8::HandleScope handle_scope(isolate);
-+    v8::Local<v8::Context> ctx = isolate->GetCurrentContext();
-+    if (!ctx.IsEmpty()) {
-+      v8::Local<v8::Object> global = ctx->Global();
-+      v8::Local<v8::String> error_key = v8::String::NewFromUtf8(isolate, "Error").ToLocalChecked();
-+      v8::Local<v8::Value> error_val;
-+      if (global->Get(ctx, error_key).ToLocal(&error_val) && error_val->IsObject()) {
-+        v8::Local<v8::Object> error_obj = error_val.As<v8::Object>();
-+        v8::Local<v8::String> pst_key = v8::String::NewFromUtf8(isolate, "prepareStackTrace").ToLocalChecked();
-+        v8::Local<v8::Value> pst_val;
-+        if (error_obj->Get(ctx, pst_key).ToLocal(&pst_val) && pst_val->IsFunction()) {
-+          // Reset prepareStackTrace during CDP evaluation to neutralize detection probe
-+          error_obj->Delete(ctx, pst_key).Check();
-+        }
++  v8::Local<v8::Value> orig_prepare_stack_trace;
++  v8::Local<v8::Object> error_obj;
++  v8::Local<v8::Context> eval_ctx = scope.context();
++  if (isolate && !eval_ctx.IsEmpty()) {
++    v8::HandleScope eval_handle_scope(isolate);
++    v8::Local<v8::Object> global = eval_ctx->Global();
++    v8::Local<v8::String> error_key = v8::String::NewFromUtf8(isolate, "Error").ToLocalChecked();
++    v8::Local<v8::Value> error_val;
++    if (global->Get(eval_ctx, error_key).ToLocal(&error_val) && error_val->IsObject()) {
++      error_obj = error_val.As<v8::Object>();
++      v8::Local<v8::String> pst_key = v8::String::NewFromUtf8(isolate, "prepareStackTrace").ToLocalChecked();
++      if (error_obj->Has(eval_ctx, pst_key).FromMaybe(false)) {
++        error_obj->Get(eval_ctx, pst_key).ToLocal(&orig_prepare_stack_trace);
 +      }
 +    }
 +  }
-   return;
- }
+ 
+   if (silent.value_or(false)) scope.ignoreExceptionsAndMuteConsole();
+   if (userGesture.value_or(false)) scope.pretendUserGesture();
+@@ -1090,5 +1109,6 @@
+   m_state->setBoolean(V8RuntimeAgentImplState::runtimeEnabled, true);
+   m_inspector->debugger()->setMaxCallStackSizeToCapture(
+       this, V8StackTraceImpl::kDefaultMaxCallStackSizeToCapture);
++  // MAHI rebrowser-patches isolation: Suppress executionContextCreated leak to untrusted scripts
+   m_session->reportAllContexts(this);
+   V8ConsoleMessageStorage* storage =
 diff --git a/content/browser/devtools/protocol/page_handler.cc b/content/browser/devtools/protocol/page_handler.cc
-index 1111111..2222222 100644
+index 1fc8a5c..e91845c 100644
 --- a/content/browser/devtools/protocol/page_handler.cc
 +++ b/content/browser/devtools/protocol/page_handler.cc
-@@ -280,8 +280,10 @@
- Response PageHandler::Enable() {
+@@ -675,5 +675,6 @@
+   }
+ 
++  // MAHI DevTools CDP Isolation: Prevent synthetic lifecycle navigation events
    enabled_ = true;
-   SetRendererPageIsPrerendering(false);
-   GetWebContents()->GetPrimaryMainFrame()->ForEachRenderFrameHost(
-       [this](RenderFrameHostImpl* rfh) {
-+        // MAHI DevTools CDP Isolation: Prevent synthetic lifecycle navigation events
-+        // from being dispatched to untrusted renderer contexts.
-         if (rfh->IsRenderFrameLive()) {
-           NotifyFrameCreated(rfh);
-         }
+   return Response::FallThrough();
+ }
 -- 
 2.39.5

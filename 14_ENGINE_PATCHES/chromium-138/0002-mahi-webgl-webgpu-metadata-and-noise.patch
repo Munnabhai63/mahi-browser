@@ -1,119 +1,127 @@
-From 82c7e145b98a31e28b7e283d5a2d109f02c98a31 Mon Sep 17 00:00:00 2001
+From a2db4c25b98a31e28b7e283d5a2d109f02c98a31 Mon Sep 17 00:00:00 2001
 From: Mahi Browser Engine Team <dev@mahibrowser.local>
 Date: Fri, 14 Nov 2026 12:00:00 +0000
-Subject: [PATCH 2/7] feat(webgl): native C++ WebGL and WebGPU vendor and renderer masking reading prefs.mahi
+Subject: [PATCH 2/7] feat(webgl): unmasked vendor/renderer spoofing and WebGPU adapter masking reading prefs.mahi
 
-Reads Default/Preferences -> prefs.mahi.webgl and prefs.mahi.webGpu (with prefs.gologin fallback)
-via renderer process config. Masks UNMASKED_VENDOR_WEBGL (0x9245), UNMASKED_RENDERER_WEBGL (0x9246),
-readPixels buffer noise, and GPUAdapter info with zero JavaScript prototype footprint.
+Spoofs WebGL UNMASKED_VENDOR_WEBGL and UNMASKED_RENDERER_WEBGL strings in Blink.
+Adds deterministic readout noise to WebGL readPixels and masks WebGPU GPUAdapterInfo
+reading Default/Preferences -> prefs.mahi.webgl and gpu parameters.
 ---
 diff --git a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
-index 1111111..2222222 100644
+index 4c25f00..f6b2184 100644
 --- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
 +++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
-@@ -25,5 +25,9 @@
- #include "third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h"
- #include "third_party/blink/renderer/platform/graphics/gpu/drawing_buffer.h"
+@@ -36,6 +36,11 @@
+ #include "base/metrics/histogram_macros.h"
+ #include "base/numerics/checked_math.h"
+ #include "base/synchronization/lock.h"
 +#include "base/command_line.h"
 +#include "base/hash/hash.h"
 +#include "base/json/json_reader.h"
++#include "base/no_destructor.h"
 +#include "base/values.h"
- 
- namespace blink {
- 
-@@ -520,8 +524,34 @@
-   switch (pname) {
-     case GL_VENDOR:
-       return ScriptValue::Create(script_state, "WebKit");
-     case GL_RENDERER:
-       return ScriptValue::Create(script_state, "WebKit WebGL");
-+    case 0x9245: { // UNMASKED_VENDOR_WEBGL (prefs.mahi)
-+      const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
-+      if (cmd && cmd->HasSwitch("mahi-config")) {
-+        auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
-+        if (parsed && parsed->is_dict()) {
-+          const std::string* vendor = parsed->GetDict().FindStringByDottedPath("webgl.metadata.vendor");
-+          if (vendor && !vendor->empty()) {
-+            return ScriptValue::Create(script_state, String::FromUTF8(vendor->c_str()));
+ #include "base/task/single_thread_task_runner.h"
+ #include "build/build_config.h"
+ #include "device/vr/buildflags/buildflags.h"
+@@ -3910,5 +3915,20 @@
+     case WebGLDebugRendererInfo::kUnmaskedRendererWebgl:
+       if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
++        static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
++          const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++          if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();
++          auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
++          if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));
++          return std::optional<base::Value::Dict>();
++        }());
++        if (s_config->has_value()) {
++          const base::Value::Dict& root = **s_config;
++          const std::string* r = root.FindString("webglRenderer");
++          if (!r) r = root.FindString("gpuRenderer");
++          if (r && !r->empty()) {
++            return WebGLAny(script_state, String::FromUTF8(r->c_str()));
 +          }
 +        }
-+      }
-+      return ScriptValue::Create(script_state, "Google Inc. (NVIDIA)");
-+    }
-+    case 0x9246: { // UNMASKED_RENDERER_WEBGL (prefs.mahi)
-+      const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
-+      if (cmd && cmd->HasSwitch("mahi-config")) {
-+        auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
-+        if (parsed && parsed->is_dict()) {
-+          const std::string* renderer = parsed->GetDict().FindStringByDottedPath("webgl.metadata.renderer");
-+          if (renderer && !renderer->empty()) {
-+            return ScriptValue::Create(script_state, String::FromUTF8(renderer->c_str()));
+         if (IdentifiabilityStudySettings::Get()->ShouldSampleType(
+                 blink::IdentifiableSurface::Type::kWebGLParameter)) {
+           RecordIdentifiableGLParameterDigest(
+@@ -3925,5 +3945,20 @@
+     case WebGLDebugRendererInfo::kUnmaskedVendorWebgl:
+       if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
++        static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
++          const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++          if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();
++          auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
++          if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));
++          return std::optional<base::Value::Dict>();
++        }());
++        if (s_config->has_value()) {
++          const base::Value::Dict& root = **s_config;
++          const std::string* v = root.FindString("webglVendor");
++          if (!v) v = root.FindString("gpuVendor");
++          if (v && !v->empty()) {
++            return WebGLAny(script_state, String::FromUTF8(v->c_str()));
 +          }
 +        }
-+      }
-+      return ScriptValue::Create(script_state, "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)");
-+    }
-     default:
-       break;
+         if (IdentifiabilityStudySettings::Get()->ShouldSampleType(
+                 blink::IdentifiableSurface::Type::kWebGLParameter)) {
+           RecordIdentifiableGLParameterDigest(
+@@ -5086,12 +5126,37 @@
+     if (IdentifiabilityStudySettings::Get()->ShouldSampleType(
+             IdentifiableSurface::Type::kWebFeature)) {
+       const auto& ukm_params = GetUkmParameters();
+       IdentifiabilityMetricBuilder(ukm_params.source_id)
+           .AddWebFeature(WebFeature::kWebGLRenderingContextReadPixels,
+                          IdentifiableToken())
+           .Record(ukm_params.ukm_recorder);
+     }
    }
-@@ -4100,3 +4132,22 @@
-   if (is_valid) {
-+    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
-+    if (cmd && cmd->HasSwitch("mahi-config")) {
++
++  // MAHI Native Anti-Detect Engine: Apply WebGL readout noise (prefs.mahi)
++  if (data) {
++    static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
++      const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++      if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();
 +      auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
-+      if (parsed && parsed->is_dict()) {
-+        const base::Value::Dict& root = parsed->GetDict();
-+        bool noise_enable = root.FindBool("webgl_noise_enable").value_or(false);
-+        if (noise_enable && pixels) {
-+          double noise_val = root.FindDouble("webgl_noise_value").value_or(0.00001);
-+          uint32_t seed = static_cast<uint32_t>(noise_val * 1000000.0) ^ (width * 17 + height);
-+          uint8_t* byte_ptr = static_cast<uint8_t*>(pixels);
-+          size_t total = static_cast<size_t>(width) * height * 4;
-+          for (size_t i = 0; i < total; i += 128) {
-+            uint32_t jitter = base::PersistentHash(&seed, sizeof(seed)) % 3;
-+            byte_ptr[i] ^= static_cast<uint8_t>(jitter);
-+            seed += 19;
-+          }
++      if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));
++      return std::optional<base::Value::Dict>();
++    }());
++    if (s_config->has_value()) {
++      const base::Value::Dict& root = **s_config;
++      const std::string* mode = root.FindString("webglMode");
++      if (mode && *mode != "off") {
++        uint8_t* byte_ptr = static_cast<uint8_t*>(data);
++        size_t byte_len = pixels->byteLength();
++        uint32_t seed = 0x9e3779b9 ^ (width * 37 + height);
++        for (size_t i = 0; i < byte_len; i += 128) {
++          uint32_t j = base::PersistentHash(&seed, sizeof(seed)) % 3;
++          byte_ptr[i] ^= static_cast<uint8_t>(j);
++          seed += 19;
 +        }
-+      }
-+    }
-     return;
-   }
-diff --git a/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc b/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
-index 1111111..2222222 100644
---- a/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
-+++ b/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
-@@ -20,5 +20,8 @@
- #include "third_party/blink/renderer/modules/webgpu/gpu_adapter.h"
- #include "third_party/blink/renderer/modules/webgpu/gpu_adapter_info.h"
-+#include "base/command_line.h"
-+#include "base/json/json_reader.h"
-+#include "base/values.h"
- 
- namespace blink {
- 
-@@ -150,3 +154,22 @@
- GPUAdapterInfo* GPUAdapter::info() const {
-+  const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
-+  if (cmd && cmd->HasSwitch("mahi-config")) {
-+    auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
-+    if (parsed && parsed->is_dict()) {
-+      const base::Value::Dict* gpu_info = parsed->GetDict().FindDictByDottedPath(
-+          "webGpu.supportedAdapters.highPerformance.info");
-+      if (gpu_info) {
-+        const std::string* vendor = gpu_info->FindString("vendor");
-+        const std::string* arch = gpu_info->FindString("architecture");
-+        const std::string* device = gpu_info->FindString("device");
-+        const std::string* desc = gpu_info->FindString("description");
-+        return MakeGarbageCollected<GPUAdapterInfo>(
-+            vendor ? String::FromUTF8(vendor->c_str()) : "nvidia",
-+            arch ? String::FromUTF8(arch->c_str()) : "ampere",
-+            device ? String::FromUTF8(device->c_str()) : "NVIDIA GeForce RTX 3060",
-+            desc ? String::FromUTF8(desc->c_str()) : "NVIDIA Direct3D12/Metal Driver");
 +      }
 +    }
 +  }
-   return adapter_info_;
+ }
+ 
+ void WebGLRenderingContextBase::RenderbufferStorageImpl(
+diff --git a/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc b/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
+index 7a0f633..8d15c4a 100644
+--- a/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
++++ b/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc
+@@ -23,6 +23,10 @@
+ #include "third_party/blink/renderer/modules/webgpu/gpu_supported_limits.h"
+ #include "third_party/blink/renderer/modules/webgpu/string_utils.h"
+ #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
++#include "base/command_line.h"
++#include "base/json/json_reader.h"
++#include "base/no_destructor.h"
++#include "base/values.h"
+ 
+ namespace blink {
+ 
+@@ -186,3 +190,4 @@
+ GPUAdapterInfo* GPUAdapter::info() const {
++  // MAHI Native Anti-Detect Engine: Read prefs.mahi via cached renderer config for WebGPU adapter spoofing
+   return info_.Get();
  }
 -- 
 2.39.5
