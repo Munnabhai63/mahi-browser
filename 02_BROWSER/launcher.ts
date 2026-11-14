@@ -286,7 +286,7 @@ export function ensureProfileStealthExtension(
   'use strict';
   // Non-global re-entrancy protection
   var _wbDesc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(navigator), 'webdriver');
-  if (_wbDesc && _wbDesc.get && _wbDesc.get.name === '') return;
+  if (_wbDesc && _wbDesc.get && _wbDesc.get.name === 'get webdriver') return;
 
   var pSeed = (function(str) {
     var hash = 0;
@@ -331,7 +331,11 @@ export function ensureProfileStealthExtension(
   // -------------------------------------------------------------
   try {
     if (typeof Navigator !== 'undefined' && Navigator.prototype) {
-      var proxyWebdriver = new Proxy(function() { return false; }, {
+      var getterObj = {
+        get webdriver() { return false; }
+      };
+      var origGetter = Object.getOwnPropertyDescriptor(getterObj, 'webdriver').get;
+      var proxyWebdriver = new Proxy(origGetter, {
         apply: function() { return false; }
       });
       Object.defineProperty(Navigator.prototype, 'webdriver', {
@@ -419,13 +423,6 @@ export function ensureProfileStealthExtension(
       var chArch = ${JSON.stringify(clientHintsArch)};
       var chBitness = "64";
 
-      var uaDataObj;
-      if (typeof window.NavigatorUAData !== 'undefined' && window.NavigatorUAData.prototype) {
-        uaDataObj = Object.create(window.NavigatorUAData.prototype);
-      } else {
-        uaDataObj = {};
-      }
-
       var getBrands = function() { return defaultBrands; };
       var getMobile = function() { return chMobile; };
       var getPlatform = function() { return chPlatform; };
@@ -455,13 +452,27 @@ export function ensureProfileStealthExtension(
         };
       };
 
-      Object.defineProperties(uaDataObj, {
-        brands: { get: getBrands, enumerable: true, configurable: true },
-        mobile: { get: getMobile, enumerable: true, configurable: true },
-        platform: { get: getPlatform, enumerable: true, configurable: true },
-        getHighEntropyValues: { value: getHighEntropyValues, enumerable: true, configurable: true, writable: true },
-        toJSON: { value: toJSON, enumerable: true, configurable: true, writable: true },
-      });
+      var uaDataObj;
+      var uaTargetProto = (typeof window.NavigatorUAData !== 'undefined' && window.NavigatorUAData.prototype) ? window.NavigatorUAData.prototype : null;
+      if (uaTargetProto) {
+        Object.defineProperties(uaTargetProto, {
+          brands: { get: getBrands, enumerable: true, configurable: true },
+          mobile: { get: getMobile, enumerable: true, configurable: true },
+          platform: { get: getPlatform, enumerable: true, configurable: true },
+          getHighEntropyValues: { value: getHighEntropyValues, enumerable: true, configurable: true, writable: true },
+          toJSON: { value: toJSON, enumerable: true, configurable: true, writable: true },
+        });
+        uaDataObj = Object.create(uaTargetProto);
+      } else {
+        uaDataObj = {};
+        Object.defineProperties(uaDataObj, {
+          brands: { get: getBrands, enumerable: true, configurable: true },
+          mobile: { get: getMobile, enumerable: true, configurable: true },
+          platform: { get: getPlatform, enumerable: true, configurable: true },
+          getHighEntropyValues: { value: getHighEntropyValues, enumerable: true, configurable: true, writable: true },
+          toJSON: { value: toJSON, enumerable: true, configurable: true, writable: true },
+        });
+      }
 
       registerNative(getBrands, 'get brands');
       registerNative(getMobile, 'get mobile');
@@ -649,12 +660,81 @@ export function ensureProfileStealthExtension(
     CanvasRenderingContext2D.prototype.getImageData = proxyGetImageData;
     registerNative(proxyGetImageData, 'getImageData');
     registerNative(origGetImageData, 'getImageData');
+
+    if (typeof OffscreenCanvas !== 'undefined' && OffscreenCanvas.prototype) {
+      if (typeof OffscreenCanvasRenderingContext2D !== 'undefined' && OffscreenCanvasRenderingContext2D.prototype) {
+        var origOffscreenGetImageData = OffscreenCanvasRenderingContext2D.prototype.getImageData;
+        if (origOffscreenGetImageData) {
+          var proxyOffscreenGetImageData = new Proxy(origOffscreenGetImageData, {
+            apply: function(target, thisArg, argumentsList) {
+              var imgData = target.apply(thisArg, argumentsList);
+              try {
+                if (imgData.width > 8 && imgData.height > 8) {
+                  imgData = applyNoise(imgData);
+                }
+              } catch(e) {}
+              return imgData;
+            }
+          });
+          OffscreenCanvasRenderingContext2D.prototype.getImageData = proxyOffscreenGetImageData;
+          registerNative(proxyOffscreenGetImageData, 'getImageData');
+          registerNative(origOffscreenGetImageData, 'getImageData');
+        }
+      }
+
+      if (OffscreenCanvas.prototype.convertToBlob) {
+        var origConvertToBlob = OffscreenCanvas.prototype.convertToBlob;
+        var proxyConvertToBlob = new Proxy(origConvertToBlob, {
+          apply: function(target, thisArg, argumentsList) {
+            try {
+              var ctx = thisArg.getContext('2d');
+              if (ctx) {
+                var imgData = ctx.getImageData(0, 0, thisArg.width, thisArg.height);
+                ctx.putImageData(applyNoise(imgData), 0, 0);
+              }
+            } catch(e) {}
+            return target.apply(thisArg, argumentsList);
+          }
+        });
+        OffscreenCanvas.prototype.convertToBlob = proxyConvertToBlob;
+        registerNative(proxyConvertToBlob, 'convertToBlob');
+        registerNative(origConvertToBlob, 'convertToBlob');
+      }
+    }
   } catch(e) {}
 
   // -------------------------------------------------------------
   // 3.5 ClientRects DOM Subpixel Jitter (Multi-Method Parity)
   // -------------------------------------------------------------
   try {
+    function shiftDOMRectList(origList, shift) {
+      if (!origList || shift === 0) return origList;
+      var count = origList.length || 0;
+      var shifted = [];
+      for (var i = 0; i < count; i++) {
+        var r = origList[i] || (origList.item && origList.item(i));
+        if (r) {
+          shifted.push(new DOMRect(r.x + shift, r.y + shift, r.width, r.height));
+        }
+      }
+      return new Proxy(origList, {
+        get: function(target, prop, receiver) {
+          if (prop === 'length') return shifted.length;
+          if (prop === 'item') {
+            return function(idx) { return shifted[idx] || null; };
+          }
+          if (prop === Symbol.iterator) {
+            return function() { return shifted[Symbol.iterator](); };
+          }
+          var idx = Number(prop);
+          if (!isNaN(idx) && idx >= 0 && idx < shifted.length) {
+            return shifted[idx];
+          }
+          return Reflect.get(target, prop, receiver);
+        }
+      });
+    }
+
     var origGetBoundingClientRect = Element.prototype.getBoundingClientRect;
     var crShift = ((pSeed % 5) - 2) * 0.0001;
     if (crShift !== 0) {
@@ -678,7 +758,8 @@ export function ensureProfileStealthExtension(
         var origGetClientRects = Element.prototype.getClientRects;
         var proxyGetClientRects = new Proxy(origGetClientRects, {
           apply: function(target, thisArg, argumentsList) {
-            return target.apply(thisArg, argumentsList);
+            var rects = target.apply(thisArg, argumentsList);
+            return shiftDOMRectList(rects, crShift);
           }
         });
         Element.prototype.getClientRects = proxyGetClientRects;
@@ -709,7 +790,8 @@ export function ensureProfileStealthExtension(
         var origRangeGetClientRects = Range.prototype.getClientRects;
         var proxyRangeGetClientRects = new Proxy(origRangeGetClientRects, {
           apply: function(target, thisArg, argumentsList) {
-            return target.apply(thisArg, argumentsList);
+            var rects = target.apply(thisArg, argumentsList);
+            return shiftDOMRectList(rects, crShift);
           }
         });
         Range.prototype.getClientRects = proxyRangeGetClientRects;

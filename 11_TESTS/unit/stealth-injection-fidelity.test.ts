@@ -39,16 +39,33 @@ describe('Task 6: Stealth Script Injection & Anti-Detect Fidelity Suite', () => 
       getChannelData: function() { return new Float32Array(500); },
     };
 
+    function OffscreenCanvas() {}
+    OffscreenCanvas.prototype = {
+      getContext: function() {
+        return {
+          getImageData: function() { return { width: 10, height: 10, data: new Uint8ClampedArray(400) }; },
+          putImageData: function() {},
+        };
+      },
+      convertToBlob: function() { return Promise.resolve(null); },
+    };
+
+    function OffscreenCanvasRenderingContext2D() {}
+    OffscreenCanvasRenderingContext2D.prototype = {
+      getImageData: function() { return { width: 10, height: 10, data: new Uint8ClampedArray(400) }; },
+      putImageData: function() {},
+    };
+
     function Element() {}
     Element.prototype = {
       getBoundingClientRect: function() { return { x: 10, y: 10, width: 100, height: 50 }; },
-      getClientRects: function() { return []; },
+      getClientRects: function() { return [{ x: 10, y: 10, width: 100, height: 50 }]; },
     };
 
     function Range() {}
     Range.prototype = {
       getBoundingClientRect: function() { return { x: 10, y: 10, width: 100, height: 50 }; },
-      getClientRects: function() { return []; },
+      getClientRects: function() { return [{ x: 10, y: 10, width: 100, height: 50 }]; },
     };
 
     function WebGLRenderingContext() {}
@@ -94,6 +111,8 @@ describe('Task 6: Stealth Script Injection & Anti-Detect Fidelity Suite', () => 
       NavigatorUAData,
       HTMLCanvasElement,
       CanvasRenderingContext2D,
+      OffscreenCanvas,
+      OffscreenCanvasRenderingContext2D,
       AudioBuffer,
       Element,
       Range,
@@ -198,5 +217,55 @@ describe('Task 6: Stealth Script Injection & Anti-Detect Fidelity Suite', () => 
     const chromeBrand = uaData.brands.find((b: any) => b.brand === 'Google Chrome');
     expect(chromeBrand).toBeDefined();
     expect(chromeBrand.version).toBe('133');
+  });
+
+  it('ensures navigator.webdriver getter name is "get webdriver" with native toString', () => {
+    const sandbox = createMockBrowserContext();
+    const context = vm.createContext(sandbox);
+    vm.runInContext(stealthScriptCode, context);
+
+    const desc = sandbox.Object.getOwnPropertyDescriptor(sandbox.Navigator.prototype, 'webdriver');
+    expect(desc).toBeDefined();
+    expect(desc.get).toBeDefined();
+    expect(desc.get.name).toBe('get webdriver');
+    expect(sandbox.Function.prototype.toString.call(desc.get)).toBe('function get webdriver() { [native code] }');
+    expect(sandbox.navigator.webdriver).toBe(false);
+  });
+
+  it('ensures navigator.userAgentData has zero own properties and inherits prototype getters', () => {
+    const sandbox = createMockBrowserContext();
+    const context = vm.createContext(sandbox);
+    vm.runInContext(stealthScriptCode, context);
+
+    const uaData = sandbox.navigator.userAgentData;
+    expect(uaData).toBeDefined();
+    expect(sandbox.Object.getOwnPropertyNames(uaData)).toEqual([]);
+    expect(uaData.brands).toBeDefined();
+    expect(uaData.mobile).toBe(false);
+    expect(uaData.platform).toBeDefined();
+  });
+
+  it('shifts Element and Range getClientRects and returns array-like proxy with item()', () => {
+    const sandbox = createMockBrowserContext();
+    const context = vm.createContext(sandbox);
+    vm.runInContext(stealthScriptCode, context);
+
+    const elem = Object.create(sandbox.Element.prototype);
+    const rects = elem.getClientRects();
+    expect(rects.length).toBe(1);
+    expect(typeof rects.item).toBe('function');
+    expect(rects[0].x).toBe(rects.item(0).x);
+    // crShift was applied
+    expect(rects[0].x).not.toBe(10);
+  });
+
+  it('hooks OffscreenCanvas and OffscreenCanvasRenderingContext2D with native toString masking', () => {
+    const sandbox = createMockBrowserContext();
+    const context = vm.createContext(sandbox);
+    vm.runInContext(stealthScriptCode, context);
+
+    const toStringFn = sandbox.Function.prototype.toString;
+    expect(toStringFn.call(sandbox.OffscreenCanvasRenderingContext2D.prototype.getImageData)).toBe('function getImageData() { [native code] }');
+    expect(toStringFn.call(sandbox.OffscreenCanvas.prototype.convertToBlob)).toBe('function convertToBlob() { [native code] }');
   });
 });
