@@ -19,7 +19,7 @@ import { CommercialPlan } from '../../10_CONFIG/shared/types/commercial.js';
 import { calculateAuthoritativeOrderTotal } from './canonical-plan-catalog.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 
-export type PaymentProviderType = 'stripe' | 'razorpay' | 'simulation';
+export type PaymentProviderType = 'stripe' | 'razorpay' | 'youpi_pg' | 'simulation';
 
 export class PaymentGatewayNotConfiguredError extends Error {
   public readonly provider: string;
@@ -493,6 +493,190 @@ export class SimulationPaymentAdapter implements PaymentProvider {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// YOUPI-PG ADAPTER (Owner's Sovereign 0% Fee UPI & QR Gateway)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export class YoupiPgPaymentAdapter implements PaymentProvider {
+  public readonly name: PaymentProviderType = 'youpi_pg';
+
+  public get baseUrl(): string {
+    return (process.env.YOUPI_PG_BASE_URL || process.env.BASE_PAYMENT_API_URL || 'http://localhost:6100').replace(/\/+$/, '');
+  }
+
+  public get merchantId(): string {
+    return process.env.YOUPI_PG_MERCHANT_ID || '00000000-0000-0000-0000-000000000001';
+  }
+
+  public get apiKey(): string {
+    return process.env.YOUPI_PG_API_KEY || process.env.YOUPI_PG_SECRET || '';
+  }
+
+  public get webhookSecret(): string {
+    return process.env.YOUPI_PG_WEBHOOK_SECRET || process.env.YOUPI_WEBHOOK_SECRET || 'whsec_mahi_youpi_test_secret_2026';
+  }
+
+  public async createCheckoutSession(
+    req: CheckoutSessionRequest,
+    plan: CommercialPlan,
+    amountCents: number
+  ): Promise<CheckoutSessionResponse> {
+    const isTest = process.env.NODE_ENV === 'test' || process.env.PAYMENT_ALLOW_TEST_ADAPTERS === 'true';
+
+    // Outside of test mode, throw error if required gateway config is missing
+    if (!isTest && !process.env.YOUPI_PG_BASE_URL && !process.env.YOUPI_PG_API_KEY && !process.env.YOUPI_PG_SECRET) {
+      throw new PaymentGatewayNotConfiguredError('youpi_pg', 'YouPI-PG credentials (YOUPI_PG_BASE_URL / YOUPI_PG_API_KEY) are not configured.');
+    }
+
+    const orderId = req.idempotencyKey || `mahi_ord_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const amountRupees = (amountCents / 100).toFixed(2);
+    const returnUrl = req.successUrl || `https://mahibrowser.com/pricing?status=success&orderId=${orderId}`;
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Merchant-Id': this.merchantId,
+    };
+    if (this.apiKey) {
+      headers['X-Merchant-Key'] = this.apiKey;
+    }
+
+    const payload = {
+      orderId,
+      amount: amountRupees,
+      currency: 'INR',
+      returnUrl,
+      metadata: {
+        userId: req.userId,
+        planId: plan.id,
+        billingCycle: req.billingCycle,
+        extraMembers: req.extraMembers,
+        extraProxyGb: req.extraProxyGb,
+      },
+    };
+
+    // If in test mode without an active live server, return deterministic simulation response
+    if (isTest && (process.env.YOUPI_PG_MOCK === 'true' || !process.env.YOUPI_PG_LIVE_CALL)) {
+      const sessionId = `youpi_cs_${crypto.randomBytes(16).toString('hex')}`;
+      const checkoutUrl = `${this.baseUrl.replace(':6100', ':7000')}/checkout/${sessionId}`;
+      return {
+        sessionId,
+        checkoutUrl,
+        orderId,
+        amountCents,
+        currency: 'INR',
+        provider: 'youpi_pg',
+        planId: plan.id,
+        billingCycle: req.billingCycle,
+        createdAt: new Date().toISOString(),
+        gatewayMeta: {
+          youpiPaymentId: sessionId,
+          orderId,
+          queuePosition: 0,
+        },
+      };
+    }
+
+    try {
+      const res = await fetch(`${this.baseUrl}/api/v1/payments`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`YouPI-PG payment creation failed [HTTP ${res.status}]: ${errText}`);
+      }
+
+      const data = await res.json() as any;
+      const sessionId = data.paymentId || data.id || orderId;
+      const checkoutUrl = data.checkoutUrl || `${this.baseUrl.replace(':6100', ':7000')}/checkout/${sessionId}`;
+
+      return {
+        sessionId,
+        checkoutUrl,
+        orderId: data.orderId || orderId,
+        amountCents,
+        currency: 'INR',
+        provider: 'youpi_pg',
+        planId: plan.id,
+        billingCycle: req.billingCycle,
+        createdAt: new Date().toISOString(),
+        gatewayMeta: {
+          youpiPaymentId: sessionId,
+          orderId: data.orderId || orderId,
+          queuePosition: data.queuePosition || 0,
+        },
+      };
+    } catch (err: any) {
+      if (isTest) {
+        const sessionId = `youpi_cs_${crypto.randomBytes(16).toString('hex')}`;
+        const checkoutUrl = `${this.baseUrl.replace(':6100', ':7000')}/checkout/${sessionId}`;
+        return {
+          sessionId,
+          checkoutUrl,
+          orderId,
+          amountCents,
+          currency: 'INR',
+          provider: 'youpi_pg',
+          planId: plan.id,
+          billingCycle: req.billingCycle,
+          createdAt: new Date().toISOString(),
+          gatewayMeta: {
+            youpiPaymentId: sessionId,
+            orderId,
+            queuePosition: 0,
+          },
+        };
+      }
+      throw err;
+    }
+  }
+
+  public verifyWebhookSignature(rawBody: string, signature: string, secret?: string): boolean {
+    if (!signature) return false;
+    const effectiveSecret = secret || this.webhookSecret;
+    if (!effectiveSecret) return false;
+
+    const normalizedSig = signature.startsWith('sha256=') ? signature.slice(7) : signature;
+    const expectedSig = crypto.createHmac('sha256', effectiveSecret).update(rawBody).digest('hex');
+
+    const expectedBuf = Buffer.from(expectedSig, 'utf-8');
+    const actualBuf = Buffer.from(normalizedSig, 'utf-8');
+
+    if (expectedBuf.length !== actualBuf.length) return false;
+    return crypto.timingSafeEqual(expectedBuf, actualBuf);
+  }
+
+  public signPayload(rawBody: string, secret?: string): string {
+    const effectiveSecret = secret || this.webhookSecret;
+    return `sha256=${crypto.createHmac('sha256', effectiveSecret).update(rawBody).digest('hex')}`;
+  }
+
+  public parseWebhookPayload(rawBody: string): PaymentWebhookEvent {
+    const payload = JSON.parse(rawBody);
+    const eventType = payload.event || payload.type || (payload.status === 'SUCCESS' ? 'SUCCESS' : 'FAILED');
+    const isSuccess = eventType === 'SUCCESS' || eventType === 'PAYMENT_SUCCESS' || payload.status === 'SUCCESS';
+    const amountPaise = payload.amountPaise ? Number(payload.amountPaise) : Math.round(Number(payload.amount || 0) * 100);
+
+    return {
+      id: payload.deliveryId || payload.id || `evt_youpi_${Date.now()}`,
+      type: isSuccess ? 'payment.succeeded' : 'payment.failed',
+      provider: 'youpi_pg',
+      userId: payload.metadata?.userId || '',
+      planId: payload.metadata?.planId || '',
+      billingCycle: payload.metadata?.billingCycle || 'ANNUAL',
+      amountCents: amountPaise,
+      currency: payload.currency || 'INR',
+      externalPaymentId: payload.paymentId || payload.id || payload.utr || payload.orderId || `youpi_pi_${Date.now()}`,
+      externalOrderId: payload.orderId,
+      receiptUrl: payload.receiptUrl || `${this.baseUrl}/receipt/${payload.paymentId || payload.orderId}`,
+      metadata: payload.metadata,
+      rawPayload: payload,
+    };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CENTRAL PAYMENT SERVICE
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -504,11 +688,14 @@ export class PaymentService {
   private constructor() {
     this.registerProvider(new StripePaymentAdapter());
     this.registerProvider(new RazorpayPaymentAdapter());
+    this.registerProvider(new YoupiPgPaymentAdapter());
     this.registerProvider(new SimulationPaymentAdapter());
 
     const envProv = process.env.PAYMENT_PROVIDER?.toLowerCase() as PaymentProviderType;
     if (envProv && this.providers.has(envProv)) {
       this.defaultProvider = envProv;
+    } else {
+      this.defaultProvider = 'youpi_pg';
     }
   }
 
@@ -1266,6 +1453,68 @@ export class PaymentService {
         updatedAt: r.updated_at,
       };
     });
+  }
+
+  /**
+   * Verifies an order status directly with YouPI-PG and activates subscription idempotently if paid.
+   */
+  public async verifyYoupiPgOrder(paymentOrOrderId: string): Promise<{
+    success: boolean;
+    status: string;
+    subscription?: UserSubscriptionSummary | null;
+    invoice?: PaymentInvoiceRecord;
+    error?: string;
+  }> {
+    const db = getDatabase();
+    const payment = db.prepare(`
+      SELECT * FROM commercial_payments 
+      WHERE (external_payment_id = ? OR external_order_id = ? OR id = ?) 
+      AND provider IN ('youpi_pg', 'simulation')
+    `).get(paymentOrOrderId, paymentOrOrderId, paymentOrOrderId) as any;
+
+    if (!payment) {
+      return { success: false, status: 'NOT_FOUND', error: 'Payment record not found.' };
+    }
+
+    if (payment.status === 'SUCCEEDED') {
+      const sub = this.getUserSubscription(payment.user_id);
+      return { success: true, status: 'SUCCEEDED', subscription: sub || undefined };
+    }
+
+    const youpiAdapter = this.getProvider('youpi_pg') as YoupiPgPaymentAdapter;
+    const isTest = process.env.NODE_ENV === 'test' || process.env.PAYMENT_ALLOW_TEST_ADAPTERS === 'true';
+
+    try {
+      const queryId = payment.external_payment_id || payment.id;
+      const headers: Record<string, string> = {};
+      if (youpiAdapter.apiKey) {
+        headers['X-Merchant-Key'] = youpiAdapter.apiKey;
+      }
+      const res = await fetch(`${youpiAdapter.baseUrl}/api/v1/payments/${encodeURIComponent(queryId)}`, { headers });
+      if (res.ok) {
+        const details = await res.json() as any;
+        if (details.status === 'SUCCESS') {
+          const act = await this.activateSubscriptionFromPayment({
+            userId: payment.user_id,
+            planId: payment.plan_id,
+            billingCycle: payment.billing_cycle as any,
+            amountCents: payment.amount_cents,
+            currency: payment.currency,
+            provider: 'youpi_pg',
+            externalPaymentId: details.paymentId || details.id || queryId,
+            externalOrderId: details.orderId || payment.external_order_id,
+          });
+          return { success: true, status: 'SUCCEEDED', subscription: act.subscription, invoice: act.invoice };
+        }
+        return { success: true, status: details.status || payment.status };
+      }
+    } catch (err: any) {
+      if (isTest) {
+        return { success: true, status: payment.status };
+      }
+    }
+
+    return { success: true, status: payment.status };
   }
 }
 

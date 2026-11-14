@@ -604,6 +604,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       const res = await createCheckoutSession({
         planId: selectedPlanId,
         billingCycle: selectedBillingCycle,
+        provider: 'youpi_pg',
+        currency: 'INR',
       });
       if (res?.success) {
         showToast({
@@ -956,10 +958,10 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                         type="button"
                         onClick={handleOnlineCheckout}
                         className="py-2 px-3 rounded-xl bg-indigo-600/90 hover:bg-indigo-600 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5"
-                        title="Checkout online in browser"
+                        title="Instant UPI & Cards online checkout"
                       >
                         <Sparkles size={13} />
-                        <span>Online Cards</span>
+                        <span>Instant UPI / Cards</span>
                       </button>
 
                       <button

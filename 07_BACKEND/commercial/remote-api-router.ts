@@ -306,10 +306,18 @@ export async function handleRemoteApiRoutes(
       let provider: any = 'simulation';
       if (req.headers['stripe-signature']) {
         provider = 'stripe';
+      } else if (
+        req.headers['x-gateway-signature'] ||
+        req.headers['x-gateway-signature-v2'] ||
+        req.headers['x-youpi-signature']
+      ) {
+        provider = 'youpi_pg';
       } else if (req.headers['x-razorpay-signature']) {
         provider = 'razorpay';
       } else if (parsedUrl.searchParams.get('provider')) {
         provider = parsedUrl.searchParams.get('provider');
+      } else if (normalizedPath.endsWith('/youpi') || normalizedPath.endsWith('/youpi_pg')) {
+        provider = 'youpi_pg';
       }
 
       const result = await paymentService.handleWebhook(provider, rawBody, signature);

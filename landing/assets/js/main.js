@@ -3417,7 +3417,7 @@ let checkoutDrawerState = {
   billingCycle: 'ANNUAL',
   extraMembers: 0,
   extraProxyGb: 0,
-  selectedGateway: 'razorpay',
+  selectedGateway: 'youpi_pg',
   currency: 'INR',
   paymentInfo: null
 };
@@ -3655,6 +3655,15 @@ function openCheckoutDrawer(planId, billingCycle, extraMembers, extraProxyGb) {
       })
       .catch(() => {});
   }
+
+  fetch('/api/v1/billing/gateways')
+    .then(r => r.json())
+    .then(res => {
+      if (res && res.gateways) {
+        window.__mahiGateways = res.gateways;
+      }
+    })
+    .catch(() => {});
 }
 
 function closeCheckoutDrawer() {
@@ -3792,9 +3801,9 @@ function renderDrawerContent() {
       <div>
         <span style="font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 10px;">Select Payment Gateway</span>
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-          <button type="button" onclick="onDrawerGatewayChange('razorpay')" class="drawer-gateway-btn ${gateway === 'razorpay' ? 'active' : ''}" style="padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); cursor: pointer; text-align: center; transition: all 0.15s;">
-            <div style="font-size: 12px; font-weight: 800; color: #f8fafc;">Razorpay</div>
-            <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">UPI / Cards (₹)</div>
+          <button type="button" onclick="onDrawerGatewayChange('youpi_pg')" class="drawer-gateway-btn ${gateway === 'youpi_pg' ? 'active' : ''}" style="padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); cursor: pointer; text-align: center; transition: all 0.15s;">
+            <div style="font-size: 12px; font-weight: 800; color: #f8fafc;">Instant UPI</div>
+            <div style="font-size: 9px; color: #34d399; margin-top: 2px;">0% Fee · QR / App</div>
           </button>
           <button type="button" onclick="onDrawerGatewayChange('stripe')" class="drawer-gateway-btn ${gateway === 'stripe' ? 'active' : ''}" style="padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); cursor: pointer; text-align: center; transition: all 0.15s;">
             <div style="font-size: 12px; font-weight: 800; color: #f8fafc;">Stripe</div>
@@ -3809,13 +3818,13 @@ function renderDrawerContent() {
 
       <!-- Gateway Dynamic Execution Panel -->
       <div id="drawer-gateway-panel" style="margin-top: 4px;">
-        ${gateway === 'razorpay' ? `
+        ${gateway === 'youpi_pg' ? `
           <div style="display: flex; flex-direction: column; gap: 12px;">
             <div style="font-size: 11px; color: #94a3b8; background: rgba(255,255,255,0.02); padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
-              ✓ Indian & International Credit/Debit Cards, NetBanking, and Instant UPI apps supported through Razorpay standard checkout.
+              ✓ Sovereign 0% fee Indian UPI & Instant Dynamic QR code (GPay, PhonePe, Paytm, BHIM, Cred, Slice).
             </div>
-            <button id="btn-drawer-pay-razorpay" onclick="executeRazorpayPayment()" style="width: 100%; padding: 14px; border-radius: 12px; background: #10b981; color: #022c22; font-size: 14px; font-weight: 800; border: none; cursor: pointer; box-shadow: 0 4px 16px rgba(16,185,129,0.3); transition: all 0.15s;">
-              Pay ₹${totals.finalInr.toLocaleString('en-IN')} via Razorpay →
+            <button id="btn-drawer-pay-youpi" onclick="executeYoupiPayment()" style="width: 100%; padding: 14px; border-radius: 12px; background: #10b981; color: #022c22; font-size: 14px; font-weight: 800; border: none; cursor: pointer; box-shadow: 0 4px 16px rgba(16,185,129,0.3); transition: all 0.15s;">
+              Pay ₹${totals.finalInr.toLocaleString('en-IN')} via Instant UPI / QR →
             </button>
           </div>
         ` : gateway === 'stripe' ? `
@@ -3879,6 +3888,51 @@ function onDrawerProxyChange(delta) {
 function onDrawerGatewayChange(newGw) {
   checkoutDrawerState.selectedGateway = newGw;
   renderDrawerContent();
+}
+
+async function executeYoupiPayment() {
+  const btn = document.getElementById('btn-drawer-pay-youpi');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Creating UPI Session...';
+  }
+
+  const token = localStorage.getItem('mahi_access_token') || localStorage.getItem('mahi_auth_token');
+  try {
+    const res = await fetch('/api/v1/billing/checkout', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        planId: checkoutDrawerState.planId,
+        billingCycle: checkoutDrawerState.billingCycle,
+        provider: 'youpi_pg',
+        currency: 'INR',
+        extraMembers: checkoutDrawerState.extraMembers,
+        extraProxyGb: checkoutDrawerState.extraProxyGb
+      })
+    });
+
+    const data = await res.json();
+    if (!data.success) {
+      showToast(data.error || 'Failed to initialize UPI checkout', 'error');
+      if (btn) { btn.disabled = false; btn.innerText = 'Pay via Instant UPI / QR →'; }
+      return;
+    }
+
+    if (data.checkoutUrl) {
+      showToast('Redirecting to sovereign UPI checkout portal...', 'info');
+      window.location.href = data.checkoutUrl;
+      return;
+    }
+
+    showToast('UPI Session created. Please complete payment.', 'info');
+  } catch (err) {
+    showToast(err.message || 'UPI initialization failed', 'error');
+    if (btn) { btn.disabled = false; btn.innerText = 'Pay via Instant UPI / QR →'; }
+  }
 }
 
 async function executeRazorpayPayment() {
@@ -4083,6 +4137,7 @@ window.onDrawerCycleChange = onDrawerCycleChange;
 window.onDrawerMembersChange = onDrawerMembersChange;
 window.onDrawerProxyChange = onDrawerProxyChange;
 window.onDrawerGatewayChange = onDrawerGatewayChange;
+window.executeYoupiPayment = executeYoupiPayment;
 window.executeRazorpayPayment = executeRazorpayPayment;
 window.executeStripePayment = executeStripePayment;
 window.executeManualUpiSubmission = executeManualUpiSubmission;

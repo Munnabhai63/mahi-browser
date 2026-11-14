@@ -809,14 +809,14 @@ export async function createCheckoutSessionFromServer(payload: any): Promise<{ s
       planId: payload.planId || payload.plan_id,
       billingCycle: (payload.billingCycle || payload.billing_cycle || 'ANNUAL').toUpperCase(),
       currency: payload.currency || 'INR',
-      provider: payload.provider,
+      provider: payload.provider || 'youpi_pg',
       extraMembers: payload.extraMembers,
       extraProxyGb: payload.extraProxyGb,
       successUrl: payload.successUrl,
       cancelUrl: payload.cancelUrl,
     });
-    if (res.statusCode >= 200 && res.statusCode < 300 && res.body?.session) {
-      return { success: true, session: res.body.session };
+    if (res.statusCode >= 200 && res.statusCode < 300 && (res.body?.session || res.body?.checkoutUrl || res.body?.success)) {
+      return { success: true, session: res.body?.session || res.body };
     }
     return { success: false, error: res.body?.error || `Checkout failed (HTTP ${res.statusCode})` };
   } catch (err: any) {

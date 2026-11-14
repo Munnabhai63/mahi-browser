@@ -2366,7 +2366,7 @@ export function registerIpcHandlers(): void {
           extraProxyGb: payload.extraProxyGb,
           successUrl: payload.successUrl,
           cancelUrl: payload.cancelUrl,
-        }, payload.provider);
+        }, payload.provider || 'youpi_pg');
         return { success: true, session: result };
       } catch (err: any) {
         return { success: false, error: err.message };

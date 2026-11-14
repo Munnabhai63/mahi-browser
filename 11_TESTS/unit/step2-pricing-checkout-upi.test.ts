@@ -24,6 +24,7 @@ import {
   verifyRazorpayPaymentSignature,
   StripePaymentAdapter,
   RazorpayPaymentAdapter,
+  YoupiPgPaymentAdapter,
 } from '../../07_BACKEND/commercial/payment-service.js';
 import { handleCommercialApiRoutes } from '../../07_BACKEND/commercial/commercial-api-router.js';
 import { registerCentralUser } from '../../05_AUTH/central-auth-service.js';
@@ -427,9 +428,10 @@ describe('STEP 2 COMMERCIAL MISSION — Unified Pricing, Checkout & UPI Lifecycl
       expect(res.body.success).toBe(true);
       expect(Array.isArray(res.body.gateways)).toBe(true);
       const gwIds = res.body.gateways.map((g: any) => g.id);
-      expect(gwIds).toContain('razorpay');
+      expect(gwIds).toContain('youpi_pg');
       expect(gwIds).toContain('stripe');
       expect(gwIds).toContain('upi_manual');
+      expect(gwIds).not.toContain('razorpay');
     });
 
     it('creates checkout session via authenticated POST /api/v1/billing/checkout', async () => {
@@ -644,6 +646,169 @@ describe('STEP 2 COMMERCIAL MISSION — Unified Pricing, Checkout & UPI Lifecycl
       expect(html).toContain('escapeHtml(safeProofAsset)');
       expect(html).toContain('escapeHtml(p.id)');
       expect(html).toContain("p.metadata.proofAsset.startsWith('https://') || p.metadata.proofAsset.startsWith('/')");
+    });
+  });
+
+  // ==========================================================================
+  // 5. TASK S2-7: YOUPI-PG CUSTOM PAYMENT GATEWAY INTEGRATION
+  // ==========================================================================
+  describe('5. Task S2-7: YouPI-PG Custom Payment Gateway Integration', () => {
+    it('creates YouPI-PG checkout session with authoritative minor units and INR currency', async () => {
+      const plan = getCommercialPlanById('professional_10')!;
+      const adapter = new YoupiPgPaymentAdapter();
+      const session = await adapter.createCheckoutSession(
+        {
+          userId: userAId,
+          planId: 'professional_10',
+          billingCycle: 'MONTHLY',
+        },
+        plan,
+        59900
+      );
+
+      expect(session.provider).toBe('youpi_pg');
+      expect(session.currency).toBe('INR');
+      expect(session.amountCents).toBe(59900);
+      expect(session.sessionId).toBeDefined();
+      expect(session.checkoutUrl).toBeDefined();
+      expect(session.checkoutUrl).toContain('/checkout/');
+    });
+
+    it('verifies YouPI-PG webhook signature using HMAC-SHA256 and rejects tampered payloads', () => {
+      const adapter = new YoupiPgPaymentAdapter();
+      const secret = 'whsec_custom_youpi_test_key_123';
+      const rawPayload = JSON.stringify({
+        id: 'evt_youpi_999',
+        event: 'PAYMENT_SUCCESS',
+        orderId: 'mahi_ord_12345',
+        amount: '599.00',
+        currency: 'INR',
+        metadata: {
+          userId: userAId,
+          planId: 'professional_10',
+          billingCycle: 'MONTHLY',
+        },
+      });
+
+      const signature = adapter.signPayload(rawPayload, secret);
+      expect(signature.startsWith('sha256=')).toBe(true);
+
+      // Valid signature verifies true
+      expect(adapter.verifyWebhookSignature(rawPayload, signature, secret)).toBe(true);
+
+      // Bare hex signature without prefix also verifies true
+      const hexOnly = signature.replace('sha256=', '');
+      expect(adapter.verifyWebhookSignature(rawPayload, hexOnly, secret)).toBe(true);
+
+      // Tampered payload fails
+      expect(adapter.verifyWebhookSignature(rawPayload + 'tampered', signature, secret)).toBe(false);
+
+      // Wrong secret fails
+      expect(adapter.verifyWebhookSignature(rawPayload, signature, 'wrong_secret')).toBe(false);
+    });
+
+    it('processes YouPI-PG webhook via POST /api/v1/billing/webhook/youpi and activates subscription', async () => {
+      const adapter = new YoupiPgPaymentAdapter();
+      const orderId = `ord_act_${Date.now()}`;
+      const payload = {
+        id: `evt_youpi_act_${Date.now()}`,
+        event: 'PAYMENT_SUCCESS',
+        orderId,
+        paymentId: `pay_act_${Date.now()}`,
+        amountPaise: 59900,
+        currency: 'INR',
+        metadata: {
+          userId: userBId,
+          planId: 'professional_10',
+          billingCycle: 'MONTHLY',
+        },
+      };
+
+      const rawBody = JSON.stringify(payload);
+      const signature = adapter.signPayload(rawBody);
+
+      const res = await invokeRoute(
+        'POST',
+        '/api/v1/billing/webhook/youpi',
+        {
+          'content-type': 'application/json',
+          'x-gateway-signature': signature,
+        },
+        rawBody
+      );
+
+      expect(res.handled).toBe(true);
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      // Verify User B subscription is now active with professional_10
+      const subRes = await invokeRoute('GET', '/api/v1/billing/subscription', {
+        authorization: `Bearer ${userBToken}`,
+      });
+      expect(subRes.status).toBe(200);
+      expect(subRes.body.subscription?.planId).toBe('professional_10');
+      expect(subRes.body.subscription?.status).toBe('ACTIVE');
+    });
+
+    it('verifies YouPI order status via GET /api/v1/billing/youpi/status/:orderId', async () => {
+      const db = getDatabase();
+      const testOrderId = `ord_test_status_${Date.now()}`;
+      db.prepare(`
+        INSERT INTO commercial_payments (
+          id, user_id, plan_id, billing_cycle, amount_cents, currency,
+          status, provider, external_payment_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        `pay_${testOrderId}`,
+        userAId,
+        'professional_10',
+        'MONTHLY',
+        59900,
+        'INR',
+        'SUCCEEDED',
+        'youpi_pg',
+        testOrderId,
+        new Date().toISOString(),
+        new Date().toISOString()
+      );
+
+      const res = await invokeRoute('GET', `/api/v1/billing/youpi/status/${testOrderId}`);
+      expect(res.handled).toBe(true);
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.status).toBe('SUCCEEDED');
+    });
+
+    it('throws PaymentGatewayNotConfiguredError for YouPI when production keys are missing and test mode is disabled', async () => {
+      const origEnv = process.env.NODE_ENV;
+      const origAllow = process.env.PAYMENT_ALLOW_TEST_ADAPTERS;
+      const origUrl = process.env.YOUPI_PG_BASE_URL;
+      const origKey = process.env.YOUPI_PG_API_KEY;
+      const origSec = process.env.YOUPI_PG_SECRET;
+
+      try {
+        delete (process.env as any).NODE_ENV;
+        delete (process.env as any).PAYMENT_ALLOW_TEST_ADAPTERS;
+        delete (process.env as any).YOUPI_PG_BASE_URL;
+        delete (process.env as any).YOUPI_PG_API_KEY;
+        delete (process.env as any).YOUPI_PG_SECRET;
+
+        const plan = getCommercialPlanById('professional_10')!;
+        const adapter = new YoupiPgPaymentAdapter();
+        await expect(
+          adapter.createCheckoutSession(
+            { userId: userAId, planId: 'professional_10', billingCycle: 'MONTHLY' },
+            plan,
+            59900
+          )
+        ).rejects.toThrow(PaymentGatewayNotConfiguredError);
+      } finally {
+        process.env.NODE_ENV = origEnv;
+        if (origAllow !== undefined) process.env.PAYMENT_ALLOW_TEST_ADAPTERS = origAllow;
+        if (origUrl !== undefined) process.env.YOUPI_PG_BASE_URL = origUrl;
+        if (origKey !== undefined) process.env.YOUPI_PG_API_KEY = origKey;
+        if (origSec !== undefined) process.env.YOUPI_PG_SECRET = origSec;
+      }
     });
   });
 });

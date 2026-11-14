@@ -708,12 +708,32 @@ export async function handleCommercialApiRoutes(
   // -------------------------------------------------------------
   if (routePath === '/api/v1/billing/gateways' && method === 'GET') {
     const hasStripe = Boolean(process.env.STRIPE_SECRET_KEY);
-    const hasRazorpay = Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
     const isTest = process.env.NODE_ENV === 'test';
     const gateways = [
-      { id: 'razorpay', name: 'Razorpay (Cards, NetBanking, UPI)', enabled: hasRazorpay || isTest, currency: 'INR' },
-      { id: 'stripe', name: 'Stripe (Credit / Debit Cards)', enabled: hasStripe || isTest, currency: 'USD' },
-      { id: 'upi_manual', name: 'Direct UPI & QR Code', enabled: true, currency: 'INR' },
+      {
+        id: 'youpi_pg',
+        name: 'Instant UPI / Dynamic QR (0% Fee)',
+        enabled: true,
+        currency: 'INR',
+        isDirect: true,
+        description: 'Instant 0% fee peer-to-bank settlement via GPay, PhonePe, Paytm & BHIM',
+      },
+      {
+        id: 'stripe',
+        name: 'Credit & Debit Cards (Global)',
+        enabled: hasStripe || isTest,
+        currency: 'USD',
+        isDirect: false,
+        description: 'International card processing powered by Stripe',
+      },
+      {
+        id: 'upi_manual',
+        name: 'Direct UPI Transfer (UTR)',
+        enabled: true,
+        currency: 'INR',
+        isDirect: true,
+        description: 'Direct bank transfer to Slice UPI ID with manual admin verification',
+      },
     ];
     sendJSON(res, 200, { success: true, gateways });
     return true;
@@ -732,8 +752,8 @@ export async function handleCommercialApiRoutes(
       return true;
     }
     const billingCycle = ((body.billingCycle || body.billing || 'MONTHLY') as string).toUpperCase() as 'MONTHLY' | 'ANNUAL';
-    const provider = ((body.provider || 'razorpay') as string).toLowerCase() as PaymentProviderType;
-    const currency = body.currency || (provider === 'razorpay' ? 'INR' : 'USD');
+    const provider = ((body.provider || 'youpi_pg') as string).toLowerCase() as PaymentProviderType;
+    const currency = body.currency || (provider === 'stripe' ? 'USD' : 'INR');
     const extraMembers = Number(body.extraMembers || 0);
     const extraProxyGb = Number(body.extraProxyGb || 0);
 
@@ -831,6 +851,85 @@ export async function handleCommercialApiRoutes(
       invoice: result.invoice,
     });
     return true;
+  }
+
+  if (routePath === '/api/v1/billing/verify-youpi' && method === 'POST') {
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
+    const body = await parseBody(req);
+    const paymentOrOrderId = body.paymentId || body.orderId || body.external_payment_id || body.externalOrderId;
+    if (!paymentOrOrderId) {
+      sendJSON(res, 400, { success: false, error: 'Missing required field: paymentId or orderId.' });
+      return true;
+    }
+
+    try {
+      const result = await paymentService.verifyYoupiPgOrder(paymentOrOrderId);
+      sendJSON(res, result.success ? 200 : 400, result);
+      return true;
+    } catch (err: any) {
+      sendJSON(res, 500, { success: false, error: err.message });
+      return true;
+    }
+  }
+
+  const youpiStatusMatch = routePath.match(/^\/api\/v1\/billing\/youpi\/status\/([a-zA-Z0-9_.-]+)$/);
+  if (youpiStatusMatch && method === 'GET') {
+    const orderId = youpiStatusMatch[1];
+    try {
+      const result = await paymentService.verifyYoupiPgOrder(orderId);
+      sendJSON(res, result.success ? 200 : 400, result);
+      return true;
+    } catch (err: any) {
+      sendJSON(res, 500, { success: false, error: err.message });
+      return true;
+    }
+  }
+
+  if (
+    (routePath === '/api/v1/billing/webhook' ||
+      routePath === '/api/v1/billing/webhook/youpi' ||
+      routePath === '/api/v1/billing/webhook/youpi_pg') &&
+    method === 'POST'
+  ) {
+    try {
+      const rawBody = (await parseRawBuffer(req)).toString('utf-8');
+      const signature = (
+        req.headers['x-gateway-signature'] ||
+        req.headers['x-gateway-signature-v2'] ||
+        req.headers['x-youpi-signature'] ||
+        req.headers['stripe-signature'] ||
+        req.headers['x-razorpay-signature'] ||
+        req.headers['x-simulation-signature'] ||
+        ''
+      ) as string;
+
+      let provider: PaymentProviderType = 'youpi_pg';
+      if (req.headers['stripe-signature']) {
+        provider = 'stripe';
+      } else if (req.headers['x-razorpay-signature']) {
+        provider = 'razorpay';
+      } else if (
+        req.headers['x-gateway-signature'] ||
+        req.headers['x-gateway-signature-v2'] ||
+        req.headers['x-youpi-signature']
+      ) {
+        provider = 'youpi_pg';
+      } else if (parsedUrl.searchParams.get('provider')) {
+        provider = parsedUrl.searchParams.get('provider') as any;
+      }
+
+      const result = await paymentService.handleWebhook(provider, rawBody, signature);
+      sendJSON(res, 200, { success: true, data: result });
+      return true;
+    } catch (err: any) {
+      const isSig = err.message && err.message.includes('INVALID_WEBHOOK_SIGNATURE');
+      sendJSON(res, isSig ? 400 : 500, { success: false, error: err.message });
+      return true;
+    }
   }
 
   if (routePath === '/api/v1/billing/subscription' && method === 'GET') {
