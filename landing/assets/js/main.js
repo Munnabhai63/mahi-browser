@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initDownloadTriggers();
   initPlatformCircles();
   initPricingSection();
+  initCheckoutDrawer();
   initLiveLeakTester();
   fetchDynamicContent();
   initSmoothScroll();
@@ -3030,7 +3031,7 @@ function initPricingSection() {
     const currCfg = CURRENCY_CONFIG[currentCurrency] || CURRENCY_CONFIG.INR;
 
     grid.innerHTML = plans.map(plan => {
-      const planKey = (currentCategory === 'business' ? 'team_' : 'professional_') + plan.id;
+      const planKey = plan.planKey || ((currentCategory === 'business' ? 'team_' : 'professional_') + plan.id);
       const addedMembers = extraMembers[planKey] || 0;
       const addedGb = extraProxyGb[planKey] || 0;
 
@@ -3133,7 +3134,7 @@ function initPricingSection() {
           </ul>
 
           <div class="cpc-cta-wrap">
-            <a href="${ctaHref}" class="${isPopular ? 'btn-cpc-solid' : 'btn-cpc-outline'}">
+            <a href="${ctaHref}" class="${isPopular ? 'btn-cpc-solid' : 'btn-cpc-outline'} plan-card-cta" data-plan="${planKey}" data-members="${addedMembers}" data-gb="${addedGb}">
               ${ctaLabel}
             </a>
           </div>
@@ -3178,6 +3179,22 @@ function initPricingSection() {
         if ((extraProxyGb[key] || 0) >= 5) {
           extraProxyGb[key] -= 5;
           renderCards();
+        }
+      });
+    });
+
+    // Intercept checkout triggers for logged-in users to open in-app Checkout Drawer
+    grid.querySelectorAll('.plan-card-cta').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const token = localStorage.getItem('mahi_access_token') || localStorage.getItem('mahi_auth_token');
+        if (token) {
+          e.preventDefault();
+          const targetPlan = btn.getAttribute('data-plan') || 'professional_10';
+          const targetMembers = parseInt(btn.getAttribute('data-members') || '0', 10);
+          const targetGb = parseInt(btn.getAttribute('data-gb') || '0', 10);
+          if (typeof openCheckoutDrawer === 'function') {
+            openCheckoutDrawer(targetPlan, isAnnual ? 'annual' : 'monthly', targetMembers, targetGb);
+          }
         }
       });
     });
@@ -3275,7 +3292,7 @@ function initPricingSection() {
               }
               return `
                 <td class="${isPop ? 'col-popular-td' : ''}">
-                  <a href="${compCtaHref}" class="${isPop ? 'btn-cpc-solid' : 'btn-cpc-outline'}">
+                  <a href="${compCtaHref}" class="${isPop ? 'btn-cpc-solid' : 'btn-cpc-outline'} compare-card-cta" data-plan="${colPlanKey}">
                     ${compCtaLabel}
                   </a>
                 </td>
@@ -3287,6 +3304,19 @@ function initPricingSection() {
     `;
 
     compareTableWrapper.innerHTML = tableHtml;
+
+    compareTableWrapper.querySelectorAll('.compare-card-cta').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const token = localStorage.getItem('mahi_access_token') || localStorage.getItem('mahi_auth_token');
+        if (token) {
+          e.preventDefault();
+          const targetPlan = btn.getAttribute('data-plan') || 'professional_10';
+          if (typeof openCheckoutDrawer === 'function') {
+            openCheckoutDrawer(targetPlan, isAnnual ? 'annual' : 'monthly', 0, 0);
+          }
+        }
+      });
+    });
   }
 
   compareTabs.forEach(btn => {
@@ -3343,6 +3373,7 @@ function initPricingSection() {
           if (cat.personal && cat.personal.length > 0) {
             PRICING_DATA.personal = cat.personal.map(p => ({
               id: p.profileLimit,
+              planKey: p.planId || ('professional_' + p.profileLimit),
               name: p.displayName,
               monthly: Math.round(p.monthlyPricePaise / 100),
               annual: Math.round(p.annualPricePaise / 100),
@@ -3355,6 +3386,7 @@ function initPricingSection() {
           if (cat.business && cat.business.length > 0) {
             PRICING_DATA.business = cat.business.map(p => ({
               id: p.profileLimit,
+              planKey: p.planId || ('team_' + p.profileLimit),
               name: p.displayName,
               monthly: Math.round(p.monthlyPricePaise / 100),
               annual: Math.round(p.annualPricePaise / 100),
@@ -3372,6 +3404,683 @@ function initPricingSection() {
     }
   })();
 }
+
+/**
+ * ============================================================================
+ * MAHI BROWSER — INTERACTIVE CHECKOUT DRAWER (TASK S2-4)
+ * Benchmark: GoLogin / Vengence UI Parity
+ * Supports Razorpay (Standard modal), Stripe (Redirect), and Direct UPI UTR submission
+ * ============================================================================
+ */
+let checkoutDrawerState = {
+  planId: 'professional_50',
+  billingCycle: 'ANNUAL',
+  extraMembers: 0,
+  extraProxyGb: 0,
+  selectedGateway: 'razorpay',
+  currency: 'INR',
+  paymentInfo: null
+};
+
+const CANONICAL_PLANS_META = {
+  professional_10: { name: 'Professional 10', profileLimit: 10, seatLimit: 1, baseInr: 599, baseUsd: 7 },
+  professional_25: { name: 'Professional 25', profileLimit: 25, seatLimit: 2, baseInr: 1499, baseUsd: 18 },
+  professional_50: { name: 'Professional 50', profileLimit: 50, seatLimit: 3, baseInr: 2999, baseUsd: 36 },
+  professional_100: { name: 'Professional 100', profileLimit: 100, seatLimit: 5, baseInr: 5999, baseUsd: 72 },
+  business_starter: { name: 'Team 50', profileLimit: 50, seatLimit: 5, baseInr: 2999, baseUsd: 36 },
+  business_growth: { name: 'Team 100', profileLimit: 100, seatLimit: 10, baseInr: 3999, baseUsd: 48 },
+  business_scale: { name: 'Team 200', profileLimit: 200, seatLimit: 20, baseInr: 4999, baseUsd: 60 },
+  business_enterprise: { name: 'Team 300', profileLimit: 300, seatLimit: 999, baseInr: 5999, baseUsd: 72 }
+};
+
+const PLAN_ALIASES_MAP = {
+  '10': 'professional_10',
+  '25': 'professional_25',
+  '50': 'professional_50',
+  '100': 'professional_100',
+  'team_50': 'business_starter',
+  'team_100': 'business_growth',
+  'team_200': 'business_scale',
+  'team_300': 'business_enterprise'
+};
+
+function normalizePlanKey(rawKey) {
+  if (!rawKey) return 'professional_50';
+  const clean = String(rawKey).trim().toLowerCase();
+  if (CANONICAL_PLANS_META[clean]) return clean;
+  if (PLAN_ALIASES_MAP[clean]) return PLAN_ALIASES_MAP[clean];
+  if (clean.includes('10')) return 'professional_10';
+  if (clean.includes('25')) return 'professional_25';
+  if (clean.includes('50') && clean.includes('team')) return 'business_starter';
+  if (clean.includes('50')) return 'professional_50';
+  if (clean.includes('100') && clean.includes('team')) return 'business_growth';
+  if (clean.includes('100')) return 'professional_100';
+  if (clean.includes('200')) return 'business_scale';
+  if (clean.includes('300')) return 'business_enterprise';
+  return 'professional_50';
+}
+
+function calculateDrawerTotals() {
+  const planKey = normalizePlanKey(checkoutDrawerState.planId);
+  const meta = CANONICAL_PLANS_META[planKey] || CANONICAL_PLANS_META.professional_50;
+  const isAnnual = checkoutDrawerState.billingCycle === 'ANNUAL';
+  const members = Math.max(0, checkoutDrawerState.extraMembers || 0);
+  const proxyGb = Math.max(0, checkoutDrawerState.extraProxyGb || 0);
+
+  // Minor unit arithmetic matching canonical catalog
+  const memberAddonInr = 499;
+  const memberAddonUsd = 6;
+  const proxyAddonInr = 199;
+  const proxyAddonUsd = 3;
+
+  const totalMonthlyInr = meta.baseInr + (members * memberAddonInr) + (proxyGb * proxyAddonInr);
+  const totalMonthlyUsd = meta.baseUsd + (members * memberAddonUsd) + (proxyGb * proxyAddonUsd);
+
+  let finalInr = 0;
+  let finalUsd = 0;
+  let monthlyEquivalentInr = totalMonthlyInr;
+  let monthlyEquivalentUsd = totalMonthlyUsd;
+
+  if (isAnnual) {
+    monthlyEquivalentInr = Math.round(totalMonthlyInr * 0.5);
+    monthlyEquivalentUsd = Math.round(totalMonthlyUsd * 0.5);
+    finalInr = monthlyEquivalentInr * 12;
+    finalUsd = monthlyEquivalentUsd * 12;
+  } else {
+    finalInr = totalMonthlyInr;
+    finalUsd = totalMonthlyUsd;
+  }
+
+  return {
+    meta,
+    planKey,
+    isAnnual,
+    members,
+    proxyGb,
+    totalMonthlyInr,
+    totalMonthlyUsd,
+    monthlyEquivalentInr,
+    monthlyEquivalentUsd,
+    finalInr,
+    finalUsd,
+    finalPaise: finalInr * 100,
+    finalCents: finalUsd * 100
+  };
+}
+
+function ensureRazorpaySdk() {
+  if (window.Razorpay) return Promise.resolve(true);
+  return new Promise(resolve => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.head.appendChild(script);
+  });
+}
+
+function initCheckoutDrawer() {
+  // Inject Drawer CSS if not present
+  if (!document.getElementById('mahi-checkout-styles')) {
+    const style = document.createElement('style');
+    style.id = 'mahi-checkout-styles';
+    style.textContent = `
+      #mahi-checkout-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(11, 19, 41, 0.78);
+        backdrop-filter: blur(8px);
+        z-index: 99998;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      #mahi-checkout-overlay.active {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #mahi-checkout-drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 480px;
+        max-width: 95vw;
+        background: #0b1329;
+        border-left: 1px solid rgba(255, 255, 255, 0.12);
+        color: #f8fafc;
+        z-index: 99999;
+        display: flex;
+        flex-direction: column;
+        box-shadow: -20px 0 60px rgba(0, 0, 0, 0.65);
+        transform: translateX(100%);
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        overflow-y: auto;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      #mahi-checkout-drawer.active {
+        transform: translateX(0);
+      }
+      .drawer-cycle-btn.active {
+        background: rgba(16, 185, 129, 0.18);
+        color: #34d399;
+        border-color: rgba(16, 185, 129, 0.4);
+      }
+      .drawer-gateway-btn.active {
+        background: rgba(16, 185, 129, 0.12);
+        border-color: #10b981;
+        color: #ffffff;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Inject Drawer DOM Elements
+  if (!document.getElementById('mahi-checkout-overlay')) {
+    const overlay = document.createElement('div');
+    overlay.id = 'mahi-checkout-overlay';
+    overlay.addEventListener('click', closeCheckoutDrawer);
+    document.body.appendChild(overlay);
+  }
+
+  if (!document.getElementById('mahi-checkout-drawer')) {
+    const drawer = document.createElement('div');
+    drawer.id = 'mahi-checkout-drawer';
+    document.body.appendChild(drawer);
+  }
+
+  // Handle ESC key to close
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeCheckoutDrawer();
+  });
+
+  // Post-auth redirect & URL checkout query handler
+  const urlParams = new URLSearchParams(window.location.search);
+  const checkoutParam = urlParams.get('checkout');
+  const planParam = urlParams.get('plan');
+  if (checkoutParam === '1' || planParam) {
+    const billingParam = (urlParams.get('billing') || 'annual').toUpperCase();
+    const membersParam = parseInt(urlParams.get('members') || '0', 10);
+    const proxyGbParam = parseInt(urlParams.get('proxy_gb') || '0', 10);
+    const token = localStorage.getItem('mahi_access_token') || localStorage.getItem('mahi_auth_token');
+
+    if (token) {
+      openCheckoutDrawer(planParam || 'professional_50', billingParam, membersParam, proxyGbParam);
+    }
+  }
+}
+
+function openCheckoutDrawer(planId, billingCycle, extraMembers, extraProxyGb) {
+  const token = localStorage.getItem('mahi_access_token') || localStorage.getItem('mahi_auth_token');
+  if (!token) {
+    // If not authenticated, open auth modal and preserve selection
+    const authModal = document.getElementById('auth-modal');
+    if (authModal) {
+      authModal.classList.add('open');
+      document.body.style.overflow = 'hidden';
+      showToast('Please sign in or create an account to proceed with checkout.', 'info');
+    } else {
+      window.location.href = `/signup?checkout=1&plan=${encodeURIComponent(planId || 'professional_50')}&billing=${encodeURIComponent(billingCycle || 'annual')}`;
+    }
+    return;
+  }
+
+  checkoutDrawerState.planId = normalizePlanKey(planId);
+  checkoutDrawerState.billingCycle = (billingCycle || 'ANNUAL').toUpperCase();
+  if (typeof extraMembers === 'number') checkoutDrawerState.extraMembers = Math.max(0, extraMembers);
+  if (typeof extraProxyGb === 'number') checkoutDrawerState.extraProxyGb = Math.max(0, extraProxyGb);
+
+  renderDrawerContent();
+
+  const overlay = document.getElementById('mahi-checkout-overlay');
+  const drawer = document.getElementById('mahi-checkout-drawer');
+  if (overlay) overlay.classList.add('active');
+  if (drawer) drawer.classList.add('active');
+  document.body.style.overflow = 'hidden';
+
+  // Fetch payment-info details if not loaded
+  if (!checkoutDrawerState.paymentInfo) {
+    fetch('/v1/account/payment-info')
+      .then(res => res.json())
+      .then(info => {
+        if (info.success) {
+          checkoutDrawerState.paymentInfo = info;
+          renderDrawerContent();
+        }
+      })
+      .catch(() => {});
+  }
+}
+
+function closeCheckoutDrawer() {
+  const overlay = document.getElementById('mahi-checkout-overlay');
+  const drawer = document.getElementById('mahi-checkout-drawer');
+  if (overlay) overlay.classList.remove('active');
+  if (drawer) drawer.classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+function renderDrawerContent() {
+  const drawer = document.getElementById('mahi-checkout-drawer');
+  if (!drawer) return;
+
+  const totals = calculateDrawerTotals();
+  const gateway = checkoutDrawerState.selectedGateway;
+  const payInfo = checkoutDrawerState.paymentInfo || {
+    upi_id: 'mahibrowser@upi',
+    upi_account_holder: 'MAHI Browser Commercial',
+    upi_qr_asset: '/landing/assets/img/upi-qr.png'
+  };
+
+  drawer.innerHTML = `
+    <!-- Header -->
+    <div style="padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between;">
+      <div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <h2 style="font-size: 16px; font-weight: 800; color: #ffffff; margin: 0;">Upgrade Subscription</h2>
+          <span style="font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 9999px; background: rgba(16,185,129,0.18); color: #34d399; border: 1px solid rgba(16,185,129,0.3);">OFFICIAL</span>
+        </div>
+        <p style="font-size: 11px; color: #94a3b8; margin: 2px 0 0 0;">Zero platform fees • Instant entitlement synchronization</p>
+      </div>
+      <button onclick="closeCheckoutDrawer()" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #94a3b8; border-radius: 10px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; font-weight: bold; transition: all 0.15s;">✕</button>
+    </div>
+
+    <!-- Body Container -->
+    <div style="padding: 24px; display: flex; flex-direction: column; gap: 20px; flex: 1;">
+      <!-- Plan Selector & Cycle Toggle -->
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 18px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+          <span style="font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Selected Plan</span>
+          <select id="drawer-plan-select" onchange="onDrawerPlanChange(this.value)" style="background: #1e293b; border: 1px solid rgba(255,255,255,0.15); color: #f8fafc; font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 10px; outline: none; cursor: pointer;">
+            ${Object.keys(CANONICAL_PLANS_META).map(key => `
+              <option value="${key}" ${key === totals.planKey ? 'selected' : ''}>
+                ${CANONICAL_PLANS_META[key].name} (${CANONICAL_PLANS_META[key].profileLimit} Profiles)
+              </option>
+            `).join('')}
+          </select>
+        </div>
+
+        <!-- Cycle Switcher -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: rgba(0,0,0,0.25); padding: 4px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06);">
+          <button type="button" onclick="onDrawerCycleChange('ANNUAL')" class="drawer-cycle-btn ${totals.isAnnual ? 'active' : ''}" style="padding: 8px 12px; border-radius: 9px; font-size: 12px; font-weight: 700; border: 1px solid transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s; background: transparent; color: #94a3b8;">
+            <span>Annual</span>
+            <span style="font-size: 9px; font-weight: 800; background: #10b981; color: #022c22; padding: 1px 6px; border-radius: 4px;">50% OFF</span>
+          </button>
+          <button type="button" onclick="onDrawerCycleChange('MONTHLY')" class="drawer-cycle-btn ${!totals.isAnnual ? 'active' : ''}" style="padding: 8px 12px; border-radius: 9px; font-size: 12px; font-weight: 700; border: 1px solid transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; background: transparent; color: #94a3b8;">
+            <span>Monthly</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Add-on Steppers -->
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 14px;">
+        <span style="font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Resource Scale & Add-ons</span>
+        
+        <!-- Team Members -->
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9;">Additional Team Seats</div>
+            <div style="font-size: 11px; color: #64748b;">+₹499/seat/mo (+$6 USD)</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <button onclick="onDrawerMembersChange(-1)" style="width: 28px; height: 28px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: #f8fafc; font-weight: bold; cursor: pointer;">−</button>
+            <span style="font-size: 13px; font-weight: 800; font-family: monospace; min-width: 20px; text-align: center;">${totals.members}</span>
+            <button onclick="onDrawerMembersChange(1)" style="width: 28px; height: 28px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: #f8fafc; font-weight: bold; cursor: pointer;">+</button>
+          </div>
+        </div>
+
+        <!-- Residential Proxy Data -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06);">
+          <div>
+            <div style="font-size: 13px; font-weight: 700; color: #f1f5f9;">Extra Residential Proxy Data</div>
+            <div style="font-size: 11px; color: #64748b;">+₹199/GB/mo (+$3 USD)</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <button onclick="onDrawerProxyChange(-5)" style="width: 28px; height: 28px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: #f8fafc; font-weight: bold; cursor: pointer;">−</button>
+            <span style="font-size: 13px; font-weight: 800; font-family: monospace; min-width: 48px; text-align: center;">${totals.proxyGb} GB</span>
+            <button onclick="onDrawerProxyChange(5)" style="width: 28px; height: 28px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: #f8fafc; font-weight: bold; cursor: pointer;">+</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Order Summary Breakdown -->
+      <div style="background: rgba(16, 185, 129, 0.04); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; font-size: 12px; color: #94a3b8;">
+          <span>Base Plan (${totals.meta.name})</span>
+          <span>₹${totals.meta.baseInr.toLocaleString('en-IN')}/mo</span>
+        </div>
+        ${totals.members > 0 ? `
+          <div style="display: flex; justify-content: space-between; font-size: 12px; color: #94a3b8;">
+            <span>Add-on: ${totals.members} Extra Seats</span>
+            <span>+₹${(totals.members * 499).toLocaleString('en-IN')}/mo</span>
+          </div>
+        ` : ''}
+        ${totals.proxyGb > 0 ? `
+          <div style="display: flex; justify-content: space-between; font-size: 12px; color: #94a3b8;">
+            <span>Add-on: ${totals.proxyGb} GB Proxy Traffic</span>
+            <span>+₹${(totals.proxyGb * 199).toLocaleString('en-IN')}/mo</span>
+          </div>
+        ` : ''}
+        ${totals.isAnnual ? `
+          <div style="display: flex; justify-content: space-between; font-size: 12px; color: #34d399; font-weight: 700;">
+            <span>Annual Commitment Discount</span>
+            <span>−50% Applied</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748b;">
+            <span>Effective Monthly Rate</span>
+            <span>₹${totals.monthlyEquivalentInr.toLocaleString('en-IN')}/mo ($${totals.monthlyEquivalentUsd}/mo)</span>
+          </div>
+        ` : ''}
+        <div style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 6px; padding-top: 10px; display: flex; justify-content: space-between; align-items: baseline;">
+          <div>
+            <span style="font-size: 13px; font-weight: 800; color: #f8fafc;">Total Due Now</span>
+            <span style="font-size: 10px; color: #64748b; margin-left: 4px;">(${totals.isAnnual ? '12 Months' : '1 Month'})</span>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 22px; font-weight: 900; color: #34d399; font-family: monospace;">₹${totals.finalInr.toLocaleString('en-IN')}</div>
+            <div style="font-size: 11px; color: #94a3b8; font-family: monospace;">($${totals.finalUsd} USD)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Payment Gateway Selector -->
+      <div>
+        <span style="font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 10px;">Select Payment Gateway</span>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+          <button type="button" onclick="onDrawerGatewayChange('razorpay')" class="drawer-gateway-btn ${gateway === 'razorpay' ? 'active' : ''}" style="padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); cursor: pointer; text-align: center; transition: all 0.15s;">
+            <div style="font-size: 12px; font-weight: 800; color: #f8fafc;">Razorpay</div>
+            <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">UPI / Cards (₹)</div>
+          </button>
+          <button type="button" onclick="onDrawerGatewayChange('stripe')" class="drawer-gateway-btn ${gateway === 'stripe' ? 'active' : ''}" style="padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); cursor: pointer; text-align: center; transition: all 0.15s;">
+            <div style="font-size: 12px; font-weight: 800; color: #f8fafc;">Stripe</div>
+            <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">Intl Cards ($)</div>
+          </button>
+          <button type="button" onclick="onDrawerGatewayChange('upi_manual')" class="drawer-gateway-btn ${gateway === 'upi_manual' ? 'active' : ''}" style="padding: 12px 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); cursor: pointer; text-align: center; transition: all 0.15s;">
+            <div style="font-size: 12px; font-weight: 800; color: #f8fafc;">Direct UPI</div>
+            <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">QR Code & UTR</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Gateway Dynamic Execution Panel -->
+      <div id="drawer-gateway-panel" style="margin-top: 4px;">
+        ${gateway === 'razorpay' ? `
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="font-size: 11px; color: #94a3b8; background: rgba(255,255,255,0.02); padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
+              ✓ Indian & International Credit/Debit Cards, NetBanking, and Instant UPI apps supported through Razorpay standard checkout.
+            </div>
+            <button id="btn-drawer-pay-razorpay" onclick="executeRazorpayPayment()" style="width: 100%; padding: 14px; border-radius: 12px; background: #10b981; color: #022c22; font-size: 14px; font-weight: 800; border: none; cursor: pointer; box-shadow: 0 4px 16px rgba(16,185,129,0.3); transition: all 0.15s;">
+              Pay ₹${totals.finalInr.toLocaleString('en-IN')} via Razorpay →
+            </button>
+          </div>
+        ` : gateway === 'stripe' ? `
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="font-size: 11px; color: #94a3b8; background: rgba(255,255,255,0.02); padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
+              ✓ Secure hosted checkout via Stripe. All global cards, Apple Pay, and Google Pay accepted in USD.
+            </div>
+            <button id="btn-drawer-pay-stripe" onclick="executeStripePayment()" style="width: 100%; padding: 14px; border-radius: 12px; background: #6366f1; color: #ffffff; font-size: 14px; font-weight: 800; border: none; cursor: pointer; box-shadow: 0 4px 16px rgba(99,102,241,0.3); transition: all 0.15s;">
+              Proceed to Stripe Checkout ($${totals.finalUsd} USD) →
+            </button>
+          </div>
+        ` : `
+          <!-- Direct UPI Flow -->
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 14px;">
+            <div style="text-align: center;">
+              <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-bottom: 6px;">SCAN TO PAY VIA ANY UPI APP</div>
+              <div style="display: inline-block; padding: 10px; background: #ffffff; border-radius: 12px; margin-bottom: 8px;">
+                <img src="${payInfo.upi_qr_asset || '/landing/assets/img/upi-qr.png'}" alt="UPI QR" style="width: 140px; height: 140px; object-fit: contain; display: block;" onerror="this.src='https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=upi%3A%2F%2Fpay%3Fpa%3D${encodeURIComponent(payInfo.upi_id)}%26pn%3DMAHI%2BBrowser%26am%3D${totals.finalInr}%26cu%3DINR'" />
+              </div>
+              <div style="font-size: 13px; font-weight: 800; color: #f8fafc; font-family: monospace;">UPI ID: ${payInfo.upi_id}</div>
+              <div style="font-size: 11px; color: #94a3b8;">${payInfo.upi_account_holder}</div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label for="drawer-upi-utr" style="font-size: 11px; font-weight: 700; color: #94a3b8;">Enter 12-Digit Transaction Reference (UTR / UPI Ref):</label>
+              <input type="text" id="drawer-upi-utr" placeholder="e.g. 432109876543" maxlength="30" style="padding: 10px 14px; background: #1e293b; border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; color: #f8fafc; font-size: 13px; font-family: monospace; outline: none;" />
+            </div>
+
+            <div id="drawer-upi-status-box" style="display: none;"></div>
+
+            <button id="btn-drawer-submit-utr" onclick="executeManualUpiSubmission()" style="width: 100%; padding: 12px; border-radius: 10px; background: #10b981; color: #022c22; font-size: 13px; font-weight: 800; border: none; cursor: pointer; transition: all 0.15s;">
+              Submit UTR for Verification (₹${totals.finalInr.toLocaleString('en-IN')})
+            </button>
+          </div>
+        `}
+      </div>
+    </div>
+  `;
+}
+
+function onDrawerPlanChange(newPlan) {
+  checkoutDrawerState.planId = normalizePlanKey(newPlan);
+  renderDrawerContent();
+}
+
+function onDrawerCycleChange(newCycle) {
+  checkoutDrawerState.billingCycle = newCycle;
+  renderDrawerContent();
+}
+
+function onDrawerMembersChange(delta) {
+  checkoutDrawerState.extraMembers = Math.max(0, (checkoutDrawerState.extraMembers || 0) + delta);
+  renderDrawerContent();
+}
+
+function onDrawerProxyChange(delta) {
+  checkoutDrawerState.extraProxyGb = Math.max(0, (checkoutDrawerState.extraProxyGb || 0) + delta);
+  renderDrawerContent();
+}
+
+function onDrawerGatewayChange(newGw) {
+  checkoutDrawerState.selectedGateway = newGw;
+  renderDrawerContent();
+}
+
+async function executeRazorpayPayment() {
+  const btn = document.getElementById('btn-drawer-pay-razorpay');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Initializing Razorpay...';
+  }
+
+  const token = localStorage.getItem('mahi_access_token') || localStorage.getItem('mahi_auth_token');
+  try {
+    const res = await fetch('/api/v1/billing/checkout', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        planId: checkoutDrawerState.planId,
+        billingCycle: checkoutDrawerState.billingCycle,
+        provider: 'razorpay',
+        currency: 'INR',
+        extraMembers: checkoutDrawerState.extraMembers,
+        extraProxyGb: checkoutDrawerState.extraProxyGb
+      })
+    });
+
+    const data = await res.json();
+    if (!data.success) {
+      showToast(data.error || 'Failed to initialize Razorpay order', 'error');
+      if (btn) { btn.disabled = false; btn.innerText = 'Pay via Razorpay →'; }
+      return;
+    }
+
+    await ensureRazorpaySdk();
+    if (!window.Razorpay) {
+      if (data.checkoutUrl) window.location.href = data.checkoutUrl;
+      return;
+    }
+
+    const meta = data.gatewayMeta || {};
+    const rzp = new window.Razorpay({
+      key: meta.razorpayKeyId,
+      amount: meta.amount,
+      currency: meta.currency || 'INR',
+      name: meta.name || 'MAHI Browser',
+      description: meta.description || 'Subscription',
+      order_id: meta.razorpayOrderId,
+      notes: meta.notes || {},
+      handler: async function (response) {
+        showToast('Payment captured! Verifying signature...', 'info');
+        const vRes = await fetch('/api/v1/billing/verify-razorpay', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(response)
+        });
+        const vData = await vRes.json();
+        if (vData.success) {
+          showToast('Payment verified successfully! Subscription activated.', 'success');
+          closeCheckoutDrawer();
+          setTimeout(() => window.location.reload(), 1500);
+        } else {
+          showToast(vData.error || 'Payment signature verification failed', 'error');
+        }
+      },
+      modal: {
+        ondismiss: function () {
+          if (btn) { btn.disabled = false; renderDrawerContent(); }
+        }
+      }
+    });
+
+    rzp.open();
+  } catch (err) {
+    showToast(err.message || 'Razorpay initialization failed', 'error');
+    if (btn) { btn.disabled = false; btn.innerText = 'Pay via Razorpay →'; }
+  }
+}
+
+async function executeStripePayment() {
+  const btn = document.getElementById('btn-drawer-pay-stripe');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Redirecting to Stripe...';
+  }
+
+  const token = localStorage.getItem('mahi_access_token') || localStorage.getItem('mahi_auth_token');
+  try {
+    const res = await fetch('/api/v1/billing/checkout', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        planId: checkoutDrawerState.planId,
+        billingCycle: checkoutDrawerState.billingCycle,
+        provider: 'stripe',
+        currency: 'USD',
+        extraMembers: checkoutDrawerState.extraMembers,
+        extraProxyGb: checkoutDrawerState.extraProxyGb
+      })
+    });
+
+    const data = await res.json();
+    if (data.success && data.checkoutUrl) {
+      window.location.href = data.checkoutUrl;
+    } else {
+      showToast(data.error || 'Failed to initialize Stripe checkout', 'error');
+      if (btn) { btn.disabled = false; btn.innerText = 'Proceed to Stripe Checkout →'; }
+    }
+  } catch (err) {
+    showToast(err.message || 'Stripe initialization failed', 'error');
+    if (btn) { btn.disabled = false; btn.innerText = 'Proceed to Stripe Checkout →'; }
+  }
+}
+
+async function executeManualUpiSubmission() {
+  const utrInput = document.getElementById('drawer-upi-utr');
+  const btn = document.getElementById('btn-drawer-submit-utr');
+  const statusBox = document.getElementById('drawer-upi-status-box');
+  const utr = (utrInput?.value || '').trim();
+
+  if (!utr || utr.length < 6 || !/^[a-zA-Z0-9]+$/.test(utr)) {
+    showToast('Please enter a valid 6-30 alphanumeric transaction UTR reference.', 'error');
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Submitting UTR...';
+  }
+
+  const totals = calculateDrawerTotals();
+  const token = localStorage.getItem('mahi_access_token') || localStorage.getItem('mahi_auth_token');
+
+  try {
+    const res = await fetch('/v1/account/payments/upi/submit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        utr,
+        planId: checkoutDrawerState.planId,
+        billingCycle: checkoutDrawerState.billingCycle,
+        amountPaise: totals.finalPaise,
+        extraMembers: checkoutDrawerState.extraMembers,
+        extraProxyGb: checkoutDrawerState.extraProxyGb
+      })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      showToast('Payment submitted successfully for verification!', 'success');
+      if (statusBox) {
+        statusBox.style.display = 'block';
+        statusBox.innerHTML = `
+          <div style="background: rgba(16,185,129,0.12); border: 1px solid #10b981; border-radius: 10px; padding: 12px; font-size: 11px; color: #34d399;">
+            <div style="font-weight: 800; margin-bottom: 2px;">✓ Payment Submitted (UTR: ${utr})</div>
+            <div>Status: <span style="font-weight: bold; color: #f8fafc;">PENDING_VERIFICATION</span></div>
+            <div style="color: #94a3b8; margin-top: 4px;">An administrator will verify your transaction shortly. Your subscription will activate automatically upon approval.</div>
+          </div>
+        `;
+      }
+      if (utrInput) utrInput.disabled = true;
+      if (btn) {
+        btn.innerText = 'Submitted (Pending Review)';
+        btn.style.background = '#475569';
+        btn.style.color = '#cbd5e1';
+      }
+    } else if (res.status === 409 || (data.error && data.error.includes('UTR_ALREADY_EXISTS'))) {
+      showToast('This UTR has already been submitted for verification.', 'error');
+      if (statusBox) {
+        statusBox.style.display = 'block';
+        statusBox.innerHTML = `
+          <div style="background: rgba(245,158,11,0.12); border: 1px solid #f59e0b; border-radius: 10px; padding: 12px; font-size: 11px; color: #fbbf24;">
+            <div style="font-weight: 800;">⚠️ Duplicate Transaction Reference</div>
+            <div style="margin-top: 2px;">This UTR (${utr}) has already been recorded in the verification queue.</div>
+          </div>
+        `;
+      }
+      if (btn) { btn.disabled = false; btn.innerText = 'Submit UTR for Verification'; }
+    } else {
+      showToast(data.error || 'Failed to submit payment reference', 'error');
+      if (btn) { btn.disabled = false; btn.innerText = 'Submit UTR for Verification'; }
+    }
+  } catch (err) {
+    showToast(err.message || 'Submission error', 'error');
+    if (btn) { btn.disabled = false; btn.innerText = 'Submit UTR for Verification'; }
+  }
+}
+
+window.openCheckoutDrawer = openCheckoutDrawer;
+window.closeCheckoutDrawer = closeCheckoutDrawer;
+window.onDrawerPlanChange = onDrawerPlanChange;
+window.onDrawerCycleChange = onDrawerCycleChange;
+window.onDrawerMembersChange = onDrawerMembersChange;
+window.onDrawerProxyChange = onDrawerProxyChange;
+window.onDrawerGatewayChange = onDrawerGatewayChange;
+window.executeRazorpayPayment = executeRazorpayPayment;
+window.executeStripePayment = executeStripePayment;
+window.executeManualUpiSubmission = executeManualUpiSubmission;
 
 /**
  * GOLOGIN PARITY 1: LIVE BROWSER FINGERPRINT LEAK DIAGNOSTIC ENGINE
