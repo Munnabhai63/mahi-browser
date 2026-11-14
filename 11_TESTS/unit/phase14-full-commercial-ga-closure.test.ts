@@ -236,6 +236,10 @@ describe('Phase 14: Final 3 External Blockers Closure & Full Commercial GA Relea
 
       // Seed active subscription
       db.prepare(`
+        INSERT OR IGNORE INTO commercial_users (id, email, password_hash, salt, name, plan_id, created_at, updated_at)
+        VALUES (?, ?, 'h', 's', 'Cancel Test', 'plan_pro', ?, ?)
+      `).run(testUserId, `${testUserId}@example.com`, now, now);
+      db.prepare(`
         INSERT OR REPLACE INTO commercial_subscriptions (
           id, user_id, plan_id, status, billing_cycle, starts_at, expires_at, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -304,7 +308,7 @@ describe('Phase 14: Final 3 External Blockers Closure & Full Commercial GA Relea
       const rows = db.prepare('SELECT version FROM schema_migrations ORDER BY version ASC').all() as { version: number }[];
       const versions = rows.map((r) => r.version);
       expect(versions).toContain(22);
-      expect(Math.max(...versions)).toBe(22);
+      expect(Math.max(...versions)).toBe(25);
     });
   });
 

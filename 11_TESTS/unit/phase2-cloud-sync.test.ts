@@ -286,6 +286,14 @@ describe('PHASE 2 UNIT: Zero-Knowledge Envelope Crypto, Storage & Locking', () =
     // Insert an expired lock directly in DB
     const expiredTime = new Date(Date.now() - 5000).toISOString();
     db.prepare(`
+      INSERT OR IGNORE INTO auth_users (id, email, normalized_email, password_hash, salt, name, created_at, updated_at)
+      VALUES (?, ?, ?, 'placeholder', 'placeholder', 'Test User', ?, ?)
+    `).run(userId, `${userId}@test.local`, `${userId}@test.local`, expiredTime, expiredTime);
+    db.prepare(`
+      INSERT OR IGNORE INTO cloud_profiles (id, owner_id, local_profile_id, name, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(profileId, userId, profileId, 'TTL Test Profile', expiredTime, expiredTime);
+    db.prepare(`
       INSERT OR REPLACE INTO cloud_profile_locks (cloud_profile_id, device_id, device_name, user_id, locked_at, expires_at)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(profileId, deviceA, 'Crashed PC', userId, expiredTime, expiredTime);

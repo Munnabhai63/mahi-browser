@@ -334,22 +334,19 @@ export async function initializeDatabase(): Promise<void> {
         workspace_id TEXT NOT NULL,
         name TEXT NOT NULL,
         email TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'MEMBER',
-        avatar_color TEXT DEFAULT '#6366f1',
+        role TEXT NOT NULL DEFAULT 'EDITOR',
         status TEXT NOT NULL DEFAULT 'ACTIVE',
-        invited_at TEXT NOT NULL,
-        joined_at TEXT,
-        last_active_at TEXT,
+        assigned_profiles_json TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL,
         FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
       );
 
-      CREATE TABLE IF NOT EXISTS profile_workspace_map (
+      CREATE TABLE IF NOT EXISTS profile_workspaces (
         profile_id TEXT NOT NULL,
         workspace_id TEXT NOT NULL,
-        assigned_by TEXT NOT NULL DEFAULT 'OWNER',
-        assigned_at TEXT NOT NULL,
-        PRIMARY KEY (profile_id, workspace_id),
-        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+        assigned_member_id TEXT,
+        is_locked_by TEXT,
+        PRIMARY KEY (profile_id, workspace_id)
       );
     `);
   });
@@ -455,23 +452,22 @@ export async function initializeDatabase(): Promise<void> {
         price_annual REAL NOT NULL DEFAULT 0,
         limits_json TEXT NOT NULL,
         is_active INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        created_at TEXT NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS commercial_subscriptions (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         plan_id TEXT NOT NULL,
+        license_id TEXT,
         status TEXT NOT NULL DEFAULT 'ACTIVE',
-        billing_cycle TEXT NOT NULL DEFAULT 'monthly',
+        billing_cycle TEXT NOT NULL DEFAULT 'MONTHLY',
         starts_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL,
-        auto_renew INTEGER NOT NULL DEFAULT 1,
+        expires_at TEXT,
+        payment_provider TEXT,
+        external_sub_id TEXT,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        FOREIGN KEY (user_id) REFERENCES commercial_users(id) ON DELETE CASCADE,
-        FOREIGN KEY (plan_id) REFERENCES commercial_plans(id)
+        FOREIGN KEY (user_id) REFERENCES commercial_users(id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS commercial_devices (
@@ -480,22 +476,31 @@ export async function initializeDatabase(): Promise<void> {
         license_id TEXT,
         device_id TEXT NOT NULL,
         device_name TEXT NOT NULL,
-        platform TEXT,
-        os_info TEXT,
-        client_version TEXT,
-        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        os_info TEXT NOT NULL,
+        client_version TEXT NOT NULL,
         ip_address TEXT,
-        activated_at TEXT,
+        activated_at TEXT NOT NULL,
         last_seen_at TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        FOREIGN KEY (user_id) REFERENCES commercial_users(id) ON DELETE CASCADE,
-        UNIQUE (user_id, device_id)
+        status TEXT NOT NULL DEFAULT 'ACTIVE'
       );
 
-      CREATE TABLE IF NOT EXISTS app_updates (
+      CREATE TABLE IF NOT EXISTS commercial_audit_logs (
+        id TEXT PRIMARY KEY,
+        actor_id TEXT NOT NULL,
+        actor_name TEXT NOT NULL,
+        actor_role TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT,
+        details TEXT NOT NULL,
+        ip_address TEXT,
+        result TEXT NOT NULL DEFAULT 'SUCCESS',
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS software_versions (
         id TEXT PRIMARY KEY,
         version TEXT NOT NULL UNIQUE,
-        release_channel TEXT NOT NULL DEFAULT 'stable',
         release_notes TEXT NOT NULL DEFAULT '',
         min_supported_version TEXT NOT NULL DEFAULT '1.0.0',
         download_url_setup TEXT,
@@ -862,52 +867,68 @@ export async function initializeDatabase(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_remote_keys_hash ON remote_api_keys(key_hash);
       CREATE INDEX IF NOT EXISTS idx_remote_keys_status ON remote_api_keys(status);
 
-      CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+      CREATE TABLE IF NOT EXISTS remote_api_key_audits (
+        id TEXT PRIMARY KEY,
+        key_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        ip_address TEXT,
+        details TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_remote_key_audits_user ON remote_api_key_audits(user_id);
+      CREATE INDEX IF NOT EXISTS idx_remote_key_audits_key ON remote_api_key_audits(key_id);
+
+      CREATE TABLE IF NOT EXISTS webhook_endpoints (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         workspace_id TEXT,
         url TEXT NOT NULL,
-        secret TEXT NOT NULL,
-        events_json TEXT NOT NULL DEFAULT '["profile.status_changed"]',
+        description TEXT,
+        secret_hash TEXT NOT NULL,
+        secret_encrypted TEXT NOT NULL,
+        events_json TEXT NOT NULL DEFAULT '["*"]',
         status TEXT NOT NULL DEFAULT 'ACTIVE',
-        consecutive_failures INTEGER NOT NULL DEFAULT 0,
+        failure_count INTEGER NOT NULL DEFAULT 0,
+        last_delivery_at TEXT,
         created_at TEXT NOT NULL,
-        last_delivery_at TEXT
+        updated_at TEXT NOT NULL
       );
 
-      CREATE INDEX IF NOT EXISTS idx_webhooks_user ON webhook_subscriptions(user_id);
-      CREATE INDEX IF NOT EXISTS idx_webhooks_ws ON webhook_subscriptions(workspace_id);
-      CREATE INDEX IF NOT EXISTS idx_webhooks_status ON webhook_subscriptions(status);
+      CREATE INDEX IF NOT EXISTS idx_webhooks_user ON webhook_endpoints(user_id);
+      CREATE INDEX IF NOT EXISTS idx_webhooks_ws ON webhook_endpoints(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_webhooks_status ON webhook_endpoints(status);
 
-      CREATE TABLE IF NOT EXISTS webhook_delivery_logs (
+      CREATE TABLE IF NOT EXISTS webhook_deliveries (
         id TEXT PRIMARY KEY,
-        subscription_id TEXT NOT NULL,
+        endpoint_id TEXT NOT NULL,
+        event_id TEXT NOT NULL,
         event_type TEXT NOT NULL,
         payload_json TEXT NOT NULL,
-        response_code INTEGER,
+        destination_url TEXT NOT NULL,
+        status_code INTEGER,
         response_body TEXT,
         duration_ms INTEGER,
-        status TEXT NOT NULL DEFAULT 'DELIVERED',
+        attempt_count INTEGER NOT NULL DEFAULT 1,
+        success INTEGER NOT NULL DEFAULT 0,
         error_message TEXT,
-        attempt_number INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL,
-        FOREIGN KEY (subscription_id) REFERENCES webhook_subscriptions(id) ON DELETE CASCADE
+        delivered_at TEXT NOT NULL
       );
 
-      CREATE INDEX IF NOT EXISTS idx_webhook_logs_sub ON webhook_delivery_logs(subscription_id);
-      CREATE INDEX IF NOT EXISTS idx_webhook_logs_status ON webhook_delivery_logs(status);
+      CREATE INDEX IF NOT EXISTS idx_wh_deliveries_endpoint ON webhook_deliveries(endpoint_id);
+      CREATE INDEX IF NOT EXISTS idx_wh_deliveries_event ON webhook_deliveries(event_id);
+      CREATE INDEX IF NOT EXISTS idx_wh_deliveries_success ON webhook_deliveries(success);
 
       CREATE TABLE IF NOT EXISTS api_idempotency_records (
-        id TEXT PRIMARY KEY,
         idempotency_key TEXT NOT NULL,
         user_id TEXT NOT NULL,
-        method TEXT NOT NULL,
-        path TEXT NOT NULL,
+        endpoint TEXT NOT NULL,
         status_code INTEGER NOT NULL,
         response_json TEXT NOT NULL,
         created_at TEXT NOT NULL,
         expires_at TEXT NOT NULL,
-        UNIQUE (idempotency_key, user_id)
+        PRIMARY KEY (idempotency_key, user_id)
       );
 
       CREATE INDEX IF NOT EXISTS idx_idempotency_lookup ON api_idempotency_records(idempotency_key, user_id);
@@ -1006,28 +1027,30 @@ export async function initializeDatabase(): Promise<void> {
       CREATE TABLE IF NOT EXISTS cloud_browser_regions (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
-        gateway_url TEXT NOT NULL,
-        is_active INTEGER NOT NULL DEFAULT 1,
+        endpoint_url TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
         is_default INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        created_at TEXT NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS cloud_browser_workers (
         id TEXT PRIMARY KEY,
         region_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        ip_address TEXT,
-        capacity_slots INTEGER NOT NULL DEFAULT 10,
-        used_slots INTEGER NOT NULL DEFAULT 0,
-        status TEXT NOT NULL DEFAULT 'READY',
-        cpu_usage_pct REAL,
-        ram_usage_pct REAL,
+        hostname TEXT NOT NULL,
+        ip_address TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'ONLINE',
+        capacity INTEGER NOT NULL DEFAULT 10,
+        active_sessions INTEGER NOT NULL DEFAULT 0,
+        cpu_usage_pct REAL DEFAULT 0.0,
+        memory_usage_mb REAL DEFAULT 0.0,
         last_heartbeat_at TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        FOREIGN KEY (region_id) REFERENCES cloud_browser_regions(id) ON DELETE CASCADE
+        FOREIGN KEY (region_id) REFERENCES cloud_browser_regions(id) ON DELETE RESTRICT
       );
+
+      CREATE INDEX IF NOT EXISTS idx_cb_workers_region ON cloud_browser_workers(region_id);
+      CREATE INDEX IF NOT EXISTS idx_cb_workers_status ON cloud_browser_workers(status);
 
       CREATE TABLE IF NOT EXISTS cloud_browser_sessions (
         id TEXT PRIMARY KEY,
@@ -1035,7 +1058,7 @@ export async function initializeDatabase(): Promise<void> {
         workspace_id TEXT,
         profile_id TEXT NOT NULL,
         worker_id TEXT,
-        region_id TEXT NOT NULL,
+        region_id TEXT NOT NULL DEFAULT 'in-west',
         status TEXT NOT NULL DEFAULT 'REQUESTED',
         resource_class TEXT NOT NULL DEFAULT 'STANDARD',
         profile_version INTEGER NOT NULL DEFAULT 1,
@@ -1052,23 +1075,52 @@ export async function initializeDatabase(): Promise<void> {
         termination_reason TEXT,
         error_message TEXT,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE,
-        FOREIGN KEY (region_id) REFERENCES cloud_browser_regions(id),
-        FOREIGN KEY (worker_id) REFERENCES cloud_browser_workers(id) ON DELETE SET NULL
+        updated_at TEXT NOT NULL
       );
+
+      CREATE INDEX IF NOT EXISTS idx_cb_sessions_user ON cloud_browser_sessions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_cb_sessions_prof ON cloud_browser_sessions(profile_id);
+      CREATE INDEX IF NOT EXISTS idx_cb_sessions_status ON cloud_browser_sessions(status);
+      CREATE INDEX IF NOT EXISTS idx_cb_sessions_worker ON cloud_browser_sessions(worker_id);
+
+      CREATE TABLE IF NOT EXISTS cloud_browser_events (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        details_json TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES cloud_browser_sessions(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_cb_events_session ON cloud_browser_events(session_id);
+      CREATE INDEX IF NOT EXISTS idx_cb_events_type ON cloud_browser_events(event_type);
+
+      CREATE TABLE IF NOT EXISTS cloud_browser_usage (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        workspace_id TEXT,
+        session_id TEXT NOT NULL,
+        duration_seconds INTEGER NOT NULL,
+        resource_class TEXT NOT NULL,
+        region_id TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_cb_usage_user ON cloud_browser_usage(user_id);
+      CREATE INDEX IF NOT EXISTS idx_cb_usage_ws ON cloud_browser_usage(workspace_id);
     `);
 
     // Seed default cloud browser regions
     const now = new Date().toISOString();
     const insertRegion = db.prepare(`
-      INSERT OR IGNORE INTO cloud_browser_regions (id, name, gateway_url, is_default, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO cloud_browser_regions (id, name, endpoint_url, status, is_default, created_at)
+      VALUES (?, ?, ?, 'ACTIVE', ?, ?)
     `);
-    insertRegion.run('in-west', 'India (Mumbai) - Local Node', 'https://in-west.cloud.mahibrowser.com', 1, now, now);
-    insertRegion.run('sg-central', 'Singapore (Central)', 'https://sg-central.cloud.mahibrowser.com', 0, now, now);
-    insertRegion.run('us-east', 'US East (N. Virginia)', 'https://us-east.cloud.mahibrowser.com', 0, now, now);
-    insertRegion.run('eu-central', 'EU Central (Frankfurt)', 'https://eu-central.cloud.mahibrowser.com', 0, now, now);
+    insertRegion.run('in-west', 'India West (Mumbai)', 'wss://in-west.cloud.mahibrowser.com/stream', 1, now);
+    insertRegion.run('us-east', 'US East (N. Virginia)', 'wss://us-east.cloud.mahibrowser.com/stream', 0, now);
+    insertRegion.run('eu-central', 'Europe Central (Frankfurt)', 'wss://eu-central.cloud.mahibrowser.com/stream', 0, now);
+    insertRegion.run('ap-southeast', 'Asia Pacific (Singapore)', 'wss://ap-southeast.cloud.mahibrowser.com/stream', 0, now);
   });
 
   // Migration v17: Phase 11 Android Mobile Companion & Push Notifications
@@ -1375,10 +1427,60 @@ export async function initializeDatabase(): Promise<void> {
     `);
   });
 
+  // Migration v25: Additive compatibility columns for commercial, workspace, and cloud tables
+  runMigration(db, 25, 'additive compatibility columns v25', () => {
+    // Commercial plans
+    addColumnIfNotExists(db, 'commercial_plans', 'updated_at', "TEXT");
+
+    // Commercial subscriptions
+    addColumnIfNotExists(db, 'commercial_subscriptions', 'auto_renew', "INTEGER NOT NULL DEFAULT 1");
+    addColumnIfNotExists(db, 'commercial_subscriptions', 'updated_at', "TEXT");
+
+    // Commercial devices
+    addColumnIfNotExists(db, 'commercial_devices', 'created_at', "TEXT");
+    addColumnIfNotExists(db, 'commercial_devices', 'platform', "TEXT");
+    addColumnIfNotExists(db, 'commercial_devices', 'status', "TEXT NOT NULL DEFAULT 'ACTIVE'");
+    addColumnIfNotExists(db, 'commercial_devices', 'license_id', "TEXT");
+    addColumnIfNotExists(db, 'commercial_devices', 'os_info', "TEXT");
+    addColumnIfNotExists(db, 'commercial_devices', 'client_version', "TEXT");
+    addColumnIfNotExists(db, 'commercial_devices', 'activated_at', "TEXT");
+
+    // Workspace members
+    addColumnIfNotExists(db, 'workspace_members', 'avatar_color', "TEXT DEFAULT '#6366f1'");
+    addColumnIfNotExists(db, 'workspace_members', 'invited_at', "TEXT");
+    addColumnIfNotExists(db, 'workspace_members', 'joined_at', "TEXT");
+    addColumnIfNotExists(db, 'workspace_members', 'last_active_at', "TEXT");
+
+    // Cloud browser regions
+    addColumnIfNotExists(db, 'cloud_browser_regions', 'gateway_url', "TEXT");
+    addColumnIfNotExists(db, 'cloud_browser_regions', 'is_active', "INTEGER NOT NULL DEFAULT 1");
+    addColumnIfNotExists(db, 'cloud_browser_regions', 'updated_at', "TEXT");
+
+    // Cloud browser workers
+    addColumnIfNotExists(db, 'cloud_browser_workers', 'capacity_slots', "INTEGER DEFAULT 10");
+    addColumnIfNotExists(db, 'cloud_browser_workers', 'used_slots', "INTEGER DEFAULT 0");
+    addColumnIfNotExists(db, 'cloud_browser_workers', 'ram_usage_pct', "REAL DEFAULT 0.0");
+  });
+
   // Guarantee critical additive columns exist regardless of previous migration execution state
+  addColumnIfNotExists(db, 'commercial_plans', 'updated_at', "TEXT");
+  addColumnIfNotExists(db, 'commercial_subscriptions', 'auto_renew', "INTEGER NOT NULL DEFAULT 1");
+  addColumnIfNotExists(db, 'commercial_subscriptions', 'updated_at', "TEXT");
+  addColumnIfNotExists(db, 'commercial_devices', 'created_at', "TEXT");
+  addColumnIfNotExists(db, 'commercial_devices', 'platform', "TEXT");
   addColumnIfNotExists(db, 'commercial_devices', 'status', "TEXT NOT NULL DEFAULT 'ACTIVE'");
   addColumnIfNotExists(db, 'commercial_devices', 'license_id', "TEXT");
   addColumnIfNotExists(db, 'commercial_devices', 'os_info', "TEXT");
   addColumnIfNotExists(db, 'commercial_devices', 'client_version', "TEXT");
   addColumnIfNotExists(db, 'commercial_devices', 'activated_at', "TEXT");
+  addColumnIfNotExists(db, 'workspace_members', 'avatar_color', "TEXT DEFAULT '#6366f1'");
+  addColumnIfNotExists(db, 'workspace_members', 'invited_at', "TEXT");
+  addColumnIfNotExists(db, 'workspace_members', 'joined_at', "TEXT");
+  addColumnIfNotExists(db, 'workspace_members', 'last_active_at', "TEXT");
+  addColumnIfNotExists(db, 'cloud_browser_regions', 'gateway_url', "TEXT");
+  addColumnIfNotExists(db, 'cloud_browser_regions', 'is_active', "INTEGER NOT NULL DEFAULT 1");
+  addColumnIfNotExists(db, 'cloud_browser_regions', 'updated_at', "TEXT");
+  addColumnIfNotExists(db, 'cloud_browser_workers', 'capacity_slots', "INTEGER DEFAULT 10");
+  addColumnIfNotExists(db, 'cloud_browser_workers', 'used_slots', "INTEGER DEFAULT 0");
+  addColumnIfNotExists(db, 'cloud_browser_workers', 'ram_usage_pct', "REAL DEFAULT 0.0");
 }

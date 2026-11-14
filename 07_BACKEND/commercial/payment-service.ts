@@ -571,6 +571,16 @@ export class PaymentService {
         now
       );
 
+      // Ensure commercial_users and commercial_plans rows exist to satisfy FK constraints under PRAGMA foreign_keys = ON
+      db.prepare(`
+        INSERT OR IGNORE INTO commercial_users (id, email, password_hash, salt, name, plan_id, created_at, updated_at)
+        VALUES (?, ?, 'placeholder', 'placeholder', 'Subscriber', ?, ?, ?)
+      `).run(event.userId, `${event.userId}@commercial.local`, event.planId, now, now);
+      db.prepare(`
+        INSERT OR IGNORE INTO commercial_plans (id, name, tier, limits_json, created_at)
+        VALUES (?, 'Plan', 'pro', '{}', ?)
+      `).run(event.planId, now);
+
       // C. Activate Subscription in Database
       db.prepare(`
         INSERT INTO commercial_subscriptions (
