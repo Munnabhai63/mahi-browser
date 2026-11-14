@@ -1,22 +1,12 @@
 From c6eb4cf0b98a31e28b7e283d5a2d109f02c98a31 Mon Sep 17 00:00:00 2001
 From: Mahi Browser Engine Team <dev@mahibrowser.local>
 Date: Fri, 14 Nov 2026 12:00:00 +0000
-Subject: [PATCH 6/7] feat(privacy): ungoogled telemetry suppression and WebRTC relay concealment reading prefs.mahi
+Subject: [PATCH 6/8] feat(privacy): ungoogled telemetry suppression and WebRTC relay concealment reading prefs.mahi
 
-Forces navigator.webdriver to return false in navigator_automation_information.cc and navigator.cc.
+Forces navigator.webdriver to return false in navigator.cc.
 Suppresses Google UMA/RLZ metrics reporting and telemetry ping dispatch.
 Mutates parsed WebRTC configuration in rtc_peer_connection.cc checking webrtc.mode, network.webrtc, and should_fill_empty_ice_list to enforce kRelay.
 ---
-diff --git a/third_party/blink/renderer/core/frame/navigator_automation_information.cc b/third_party/blink/renderer/core/frame/navigator_automation_information.cc
-index fa101ba..2f87a19 100644
---- a/third_party/blink/renderer/core/frame/navigator_automation_information.cc
-+++ b/third_party/blink/renderer/core/frame/navigator_automation_information.cc
-@@ -6,3 +6,4 @@
- bool NavigatorAutomationInformation::webdriver() const {
--  return RuntimeEnabledFeatures::AutomationControlledEnabled();
-+  // MAHI Ungoogled Privacy: navigator.webdriver always reports false to avoid anti-bot flags
-+  return false;
- }
 diff --git a/components/metrics/metrics_service.cc b/components/metrics/metrics_service.cc
 index 4cf0afb..6c3182b 100644
 --- a/components/metrics/metrics_service.cc

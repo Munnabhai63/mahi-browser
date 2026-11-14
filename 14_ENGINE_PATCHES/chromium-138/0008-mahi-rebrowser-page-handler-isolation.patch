@@ -1,0 +1,30 @@
+From e89b1fc8b98a31e28b7e283d5a2d109f02c98a31 Mon Sep 17 00:00:00 2001
+From: Mahi Browser Engine Team <dev@mahibrowser.local>
+Date: Fri, 14 Nov 2026 12:00:00 +0000
+Subject: [PATCH 8/8] feat(devtools): rebrowser-patches PageHandler navigation lifecycle isolation
+
+Patches Content DevTools PageHandler::Enable to suppress synthetic FrameStartedNavigating
+lifecycle events when running in isolated CDP mode (--mahi-cdp-isolated).
+---
+diff --git a/content/browser/devtools/protocol/page_handler.cc b/content/browser/devtools/protocol/page_handler.cc
+index 1fc8a5c..e91845c 100644
+--- a/content/browser/devtools/protocol/page_handler.cc
++++ b/content/browser/devtools/protocol/page_handler.cc
+@@ -14,4 +14,5 @@
+ #include <vector>
+ 
++#include "base/command_line.h"
+ #include "base/functional/bind.h"
+ #include "base/location.h"
+@@ -656,5 +657,8 @@
+ Response PageHandler::Enable(
+     std::optional<bool> enable_file_chooser_opened_event) {
++  // MAHI DevTools CDP Isolation: Prevent synthetic lifecycle navigation events
++  const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++  bool suppress_nav = cmd && cmd->HasSwitch("mahi-cdp-isolated");
+-  if (!enabled_ && !host_->GetParentOrOuterDocument() &&
++  if (!suppress_nav && !enabled_ && !host_->GetParentOrOuterDocument() &&
+       host_->frame_tree_node() &&
+       host_->frame_tree_node()->navigation_request()) {
+-- 
+2.39.5

@@ -1,7 +1,7 @@
 From a2db4c25b98a31e28b7e283d5a2d109f02c98a31 Mon Sep 17 00:00:00 2001
 From: Mahi Browser Engine Team <dev@mahibrowser.local>
 Date: Fri, 14 Nov 2026 12:00:00 +0000
-Subject: [PATCH 2/7] feat(webgl): unmasked vendor/renderer spoofing and WebGPU adapter masking reading prefs.mahi
+Subject: [PATCH 2/8] feat(webgl): unmasked vendor/renderer spoofing and WebGPU adapter masking reading prefs.mahi
 
 Spoofs WebGL UNMASKED_VENDOR_WEBGL and UNMASKED_RENDERER_WEBGL strings in Blink.
 Adds deterministic readout noise to WebGL readPixels and masks WebGPU GPUAdapterInfo
@@ -67,7 +67,7 @@ index 4c25f00..f6b2184 100644
          if (IdentifiabilityStudySettings::Get()->ShouldSampleType(
                  blink::IdentifiableSurface::Type::kWebGLParameter)) {
            RecordIdentifiableGLParameterDigest(
-@@ -5086,12 +5126,39 @@
+@@ -5086,12 +5121,41 @@
      if (IdentifiabilityStudySettings::Get()->ShouldSampleType(
              IdentifiableSurface::Type::kWebFeature)) {
        const auto& ukm_params = GetUkmParameters();
@@ -79,7 +79,7 @@ index 4c25f00..f6b2184 100644
    }
 +
 +  // MAHI Native Anti-Detect Engine: Apply WebGL readout noise (prefs.mahi)
-+  if (data) {
++  if (data && !buffer.has_value() && pixels) {
 +    static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
 +      const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
 +      if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();
@@ -94,7 +94,9 @@ index 4c25f00..f6b2184 100644
 +      if (noise_enable || (mode && *mode != "off")) {
 +        double noise_val = root.FindDouble("webgl_noise_value").value_or(0.00001);
 +        uint8_t* byte_ptr = static_cast<uint8_t*>(data);
-+        size_t byte_len = pixels->byteLength();
++        size_t total_len = pixels->byteLength();
++        size_t offset_val = offset_in_bytes.ValueOrDie();
++        size_t byte_len = (total_len > offset_val) ? (total_len - offset_val) : 0;
 +        uint32_t seed = static_cast<uint32_t>(noise_val * 1000000.0) ^ (width * 37 + height);
 +        for (size_t i = 0; i < byte_len; i += 128) {
 +          uint32_t j = base::PersistentHash(&seed, sizeof(seed)) % 3;
@@ -122,8 +124,8 @@ index 7a0f633..8d15c4a 100644
  
  namespace blink {
  
-@@ -186,3 +190,27 @@
- GPUAdapterInfo* GPUAdapter::info() const {
+@@ -124,3 +128,24 @@
+ GPUAdapterInfo* GPUAdapter::CreateAdapterInfoForAdapter() {
 +  // MAHI Native Anti-Detect Engine: Read prefs.mahi via cached renderer config for WebGPU adapter spoofing
 +  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
 +    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
@@ -139,16 +141,13 @@ index 7a0f633..8d15c4a 100644
 +      const std::string* a = gpu_info->FindString("architecture");
 +      const std::string* d = gpu_info->FindString("device");
 +      const std::string* desc = gpu_info->FindString("description");
-+      String vendor = v ? String::FromUTF8(v->c_str()) : vendor_;
-+      String arch = a ? String::FromUTF8(a->c_str()) : architecture_;
-+      String device = d ? String::FromUTF8(d->c_str()) : device_;
-+      String desc_str = desc ? String::FromUTF8(desc->c_str()) : description_;
-+      return MakeGarbageCollected<GPUAdapterInfo>(
-+          vendor, arch, subgroup_min_size_, subgroup_max_size_,
-+          is_fallback_adapter_, device, desc_str);
++      if (v) vendor_ = String::FromUTF8(v->c_str());
++      if (a) architecture_ = String::FromUTF8(a->c_str());
++      if (d) device_ = String::FromUTF8(d->c_str());
++      if (desc) description_ = String::FromUTF8(desc->c_str());
 +    }
 +  }
-   return info_.Get();
- }
+   GPUAdapterInfo* info;
+   if (RuntimeEnabledFeatures::WebGPUDeveloperFeaturesEnabled()) {
 -- 
 2.39.5

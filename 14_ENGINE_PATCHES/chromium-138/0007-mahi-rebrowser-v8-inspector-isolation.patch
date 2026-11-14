@@ -1,18 +1,17 @@
 From d7fca678b98a31e28b7e283d5a2d109f02c98a31 Mon Sep 17 00:00:00 2001
 From: Mahi Browser Engine Team <dev@mahibrowser.local>
 Date: Fri, 14 Nov 2026 12:00:00 +0000
-Subject: [PATCH 7/7] feat(inspector): rebrowser-patches CDP execution isolation and Error.prepareStackTrace leak protection
+Subject: [PATCH 7/8] feat(inspector): rebrowser-patches V8 inspector execution isolation and Error.prepareStackTrace leak protection
 
-Patches V8 inspector RuntimeAgentImpl and Content DevTools PageHandler to prevent
-anti-bot detection vectors associated with CDP automation:
-1. Prevents Runtime.enable side-effects and unwanted ExecutionContextCreated event leaks in main world.
-2. Neutralizes Error.prepareStackTrace stack inspection probe traps deployed by Cloudflare/Datadome without aborting evaluate or deleting window.Error.
+Patches V8 inspector RuntimeAgentImpl to prevent anti-bot detection vectors associated with CDP automation:
+1. Prevents Runtime.enable side-effects and unwanted ExecutionContextCreated event leaks via mahiSuppressContextCreated.
+2. Neutralizes Error.prepareStackTrace stack inspection probe traps without HandleScope leaks, aborting evaluate, or deleting window.Error.
 ---
 diff --git a/v8/src/inspector/v8-runtime-agent-impl.cc b/v8/src/inspector/v8-runtime-agent-impl.cc
 index 24d69d3..98214fa 100644
 --- a/v8/src/inspector/v8-runtime-agent-impl.cc
 +++ b/v8/src/inspector/v8-runtime-agent-impl.cc
-@@ -38,6 +38,7 @@
+@@ -37,6 +37,7 @@
  #include "../../third_party/inspector_protocol/crdtp/json.h"
  #include "include/v8-container.h"
  #include "include/v8-context.h"
@@ -20,7 +19,7 @@ index 24d69d3..98214fa 100644
  #include "include/v8-cppgc.h"
  #include "include/v8-function.h"
  #include "include/v8-inspector.h"
-@@ -354,16 +355,17 @@
+@@ -355,16 +356,17 @@
  void V8RuntimeAgentImpl::evaluate(
      const String16& expression, std::optional<String16> objectGroup,
      std::optional<bool> includeCommandLineAPI, std::optional<bool> silent,
@@ -38,7 +37,7 @@ index 24d69d3..98214fa 100644
    TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("devtools.timeline"),
                 "EvaluateScript");
    int contextId = 0;
-@@ -378,9 +386,32 @@
+@@ -378,9 +380,35 @@
    InjectedScript::ContextScope scope(m_session, contextId);
    response = scope.initialize();
    if (!response.IsSuccess()) {
@@ -48,22 +47,25 @@ index 24d69d3..98214fa 100644
 +
 +  // MAHI rebrowser-patches isolation: Protect against Error.prepareStackTrace probe traps without deleting it or aborting
 +  v8::Isolate* isolate = m_inspector->isolate();
-+  v8::Local<v8::Value> orig_prepare_stack_trace;
-+  v8::Local<v8::Object> error_obj;
-+  v8::Local<v8::Context> eval_ctx = scope.context();
++  v8::Global<v8::Value> orig_prepare_stack_trace;
++  v8::Global<v8::Object> error_obj;
 +  bool had_pst = false;
-+  if (isolate && !eval_ctx.IsEmpty()) {
++  if (isolate && !scope.context().IsEmpty()) {
 +    v8::HandleScope eval_handle_scope(isolate);
++    v8::Local<v8::Context> eval_ctx = scope.context();
 +    v8::Local<v8::Object> global = eval_ctx->Global();
 +    v8::Local<v8::String> error_key = v8::String::NewFromUtf8(isolate, "Error").ToLocalChecked();
 +    v8::Local<v8::Value> error_val;
 +    if (global->Get(eval_ctx, error_key).ToLocal(&error_val) && error_val->IsObject()) {
-+      error_obj = error_val.As<v8::Object>();
++      error_obj.Reset(isolate, error_val.As<v8::Object>());
++      v8::Local<v8::Object> local_error_obj = error_obj.Get(isolate);
 +      v8::Local<v8::String> pst_key = v8::String::NewFromUtf8(isolate, "prepareStackTrace").ToLocalChecked();
-+      if (error_obj->Has(eval_ctx, pst_key).FromMaybe(false)) {
-+        if (error_obj->Get(eval_ctx, pst_key).ToLocal(&orig_prepare_stack_trace)) {
++      if (local_error_obj->Has(eval_ctx, pst_key).FromMaybe(false)) {
++        v8::Local<v8::Value> local_pst;
++        if (local_error_obj->Get(eval_ctx, pst_key).ToLocal(&local_pst)) {
 +          had_pst = true;
-+          error_obj->Set(eval_ctx, pst_key, v8::Undefined(isolate)).Check();
++          orig_prepare_stack_trace.Reset(isolate, local_pst);
++          local_error_obj->Set(eval_ctx, pst_key, v8::Undefined(isolate)).Check();
 +        }
 +      }
 +    }
@@ -71,57 +73,35 @@ index 24d69d3..98214fa 100644
  
    if (silent.value_or(false)) scope.ignoreExceptionsAndMuteConsole();
    if (userGesture.value_or(false)) scope.pretendUserGesture();
-@@ -418,6 +420,12 @@
+@@ -417,6 +446,17 @@
      maybeResultValue = v8::debug::EvaluateGlobal(m_inspector->isolate(), source,
                                                   mode, replMode);
    }  // Run microtasks before returning result.
 +
 +  if (had_pst && !error_obj.IsEmpty() && !orig_prepare_stack_trace.IsEmpty()) {
 +    v8::HandleScope restore_scope(isolate);
++    v8::Local<v8::Context> eval_ctx = scope.context();
 +    v8::Local<v8::String> pst_key = v8::String::NewFromUtf8(isolate, "prepareStackTrace").ToLocalChecked();
-+    error_obj->Set(eval_ctx, pst_key, orig_prepare_stack_trace).Check();
++    v8::Local<v8::Object> local_err = error_obj.Get(isolate);
++    v8::Local<v8::Value> local_pst = orig_prepare_stack_trace.Get(isolate);
++    local_err->Set(eval_ctx, pst_key, local_pst).Check();
++    orig_prepare_stack_trace.Reset();
++    error_obj.Reset();
 +  }
  
    // Re-initialize after running client's code, as it could have destroyed
    // context or session.
-@@ -1090,5 +1109,17 @@
+@@ -1090,5 +1132,10 @@
    m_state->setBoolean(V8RuntimeAgentImplState::runtimeEnabled, true);
    m_inspector->debugger()->setMaxCallStackSizeToCapture(
        this, V8StackTraceImpl::kDefaultMaxCallStackSizeToCapture);
 -  m_session->reportAllContexts(this);
-+  // MAHI rebrowser-patches isolation: Suppress executionContextCreated leak to untrusted scripts
-+  bool suppressContextCreated = false;
-+  if (m_inspector && m_inspector->isolate()) {
-+    v8::HandleScope hs(m_inspector->isolate());
-+    v8::Local<v8::Context> root_ctx = m_inspector->isolate()->GetCurrentContext();
-+    if (!root_ctx.IsEmpty()) {
-+      v8::Local<v8::String> key = v8::String::NewFromUtf8(m_inspector->isolate(), "__mahi_isolate_cdp__").ToLocalChecked();
-+      suppressContextCreated = root_ctx->Global()->Has(root_ctx, key).FromMaybe(false);
-+    }
-+  }
++  // MAHI rebrowser-patches isolation: Gate reportAllContexts via inspector state property
++  bool suppressContextCreated =
++      m_state->booleanProperty("mahiSuppressContextCreated", false);
 +  if (!suppressContextCreated) {
 +    m_session->reportAllContexts(this);
 +  }
    V8ConsoleMessageStorage* storage =
-diff --git a/content/browser/devtools/protocol/page_handler.cc b/content/browser/devtools/protocol/page_handler.cc
-index 1fc8a5c..e91845c 100644
---- a/content/browser/devtools/protocol/page_handler.cc
-+++ b/content/browser/devtools/protocol/page_handler.cc
-@@ -16,4 +16,5 @@
- #include <vector>
- 
-+#include "base/command_line.h"
- #include "base/functional/bind.h"
- #include "base/location.h"
-@@ -656,5 +658,8 @@
- Response PageHandler::Enable(
-     std::optional<bool> enable_file_chooser_opened_event) {
-+  // MAHI DevTools CDP Isolation: Prevent synthetic lifecycle navigation events
-+  const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
-+  bool suppress_nav = cmd && cmd->HasSwitch("mahi-cdp-isolated");
--  if (!enabled_ && !host_->GetParentOrOuterDocument() &&
-+  if (!suppress_nav && !enabled_ && !host_->GetParentOrOuterDocument() &&
-       host_->frame_tree_node() &&
-       host_->frame_tree_node()->navigation_request()) {
 -- 
 2.39.5

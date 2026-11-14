@@ -66,15 +66,19 @@ try {
             $stripArgs = @("-p1")
         }
 
+        $patchFilePosix = ($patchFile -replace '\\', '/')
         Write-Host -NoNewline "[+] Testing patch: $line ... "
-        $checkArgs = @("apply", "--check", "--whitespace=nowarn") + $stripArgs + @($patchFile)
-        $checkProcess = Start-Process -FilePath "git" -ArgumentList $checkArgs -WorkingDirectory $targetDir -NoNewWindow -Wait -PassThru
-        if ($checkProcess.ExitCode -eq 0) {
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        & git -C $targetDir apply --check --whitespace=nowarn $stripArgs $patchFilePosix 2>$null
+        $checkExit = $LASTEXITCODE
+        $ErrorActionPreference = $prevEap
+
+        if ($checkExit -eq 0) {
             Write-Host "OK" -ForegroundColor Green
             Write-Host -NoNewline "    Applying: $line ... "
-            $applyArgs = @("apply", "--whitespace=nowarn") + $stripArgs + @($patchFile)
-            $applyProcess = Start-Process -FilePath "git" -ArgumentList $applyArgs -WorkingDirectory $targetDir -NoNewWindow -Wait -PassThru
-            if ($applyProcess.ExitCode -eq 0) {
+            & git -C $targetDir apply --whitespace=nowarn $stripArgs $patchFilePosix
+            if ($LASTEXITCODE -eq 0) {
                 Write-Host "APPLIED" -ForegroundColor Green
                 $AppliedCount++
             } else {
@@ -83,13 +87,17 @@ try {
             }
         } else {
             # Check if patch is already applied in reverse
-            $reverseArgs = @("apply", "--reverse", "--check") + $stripArgs + @($patchFile)
-            $reverseProcess = Start-Process -FilePath "git" -ArgumentList $reverseArgs -WorkingDirectory $targetDir -NoNewWindow -Wait -PassThru
-            if ($reverseProcess.ExitCode -eq 0) {
+            $ErrorActionPreference = 'Continue'
+            & git -C $targetDir apply --reverse --check $stripArgs $patchFilePosix 2>$null
+            $reverseExit = $LASTEXITCODE
+            $ErrorActionPreference = $prevEap
+
+            if ($reverseExit -eq 0) {
                 Write-Host "ALREADY APPLIED (skipping)" -ForegroundColor Yellow
                 $AppliedCount++
             } else {
                 Write-Host "FAILED" -ForegroundColor Red
+                & git -C $targetDir apply --check $stripArgs $patchFilePosix
                 Write-Error "ERROR: git apply check failed for patch $line"
                 exit 1
             }

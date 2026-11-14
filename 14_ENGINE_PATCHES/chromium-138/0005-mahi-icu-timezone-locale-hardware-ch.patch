@@ -1,7 +1,7 @@
 From e5b91adeb98a31e28b7e283d5a2d109f02c98a31 Mon Sep 17 00:00:00 2001
 From: Mahi Browser Engine Team <dev@mahibrowser.local>
 Date: Fri, 14 Nov 2026 12:00:00 +0000
-Subject: [PATCH 5/7] feat(system): ICU timezone, locale, hardware concurrency, and client hints from prefs.mahi
+Subject: [PATCH 5/8] feat(system): ICU timezone, locale, hardware concurrency, and client hints from prefs.mahi
 
 Registers mahi and gologin dictionaries in browser_prefs.cc.
 Transfers profile settings to renderer via AppendExtraCommandLineSwitches and --mahi-config.
@@ -29,7 +29,7 @@ index e856d9c..4b71fa0 100644
  #include "base/command_line.h"
 +#include "base/json/json_writer.h"
  #include "base/containers/contains.h"
-@@ -2628,6 +2628,26 @@
+@@ -2628,6 +2629,26 @@
  void ChromeContentBrowserClient::AppendExtraCommandLineSwitches(
      base::CommandLine* command_line,
      int child_process_id) {
@@ -88,7 +88,7 @@ index 1a73d4a..9a3f2b1 100644
    // TODO(955620): Consider changing devtools overrides to only allow overriding
    // the platform with a frozen platform to distinguish between
    // mobile and desktop when ReduceUserAgent is enabled.
-@@ -103,12 +117,50 @@
+@@ -103,12 +121,32 @@
  bool Navigator::webdriver() const {
 -  if (RuntimeEnabledFeatures::AutomationControlledEnabled())
 -    return true;
@@ -99,24 +99,6 @@ index 1a73d4a..9a3f2b1 100644
 +  // MAHI Ungoogled Privacy: navigator.webdriver always reports false to avoid bot flags
 +  return false;
  }
-+
-+int Navigator::maxTouchPoints() const {
-+  // MAHI Native Anti-Detect Engine: Read maxTouchPoints from prefs.mahi via cached renderer config
-+  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
-+    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
-+    if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();
-+    auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
-+    if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));
-+    return std::optional<base::Value::Dict>();
-+  }());
-+  if (s_config->has_value()) {
-+    std::optional<int> tp = (*s_config)->FindIntByDottedPath("navigator.max_touch_points");
-+    if (tp) return *tp;
-+  }
-+  if (!DomWindow() || !DomWindow()->GetFrame()) return 0;
-+  Settings* settings = DomWindow()->GetFrame()->GetSettings();
-+  return settings ? settings->GetMaxTouchPoints() : 0;
-+}
  
  String Navigator::GetAcceptLanguages() {
 +  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
@@ -145,11 +127,73 @@ index 1a73d4a..9a3f2b1 100644
 +  }
    if (!DomWindow())
      return DefaultLanguage();
+diff --git a/third_party/blink/renderer/core/events/navigator_events.cc b/third_party/blink/renderer/core/events/navigator_events.cc
+index a575617..b9472e1 100644
+--- a/third_party/blink/renderer/core/events/navigator_events.cc
++++ b/third_party/blink/renderer/core/events/navigator_events.cc
+@@ -34,6 +34,10 @@
+ #include "third_party/blink/renderer/core/frame/local_frame.h"
+ #include "third_party/blink/renderer/core/frame/navigator.h"
+ #include "third_party/blink/renderer/core/frame/settings.h"
++#include "base/command_line.h"
++#include "base/json/json_reader.h"
++#include "base/no_destructor.h"
++#include "base/values.h"
+ 
+ namespace blink {
+ 
+@@ -40,3 +44,15 @@
+ int32_t NavigatorEvents::maxTouchPoints(Navigator& navigator) {
++  // MAHI Native Anti-Detect Engine: Read maxTouchPoints from prefs.mahi via cached renderer config
++  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
++    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++    if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();
++    auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
++    if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));
++    return std::optional<base::Value::Dict>();
++  }());
++  if (s_config->has_value()) {
++    std::optional<int> tp = (*s_config)->FindIntByDottedPath("navigator.max_touch_points");
++    if (tp) return static_cast<int32_t>(*tp);
++  }
+   LocalDOMWindow* window = navigator.DomWindow();
+   return window ? window->GetFrame()->GetSettings()->GetMaxTouchPoints() : 0;
+diff --git a/third_party/blink/renderer/core/execution_context/navigator_base.cc b/third_party/blink/renderer/core/execution_context/navigator_base.cc
+index 64bdfb1..c3182ef 100644
+--- a/third_party/blink/renderer/core/execution_context/navigator_base.cc
++++ b/third_party/blink/renderer/core/execution_context/navigator_base.cc
+@@ -11,5 +11,9 @@
+ #include "third_party/blink/renderer/core/frame/navigator_concurrent_hardware.h"
+ #include "third_party/blink/renderer/core/probe/core_probes.h"
+ #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
++#include "base/command_line.h"
++#include "base/json/json_reader.h"
++#include "base/no_destructor.h"
++#include "base/values.h"
+ 
+ #if !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_WIN)
+@@ -53,3 +57,16 @@
+ String NavigatorBase::platform() const {
++  // MAHI Native Anti-Detect Engine: Read platform from prefs.mahi via cached renderer config
++  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
++    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++    if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();
++    auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
++    if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));
++    return std::optional<base::Value::Dict>();
++  }());
++  if (s_config->has_value()) {
++    const std::string* plat = (*s_config)->FindStringByDottedPath("navigator.platform");
++    if (!plat) plat = (*s_config)->FindString("os");
++    if (plat && !plat->empty()) return String::FromUTF8(plat->c_str());
++  }
+   ExecutionContext* execution_context = GetExecutionContext();
+ 
 diff --git a/third_party/blink/renderer/core/timezone/timezone_controller.cc b/third_party/blink/renderer/core/timezone/timezone_controller.cc
 index 8e4166b..3e5917a 100644
 --- a/third_party/blink/renderer/core/timezone/timezone_controller.cc
 +++ b/third_party/blink/renderer/core/timezone/timezone_controller.cc
-@@ -8,5 +8,7 @@
+@@ -6,5 +6,7 @@
  #include "third_party/blink/renderer/core/timezone/timezone_controller.h"
  
 +#include "base/command_line.h"
@@ -157,20 +201,28 @@ index 8e4166b..3e5917a 100644
  #include "base/feature_list.h"
  #include "mojo/public/cpp/bindings/pending_remote.h"
  #include "mojo/public/cpp/bindings/remote.h"
-@@ -118,4 +119,18 @@
+@@ -118,4 +120,26 @@
  void TimeZoneController::Init() {
 +  const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
 +  if (cmd) {
++    String tz_str;
 +    if (cmd->HasSwitch("tz")) {
-+      SetIcuTimeZoneAndNotifyV8(String::FromUTF8(cmd->GetSwitchValueASCII("tz")));
++      std::string val = cmd->GetSwitchValueASCII("tz");
++      if (!val.empty()) {
++        tz_str = String::FromUTF8(val);
++      }
 +    } else if (cmd->HasSwitch("mahi-config")) {
 +      auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
 +      if (parsed && parsed->is_dict()) {
 +        const std::string* tz = parsed->GetDict().FindStringByDottedPath("timezone.id");
 +        if (tz && !tz->empty()) {
-+          SetIcuTimeZoneAndNotifyV8(String::FromUTF8(tz->c_str()));
++          tz_str = String::FromUTF8(tz->c_str());
 +        }
 +      }
++    }
++    if (!tz_str.empty()) {
++      SetIcuTimeZoneAndNotifyV8(tz_str);
++      instance().override_timezone_id_ = tz_str;
 +    }
 +  }
    // monitor must not use HeapMojoRemote. TimeZoneController is not managed by

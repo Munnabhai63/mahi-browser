@@ -1,7 +1,7 @@
 From b1c8f427b98a31e28b7e283d5a2d109f02c98a31 Mon Sep 17 00:00:00 2001
 From: Mahi Browser Engine Team <dev@mahibrowser.local>
 Date: Fri, 14 Nov 2026 12:00:00 +0000
-Subject: [PATCH 1/7] feat(canvas): skia 2d readback and toDataURL hash perturbation reading prefs.mahi
+Subject: [PATCH 1/8] feat(canvas): skia 2d readback and toDataURL hash perturbation reading prefs.mahi
 
 Directly intercepts BaseRenderingContext2D::getImageDataInternal in Blink
 and ImageDataBuffer::ToDataURL to apply deterministic persistent hash noise
@@ -11,7 +11,14 @@ diff --git a/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_c
 index 46f427b..e1a49f2 100644
 --- a/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
 +++ b/third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.cc
-@@ -23,6 +23,11 @@
+@@ -5,5 +5,6 @@
+ #include "third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.h"
+ 
++#include <algorithm>
+ #include <cmath>
+ #include <cstdint>
+ #include <cstdlib>
+@@ -23,6 +24,11 @@
  #include "base/task/single_thread_task_runner.h"
  #include "base/time/time.h"
  #include "base/trace_event/trace_event.h"
@@ -23,7 +30,7 @@ index 46f427b..e1a49f2 100644
  #include "cc/paint/paint_canvas.h"
  #include "cc/paint/paint_flags.h"
  #include "cc/paint/paint_image.h"
-@@ -594,9 +599,40 @@
+@@ -594,9 +600,42 @@
      if (!read_pixels_successful) {
        SkIRect bounds =
            snapshot->PaintImageForCurrentFrame().GetSkImageInfo().bounds();
@@ -32,32 +39,34 @@ index 46f427b..e1a49f2 100644
    }
  
 +  // MAHI Native Anti-Detect Engine: Read prefs.mahi via cached renderer config
-+  if (image_data && image_data->data()) {
-+    static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
-+      const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
-+      if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();
-+      auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
-+      if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));
-+      return std::optional<base::Value::Dict>();
-+    }());
-+    if (s_config->has_value()) {
-+      const base::Value::Dict& root = **s_config;
-+      const std::string* mode = root.FindString("canvasMode");
-+      if (mode && *mode != "off") {
-+        double noise_val = root.FindDouble("canvasNoise").value_or(0.00001);
-+        int cnt_pixels = root.FindInt("canvasCntPixels").value_or(10);
-+        DOMUint8ClampedArray* data_array = image_data->data();
-+        unsigned char* pixels = data_array->Data();
-+        size_t len = data_array->length();
-+        uint32_t seed = static_cast<uint32_t>(noise_val * 1000000.0) ^ (sw * 31 + sh);
-+        size_t step = (len > 4 && cnt_pixels > 0) ? (len / (cnt_pixels * 4)) * 4 : 4;
-+        if (step < 4) step = 4;
-+        for (size_t i = 0; i < len; i += step) {
-+          uint32_t jitter = base::PersistentHash(&seed, sizeof(seed)) % 5;
-+          int delta = (jitter % 2 == 0) ? 1 : -1;
-+          int new_val = static_cast<int>(pixels[i]) + delta;
-+          pixels[i] = static_cast<unsigned char>(std::clamp(new_val, 0, 255));
-+          seed += 13;
++  if (image_data) {
++    base::span<uint8_t> raw_bytes = image_data->RawByteSpan();
++    if (!raw_bytes.empty()) {
++      static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
++        const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++        if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();
++        auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
++        if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));
++        return std::optional<base::Value::Dict>();
++      }());
++      if (s_config->has_value()) {
++        const base::Value::Dict& root = **s_config;
++        const std::string* mode = root.FindString("canvasMode");
++        if (mode && *mode != "off") {
++          double noise_val = root.FindDouble("canvasNoise").value_or(0.00001);
++          int cnt_pixels = root.FindInt("canvasCntPixels").value_or(10);
++          unsigned char* pixels = raw_bytes.data();
++          size_t len = raw_bytes.size();
++          uint32_t seed = static_cast<uint32_t>(noise_val * 1000000.0) ^ (sw * 31 + sh);
++          size_t step = (len > 4 && cnt_pixels > 0) ? (len / (cnt_pixels * 4)) * 4 : 4;
++          if (step < 4) step = 4;
++          for (size_t i = 0; i < len; i += step) {
++            uint32_t jitter = base::PersistentHash(&seed, sizeof(seed)) % 5;
++            int delta = (jitter % 2 == 0) ? 1 : -1;
++            int new_val = static_cast<int>(pixels[i]) + delta;
++            pixels[i] = static_cast<unsigned char>(std::clamp(new_val, 0, 255));
++            seed += 13;
++          }
 +        }
 +      }
 +    }

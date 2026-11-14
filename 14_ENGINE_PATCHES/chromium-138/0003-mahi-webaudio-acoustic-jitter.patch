@@ -1,7 +1,7 @@
 From c3e71708b98a31e28b7e283d5a2d109f02c98a31 Mon Sep 17 00:00:00 2001
 From: Mahi Browser Engine Team <dev@mahibrowser.local>
 Date: Fri, 14 Nov 2026 12:00:00 +0000
-Subject: [PATCH 3/7] feat(webaudio): acoustic fingerprint micro-jitter reading prefs.mahi
+Subject: [PATCH 3/8] feat(webaudio): acoustic fingerprint micro-jitter reading prefs.mahi
 
 Applies deterministic micro-jitter to AudioBuffer channel data in Blink
 reading Default/Preferences -> prefs.mahi.audio configuration without audible artifacts.
@@ -10,11 +10,12 @@ diff --git a/third_party/blink/renderer/modules/webaudio/audio_buffer.h b/third_
 index ea4dbe3..71f49a2 100644
 --- a/third_party/blink/renderer/modules/webaudio/audio_buffer.h
 +++ b/third_party/blink/renderer/modules/webaudio/audio_buffer.h
-@@ -128,6 +128,7 @@
+@@ -128,6 +128,8 @@
    uint32_t length_;
  
    HeapVector<Member<DOMFloat32Array>> channels_;
 +  mutable uint32_t mahi_noise_channels_mask_{0};
++  void ApplyMahiNoiseToChannel(unsigned channel_index) const;
  };
  
  // Shared data that audio threads can hold onto.
@@ -22,7 +23,7 @@ diff --git a/third_party/blink/renderer/modules/webaudio/audio_buffer.cc b/third
 index 1708409..6e45f91 100644
 --- a/third_party/blink/renderer/modules/webaudio/audio_buffer.cc
 +++ b/third_party/blink/renderer/modules/webaudio/audio_buffer.cc
-@@ -33,4 +33,9 @@
+@@ -32,4 +32,9 @@
  #include "base/compiler_specific.h"
 +#include "base/command_line.h"
 +#include "base/hash/hash.h"
@@ -32,46 +33,69 @@ index 1708409..6e45f91 100644
  #include "base/containers/span.h"
  #include "third_party/blink/renderer/bindings/modules/v8/v8_audio_buffer_options.h"
  #include "third_party/blink/renderer/modules/webaudio/base_audio_context.h"
-@@ -217,7 +222,40 @@
+@@ -217,7 +222,42 @@
++void AudioBuffer::ApplyMahiNoiseToChannel(unsigned channel_index) const {
++  if (channel_index >= channels_.size() || !channels_[channel_index]) return;
++  if (mahi_noise_channels_mask_ & (1u << (channel_index % 32))) return;
++  static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
++    const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
++    if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();
++    auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
++    if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));
++    return std::optional<base::Value::Dict>();
++  }());
++  if (s_config->has_value()) {
++    const base::Value::Dict& root = **s_config;
++    bool noise_enabled = true;
++    if (auto enabled = root.FindBoolByDottedPath("audioContext.enable")) {
++      noise_enabled = *enabled;
++    } else if (auto legacy = root.FindBool("audioNoise")) {
++      noise_enabled = *legacy;
++    }
++    double noise_val = root.FindDoubleByDottedPath("audioContext.noiseValue").value_or(0.00001);
++    if (noise_enabled) {
++      float* data = channels_[channel_index]->Data();
++      size_t len = channels_[channel_index]->length();
++      uint32_t seed = static_cast<uint32_t>(noise_val * 1000000.0) ^ (channel_index * 1337);
++      for (size_t i = 0; i < len; i += 100) {
++        uint32_t j = base::PersistentHash(&seed, sizeof(seed)) % 5;
++        float delta = (static_cast<float>(j) - 2.0f) * 1e-7f;
++        data[i] += delta;
++        seed += 7;
++      }
++    }
++  }
++  mahi_noise_channels_mask_ |= (1u << (channel_index % 32));
++}
++
  NotShared<DOMFloat32Array> AudioBuffer::getChannelData(unsigned channel_index) {
    if (channel_index >= channels_.size()) {
      return NotShared<DOMFloat32Array>(nullptr);
    }
  
-+  // MAHI Native Anti-Detect Engine: Apply subtle acoustic micro-jitter reading prefs.mahi
-+  if (!(mahi_noise_channels_mask_ & (1u << (channel_index % 32)))) {
-+    static const base::NoDestructor<std::optional<base::Value::Dict>> s_config([] {
-+      const base::CommandLine* cmd = base::CommandLine::ForCurrentProcess();
-+      if (!cmd || !cmd->HasSwitch("mahi-config")) return std::optional<base::Value::Dict>();
-+      auto parsed = base::JSONReader::Read(cmd->GetSwitchValueASCII("mahi-config"));
-+      if (parsed && parsed->is_dict()) return std::make_optional(std::move(parsed->GetDict()));
-+      return std::optional<base::Value::Dict>();
-+    }());
-+    if (s_config->has_value()) {
-+      const base::Value::Dict& root = **s_config;
-+      bool noise_enabled = true;
-+      if (auto enabled = root.FindBoolByDottedPath("audioContext.enable")) {
-+        noise_enabled = *enabled;
-+      } else if (auto legacy = root.FindBool("audioNoise")) {
-+        noise_enabled = *legacy;
-+      }
-+      double noise_val = root.FindDoubleByDottedPath("audioContext.noiseValue").value_or(0.00001);
-+      if (noise_enabled && channels_[channel_index]) {
-+        float* data = channels_[channel_index]->Data();
-+        size_t len = channels_[channel_index]->length();
-+        uint32_t seed = static_cast<uint32_t>(noise_val * 1000000.0) ^ (channel_index * 1337);
-+        for (size_t i = 0; i < len; i += 100) {
-+          uint32_t j = base::PersistentHash(&seed, sizeof(seed)) % 5;
-+          float delta = (static_cast<float>(j) - 2.0f) * 1e-7f;
-+          data[i] += delta;
-+          seed += 7;
-+        }
-+      }
-+    }
-+    mahi_noise_channels_mask_ |= (1u << (channel_index % 32));
-+  }
-+
++  ApplyMahiNoiseToChannel(channel_index);
    return NotShared<DOMFloat32Array>(channels_[channel_index].Get());
  }
+@@ -231,19 +270,20 @@
+ void AudioBuffer::copyFromChannel(NotShared<DOMFloat32Array> destination,
+                                   int32_t channel_number,
+                                   size_t buffer_offset,
+                                   ExceptionState& exception_state) {
+   if (channel_number < 0 ||
+       static_cast<uint32_t>(channel_number) >= channels_.size()) {
+     exception_state.ThrowDOMException(
+         DOMExceptionCode::kIndexSizeError,
+         ExceptionMessages::IndexOutsideRange(
+             "channelNumber", channel_number, 0,
+             ExceptionMessages::kInclusiveBound,
+             static_cast<int32_t>(channels_.size() - 1),
+             ExceptionMessages::kInclusiveBound));
+ 
+     return;
+   }
+ 
++  ApplyMahiNoiseToChannel(static_cast<unsigned>(channel_number));
+   base::span<const float> src = channels_[channel_number].Get()->AsSpan();
+   base::span<float> dst = destination->AsSpan();
 -- 
 2.39.5
