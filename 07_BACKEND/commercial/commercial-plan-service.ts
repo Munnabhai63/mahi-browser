@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { CommercialPlan, CommercialPlanLimits, CommercialPlanTier, CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
-import { CANONICAL_PLAN_CATALOG } from './canonical-plan-catalog.js';
+import { CANONICAL_PLAN_CATALOG, legacyPlanIdToCanonical } from './canonical-plan-catalog.js';
 
 export const DEFAULT_COMMERCIAL_PLANS: CommercialPlan[] = [
   {
@@ -12,7 +12,7 @@ export const DEFAULT_COMMERCIAL_PLANS: CommercialPlan[] = [
     priceMonthly: 0,
     priceAnnual: 0,
     limits: {
-      maxProfiles: 15,
+      maxProfiles: 1,
       maxDevices: 1,
       maxConcurrentRunning: 2,
       proxyAccess: true,
@@ -121,8 +121,9 @@ export function getCommercialPlanById(planId: string): CommercialPlan | null {
     row = db.prepare('SELECT * FROM commercial_plans WHERE LOWER(tier) = ?').get(planId.toLowerCase()) as any;
   }
   if (!row) {
-    // Check canonical catalog (Pro 10, 25, 50, 100, etc.)
-    const canonical = (CANONICAL_PLAN_CATALOG as any)[planId];
+    // Check canonical catalog (Pro 10, 25, 50, 100, team aliases, etc.)
+    const canonicalId = legacyPlanIdToCanonical(planId);
+    const canonical = canonicalId ? (CANONICAL_PLAN_CATALOG as any)[canonicalId] : null;
     if (canonical) {
       return {
         id: canonical.planId,
@@ -132,7 +133,7 @@ export function getCommercialPlanById(planId: string): CommercialPlan | null {
         priceAnnual: 0,
         limits: {
           maxProfiles: canonical.profileLimit,
-          maxDevices: canonical.seatLimit || 2,
+          maxDevices: canonical.seatLimit || 1,
           maxConcurrentRunning: canonical.automationConcurrency || 10,
           proxyAccess: !!(canonical.capabilities['proxy.builtin'] || canonical.capabilities['proxy.custom']),
           cloudSync: !!canonical.capabilities['cloud.sync'],

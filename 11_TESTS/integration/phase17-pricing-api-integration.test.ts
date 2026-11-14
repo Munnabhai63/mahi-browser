@@ -75,7 +75,7 @@ describe('Phase 17: Pricing & Business Model HTTP Integration Pipeline', () => {
     // Free plan
     expect(catalog.free).toBeDefined();
     expect(catalog.free.planId).toBe('free');
-    expect(catalog.free.profileLimit).toBe(3);
+    expect(catalog.free.profileLimit).toBe(1);
   });
 
   // 2. Admin Authentication Enforcement

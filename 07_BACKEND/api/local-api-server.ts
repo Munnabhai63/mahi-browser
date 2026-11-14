@@ -693,6 +693,7 @@ export function startApiServer(): void {
     try {
       // PROFILES ROUTES
       if (pathname === '/profiles' && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:read')) return;
         const search = parsedUrl.searchParams.get('search') || undefined;
         const status = (parsedUrl.searchParams.get('status') as any) || undefined;
         const profiles = getProfiles({ searchQuery: search, status, ownerId: getLocalApiOwnerId() });
@@ -703,6 +704,7 @@ export function startApiServer(): void {
       if (pathname === '/profiles' && method === 'POST') {
         try {
           const body = await parseBody(req);
+          if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
           const activeOwnerId = getLocalApiOwnerId();
           assertCanCreateProfile(1, activeOwnerId);
           const validated = CreateProfileDTOSchema.parse(body);
@@ -716,6 +718,7 @@ export function startApiServer(): void {
 
       if (pathname === '/profiles/bulk' && method === 'POST') {
         const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
         const activeOwnerId = getLocalApiOwnerId();
         assertCanCreateProfile(body?.count || 1, activeOwnerId);
         const result = bulkCreateProfiles({ ...body, ownerId: activeOwnerId });
@@ -725,6 +728,7 @@ export function startApiServer(): void {
 
       if (pathname === '/profiles/bulk-update' && method === 'POST') {
         const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
         const result = bulkUpdateProfiles(body, getLocalApiOwnerId());
         sendJSON(res, 200, { success: true, data: result });
         return;
@@ -732,6 +736,7 @@ export function startApiServer(): void {
 
       if (pathname === '/profiles/bulk-delete' && method === 'POST') {
         const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
         const profileIds: string[] = Array.isArray(body.profileIds) ? body.profileIds : [];
         for (const pid of profileIds) {
           if (processManager.isRunning(pid)) {
@@ -754,6 +759,7 @@ export function startApiServer(): void {
 
       if (pathname === '/profiles/bulk-assign-proxies' && method === 'POST') {
         const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
         const result = bulkAssignProxies(body, getLocalApiOwnerId());
         sendJSON(res, 200, { success: true, data: result });
         return;
@@ -761,6 +767,7 @@ export function startApiServer(): void {
 
       if (pathname === '/profiles/quick-switch' && method === 'POST') {
         const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:launch')) return;
         const num = parseInt(body.number || body.profileNumber || '1', 10);
         const result = await processManager.quickSwitchProfile(num);
         sendJSON(res, result.success ? 200 : 404, result);
@@ -770,12 +777,15 @@ export function startApiServer(): void {
 
 
       if (pathname === '/profiles/trash' && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:read')) return;
         const trash = getTrashProfiles(getLocalApiOwnerId());
         sendJSON(res, 200, { success: true, data: trash });
         return;
       }
 
       if (pathname === '/profiles/trash/empty' && method === 'POST') {
+        const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
         const result = emptyTrash(getLocalApiOwnerId());
         sendJSON(res, 200, { success: true, data: result });
         return;
@@ -784,6 +794,8 @@ export function startApiServer(): void {
       // Match /profiles/:id/restore
       const restoreMatch = pathname.match(/^\/profiles\/([^/]+)\/restore$/);
       if (restoreMatch && method === 'POST') {
+        const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
         const id = restoreMatch[1];
         const restored = restoreProfile(id, getLocalApiOwnerId());
         sendJSON(res, 200, { success: true, data: restored });
@@ -793,6 +805,7 @@ export function startApiServer(): void {
       // Match /profiles/:id/permanent
       const permMatch = pathname.match(/^\/profiles\/([^/]+)\/permanent$/);
       if (permMatch && method === 'DELETE') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:write')) return;
         const id = permMatch[1];
         const activeOwnerId = getLocalApiOwnerId();
         const existing = getProfileById(id, activeOwnerId);
@@ -814,16 +827,19 @@ export function startApiServer(): void {
         const id = profileMatch[1];
         const activeOwnerId = getLocalApiOwnerId();
         if (method === 'GET') {
+          if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:read')) return;
           const p = getProfileById(id, activeOwnerId);
           if (!p) return sendJSON(res, 404, { error: 'Profile not found or access denied' });
           return sendJSON(res, 200, { success: true, data: p });
         }
         if (method === 'PUT') {
           const body = await parseBody(req);
+          if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
           const p = updateProfile(id, body, activeOwnerId);
           return sendJSON(res, 200, { success: true, data: p });
         }
         if (method === 'DELETE') {
+          if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:write')) return;
           const p = getProfileById(id, activeOwnerId);
           if (!p) return sendJSON(res, 404, { error: 'Profile not found or access denied' });
           if (processManager.isRunning(id)) {
@@ -838,6 +854,8 @@ export function startApiServer(): void {
       // /profiles/:id/start
       const startMatch = pathname.match(/^\/profiles\/([^/]+)\/start$/);
       if (startMatch && method === 'POST') {
+        const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:launch')) return;
         const id = startMatch[1];
         const activeOwnerId = getLocalApiOwnerId();
         const p = getProfileById(id, activeOwnerId);
@@ -850,10 +868,12 @@ export function startApiServer(): void {
       // MostLogin / GoLogin Compatibility Route: /api/v1/profile/start or /browser/start
       if ((pathname === '/api/v1/profile/start' || pathname === '/browser/start') && (method === 'GET' || method === 'POST')) {
         let id = parsedUrl.searchParams.get('profileId') || parsedUrl.searchParams.get('profile_id');
-        if (!id && method === 'POST') {
-          const body = await parseBody(req);
-          id = body.profileId || body.profile_id || body.id;
+        let body: any = undefined;
+        if (method === 'POST') {
+          body = await parseBody(req);
+          if (!id) id = body?.profileId || body?.profile_id || body?.id;
         }
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:launch')) return;
         if (!id) return sendJSON(res, 400, { code: 400, success: false, error: 'Missing profileId' });
         const activeOwnerId = getLocalApiOwnerId();
         const p = getProfileById(id, activeOwnerId);
@@ -876,6 +896,8 @@ export function startApiServer(): void {
       // /profiles/:id/stop
       const stopMatch = pathname.match(/^\/profiles\/([^/]+)\/stop$/);
       if (stopMatch && method === 'POST') {
+        const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:launch')) return;
         const id = stopMatch[1];
         const activeOwnerId = getLocalApiOwnerId();
         const p = getProfileById(id, activeOwnerId);
@@ -887,10 +909,12 @@ export function startApiServer(): void {
       // MostLogin / GoLogin Compatibility Route: /api/v1/profile/stop or /browser/stop
       if ((pathname === '/api/v1/profile/stop' || pathname === '/browser/stop') && (method === 'GET' || method === 'POST')) {
         let id = parsedUrl.searchParams.get('profileId') || parsedUrl.searchParams.get('profile_id');
-        if (!id && method === 'POST') {
-          const body = await parseBody(req);
-          id = body.profileId || body.profile_id || body.id;
+        let body: any = undefined;
+        if (method === 'POST') {
+          body = await parseBody(req);
+          if (!id) id = body?.profileId || body?.profile_id || body?.id;
         }
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:launch')) return;
         if (!id) return sendJSON(res, 400, { code: 400, success: false, error: 'Missing profileId' });
         const result = await processManager.stopProfile(id);
         return sendJSON(res, result.success ? 200 : 500, {
@@ -904,12 +928,13 @@ export function startApiServer(): void {
       // /profiles/:id/clone
       const cloneMatch = pathname.match(/^\/profiles\/([^/]+)\/clone$/);
       if (cloneMatch && method === 'POST') {
+        const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
         const id = cloneMatch[1];
         const activeOwnerId = getLocalApiOwnerId();
         const existing = getProfileById(id, activeOwnerId);
         if (!existing) return sendJSON(res, 404, { success: false, error: 'Source profile not found or access denied' });
         assertCanCreateProfile(1, activeOwnerId);
-        const body = await parseBody(req);
         const p = cloneProfile({
           sourceProfileId: id,
           newName: body.newName || `Cloned Profile`,

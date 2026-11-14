@@ -716,7 +716,7 @@ export async function getPaymentInfo(): Promise<PaymentInfo> {
     upi_id: CONTACT_CONFIG.UPI_ID,
     upi_account_holder: CONTACT_CONFIG.UPI_ACCOUNT_HOLDER,
     upi_qr_asset: CONTACT_CONFIG.UPI_QR_ASSET,
-    price_inr: 1499,
+    price_inr: CONTACT_CONFIG.DEFAULT_PRICE_INR || 599,
     price_usd: 19,
     price_usdt: 0,
     usdt_address: '',

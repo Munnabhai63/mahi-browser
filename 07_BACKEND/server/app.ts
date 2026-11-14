@@ -344,8 +344,10 @@ export function createCentralApiServer(): http.Server {
 
       // 3. Profiles Endpoint
       if (pathname === '/api/v2/profiles' && method === 'GET') {
-        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:read')) return;
-        return sendJSON(res, 200, { success: true, data: getProfiles() });
+        const auth = requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:read');
+        if (!auth) return;
+        const ownerId = auth.role === 'master_admin' ? undefined : (auth.userId || getLocalApiOwnerId());
+        return sendJSON(res, 200, { success: true, data: getProfiles(ownerId ? { ownerId } : {}) });
       }
 
       if (pathname === '/api/v2/profiles' && method === 'POST') {
@@ -354,8 +356,9 @@ export function createCentralApiServer(): http.Server {
           const auth = requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write');
           if (!auth) return;
           const ownerId = auth.userId || getLocalApiOwnerId();
-          assertCanCreateProfile(1, ownerId);
-          const profile = createProfile({ ...body, ownerId: body.ownerId || ownerId });
+          const effectiveOwnerId = (auth.role === 'master_admin' && body.ownerId) ? body.ownerId : ownerId;
+          assertCanCreateProfile(1, effectiveOwnerId);
+          const profile = createProfile({ ...body, ownerId: effectiveOwnerId });
           return sendJSON(res, 201, { success: true, data: profile });
         } catch (err: any) {
           return sendJSON(res, 400, { success: false, error: err.message });
@@ -367,20 +370,30 @@ export function createCentralApiServer(): http.Server {
       if (profileMatch) {
         const profileId = profileMatch[1];
         if (method === 'GET') {
-          if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:read')) return;
-          const profile = getProfileById(profileId);
+          const auth = requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:read');
+          if (!auth) return;
+          const ownerId = auth.role === 'master_admin' ? undefined : (auth.userId || getLocalApiOwnerId());
+          const profile = getProfileById(profileId, ownerId);
           if (!profile) return sendJSON(res, 404, { success: false, error: 'Profile not found' });
           return sendJSON(res, 200, { success: true, data: profile });
         }
         if (method === 'PUT') {
           const body = await parseBody(req);
-          if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
-          const updated = updateProfile(profileId, body);
+          const auth = requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write');
+          if (!auth) return;
+          const ownerId = auth.role === 'master_admin' ? undefined : (auth.userId || getLocalApiOwnerId());
+          const existing = getProfileById(profileId, ownerId);
+          if (!existing) return sendJSON(res, 404, { success: false, error: 'Profile not found' });
+          const updated = updateProfile(profileId, body, ownerId);
           return sendJSON(res, 200, { success: true, data: updated });
         }
         if (method === 'DELETE') {
-          if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:write')) return;
-          const ok = deleteProfile(profileId);
+          const auth = requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:write');
+          if (!auth) return;
+          const ownerId = auth.role === 'master_admin' ? undefined : (auth.userId || getLocalApiOwnerId());
+          const existing = getProfileById(profileId, ownerId);
+          if (!existing) return sendJSON(res, 404, { success: false, error: 'Profile not found' });
+          const ok = deleteProfile(profileId, ownerId);
           return sendJSON(res, 200, { success: ok });
         }
       }

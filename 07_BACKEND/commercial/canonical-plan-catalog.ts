@@ -131,7 +131,7 @@ export const CANONICAL_PLAN_CATALOG: Record<CanonicalPlanId, CanonicalPlanDefini
     tierRank: 0,
     currency: 'INR',
     priceMode: 'FIXED',
-    profileLimit: 3,
+    profileLimit: 1,
     seatLimit: 1,
     cloudMinutesMonthly: 0,
     proxyDataGbMonthly: 0,
@@ -172,7 +172,7 @@ export const CANONICAL_PLAN_CATALOG: Record<CanonicalPlanId, CanonicalPlanDefini
     currency: 'INR',
     priceMode: 'FIXED',
     profileLimit: 25,
-    seatLimit: 1,
+    seatLimit: 2,
     cloudMinutesMonthly: 30,
     proxyDataGbMonthly: 2,
     automationConcurrency: 0,
@@ -192,7 +192,7 @@ export const CANONICAL_PLAN_CATALOG: Record<CanonicalPlanId, CanonicalPlanDefini
     currency: 'INR',
     priceMode: 'FIXED',
     profileLimit: 50,
-    seatLimit: 1,
+    seatLimit: 3,
     cloudMinutesMonthly: 30,
     proxyDataGbMonthly: 2,
     automationConcurrency: 2,
@@ -212,7 +212,7 @@ export const CANONICAL_PLAN_CATALOG: Record<CanonicalPlanId, CanonicalPlanDefini
     currency: 'INR',
     priceMode: 'FIXED',
     profileLimit: 100,
-    seatLimit: 1,
+    seatLimit: 5,
     cloudMinutesMonthly: 30,
     proxyDataGbMonthly: 2,
     automationConcurrency: 5,
@@ -232,7 +232,7 @@ export const CANONICAL_PLAN_CATALOG: Record<CanonicalPlanId, CanonicalPlanDefini
     currency: 'INR',
     priceMode: 'FIXED',
     profileLimit: 50,
-    seatLimit: 2,
+    seatLimit: 5,
     cloudMinutesMonthly: 60,
     proxyDataGbMonthly: 5,
     automationConcurrency: 3,
@@ -252,7 +252,7 @@ export const CANONICAL_PLAN_CATALOG: Record<CanonicalPlanId, CanonicalPlanDefini
     currency: 'INR',
     priceMode: 'FIXED',
     profileLimit: 100,
-    seatLimit: 5,
+    seatLimit: 10,
     cloudMinutesMonthly: 120,
     proxyDataGbMonthly: 10,
     automationConcurrency: 5,
@@ -272,7 +272,7 @@ export const CANONICAL_PLAN_CATALOG: Record<CanonicalPlanId, CanonicalPlanDefini
     currency: 'INR',
     priceMode: 'FIXED',
     profileLimit: 200,
-    seatLimit: 8,
+    seatLimit: 20,
     cloudMinutesMonthly: 240,
     proxyDataGbMonthly: 15,
     automationConcurrency: 10,
@@ -292,7 +292,7 @@ export const CANONICAL_PLAN_CATALOG: Record<CanonicalPlanId, CanonicalPlanDefini
     currency: 'INR',
     priceMode: 'FIXED',
     profileLimit: 300,
-    seatLimit: 999,  // "Unlimited" team members with fair-use cap
+    seatLimit: 999, // "Unlimited" team members with fair-use cap
     cloudMinutesMonthly: 500,
     proxyDataGbMonthly: 25,
     automationConcurrency: 20,
@@ -357,12 +357,13 @@ export const TRIAL_CONFIG: TrialConfig = {
 
 export const PLAN_DISPLAY_FEATURES: Record<CanonicalPlanId, string[]> = {
   'free': [
-    'Up to 3 profiles',
+    '1 profile included',
     'Unique fingerprints',
     'No credit card required',
   ],
   'professional_10': [
     'Up to 10 profiles',
+    '1 Team Member seat included',
     '30 Cloud Android minutes/mo',
     'Unique fingerprints',
     'Folders / Groups',
@@ -370,6 +371,7 @@ export const PLAN_DISPLAY_FEATURES: Record<CanonicalPlanId, string[]> = {
   ],
   'professional_25': [
     'Up to 25 profiles',
+    '2 Team Member seats included',
     '2 GB of residential proxy data',
     '30 Cloud Android minutes/mo',
     'Unique fingerprints',
@@ -379,6 +381,7 @@ export const PLAN_DISPLAY_FEATURES: Record<CanonicalPlanId, string[]> = {
   ],
   'professional_50': [
     'Up to 50 profiles',
+    '3 Team Member seats included',
     '2 GB of residential proxy data',
     '30 Cloud Android minutes/mo',
     'Unique fingerprints',
@@ -391,6 +394,7 @@ export const PLAN_DISPLAY_FEATURES: Record<CanonicalPlanId, string[]> = {
   ],
   'professional_100': [
     'Up to 100 profiles',
+    '5 Team Member seats included',
     '2 GB of residential proxy data',
     '30 Cloud Android minutes/mo',
     'Unique fingerprints',
@@ -408,7 +412,7 @@ export const PLAN_DISPLAY_FEATURES: Record<CanonicalPlanId, string[]> = {
   ],
   'business_starter': [
     'Up to 50 profiles',
-    '2 Team Member seats included',
+    '5 Team Member seats included',
     '5 GB of residential proxy data',
     'Unique hardware fingerprints',
     'Team Folders & Permissions',
@@ -417,7 +421,7 @@ export const PLAN_DISPLAY_FEATURES: Record<CanonicalPlanId, string[]> = {
   ],
   'business_growth': [
     'Up to 100 profiles',
-    '5 Team Member seats included',
+    '10 Team Member seats included',
     '10 GB of residential proxy data',
     'Unique hardware fingerprints',
     'Role-Based Access Control',
@@ -426,7 +430,7 @@ export const PLAN_DISPLAY_FEATURES: Record<CanonicalPlanId, string[]> = {
   ],
   'business_scale': [
     'Up to 200 profiles',
-    '8 Team Member seats included',
+    '20 Team Member seats included',
     '15 GB residential proxy data',
     'Multi-Window Live Synchronizer',
     '4G/5G Hotspot ADB IP Rotator',
@@ -565,18 +569,153 @@ export function calculateAnnualPricePaise(monthlyPricePaise: number, discountPer
 }
 
 /**
- * Maps legacy and short plan IDs to canonical plan IDs.
+ * Team plan aliases mapped to canonical business plan IDs.
  */
-export function legacyPlanIdToCanonical(legacyId: string): CanonicalPlanId {
+export const TEAM_PLAN_ALIASES: Record<string, CanonicalPlanId> = {
+  'team_50': 'business_starter',
+  'team_100': 'business_growth',
+  'team_200': 'business_scale',
+  'team_300': 'business_enterprise',
+};
+
+/**
+ * Authoritative Add-on Minor Unit Pricing:
+ * - Extra team member: 49,900 paise (₹499) / 600 cents ($6.00) per month
+ * - Extra proxy bandwidth: 19,900 paise (₹199) / 300 cents ($3.00) per GB per month
+ */
+export const ADDON_PRICING = {
+  EXTRA_MEMBER: {
+    monthlyPricePaise: 49900, // ₹499
+    monthlyPriceCents: 600,   // $6.00
+  },
+  EXTRA_PROXY_GB: {
+    monthlyPricePaise: 19900, // ₹199
+    monthlyPriceCents: 300,   // $3.00
+  },
+} as const;
+
+export const INITIAL_PLAN_PRICES_USD: Record<CanonicalPlanId, { monthlyCents: number; annualCents: number }> = {
+  'free': { monthlyCents: 0, annualCents: 0 },
+  'professional_10': { monthlyCents: 700, annualCents: 350 },
+  'professional_25': { monthlyCents: 1800, annualCents: 900 },
+  'professional_50': { monthlyCents: 3600, annualCents: 1800 },
+  'professional_100': { monthlyCents: 7200, annualCents: 3600 },
+  'business_starter': { monthlyCents: 3600, annualCents: 1800 },
+  'business_growth': { monthlyCents: 4800, annualCents: 2400 },
+  'business_scale': { monthlyCents: 6000, annualCents: 3000 },
+  'business_enterprise': { monthlyCents: 7200, annualCents: 3600 },
+  'enterprise_custom': { monthlyCents: 0, annualCents: 0 },
+};
+
+export interface OrderTotalOptions {
+  planId: string;
+  billingCycle: 'MONTHLY' | 'ANNUAL';
+  currency?: 'INR' | 'USD';
+  extraMembers?: number;
+  extraProxyGb?: number;
+}
+
+export interface AuthoritativeOrderTotal {
+  planId: CanonicalPlanId;
+  billingCycle: 'MONTHLY' | 'ANNUAL';
+  currency: 'INR' | 'USD';
+  baseMonthlyRateMinor: number;
+  discountedMonthlyRateMinor: number;
+  billingMonths: number;
+  baseChargeMinor: number;
+  extraMembers: number;
+  extraMemberMonthlyMinor: number;
+  extraMembersTotalMinor: number;
+  extraProxyGb: number;
+  extraProxyGbMonthlyMinor: number;
+  extraProxyGbTotalMinor: number;
+  totalMonthlyMinor: number;
+  totalChargeMinor: number;
+  discountPercent: number;
+}
+
+/**
+ * Authoritative minor-unit order total calculation.
+ * 
+ * Rules:
+ * - Annual discount: 50% off monthly base rate: Math.round(monthlyBaseMinor * 0.5)
+ * - Annual billed total: 12 months (baseChargeMinor = discountedMonthlyRateMinor * 12)
+ * - Add-ons billed per month (multiplied by 12 on annual cycle)
+ */
+export function calculateAuthoritativeOrderTotal(options: OrderTotalOptions): AuthoritativeOrderTotal {
+  const canonicalId = legacyPlanIdToCanonical(options.planId) || 'free';
+  const currency = options.currency === 'USD' ? 'USD' : 'INR';
+  const billingCycle = options.billingCycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY';
+  const extraMembers = Math.max(0, Math.floor(options.extraMembers || 0));
+  const extraProxyGb = Math.max(0, Math.floor(options.extraProxyGb || 0));
+
+  let baseMonthlyRateMinor = 0;
+  if (currency === 'INR') {
+    const entry = INITIAL_PLAN_PRICES.find((p) => p.planId === canonicalId);
+    baseMonthlyRateMinor = entry?.monthlyPricePaise || 0;
+  } else {
+    baseMonthlyRateMinor = INITIAL_PLAN_PRICES_USD[canonicalId]?.monthlyCents || 0;
+  }
+
+  const extraMemberMonthlyMinor =
+    currency === 'USD' ? ADDON_PRICING.EXTRA_MEMBER.monthlyPriceCents : ADDON_PRICING.EXTRA_MEMBER.monthlyPricePaise;
+  const extraProxyGbMonthlyMinor =
+    currency === 'USD' ? ADDON_PRICING.EXTRA_PROXY_GB.monthlyPriceCents : ADDON_PRICING.EXTRA_PROXY_GB.monthlyPricePaise;
+
+  const discountPercent = billingCycle === 'ANNUAL' ? INITIAL_ANNUAL_DISCOUNT_PERCENT : 0;
+  const discountedMonthlyRateMinor =
+    billingCycle === 'ANNUAL'
+      ? Math.round(baseMonthlyRateMinor * (1 - discountPercent / 100))
+      : baseMonthlyRateMinor;
+
+  const billingMonths = billingCycle === 'ANNUAL' ? 12 : 1;
+  const baseChargeMinor = discountedMonthlyRateMinor * billingMonths;
+  const extraMembersTotalMinor = extraMembers * extraMemberMonthlyMinor * billingMonths;
+  const extraProxyGbTotalMinor = extraProxyGb * extraProxyGbMonthlyMinor * billingMonths;
+
+  const totalMonthlyMinor =
+    discountedMonthlyRateMinor + extraMembers * extraMemberMonthlyMinor + extraProxyGb * extraProxyGbMonthlyMinor;
+  const totalChargeMinor = baseChargeMinor + extraMembersTotalMinor + extraProxyGbTotalMinor;
+
+  return {
+    planId: canonicalId,
+    billingCycle,
+    currency,
+    baseMonthlyRateMinor,
+    discountedMonthlyRateMinor,
+    billingMonths,
+    baseChargeMinor,
+    extraMembers,
+    extraMemberMonthlyMinor,
+    extraMembersTotalMinor,
+    extraProxyGb,
+    extraProxyGbMonthlyMinor,
+    extraProxyGbTotalMinor,
+    totalMonthlyMinor,
+    totalChargeMinor,
+    discountPercent,
+  };
+}
+
+/**
+ * Maps legacy and short plan IDs to canonical plan IDs.
+ * Returns null if the plan ID is not recognized.
+ */
+export function legacyPlanIdToCanonical(legacyId: string): CanonicalPlanId | null {
   const norm = (legacyId || '').toLowerCase().trim();
+  if (!norm) return 'free';
   const map: Record<string, CanonicalPlanId> = {
     'free': 'free',
     'plan_free': 'free',
     'starter': 'professional_10',
     'pro_10': 'professional_10',
+    'professional_10': 'professional_10',
     'pro_25': 'professional_25',
+    'professional_25': 'professional_25',
     'pro_50': 'professional_50',
+    'professional_50': 'professional_50',
     'pro_100': 'professional_100',
+    'professional_100': 'professional_100',
     'pro': 'professional_100',
     'trial': 'professional_100',
     'plan_pro': 'professional_100',
@@ -595,5 +734,5 @@ export function legacyPlanIdToCanonical(legacyId: string): CanonicalPlanId {
     'enterprise_custom': 'enterprise_custom',
     'plan_enterprise': 'enterprise_custom',
   };
-  return map[norm] || (CANONICAL_PLAN_CATALOG[norm as CanonicalPlanId] ? (norm as CanonicalPlanId) : 'free');
+  return map[norm] || (CANONICAL_PLAN_CATALOG[norm as CanonicalPlanId] ? (norm as CanonicalPlanId) : null);
 }

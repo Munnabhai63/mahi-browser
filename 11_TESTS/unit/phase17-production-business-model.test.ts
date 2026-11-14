@@ -76,11 +76,11 @@ describe('Canonical Plan Catalog', () => {
 // ── Profile Limits Tests ───────────────────────────────────────────────────────
 
 describe('Profile Limits Per Plan', () => {
-  it('free plan limits to 3 profiles', async () => {
+  it('free plan limits to 1 profile', async () => {
     const { CANONICAL_PLAN_CATALOG } = await import(
       '../../07_BACKEND/commercial/canonical-plan-catalog.js'
     );
-    expect(CANONICAL_PLAN_CATALOG['free'].profileLimit).toBe(3);
+    expect(CANONICAL_PLAN_CATALOG['free'].profileLimit).toBe(1);
   });
 
   it('Professional 10 limits to 10 profiles', async () => {
