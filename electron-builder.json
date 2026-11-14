@@ -2,6 +2,12 @@
   "appId": "com.mahibrowser.app",
   "productName": "MAHI Browser",
   "copyright": "Copyright © 2026 MAHI Browser — By Munna Bhai",
+  "protocols": [
+    {
+      "name": "MAHI Browser Protocol",
+      "schemes": ["mahi"]
+    }
+  ],
   "directories": {
     "output": "release",
     "buildResources": "13_ASSETS/resources"

@@ -25,6 +25,7 @@ const api = {
   emptyTrash: () => ipcRenderer.invoke('profiles:emptyTrash'),
   cloneProfile: (dto) => ipcRenderer.invoke('profiles:clone', dto),
   claimLegacy: (dto) => ipcRenderer.invoke('profiles:claimLegacy', dto),
+  getUnassignedLegacy: () => ipcRenderer.invoke('profiles:getUnassignedLegacy'),
 
 
   startProfile: (id) => ipcRenderer.invoke('profiles:start', id),
@@ -369,6 +370,8 @@ const api = {
     const payload = typeof dto === 'string' ? { ticket: dto, code: code || '' } : dto;
     return ipcRenderer.invoke('account:exchangeDesktopCode', payload);
   },
+  accountActivateTrial: (planId) => ipcRenderer.invoke('account:activateTrial', planId),
+  accountGetTrialStatus: () => ipcRenderer.invoke('account:getTrialStatus'),
   onAccountStatusChanged: (callback) => {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('account:statusChanged', handler);

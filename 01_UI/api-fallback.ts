@@ -158,8 +158,20 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
       return r.data || r;
     },
     claimLegacy: async (dto) => {
-      const r = await apiPost('/profiles/claim-legacy', dto);
-      return r.data || r;
+      try {
+        const r = await apiPost('/profiles/claim-legacy', dto);
+        return r.data || r;
+      } catch {
+        return { success: false, claimedCount: 0, error: 'REST endpoint unavailable in fallback' };
+      }
+    },
+    getUnassignedLegacy: async () => {
+      try {
+        const r = await apiGet('/profiles/unassigned-legacy');
+        return r.data || r || [];
+      } catch {
+        return [];
+      }
     },
 
 
@@ -753,6 +765,8 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     accountRefreshToken: async () => ({ success: true, token: 'mock-refreshed-token' }),
     accountStartDesktopOAuth: async () => ({ success: true, ticket: 'mock-ticket', authUrl: 'https://admin.mahibrowser.com/api/v1/auth/google/start?intent=desktop_login' }),
     accountExchangeDesktopCode: async () => ({ success: true, token: 'mock-token', user: { id: 'mock-user', email: 'test@mahibrowser.com' } }),
+    accountActivateTrial: async () => ({ success: true, message: 'Mock trial activated', trialStatus: { isTrialActive: true, daysRemaining: 7, isEligibleForTrial: false } }),
+    accountGetTrialStatus: async () => ({ success: true, isTrialActive: false, daysRemaining: 0, isEligibleForTrial: true }),
     onAccountStatusChanged: () => () => {},
 
     // Commercial Proxy Provider Platform (Phase 5)

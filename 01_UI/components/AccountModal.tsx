@@ -42,6 +42,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     paymentHistory,
     selectedPlanTier,
     pendingProfileDto,
+    trialStatus,
+    activateTrial,
     clearPendingProfileDto,
     accountSignup,
     accountLogin,
@@ -82,6 +84,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<string | null>(null);
   const [deviceMismatchError, setDeviceMismatchError] = useState(false);
+  const [isActivatingTrial, setIsActivatingTrial] = useState(false);
 
   // Manual UPI payment submission states
   const [selectedPlanId, setSelectedPlanId] = useState('professional_10');
@@ -745,12 +748,12 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                     )}
                     {currentPlan === 'trial' && (
                       <span className="px-3 py-1 rounded-full text-xs font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center gap-1">
-                        <Sparkles size={13} /> 7-DAY TRIAL
+                        <Sparkles size={13} /> 7-DAY TRIAL {trialStatus?.daysRemaining ? `(${trialStatus.daysRemaining}d left)` : ''}
                       </span>
                     )}
                     {currentPlan !== 'pro' && currentPlan !== 'trial' && !currentPlan.startsWith('pro_') && currentPlan !== 'business' && !currentPlan.startsWith('business_') && currentPlan !== 'team' && currentPlan !== 'enterprise' && (
                       <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-700 text-slate-300 border border-slate-600">
-                        FREE PLAN (15/15)
+                        FREE PLAN ({planLimits?.maxProfiles || 15} Profiles)
                       </span>
                     )}
                   </div>
@@ -768,6 +771,40 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                     </strong>
                   </div>
                 </div>
+
+                {currentPlan !== 'pro' && currentPlan !== 'trial' && !isProActive && trialStatus?.isEligibleForTrial && (
+                  <div className="pt-3 border-t border-slate-700/40">
+                    <button
+                      type="button"
+                      disabled={isActivatingTrial}
+                      onClick={async () => {
+                        setIsActivatingTrial(true);
+                        try {
+                          const res = await activateTrial('professional_50');
+                          if (res.success) {
+                            showToast({
+                              type: 'success',
+                              title: 'Trial Activated!',
+                              message: '7-Day Free Trial (50 Profiles) is now active.',
+                            });
+                          } else {
+                            showToast({
+                              type: 'error',
+                              title: 'Trial Activation',
+                              message: res.error || 'Failed to activate trial.',
+                            });
+                          }
+                        } finally {
+                          setIsActivatingTrial(false);
+                        }
+                      }}
+                      className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                    >
+                      <Sparkles size={14} />
+                      {isActivatingTrial ? 'Activating 7-Day Trial...' : 'Start 7-Day Free Trial (50 Profiles)'}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Active Sessions & Devices Management */}

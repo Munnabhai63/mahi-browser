@@ -505,6 +505,18 @@
 
     <!-- Authenticated Portal View -->
     <div id="portalContent" class="portal-content">
+      <!-- Trial Welcome Banner -->
+      <div id="trialWelcomeBanner" style="display: none; background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 78, 59, 0.25) 100%); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 16px; padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 42px; height: 42px; border-radius: 12px; background: rgba(16, 185, 129, 0.25); display: flex; align-items: center; justify-content: center; color: #34d399; font-size: 1.25rem; flex-shrink: 0;">⚡</div>
+          <div>
+            <h3 style="font-size: 1rem; font-weight: 700; color: #ffffff; margin: 0 0 2px 0;">Your 7-Day Trial (50 Profiles) is active — Download or Open Desktop App</h3>
+            <p style="font-size: 0.8125rem; color: #94a3b8; margin: 0;">Multi-accounting with 50 antidetect profiles and full stealth fingerprinting enabled.</p>
+          </div>
+        </div>
+        <div id="trialBannerDaysBadge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-weight: 700; font-size: 0.8125rem; padding: 6px 14px; border-radius: 9999px; border: 1px solid rgba(16, 185, 129, 0.35);">7 Days Remaining</div>
+      </div>
+
       <div class="user-welcome-bar">
         <div class="user-info">
           <div class="user-avatar" id="avatarInitial">M</div>
@@ -513,9 +525,10 @@
             <p id="accountStatus">Account Active • Multi-Accounting Ready</p>
           </div>
         </div>
-        <div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
           <span class="plan-badge" id="planBadge">Active 7-Day Trial</span>
-          <span class="trial-countdown" id="trialCountdown" style="display:none; margin-left: 10px;"></span>
+          <span class="trial-countdown" id="trialCountdown" style="display:none;"></span>
+          <button id="btnActivateTrial" class="btn-activate-trial" style="display:none; background: linear-gradient(135deg, #10b981, #059669); color: #ffffff; border: none; padding: 6px 14px; border-radius: 9999px; font-weight: 700; font-size: 0.8125rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);">Activate 7-Day Free Trial</button>
         </div>
       </div>
 
@@ -655,13 +668,15 @@
 
       // Support token retrieval from URL parameters, cookies (mahi_token), and localStorage
       const urlParams = new URLSearchParams(window.location.search);
-      let token = urlParams.get('token') || localStorage.getItem('mahi_auth_token');
+      let token = urlParams.get('token') || localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token');
       if (!token) {
         const cookieMatch = document.cookie.match(/(?:^|;\s*)mahi_token=([^;]+)/);
         if (cookieMatch) token = decodeURIComponent(cookieMatch[1]);
       }
       if (token) {
         localStorage.setItem('mahi_auth_token', token);
+        localStorage.setItem('mahi_access_token', token);
+        document.cookie = `mahi_token=${token}; path=/; max-age=2592000; SameSite=Lax`;
         if (urlParams.has('token')) {
           urlParams.delete('token');
           const cleanSearch = urlParams.toString() ? '?' + urlParams.toString() : '';
@@ -688,15 +703,17 @@
 
           if (!res.ok || !data.success) {
             localStorage.removeItem('mahi_auth_token');
+            localStorage.removeItem('mahi_access_token');
             localStorage.removeItem('mahi_user');
+            document.cookie = 'mahi_token=; path=/; max-age=0; SameSite=Lax';
             showAuthGate();
             return;
           }
 
-          showPortal(data.user, data.trialStatus);
+          showPortal(data.user, data.trialStatus, data.entitlements);
         } catch (err) {
           if (cachedUser) {
-            showPortal(cachedUser, null);
+            showPortal(cachedUser, null, null);
           } else {
             showAuthGate();
           }
@@ -709,9 +726,11 @@
         logoutBtn.style.display = 'none';
         const welcomeBar = document.querySelector('.user-welcome-bar');
         if (welcomeBar) welcomeBar.style.display = 'none';
+        const trialBanner = document.getElementById('trialWelcomeBanner');
+        if (trialBanner) trialBanner.style.display = 'none';
       }
 
-      function showPortal(user, trialStatus) {
+      function showPortal(user, trialStatus, entitlements) {
         authGate.style.display = 'none';
         portalContent.style.display = 'block';
         logoutBtn.style.display = 'block';
@@ -721,32 +740,121 @@
         userEmail.textContent = user.email || 'Registered User';
         avatarInitial.textContent = (user.name || user.email || 'M').charAt(0).toUpperCase();
 
+        const maxProfiles = (entitlements && entitlements.maxProfiles) || user.profileQuota || (trialStatus?.isTrialActive ? 50 : 15);
+        const isOnboardingTrial = urlParams.get('onboarding') === 'trial';
+        const trialBanner = document.getElementById('trialWelcomeBanner');
+        const trialBannerBadge = document.getElementById('trialBannerDaysBadge');
+        const btnActivateTrial = document.getElementById('btnActivateTrial');
+
         if (trialStatus && trialStatus.isTrialActive) {
-          planBadge.textContent = 'Active 7-Day Trial';
+          planBadge.textContent = `Active 7-Day Trial (${maxProfiles} Profiles)`;
           planBadge.style.background = 'rgba(16, 185, 129, 0.2)';
           planBadge.style.color = '#34d399';
           trialCountdown.style.display = 'inline-block';
           trialCountdown.textContent = `⏳ ${trialStatus.daysRemaining} days left`;
+
+          if (trialBanner) {
+            trialBanner.style.display = 'flex';
+            if (trialBannerBadge) trialBannerBadge.textContent = `${trialStatus.daysRemaining} Days Remaining`;
+          }
+          if (btnActivateTrial) btnActivateTrial.style.display = 'none';
+        } else if (isOnboardingTrial) {
+          planBadge.textContent = `7-Day Trial (${maxProfiles} Profiles)`;
+          planBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+          planBadge.style.color = '#34d399';
+          if (trialBanner) trialBanner.style.display = 'flex';
+          if (btnActivateTrial) btnActivateTrial.style.display = 'none';
         } else if (user.plan && user.plan !== 'free') {
-          planBadge.textContent = `${user.plan.toUpperCase()} Plan`;
+          planBadge.textContent = `${user.plan.toUpperCase()} Plan (${maxProfiles} Profiles)`;
           planBadge.style.background = 'rgba(56, 189, 248, 0.2)';
           planBadge.style.color = '#38bdf8';
+          if (trialBanner) trialBanner.style.display = 'none';
+          if (btnActivateTrial) btnActivateTrial.style.display = 'none';
         } else {
-          planBadge.textContent = 'Free Account (15 Profiles)';
+          planBadge.textContent = `Free Account (${maxProfiles} Profiles)`;
           planBadge.style.background = 'rgba(148, 163, 184, 0.2)';
           planBadge.style.color = '#cbd5e1';
+          if (trialBanner) trialBanner.style.display = 'none';
+
+          if (trialStatus && trialStatus.isEligibleForTrial && btnActivateTrial) {
+            btnActivateTrial.style.display = 'inline-block';
+            btnActivateTrial.onclick = async () => {
+              btnActivateTrial.disabled = true;
+              btnActivateTrial.textContent = 'Activating Trial...';
+              try {
+                const res = await fetch('/api/v1/auth/trial/activate', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                  }
+                });
+                const actData = await res.json();
+                if (actData.success) {
+                  await checkAuth();
+                } else {
+                  alert(actData.message || actData.error || 'Failed to activate trial.');
+                  btnActivateTrial.disabled = false;
+                  btnActivateTrial.textContent = 'Activate 7-Day Free Trial';
+                }
+              } catch (e) {
+                alert('Network error activating trial.');
+                btnActivateTrial.disabled = false;
+                btnActivateTrial.textContent = 'Activate 7-Day Free Trial';
+              }
+            };
+          } else if (btnActivateTrial) {
+            btnActivateTrial.style.display = 'none';
+          }
         }
+
         const deepLinkBtn = document.getElementById('deepLinkLaunchBtn');
         if (deepLinkBtn && token) {
           deepLinkBtn.style.display = 'inline-flex';
-          deepLinkBtn.href = `mahi://auth?token=${encodeURIComponent(token)}`;
-          deepLinkBtn.addEventListener('click', (e) => {
-            // Optional fallback notice if protocol client isn't installed yet
-            setTimeout(() => {
-              console.log('Deep link protocol dispatched to desktop OS.');
-            }, 500);
-          });
+          deepLinkBtn.removeAttribute('href');
+          deepLinkBtn.style.cursor = 'pointer';
         }
+      }
+
+      // Zero-Token Single-Use Web-to-Desktop Handoff Handler
+      const deepLinkBtn = document.getElementById('deepLinkLaunchBtn');
+      if (deepLinkBtn) {
+        deepLinkBtn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          if (!token) return;
+
+          const origHtml = deepLinkBtn.innerHTML;
+          deepLinkBtn.innerHTML = `<span>Generating secure handoff...</span>`;
+          deepLinkBtn.style.opacity = '0.75';
+
+          try {
+            const res = await fetch('/api/v1/auth/web-handoff', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            const data = await res.json();
+            if (data.success && data.handoffCode) {
+              const protoUrl = `mahi://auth?handoff=${encodeURIComponent(data.handoffCode)}`;
+              window.location.href = protoUrl;
+              deepLinkBtn.innerHTML = `<span>Launching Desktop App...</span>`;
+              setTimeout(() => {
+                deepLinkBtn.innerHTML = origHtml;
+                deepLinkBtn.style.opacity = '1';
+              }, 3500);
+            } else {
+              deepLinkBtn.innerHTML = origHtml;
+              deepLinkBtn.style.opacity = '1';
+              alert(data.error || 'Failed to initiate desktop handoff. Please launch the desktop app manually.');
+            }
+          } catch (err) {
+            deepLinkBtn.innerHTML = origHtml;
+            deepLinkBtn.style.opacity = '1';
+            alert('Unable to reach auth handoff service.');
+          }
+        });
       }
 
       function triggerDownload(type) {
@@ -771,10 +879,10 @@
         window.location.href = downloadUrl;
 
         // Auto-show or prompt deep link launch after download initiation
-        const deepLinkBtn = document.getElementById('deepLinkLaunchBtn');
         if (deepLinkBtn && token) {
           deepLinkBtn.style.display = 'inline-flex';
-          deepLinkBtn.href = `mahi://auth?token=${encodeURIComponent(token)}`;
+          deepLinkBtn.removeAttribute('href');
+          deepLinkBtn.style.cursor = 'pointer';
         }
       }
 
@@ -783,7 +891,10 @@
 
       logoutBtn.addEventListener('click', () => {
         localStorage.removeItem('mahi_auth_token');
+        localStorage.removeItem('mahi_access_token');
         localStorage.removeItem('mahi_user');
+        document.cookie = 'mahi_token=; path=/; max-age=0; SameSite=Lax';
+        document.cookie = 'mahi_session=; path=/; max-age=0; SameSite=Lax';
         window.location.reload();
       });
 

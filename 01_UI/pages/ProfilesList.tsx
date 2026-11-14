@@ -43,6 +43,7 @@ import { UniversalBulkImportModal } from '../components/UniversalBulkImportModal
 import { SynchronizerModal } from '../components/SynchronizerModal.js';
 import { CloudSyncSection } from '../components/CloudSyncSection.js';
 import { StarterProfilesSection } from '../components/StarterProfilesSection.js';
+import { useAccountStore } from '../stores/useAccountStore.js';
 
 interface ProfilesListProps {
   onNavigate: (page: NavigationPage) => void;
@@ -75,6 +76,21 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
   const { proxies, fetchProxies, parseAndCreateProxy } = useProxyStore();
 
   const { showToast } = useToastStore();
+
+  const {
+    accountSession,
+    unassignedGuestProfiles,
+    checkUnassignedGuestProfiles,
+    claimGuestProfiles,
+    dismissGuestProfilesBanner
+  } = useAccountStore();
+  const [isClaimingGuest, setIsClaimingGuest] = useState(false);
+
+  useEffect(() => {
+    if (accountSession?.token) {
+      checkUnassignedGuestProfiles().catch(() => {});
+    }
+  }, [accountSession?.token]);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -969,6 +985,64 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
 
   return (
     <div className="h-full flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden font-sans">
+      {/* Guest Profiles Claim Notification Banner */}
+      {accountSession?.token && unassignedGuestProfiles && unassignedGuestProfiles.length > 0 && (
+        <div className="bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-transparent border-b border-emerald-500/30 px-6 py-2.5 flex items-center justify-between gap-4 animate-in slide-in-from-top duration-200">
+          <div className="flex items-center gap-3">
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                You have <strong className="text-emerald-500">{unassignedGuestProfiles.length}</strong> guest profile(s) on this device. Claim them into your account?
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Claiming moves local guest profiles under your authenticated account limits with full sync support.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              disabled={isClaimingGuest}
+              onClick={async () => {
+                setIsClaimingGuest(true);
+                try {
+                  const res = await claimGuestProfiles();
+                  if (res.success) {
+                    showToast({
+                      type: 'success',
+                      title: 'Profiles Claimed',
+                      message: `Successfully claimed ${res.claimedCount} guest profile(s) to your account!`,
+                    });
+                    await fetchProfiles();
+                  } else {
+                    showToast({
+                      type: 'error',
+                      title: 'Claim Profiles',
+                      message: res.error || 'Failed to claim profiles.',
+                    });
+                  }
+                } finally {
+                  setIsClaimingGuest(false);
+                }
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-white transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+            >
+              {isClaimingGuest ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+              Claim to My Account
+            </button>
+            <button
+              type="button"
+              onClick={() => dismissGuestProfilesBanner()}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top GoLogin-Style Header Bar */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
         {/* Left: GoLogin-Style Folder Tabs with Overflow Containment (GAP-04) */}

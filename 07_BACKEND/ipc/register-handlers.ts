@@ -6,7 +6,7 @@ import { verifyLicense, getHWID } from '../../08_SECURITY/license-service.js';
 import { isOnlineRevoked, isGraceExpired, getOnlineStatusSummary, checkLicenseStatusOnline } from '../../08_SECURITY/license-status-service.js';
 import { assertCanCreateProfile, getPlanLimitsInfo, assertCapability } from '../../08_SECURITY/freemium-guard.js';
 import { getStarterTemplates, getStarterTemplateById, createProfileFromStarter, isUserNew } from '../../02_BROWSER/services/starter-profiles-service.js';
-import { evaluateUserEntitlements, checkCapability, assertEntitled } from '../commercial/commercial-entitlement-service.js';
+import { evaluateUserEntitlements, checkCapability, assertEntitled, activateUserTrial, getUserTrialStatus } from '../commercial/commercial-entitlement-service.js';
 import { buildPlanCatalog } from '../commercial/pricing-admin-service.js';
 import { paymentService } from '../commercial/payment-service.js';
 import { getDynamicPrice, fetchDynamicPrice } from '../../08_SECURITY/price-service.js';
@@ -35,7 +35,9 @@ import {
   revokeAllSessions as accountRevokeAllSessions,
   loginWithToken as accountLoginWithToken,
   createDesktopOAuthRequest,
-  exchangeDesktopAuthCode
+  exchangeDesktopAuthCode,
+  activateTrialFromServer,
+  getTrialStatusFromServer
 } from '../../08_SECURITY/account-service.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { setActiveUserId, getActiveUserId, clearActiveSession } from '../commercial/session-context.js';
@@ -2484,6 +2486,20 @@ export function registerIpcHandlers(): void {
   });
   ipcMain.handle('account:exchangeDesktopCode', async (_e, dto: { ticket: string; code: string }) => {
     return exchangeDesktopAuthCode(dto.ticket, dto.code);
+  });
+  ipcMain.handle('account:activateTrial', async (_e, planId?: string) => {
+    if (process.env.MAHI_LOCAL_COMMERCIAL_MODE === 'true') {
+      const activeUserId = getActiveUserId() || 'local-license-user';
+      return activateUserTrial(activeUserId, planId || 'professional_50');
+    }
+    return activateTrialFromServer(planId || 'professional_50');
+  });
+  ipcMain.handle('account:getTrialStatus', async () => {
+    if (process.env.MAHI_LOCAL_COMMERCIAL_MODE === 'true') {
+      const activeUserId = getActiveUserId() || 'local-license-user';
+      return { success: true, ...getUserTrialStatus(activeUserId) };
+    }
+    return getTrialStatusFromServer();
   });
 
   // Initialize startup cloud sync queue resumption & account status scheduler

@@ -253,10 +253,10 @@ export function evaluateUserEntitlements(
   const runningCount = processManager.getRunningCount();
 
   const isDeviceAuthorized = devReg.success;
-  const isTrialUser = user.signupIntent === 'trial';
   const isTrialActive = Boolean(user.trialExpiresAt && new Date(user.trialExpiresAt).getTime() > Date.now());
+  const isTrialUser = Boolean(isTrialActive && (user.signupIntent === 'trial' || subscription?.billingCycle === 'TRIAL' || subscription?.status === 'TRIAL'));
   const isSubActive = Boolean(subscription && (subscription.status === 'ACTIVE' || subscription.status === 'TRIAL') && !(subscription.expiresAt && new Date(subscription.expiresAt).getTime() <= Date.now()));
-  const effectivePlanObj = (isTrialUser && !isTrialActive && !isSubActive) ? defaultFreePlan : (isSubActive ? plan : defaultFreePlan);
+  const effectivePlanObj = (!isTrialUser && !isSubActive) ? defaultFreePlan : (isSubActive ? plan : (isTrialUser ? (getCommercialPlanById('professional_50') || plan) : defaultFreePlan));
   const capabilities = resolveCapabilitiesForPlan(effectivePlanObj, subscription);
 
   // Phase 23: MostLogin-style Enterprise Feature Overrides per User
@@ -499,51 +499,61 @@ export function activateUserTrial(
     return { success: false, error: 'USER_NOT_FOUND', message: 'User account not found.' };
   }
 
-  // Check if trial has already been used
-  if (user.trialUsed) {
-    return {
-      success: false,
-      error: 'TRIAL_ALREADY_USED',
-      message: 'A 7-day trial has already been used for this account.',
-    };
-  }
+  const runActivation = () => {
+    // Check user and trial status directly inside transaction
+    const userRow = db.prepare('SELECT trial_used, trial_expires_at FROM commercial_users WHERE id = ?').get(userId) as any;
+    const existingSub = db.prepare("SELECT id FROM commercial_subscriptions WHERE user_id = ? AND billing_cycle = 'TRIAL' LIMIT 1").get(userId) as any;
 
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const nowStr = now.toISOString();
-  const expStr = expiresAt.toISOString();
+    if (userRow?.trial_used || existingSub) {
+      return {
+        success: false,
+        error: 'TRIAL_ALREADY_USED',
+        message: 'A 7-day trial has already been used for this account.',
+      };
+    }
 
-  // Atomically update commercial_users
-  db.prepare(`
-    UPDATE commercial_users
-    SET plan_id = ?, trial_started_at = ?, trial_expires_at = ?, trial_used = 1, updated_at = ?
-    WHERE id = ?
-  `).run(targetPlanId, nowStr, expStr, nowStr, userId);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const nowStr = now.toISOString();
+    const expStr = expiresAt.toISOString();
 
-  // Update auth_users if present
-  try {
+    // Atomically update commercial_users
     db.prepare(`
-      UPDATE auth_users
+      UPDATE commercial_users
       SET plan_id = ?, trial_started_at = ?, trial_expires_at = ?, trial_used = 1, updated_at = ?
       WHERE id = ?
     `).run(targetPlanId, nowStr, expStr, nowStr, userId);
-  } catch {}
 
-  // Create active trial subscription record
-  const subId = `sub_trial_${Date.now()}`;
-  db.prepare(`
-    INSERT INTO commercial_subscriptions (
-      id, user_id, plan_id, license_id, status, billing_cycle, starts_at, expires_at, payment_provider, created_at
-    ) VALUES (?, ?, ?, NULL, 'ACTIVE', 'TRIAL', ?, ?, 'DIRECT_TRIAL', ?)
-  `).run(subId, userId, targetPlanId, nowStr, expStr, nowStr);
+    // Update auth_users if present
+    try {
+      db.prepare(`
+        UPDATE auth_users
+        SET plan_id = ?, trial_started_at = ?, trial_expires_at = ?, trial_used = 1, updated_at = ?
+        WHERE id = ?
+      `).run(targetPlanId, nowStr, expStr, nowStr, userId);
+    } catch {}
 
-  return {
-    success: true,
-    isTrialActive: true,
-    message: `7-day trial activated for ${targetPlanId}!`,
-    trialExpiresAt: expStr,
-    planId: targetPlanId,
+    // Create active trial subscription record
+    const subId = `sub_trial_${Date.now()}`;
+    db.prepare(`
+      INSERT INTO commercial_subscriptions (
+        id, user_id, plan_id, license_id, status, billing_cycle, starts_at, expires_at, payment_provider, created_at
+      ) VALUES (?, ?, ?, NULL, 'ACTIVE', 'TRIAL', ?, ?, 'DIRECT_TRIAL', ?)
+    `).run(subId, userId, targetPlanId, nowStr, expStr, nowStr);
+
+    return {
+      success: true,
+      isTrialActive: true,
+      message: `7-day trial activated for ${targetPlanId}!`,
+      trialExpiresAt: expStr,
+      planId: targetPlanId,
+    };
   };
+
+  if (typeof (db as any).transaction === 'function') {
+    return (db as any).transaction(runActivation)();
+  }
+  return runActivation();
 }
 
 /**

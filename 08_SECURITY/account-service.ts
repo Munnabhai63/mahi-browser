@@ -477,6 +477,9 @@ export async function loginWithToken(rawToken: string, refreshToken?: string): P
   const plan = trialStatus?.isTrialActive ? 'trial' : (user.plan || user.planId || 'free');
   const finalRefreshToken = refreshToken || res.body.refreshToken || res.body.tokens?.refreshToken;
 
+  const entitlements = res.body.entitlements;
+  const calculatedQuota = entitlements?.maxProfiles || user.profileQuota || (plan === 'pro' || plan === 'professional_50' ? 100 : plan === 'trial' ? 50 : 15);
+
   saveEncryptedSession({
     token,
     refreshToken: finalRefreshToken,
@@ -486,10 +489,17 @@ export async function loginWithToken(rawToken: string, refreshToken?: string): P
     role: user.role || 'USER',
     status: user.status || 'ACTIVE',
     plan,
-    profile_quota: user.profileQuota || (plan === 'pro' || plan === 'professional_50' ? 100 : plan === 'trial' ? 50 : 15),
+    profile_quota: calculatedQuota,
     sync_key: user.sync_key || null,
     saved_at: new Date().toISOString()
   });
+
+  if (user.id) {
+    try {
+      const { setActiveUserId } = await import('../07_BACKEND/commercial/session-context.js');
+      setActiveUserId(user.id);
+    } catch {}
+  }
 
   try {
     await fetchAndCacheStatus();
@@ -1209,5 +1219,124 @@ export async function exchangeDesktopAuthCode(ticket: string, code: string): Pro
   const token = res.body.token || res.body.tokens?.accessToken;
   const refreshToken = res.body.refreshToken || res.body.tokens?.refreshToken;
   return loginWithToken(token, refreshToken);
+}
+
+/**
+ * Exchanges a single-use web handoff code for an authenticated session token.
+ * Calls POST /api/v1/auth/web-handoff/exchange directly over secure HTTP/TLS.
+ */
+export async function exchangeWebHandoffCode(handoffCode: string): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
+  if (!handoffCode || typeof handoffCode !== 'string') {
+    return { success: false, error: 'Handoff code is required' };
+  }
+
+  let res: any;
+  try {
+    res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/web-handoff/exchange`, {
+      method: 'POST'
+    }, {
+      handoffCode: handoffCode.trim(),
+    });
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to exchange web handoff code with server' };
+  }
+
+  if (res.statusCode !== 200 || !res.body?.token) {
+    return { success: false, error: res.body?.error || `Exchange failed with status ${res.statusCode}` };
+  }
+
+  const token = res.body.token;
+  const loginResult = await loginWithToken(token);
+  if (loginResult.success && loginResult.user?.id) {
+    try {
+      const { setActiveUserId } = await import('../07_BACKEND/commercial/session-context.js');
+      setActiveUserId(loginResult.user.id);
+    } catch {}
+  }
+  return loginResult;
+}
+
+/**
+ * Activates 7-day trial from central server for current session
+ */
+export async function activateTrialFromServer(planId: string = 'professional_50'): Promise<{ success: boolean; error?: string; trialStatus?: any; entitlements?: any; message?: string }> {
+  const session = getAccountSession();
+  if (!session?.token) {
+    return { success: false, error: 'No authenticated session found' };
+  }
+
+  let res: any;
+  try {
+    res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/trial/activate`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.token}`
+      }
+    }, {
+      planId
+    });
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to connect to authentication server' };
+  }
+
+  if (res.statusCode !== 200 || !res.body?.success) {
+    return { success: false, error: res.body?.error?.message || res.body?.error || res.body?.message || 'Trial activation failed' };
+  }
+
+  // Refresh and cache status
+  try {
+    await fetchAndCacheStatus();
+  } catch {}
+
+  // Also refresh session profile_quota
+  if (session.account_id) {
+    saveEncryptedSession({
+      ...session,
+      plan: 'trial',
+      profile_quota: res.body.entitlements?.maxProfiles || 50,
+      saved_at: new Date().toISOString()
+    });
+    broadcastAccountChanged();
+  }
+
+  return {
+    success: true,
+    trialStatus: res.body.trialStatus,
+    entitlements: res.body.entitlements,
+    message: res.body.message
+  };
+}
+
+/**
+ * Gets trial status from central server for current session
+ */
+export async function getTrialStatusFromServer(): Promise<{ success: boolean; isTrialActive?: boolean; daysRemaining?: number; isEligibleForTrial?: boolean; error?: string }> {
+  const session = getAccountSession();
+  if (!session?.token) {
+    return { success: false, error: 'No authenticated session found' };
+  }
+
+  let res: any;
+  try {
+    res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/trial/status`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.token}`
+      }
+    });
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to fetch trial status' };
+  }
+
+  if (res.statusCode !== 200) {
+    return { success: false, error: res.body?.error || 'Failed to fetch trial status' };
+  }
+
+  return {
+    success: true,
+    isTrialActive: Boolean(res.body.isTrialActive),
+    daysRemaining: res.body.daysRemaining ?? 0,
+    isEligibleForTrial: Boolean(res.body.isEligibleForTrial)
+  };
 }
 

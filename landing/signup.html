@@ -389,7 +389,7 @@
       loginLink.href = `/login${forwardQs ? '?' + forwardQs : ''}`;
 
       // 2. Check if already logged in
-      const existingToken = localStorage.getItem('mahi_access_token');
+      const existingToken = localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token');
       if (existingToken) {
         fetch('/api/v1/auth/me', {
           headers: { 'Authorization': `Bearer ${existingToken}` }
@@ -505,7 +505,11 @@
           // Successfully registered
           const token = data.token || (data.tokens && data.tokens.accessToken);
           if (token) {
+            localStorage.setItem('mahi_auth_token', token);
             localStorage.setItem('mahi_access_token', token);
+            if (data.user) {
+              try { localStorage.setItem('mahi_user', JSON.stringify(data.user)); } catch (e) {}
+            }
             document.cookie = `mahi_token=${token}; path=/; max-age=2592000; SameSite=Lax`;
           }
 

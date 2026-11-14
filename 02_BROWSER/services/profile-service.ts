@@ -15,6 +15,7 @@ import {
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
 import { getAllProfileStats, getProfileStats, deleteProfileStats } from '../../07_BACKEND/services/stats-service.js';
+import { getPlanLimitsInfo } from '../../08_SECURITY/freemium-guard.js';
 
 export function getProfilesDirectory(): string {
   const userDataDir = app ? app.getPath('userData') : path.join(process.cwd(), '.mahi_data');
@@ -44,7 +45,7 @@ export function getProfiles(filter: ProfileFilterOptions = {}): Profile[] {
   // SYSTEM_OWNER profiles are accessible ONLY to machine-level / guest sessions.
   if (filter.ownerId) {
     if (filter.ownerId === 'SYSTEM_OWNER' || filter.ownerId === 'LOCAL_CLIENT') {
-      query += " AND (p.owner_id = 'SYSTEM_OWNER' OR p.owner_id = 'LOCAL_CLIENT' OR p.owner_id IS NULL)";
+      query += " AND (p.owner_id = 'SYSTEM_OWNER' OR p.owner_id = 'LOCAL_CLIENT' OR p.owner_id IS NULL OR p.owner_id = '')";
     } else {
       query += " AND p.owner_id = ?";
       params.push(filter.ownerId);
@@ -888,6 +889,7 @@ export interface ClaimLegacyProfilesResult {
   claimedCount: number;
   claimedIds: string[];
   skippedIds: string[];
+  quotaExceeded?: boolean;
   error?: string;
 }
 
@@ -900,37 +902,67 @@ export function claimLegacyProfiles(
   }
 ): ClaimLegacyProfilesResult {
   if (!targetOwnerId || targetOwnerId === 'SYSTEM_OWNER' || targetOwnerId === 'LOCAL_CLIENT') {
-    return { success: false, claimedCount: 0, claimedIds: [], skippedIds: profileIds, error: 'Target owner must be an authenticated account' };
+    return { success: false, claimedCount: 0, claimedIds: [], skippedIds: profileIds || [], error: 'Target owner must be an authenticated account' };
   }
   if (!evidence || !evidence.userConfirmed) {
-    return { success: false, claimedCount: 0, claimedIds: [], skippedIds: profileIds, error: 'User explicit confirmation required to claim unassigned legacy profiles' };
+    return { success: false, claimedCount: 0, claimedIds: [], skippedIds: profileIds || [], error: 'User explicit confirmation required to claim unassigned legacy profiles' };
   }
+
+  const idsToProcess = Array.isArray(profileIds) && profileIds.length > 0
+    ? profileIds
+    : getUnassignedLegacyProfiles().map(p => p.id);
 
   const db = getDatabase();
+  const limits = getPlanLimitsInfo(targetOwnerId);
+  let availableSlots = Math.max(0, limits.maxProfiles - limits.currentCount);
+
   const claimedIds: string[] = [];
   const skippedIds: string[] = [];
+  let quotaExceeded = false;
 
-  for (const id of profileIds) {
-    // Only allow claiming if the profile is currently unassigned (SYSTEM_OWNER or LOCAL_CLIENT or NULL)
-    const row = db.prepare(`
-      SELECT id, name, owner_id FROM profiles 
-      WHERE id = ? AND (owner_id = 'SYSTEM_OWNER' OR owner_id = 'LOCAL_CLIENT' OR owner_id IS NULL)
-    `).get(id) as { id: string; name: string; owner_id: string } | undefined;
+  const executeClaim = () => {
+    const nowIso = new Date().toISOString();
+    for (const id of idsToProcess) {
+      // Only allow claiming if the profile is currently unassigned (SYSTEM_OWNER or LOCAL_CLIENT or NULL or '') AND not deleted
+      const row = db.prepare(`
+        SELECT id, name, owner_id FROM profiles 
+        WHERE id = ? AND (owner_id = 'SYSTEM_OWNER' OR owner_id = 'LOCAL_CLIENT' OR owner_id IS NULL OR owner_id = '')
+        AND deleted_at IS NULL
+      `).get(id) as { id: string; name: string; owner_id: string } | undefined;
 
-    if (row) {
-      db.prepare(`UPDATE profiles SET owner_id = ?, updated_at = ? WHERE id = ?`).run(targetOwnerId, new Date().toISOString(), id);
+      if (!row) {
+        skippedIds.push(id);
+        continue;
+      }
+
+      if (availableSlots <= 0) {
+        quotaExceeded = true;
+        skippedIds.push(id);
+        continue;
+      }
+
+      db.prepare(`UPDATE profiles SET owner_id = ?, updated_at = ? WHERE id = ?`).run(targetOwnerId, nowIso, id);
       claimedIds.push(id);
+      availableSlots--;
       logActivity('PROFILE', 'INFO', 'Claim Legacy Profile', `User ${targetOwnerId} claimed unassigned legacy profile "${row.name}" (${id})`, id, row.name);
-    } else {
-      skippedIds.push(id);
     }
+  };
+
+  if (typeof (db as any).transaction === 'function') {
+    (db as any).transaction(executeClaim)();
+  } else {
+    executeClaim();
   }
 
+  const success = claimedIds.length > 0 || (idsToProcess.length === 0);
+
   return {
-    success: true,
+    success,
     claimedCount: claimedIds.length,
     claimedIds,
     skippedIds,
+    quotaExceeded,
+    error: quotaExceeded && claimedIds.length === 0 ? 'Plan profile limit reached. Upgrade your plan to claim more profiles.' : undefined,
   };
 }
 

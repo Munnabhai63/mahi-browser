@@ -132,7 +132,8 @@ export interface MahiBrowserAPI {
   permanentDeleteProfile: (id: string) => Promise<boolean>;
   emptyTrash: () => Promise<{ deletedCount: number; success: boolean }>;
   cloneProfile: (dto: CloneProfileDTO) => Promise<Profile>;
-  claimLegacy: (dto: { targetOwnerId: string; profileIds?: string[] }) => Promise<{ success: boolean; claimedCount: number; message?: string }>;
+  claimLegacy: (dto: { profileIds: string[]; userConfirmed: boolean; machineHwid?: string }) => Promise<{ success: boolean; claimedCount: number; claimedIds?: string[]; skippedIds?: string[]; error?: string }>;
+  getUnassignedLegacy: () => Promise<Profile[]>;
 
 
   startProfile: (id: string) => Promise<{ success: boolean; pid?: number; error?: string }>;
@@ -423,6 +424,8 @@ export interface MahiBrowserAPI {
   accountRefreshToken: () => Promise<{ success: boolean; token?: string; error?: string }>;
   accountStartDesktopOAuth?: (planId?: string) => Promise<{ success: boolean; ticket: string; authUrl: string; error?: string }>;
   accountExchangeDesktopCode?: (dto: { ticket: string; code: string } | string, code?: string) => Promise<{ success: boolean; token?: string; user?: any; error?: string }>;
+  accountActivateTrial?: (planId?: string) => Promise<{ success: boolean; error?: string; trialStatus?: any; entitlements?: any; message?: string }>;
+  accountGetTrialStatus?: () => Promise<{ success: boolean; isTrialActive?: boolean; daysRemaining?: number; isEligibleForTrial?: boolean; error?: string }>;
   onAccountStatusChanged?: (callback: (data: any) => void) => () => void;
 
   // Event Listeners

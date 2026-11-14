@@ -72,6 +72,14 @@ interface AccountState {
   accountSwitchDevice: () => Promise<{ success: boolean; error?: string }>;
 
   activeSessions: any[];
+  trialStatus: { isTrialActive?: boolean; daysRemaining?: number; isEligibleForTrial?: boolean } | null;
+  unassignedGuestProfiles: any[];
+
+  activateTrial: (planId?: string) => Promise<{ success: boolean; error?: string; message?: string }>;
+  fetchTrialStatus: () => Promise<any>;
+  checkUnassignedGuestProfiles: () => Promise<any[]>;
+  claimGuestProfiles: (profileIds?: string[]) => Promise<{ success: boolean; claimedCount: number; error?: string }>;
+  dismissGuestProfilesBanner: () => void;
   verifyEmail: (token: string) => Promise<{ success: boolean; error?: string }>;
   resendVerification: (email: string) => Promise<{ success: boolean; error?: string }>;
   forgotPassword: (email: string) => Promise<{ success: boolean; message?: string; error?: string }>;
@@ -138,6 +146,8 @@ export const useAccountStore = create<AccountState>()(
       pendingProfileDto: null,
       selectedPlanTier: null,
       activeSessions: [],
+      trialStatus: null,
+      unassignedGuestProfiles: [],
 
       setDashboardRole: (role) => set({ dashboardRole: role }),
       openAccountModal: (param?: any) => {
@@ -169,6 +179,8 @@ export const useAccountStore = create<AccountState>()(
                 createdAt: sess.saved_at,
               }
             });
+            get().checkUnassignedGuestProfiles().catch(() => {});
+            get().fetchTrialStatus().catch(() => {});
           } else if (!get().commercialUser) {
             set({ currentUser: null, accountSession: null });
           }
@@ -258,6 +270,8 @@ export const useAccountStore = create<AccountState>()(
           const res = await window.mahiAPI.accountLogin({ email, password });
           if (res.success) {
             await get().fetchPlanLimits({ force: true });
+            get().checkUnassignedGuestProfiles().catch(() => {});
+            get().fetchTrialStatus().catch(() => {});
             useProfileStore.getState().fetchProfiles().catch(() => {});
             return { success: true };
           }
@@ -273,6 +287,8 @@ export const useAccountStore = create<AccountState>()(
           const res = await window.mahiAPI.accountLoginWithToken(token);
           if (res.success) {
             await get().fetchPlanLimits({ force: true });
+            get().checkUnassignedGuestProfiles().catch(() => {});
+            get().fetchTrialStatus().catch(() => {});
             useProfileStore.getState().fetchProfiles().catch(() => {});
             return { success: true };
           }
@@ -290,6 +306,8 @@ export const useAccountStore = create<AccountState>()(
         set({
           accountSession: null,
           currentUser: null,
+          trialStatus: null,
+          unassignedGuestProfiles: [],
           planLimits: { isPro: false, plan: 'free', maxProfiles: 15, expiresAt: null },
         });
         useProfileStore.getState().fetchProfiles().catch(() => {});
@@ -355,6 +373,79 @@ export const useAccountStore = create<AccountState>()(
           await get().fetchActiveSessions();
         }
         return res;
+      },
+
+      fetchTrialStatus: async () => {
+        if (!window.mahiAPI?.accountGetTrialStatus) return null;
+        try {
+          const res = await window.mahiAPI.accountGetTrialStatus();
+          if (res?.success) {
+            set({ trialStatus: res });
+            return res;
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      },
+
+      activateTrial: async (planId?: string) => {
+        if (!window.mahiAPI?.accountActivateTrial) {
+          return { success: false, error: 'Trial activation API unavailable' };
+        }
+        try {
+          const res = await window.mahiAPI.accountActivateTrial(planId || 'professional_50');
+          if (res?.success) {
+            await get().fetchPlanLimits({ force: true });
+            await get().fetchTrialStatus();
+            useProfileStore.getState().fetchProfiles().catch(() => {});
+            return { success: true, message: res.message || '7-Day Free Trial activated successfully!' };
+          }
+          return { success: false, error: res?.error || 'Trial activation failed' };
+        } catch (err: any) {
+          return { success: false, error: err?.message || 'Trial activation failed' };
+        }
+      },
+
+      checkUnassignedGuestProfiles: async () => {
+        if (!window.mahiAPI?.getUnassignedLegacy) return [];
+        try {
+          const profiles = await window.mahiAPI.getUnassignedLegacy();
+          const guestProfiles = Array.isArray(profiles) ? profiles : [];
+          set({ unassignedGuestProfiles: guestProfiles });
+          return guestProfiles;
+        } catch {
+          return [];
+        }
+      },
+
+      claimGuestProfiles: async (profileIds?: string[]) => {
+        if (!window.mahiAPI?.claimLegacy) {
+          return { success: false, claimedCount: 0, error: 'Profile claim API unavailable' };
+        }
+        try {
+          const ids = profileIds || get().unassignedGuestProfiles.map((p: any) => p.id);
+          if (!ids || ids.length === 0) {
+            return { success: true, claimedCount: 0 };
+          }
+          const res = await window.mahiAPI.claimLegacy({
+            profileIds: ids,
+            userConfirmed: true,
+          });
+          if (res?.success) {
+            set({ unassignedGuestProfiles: [] });
+            await get().fetchPlanLimits({ force: true });
+            useProfileStore.getState().fetchProfiles().catch(() => {});
+            return { success: true, claimedCount: res.claimedCount };
+          }
+          return { success: false, claimedCount: res?.claimedCount || 0, error: res?.error || 'Failed to claim profiles' };
+        } catch (err: any) {
+          return { success: false, claimedCount: 0, error: err?.message || 'Failed to claim profiles' };
+        }
+      },
+
+      dismissGuestProfilesBanner: () => {
+        set({ unassignedGuestProfiles: [] });
       },
 
       setRememberMe: (val) => set({ rememberMe: val }),

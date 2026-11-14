@@ -269,6 +269,33 @@ export interface DesktopAuthTicket {
 }
 export const desktopAuthTickets = new Map<string, DesktopAuthTicket>();
 
+export interface WebHandoffSession {
+  code: string;
+  userId: string;
+  token: string;
+  user: any;
+  createdAt: number;
+  expiresAt: number;
+  used: boolean;
+}
+
+export const webHandoffSessions = new Map<string, WebHandoffSession>();
+const WEB_HANDOFF_TTL_MS = 120_000; // 120 seconds
+const MAX_WEB_HANDOFF_SESSIONS = 5000;
+
+export function pruneWebHandoffSessions(): void {
+  const now = Date.now();
+  for (const [code, session] of webHandoffSessions.entries()) {
+    if (session.expiresAt <= now || session.used) {
+      webHandoffSessions.delete(code);
+    }
+  }
+}
+
+export function _resetWebHandoffSessions(): void {
+  webHandoffSessions.clear();
+}
+
 export function getDesktopAuthSuccessHtml(params: {
   handoff: string;
   code: string;
@@ -1042,6 +1069,10 @@ export async function handleCommercialApiRoutes(
       }
     } catch {}
 
+    const registeredUserId = registeredUser?.id || result.user?.id;
+    const trialStatus = registeredUserId ? getUserTrialStatus(registeredUserId) : { isTrialActive: isTrial, daysRemaining: isTrial ? 7 : 0, isEligibleForTrial: !isTrial };
+    const entitlements = registeredUserId ? evaluateUserEntitlements(registeredUserId) : null;
+
     sendJSON(res, 201, {
       success: true,
       user: registeredUser,
@@ -1049,6 +1080,8 @@ export async function handleCommercialApiRoutes(
       token,
       trialActive: isTrial,
       trialExpiresAt,
+      trialStatus,
+      entitlements,
       planId,
     });
     return true;
@@ -1435,6 +1468,88 @@ export async function handleCommercialApiRoutes(
     return true;
   }
 
+  // 2.5 Zero-Token Web-to-Desktop Handoff Endpoint (Single-Use, 120s TTL)
+  if (routePath === '/api/v1/auth/web-handoff' && method === 'POST') {
+    pruneWebHandoffSessions();
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
+    const authHeader = (req.headers['authorization'] as string) || (req.headers['x-mahi-token'] ? `Bearer ${req.headers['x-mahi-token']}` : '');
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    const centralUser = getCentralUserById(auth.userId);
+    const commUser = getUserById(auth.userId);
+    const user = {
+      ...(commUser || {}),
+      ...(centralUser || {}),
+      id: auth.userId,
+      email: centralUser?.email || commUser?.email || auth.email,
+      name: commUser?.name || centralUser?.name,
+      planId: commUser?.planId || centralUser?.planId || 'plan_free',
+    };
+
+    if (webHandoffSessions.size >= MAX_WEB_HANDOFF_SESSIONS) {
+      const oldestKey = webHandoffSessions.keys().next().value;
+      if (oldestKey) webHandoffSessions.delete(oldestKey);
+    }
+
+    const handoffCode = `mb_web_${crypto.randomBytes(24).toString('hex')}`;
+    const now = Date.now();
+    webHandoffSessions.set(handoffCode, {
+      code: handoffCode,
+      userId: auth.userId,
+      token,
+      user,
+      createdAt: now,
+      expiresAt: now + WEB_HANDOFF_TTL_MS,
+      used: false,
+    });
+
+    sendJSON(res, 200, {
+      success: true,
+      handoffCode,
+      expiresInSeconds: 120,
+      protocolUrl: `mahi://auth?handoff=${encodeURIComponent(handoffCode)}`,
+    });
+    return true;
+  }
+
+  // 2.6 Web-to-Desktop Handoff Code Exchange (Single-Use Anti-Replay)
+  if (routePath === '/api/v1/auth/web-handoff/exchange' && method === 'POST') {
+    pruneWebHandoffSessions();
+    const body = await parseBody(req);
+    const handoffCode = body?.handoffCode || body?.code;
+
+    if (!handoffCode || typeof handoffCode !== 'string') {
+      sendJSON(res, 400, { success: false, error: 'handoffCode is required.' });
+      return true;
+    }
+
+    const session = webHandoffSessions.get(handoffCode);
+    const now = Date.now();
+
+    if (!session || session.used || session.expiresAt <= now) {
+      if (session) {
+        webHandoffSessions.delete(handoffCode);
+      }
+      sendJSON(res, 403, { success: false, error: 'Handoff code has expired, already been used, or is invalid.' });
+      return true;
+    }
+
+    // Mark as used immediately to prevent replay, then delete
+    session.used = true;
+    webHandoffSessions.delete(handoffCode);
+
+    sendJSON(res, 200, {
+      success: true,
+      token: session.token,
+      user: session.user,
+    });
+    return true;
+  }
+
   // 3. Programmatic Google OAuth SSO Endpoint (Used by desktop, mobile, or direct API)
   if (routePath === '/api/v1/auth/google' && method === 'POST') {
     const body = await parseBody(req);
@@ -1610,6 +1725,8 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 404, { success: false, error: 'User not found.' });
       return true;
     }
+    const trialStatus = getUserTrialStatus(auth.userId);
+    const entitlements = evaluateUserEntitlements(auth.userId);
     const user = {
       ...(commUser || {}),
       ...(centralUser || {}),
@@ -1619,10 +1736,8 @@ export async function handleCommercialApiRoutes(
       emailVerified: centralUser ? centralUser.emailVerified : true,
       status: centralUser?.status || commUser?.status || 'ACTIVE',
       planId: commUser?.planId || centralUser?.planId || 'plan_free',
-      profileQuota: centralUser?.profileQuota || 10,
+      profileQuota: entitlements?.maxProfiles || centralUser?.profileQuota || 15,
     };
-    const trialStatus = getUserTrialStatus(auth.userId);
-    const entitlements = evaluateUserEntitlements(auth.userId);
     sendJSON(res, 200, { success: true, user, trialStatus, entitlements });
     return true;
   }

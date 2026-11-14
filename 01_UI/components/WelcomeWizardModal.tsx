@@ -20,6 +20,7 @@ import { useToastStore } from '../stores/useToastStore.js';
 import { getDefaultProfileSettings, DEFAULT_USER_AGENTS } from '../../10_CONFIG/shared/constants/defaults.js';
 import { NavigationPage } from './Sidebar.js';
 import { BrandLogo } from './BrandLogo.js';
+import { useAccountStore } from '../stores/useAccountStore.js';
 
 interface WelcomeWizardModalProps {
   onNavigate: (page: NavigationPage) => void;
@@ -30,13 +31,34 @@ export const WelcomeWizardModal: React.FC<WelcomeWizardModalProps> = ({ onNaviga
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedOS, setSelectedOS] = useState<'windows' | 'mac' | 'linux'>('windows');
   const [isCreating, setIsCreating] = useState(false);
+  const [isActivatingTrial, setIsActivatingTrial] = useState(false);
+  const [isClaimingGuest, setIsClaimingGuest] = useState(false);
 
   const { profiles, createProfile } = useProfileStore();
+  const {
+    accountSession,
+    planLimits,
+    trialStatus,
+    isAccountModalOpen,
+    activateTrial,
+    unassignedGuestProfiles,
+    claimGuestProfiles,
+  } = useAccountStore();
 
   useEffect(() => {
-    // Disabled auto-popup to allow direct access to main UI on fresh install
-    // User lands directly on ProfilesList with 0 blocking gates
-  }, []);
+    const isCompleted = localStorage.getItem('mahi_onboarding_completed') === 'true';
+    const isLoggedIn = Boolean(accountSession?.token);
+    const hasNoProfiles = profiles.length === 0;
+
+    if (isLoggedIn && !isCompleted && hasNoProfiles && !isAccountModalOpen) {
+      setIsOpen(() => true);
+    }
+  }, [accountSession?.token, profiles.length, isAccountModalOpen]);
+
+  const currentPlan = planLimits?.plan || 'free';
+  const isTrial = Boolean(trialStatus?.isTrialActive || currentPlan === 'trial');
+  const isPro = Boolean(planLimits?.isPro || currentPlan === 'pro' || currentPlan.startsWith('pro_') || currentPlan === 'business');
+  const tierBadge = isTrial ? '7-DAY TRIAL' : isPro ? 'PRO' : 'FREE';
 
   const handleClose = () => {
     localStorage.setItem('mahi_onboarding_completed', 'true');
@@ -94,8 +116,14 @@ export const WelcomeWizardModal: React.FC<WelcomeWizardModalProps> = ({ onNaviga
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-bold tracking-tight text-white">Welcome to MAHI BROWSER</h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-teal-500/20 text-teal-400 border border-teal-500/40">
-                  PRO
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${
+                  tierBadge === '7-DAY TRIAL'
+                    ? 'bg-sky-500/20 text-sky-400 border-sky-500/40'
+                    : tierBadge === 'PRO'
+                    ? 'bg-teal-500/20 text-teal-400 border-teal-500/40'
+                    : 'bg-slate-700 text-slate-300 border-slate-600'
+                }`}>
+                  {tierBadge}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">Enterprise Anti-Detect & Multi-Session Automation Hub</p>
@@ -259,6 +287,76 @@ export const WelcomeWizardModal: React.FC<WelcomeWizardModalProps> = ({ onNaviga
               </div>
 
               <div className="space-y-2.5">
+                {tierBadge === 'FREE' && trialStatus?.isEligibleForTrial && (
+                  <button
+                    type="button"
+                    disabled={isActivatingTrial}
+                    onClick={async () => {
+                      setIsActivatingTrial(true);
+                      try {
+                        const res = await activateTrial('professional_50');
+                        if (res.success) {
+                          useToastStore.getState().showToast({
+                            type: 'success',
+                            title: 'Trial Activated!',
+                            message: '7-Day Free Trial (50 Profiles) is now active.',
+                          });
+                        }
+                      } finally {
+                        setIsActivatingTrial(false);
+                      }
+                    }}
+                    className="w-full p-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-slate-950 font-bold text-left flex items-center justify-between shadow-lg shadow-emerald-500/20 transition disabled:opacity-50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-slate-950/20 text-slate-950">
+                        <Sparkles size={18} />
+                      </div>
+                      <div>
+                        <div className="text-xs font-extrabold">Start 7-Day Free Trial (50 Profiles)</div>
+                        <div className="text-[11px] text-slate-900/80">Unlock 50 profiles and cloud sync instantly with zero card required</div>
+                      </div>
+                    </div>
+                    <ArrowRight size={16} />
+                  </button>
+                )}
+
+                {unassignedGuestProfiles && unassignedGuestProfiles.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={isClaimingGuest}
+                    onClick={async () => {
+                      setIsClaimingGuest(true);
+                      try {
+                        const res = await claimGuestProfiles();
+                        if (res.success) {
+                          useToastStore.getState().showToast({
+                            type: 'success',
+                            title: 'Profiles Claimed',
+                            message: `Claimed ${res.claimedCount} guest profile(s) to your account!`,
+                          });
+                          handleClose();
+                          onNavigate('profiles');
+                        }
+                      } finally {
+                        setIsClaimingGuest(false);
+                      }
+                    }}
+                    className="w-full p-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-emerald-500/40 text-left flex items-center justify-between transition disabled:opacity-50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+                        <CheckCircle2 size={18} />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-white">Claim {unassignedGuestProfiles.length} Guest Profiles on This Device</div>
+                        <div className="text-[11px] text-slate-400">Transfer existing guest profiles to your authenticated account</div>
+                      </div>
+                    </div>
+                    <ArrowRight size={16} className="text-slate-400" />
+                  </button>
+                )}
+
                 <button
                   type="button"
                   disabled={isCreating}

@@ -118,7 +118,13 @@ try {
 logCheckpoint('Step 2: Checking Instance Status');
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
-  logCheckpoint('Step 2: Multi-instance / parallel launch detected. Proceeding to launch UI window.');
+  const hasDeepLink = process.argv.some(arg => typeof arg === 'string' && arg.startsWith('mahi://'));
+  if (hasDeepLink) {
+    logCheckpoint('Step 2: Second instance with deep-link detected. Yielding to primary instance and exiting.');
+    app.quit();
+  } else {
+    logCheckpoint('Step 2: Multi-instance / parallel launch detected. Proceeding to launch UI window.');
+  }
 } else {
   logCheckpoint('Step 2: Primary Instance Lock Acquired');
 }
@@ -424,26 +430,74 @@ async function handleDeepLinkUrl(urlStr: string): Promise<void> {
     const parsed = new URL(urlStr);
     if (parsed.protocol !== 'mahi:' || parsed.hostname !== 'auth') return;
 
+    const handoff = parsed.searchParams.get('handoff');
     const token = parsed.searchParams.get('token');
     const code = parsed.searchParams.get('code');
     const ticket = parsed.searchParams.get('ticket');
 
-    if (token) {
-      logCheckpoint('DeepLink: Direct session token received from web landing page');
-      const { loginWithToken } = await import('../08_SECURITY/account-service.js');
-      const res = await loginWithToken(token);
+    let success = false;
+    let userId: string | null = null;
+
+    if (handoff) {
+      logCheckpoint('DeepLink: Secure single-use web handoff code received');
+      const { exchangeWebHandoffCode } = await import('../08_SECURITY/account-service.js');
+      const res = await exchangeWebHandoffCode(handoff);
       if (res.success) {
-        logCheckpoint('DeepLink: Direct token login succeeded and session persisted');
+        success = true;
+        userId = res.user?.id || null;
+        logCheckpoint('DeepLink: Web handoff login succeeded and session persisted');
       } else {
-        logCheckpoint('DeepLink: Direct token login rejected', res.error);
+        logCheckpoint('DeepLink: Web handoff login rejected', res.error);
       }
     } else if (ticket && code) {
       const { exchangeDesktopAuthCode } = await import('../08_SECURITY/account-service.js');
       const res = await exchangeDesktopAuthCode(ticket, code);
       if (res.success) {
+        success = true;
+        userId = res.user?.id || null;
         logCheckpoint('DeepLink: Secure PKCE exchange completed and session persisted');
       } else {
         logCheckpoint('DeepLink: Auth exchange rejected', res.error);
+      }
+    } else if (token) {
+      logCheckpoint('DeepLink: Direct session token received from web landing page');
+      const { loginWithToken } = await import('../08_SECURITY/account-service.js');
+      const res = await loginWithToken(token);
+      if (res.success) {
+        success = true;
+        userId = res.user?.id || null;
+        logCheckpoint('DeepLink: Direct token login succeeded and session persisted');
+      } else {
+        logCheckpoint('DeepLink: Direct token login rejected', res.error);
+      }
+    }
+
+    if (success) {
+      if (userId) {
+        try {
+          const { setActiveUserId } = await import('./commercial/session-context.js');
+          setActiveUserId(userId);
+        } catch {}
+      }
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+
+        const emitStatus = () => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('account:statusChanged');
+          }
+        };
+
+        if (mainWindow.webContents.isLoading()) {
+          mainWindow.webContents.once('did-finish-load', () => {
+            setTimeout(emitStatus, 300);
+          });
+        } else {
+          emitStatus();
+        }
       }
     }
   } catch (err: any) {
