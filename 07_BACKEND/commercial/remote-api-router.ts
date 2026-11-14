@@ -296,6 +296,9 @@ export async function handleRemoteApiRoutes(
     try {
       const rawBody = await parseRawBody(req);
       const signature = (
+        req.headers['x-gateway-signature'] ||
+        req.headers['x-gateway-signature-v2'] ||
+        req.headers['x-youpi-signature'] ||
         req.headers['stripe-signature'] ||
         req.headers['x-razorpay-signature'] ||
         req.headers['x-simulation-signature'] ||

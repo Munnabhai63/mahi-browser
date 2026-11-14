@@ -512,7 +512,8 @@ export class YoupiPgPaymentAdapter implements PaymentProvider {
   }
 
   public get webhookSecret(): string {
-    return process.env.YOUPI_PG_WEBHOOK_SECRET || process.env.YOUPI_WEBHOOK_SECRET || 'whsec_mahi_youpi_test_secret_2026';
+    const isTest = process.env.NODE_ENV === 'test' || process.env.PAYMENT_ALLOW_TEST_ADAPTERS === 'true';
+    return process.env.YOUPI_PG_WEBHOOK_SECRET || process.env.YOUPI_WEBHOOK_SECRET || (isTest ? 'whsec_mahi_youpi_test_secret_2026' : '');
   }
 
   public async createCheckoutSession(
@@ -521,15 +522,31 @@ export class YoupiPgPaymentAdapter implements PaymentProvider {
     amountCents: number
   ): Promise<CheckoutSessionResponse> {
     const isTest = process.env.NODE_ENV === 'test' || process.env.PAYMENT_ALLOW_TEST_ADAPTERS === 'true';
+    const hasBaseUrl = Boolean(process.env.YOUPI_PG_BASE_URL || process.env.BASE_PAYMENT_API_URL);
+    const hasApiKey = Boolean(process.env.YOUPI_PG_API_KEY || process.env.YOUPI_PG_SECRET);
 
-    // Outside of test mode, throw error if required gateway config is missing
-    if (!isTest && !process.env.YOUPI_PG_BASE_URL && !process.env.YOUPI_PG_API_KEY && !process.env.YOUPI_PG_SECRET) {
-      throw new PaymentGatewayNotConfiguredError('youpi_pg', 'YouPI-PG credentials (YOUPI_PG_BASE_URL / YOUPI_PG_API_KEY) are not configured.');
+    // Outside of test mode, throw error unless BOTH baseUrl and apiKey are configured
+    if (!isTest && (!hasBaseUrl || !hasApiKey)) {
+      throw new PaymentGatewayNotConfiguredError(
+        'youpi_pg',
+        'YouPI-PG credentials (YOUPI_PG_BASE_URL / BASE_PAYMENT_API_URL and YOUPI_PG_API_KEY / YOUPI_PG_SECRET) are not configured.'
+      );
     }
 
     const orderId = req.idempotencyKey || `mahi_ord_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     const amountRupees = (amountCents / 100).toFixed(2);
     const returnUrl = req.successUrl || `https://mahibrowser.com/pricing?status=success&orderId=${orderId}`;
+
+    const resolveCheckoutUrl = (sessionId: string, customUrl?: string) => {
+      if (customUrl) return customUrl;
+      if (process.env.YOUPI_PG_CHECKOUT_URL) {
+        return `${process.env.YOUPI_PG_CHECKOUT_URL.replace(/\/+$/, '')}/checkout/${sessionId}`;
+      }
+      if (this.baseUrl.includes(':6100')) {
+        return `${this.baseUrl.replace(':6100', ':7000')}/checkout/${sessionId}`;
+      }
+      return `${this.baseUrl}/checkout/${sessionId}`;
+    };
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -556,7 +573,7 @@ export class YoupiPgPaymentAdapter implements PaymentProvider {
     // If in test mode without an active live server, return deterministic simulation response
     if (isTest && (process.env.YOUPI_PG_MOCK === 'true' || !process.env.YOUPI_PG_LIVE_CALL)) {
       const sessionId = `youpi_cs_${crypto.randomBytes(16).toString('hex')}`;
-      const checkoutUrl = `${this.baseUrl.replace(':6100', ':7000')}/checkout/${sessionId}`;
+      const checkoutUrl = resolveCheckoutUrl(sessionId);
       return {
         sessionId,
         checkoutUrl,
@@ -589,7 +606,7 @@ export class YoupiPgPaymentAdapter implements PaymentProvider {
 
       const data = await res.json() as any;
       const sessionId = data.paymentId || data.id || orderId;
-      const checkoutUrl = data.checkoutUrl || `${this.baseUrl.replace(':6100', ':7000')}/checkout/${sessionId}`;
+      const checkoutUrl = resolveCheckoutUrl(sessionId, data.checkoutUrl);
 
       return {
         sessionId,
@@ -608,9 +625,9 @@ export class YoupiPgPaymentAdapter implements PaymentProvider {
         },
       };
     } catch (err: any) {
-      if (isTest) {
+      if (isTest && !process.env.YOUPI_PG_LIVE_CALL) {
         const sessionId = `youpi_cs_${crypto.randomBytes(16).toString('hex')}`;
-        const checkoutUrl = `${this.baseUrl.replace(':6100', ':7000')}/checkout/${sessionId}`;
+        const checkoutUrl = resolveCheckoutUrl(sessionId);
         return {
           sessionId,
           checkoutUrl,
@@ -1458,7 +1475,7 @@ export class PaymentService {
   /**
    * Verifies an order status directly with YouPI-PG and activates subscription idempotently if paid.
    */
-  public async verifyYoupiPgOrder(paymentOrOrderId: string): Promise<{
+  public async verifyYoupiPgOrder(paymentOrOrderId: string, expectedUserId?: string): Promise<{
     success: boolean;
     status: string;
     subscription?: UserSubscriptionSummary | null;
@@ -1474,6 +1491,10 @@ export class PaymentService {
 
     if (!payment) {
       return { success: false, status: 'NOT_FOUND', error: 'Payment record not found.' };
+    }
+
+    if (expectedUserId && payment.user_id !== expectedUserId) {
+      return { success: false, status: 'FORBIDDEN', error: 'Payment does not belong to authenticated user.' };
     }
 
     if (payment.status === 'SUCCEEDED') {

@@ -9,6 +9,7 @@
 
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import crypto from 'node:crypto';
+import http from 'node:http';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import {
@@ -27,6 +28,7 @@ import {
   YoupiPgPaymentAdapter,
 } from '../../07_BACKEND/commercial/payment-service.js';
 import { handleCommercialApiRoutes } from '../../07_BACKEND/commercial/commercial-api-router.js';
+import { handleRemoteApiRequest } from '../../07_BACKEND/commercial/remote-api-router.js';
 import { registerCentralUser } from '../../05_AUTH/central-auth-service.js';
 import { getAdminWebSecret } from '../../08_SECURITY/install-secrets.js';
 import { getWebAdminHtml } from '../../07_BACKEND/server/web-admin-html.js';
@@ -772,11 +774,239 @@ describe('STEP 2 COMMERCIAL MISSION — Unified Pricing, Checkout & UPI Lifecycl
         new Date().toISOString()
       );
 
-      const res = await invokeRoute('GET', `/api/v1/billing/youpi/status/${testOrderId}`);
+      const res = await invokeRoute('GET', `/api/v1/billing/youpi/status/${testOrderId}`, {
+        authorization: `Bearer ${userAToken}`,
+      });
       expect(res.handled).toBe(true);
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.status).toBe('SUCCEEDED');
+    });
+
+    it('enforces authentication and IDOR protection on YouPI order verification endpoints', async () => {
+      const db = getDatabase();
+      const userAOrderId = `ord_idor_test_${Date.now()}`;
+      db.prepare(`
+        INSERT INTO commercial_payments (
+          id, user_id, plan_id, billing_cycle, amount_cents, currency,
+          status, provider, external_payment_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        `pay_${userAOrderId}`,
+        userAId,
+        'professional_10',
+        'MONTHLY',
+        59900,
+        'INR',
+        'SUCCEEDED',
+        'youpi_pg',
+        userAOrderId,
+        new Date().toISOString(),
+        new Date().toISOString()
+      );
+
+      // 1. Unauthenticated GET /api/v1/billing/youpi/status/:orderId returns 401
+      const noAuthGet = await invokeRoute('GET', `/api/v1/billing/youpi/status/${userAOrderId}`);
+      expect(noAuthGet.handled).toBe(true);
+      expect(noAuthGet.status).toBe(401);
+
+      // 2. Unauthenticated POST /api/v1/billing/verify-youpi returns 401
+      const noAuthPost = await invokeRoute('POST', '/api/v1/billing/verify-youpi', {}, { orderId: userAOrderId });
+      expect(noAuthPost.handled).toBe(true);
+      expect(noAuthPost.status).toBe(401);
+
+      // 3. User B attempting to view User A's order returns 403 FORBIDDEN
+      const crossUserGet = await invokeRoute('GET', `/api/v1/billing/youpi/status/${userAOrderId}`, {
+        authorization: `Bearer ${userBToken}`,
+      });
+      expect(crossUserGet.handled).toBe(true);
+      expect(crossUserGet.status).toBe(403);
+      expect(crossUserGet.body.error).toContain('belong to authenticated user');
+
+      // 4. User B attempting to verify User A's order via POST returns 403 FORBIDDEN
+      const crossUserPost = await invokeRoute(
+        'POST',
+        '/api/v1/billing/verify-youpi',
+        { authorization: `Bearer ${userBToken}` },
+        { orderId: userAOrderId }
+      );
+      expect(crossUserPost.handled).toBe(true);
+      expect(crossUserPost.status).toBe(403);
+      expect(crossUserPost.body.error).toContain('belong to authenticated user');
+
+      // 5. User A querying non-existent order returns 404 NOT_FOUND
+      const notFoundGet = await invokeRoute('GET', '/api/v1/billing/youpi/status/non_existent_order_99999', {
+        authorization: `Bearer ${userAToken}`,
+      });
+      expect(notFoundGet.handled).toBe(true);
+      expect(notFoundGet.status).toBe(404);
+    });
+
+    it('outside test mode, YouPI webhook verification returns false when webhook secret is unset', () => {
+      const origEnv = process.env.NODE_ENV;
+      const origAllow = process.env.PAYMENT_ALLOW_TEST_ADAPTERS;
+      const origSec1 = process.env.YOUPI_PG_WEBHOOK_SECRET;
+      const origSec2 = process.env.YOUPI_WEBHOOK_SECRET;
+
+      try {
+        delete (process.env as any).NODE_ENV;
+        delete (process.env as any).PAYMENT_ALLOW_TEST_ADAPTERS;
+        delete (process.env as any).YOUPI_PG_WEBHOOK_SECRET;
+        delete (process.env as any).YOUPI_WEBHOOK_SECRET;
+
+        const adapter = new YoupiPgPaymentAdapter();
+        expect(adapter.webhookSecret).toBe('');
+        const verified = adapter.verifyWebhookSignature('{"event":"TEST"}', 'sha256=1234567890abcdef');
+        expect(verified).toBe(false);
+      } finally {
+        process.env.NODE_ENV = origEnv;
+        if (origAllow !== undefined) process.env.PAYMENT_ALLOW_TEST_ADAPTERS = origAllow;
+        if (origSec1 !== undefined) process.env.YOUPI_PG_WEBHOOK_SECRET = origSec1;
+        if (origSec2 !== undefined) process.env.YOUPI_WEBHOOK_SECRET = origSec2;
+      }
+    });
+
+    it('handles live HTTP flow with local mock server and YOUPI_PG_LIVE_CALL=true', async () => {
+      const plan = getCommercialPlanById('professional_10')!;
+      let serverPort = 0;
+      let lastCreatedOrderId = '';
+
+      const server = http.createServer((req, res) => {
+        if (req.url === '/api/v1/payments' && req.method === 'POST') {
+          let body = '';
+          req.on('data', (c) => (body += c));
+          req.on('end', () => {
+            const parsed = JSON.parse(body);
+            lastCreatedOrderId = parsed.orderId;
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(
+              JSON.stringify({
+                id: 'youpi_pay_live_test_123',
+                paymentId: 'youpi_pay_live_test_123',
+                orderId: parsed.orderId,
+                checkoutUrl: `http://localhost:${serverPort}/checkout/youpi_pay_live_test_123`,
+                status: 'INITIATED',
+              })
+            );
+          });
+          return;
+        }
+
+        if (req.url?.startsWith('/api/v1/payments/') && req.method === 'GET') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              id: 'youpi_pay_live_test_123',
+              paymentId: 'youpi_pay_live_test_123',
+              orderId: lastCreatedOrderId,
+              status: 'SUCCESS',
+              amount: 599.0,
+            })
+          );
+          return;
+        }
+
+        res.writeHead(404);
+        res.end();
+      });
+
+      await new Promise<void>((resolve) => server.listen(0, () => resolve()));
+      serverPort = (server.address() as any).port;
+
+      const origBaseUrl = process.env.YOUPI_PG_BASE_URL;
+      const origKey = process.env.YOUPI_PG_API_KEY;
+      const origLive = process.env.YOUPI_PG_LIVE_CALL;
+
+      try {
+        process.env.YOUPI_PG_BASE_URL = `http://localhost:${serverPort}`;
+        process.env.YOUPI_PG_API_KEY = 'mock_merchant_live_key';
+        process.env.YOUPI_PG_LIVE_CALL = 'true';
+
+        const adapter = new YoupiPgPaymentAdapter();
+        const session = await adapter.createCheckoutSession(
+          {
+            userId: userAId,
+            planId: 'professional_10',
+            billingCycle: 'MONTHLY',
+          },
+          plan,
+          59900
+        );
+
+        expect(session.provider).toBe('youpi_pg');
+        expect(session.sessionId).toBe('youpi_pay_live_test_123');
+        expect(session.checkoutUrl).toBe(`http://localhost:${serverPort}/checkout/youpi_pay_live_test_123`);
+
+        // Insert pending payment into DB to verify via verifyYoupiPgOrder
+        const db = getDatabase();
+        db.prepare(`
+          INSERT INTO commercial_payments (
+            id, user_id, plan_id, billing_cycle, amount_cents, currency,
+            status, provider, external_payment_id, external_order_id, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          'pay_live_test_123',
+          userAId,
+          'professional_10',
+          'MONTHLY',
+          59900,
+          'INR',
+          'PENDING',
+          'youpi_pg',
+          'youpi_pay_live_test_123',
+          session.orderId,
+          new Date().toISOString(),
+          new Date().toISOString()
+        );
+
+        const verifyRes = await paymentService.verifyYoupiPgOrder('youpi_pay_live_test_123', userAId);
+        expect(verifyRes.success).toBe(true);
+        expect(verifyRes.status).toBe('SUCCEEDED');
+        expect(verifyRes.subscription?.planId).toBe('professional_10');
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        if (origBaseUrl !== undefined) process.env.YOUPI_PG_BASE_URL = origBaseUrl;
+        else delete process.env.YOUPI_PG_BASE_URL;
+        if (origKey !== undefined) process.env.YOUPI_PG_API_KEY = origKey;
+        else delete process.env.YOUPI_PG_API_KEY;
+        if (origLive !== undefined) process.env.YOUPI_PG_LIVE_CALL = origLive;
+        else delete process.env.YOUPI_PG_LIVE_CALL;
+      }
+    });
+
+    it('remote router accepts x-gateway-signature on /api/v1/remote/billing/webhook/youpi', async () => {
+      const adapter = new YoupiPgPaymentAdapter();
+      const payload = {
+        id: `evt_remote_youpi_${Date.now()}`,
+        event: 'PAYMENT_SUCCESS',
+        orderId: `ord_remote_${Date.now()}`,
+        paymentId: `pay_remote_${Date.now()}`,
+        amountPaise: 149900,
+        currency: 'INR',
+        metadata: {
+          userId: userBId,
+          planId: 'professional_25',
+          billingCycle: 'ANNUAL',
+        },
+      };
+      const rawBody = JSON.stringify(payload);
+      const signature = adapter.signPayload(rawBody);
+
+      const { req, res, getResponse } = createMockReqRes(
+        'POST',
+        '/api/v1/remote/billing/webhook/youpi',
+        {
+          'content-type': 'application/json',
+          'x-gateway-signature': signature,
+        },
+        rawBody
+      );
+
+      const handled = await handleRemoteApiRequest(req, res);
+      expect(handled).toBe(true);
+      const resp = getResponse();
+      expect(resp.status).toBe(200);
+      expect(resp.body.success).toBe(true);
     });
 
     it('throws PaymentGatewayNotConfiguredError for YouPI when production keys are missing and test mode is disabled', async () => {

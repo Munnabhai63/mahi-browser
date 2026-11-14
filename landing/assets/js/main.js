@@ -3613,6 +3613,38 @@ function initCheckoutDrawer() {
       openCheckoutDrawer(planParam || 'professional_50', billingParam, membersParam, proxyGbParam);
     }
   }
+
+  // Handle YouPI-PG Return Callback
+  const returnOrderId = urlParams.get('orderId') || urlParams.get('order_id');
+  if (returnOrderId) {
+    const token = localStorage.getItem('mahi_access_token') || localStorage.getItem('mahi_auth_token');
+    if (token) {
+      showToast('Verifying payment with bank...', 'info', 4000);
+      fetch('/api/v1/billing/verify-youpi', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ orderId: returnOrderId })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.status === 'SUCCEEDED') {
+            showToast('Payment successful! Your subscription is now active.', 'success', 6000);
+          } else if (data.status === 'PENDING' || data.status === 'ACTIVE' || data.status === 'PROCESSING') {
+            showToast('Payment initiated. Awaiting bank settlement confirmation.', 'info', 5000);
+          } else if (data.status === 'FORBIDDEN') {
+            showToast('Payment verification forbidden: account mismatch.', 'error', 5000);
+          } else {
+            showToast(data.error || 'Payment verification pending. Please check again shortly.', 'warning', 5000);
+          }
+        })
+        .catch(() => {
+          showToast('Payment verification check could not be completed.', 'warning', 4000);
+        });
+    }
+  }
 }
 
 function openCheckoutDrawer(planId, billingCycle, extraMembers, extraProxyGb) {

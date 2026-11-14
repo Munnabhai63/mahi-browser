@@ -708,12 +708,16 @@ export async function handleCommercialApiRoutes(
   // -------------------------------------------------------------
   if (routePath === '/api/v1/billing/gateways' && method === 'GET') {
     const hasStripe = Boolean(process.env.STRIPE_SECRET_KEY);
-    const isTest = process.env.NODE_ENV === 'test';
+    const isTest = process.env.NODE_ENV === 'test' || process.env.PAYMENT_ALLOW_TEST_ADAPTERS === 'true';
+    const hasYoupi = Boolean(
+      (process.env.YOUPI_PG_BASE_URL || process.env.BASE_PAYMENT_API_URL) &&
+      (process.env.YOUPI_PG_API_KEY || process.env.YOUPI_PG_SECRET)
+    );
     const gateways = [
       {
         id: 'youpi_pg',
         name: 'Instant UPI / Dynamic QR (0% Fee)',
-        enabled: true,
+        enabled: hasYoupi || isTest,
         currency: 'INR',
         isDirect: true,
         description: 'Instant 0% fee peer-to-bank settlement via GPay, PhonePe, Paytm & BHIM',
@@ -867,8 +871,9 @@ export async function handleCommercialApiRoutes(
     }
 
     try {
-      const result = await paymentService.verifyYoupiPgOrder(paymentOrOrderId);
-      sendJSON(res, result.success ? 200 : 400, result);
+      const result = await paymentService.verifyYoupiPgOrder(paymentOrOrderId, auth.userId);
+      const statusCode = result.status === 'FORBIDDEN' ? 403 : result.status === 'NOT_FOUND' ? 404 : result.success ? 200 : 400;
+      sendJSON(res, statusCode, result);
       return true;
     } catch (err: any) {
       sendJSON(res, 500, { success: false, error: err.message });
@@ -878,10 +883,16 @@ export async function handleCommercialApiRoutes(
 
   const youpiStatusMatch = routePath.match(/^\/api\/v1\/billing\/youpi\/status\/([a-zA-Z0-9_.-]+)$/);
   if (youpiStatusMatch && method === 'GET') {
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
     const orderId = youpiStatusMatch[1];
     try {
-      const result = await paymentService.verifyYoupiPgOrder(orderId);
-      sendJSON(res, result.success ? 200 : 400, result);
+      const result = await paymentService.verifyYoupiPgOrder(orderId, auth.userId);
+      const statusCode = result.status === 'FORBIDDEN' ? 403 : result.status === 'NOT_FOUND' ? 404 : result.success ? 200 : 400;
+      sendJSON(res, statusCode, result);
       return true;
     } catch (err: any) {
       sendJSON(res, 500, { success: false, error: err.message });
