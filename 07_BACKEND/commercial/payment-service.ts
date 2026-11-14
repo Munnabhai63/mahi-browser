@@ -17,6 +17,7 @@ import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getCommercialPlans, getCommercialPlanById } from './commercial-plan-service.js';
 import { CommercialPlan } from '../../10_CONFIG/shared/types/commercial.js';
 import { calculateAuthoritativeOrderTotal } from './canonical-plan-catalog.js';
+import { logCommercialAudit } from './commercial-audit-service.js';
 
 export type PaymentProviderType = 'stripe' | 'razorpay' | 'simulation';
 
@@ -977,6 +978,264 @@ export class PaymentService {
       WHERE user_id = ? AND status = 'ACTIVE'
     `).run(userId);
     return res.changes > 0;
+  }
+
+  /**
+   * Submits a manual UPI payment with UTR reference and persists it under PENDING_VERIFICATION.
+   */
+  public async submitManualUpiPayment(params: {
+    userId: string;
+    planId: string;
+    billingCycle?: 'MONTHLY' | 'ANNUAL';
+    utr: string;
+    amountPaise?: number;
+    proofAsset?: string;
+    extraMembers?: number;
+    extraProxyGb?: number;
+  }): Promise<{ paymentId: string; status: string; utr: string; amountPaise: number; createdAt: string }> {
+    const db = getDatabase();
+    const cleanUtr = (params.utr || '').trim();
+
+    if (!cleanUtr || cleanUtr.length < 6 || cleanUtr.length > 30 || !/^[a-zA-Z0-9]+$/.test(cleanUtr)) {
+      throw new Error('INVALID_UTR: Transaction reference must be 6-30 alphanumeric characters.');
+    }
+
+    // Check duplicate UTR
+    const existing = db.prepare('SELECT id FROM commercial_payments WHERE external_payment_id = ?').get(cleanUtr) as any;
+    if (existing) {
+      throw new Error('UTR_ALREADY_EXISTS: This UTR has already been submitted.');
+    }
+
+    const plan = getCommercialPlanById(params.planId);
+    if (!plan || !plan.isActive) {
+      throw new Error(`Selected plan "${params.planId}" is not available for purchase.`);
+    }
+
+    const cycle = params.billingCycle || 'MONTHLY';
+    const orderTotal = calculateAuthoritativeOrderTotal({
+      planId: params.planId as any,
+      billingCycle: cycle,
+      currency: 'INR',
+      extraMembers: params.extraMembers,
+      extraProxyGb: params.extraProxyGb,
+    });
+    const amountPaise = params.amountPaise && params.amountPaise > 0 ? params.amountPaise : orderTotal.totalChargeMinor;
+
+    const paymentId = `pay_upi_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const externalOrderId = `upi_ord_${Date.now()}`;
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO commercial_payments (
+        id, user_id, subscription_id, provider, external_order_id, external_payment_id,
+        amount_cents, currency, status, plan_id, billing_cycle, receipt_url, metadata_json,
+        created_at, updated_at
+      ) VALUES (?, ?, NULL, 'manual_upi', ?, ?, ?, 'INR', 'PENDING_VERIFICATION', ?, ?, ?, ?, ?, ?)
+    `).run(
+      paymentId,
+      params.userId,
+      externalOrderId,
+      cleanUtr,
+      amountPaise,
+      plan.id,
+      cycle,
+      params.proofAsset || null,
+      JSON.stringify({ utr: cleanUtr, proofAsset: params.proofAsset, submittedAt: now }),
+      now,
+      now
+    );
+
+    return {
+      paymentId,
+      status: 'PENDING_VERIFICATION',
+      utr: cleanUtr,
+      amountPaise,
+      createdAt: now,
+    };
+  }
+
+  /**
+   * Approves a manual UPI payment, activating subscription and creating an invoice.
+   */
+  public async approveManualPayment(
+    paymentId: string,
+    adminActor: { id: string; name: string; role?: string }
+  ): Promise<{ success: boolean; paymentId: string; status: string; userId: string }> {
+    const db = getDatabase();
+    const payment = db.prepare(
+      'SELECT * FROM commercial_payments WHERE id = ? OR external_payment_id = ?'
+    ).get(paymentId, paymentId) as any;
+
+    if (!payment) {
+      throw new Error(`Payment record "${paymentId}" not found.`);
+    }
+
+    if (payment.status !== 'PENDING_VERIFICATION') {
+      throw new Error(`Payment is not pending verification (current status: ${payment.status}).`);
+    }
+
+    let meta: any = {};
+    try {
+      meta = JSON.parse(payment.metadata_json || '{}');
+    } catch {}
+
+    await this.activateSubscriptionFromPayment({
+      userId: payment.user_id,
+      planId: payment.plan_id,
+      billingCycle: payment.billing_cycle,
+      amountCents: payment.amount_cents,
+      currency: payment.currency,
+      provider: payment.provider,
+      externalPaymentId: payment.external_payment_id,
+      externalOrderId: payment.external_order_id,
+      receiptUrl: payment.receipt_url,
+      metadata: meta,
+    });
+
+    try {
+      logCommercialAudit({
+        actorId: adminActor.id,
+        actorName: adminActor.name,
+        actorRole: (adminActor.role as any) || 'ADMIN',
+        action: 'APPROVE_MANUAL_PAYMENT',
+        targetType: 'PAYMENT',
+        targetId: payment.id,
+        details: `Approved manual UPI payment ${payment.id} for user ${payment.user_id} (UTR: ${payment.external_payment_id})`,
+      });
+    } catch {}
+
+    return {
+      success: true,
+      paymentId: payment.id,
+      status: 'SUCCEEDED',
+      userId: payment.user_id,
+    };
+  }
+
+  /**
+   * Rejects a manual UPI payment with a recorded reason.
+   */
+  public async rejectManualPayment(
+    paymentId: string,
+    adminActor: { id: string; name: string; role?: string },
+    reason: string
+  ): Promise<{ success: boolean; paymentId: string; status: string; reason: string }> {
+    const db = getDatabase();
+    const payment = db.prepare(
+      'SELECT * FROM commercial_payments WHERE id = ? OR external_payment_id = ?'
+    ).get(paymentId, paymentId) as any;
+
+    if (!payment) {
+      throw new Error(`Payment record "${paymentId}" not found.`);
+    }
+
+    if (payment.status !== 'PENDING_VERIFICATION') {
+      throw new Error(`Payment is not pending verification (current status: ${payment.status}).`);
+    }
+
+    const now = new Date().toISOString();
+    let meta: any = {};
+    try {
+      meta = JSON.parse(payment.metadata_json || '{}');
+    } catch {}
+
+    meta.rejectionReason = reason;
+    meta.rejectedBy = adminActor.name;
+    meta.rejectedAt = now;
+
+    db.prepare(`
+      UPDATE commercial_payments
+      SET status = 'FAILED', metadata_json = ?, updated_at = ?
+      WHERE id = ?
+    `).run(JSON.stringify(meta), now, payment.id);
+
+    try {
+      logCommercialAudit({
+        actorId: adminActor.id,
+        actorName: adminActor.name,
+        actorRole: (adminActor.role as any) || 'ADMIN',
+        action: 'REJECT_MANUAL_PAYMENT',
+        targetType: 'PAYMENT',
+        targetId: payment.id,
+        details: `Rejected manual UPI payment ${payment.id} for user ${payment.user_id}. Reason: ${reason}`,
+      });
+    } catch {}
+
+    return {
+      success: true,
+      paymentId: payment.id,
+      status: 'FAILED',
+      reason,
+    };
+  }
+
+  /**
+   * Retrieves user payment history ordered by date descending.
+   */
+  public getUserPaymentHistory(userId: string): any[] {
+    const db = getDatabase();
+    const rows = db.prepare(`
+      SELECT * FROM commercial_payments
+      WHERE user_id = ?
+      ORDER BY created_at DESC
+    `).all(userId) as any[];
+
+    return rows.map((r) => {
+      let metadata: any = {};
+      try {
+        metadata = JSON.parse(r.metadata_json || '{}');
+      } catch {}
+      return {
+        id: r.id,
+        userId: r.user_id,
+        planId: r.plan_id,
+        billingCycle: r.billing_cycle,
+        amountCents: r.amount_cents,
+        currency: r.currency,
+        provider: r.provider,
+        status: r.status,
+        externalPaymentId: r.external_payment_id,
+        externalOrderId: r.external_order_id,
+        receiptUrl: r.receipt_url,
+        metadata,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      };
+    });
+  }
+
+  /**
+   * Lists payments for admin overview with optional status filtering.
+   */
+  public listAdminPayments(statusFilter?: string): any[] {
+    const db = getDatabase();
+    const query = statusFilter
+      ? 'SELECT * FROM commercial_payments WHERE status = ? ORDER BY created_at DESC'
+      : 'SELECT * FROM commercial_payments ORDER BY created_at DESC';
+    const rows = (statusFilter ? db.prepare(query).all(statusFilter) : db.prepare(query).all()) as any[];
+
+    return rows.map((r) => {
+      let metadata: any = {};
+      try {
+        metadata = JSON.parse(r.metadata_json || '{}');
+      } catch {}
+      return {
+        id: r.id,
+        userId: r.user_id,
+        planId: r.plan_id,
+        billingCycle: r.billing_cycle,
+        amountCents: r.amount_cents,
+        currency: r.currency,
+        provider: r.provider,
+        status: r.status,
+        externalPaymentId: r.external_payment_id,
+        externalOrderId: r.external_order_id,
+        receiptUrl: r.receipt_url,
+        metadata,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      };
+    });
   }
 }
 

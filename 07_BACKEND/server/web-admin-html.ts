@@ -71,6 +71,14 @@ export function getWebAdminHtml(): string {
           </div>
         </button>
 
+        <button onclick="switchPage('payments')" id="nav-payments" class="nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all">
+          <div class="flex items-center space-x-3">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+            <span>Payments & Approvals</span>
+          </div>
+          <span class="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-500/20 text-amber-400">UPI</span>
+        </button>
+
         <button onclick="switchPage('licenses')" id="nav-licenses" class="nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all">
           <div class="flex items-center space-x-3">
             <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
@@ -247,6 +255,9 @@ export function getWebAdminHtml(): string {
       } else if (currentPage === 'plans') {
         title.innerText = 'Subscription Plans & Entitlement Limits';
         renderPlans();
+      } else if (currentPage === 'payments') {
+        title.innerText = 'Payments & UPI Verification';
+        renderPayments();
       } else if (currentPage === 'licenses') {
         title.innerText = 'License Key Minting & Control';
         renderLicenses();
@@ -1745,6 +1756,133 @@ export function getWebAdminHtml(): string {
           </div>
         </div>
       \`;
+    }
+
+    async function renderPayments() {
+      const container = document.getElementById('content-container');
+      container.innerHTML = '<div class="text-slate-400 text-xs animate-pulse">Loading payments and verification queue...</div>';
+      const res = await apiFetch('/api/v1/admin/payments');
+      if (!res.success) {
+        container.innerHTML = \`<div class="p-4 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs">Failed to load payments: \${res.error || 'Unauthorized'}</div>\`;
+        return;
+      }
+      const list = res.data || res.payments || [];
+      const pendingCount = list.filter(p => p.status === 'PENDING_VERIFICATION').length;
+
+      container.innerHTML = \`
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-lg font-bold text-slate-900">Payments & Verification Queue</h2>
+              <p class="text-xs text-slate-500">Review manual UPI UTR submissions, approve entitlements, or reject invalid transactions.</p>
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="px-2.5 py-1 rounded-full text-xs font-bold \${pendingCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}">
+                \${pendingCount} Pending Verification
+              </span>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px]">
+                  <tr>
+                    <th class="p-3">Payment ID / Date</th>
+                    <th class="p-3">User ID</th>
+                    <th class="p-3">Plan / Cycle</th>
+                    <th class="p-3">Amount</th>
+                    <th class="p-3">Provider / Reference (UTR)</th>
+                    <th class="p-3">Status</th>
+                    <th class="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  \${list.length > 0 ? list.map(p => {
+                    const isPending = p.status === 'PENDING_VERIFICATION';
+                    const isSucceeded = p.status === 'SUCCEEDED';
+                    const amountFormatted = p.currency === 'INR'
+                      ? '₹' + (p.amountCents / 100).toLocaleString('en-IN')
+                      : '$' + (p.amountCents / 100).toFixed(2);
+                    const statusBadge = isPending
+                      ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Pending Review</span>'
+                      : isSucceeded
+                      ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Succeeded</span>'
+                      : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">Failed</span>';
+
+                    return \`
+                      <tr class="hover:bg-slate-50/80 transition-colors">
+                        <td class="p-3">
+                          <div class="font-mono font-bold text-slate-800 text-[11px]">\${p.id}</div>
+                          <div class="text-[10px] text-slate-400 mt-0.5">\${new Date(p.createdAt).toLocaleString()}</div>
+                        </td>
+                        <td class="p-3">
+                          <div class="font-mono text-slate-700 text-[11px]">\${p.userId}</div>
+                        </td>
+                        <td class="p-3">
+                          <div class="font-bold text-slate-800 capitalize">\${(p.planId || '').replace(/_/g, ' ')}</div>
+                          <div class="text-[10px] text-slate-400 uppercase font-semibold">\${p.billingCycle}</div>
+                        </td>
+                        <td class="p-3 font-mono font-extrabold text-slate-900">\${amountFormatted}</td>
+                        <td class="p-3">
+                          <div class="flex items-center space-x-1.5">
+                            <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-600">\${p.provider}</span>
+                            <span class="font-mono font-bold text-slate-900 text-[11px]">\${p.externalPaymentId || '-'}</span>
+                          </div>
+                          \${p.metadata?.proofAsset ? \\\`<a href="\${p.metadata.proofAsset}" target="_blank" class="text-[10px] text-emerald-600 hover:underline">View Proof</a>\\\` : ''}
+                        </td>
+                        <td class="p-3">\${statusBadge}</td>
+                        <td class="p-3 text-right">
+                          \${isPending ? \`
+                            <div class="flex items-center justify-end space-x-1.5">
+                              <button onclick="approvePayment('\${p.id}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold shadow-xs transition">
+                                Approve
+                              </button>
+                              <button onclick="rejectPayment('\${p.id}')" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold transition">
+                                Reject
+                              </button>
+                            </div>
+                          \` : \\\`<span class="text-[11px] text-slate-400 italic">Completed</span>\\\`}
+                        </td>
+                      </tr>
+                    \`;
+                  }).join('') : \`
+                    <tr>
+                      <td colspan="7" class="p-8 text-center text-slate-400">No payment transactions recorded yet.</td>
+                    </tr>
+                  \`}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      \`;
+    }
+
+    async function approvePayment(id) {
+      if (!confirm('Approve this payment and immediately activate the user subscription?')) return;
+      const res = await apiFetch('/api/v1/admin/payments/' + encodeURIComponent(id) + '/approve', { method: 'POST' });
+      if (res.success) {
+        showToast('Payment approved & subscription activated successfully!');
+        renderPayments();
+      } else {
+        showToast('Approval failed: ' + (res.error || 'Unknown error'), 'error');
+      }
+    }
+
+    async function rejectPayment(id) {
+      const reason = prompt('Please enter rejection reason (e.g. Invalid UTR / Amount Mismatch):');
+      if (reason === null) return;
+      const res = await apiFetch('/api/v1/admin/payments/' + encodeURIComponent(id) + '/reject', {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason.trim() || 'Payment rejected by administrator' })
+      });
+      if (res.success) {
+        showToast('Payment marked as rejected.');
+        renderPayments();
+      } else {
+        showToast('Rejection failed: ' + (res.error || 'Unknown error'), 'error');
+      }
     }
 
     // Initial Load

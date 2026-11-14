@@ -644,7 +644,7 @@ export async function handleCommercialApiRoutes(
     return true;
   }
 
-  if (routePath === '/v1/account/payments/upi/submit' && method === 'POST') {
+  if ((routePath === '/v1/account/payments/upi/submit' || routePath === '/api/v1/account/payments/upi/submit') && method === 'POST') {
     const auth = getAuthUser(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
@@ -656,13 +656,52 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 400, { success: false, error: 'Invalid UTR: Transaction reference must be at least 6 characters.' });
       return true;
     }
-    const paymentId = 'pay_' + crypto.randomUUID().replace(/-/g, '').substring(0, 16);
-    sendJSON(res, 200, {
-      success: true,
-      payment_id: paymentId,
-      status: 'PENDING_VERIFICATION',
-      message: 'Payment submitted successfully for verification.',
-    });
+    const planId = body.planId || body.plan_id || body.plan || 'professional_10';
+    const billingCycle = ((body.billingCycle || body.billing_cycle || body.billing || 'MONTHLY') as string).toUpperCase() as 'MONTHLY' | 'ANNUAL';
+    const amountPaise = body.amountPaise || body.amount_paise || body.amountMinor || body.amount;
+    const proofAsset = body.proofAsset || body.proof_asset || body.receiptUrl || body.receipt_url;
+    const extraMembers = body.extraMembers || body.extra_members;
+    const extraProxyGb = body.extraProxyGb || body.extra_proxy_gb;
+
+    try {
+      const result = await paymentService.submitManualUpiPayment({
+        userId: auth.userId,
+        planId,
+        billingCycle,
+        utr,
+        amountPaise: amountPaise ? Number(amountPaise) : undefined,
+        proofAsset,
+        extraMembers: extraMembers ? Number(extraMembers) : undefined,
+        extraProxyGb: extraProxyGb ? Number(extraProxyGb) : undefined,
+      });
+
+      sendJSON(res, 200, {
+        success: true,
+        payment_id: result.paymentId,
+        status: result.status,
+        utr: result.utr,
+        amount_paise: result.amountPaise,
+        message: 'Payment submitted successfully for verification.',
+      });
+      return true;
+    } catch (err: any) {
+      if (err.message && err.message.includes('UTR_ALREADY_EXISTS')) {
+        sendJSON(res, 409, { success: false, error: err.message });
+        return true;
+      }
+      sendJSON(res, 400, { success: false, error: err.message });
+      return true;
+    }
+  }
+
+  if ((routePath === '/v1/account/payments/status' || routePath === '/api/v1/account/payments/status') && method === 'GET') {
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
+    const payments = paymentService.getUserPaymentHistory(auth.userId);
+    sendJSON(res, 200, { success: true, payments, data: payments });
     return true;
   }
 
@@ -2150,6 +2189,73 @@ export async function handleCommercialApiRoutes(
     const version = publishSoftwareVersion(body, actor);
     sendJSON(res, 201, { success: true, data: version });
     return true;
+  }
+
+  // -------------------------------------------------------------
+  // 12.1 ADMIN PAYMENTS & MANUAL UPI APPROVAL (Protected)
+  // -------------------------------------------------------------
+  if (pathname === '/api/v1/admin/payments' && method === 'GET') {
+    const { isAdmin } = checkAdminAuth(req);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
+      return true;
+    }
+    const status = parsedUrl.searchParams.get('status') || undefined;
+    const payments = paymentService.listAdminPayments(status);
+    sendJSON(res, 200, { success: true, data: payments, payments });
+    return true;
+  }
+
+  const paymentApproveMatch = pathname.match(/^\/api\/v1\/admin\/payments\/([a-zA-Z0-9_-]+)\/approve$/);
+  if (paymentApproveMatch && method === 'POST') {
+    const body = await parseBody(req);
+    const { isAdmin, actor } = checkAdminAuth(req, body);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
+      return true;
+    }
+    const paymentId = paymentApproveMatch[1];
+    try {
+      const result = await paymentService.approveManualPayment(paymentId, actor);
+      sendJSON(res, 200, {
+        success: true,
+        payment_id: paymentId,
+        status: 'SUCCEEDED',
+        message: 'Payment approved successfully.',
+        data: result,
+      });
+      return true;
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+      return true;
+    }
+  }
+
+  const paymentRejectMatch = pathname.match(/^\/api\/v1\/admin\/payments\/([a-zA-Z0-9_-]+)\/reject$/);
+  if (paymentRejectMatch && method === 'POST') {
+    const body = await parseBody(req);
+    const { isAdmin, actor } = checkAdminAuth(req, body);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
+      return true;
+    }
+    const paymentId = paymentRejectMatch[1];
+    const reason = body?.reason || 'Payment rejected by administrator';
+    try {
+      const result = await paymentService.rejectManualPayment(paymentId, actor, reason);
+      sendJSON(res, 200, {
+        success: true,
+        payment_id: paymentId,
+        status: 'FAILED',
+        message: 'Payment rejected successfully.',
+        reason,
+        data: result,
+      });
+      return true;
+    } catch (err: any) {
+      sendJSON(res, 400, { success: false, error: err.message });
+      return true;
+    }
   }
 
   // -------------------------------------------------------------
