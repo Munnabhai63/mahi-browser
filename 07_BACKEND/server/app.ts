@@ -79,11 +79,25 @@ function sendFile(res: http.ServerResponse, filePath: string, filename: string) 
   stream.pipe(res);
 }
 
-function requireUserOrAdminAuth(req: http.IncomingMessage, res: http.ServerResponse, parsedUrl: URL, body?: any): RequestAuth | null {
+function requireUserOrAdminAuth(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  parsedUrl: URL,
+  body?: any,
+  requiredScope?: string
+): RequestAuth | null {
   const auth = authenticateRequest(req, parsedUrl, body);
   if (!auth.authenticated) {
     sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication credentials required.' });
     return null;
+  }
+  if (requiredScope && auth.role !== 'master_admin') {
+    if (auth.scopes && auth.scopes.length > 0 && !auth.scopes.includes('*')) {
+      if (!auth.scopes.includes(requiredScope)) {
+        sendJSON(res, 403, { success: false, error: `Forbidden. Missing required scope: ${requiredScope}` });
+        return null;
+      }
+    }
   }
   return auth;
 }
@@ -329,14 +343,14 @@ export function createCentralApiServer(): http.Server {
 
       // 3. Profiles Endpoint
       if (pathname === '/api/v2/profiles' && method === 'GET') {
-        if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:read')) return;
         return sendJSON(res, 200, { success: true, data: getProfiles() });
       }
 
       if (pathname === '/api/v2/profiles' && method === 'POST') {
         try {
           const body = await parseBody(req);
-          if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return;
+          if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
           assertCanCreateProfile(1);
           const profile = createProfile(body);
           return sendJSON(res, 201, { success: true, data: profile });
@@ -350,19 +364,19 @@ export function createCentralApiServer(): http.Server {
       if (profileMatch) {
         const profileId = profileMatch[1];
         if (method === 'GET') {
-          if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
+          if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:read')) return;
           const profile = getProfileById(profileId);
           if (!profile) return sendJSON(res, 404, { success: false, error: 'Profile not found' });
           return sendJSON(res, 200, { success: true, data: profile });
         }
         if (method === 'PUT') {
           const body = await parseBody(req);
-          if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return;
+          if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
           const updated = updateProfile(profileId, body);
           return sendJSON(res, 200, { success: true, data: updated });
         }
         if (method === 'DELETE') {
-          if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
+          if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:write')) return;
           const ok = deleteProfile(profileId);
           return sendJSON(res, 200, { success: ok });
         }
@@ -372,9 +386,10 @@ export function createCentralApiServer(): http.Server {
       const profileActionMatch = pathname.match(/^\/api\/v2\/profiles\/([a-zA-Z0-9_-]+)\/(start|stop|clone)$/);
       if (profileActionMatch && method === 'POST') {
         const body = await parseBody(req);
-        if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return;
-        const profileId = profileActionMatch[1];
         const action = profileActionMatch[2];
+        const requiredScope = action === 'clone' ? 'profiles:write' : 'profiles:launch';
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, requiredScope)) return;
+        const profileId = profileActionMatch[1];
 
         if (action === 'start') {
           const result = await processManager.startProfile(profileId);

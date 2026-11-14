@@ -9,6 +9,8 @@ import {
   resetSuperAdminRateLimitForTesting,
   isOriginAllowed,
   getCorsHeaders,
+  isAppPackaged,
+  isLocalSuperAdminEnabled,
 } from '../../07_BACKEND/api/local-api-server.js';
 import { generateApiKey } from '../../07_BACKEND/services/api-v2-service.js';
 import { createProfile, deleteProfile } from '../../02_BROWSER/services/profile-service.js';
@@ -45,7 +47,7 @@ describe('TASK 2: Local REST API Lockdown, RBAC & Encrypted Secrets Storage', ()
     testProfileId = p.id;
 
     // Generate a standard user API key
-    const generated = generateApiKey('Standard User Key', 'user_123', ['profiles:read', 'profiles:write']);
+    const generated = generateApiKey('Standard User Key', 'user_123', ['profiles:read', 'profiles:write', 'profiles:launch']);
     testApiKey = generated.secretKey;
 
     // Start Central API server on test port
@@ -236,5 +238,34 @@ describe('TASK 2: Local REST API Lockdown, RBAC & Encrypted Secrets Storage', ()
     const key = getOrCreateMasterKey();
     expect(key).toBeInstanceOf(Buffer);
     expect(key.length).toBe(32);
+  });
+
+  // 10. API KEY GRANULAR SCOPE ENFORCEMENT
+  it('10. API key with read-only scope is forbidden from write endpoints', async () => {
+    const readOnlyKey = generateApiKey('Read Only Key', 'user_ro', ['profiles:read']).secretKey;
+    
+    // Read succeeds with 200
+    const resRead = await request('/api/v2/profiles', {
+      headers: { Authorization: `Bearer ${readOnlyKey}` },
+    });
+    expect(resRead.status).toBe(200);
+
+    // Write fails with 403 Forbidden
+    const resWrite = await request('/api/v2/profiles', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${readOnlyKey}` },
+      body: { name: 'Unauthorized Create' },
+    });
+    expect(resWrite.status).toBe(403);
+    expect(resWrite.data.success).toBe(false);
+    expect(resWrite.data.error).toContain('profiles:write');
+  });
+
+  // 11. LOCAL SUPER ADMIN TOGGLE
+  it('11. isLocalSuperAdminEnabled obeys packaging and environment gates', () => {
+    const isPackaged = isAppPackaged();
+    if (!isPackaged) {
+      expect(isLocalSuperAdminEnabled()).toBe(true);
+    }
   });
 });

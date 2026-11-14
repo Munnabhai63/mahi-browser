@@ -7,6 +7,7 @@ import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getCommercialPlans, getCommercialPlanById } from '../../07_BACKEND/commercial/commercial-plan-service.js';
 import { StripePaymentAdapter, paymentService } from '../../07_BACKEND/commercial/payment-service.js';
 import { logCommercialAudit } from '../../07_BACKEND/commercial/commercial-audit-service.js';
+import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 
 describe('Phase 14: Final 3 External Blockers Closure & Full Commercial GA Release Gate', () => {
 
@@ -20,11 +21,14 @@ describe('Phase 14: Final 3 External Blockers Closure & Full Commercial GA Relea
   describe('1. Blocker 1: Windows Authenticode Signing & Package Integrity', () => {
     it('verifies release installer artifact existence and SHA-256 match with latest.json', () => {
       const releaseDir = path.resolve(process.cwd(), 'release');
-      const setupPath = path.join(releaseDir, 'MAHI-Browser-Setup-1.1.1.exe');
       const manifestPath = path.join(releaseDir, 'latest.json');
-
-      expect(fs.existsSync(setupPath)).toBe(true);
       expect(fs.existsSync(manifestPath)).toBe(true);
+
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      expect(manifest.version).toBe(APP_VERSION);
+
+      const setupPath = path.join(releaseDir, `MAHI-Browser-Setup-${manifest.version}.exe`);
+      expect(fs.existsSync(setupPath)).toBe(true);
 
       const stats = fs.statSync(setupPath);
       expect(stats.size).toBeGreaterThan(50 * 1024 * 1024); // > 50MB
@@ -32,12 +36,10 @@ describe('Phase 14: Final 3 External Blockers Closure & Full Commercial GA Relea
       // Verify SHA-256
       const content = fs.readFileSync(setupPath);
       const actualSha256 = crypto.createHash('sha256').update(content).digest('hex');
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
-      const manifestFile = manifest.files.find((f: any) => f.name.includes('Setup'));
+      const manifestFile = manifest.files.find((f: any) => f.name.includes(`Setup-${manifest.version}`));
       expect(manifestFile).toBeDefined();
       expect(actualSha256).toBe(manifestFile.sha256);
-      expect(manifest.version).toBe('1.1.1');
     });
 
     it('verifies signtool.exe availability in Windows Kits SDK environment', () => {

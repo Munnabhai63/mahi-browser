@@ -73,6 +73,13 @@ export const CONTACT_CONFIG = {
   USDT_NETWORK,
   DEFAULT_PRICE_INR,
   DEFAULT_PRICE_USDT,
+  businessEmail: BUSINESS_EMAIL,
+  supportEmail: SUPPORT_EMAIL,
+  billingEmail: BILLING_EMAIL,
+  supportEscalationEmail: SUPPORT_ESCALATION_EMAIL,
+  whatsappNumber: WHATSAPP_NUMBER,
+  whatsappDisplay: WHATSAPP_DISPLAY,
+  whatsappUrl: `https://wa.me/${WHATSAPP_RAW_NUMBER}`,
 };
 
 export interface ContactConfig {

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'node:crypto';
-import { getDatabase, initSqlEngine } from '../../06_DATABASE/connection.js';
+import path from 'node:path';
+import fs from 'node:fs';
+import { getDatabase, initSqlEngine, setCustomDatabasePath, closeDatabase } from '../../06_DATABASE/connection.js';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { proxyProviderService, UserContext } from '../../07_BACKEND/services/proxy-provider-service.js';
 import { getProxyById, getDecryptedProxyCredentials } from '../../02_BROWSER/services/proxy-service.js';
@@ -8,9 +10,22 @@ import { createProfile, getProfileById } from '../../02_BROWSER/services/profile
 import { createWorkspace, addWorkspaceMember } from '../../02_BROWSER/services/workspace-service.js';
 
 describe('Phase 5: Commercial Proxy Provider Platform — Integration Tests', () => {
+  const testDbDir = path.resolve('.mahi_data', 'test-proxy-platform-isolated');
+  const testDbPath = path.join(testDbDir, 'proxy_platform_test.sqlite');
+
   beforeAll(async () => {
+    if (!fs.existsSync(testDbDir)) fs.mkdirSync(testDbDir, { recursive: true });
+    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+    setCustomDatabasePath(testDbPath);
     await initSqlEngine();
     await initializeDatabase();
+  });
+
+  afterAll(() => {
+    closeDatabase();
+    try {
+      if (fs.existsSync(testDbDir)) fs.rmSync(testDbDir, { recursive: true, force: true });
+    } catch {}
   });
 
   describe('1. Database Migration v13 Validation', () => {

@@ -785,7 +785,7 @@ export async function initializeDatabase(): Promise<void> {
       CREATE TABLE IF NOT EXISTS proxy_provider_sessions (
         id TEXT PRIMARY KEY,
         provider_id TEXT NOT NULL,
-        proxy_id TEXT NOT NULL,
+        proxy_id TEXT,
         user_id TEXT NOT NULL,
         workspace_id TEXT,
         profile_id TEXT,
@@ -803,7 +803,7 @@ export async function initializeDatabase(): Promise<void> {
         bytes_used INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        FOREIGN KEY (proxy_id) REFERENCES proxies(id) ON DELETE CASCADE
+        FOREIGN KEY (proxy_id) REFERENCES proxies(id) ON DELETE SET NULL
       );
 
       CREATE INDEX IF NOT EXISTS idx_proxy_sessions_user ON proxy_provider_sessions(user_id);
@@ -1120,6 +1120,7 @@ export async function initializeDatabase(): Promise<void> {
     insertRegion.run('in-west', 'India West (Mumbai)', 'wss://in-west.cloud.mahibrowser.com/stream', 1, now);
     insertRegion.run('us-east', 'US East (N. Virginia)', 'wss://us-east.cloud.mahibrowser.com/stream', 0, now);
     insertRegion.run('eu-central', 'Europe Central (Frankfurt)', 'wss://eu-central.cloud.mahibrowser.com/stream', 0, now);
+    insertRegion.run('sg-central', 'Asia Pacific (Singapore)', 'wss://sg-central.cloud.mahibrowser.com/stream', 0, now);
     insertRegion.run('ap-southeast', 'Asia Pacific (Singapore)', 'wss://ap-southeast.cloud.mahibrowser.com/stream', 0, now);
   });
 
@@ -1478,9 +1479,31 @@ export async function initializeDatabase(): Promise<void> {
   addColumnIfNotExists(db, 'workspace_members', 'joined_at', "TEXT");
   addColumnIfNotExists(db, 'workspace_members', 'last_active_at', "TEXT");
   addColumnIfNotExists(db, 'cloud_browser_regions', 'gateway_url', "TEXT");
+  addColumnIfNotExists(db, 'cloud_browser_regions', 'endpoint_url', "TEXT NOT NULL DEFAULT ''");
   addColumnIfNotExists(db, 'cloud_browser_regions', 'is_active', "INTEGER NOT NULL DEFAULT 1");
+  addColumnIfNotExists(db, 'cloud_browser_regions', 'is_default', "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfNotExists(db, 'cloud_browser_regions', 'status', "TEXT NOT NULL DEFAULT 'ACTIVE'");
   addColumnIfNotExists(db, 'cloud_browser_regions', 'updated_at', "TEXT");
+  addColumnIfNotExists(db, 'cloud_browser_workers', 'hostname', "TEXT NOT NULL DEFAULT 'localhost'");
+  addColumnIfNotExists(db, 'cloud_browser_workers', 'ip_address', "TEXT NOT NULL DEFAULT '127.0.0.1'");
   addColumnIfNotExists(db, 'cloud_browser_workers', 'capacity_slots', "INTEGER DEFAULT 10");
   addColumnIfNotExists(db, 'cloud_browser_workers', 'used_slots', "INTEGER DEFAULT 0");
   addColumnIfNotExists(db, 'cloud_browser_workers', 'ram_usage_pct', "REAL DEFAULT 0.0");
+  addColumnIfNotExists(db, 'cloud_browser_workers', 'memory_usage_mb', "REAL DEFAULT 0.0");
+  addColumnIfNotExists(db, 'cloud_browser_workers', 'cpu_usage_pct', "REAL DEFAULT 0.0");
+  addColumnIfNotExists(db, 'cloud_browser_workers', 'active_sessions', "INTEGER DEFAULT 0");
+  addColumnIfNotExists(db, 'cloud_browser_workers', 'max_sessions', "INTEGER DEFAULT 10");
+  addColumnIfNotExists(db, 'cloud_browser_workers', 'last_heartbeat', "TEXT");
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cloud_browser_usage (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      workspace_id TEXT,
+      session_id TEXT NOT NULL,
+      duration_seconds INTEGER NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT NOT NULL
+    );
+  `);
 }

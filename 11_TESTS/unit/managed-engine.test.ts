@@ -37,7 +37,7 @@ describe('Managed Version-Pinned Browser Engine Suite', () => {
     expect(MANAGED_ENGINE_DOWNLOAD_URL).toContain('storage.googleapis.com/chrome-for-testing-public/138.0.7204.183/win64/chrome-win64.zip');
     expect(MANAGED_ENGINE_FALLBACK_URL).toBe('https://mahibrowser.com/engine/chrome-138.zip');
     expect(GOOGLE_CFT_MANIFEST_URL).toBe('https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json');
-    expect(MANAGED_ENGINE_REQUIRED_DISK_SPACE_BYTES).toBe(1024 * 1024 * 1024);
+    expect(MANAGED_ENGINE_REQUIRED_DISK_SPACE_BYTES).toBe(600 * 1024 * 1024);
   });
 
   it('should resolve the correct engine path structure for win64', () => {

@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { URL } from 'node:url';
+import { app } from 'electron';
 import { getAppSettings } from '../services/settings-service.js';
 import {
   getProfiles,
@@ -85,7 +86,18 @@ const ALLOWED_ORIGIN_PATTERNS = [
   /^file:\/\//,
 ];
 
+export function isAppPackaged(): boolean {
+  try {
+    return Boolean(app && app.isPackaged);
+  } catch {
+    return false;
+  }
+}
+
 export function isLocalSuperAdminEnabled(): boolean {
+  if (isAppPackaged()) {
+    return process.env.MAHI_ENABLE_LOCAL_SUPER_ADMIN === '1';
+  }
   return process.env.MAHI_ENABLE_LOCAL_SUPER_ADMIN === '1' || process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
 }
 
@@ -164,13 +176,17 @@ export interface RequestAuth {
   authenticated: boolean;
   role?: AuthRole;
   userId?: string;
+  scopes?: string[];
 }
 
 export function authenticateRequest(req: http.IncomingMessage, parsedUrl: URL, body?: any): RequestAuth {
   // 1. Check Master Admin Secret first (Header, query param, or body)
   const adminSecret = (req.headers['x-admin-secret'] as string) || parsedUrl.searchParams.get('adminSecret') || (body && (body.adminSecret || body.secret));
   if (adminSecret && (verifyAdminAccess(adminSecret) || isValidAdminWebSecret(adminSecret))) {
-    return { authenticated: true, role: 'master_admin', userId: 'MASTER_ADMIN' };
+    if (isAppPackaged() && process.env.MAHI_ENABLE_LOCAL_SUPER_ADMIN !== '1') {
+      return { authenticated: false };
+    }
+    return { authenticated: true, role: 'master_admin', userId: 'MASTER_ADMIN', scopes: ['*'] };
   }
 
   // 2. Bearer token
@@ -184,18 +200,26 @@ export function authenticateRequest(req: http.IncomingMessage, parsedUrl: URL, b
 
   if (tokenToTest) {
     if (isValidApiToken(tokenToTest)) {
-      return { authenticated: true, role: 'master_admin', userId: 'MASTER_ADMIN' };
+      if (isAppPackaged() && process.env.MAHI_ENABLE_LOCAL_SUPER_ADMIN !== '1') {
+        return { authenticated: false };
+      }
+      return { authenticated: true, role: 'master_admin', userId: 'MASTER_ADMIN', scopes: ['*'] };
     }
     try {
       const session = getAccountSession();
       if (session?.token && session.token === tokenToTest) {
-        return { authenticated: true, role: 'user', userId: session.account_id || 'USER' };
+        return { authenticated: true, role: 'user', userId: session.account_id || 'USER', scopes: ['*'] };
       }
     } catch {}
 
     const bearerApiKeyCheck = validateApiKey(tokenToTest);
     if (bearerApiKeyCheck) {
-      return { authenticated: true, role: 'user', userId: bearerApiKeyCheck.userId || 'API_USER' };
+      return {
+        authenticated: true,
+        role: 'user',
+        userId: bearerApiKeyCheck.userId || 'API_USER',
+        scopes: bearerApiKeyCheck.scopes,
+      };
     }
   }
 
@@ -204,7 +228,12 @@ export function authenticateRequest(req: http.IncomingMessage, parsedUrl: URL, b
   if (apiKey) {
     const keyCheck = validateApiKey(apiKey);
     if (keyCheck) {
-      return { authenticated: true, role: 'user', userId: keyCheck.userId || 'API_USER' };
+      return {
+        authenticated: true,
+        role: 'user',
+        userId: keyCheck.userId || 'API_USER',
+        scopes: keyCheck.scopes,
+      };
     }
   }
 
@@ -215,11 +244,25 @@ function checkMutatingAuth(req: http.IncomingMessage, parsedUrl: URL, body?: any
   return authenticateRequest(req, parsedUrl, body).authenticated;
 }
 
-function requireUserOrAdminAuth(req: http.IncomingMessage, res: http.ServerResponse, parsedUrl: URL, body?: any): RequestAuth | null {
+function requireUserOrAdminAuth(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  parsedUrl: URL,
+  body?: any,
+  requiredScope?: string
+): RequestAuth | null {
   const auth = authenticateRequest(req, parsedUrl, body);
   if (!auth.authenticated) {
     sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication credentials required.' });
     return null;
+  }
+  if (requiredScope && auth.role !== 'master_admin') {
+    if (auth.scopes && auth.scopes.length > 0 && !auth.scopes.includes('*')) {
+      if (!auth.scopes.includes(requiredScope)) {
+        sendJSON(res, 403, { success: false, error: `Forbidden. Missing required scope: ${requiredScope}` });
+        return null;
+      }
+    }
   }
   return auth;
 }
@@ -585,7 +628,7 @@ export function startApiServer(): void {
 
     // 7. Profiles V2 Endpoints
     if (pathname === '/api/v2/profiles' && method === 'GET') {
-      if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
+      if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:read')) return;
       const activeOwnerId = getLocalApiOwnerId();
       sendJSON(res, 200, { success: true, data: getProfiles({ ownerId: activeOwnerId }) });
       return;
@@ -593,7 +636,7 @@ export function startApiServer(): void {
     if (pathname === '/api/v2/profiles' && method === 'POST') {
       try {
         const body = await parseBody(req);
-        if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return;
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
         assertCanCreateProfile(1);
         const activeOwnerId = getLocalApiOwnerId();
         const profile = createProfile({ ...body, ownerId: activeOwnerId });
@@ -606,9 +649,10 @@ export function startApiServer(): void {
     const profileV2Action = pathname.match(/^\/api\/v2\/profiles\/([a-zA-Z0-9_-]+)\/(start|stop|clone)$/);
     if (profileV2Action && method === 'POST') {
       const body = await parseBody(req);
-      if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return;
-      const profileId = profileV2Action[1];
       const action = profileV2Action[2];
+      const requiredScope = action === 'clone' ? 'profiles:write' : 'profiles:launch';
+      if (!requireUserOrAdminAuth(req, res, parsedUrl, body, requiredScope)) return;
+      const profileId = profileV2Action[1];
       const activeOwnerId = getLocalApiOwnerId();
       const existing = getProfileById(profileId, activeOwnerId);
       if (!existing) {

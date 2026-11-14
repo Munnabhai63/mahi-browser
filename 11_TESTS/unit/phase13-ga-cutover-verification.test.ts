@@ -7,6 +7,7 @@ import { getCommercialPlans, getCommercialPlanById } from '../../07_BACKEND/comm
 import { StripePaymentAdapter } from '../../07_BACKEND/commercial/payment-service.js';
 import { logCommercialAudit } from '../../07_BACKEND/commercial/commercial-audit-service.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
+import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 
 describe('Phase 13: Final GA Cutover & Production Release Closure Verification Suite', () => {
   beforeAll(async () => {
@@ -202,7 +203,7 @@ describe('Phase 13: Final GA Cutover & Production Release Closure Verification S
       expect(fs.existsSync(manifestPath)).toBe(true);
 
       const manifestContent = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-      expect(manifestContent.version).toBe('1.1.1');
+      expect(manifestContent.version).toBe(APP_VERSION);
       expect(manifestContent.channel).toBe('STABLE');
       expect(manifestContent.sha256).toBeDefined();
       expect(manifestContent.sha256.length).toBe(64); // Hex SHA-256

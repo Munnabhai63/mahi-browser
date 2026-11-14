@@ -27,6 +27,7 @@ import { useAccountStore } from '../stores/useAccountStore.js';
 import { AccountDropdown } from './AccountDropdown.js';
 import { UpgradeModal } from './UpgradeModal.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
+import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
 
 export type NavigationPage =
   | 'dashboard'
@@ -179,7 +180,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
         <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2 block">Official Support</span>
         <div className="space-y-1.5">
           <a
-            href="https://wa.me/919376343629"
+            href={CONTACT_CONFIG.whatsappUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 group hover:bg-emerald-500/10 text-slate-400 hover:text-emerald-400"
@@ -191,7 +192,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
             <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-emerald-500/20 text-emerald-400 font-extrabold">24/7</span>
           </a>
           <a
-            href="mailto:mahiverse.official@gmail.com"
+            href={`mailto:${CONTACT_CONFIG.supportEmail}`}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 group hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-400"

@@ -4,6 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { getDistributionInfo } from '../../03_HARDWARE/distribution-service.js';
 import { getDownloadPortalHtml } from '../../07_BACKEND/server/download-portal-html.js';
+import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 
 describe('Phase 15: Windows Release Branding, Artifact Naming & SmartScreen Diagnostic Suite', () => {
 
@@ -27,7 +28,7 @@ describe('Phase 15: Windows Release Branding, Artifact Naming & SmartScreen Diag
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 
       expect(pkg.author).toBe('Munna Bhai');
-      expect(pkg.version).toMatch(/^1\.1\.[1-4]$/);
+      expect(pkg.version).toMatch(/^1\.1\.\d+$/);
     });
 
   });
@@ -70,18 +71,19 @@ describe('Phase 15: Windows Release Branding, Artifact Naming & SmartScreen Diag
   describe('3. Step 10 & 17: Release Artifact Verification & Old Unsigned Artifact Removal', () => {
     it('verifies professional installer and portable release artifacts exist with valid hashes', () => {
       const releaseDir = path.resolve(process.cwd(), 'release');
-      const setupPath = path.join(releaseDir, 'MAHI-Browser-Setup-1.1.1.exe');
-      const portablePath = path.join(releaseDir, 'MAHI-Browser-Portable-1.1.1.exe');
       const manifestPath = path.join(releaseDir, 'latest.json');
-
-      expect(fs.existsSync(setupPath)).toBe(true);
-      expect(fs.existsSync(portablePath)).toBe(true);
       expect(fs.existsSync(manifestPath)).toBe(true);
 
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-      expect(manifest.version).toBe('1.1.1');
+      expect(manifest.version).toBe(APP_VERSION);
 
-      const setupFile = manifest.files.find((f: any) => f.name === 'MAHI-Browser-Setup-1.1.1.exe');
+      const setupPath = path.join(releaseDir, `MAHI-Browser-Setup-${manifest.version}.exe`);
+      const portablePath = path.join(releaseDir, `MAHI-Browser-Portable-${manifest.version}.exe`);
+
+      expect(fs.existsSync(setupPath)).toBe(true);
+      expect(fs.existsSync(portablePath)).toBe(true);
+
+      const setupFile = manifest.files.find((f: any) => f.name === `MAHI-Browser-Setup-${manifest.version}.exe`);
       expect(setupFile).toBeDefined();
 
       const setupHash = crypto.createHash('sha256').update(fs.readFileSync(setupPath)).digest('hex');
@@ -102,9 +104,9 @@ describe('Phase 15: Windows Release Branding, Artifact Naming & SmartScreen Diag
     it('verifies distribution service serves versioned filename and accurate metadata', () => {
       const info = getDistributionInfo();
 
-      expect(info.setupFileName).toMatch(/^MAHI-Browser-Setup-1\.1\.[1-4]\.exe$/);
-      expect(info.portableFileName).toMatch(/^MAHI-Browser-Portable-1\.1\.[1-4]\.exe$/);
-      expect(info.version).toMatch(/^1\.1\.[1-4]$/);
+      expect(info.setupFileName).toMatch(/^MAHI-Browser-Setup-1\.1\.\d+\.exe$/);
+      expect(info.portableFileName).toMatch(/^MAHI-Browser-Portable-1\.1\.\d+\.exe$/);
+      expect(info.version).toMatch(/^1\.1\.\d+$/);
 
       expect(info.setupAvailable).toBe(true);
       expect(info.setupSizeMB).toBeGreaterThan(50);

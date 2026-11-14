@@ -6,7 +6,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { getDatabase, initSqlEngine } from '../../06_DATABASE/connection.js';
+import { getDatabase, initSqlEngine, setCustomDatabasePath, closeDatabase } from '../../06_DATABASE/connection.js';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import {
   sessionScheduler,
@@ -28,10 +28,22 @@ describe('Phase 10: Cloud Browser Infrastructure & Control Plane Architecture', 
   const testUserId = `user_cloud_test_${Date.now()}`;
   const testProfileId = `prof_cloud_test_${Date.now()}`;
   const testWorkspaceId = `ws_cloud_test_${Date.now()}`;
+  const testDbDir = path.resolve('.mahi_data', 'test-cloud-browser-isolated');
+  const testDbPath = path.join(testDbDir, 'cloud_browser_test.sqlite');
 
   beforeAll(async () => {
+    if (!fs.existsSync(testDbDir)) fs.mkdirSync(testDbDir, { recursive: true });
+    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+    setCustomDatabasePath(testDbPath);
     await initSqlEngine();
-    initializeDatabase();
+    await initializeDatabase();
+  });
+
+  afterAll(() => {
+    closeDatabase();
+    try {
+      if (fs.existsSync(testDbDir)) fs.rmSync(testDbDir, { recursive: true, force: true });
+    } catch {}
   });
 
   beforeEach(() => {

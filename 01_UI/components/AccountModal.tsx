@@ -25,6 +25,7 @@ import {
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { BrandLogo } from './BrandLogo.js';
+import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -537,11 +538,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
   const isProActive = planLimits?.isPro || false;
 
   const priceInr = paymentInfo?.price_inr || 1499;
-  const upiId = paymentInfo?.upi_id || '6375823589@slc';
-  const upiHolder = paymentInfo?.upi_account_holder || 'Mr Mahipal Choudhary';
-  const upiQrAsset = paymentInfo?.upi_qr_asset || '/brand/mahi-upi-qr.png';
-  const waNumber = paymentInfo?.whatsapp_number || '+91 9376343629';
-  const waCleanNumber = waNumber.replace(/[^0-9]/g, '') || '919376343629';
+  const upiId = paymentInfo?.upi_id || CONTACT_CONFIG.UPI_ID;
+  const upiHolder = paymentInfo?.upi_account_holder || CONTACT_CONFIG.UPI_ACCOUNT_HOLDER;
+  const upiQrAsset = paymentInfo?.upi_qr_asset || CONTACT_CONFIG.UPI_QR_ASSET;
+  const waNumber = paymentInfo?.whatsapp_number || CONTACT_CONFIG.WHATSAPP_NUMBER;
+  const waCleanNumber = waNumber.replace(/[^0-9]/g, '') || CONTACT_CONFIG.WHATSAPP_RAW_NUMBER;
 
   const handleSubmitPayment = async (e: React.FormEvent) => {
     e.preventDefault();
