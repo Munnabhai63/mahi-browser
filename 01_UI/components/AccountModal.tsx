@@ -882,7 +882,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                     rel="noreferrer"
                     className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-xs border border-slate-700/60 transition"
                   >
-                    <span>Need Help? Contact WhatsApp Support (+91 9376343629)</span>
+                    <span>Need Help? Contact WhatsApp Support ({CONTACT_CONFIG.WHATSAPP_DISPLAY})</span>
                     <ExternalLink size={12} />
                   </a>
                 </div>

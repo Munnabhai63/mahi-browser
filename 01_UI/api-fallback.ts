@@ -2,6 +2,7 @@ import { MahiBrowserAPI } from '../10_CONFIG/shared/types/ipc.js';
 import { Profile } from '../10_CONFIG/shared/types/profile.js';
 import { getDefaultProfileSettings } from '../10_CONFIG/shared/constants/defaults.js';
 import { APP_VERSION } from '../10_CONFIG/shared/version.js';
+import { CONTACT_CONFIG } from '../10_CONFIG/contact-config.js';
 
 // Resilient API fallback — routes ALL calls through the local REST API
 // This activates when preload/IPC is not available (e.g. ESM preload failure)
@@ -701,16 +702,16 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     accountSwitchDevice: async () => ({ success: true, message: 'Device rebound' }),
     accountGetSession: async () => null,
     accountGetPaymentInfo: async () => ({
-      upi_id: '6375823589@slc',
-      upi_account_holder: 'Mr Mahipal Choudhary',
-      upi_qr_asset: '/brand/mahi-upi-qr.png',
-      price_inr: 1499,
+      upi_id: CONTACT_CONFIG.UPI_ID,
+      upi_account_holder: CONTACT_CONFIG.UPI_ACCOUNT_HOLDER,
+      upi_qr_asset: CONTACT_CONFIG.UPI_QR_ASSET,
+      price_inr: CONTACT_CONFIG.DEFAULT_PRICE_INR,
       price_usd: 19,
-      price_usdt: 0,
-      usdt_address: '',
-      usdt_network: '',
+      price_usdt: CONTACT_CONFIG.DEFAULT_PRICE_USDT,
+      usdt_address: CONTACT_CONFIG.USDT_ADDRESS,
+      usdt_network: CONTACT_CONFIG.USDT_NETWORK,
       usdt_enabled: false,
-      whatsapp_number: '+91 9376343629',
+      whatsapp_number: CONTACT_CONFIG.WHATSAPP_NUMBER,
     }),
     accountSubmitManualUpiPayment: async () => ({
       success: true,

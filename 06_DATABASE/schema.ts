@@ -1502,8 +1502,13 @@ export async function initializeDatabase(): Promise<void> {
       workspace_id TEXT,
       session_id TEXT NOT NULL,
       duration_seconds INTEGER NOT NULL,
-      started_at TEXT NOT NULL,
-      ended_at TEXT NOT NULL
+      resource_class TEXT NOT NULL DEFAULT 'STANDARD',
+      region_id TEXT NOT NULL DEFAULT 'in-west',
+      created_at TEXT NOT NULL
     );
   `);
+
+  addColumnIfNotExists(db, 'cloud_browser_usage', 'resource_class', "TEXT NOT NULL DEFAULT 'STANDARD'");
+  addColumnIfNotExists(db, 'cloud_browser_usage', 'region_id', "TEXT NOT NULL DEFAULT 'in-west'");
+  addColumnIfNotExists(db, 'cloud_browser_usage', 'created_at', "TEXT");
 }

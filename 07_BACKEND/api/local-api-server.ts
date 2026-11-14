@@ -69,7 +69,7 @@ import { CreateProfileDTOSchema } from '../../10_CONFIG/shared/validation/schema
 import { getAccountSession } from '../../08_SECURITY/account-service.js';
 import { getActiveUserId } from '../commercial/session-context.js';
 
-function getLocalApiOwnerId(): string {
+export function getLocalApiOwnerId(): string {
   const session = getAccountSession();
   if (session?.account_id) return session.account_id;
   const activeUser = getActiveUserId();
@@ -637,8 +637,8 @@ export function startApiServer(): void {
       try {
         const body = await parseBody(req);
         if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
-        assertCanCreateProfile(1);
         const activeOwnerId = getLocalApiOwnerId();
+        assertCanCreateProfile(1, activeOwnerId);
         const profile = createProfile({ ...body, ownerId: activeOwnerId });
         sendJSON(res, 201, { success: true, data: profile });
       } catch (err: any) {
@@ -672,7 +672,7 @@ export function startApiServer(): void {
       }
       if (action === 'clone') {
         try {
-          assertCanCreateProfile(1);
+          assertCanCreateProfile(1, activeOwnerId);
           const cloned = cloneProfile(profileId, body.name || undefined, activeOwnerId);
           sendJSON(res, 201, { success: true, data: cloned });
         } catch (err: any) {
@@ -703,9 +703,10 @@ export function startApiServer(): void {
       if (pathname === '/profiles' && method === 'POST') {
         try {
           const body = await parseBody(req);
-          assertCanCreateProfile(1);
+          const activeOwnerId = getLocalApiOwnerId();
+          assertCanCreateProfile(1, activeOwnerId);
           const validated = CreateProfileDTOSchema.parse(body);
-          const result = createProfile({ ...validated, ownerId: getLocalApiOwnerId() });
+          const result = createProfile({ ...validated, ownerId: activeOwnerId });
           sendJSON(res, 201, { success: true, data: result });
         } catch (err: any) {
           sendJSON(res, 400, { success: false, error: sanitizeError(err) });
@@ -715,8 +716,9 @@ export function startApiServer(): void {
 
       if (pathname === '/profiles/bulk' && method === 'POST') {
         const body = await parseBody(req);
-        assertCanCreateProfile(body?.count || 1);
-        const result = bulkCreateProfiles({ ...body, ownerId: getLocalApiOwnerId() });
+        const activeOwnerId = getLocalApiOwnerId();
+        assertCanCreateProfile(body?.count || 1, activeOwnerId);
+        const result = bulkCreateProfiles({ ...body, ownerId: activeOwnerId });
         sendJSON(res, 201, { success: true, data: result });
         return;
       }
@@ -906,7 +908,7 @@ export function startApiServer(): void {
         const activeOwnerId = getLocalApiOwnerId();
         const existing = getProfileById(id, activeOwnerId);
         if (!existing) return sendJSON(res, 404, { success: false, error: 'Source profile not found or access denied' });
-        assertCanCreateProfile(1);
+        assertCanCreateProfile(1, activeOwnerId);
         const body = await parseBody(req);
         const p = cloneProfile({
           sourceProfileId: id,

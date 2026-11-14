@@ -300,8 +300,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:create', async (_event, dto) => {
     try {
-      assertCanCreateProfile(1);
       const activeOwnerId = getActiveOwnerId();
+      assertCanCreateProfile(1, activeOwnerId);
       const validated = CreateProfileDTOSchema.parse(dto);
       // Strictly bind to server-validated session ID
       return createProfile({
@@ -315,8 +315,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:bulkCreate', async (_event, dto) => {
     try {
-      assertCanCreateProfile(dto?.count || 1);
       const activeOwnerId = getActiveOwnerId();
+      assertCanCreateProfile(dto?.count || 1, activeOwnerId);
       return bulkCreateProfiles({
         ...dto,
         ownerId: activeOwnerId,
@@ -399,8 +399,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:clone', async (_event, dto) => {
     try {
-      assertCanCreateProfile(1);
       const activeOwnerId = getActiveOwnerId();
+      assertCanCreateProfile(1, activeOwnerId);
       const existing = getProfileById(dto.sourceProfileId, activeOwnerId);
       if (!existing) {
         throw new Error(`Source profile ${dto.sourceProfileId} not found or access denied`);
@@ -989,8 +989,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('archive:import', async (_event, options) => {
     try {
-      assertCanCreateProfile(1);
       const activeOwnerId = getActiveOwnerId();
+      assertCanCreateProfile(1, options?.ownerId || activeOwnerId);
       return importProfileFromArchive({
         ...options,
         ownerId: options?.ownerId || activeOwnerId,
@@ -1031,7 +1031,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('archive:importCrossPlatform', async (_event, dto) => {
     try {
-      assertCanCreateProfile(1);
+      const activeOwnerId = getActiveOwnerId();
+      assertCanCreateProfile(1, activeOwnerId);
       return importCrossPlatformProfiles(dto);
     } catch (err) {
       throw new Error(sanitizeError(err));
@@ -1578,7 +1579,7 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('license:getLimits', async () => {
-    return getPlanLimitsInfo();
+    return getPlanLimitsInfo(getActiveOwnerId());
   });
 
   ipcMain.handle('admin:createLicense', async (_event, _dto, _adminSecret: string) => {
@@ -2269,7 +2270,8 @@ export function registerIpcHandlers(): void {
   });
   ipcMain.handle('sync:restore', async (_e, cloudProfileId: string, options?: any) => {
     assertCapability('cloud.sync');
-    assertCanCreateProfile(1);
+    const activeOwnerId = getActiveOwnerId();
+    assertCanCreateProfile(1, activeOwnerId);
     return downloadAndRestoreProfile(cloudProfileId, options);
   });
   ipcMain.handle('sync:delete', async (_e, cloudProfileId: string) => deleteCloudProfile(cloudProfileId));

@@ -6,7 +6,8 @@ import { verifyLicense } from './license-service.js';
 import { isOnlineRevoked, isGraceExpired } from './license-status-service.js';
 import { getDynamicPrice } from './price-service.js';
 import { getDatabase } from '../06_DATABASE/connection.js';
-import { hasValidAccountSubscription, getAccountPlanLimits, isBusinessPlan, readCachedStatus } from './account-service.js';
+import { hasValidAccountSubscription, getAccountPlanLimits, isBusinessPlan, readCachedStatus, getAccountSession } from './account-service.js';
+import { getActiveUserId } from '../07_BACKEND/commercial/session-context.js';
 
 function getUserDataPath(): string {
   try {
@@ -68,12 +69,30 @@ export function hasValidLicense(): boolean {
 }
 
 /**
+ * Resolves the effective owner ID for quota enforcement.
+ * Defaults to authenticated session account_id, then active memory user ID,
+ * and finally 'SYSTEM_OWNER' (desktop guest).
+ */
+export function resolveDefaultOwnerId(explicitOwnerId?: string): string {
+  if (explicitOwnerId) return explicitOwnerId;
+  try {
+    const session = getAccountSession();
+    if (session?.account_id) return session.account_id;
+  } catch {}
+  try {
+    const activeUserId = getActiveUserId();
+    if (activeUserId) return activeUserId;
+  } catch {}
+  return 'SYSTEM_OWNER';
+}
+
+/**
  * Returns current number of active (non-deleted) profiles in the database.
- * Supports isolation by owner_id (defaults to 'SYSTEM_OWNER' for desktop guest profiles).
+ * Supports isolation by owner_id (defaults to active user or 'SYSTEM_OWNER' for desktop guest profiles).
  */
 export function getNonDeletedProfileCount(ownerId?: string): number {
   try {
-    const targetOwner = ownerId || 'SYSTEM_OWNER';
+    const targetOwner = resolveDefaultOwnerId(ownerId);
     const db = getDatabase();
     if (targetOwner === 'SYSTEM_OWNER') {
       const row = db.prepare(
@@ -105,8 +124,9 @@ export function isUserPro(): boolean {
  * Throws a user-friendly error if the limit is exceeded.
  */
 export function assertCanCreateProfile(additionalCount = 1, ownerId?: string): void {
-  const currentCount = getNonDeletedProfileCount(ownerId);
-  const limits = getPlanLimitsInfo(ownerId);
+  const resolvedOwner = resolveDefaultOwnerId(ownerId);
+  const currentCount = getNonDeletedProfileCount(resolvedOwner);
+  const limits = getPlanLimitsInfo(resolvedOwner);
 
   if (currentCount + additionalCount > limits.maxProfiles) {
     if (limits.maxProfiles <= FREE_PROFILE_LIMIT) {
@@ -152,12 +172,13 @@ export function getPlanLimitsInfo(ownerId?: string): {
   }
 
   const tier: 'FREE' | 'PRO' | 'BUSINESS' = isBiz ? 'BUSINESS' : isPro ? 'PRO' : 'FREE';
+  const resolvedOwner = resolveDefaultOwnerId(ownerId);
 
   return {
     isLicensed,
     isPro,
     isBusiness: isBiz,
-    currentCount: getNonDeletedProfileCount(ownerId),
+    currentCount: getNonDeletedProfileCount(resolvedOwner),
     maxProfiles,
     freeLimit: FREE_PROFILE_LIMIT,
     proLimit: PRO_PROFILE_LIMIT,

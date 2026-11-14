@@ -30,6 +30,7 @@ import { assertCanCreateProfile } from '../../08_SECURITY/freemium-guard.js';
 import {
   authenticateRequest,
   isLocalSuperAdminEnabled,
+  getLocalApiOwnerId,
   getCorsHeaders,
   checkSuperAdminRateLimit,
   recordFailedSuperAdminAttempt,
@@ -350,9 +351,11 @@ export function createCentralApiServer(): http.Server {
       if (pathname === '/api/v2/profiles' && method === 'POST') {
         try {
           const body = await parseBody(req);
-          if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
-          assertCanCreateProfile(1);
-          const profile = createProfile(body);
+          const auth = requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write');
+          if (!auth) return;
+          const ownerId = auth.userId || getLocalApiOwnerId();
+          assertCanCreateProfile(1, ownerId);
+          const profile = createProfile({ ...body, ownerId: body.ownerId || ownerId });
           return sendJSON(res, 201, { success: true, data: profile });
         } catch (err: any) {
           return sendJSON(res, 400, { success: false, error: err.message });
@@ -388,7 +391,8 @@ export function createCentralApiServer(): http.Server {
         const body = await parseBody(req);
         const action = profileActionMatch[2];
         const requiredScope = action === 'clone' ? 'profiles:write' : 'profiles:launch';
-        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, requiredScope)) return;
+        const auth = requireUserOrAdminAuth(req, res, parsedUrl, body, requiredScope);
+        if (!auth) return;
         const profileId = profileActionMatch[1];
 
         if (action === 'start') {
@@ -402,8 +406,9 @@ export function createCentralApiServer(): http.Server {
         }
         if (action === 'clone') {
           try {
-            assertCanCreateProfile(1);
-            const cloned = cloneProfile(profileId, body.name || undefined);
+            const ownerId = auth.userId || getLocalApiOwnerId();
+            assertCanCreateProfile(1, ownerId);
+            const cloned = cloneProfile(profileId, body.name || undefined, ownerId);
             return sendJSON(res, 201, { success: true, data: cloned });
           } catch (err: any) {
             return sendJSON(res, 400, { success: false, error: err.message });
