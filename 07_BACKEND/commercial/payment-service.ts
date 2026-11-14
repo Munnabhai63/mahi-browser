@@ -124,34 +124,30 @@ export class StripePaymentAdapter implements PaymentProvider {
     amountCents: number
   ): Promise<CheckoutSessionResponse> {
     const stripeApiKey = process.env.STRIPE_SECRET_KEY;
-    const isTest = process.env.NODE_ENV === 'test' || !stripeApiKey;
+    const isTest = process.env.NODE_ENV === 'test' || process.env.PAYMENT_ALLOW_TEST_ADAPTERS === 'true';
 
     // Fast deterministic simulation fallback for unit tests when live API key is not provided
-    if (isTest && !stripeApiKey) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new PaymentGatewayNotConfiguredError('stripe');
-      }
-      const sessionId = `cs_test_${crypto.randomBytes(16).toString('hex')}`;
-      const checkoutUrl = `https://checkout.stripe.com/c/pay/${sessionId}`;
-
-      return {
-        sessionId,
-        checkoutUrl,
-        orderId: `ord_stripe_${Date.now()}`,
-        amountCents,
-        currency: 'USD',
-        provider: 'stripe',
-        planId: plan.id,
-        billingCycle: req.billingCycle,
-        createdAt: new Date().toISOString(),
-        gatewayMeta: {
-          stripeSessionId: sessionId,
-          stripePublicKey: process.env.STRIPE_PUBLISHABLE_KEY || 'pk_test_mock',
-        },
-      };
-    }
-
     if (!stripeApiKey) {
+      if (isTest) {
+        const sessionId = `cs_test_${crypto.randomBytes(16).toString('hex')}`;
+        const checkoutUrl = `https://checkout.stripe.com/c/pay/${sessionId}`;
+
+        return {
+          sessionId,
+          checkoutUrl,
+          orderId: `ord_stripe_${Date.now()}`,
+          amountCents,
+          currency: req.currency || 'USD',
+          provider: 'stripe',
+          planId: plan.id,
+          billingCycle: req.billingCycle,
+          createdAt: new Date().toISOString(),
+          gatewayMeta: {
+            stripeSessionId: sessionId,
+            stripePublicKey: process.env.STRIPE_PUBLISHABLE_KEY || 'pk_test_mock',
+          },
+        };
+      }
       throw new PaymentGatewayNotConfiguredError('stripe');
     }
 
@@ -277,8 +273,15 @@ export function verifyRazorpayPaymentSignature(
   secret?: string
 ): boolean {
   if (!orderId || !paymentId || !signature) return false;
-  const effectiveSecret =
-    secret || process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_WEBHOOK_SECRET || 'rzp_sec_mahi_production_secret';
+  const envSecret = process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_WEBHOOK_SECRET;
+  let effectiveSecret = secret || envSecret;
+  if (!effectiveSecret) {
+    if (process.env.NODE_ENV === 'test' || process.env.PAYMENT_ALLOW_TEST_ADAPTERS === 'true') {
+      effectiveSecret = 'rzp_sec_mahi_production_secret';
+    } else {
+      return false;
+    }
+  }
   const text = `${orderId}|${paymentId}`;
   const expectedSig = crypto.createHmac('sha256', effectiveSecret).update(text).digest('hex');
 
@@ -299,37 +302,33 @@ export class RazorpayPaymentAdapter implements PaymentProvider {
   ): Promise<CheckoutSessionResponse> {
     const keyId = process.env.RAZORPAY_KEY_ID;
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
-    const isTest = process.env.NODE_ENV === 'test' || !keyId || !keySecret;
-
-    if (isTest && (!keyId || !keySecret)) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new PaymentGatewayNotConfiguredError('razorpay');
-      }
-      const orderId = `order_${crypto.randomBytes(12).toString('hex')}`;
-      const checkoutUrl = `https://api.razorpay.com/v1/checkout/${orderId}`;
-
-      return {
-        sessionId: orderId,
-        checkoutUrl,
-        orderId,
-        amountCents,
-        currency: 'INR',
-        provider: 'razorpay',
-        planId: plan.id,
-        billingCycle: req.billingCycle,
-        createdAt: new Date().toISOString(),
-        gatewayMeta: {
-          razorpayKeyId: 'rzp_test_mock_key',
-          razorpayOrderId: orderId,
-          amount: amountCents,
-          currency: 'INR',
-          name: 'MAHI Browser',
-          description: `Subscription: ${plan.name} (${req.billingCycle})`,
-        },
-      };
-    }
+    const isTest = process.env.NODE_ENV === 'test' || process.env.PAYMENT_ALLOW_TEST_ADAPTERS === 'true';
 
     if (!keyId || !keySecret) {
+      if (isTest) {
+        const orderId = `order_${crypto.randomBytes(12).toString('hex')}`;
+        const checkoutUrl = `https://api.razorpay.com/v1/checkout/${orderId}`;
+
+        return {
+          sessionId: orderId,
+          checkoutUrl,
+          orderId,
+          amountCents,
+          currency: 'INR',
+          provider: 'razorpay',
+          planId: plan.id,
+          billingCycle: req.billingCycle,
+          createdAt: new Date().toISOString(),
+          gatewayMeta: {
+            razorpayKeyId: 'rzp_test_mock_key',
+            razorpayOrderId: orderId,
+            amount: amountCents,
+            currency: 'INR',
+            name: 'MAHI Browser',
+            description: `Subscription: ${plan.name} (${req.billingCycle})`,
+          },
+        };
+      }
       throw new PaymentGatewayNotConfiguredError('razorpay');
     }
 
@@ -450,7 +449,7 @@ export class SimulationPaymentAdapter implements PaymentProvider {
       checkoutUrl,
       orderId: `sim_ord_${Date.now()}`,
       amountCents,
-      currency: 'USD',
+      currency: req.currency || (plan.currency as any) || 'USD',
       provider: 'simulation',
       planId: plan.id,
       billingCycle: req.billingCycle,
@@ -580,7 +579,23 @@ export class PaymentService {
       throw new Error('Free tier does not require checkout payment.');
     }
 
-    const amountCents = this.calculatePlanAmountCents(plan, req.billingCycle);
+    let amountCents: number;
+    let authoritativeBreakdown: any = null;
+    const isLegacyPlan = plan.id.startsWith('plan_') && plan.priceMonthly > 0;
+
+    if (isLegacyPlan && !req.extraMembers && !req.extraProxyGb && (!req.currency || req.currency === 'USD')) {
+      amountCents = this.calculatePlanAmountCents(plan, req.billingCycle);
+    } else {
+      const orderTotal = calculateAuthoritativeOrderTotal({
+        planId: req.planId,
+        billingCycle: req.billingCycle,
+        currency: req.currency || (plan.id.startsWith('plan_') ? 'USD' : 'INR'),
+        extraMembers: req.extraMembers,
+        extraProxyGb: req.extraProxyGb,
+      });
+      amountCents = orderTotal.totalChargeMinor;
+      authoritativeBreakdown = orderTotal;
+    }
 
     // 3. Check Idempotency Key
     if (req.idempotencyKey) {
@@ -629,7 +644,14 @@ export class PaymentService {
       plan.id,
       req.billingCycle,
       session.checkoutUrl,
-      JSON.stringify({ userId: req.userId, planId: plan.id, billingCycle: req.billingCycle }),
+      JSON.stringify({
+        userId: req.userId,
+        planId: plan.id,
+        billingCycle: req.billingCycle,
+        extraMembers: req.extraMembers || 0,
+        extraProxyGb: req.extraProxyGb || 0,
+        authoritativeBreakdown,
+      }),
       now,
       now
     );
@@ -1019,7 +1041,8 @@ export class PaymentService {
       extraMembers: params.extraMembers,
       extraProxyGb: params.extraProxyGb,
     });
-    const amountPaise = params.amountPaise && params.amountPaise > 0 ? params.amountPaise : orderTotal.totalChargeMinor;
+    // ALWAYS enforce server-calculated authoritative order total. Never accept client amountPaise!
+    const amountPaise = orderTotal.totalChargeMinor;
 
     const paymentId = `pay_upi_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     const externalOrderId = `upi_ord_${Date.now()}`;
@@ -1040,7 +1063,14 @@ export class PaymentService {
       plan.id,
       cycle,
       params.proofAsset || null,
-      JSON.stringify({ utr: cleanUtr, proofAsset: params.proofAsset, submittedAt: now }),
+      JSON.stringify({
+        utr: cleanUtr,
+        proofAsset: params.proofAsset,
+        submittedAt: now,
+        extraMembers: params.extraMembers || 0,
+        extraProxyGb: params.extraProxyGb || 0,
+        orderTotal,
+      }),
       now,
       now
     );
@@ -1145,7 +1175,7 @@ export class PaymentService {
 
     db.prepare(`
       UPDATE commercial_payments
-      SET status = 'FAILED', metadata_json = ?, updated_at = ?
+      SET status = 'REJECTED', metadata_json = ?, updated_at = ?
       WHERE id = ?
     `).run(JSON.stringify(meta), now, payment.id);
 
@@ -1164,7 +1194,7 @@ export class PaymentService {
     return {
       success: true,
       paymentId: payment.id,
-      status: 'FAILED',
+      status: 'REJECTED',
       reason,
     };
   }

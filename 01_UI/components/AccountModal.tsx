@@ -21,6 +21,7 @@ import {
   ArrowLeft,
   Check,
   Users,
+  Clock,
 } from 'lucide-react';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
@@ -37,6 +38,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     accountSession,
     planLimits,
     paymentInfo,
+    pricingCatalog,
+    paymentHistory,
+    selectedPlanTier,
     pendingProfileDto,
     clearPendingProfileDto,
     accountSignup,
@@ -46,6 +50,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     accountSwitchDevice,
     fetchPlanLimits,
     fetchPaymentInfo,
+    fetchPricingCatalog,
+    fetchPaymentHistory,
+    createCheckoutSession,
     activeSessions,
     fetchActiveSessions,
     revokeSession,
@@ -90,6 +97,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     if (isOpen) {
       fetchPlanLimits({ force: true }).catch(() => {});
       fetchPaymentInfo().catch(() => {});
+      fetchPricingCatalog().catch(() => {});
+      fetchPaymentHistory().catch(() => {});
       if (isUserLoggedIn) {
         fetchActiveSessions().catch(() => {});
       }
@@ -98,6 +107,14 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       setDeviceMismatchError(false);
     }
   }, [isOpen, isUserLoggedIn]);
+
+  useEffect(() => {
+    if (selectedPlanTier === 'BUSINESS') {
+      setSelectedPlanId('business_starter');
+    } else if (selectedPlanTier === 'PRO') {
+      setSelectedPlanId('professional_50');
+    }
+  }, [selectedPlanTier]);
 
   // Auto-dismiss modal when login completes during Google or deep-link auth
   useEffect(() => {
@@ -550,9 +567,52 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     { id: 'business_enterprise', name: 'Team 300 (Unlimited)', profiles: 300, rateMonthly: 5999 },
   ];
 
-  const activePlanMeta = DESKTOP_PLANS.find(p => p.id === selectedPlanId) || DESKTOP_PLANS[0];
+  const dynamicPlans = React.useMemo(() => {
+    if (!pricingCatalog) return DESKTOP_PLANS;
+    const items: Array<{ id: string; name: string; profiles: number; rateMonthly: number }> = [];
+    if (Array.isArray(pricingCatalog.personal)) {
+      for (const p of pricingCatalog.personal) {
+        items.push({
+          id: p.planId,
+          name: p.displayName,
+          profiles: p.profileLimit,
+          rateMonthly: Math.round((p.monthlyPricePaise || 0) / 100),
+        });
+      }
+    }
+    if (Array.isArray(pricingCatalog.business)) {
+      for (const p of pricingCatalog.business) {
+        items.push({
+          id: p.planId,
+          name: `${p.displayName} (${p.seatLimit ? `${p.seatLimit} Seats` : 'Team'})`,
+          profiles: p.profileLimit,
+          rateMonthly: Math.round((p.monthlyPricePaise || 0) / 100),
+        });
+      }
+    }
+    return items.length > 0 ? items : DESKTOP_PLANS;
+  }, [pricingCatalog]);
+
+  const activePlanMeta = dynamicPlans.find(p => p.id === selectedPlanId) || dynamicPlans[0];
   const effectiveMonthlyInr = selectedBillingCycle === 'ANNUAL' ? Math.round(activePlanMeta.rateMonthly * 0.5) : activePlanMeta.rateMonthly;
   const priceInr = selectedBillingCycle === 'ANNUAL' ? effectiveMonthlyInr * 12 : effectiveMonthlyInr;
+
+  const latestPayment = (paymentHistory && paymentHistory.length > 0) ? paymentHistory[0] : null;
+
+  const handleOnlineCheckout = async () => {
+    try {
+      const res = await createCheckoutSession({
+        planId: selectedPlanId,
+        billingCycle: selectedBillingCycle,
+      });
+      if (res?.success && res.checkoutUrl) {
+        window.open(res.checkoutUrl, '_blank');
+        return;
+      }
+    } catch {}
+    const url = `https://mahibrowser.com/pricing?checkout=1&plan=${selectedPlanId}&billing=${selectedBillingCycle.toLowerCase()}`;
+    window.open(url, '_blank');
+  };
 
   const upiId = paymentInfo?.upi_id || CONTACT_CONFIG.UPI_ID;
   const upiHolder = paymentInfo?.upi_account_holder || CONTACT_CONFIG.UPI_ACCOUNT_HOLDER;
@@ -583,6 +643,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
       if (res.success) {
         setPaymentSubmittedStatus(res.status || 'PENDING_VERIFICATION');
+        fetchPaymentHistory().catch(() => {});
         showToast({
           type: 'success',
           title: 'Payment Submitted',
@@ -778,7 +839,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                         onChange={(e) => setSelectedPlanId(e.target.value)}
                         className="bg-slate-900 border border-slate-700 text-teal-300 font-bold text-xs rounded-lg px-2.5 py-1.5 outline-none cursor-pointer"
                       >
-                        {DESKTOP_PLANS.map((p) => (
+                        {dynamicPlans.map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.name} ({p.profiles} Profiles) — ₹{p.rateMonthly}/mo
                           </option>
@@ -877,12 +938,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
                       <button
                         type="button"
-                        onClick={() => {
-                          const url = `https://mahibrowser.com/pricing?checkout=1&plan=${selectedPlanId}&billing=${selectedBillingCycle.toLowerCase()}`;
-                          window.open(url, '_blank');
-                        }}
+                        onClick={handleOnlineCheckout}
                         className="py-2 px-3 rounded-xl bg-indigo-600/90 hover:bg-indigo-600 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5"
-                        title="Checkout via Cards / Stripe / Razorpay in browser"
+                        title="Checkout online in browser"
                       >
                         <Sparkles size={13} />
                         <span>Online Cards</span>
@@ -897,6 +955,57 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                         <span>{showPaymentForm ? 'Hide Form' : 'I Have Paid'}</span>
                       </button>
                     </div>
+
+                    {/* Latest Payment Status / History Banner */}
+                    {(latestPayment || paymentSubmittedStatus) && (
+                      <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                        (latestPayment?.status === 'SUCCEEDED' || paymentSubmittedStatus === 'SUCCEEDED')
+                          ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
+                          : (latestPayment?.status === 'REJECTED' || latestPayment?.status === 'FAILED')
+                          ? 'bg-rose-950/40 border-rose-800/60 text-rose-300'
+                          : 'bg-amber-950/40 border-amber-800/60 text-amber-300'
+                      }`}>
+                        <div className="flex items-center justify-between font-bold">
+                          <div className="flex items-center gap-1.5">
+                            {(latestPayment?.status === 'SUCCEEDED' || paymentSubmittedStatus === 'SUCCEEDED') ? (
+                              <CheckCircle2 size={14} className="text-emerald-400" />
+                            ) : (latestPayment?.status === 'REJECTED' || latestPayment?.status === 'FAILED') ? (
+                              <AlertTriangle size={14} className="text-rose-400" />
+                            ) : (
+                              <Clock size={14} className="text-amber-400" />
+                            )}
+                            <span>Payment Status: {latestPayment?.status || paymentSubmittedStatus}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              fetchPaymentHistory();
+                              fetchPlanLimits({ force: true });
+                              showToast({ type: 'info', title: 'Refreshed', message: 'Payment status updated.' });
+                            }}
+                            className="text-[11px] flex items-center gap-1 text-slate-300 hover:text-white px-2 py-0.5 rounded bg-slate-800/80 transition"
+                          >
+                            <RotateCcw size={11} />
+                            <span>Refresh Status</span>
+                          </button>
+                        </div>
+                        {latestPayment?.external_payment_id && (
+                          <div className="text-[11px] font-mono text-slate-400">
+                            Ref: {latestPayment.external_payment_id}
+                          </div>
+                        )}
+                        {(latestPayment?.status === 'REJECTED' || latestPayment?.status === 'FAILED') && (
+                          <p className="text-[11px] text-rose-300 leading-relaxed font-semibold">
+                            Rejection Reason: {latestPayment?.rejection_reason || 'Verification was declined. Please verify your UTR and resubmit.'}
+                          </p>
+                        )}
+                        {(latestPayment?.status === 'PENDING_VERIFICATION' || paymentSubmittedStatus === 'PENDING_VERIFICATION') && (
+                          <p className="text-[11px] text-amber-300/90 leading-relaxed">
+                            Your payment is under review. An administrator will verify and activate your subscription.
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     {/* Verification Form */}
                     {showPaymentForm && (

@@ -23,7 +23,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({
 
   const handleUpgradeClick = () => {
     onClose();
-    openAccountModal();
+    openAccountModal(requiredPlan);
   };
 
   const isProUser = Boolean(
@@ -33,8 +33,10 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({
     planLimits?.plan?.startsWith('pro_')
   );
 
+  const freeLimitCount = (planLimits as any)?.freeLimit || (planLimits as any)?.maxProfiles || 15;
+
   const proFeatures = [
-    'Up to 100 anti-detect browser profiles (vs 15 Free)',
+    `Up to 100 anti-detect browser profiles (vs ${freeLimitCount} Free)`,
     'End-to-end encrypted Cloud Sync & Multi-Device sync',
     'Built-in commercial residential & mobile proxy access',
     'Visual RPA Automation & Cookie Warmer execution',

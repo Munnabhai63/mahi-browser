@@ -3035,14 +3035,14 @@ function initPricingSection() {
       const addedMembers = extraMembers[planKey] || 0;
       const addedGb = extraProxyGb[planKey] || 0;
 
-      // Minor-Units (cents/paise) arithmetic matching GoLogin production pricing engine
+      // Minor-Units (cents/paise) arithmetic matching canonical calculateAuthoritativeOrderTotal
       const baseMonthlyMinor = Math.round((plan.monthly * 100) * currCfg.multiplier);
       const memberMinor = addedMembers * currCfg.memberAddonMinor;
       const proxyMinor = addedGb * currCfg.gbAddonMinor;
+      const discountedBaseMonthlyMinor = isAnnual ? Math.round(baseMonthlyMinor * 0.5) : baseMonthlyMinor;
       const totalMonthlyMinor = baseMonthlyMinor + memberMinor + proxyMinor;
-      const totalAnnualMonthlyMinor = Math.round(totalMonthlyMinor * 0.5); // 50% discount
 
-      const activeMinor = isAnnual ? totalAnnualMonthlyMinor : totalMonthlyMinor;
+      const activeMinor = discountedBaseMonthlyMinor + memberMinor + proxyMinor;
       const activeValue = activeMinor / 100;
       const priceDisplay = activeValue.toLocaleString(currCfg.locale, {
         minimumFractionDigits: currentCurrency === 'INR' ? 0 : 2,
@@ -3467,29 +3467,34 @@ function calculateDrawerTotals() {
   const members = Math.max(0, checkoutDrawerState.extraMembers || 0);
   const proxyGb = Math.max(0, checkoutDrawerState.extraProxyGb || 0);
 
-  // Minor unit arithmetic matching canonical catalog
+  // Minor unit arithmetic matching canonical catalog (calculateAuthoritativeOrderTotal)
   const memberAddonInr = 499;
   const memberAddonUsd = 6;
   const proxyAddonInr = 199;
   const proxyAddonUsd = 3;
 
-  const totalMonthlyInr = meta.baseInr + (members * memberAddonInr) + (proxyGb * proxyAddonInr);
-  const totalMonthlyUsd = meta.baseUsd + (members * memberAddonUsd) + (proxyGb * proxyAddonUsd);
+  // Annual 50% discount applies to base plan rate only
+  const discountedBaseMonthlyInr = isAnnual ? Math.round(meta.baseInr * 0.5) : meta.baseInr;
+  const discountedBaseMonthlyUsd = isAnnual ? Math.round(meta.baseUsd * 0.5) : meta.baseUsd;
 
-  let finalInr = 0;
-  let finalUsd = 0;
-  let monthlyEquivalentInr = totalMonthlyInr;
-  let monthlyEquivalentUsd = totalMonthlyUsd;
+  const billingMonths = isAnnual ? 12 : 1;
+  const baseChargeInr = discountedBaseMonthlyInr * billingMonths;
+  const baseChargeUsd = discountedBaseMonthlyUsd * billingMonths;
 
-  if (isAnnual) {
-    monthlyEquivalentInr = Math.round(totalMonthlyInr * 0.5);
-    monthlyEquivalentUsd = Math.round(totalMonthlyUsd * 0.5);
-    finalInr = monthlyEquivalentInr * 12;
-    finalUsd = monthlyEquivalentUsd * 12;
-  } else {
-    finalInr = totalMonthlyInr;
-    finalUsd = totalMonthlyUsd;
-  }
+  const extraMembersTotalInr = members * memberAddonInr * billingMonths;
+  const extraMembersTotalUsd = members * memberAddonUsd * billingMonths;
+
+  const extraProxyGbTotalInr = proxyGb * proxyAddonInr * billingMonths;
+  const extraProxyGbTotalUsd = proxyGb * proxyAddonUsd * billingMonths;
+
+  const totalMonthlyInr = discountedBaseMonthlyInr + (members * memberAddonInr) + (proxyGb * proxyAddonInr);
+  const totalMonthlyUsd = discountedBaseMonthlyUsd + (members * memberAddonUsd) + (proxyGb * proxyAddonUsd);
+
+  const finalInr = baseChargeInr + extraMembersTotalInr + extraProxyGbTotalInr;
+  const finalUsd = baseChargeUsd + extraMembersTotalUsd + extraProxyGbTotalUsd;
+
+  const monthlyEquivalentInr = isAnnual ? Math.round(finalInr / 12) : finalInr;
+  const monthlyEquivalentUsd = isAnnual ? Math.round(finalUsd / 12) : finalUsd;
 
   return {
     meta,
@@ -3667,9 +3672,9 @@ function renderDrawerContent() {
   const totals = calculateDrawerTotals();
   const gateway = checkoutDrawerState.selectedGateway;
   const payInfo = checkoutDrawerState.paymentInfo || {
-    upi_id: 'mahibrowser@upi',
+    upi_id: '6375823589@slc',
     upi_account_holder: 'MAHI Browser Commercial',
-    upi_qr_asset: '/landing/assets/img/upi-qr.png'
+    upi_qr_asset: '/assets/img/payments/mahi-upi-qr.png'
   };
 
   drawer.innerHTML = `

@@ -658,7 +658,6 @@ export async function handleCommercialApiRoutes(
     }
     const planId = body.planId || body.plan_id || body.plan || 'professional_10';
     const billingCycle = ((body.billingCycle || body.billing_cycle || body.billing || 'MONTHLY') as string).toUpperCase() as 'MONTHLY' | 'ANNUAL';
-    const amountPaise = body.amountPaise || body.amount_paise || body.amountMinor || body.amount;
     const proofAsset = body.proofAsset || body.proof_asset || body.receiptUrl || body.receipt_url;
     const extraMembers = body.extraMembers || body.extra_members;
     const extraProxyGb = body.extraProxyGb || body.extra_proxy_gb;
@@ -669,7 +668,6 @@ export async function handleCommercialApiRoutes(
         planId,
         billingCycle,
         utr,
-        amountPaise: amountPaise ? Number(amountPaise) : undefined,
         proofAsset,
         extraMembers: extraMembers ? Number(extraMembers) : undefined,
         extraProxyGb: extraProxyGb ? Number(extraProxyGb) : undefined,
@@ -793,16 +791,34 @@ export async function handleCommercialApiRoutes(
 
     const db = getDatabase();
     const pending = db.prepare('SELECT * FROM commercial_payments WHERE external_order_id = ? OR id = ?').get(razorpay_order_id, razorpay_order_id) as any;
-    const planId = pending?.plan_id || body.planId || 'professional_10';
-    const billingCycle = (pending?.billing_cycle || body.billingCycle || 'MONTHLY') as 'MONTHLY' | 'ANNUAL';
-    const amountCents = pending?.amount_cents || 59900;
+    if (!pending) {
+      sendJSON(res, 404, { success: false, error: 'Order not found.' });
+      return true;
+    }
+    if (pending.user_id !== auth.userId) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden. Order belongs to another user.' });
+      return true;
+    }
+    if (pending.status === 'SUCCEEDED') {
+      const existingSub = paymentService.getUserSubscription(auth.userId);
+      sendJSON(res, 200, {
+        success: true,
+        message: 'Payment already verified and subscription activated.',
+        subscription: existingSub,
+      });
+      return true;
+    }
+
+    const planId = pending.plan_id;
+    const billingCycle = (pending.billing_cycle || 'MONTHLY') as 'MONTHLY' | 'ANNUAL';
+    const amountCents = pending.amount_cents;
 
     const result = await paymentService.activateSubscriptionFromPayment({
       userId: auth.userId,
       planId,
       billingCycle,
       amountCents,
-      currency: 'INR',
+      currency: pending.currency || 'INR',
       provider: 'razorpay',
       externalPaymentId: razorpay_payment_id,
       externalOrderId: razorpay_order_id,
@@ -2246,7 +2262,7 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 200, {
         success: true,
         payment_id: paymentId,
-        status: 'FAILED',
+        status: result.status || 'REJECTED',
         message: 'Payment rejected successfully.',
         reason,
         data: result,

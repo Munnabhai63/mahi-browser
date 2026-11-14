@@ -28,6 +28,7 @@ import {
 import { handleCommercialApiRoutes } from '../../07_BACKEND/commercial/commercial-api-router.js';
 import { registerCentralUser } from '../../05_AUTH/central-auth-service.js';
 import { getAdminWebSecret } from '../../08_SECURITY/install-secrets.js';
+import { getWebAdminHtml } from '../../07_BACKEND/server/web-admin-html.js';
 
 describe('STEP 2 COMMERCIAL MISSION — Unified Pricing, Checkout & UPI Lifecycle', () => {
   let userAId: string;
@@ -404,12 +405,12 @@ describe('STEP 2 COMMERCIAL MISSION — Unified Pricing, Checkout & UPI Lifecycl
       const adminActor = { id: 'admin_1', name: 'Master Admin', role: 'SUPER_ADMIN' };
       const rejectRes = await paymentService.rejectManualPayment(submitRes.paymentId, adminActor, 'Fake UTR reference');
       expect(rejectRes.success).toBe(true);
-      expect(rejectRes.status).toBe('FAILED');
+      expect(rejectRes.status).toBe('REJECTED');
       expect(rejectRes.reason).toBe('Fake UTR reference');
 
       const db = getDatabase();
       const pRow = db.prepare('SELECT status, metadata_json FROM commercial_payments WHERE id = ?').get(submitRes.paymentId) as any;
-      expect(pRow.status).toBe('FAILED');
+      expect(pRow.status).toBe('REJECTED');
       expect(pRow.metadata_json).toContain('Fake UTR reference');
     });
   });
@@ -537,6 +538,106 @@ describe('STEP 2 COMMERCIAL MISSION — Unified Pricing, Checkout & UPI Lifecycl
       // 3. Forbidden for non-admin
       const unauthRes = await invokeRoute('POST', `/api/v1/admin/payments/${submitRes.paymentId}/approve`);
       expect(unauthRes.status).toBe(403);
+    });
+
+    it('createCheckoutSession computes non-zero authoritative INR paise and USD cents for canonical plans with add-ons', async () => {
+      // professional_50 monthly (2999/mo) + 2 extra members (499/mo each) + 10GB proxy (199/mo each) = 5987/mo
+      const sessionInr = await paymentService.createCheckoutSession({
+        userId: userAId,
+        planId: 'professional_50',
+        billingCycle: 'MONTHLY',
+        currency: 'INR',
+        extraMembers: 2,
+        extraProxyGb: 10,
+        gateway: 'simulation',
+      });
+      const expectedMonthly = calculateAuthoritativeOrderTotal({
+        planId: 'professional_50',
+        billingCycle: 'MONTHLY',
+        extraMembers: 2,
+        extraProxyGb: 10,
+        currency: 'INR',
+      }).totalChargeMinor;
+      expect(sessionInr.amountCents).toBe(expectedMonthly);
+      expect(sessionInr.amountCents).toBe(598700);
+      expect(sessionInr.currency).toBe('INR');
+
+      const sessionAnnual = await paymentService.createCheckoutSession({
+        userId: userAId,
+        planId: 'professional_50',
+        billingCycle: 'ANNUAL',
+        currency: 'INR',
+        extraMembers: 2,
+        extraProxyGb: 10,
+        gateway: 'simulation',
+      });
+      const expectedAnnual = calculateAuthoritativeOrderTotal({
+        planId: 'professional_50',
+        billingCycle: 'ANNUAL',
+        extraMembers: 2,
+        extraProxyGb: 10,
+        currency: 'INR',
+      }).totalChargeMinor;
+      expect(sessionAnnual.amountCents).toBe(expectedAnnual);
+      expect(sessionAnnual.amountCents).toBe(5385000);
+    });
+
+    it('submitManualUpiPayment ignores client amountPaise tampering and enforces authoritative total', async () => {
+      const utr = `TAMPER${Date.now()}`;
+      const res = await paymentService.submitManualUpiPayment({
+        userId: userAId,
+        planId: 'professional_10',
+        billingCycle: 'MONTHLY',
+        amountPaise: 1, // Tampered amount
+        utr,
+      });
+
+      expect(res.paymentId).toBeDefined();
+      const db = getDatabase();
+      const record = db.prepare('SELECT amount_cents FROM commercial_payments WHERE id = ?').get(res.paymentId) as any;
+      expect(record.amount_cents).toBe(59900); // 599 INR (59900 paise), not 1 paisa!
+    });
+
+    it('throws PaymentGatewayNotConfiguredError when gateway keys are missing and test mode is disabled', async () => {
+      const oldEnv = process.env.NODE_ENV;
+      const oldAllow = process.env.PAYMENT_ALLOW_TEST_ADAPTERS;
+      try {
+        delete (process.env as any).NODE_ENV;
+        delete (process.env as any).PAYMENT_ALLOW_TEST_ADAPTERS;
+
+        const stripeAdapter = new StripePaymentAdapter();
+        await expect(
+          stripeAdapter.createCheckoutSession({
+            userId: userAId,
+            planId: 'professional_10',
+            billingCycle: 'MONTHLY',
+            amountCents: 59900,
+            currency: 'INR',
+          })
+        ).rejects.toThrow(PaymentGatewayNotConfiguredError);
+
+        const razorpayAdapter = new RazorpayPaymentAdapter();
+        await expect(
+          razorpayAdapter.createCheckoutSession({
+            userId: userAId,
+            planId: 'professional_10',
+            billingCycle: 'MONTHLY',
+            amountCents: 59900,
+            currency: 'INR',
+          })
+        ).rejects.toThrow(PaymentGatewayNotConfiguredError);
+      } finally {
+        process.env.NODE_ENV = oldEnv;
+        if (oldAllow !== undefined) process.env.PAYMENT_ALLOW_TEST_ADAPTERS = oldAllow;
+      }
+    });
+
+    it('escapes XSS payloads in admin payments table and enforces safe proof URL protocols', () => {
+      const html = getWebAdminHtml();
+      expect(html).toContain('function escapeHtml(str)');
+      expect(html).toContain('escapeHtml(safeProofAsset)');
+      expect(html).toContain('escapeHtml(p.id)');
+      expect(html).toContain("p.metadata.proofAsset.startsWith('https://') || p.metadata.proofAsset.startsWith('/')");
     });
   });
 });

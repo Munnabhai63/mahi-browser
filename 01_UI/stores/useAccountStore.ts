@@ -47,6 +47,7 @@ interface AccountState {
   pricingCatalog: any | null;
   paymentHistory: any[];
   pendingProfileDto: any | null;
+  selectedPlanTier?: string | null;
 
   setDashboardRole: (role: 'ADMIN' | 'STUDENT') => void;
   openAccountModal: (pendingDto?: any) => void;
@@ -135,11 +136,18 @@ export const useAccountStore = create<AccountState>()(
       pricingCatalog: null,
       paymentHistory: [],
       pendingProfileDto: null,
+      selectedPlanTier: null,
       activeSessions: [],
 
       setDashboardRole: (role) => set({ dashboardRole: role }),
-      openAccountModal: (pendingDto) => set({ isAccountModalOpen: true, pendingProfileDto: pendingDto || null }),
-      closeAccountModal: () => set({ isAccountModalOpen: false, pendingProfileDto: null }),
+      openAccountModal: (param?: any) => {
+        if (typeof param === 'string') {
+          set({ isAccountModalOpen: true, selectedPlanTier: param, pendingProfileDto: null });
+        } else {
+          set({ isAccountModalOpen: true, pendingProfileDto: param || null, selectedPlanTier: null });
+        }
+      },
+      closeAccountModal: () => set({ isAccountModalOpen: false, pendingProfileDto: null, selectedPlanTier: null }),
       clearPendingProfileDto: () => set({ pendingProfileDto: null }),
 
       fetchPlanLimits: async (dto?: { force?: boolean }) => {

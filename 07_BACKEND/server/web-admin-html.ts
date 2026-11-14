@@ -214,6 +214,16 @@ export function getWebAdminHtml(): string {
       setTimeout(() => toast.remove(), 3500);
     }
 
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function switchPage(page) {
       currentPage = page;
       document.querySelectorAll('.nav-item').forEach(el => {
@@ -1801,6 +1811,7 @@ export function getWebAdminHtml(): string {
                   \${list.length > 0 ? list.map(p => {
                     const isPending = p.status === 'PENDING_VERIFICATION';
                     const isSucceeded = p.status === 'SUCCEEDED';
+                    const isRejected = p.status === 'REJECTED' || p.status === 'FAILED';
                     const amountFormatted = p.currency === 'INR'
                       ? '₹' + (p.amountCents / 100).toLocaleString('en-IN')
                       : '$' + (p.amountCents / 100).toFixed(2);
@@ -1808,37 +1819,51 @@ export function getWebAdminHtml(): string {
                       ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Pending Review</span>'
                       : isSucceeded
                       ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Succeeded</span>'
-                      : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">Failed</span>';
+                      : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">Rejected</span>';
+
+                    const safeProofAsset = (p.metadata?.proofAsset && (p.metadata.proofAsset.startsWith('https://') || p.metadata.proofAsset.startsWith('/')))
+                      ? p.metadata.proofAsset
+                      : null;
+                    const proofHtml = safeProofAsset
+                      ? \\\`<a href="\${escapeHtml(safeProofAsset)}" target="_blank" rel="noopener noreferrer" class="text-[10px] text-emerald-600 hover:underline block mt-0.5 font-medium">View Proof</a>\\\`
+                      : (p.metadata?.proofAsset ? \\\`<span class="text-[10px] text-slate-400 block mt-0.5">Proof: \${escapeHtml(p.metadata.proofAsset)}</span>\\\` : '');
+
+                    const rejectionHtml = (p.metadata?.rejectionReason && isRejected)
+                      ? \\\`<div class="text-[10px] text-rose-600 font-medium mt-0.5 leading-tight">Reason: \${escapeHtml(p.metadata.rejectionReason)}</div>\\\`
+                      : '';
 
                     return \`
                       <tr class="hover:bg-slate-50/80 transition-colors">
                         <td class="p-3">
-                          <div class="font-mono font-bold text-slate-800 text-[11px]">\${p.id}</div>
-                          <div class="text-[10px] text-slate-400 mt-0.5">\${new Date(p.createdAt).toLocaleString()}</div>
+                          <div class="font-mono font-bold text-slate-800 text-[11px]">\${escapeHtml(p.id)}</div>
+                          <div class="text-[10px] text-slate-400 mt-0.5">\${escapeHtml(new Date(p.createdAt).toLocaleString())}</div>
                         </td>
                         <td class="p-3">
-                          <div class="font-mono text-slate-700 text-[11px]">\${p.userId}</div>
+                          <div class="font-mono text-slate-700 text-[11px]">\${escapeHtml(p.userId)}</div>
                         </td>
                         <td class="p-3">
-                          <div class="font-bold text-slate-800 capitalize">\${(p.planId || '').replace(/_/g, ' ')}</div>
-                          <div class="text-[10px] text-slate-400 uppercase font-semibold">\${p.billingCycle}</div>
+                          <div class="font-bold text-slate-800 capitalize">\${escapeHtml((p.planId || '').replace(/_/g, ' '))}</div>
+                          <div class="text-[10px] text-slate-400 uppercase font-semibold">\${escapeHtml(p.billingCycle)}</div>
                         </td>
                         <td class="p-3 font-mono font-extrabold text-slate-900">\${amountFormatted}</td>
                         <td class="p-3">
                           <div class="flex items-center space-x-1.5">
-                            <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-600">\${p.provider}</span>
-                            <span class="font-mono font-bold text-slate-900 text-[11px]">\${p.externalPaymentId || '-'}</span>
+                            <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-600">\${escapeHtml(p.provider)}</span>
+                            <span class="font-mono font-bold text-slate-900 text-[11px]">\${escapeHtml(p.externalPaymentId || '-')}</span>
                           </div>
-                          \${p.metadata?.proofAsset ? \\\`<a href="\${p.metadata.proofAsset}" target="_blank" class="text-[10px] text-emerald-600 hover:underline">View Proof</a>\\\` : ''}
+                          \${proofHtml}
                         </td>
-                        <td class="p-3">\${statusBadge}</td>
+                        <td class="p-3">
+                          \${statusBadge}
+                          \${rejectionHtml}
+                        </td>
                         <td class="p-3 text-right">
                           \${isPending ? \`
                             <div class="flex items-center justify-end space-x-1.5">
-                              <button onclick="approvePayment('\${p.id}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold shadow-xs transition">
+                              <button onclick="approvePayment('\${escapeHtml(p.id)}')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold shadow-xs transition">
                                 Approve
                               </button>
-                              <button onclick="rejectPayment('\${p.id}')" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold transition">
+                              <button onclick="rejectPayment('\${escapeHtml(p.id)}')" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold transition">
                                 Reject
                               </button>
                             </div>

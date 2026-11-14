@@ -730,7 +730,10 @@ export async function submitManualUpiPayment(payload: {
   plan_id: string;
   utr: string;
   proof_asset?: string;
-}): Promise<{ success: boolean; payment_id?: string; status?: string; message?: string; error?: string }> {
+  billing_cycle?: string;
+  extra_members?: number;
+  extra_proxy_gb?: number;
+}): Promise<{ success: boolean; payment_id?: string; status?: string; utr?: string; amount_paise?: number; message?: string; error?: string }> {
   const session = loadEncryptedSession();
   if (!session?.token) throw new Error('No active account session');
 
@@ -747,9 +750,12 @@ export async function submitManualUpiPayment(payload: {
         'Authorization': `Bearer ${session.token}`,
       }
     }, {
-      plan_id: payload.plan_id || 'pro',
+      plan_id: payload.plan_id || 'professional_10',
+      billing_cycle: (payload.billing_cycle || 'MONTHLY').toUpperCase(),
       utr: utrClean,
       proof_asset: payload.proof_asset || '',
+      extra_members: payload.extra_members,
+      extra_proxy_gb: payload.extra_proxy_gb,
     });
 
     if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -757,6 +763,8 @@ export async function submitManualUpiPayment(payload: {
         success: true,
         payment_id: res.body?.payment_id,
         status: res.body?.status || 'PENDING_VERIFICATION',
+        utr: res.body?.utr || utrClean,
+        amount_paise: res.body?.amount_paise,
         message: res.body?.message || 'Payment submitted successfully for verification.',
       };
     }
@@ -770,6 +778,72 @@ export async function submitManualUpiPayment(payload: {
       success: false,
       error: err?.message || 'Network error while submitting payment'
     };
+  }
+}
+
+export async function fetchPricingCatalogFromServer(): Promise<{ success: boolean; catalog?: any; error?: string }> {
+  try {
+    const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/pricing/catalog`, { method: 'GET' });
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      return { success: true, catalog: res.body?.catalog || res.body?.data || res.body };
+    }
+  } catch {}
+  return { success: false, error: 'Failed to fetch catalog from server' };
+}
+
+export async function createCheckoutSessionFromServer(payload: any): Promise<{ success: boolean; session?: any; error?: string }> {
+  const session = loadEncryptedSession();
+  const token = session?.token || '';
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    headers['x-mahi-token'] = token;
+  }
+  try {
+    const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/billing/checkout`, {
+      method: 'POST',
+      headers,
+    }, {
+      planId: payload.planId || payload.plan_id,
+      billingCycle: (payload.billingCycle || payload.billing_cycle || 'ANNUAL').toUpperCase(),
+      currency: payload.currency || 'INR',
+      provider: payload.provider,
+      extraMembers: payload.extraMembers,
+      extraProxyGb: payload.extraProxyGb,
+      successUrl: payload.successUrl,
+      cancelUrl: payload.cancelUrl,
+    });
+    if (res.statusCode >= 200 && res.statusCode < 300 && res.body?.session) {
+      return { success: true, session: res.body.session };
+    }
+    return { success: false, error: res.body?.error || `Checkout failed (HTTP ${res.statusCode})` };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function fetchPaymentStatusFromServer(): Promise<{ success: boolean; payments?: any[]; error?: string }> {
+  const session = loadEncryptedSession();
+  const token = session?.token || '';
+  if (!token) {
+    return { success: false, error: 'Authentication required' };
+  }
+  try {
+    const res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/payments/status`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'x-mahi-token': token,
+      },
+    });
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      return { success: true, payments: res.body?.payments || res.body?.data || [] };
+    }
+    return { success: false, error: res.body?.error || `Status check failed (HTTP ${res.statusCode})` };
+  } catch (err: any) {
+    return { success: false, error: err.message };
   }
 }
 

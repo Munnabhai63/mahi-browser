@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow, app } from 'electron';
+import { ipcMain, dialog, BrowserWindow, app, shell } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
@@ -18,6 +18,9 @@ import {
   switchDevice as accountSwitchDevice,
   getPaymentInfo as accountGetPaymentInfo,
   submitManualUpiPayment as accountSubmitManualUpiPayment,
+  fetchPricingCatalogFromServer,
+  createCheckoutSessionFromServer,
+  fetchPaymentStatusFromServer,
   getAccountSession,
   getAccountPlanLimits,
   refreshAccountPlanLimits,
@@ -2330,70 +2333,108 @@ export function registerIpcHandlers(): void {
     return accountGetPaymentInfo();
   });
   ipcMain.handle('account:getPricingCatalog', async () => {
+    if (process.env.MAHI_LOCAL_COMMERCIAL_MODE === 'true') {
+      try {
+        return { success: true, catalog: buildPlanCatalog() };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    }
+    const remoteRes = await fetchPricingCatalogFromServer();
+    if (remoteRes.success && remoteRes.catalog) {
+      return remoteRes;
+    }
+    // Offline / fallback to local builder
     try {
       return { success: true, catalog: buildPlanCatalog() };
     } catch (err: any) {
       return { success: false, error: err.message };
     }
   });
+
   ipcMain.handle('account:createCheckoutSession', async (_e, payload: any) => {
-    try {
-      const session = getAccountSession();
-      const userId = session?.account_id || getActiveUserId() || 'SYSTEM_OWNER';
-      const result = await paymentService.createCheckoutSession({
-        userId,
-        planId: payload.planId || payload.plan_id,
-        billingCycle: (payload.billingCycle || payload.billing_cycle || 'ANNUAL').toUpperCase(),
-        currency: payload.currency || (payload.provider === 'razorpay' ? 'INR' : 'USD'),
-        extraMembers: payload.extraMembers,
-        extraProxyGb: payload.extraProxyGb,
-        successUrl: payload.successUrl,
-        cancelUrl: payload.cancelUrl,
-      }, payload.provider || 'razorpay');
-      return { success: true, session: result };
-    } catch (err: any) {
-      return { success: false, error: err.message };
-    }
-  });
-  ipcMain.handle('account:submitManualUpiPayment', async (_e, payload: any) => {
-    try {
-      const session = getAccountSession();
-      const userId = session?.account_id || getActiveUserId() || 'SYSTEM_OWNER';
-      const res = await paymentService.submitManualUpiPayment({
-        userId,
-        planId: payload.plan_id || payload.planId,
-        billingCycle: (payload.billing_cycle || payload.billingCycle || 'MONTHLY').toUpperCase() as any,
-        utr: payload.utr,
-        amountPaise: payload.amount_paise || payload.amountPaise,
-        proofAsset: payload.proof_asset || payload.proofAsset,
-        extraMembers: payload.extra_members || payload.extraMembers,
-        extraProxyGb: payload.extra_proxy_gb || payload.extraProxyGb,
-      });
-      return {
-        success: true,
-        payment_id: res.paymentId,
-        status: res.status,
-        utr: res.utr,
-        amount_paise: res.amountPaise,
-        message: 'Payment submitted successfully for verification.'
-      };
-    } catch (err: any) {
+    if (process.env.MAHI_LOCAL_COMMERCIAL_MODE === 'true') {
       try {
-        return await accountSubmitManualUpiPayment(payload);
-      } catch (remoteErr: any) {
-        return { success: false, error: err.message || remoteErr.message };
+        const session = getAccountSession();
+        const userId = session?.account_id || getActiveUserId() || 'SYSTEM_OWNER';
+        const result = await paymentService.createCheckoutSession({
+          userId,
+          planId: payload.planId || payload.plan_id,
+          billingCycle: (payload.billingCycle || payload.billing_cycle || 'ANNUAL').toUpperCase(),
+          currency: payload.currency || 'INR',
+          extraMembers: payload.extraMembers,
+          extraProxyGb: payload.extraProxyGb,
+          successUrl: payload.successUrl,
+          cancelUrl: payload.cancelUrl,
+        }, payload.provider);
+        return { success: true, session: result };
+      } catch (err: any) {
+        return { success: false, error: err.message };
       }
     }
-  });
-  ipcMain.handle('account:getPaymentStatus', async () => {
-    try {
-      const session = getAccountSession();
-      const userId = session?.account_id || getActiveUserId() || 'SYSTEM_OWNER';
-      const history = paymentService.getUserPaymentHistory(userId);
-      return { success: true, payments: history };
-    } catch (err: any) {
-      return { success: false, error: err.message };
+
+    const remoteRes = await createCheckoutSessionFromServer(payload);
+    if (remoteRes.success && remoteRes.session?.checkoutUrl) {
+      const url = remoteRes.session.checkoutUrl;
+      if (url.startsWith('https://') || url.startsWith('http://127.0.0.1') || url.startsWith('http://localhost')) {
+        try {
+          await shell.openExternal(url);
+        } catch {}
+      }
     }
+    return remoteRes;
+  });
+
+  ipcMain.handle('account:submitManualUpiPayment', async (_e, payload: any) => {
+    if (process.env.MAHI_LOCAL_COMMERCIAL_MODE === 'true') {
+      try {
+        const session = getAccountSession();
+        const userId = session?.account_id || getActiveUserId() || 'SYSTEM_OWNER';
+        const res = await paymentService.submitManualUpiPayment({
+          userId,
+          planId: payload.plan_id || payload.planId,
+          billingCycle: (payload.billing_cycle || payload.billingCycle || 'MONTHLY').toUpperCase() as any,
+          utr: payload.utr,
+          proofAsset: payload.proof_asset || payload.proofAsset,
+          extraMembers: payload.extra_members || payload.extraMembers,
+          extraProxyGb: payload.extra_proxy_gb || payload.extraProxyGb,
+        });
+        return {
+          success: true,
+          payment_id: res.paymentId,
+          status: res.status,
+          utr: res.utr,
+          amount_paise: res.amountPaise,
+          message: 'Payment submitted successfully for verification.'
+        };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    }
+
+    return await accountSubmitManualUpiPayment({
+      plan_id: payload.plan_id || payload.planId,
+      billing_cycle: payload.billing_cycle || payload.billingCycle,
+      utr: payload.utr,
+      proof_asset: payload.proof_asset || payload.proofAsset,
+      extra_members: payload.extra_members || payload.extraMembers,
+      extra_proxy_gb: payload.extra_proxy_gb || payload.extraProxyGb,
+    });
+  });
+
+  ipcMain.handle('account:getPaymentStatus', async () => {
+    if (process.env.MAHI_LOCAL_COMMERCIAL_MODE === 'true') {
+      try {
+        const session = getAccountSession();
+        const userId = session?.account_id || getActiveUserId() || 'SYSTEM_OWNER';
+        const history = paymentService.getUserPaymentHistory(userId);
+        return { success: true, payments: history };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    }
+
+    return await fetchPaymentStatusFromServer();
   });
   ipcMain.handle('account:getSession', async () => {
     return getAccountSession();
