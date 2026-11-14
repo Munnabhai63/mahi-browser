@@ -152,29 +152,37 @@ describe('MAHI Platform V2 — Enterprise Platform Verification Suite', () => {
 
   // TEST 6: REST API V2 Endpoints
   it('TEST 6: Central REST API V2 Endpoints (/health, /feature-flags, /folders, /fleet/telemetry)', async () => {
-    const fetchJson = async (path: string) => {
-      const res = await fetch(`http://127.0.0.1:${PORT}${path}`);
+    const { secretKey } = generateApiKey('Test V2 Enterprise Client', 'owner', ['profiles:read', 'profiles:write']);
+
+    const fetchJson = async (path: string, authHeader?: string) => {
+      const headers: Record<string, string> = {};
+      if (authHeader) headers['Authorization'] = authHeader;
+      const res = await fetch(`http://127.0.0.1:${PORT}${path}`, { headers });
       return { status: res.status, data: await res.json() };
     };
 
-    // Health
+    // Health (public, returns minimal status without info leak)
     const health = await fetchJson('/api/v2/health');
     expect(health.status).toBe(200);
     expect(health.data.status).toBe('HEALTHY');
-    expect(health.data.version).toBe('2.0.0');
+    expect(health.data.ok).toBe(true);
 
-    // Feature flags
-    const flags = await fetchJson('/api/v2/feature-flags');
+    // Unauthenticated access to protected v2 endpoints must fail with 401
+    const unauthFlags = await fetchJson('/api/v2/feature-flags');
+    expect(unauthFlags.status).toBe(401);
+
+    // Feature flags with API key authentication
+    const flags = await fetchJson('/api/v2/feature-flags', `Bearer ${secretKey}`);
     expect(flags.status).toBe(200);
     expect(Array.isArray(flags.data.data)).toBe(true);
 
-    // Folders
-    const folders = await fetchJson('/api/v2/folders');
+    // Folders with API key authentication
+    const folders = await fetchJson('/api/v2/folders', `Bearer ${secretKey}`);
     expect(folders.status).toBe(200);
     expect(Array.isArray(folders.data.data)).toBe(true);
 
-    // Fleet Telemetry
-    const telemetry = await fetchJson('/api/v2/fleet/telemetry');
+    // Fleet Telemetry with API key authentication
+    const telemetry = await fetchJson('/api/v2/fleet/telemetry', `Bearer ${secretKey}`);
     expect(telemetry.status).toBe(200);
     expect(telemetry.data.data.deviceId).toBeDefined();
   });

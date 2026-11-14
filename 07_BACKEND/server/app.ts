@@ -27,28 +27,45 @@ import { getDownloadPortalHtml } from './download-portal-html.js';
 import { getDistributionInfo, fixDesktopShortcuts } from '../../03_HARDWARE/distribution-service.js';
 import { handleCommercialApiRoutes } from '../commercial/commercial-api-router.js';
 import { assertCanCreateProfile } from '../../08_SECURITY/freemium-guard.js';
+import {
+  authenticateRequest,
+  isLocalSuperAdminEnabled,
+  getCorsHeaders,
+  checkSuperAdminRateLimit,
+  recordFailedSuperAdminAttempt,
+  recordSuccessfulSuperAdminAttempt,
+  RequestAuth,
+} from '../api/local-api-server.js';
+import { verifyAdminAccess } from '../../05_AUTH/admin-auth.js';
+import { isValidAdminWebSecret, getApiAuthToken } from '../../08_SECURITY/install-secrets.js';
+import { getProfileDebugPort } from '../../02_BROWSER/launcher.js';
 
 function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
+  const req = (res as any).__req as http.IncomingMessage | undefined;
+  const corsHeaders = req ? getCorsHeaders(req) : {};
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-API-Key',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    ...corsHeaders,
   });
   res.end(JSON.stringify(data));
 }
 
 function sendHTML(res: http.ServerResponse, statusCode: number, html: string) {
+  const req = (res as any).__req as http.IncomingMessage | undefined;
+  const corsHeaders = req ? getCorsHeaders(req) : {};
   res.writeHead(statusCode, {
     'Content-Type': 'text/html; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
+    'Content-Security-Policy': "default-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';",
+    ...corsHeaders,
   });
   res.end(html);
 }
 
 function sendFile(res: http.ServerResponse, filePath: string, filename: string) {
+  const req = (res as any).__req as http.IncomingMessage | undefined;
+  const corsHeaders = req ? getCorsHeaders(req) : {};
   if (!fs.existsSync(filePath)) {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.writeHead(404, { 'Content-Type': 'text/plain', ...corsHeaders });
     return res.end(`File not found: ${filename}`);
   }
   const stat = fs.statSync(filePath);
@@ -56,10 +73,32 @@ function sendFile(res: http.ServerResponse, filePath: string, filename: string) 
     'Content-Type': 'application/octet-stream',
     'Content-Length': stat.size,
     'Content-Disposition': `attachment; filename="${filename}"`,
-    'Access-Control-Allow-Origin': '*',
+    ...corsHeaders,
   });
   const stream = fs.createReadStream(filePath);
   stream.pipe(res);
+}
+
+function requireUserOrAdminAuth(req: http.IncomingMessage, res: http.ServerResponse, parsedUrl: URL, body?: any): RequestAuth | null {
+  const auth = authenticateRequest(req, parsedUrl, body);
+  if (!auth.authenticated) {
+    sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication credentials required.' });
+    return null;
+  }
+  return auth;
+}
+
+function requireMasterAdminAuth(req: http.IncomingMessage, res: http.ServerResponse, parsedUrl: URL, body?: any): RequestAuth | null {
+  const auth = authenticateRequest(req, parsedUrl, body);
+  if (!auth.authenticated) {
+    sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication credentials required.' });
+    return null;
+  }
+  if (auth.role !== 'master_admin') {
+    sendJSON(res, 403, { success: false, error: 'Forbidden. Master admin credentials required.' });
+    return null;
+  }
+  return auth;
 }
 
 function parseBody(req: http.IncomingMessage): Promise<any> {
@@ -82,13 +121,12 @@ function parseBody(req: http.IncomingMessage): Promise<any> {
 
 export function createCentralApiServer(): http.Server {
   return http.createServer(async (req, res) => {
+    (res as any).__req = req;
+
     // Handle CORS preflight
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-API-Key',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      });
+      const corsHeaders = getCorsHeaders(req);
+      res.writeHead(204, corsHeaders);
       res.end();
       return;
     }
@@ -103,6 +141,23 @@ export function createCentralApiServer(): http.Server {
       const handledCommercial = await handleCommercialApiRoutes(req, res, pathname, method, parsedUrl);
       if (handledCommercial) {
         return;
+      }
+
+      // Super Admin dynamic secret verification endpoint
+      if (pathname === '/api/v2/super-admin/auth/verify' && method === 'POST') {
+        const clientIp = req.socket.remoteAddress || '127.0.0.1';
+        if (!checkSuperAdminRateLimit(clientIp)) {
+          return sendJSON(res, 429, { success: false, error: 'Too many failed authentication attempts. Please try again later.' });
+        }
+        const body = await parseBody(req);
+        const secret = body.secret || body.pin || '';
+        if (verifyAdminAccess(secret) || isValidAdminWebSecret(secret)) {
+          recordSuccessfulSuperAdminAttempt(clientIp);
+          return sendJSON(res, 200, { success: true, token: getApiAuthToken() });
+        } else {
+          recordFailedSuperAdminAttempt(clientIp);
+          return sendJSON(res, 401, { success: false, error: 'Invalid master secret' });
+        }
       }
 
       // Static assets from landing/assets
@@ -127,8 +182,8 @@ export function createCentralApiServer(): http.Server {
           const mime = mimeMap[ext] || 'application/octet-stream';
           res.writeHead(200, {
             'Content-Type': mime,
-            'Access-Control-Allow-Origin': '*',
             'Cache-Control': 'public, max-age=3600',
+            ...getCorsHeaders(req),
           });
           return fs.createReadStream(assetFilePath).pipe(res);
         }
@@ -160,6 +215,9 @@ export function createCentralApiServer(): http.Server {
 
       // 0. Secret Super Admin Console
       if ((cleanPath === '/super-admin' || cleanPath === '/root-admin' || cleanPath === '/master-admin') && method === 'GET') {
+        if (!isLocalSuperAdminEnabled()) {
+          return sendJSON(res, 403, { success: false, error: 'Local Super Admin interface is disabled.' });
+        }
         return sendHTML(res, 200, getSuperAdminHtml());
       }
 
@@ -236,6 +294,7 @@ export function createCentralApiServer(): http.Server {
 
       // 0. Distribution Metadata API
       if (pathname === '/api/v2/distribution/info' && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
         return sendJSON(res, 200, { success: true, data: getDistributionInfo() });
       }
 
@@ -245,39 +304,40 @@ export function createCentralApiServer(): http.Server {
         return sendJSON(res, 200, result);
       }
 
-      // 1. Health Endpoint
+      // 1. Health Endpoint (minimal public response, zero info leak)
       if (cleanPath === '/health' || cleanPath === '/api/v2/health') {
         return sendJSON(res, 200, {
           status: 'HEALTHY',
-          version: '2.0.0',
-          platform: 'MAHI Platform V2',
-          uptime: process.uptime(),
-          timestamp: new Date().toISOString(),
+          ok: true,
         });
       }
 
       // 2. Feature Flags
       if (pathname === '/api/v2/feature-flags' && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
         return sendJSON(res, 200, { success: true, data: getFeatureFlags() });
       }
 
       const flagMatch = pathname.match(/^\/api\/v2\/feature-flags\/([a-zA-Z0-9_-]+)$/);
       if (flagMatch && method === 'PUT') {
-        const flagKey = flagMatch[1];
         const body = await parseBody(req);
+        if (!requireMasterAdminAuth(req, res, parsedUrl, body)) return;
+        const flagKey = flagMatch[1];
         const updated = updateFeatureFlag(flagKey, body);
         return sendJSON(res, 200, { success: true, data: updated });
       }
 
       // 3. Profiles Endpoint
       if (pathname === '/api/v2/profiles' && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
         return sendJSON(res, 200, { success: true, data: getProfiles() });
       }
 
       if (pathname === '/api/v2/profiles' && method === 'POST') {
         try {
-          assertCanCreateProfile(1);
           const body = await parseBody(req);
+          if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return;
+          assertCanCreateProfile(1);
           const profile = createProfile(body);
           return sendJSON(res, 201, { success: true, data: profile });
         } catch (err: any) {
@@ -290,16 +350,19 @@ export function createCentralApiServer(): http.Server {
       if (profileMatch) {
         const profileId = profileMatch[1];
         if (method === 'GET') {
+          if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
           const profile = getProfileById(profileId);
           if (!profile) return sendJSON(res, 404, { success: false, error: 'Profile not found' });
           return sendJSON(res, 200, { success: true, data: profile });
         }
         if (method === 'PUT') {
           const body = await parseBody(req);
+          if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return;
           const updated = updateProfile(profileId, body);
           return sendJSON(res, 200, { success: true, data: updated });
         }
         if (method === 'DELETE') {
+          if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
           const ok = deleteProfile(profileId);
           return sendJSON(res, 200, { success: ok });
         }
@@ -308,12 +371,15 @@ export function createCentralApiServer(): http.Server {
       // Profile Launch / Stop: /api/v2/profiles/:id/start & /api/v2/profiles/:id/stop
       const profileActionMatch = pathname.match(/^\/api\/v2\/profiles\/([a-zA-Z0-9_-]+)\/(start|stop|clone)$/);
       if (profileActionMatch && method === 'POST') {
+        const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return;
         const profileId = profileActionMatch[1];
         const action = profileActionMatch[2];
 
         if (action === 'start') {
           const result = await processManager.startProfile(profileId);
-          return sendJSON(res, result.success ? 200 : 500, result);
+          const cdpPort = getProfileDebugPort(profileId);
+          return sendJSON(res, result.success ? 200 : 500, { ...result, cdpPort });
         }
         if (action === 'stop') {
           const result = await processManager.stopProfile(profileId);
@@ -322,7 +388,6 @@ export function createCentralApiServer(): http.Server {
         if (action === 'clone') {
           try {
             assertCanCreateProfile(1);
-            const body = await parseBody(req);
             const cloned = cloneProfile(profileId, body.name || undefined);
             return sendJSON(res, 201, { success: true, data: cloned });
           } catch (err: any) {
@@ -333,33 +398,40 @@ export function createCentralApiServer(): http.Server {
 
       // 4. Folders
       if (pathname === '/api/v2/folders' && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
         return sendJSON(res, 200, { success: true, data: getFolders() });
       }
       if (pathname === '/api/v2/folders' && method === 'POST') {
         const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return;
         const folder = createFolder(body.name, body.parentId, body.color, body.icon);
         return sendJSON(res, 201, { success: true, data: folder });
       }
 
       // 5. Proxies
       if (pathname === '/api/v2/proxies' && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
         return sendJSON(res, 200, { success: true, data: getProxies() });
       }
       if (pathname === '/api/v2/proxies' && method === 'POST') {
         const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return;
         const proxy = createProxy(body);
         return sendJSON(res, 201, { success: true, data: proxy });
       }
 
       // 6. Fleet Telemetry & Devices
       if (pathname === '/api/v2/fleet/telemetry' && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
         return sendJSON(res, 200, { success: true, data: getLiveTelemetry() });
       }
       if (pathname === '/api/v2/fleet/devices' && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
         return sendJSON(res, 200, { success: true, data: getFleetDevices() });
       }
       const deviceMatch = pathname.match(/^\/api\/v2\/fleet\/devices\/([a-zA-Z0-9_-]+)$/);
       if (deviceMatch && method === 'DELETE') {
+        if (!requireMasterAdminAuth(req, res, parsedUrl)) return;
         const deviceId = deviceMatch[1];
         const ok = revokeDevice(deviceId);
         return sendJSON(res, 200, { success: ok });
@@ -367,10 +439,12 @@ export function createCentralApiServer(): http.Server {
 
       // 7. Developer API Keys
       if (pathname === '/api/v2/api-keys' && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
         return sendJSON(res, 200, { success: true, data: getApiKeys() });
       }
       if (pathname === '/api/v2/api-keys' && method === 'POST') {
         const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return;
         const result = generateApiKey(
           body.name || 'API-Key',
           body.userId || 'default-user',
@@ -380,6 +454,7 @@ export function createCentralApiServer(): http.Server {
       }
       const apiKeyMatch = pathname.match(/^\/api\/v2\/api-keys\/([a-zA-Z0-9_-]+)$/);
       if (apiKeyMatch && method === 'DELETE') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
         const keyId = apiKeyMatch[1];
         const ok = revokeApiKey(keyId);
         return sendJSON(res, 200, { success: ok });
@@ -387,18 +462,20 @@ export function createCentralApiServer(): http.Server {
 
       // 8. License Management & Minting Endpoints (Web Admin & Super Admin)
       if (pathname === '/api/v2/licenses' && method === 'GET') {
+        if (!requireMasterAdminAuth(req, res, parsedUrl)) return;
         return sendJSON(res, 200, { success: true, data: getLicenses() });
       }
 
-
       if (pathname === '/api/v2/licenses/revoke' && method === 'POST') {
         const body = await parseBody(req);
+        if (!requireMasterAdminAuth(req, res, parsedUrl, body)) return;
         const ok = revokeLicense(body.licenseId, body.reason || 'Revoked from Web Admin');
         return sendJSON(res, 200, { success: ok });
       }
 
       if (pathname === '/api/v2/licenses/extend' && method === 'POST') {
         const body = await parseBody(req);
+        if (!requireMasterAdminAuth(req, res, parsedUrl, body)) return;
         const record = extendLicense({
           licenseId: body.licenseId,
           additionalDays: parseInt(body.additionalDays, 10) || 30,
@@ -407,9 +484,53 @@ export function createCentralApiServer(): http.Server {
         return sendJSON(res, 200, { success: true, data: record });
       }
 
+      // 8b. Super Admin License List & Action
+      if (pathname === '/api/v2/super-admin/licenses/list' && method === 'GET') {
+        if (!isLocalSuperAdminEnabled()) {
+          return sendJSON(res, 403, { success: false, error: 'Local Super Admin interface is disabled.' });
+        }
+        if (!requireMasterAdminAuth(req, res, parsedUrl)) return;
+        try {
+          const db = getDatabase();
+          const licenses = db.prepare('SELECT * FROM licenses ORDER BY created_at DESC').all();
+          return sendJSON(res, 200, { success: true, data: licenses });
+        } catch (err: any) {
+          return sendJSON(res, 500, { success: false, error: err.message });
+        }
+      }
+
+      if (pathname === '/api/v2/super-admin/licenses/action' && method === 'POST') {
+        if (!isLocalSuperAdminEnabled()) {
+          return sendJSON(res, 403, { success: false, error: 'Local Super Admin interface is disabled.' });
+        }
+        try {
+          const body = await parseBody(req);
+          if (!requireMasterAdminAuth(req, res, parsedUrl, body)) return;
+          const db = getDatabase();
+
+          if (body.action === 'delete') {
+            db.prepare('DELETE FROM licenses WHERE id = ?').run(body.id);
+          } else if (body.action === 'disable') {
+            db.prepare("UPDATE licenses SET status = 'DISABLED' WHERE id = ?").run(body.id);
+          } else if (body.action === 'activate') {
+            db.prepare("UPDATE licenses SET status = 'ACTIVE' WHERE id = ?").run(body.id);
+          } else if (body.action === 'extend') {
+            db.prepare("UPDATE licenses SET expires_at = datetime(expires_at, '+30 days') WHERE id = ?").run(body.id);
+          }
+
+          return sendJSON(res, 200, { success: true });
+        } catch (err: any) {
+          return sendJSON(res, 500, { success: false, error: err.message });
+        }
+      }
+
       // 9. Super Admin Raw SQLite Table Explorer
       const tableMatch = pathname.match(/^\/api\/v2\/super-admin\/db\/table\/([a-zA-Z0-9_]+)$/);
       if (tableMatch && method === 'GET') {
+        if (!isLocalSuperAdminEnabled()) {
+          return sendJSON(res, 403, { success: false, error: 'Local Super Admin interface is disabled.' });
+        }
+        if (!requireMasterAdminAuth(req, res, parsedUrl)) return;
         const tableName = tableMatch[1];
         const allowedTables = ['profiles', 'profile_folders', 'profile_locks', 'fleet_devices', 'feature_flags', 'api_keys_v2', 'proxies', 'activity_logs', 'workspaces', 'licenses'];
         if (!allowedTables.includes(tableName)) {
@@ -426,11 +547,13 @@ export function createCentralApiServer(): http.Server {
 
       // 10. Activity Logs
       if (pathname === '/api/v2/logs' && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
         return sendJSON(res, 200, { success: true, data: getActivityLogs() });
       }
 
       // 11. License validation
       if (pathname === '/api/v2/license/status' && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
         const status = validateCurrentLicense();
         return sendJSON(res, 200, { success: true, data: status });
       }

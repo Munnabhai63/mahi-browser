@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { app } from 'electron';
+import { app, safeStorage } from 'electron';
 
 export interface InstallSecrets {
   jwtSecret: string;
@@ -13,6 +13,64 @@ export interface InstallSecrets {
 }
 
 let cachedSecrets: InstallSecrets | null = null;
+
+function isSafeStorageAvailable(): boolean {
+  try {
+    return !!safeStorage && typeof safeStorage.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable();
+  } catch {
+    return false;
+  }
+}
+
+function writeSecretsFile(filePath: string, data: InstallSecrets): void {
+  const jsonStr = JSON.stringify(data, null, 2);
+  let payload = jsonStr;
+  if (isSafeStorageAvailable()) {
+    try {
+      const encrypted = safeStorage.encryptString(jsonStr);
+      payload = 'SAFE_STORAGE_V1:' + encrypted.toString('base64');
+    } catch (err) {
+      console.warn('[SECURITY] safeStorage.encryptString failed, falling back to restricted file permissions:', err);
+    }
+  }
+  fs.writeFileSync(filePath, payload, { encoding: 'utf8', mode: 0o600 });
+}
+
+function readSecretsFile(filePath: string): InstallSecrets | null {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8').trim();
+    if (!raw) return null;
+
+    if (raw.startsWith('SAFE_STORAGE_V1:')) {
+      if (!isSafeStorageAvailable()) {
+        console.error('[SECURITY] safeStorage encryption is not available to decrypt install-secrets.json');
+        return null;
+      }
+      const b64 = raw.slice('SAFE_STORAGE_V1:'.length);
+      const decrypted = safeStorage.decryptString(Buffer.from(b64, 'base64'));
+      return JSON.parse(decrypted);
+    }
+
+    // Legacy plaintext format -> parse, and if safeStorage is now available, migrate immediately to encrypted format
+    const parsed = JSON.parse(raw);
+    if (parsed.jwtSecret && parsed.apiAuthToken && parsed.adminSalt) {
+      if (isSafeStorageAvailable()) {
+        try {
+          writeSecretsFile(filePath, parsed);
+          console.log('[SECURITY] Migrated install-secrets.json to safeStorage encrypted format.');
+        } catch {}
+      }
+      return parsed;
+    }
+  } catch (err) {
+    console.error('[SECURITY] Failed to read or parse install-secrets.json:', err);
+  }
+  return null;
+}
+
+export function resetCachedSecretsForTesting(): void {
+  cachedSecrets = null;
+}
 
 function getSecretsFilePath(): string {
   let baseDir = '';
@@ -48,15 +106,10 @@ export function getInstallSecrets(): InstallSecrets {
 
   const filePath = getSecretsFilePath();
   if (fs.existsSync(filePath)) {
-    try {
-      const raw = fs.readFileSync(filePath, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (parsed.jwtSecret && parsed.apiAuthToken && parsed.adminSalt) {
-        cachedSecrets = parsed;
-        return cachedSecrets!;
-      }
-    } catch {
-      // If parsing failed, regenerate securely
+    const stored = readSecretsFile(filePath);
+    if (stored && stored.jwtSecret && stored.apiAuthToken && stored.adminSalt) {
+      cachedSecrets = stored;
+      return cachedSecrets!;
     }
   }
 
@@ -71,8 +124,10 @@ export function getInstallSecrets(): InstallSecrets {
   };
 
   try {
-    fs.writeFileSync(filePath, JSON.stringify(newSecrets, null, 2), 'utf8');
-  } catch {}
+    writeSecretsFile(filePath, newSecrets);
+  } catch (err) {
+    console.error('[SECURITY] Failed to save install-secrets.json:', err);
+  }
 
   cachedSecrets = newSecrets;
   return newSecrets;

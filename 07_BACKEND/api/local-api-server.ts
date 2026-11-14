@@ -25,6 +25,7 @@ import {
 
 
 import { processManager } from '../../02_BROWSER/process-manager.js';
+import { getProfileDebugPort } from '../../02_BROWSER/launcher.js';
 import {
   getProxies,
   getProxyById,
@@ -82,16 +83,63 @@ const ALLOWED_ORIGIN_PATTERNS = [
   /^http:\/\/localhost(:[0-9]+)?$/,
   /^app:\/\//,
   /^file:\/\//,
-  /^chrome-extension:\/\//,
-  /^https?:\/\/([a-z0-9-]+\.)?mahibrowser\.com$/,
 ];
 
-function isOriginAllowed(origin: string | undefined): boolean {
+export function isLocalSuperAdminEnabled(): boolean {
+  return process.env.MAHI_ENABLE_LOCAL_SUPER_ADMIN === '1' || process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
+}
+
+interface RateLimitRecord {
+  attempts: number;
+  firstAttemptAt: number;
+}
+const superAdminRateLimitMap = new Map<string, RateLimitRecord>();
+const RATE_LIMIT_MAX_ATTEMPTS = 5;
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+
+export function resetSuperAdminRateLimitForTesting(): void {
+  superAdminRateLimitMap.clear();
+}
+
+function getClientIp(req: http.IncomingMessage): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.socket.remoteAddress || '127.0.0.1';
+}
+
+export function checkSuperAdminRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const record = superAdminRateLimitMap.get(ip);
+  if (!record) return true;
+  if (now - record.firstAttemptAt > RATE_LIMIT_WINDOW_MS) {
+    superAdminRateLimitMap.delete(ip);
+    return true;
+  }
+  return record.attempts < RATE_LIMIT_MAX_ATTEMPTS;
+}
+
+export function recordFailedSuperAdminAttempt(ip: string): void {
+  const now = Date.now();
+  const record = superAdminRateLimitMap.get(ip);
+  if (!record || now - record.firstAttemptAt > RATE_LIMIT_WINDOW_MS) {
+    superAdminRateLimitMap.set(ip, { attempts: 1, firstAttemptAt: now });
+  } else {
+    record.attempts += 1;
+  }
+}
+
+export function recordSuccessfulSuperAdminAttempt(ip: string): void {
+  superAdminRateLimitMap.delete(ip);
+}
+
+export function isOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return false;
   return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
 }
 
-function getCorsHeaders(req: http.IncomingMessage): Record<string, string> {
+export function getCorsHeaders(req: http.IncomingMessage): Record<string, string> {
   const origin = req.headers.origin;
   if (origin && isOriginAllowed(origin)) {
     return {
@@ -110,38 +158,83 @@ function isValidHost(host: string | undefined): boolean {
   return hostname === '127.0.0.1' || hostname === 'localhost';
 }
 
-function checkMutatingAuth(req: http.IncomingMessage, parsedUrl: URL, body?: any): boolean {
+export type AuthRole = 'master_admin' | 'user';
+
+export interface RequestAuth {
+  authenticated: boolean;
+  role?: AuthRole;
+  userId?: string;
+}
+
+export function authenticateRequest(req: http.IncomingMessage, parsedUrl: URL, body?: any): RequestAuth {
+  // 1. Check Master Admin Secret first (Header, query param, or body)
+  const adminSecret = (req.headers['x-admin-secret'] as string) || parsedUrl.searchParams.get('adminSecret') || (body && (body.adminSecret || body.secret));
+  if (adminSecret && (verifyAdminAccess(adminSecret) || isValidAdminWebSecret(adminSecret))) {
+    return { authenticated: true, role: 'master_admin', userId: 'MASTER_ADMIN' };
+  }
+
+  // 2. Bearer token
   const authHeader = req.headers['authorization'];
   let bearer = '';
   if (authHeader) {
     bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
-    if (isValidApiToken(bearer)) return true;
   }
   const queryToken = parsedUrl.searchParams.get('token');
-  if (queryToken && isValidApiToken(queryToken)) return true;
+  const tokenToTest = bearer || queryToken;
 
-  // Validate active desktop account session
-  try {
-    const session = getAccountSession();
-    if (session?.token) {
-      if ((bearer && bearer === session.token) || (queryToken && queryToken === session.token)) {
-        return true;
-      }
+  if (tokenToTest) {
+    if (isValidApiToken(tokenToTest)) {
+      return { authenticated: true, role: 'master_admin', userId: 'MASTER_ADMIN' };
     }
-  } catch {}
+    try {
+      const session = getAccountSession();
+      if (session?.token && session.token === tokenToTest) {
+        return { authenticated: true, role: 'user', userId: session.account_id || 'USER' };
+      }
+    } catch {}
 
+    const bearerApiKeyCheck = validateApiKey(tokenToTest);
+    if (bearerApiKeyCheck) {
+      return { authenticated: true, role: 'user', userId: bearerApiKeyCheck.userId || 'API_USER' };
+    }
+  }
+
+  // 3. API Key
   const apiKey = (req.headers['x-api-key'] as string) || parsedUrl.searchParams.get('apiKey');
   if (apiKey) {
     const keyCheck = validateApiKey(apiKey);
-    if (keyCheck) return true;
+    if (keyCheck) {
+      return { authenticated: true, role: 'user', userId: keyCheck.userId || 'API_USER' };
+    }
   }
 
-  const adminSecret = (req.headers['x-admin-secret'] as string) || parsedUrl.searchParams.get('adminSecret') || (body && (body.adminSecret || body.secret));
-  if (adminSecret && (verifyAdminAccess(adminSecret) || isValidAdminWebSecret(adminSecret))) {
-    return true;
-  }
+  return { authenticated: false };
+}
 
-  return false;
+function checkMutatingAuth(req: http.IncomingMessage, parsedUrl: URL, body?: any): boolean {
+  return authenticateRequest(req, parsedUrl, body).authenticated;
+}
+
+function requireUserOrAdminAuth(req: http.IncomingMessage, res: http.ServerResponse, parsedUrl: URL, body?: any): RequestAuth | null {
+  const auth = authenticateRequest(req, parsedUrl, body);
+  if (!auth.authenticated) {
+    sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication credentials required.' });
+    return null;
+  }
+  return auth;
+}
+
+function requireMasterAdminAuth(req: http.IncomingMessage, res: http.ServerResponse, parsedUrl: URL, body?: any): RequestAuth | null {
+  const auth = authenticateRequest(req, parsedUrl, body);
+  if (!auth.authenticated) {
+    sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication credentials required.' });
+    return null;
+  }
+  if (auth.role !== 'master_admin') {
+    sendJSON(res, 403, { success: false, error: 'Forbidden. Master admin credentials required.' });
+    return null;
+  }
+  return auth;
 }
 
 function sendHTML(res: http.ServerResponse, statusCode: number, html: string) {
@@ -149,6 +242,7 @@ function sendHTML(res: http.ServerResponse, statusCode: number, html: string) {
   const corsHeaders = req ? getCorsHeaders(req) : {};
   res.writeHead(statusCode, {
     'Content-Type': 'text/html; charset=utf-8',
+    'Content-Security-Policy': "default-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';",
     ...corsHeaders,
   });
   res.end(html);
@@ -247,11 +341,18 @@ export function startApiServer(): void {
 
     // Super Admin dynamic secret verification endpoint
     if (pathname === '/api/v2/super-admin/auth/verify' && method === 'POST') {
+      const clientIp = getClientIp(req);
+      if (!checkSuperAdminRateLimit(clientIp)) {
+        sendJSON(res, 429, { success: false, error: 'Too many failed authentication attempts. Please try again later.' });
+        return;
+      }
       const body = await parseBody(req);
       const secret = body.secret || body.pin || '';
       if (verifyAdminAccess(secret) || isValidAdminWebSecret(secret)) {
+        recordSuccessfulSuperAdminAttempt(clientIp);
         sendJSON(res, 200, { success: true, token: getApiAuthToken() });
       } else {
+        recordFailedSuperAdminAttempt(clientIp);
         sendJSON(res, 401, { success: false, error: 'Invalid master secret' });
       }
       return;
@@ -259,6 +360,10 @@ export function startApiServer(): void {
 
     // 0. Secret Super Admin & Web Admin HTML Portals (Open directly in any browser)
     if ((cleanPath === '/super-admin' || cleanPath === '/root-admin' || cleanPath === '/master-admin') && method === 'GET') {
+      if (!isLocalSuperAdminEnabled()) {
+        sendJSON(res, 403, { success: false, error: 'Local Super Admin interface is disabled.' });
+        return;
+      }
       sendHTML(res, 200, getSuperAdminHtml());
       return;
     }
@@ -290,34 +395,30 @@ export function startApiServer(): void {
 
     // 0. Distribution Metadata API
     if (pathname === '/api/v2/distribution/info' && method === 'GET') {
+      if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
       sendJSON(res, 200, { success: true, data: getDistributionInfo() });
       return;
     }
 
-    // Health check endpoint (open)
+    // Health check endpoint (minimal public response, no version/uptime leaks)
     if (cleanPath === '/health' || cleanPath === '/api/v2/health') {
       sendJSON(res, 200, {
         status: 'HEALTHY',
-        version: '2.0.0',
-        platform: 'MAHI Platform V2',
-        uptime: process.uptime(),
-        timestamp: new Date().toISOString(),
+        ok: true,
       });
       return;
     }
 
     // 1. Feature Flags V2
     if (pathname === '/api/v2/feature-flags' && method === 'GET') {
+      if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
       sendJSON(res, 200, { success: true, data: getFeatureFlags() });
       return;
     }
     const flagMatch = pathname.match(/^\/api\/v2\/feature-flags\/([a-zA-Z0-9_-]+)$/);
     if (flagMatch && method === 'PUT') {
       const body = await parseBody(req);
-      if (!checkMutatingAuth(req, parsedUrl, body)) {
-        sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
-        return;
-      }
+      if (!requireMasterAdminAuth(req, res, parsedUrl, body)) return;
       const flagKey = flagMatch[1];
       const updated = updateFeatureFlag(flagKey, body);
       sendJSON(res, 200, { success: true, data: updated });
@@ -326,19 +427,18 @@ export function startApiServer(): void {
 
     // 2. Fleet Telemetry & Devices V2
     if (pathname === '/api/v2/fleet/telemetry' && method === 'GET') {
+      if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
       sendJSON(res, 200, { success: true, data: getLiveTelemetry() });
       return;
     }
     if (pathname === '/api/v2/fleet/devices' && method === 'GET') {
+      if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
       sendJSON(res, 200, { success: true, data: getFleetDevices() });
       return;
     }
     const deviceMatch = pathname.match(/^\/api\/v2\/fleet\/devices\/([a-zA-Z0-9_-]+)$/);
     if (deviceMatch && method === 'DELETE') {
-      if (!checkMutatingAuth(req, parsedUrl)) {
-        sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
-        return;
-      }
+      if (!requireMasterAdminAuth(req, res, parsedUrl)) return;
       const deviceId = deviceMatch[1];
       const ok = revokeDevice(deviceId);
       sendJSON(res, 200, { success: ok });
@@ -347,15 +447,13 @@ export function startApiServer(): void {
 
     // 3. Developer API Keys V2
     if (pathname === '/api/v2/api-keys' && method === 'GET') {
+      if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
       sendJSON(res, 200, { success: true, data: getApiKeys() });
       return;
     }
     if (pathname === '/api/v2/api-keys' && method === 'POST') {
       const body = await parseBody(req);
-      if (!checkMutatingAuth(req, parsedUrl, body)) {
-        sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
-        return;
-      }
+      if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return;
       const result = generateApiKey(
         body.name || 'API-Key',
         body.userId || 'default-user',
@@ -366,10 +464,7 @@ export function startApiServer(): void {
     }
     const apiKeyMatch = pathname.match(/^\/api\/v2\/api-keys\/([a-zA-Z0-9_-]+)$/);
     if (apiKeyMatch && method === 'DELETE') {
-      if (!checkMutatingAuth(req, parsedUrl)) {
-        sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
-        return;
-      }
+      if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
       const keyId = apiKeyMatch[1];
       const ok = revokeApiKey(keyId);
       sendJSON(res, 200, { success: ok });
@@ -378,10 +473,11 @@ export function startApiServer(): void {
 
     // 4. Super Admin License List
     if (pathname === '/api/v2/super-admin/licenses/list' && method === 'GET') {
-      if (!checkMutatingAuth(req, parsedUrl)) {
-        sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
+      if (!isLocalSuperAdminEnabled()) {
+        sendJSON(res, 403, { success: false, error: 'Local Super Admin interface is disabled.' });
         return;
       }
+      if (!requireMasterAdminAuth(req, res, parsedUrl)) return;
       try {
         const db = getDatabase();
         const licenses = db.prepare('SELECT * FROM licenses ORDER BY created_at DESC').all();
@@ -394,12 +490,13 @@ export function startApiServer(): void {
     
     // 4b. Super Admin License Action (Activate/Disable/Extend/Delete)
     if (pathname === '/api/v2/super-admin/licenses/action' && method === 'POST') {
+      if (!isLocalSuperAdminEnabled()) {
+        sendJSON(res, 403, { success: false, error: 'Local Super Admin interface is disabled.' });
+        return;
+      }
       try {
         const body = await parseBody(req);
-        if (!checkMutatingAuth(req, parsedUrl, body)) {
-          sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
-          return;
-        }
+        if (!requireMasterAdminAuth(req, res, parsedUrl, body)) return;
         const db = getDatabase();
         
         if (body.action === 'delete') {
@@ -422,10 +519,11 @@ export function startApiServer(): void {
     // 5. Super Admin Raw SQLite Table Explorer
     const tableMatch = pathname.match(/^\/api\/v2\/super-admin\/db\/table\/([a-zA-Z0-9_]+)$/);
     if (tableMatch && method === 'GET') {
-      if (!checkMutatingAuth(req, parsedUrl)) {
-        sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
+      if (!isLocalSuperAdminEnabled()) {
+        sendJSON(res, 403, { success: false, error: 'Local Super Admin interface is disabled.' });
         return;
       }
+      if (!requireMasterAdminAuth(req, res, parsedUrl)) return;
       const tableName = tableMatch[1];
       const allowedTables = ['profiles', 'profile_folders', 'profile_locks', 'fleet_devices', 'feature_flags', 'api_keys_v2', 'proxies', 'activity_logs', 'workspaces', 'licenses'];
       if (!allowedTables.includes(tableName)) {
@@ -445,10 +543,12 @@ export function startApiServer(): void {
 
     // 6. Activity Logs & License Status V2
     if (pathname === '/api/v2/logs' && method === 'GET') {
+      if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
       sendJSON(res, 200, { success: true, data: getActivityLogs() });
       return;
     }
     if (pathname === '/api/v2/license/status' && method === 'GET') {
+      if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
       try {
         const userDataDir = getProfileStoragePath ? path.dirname(path.dirname(getProfileStoragePath('temp'))) : process.cwd();
         const licenseFile = path.join(userDataDir, 'offline-license.key');
@@ -485,6 +585,7 @@ export function startApiServer(): void {
 
     // 7. Profiles V2 Endpoints
     if (pathname === '/api/v2/profiles' && method === 'GET') {
+      if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
       const activeOwnerId = getLocalApiOwnerId();
       sendJSON(res, 200, { success: true, data: getProfiles({ ownerId: activeOwnerId }) });
       return;
@@ -492,10 +593,7 @@ export function startApiServer(): void {
     if (pathname === '/api/v2/profiles' && method === 'POST') {
       try {
         const body = await parseBody(req);
-        if (!checkMutatingAuth(req, parsedUrl, body)) {
-          sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
-          return;
-        }
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return;
         assertCanCreateProfile(1);
         const activeOwnerId = getLocalApiOwnerId();
         const profile = createProfile({ ...body, ownerId: activeOwnerId });
@@ -508,10 +606,7 @@ export function startApiServer(): void {
     const profileV2Action = pathname.match(/^\/api\/v2\/profiles\/([a-zA-Z0-9_-]+)\/(start|stop|clone)$/);
     if (profileV2Action && method === 'POST') {
       const body = await parseBody(req);
-      if (!checkMutatingAuth(req, parsedUrl, body)) {
-        sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication required.' });
-        return;
-      }
+      if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return;
       const profileId = profileV2Action[1];
       const action = profileV2Action[2];
       const activeOwnerId = getLocalApiOwnerId();
@@ -522,7 +617,8 @@ export function startApiServer(): void {
       }
       if (action === 'start') {
         const result = await processManager.startProfile(profileId);
-        sendJSON(res, result.success ? 200 : 500, result);
+        const cdpPort = getProfileDebugPort(profileId);
+        sendJSON(res, result.success ? 200 : 500, { ...result, cdpPort });
         return;
       }
       if (action === 'stop') {
@@ -590,8 +686,23 @@ export function startApiServer(): void {
 
       if (pathname === '/profiles/bulk-delete' && method === 'POST') {
         const body = await parseBody(req);
-        const result = bulkDeleteProfiles(body.profileIds || [], getLocalApiOwnerId());
-        sendJSON(res, 200, { success: true, data: result });
+        const profileIds: string[] = Array.isArray(body.profileIds) ? body.profileIds : [];
+        for (const pid of profileIds) {
+          if (processManager.isRunning(pid)) {
+            await processManager.stopProfile(pid);
+          }
+        }
+        const isPermanent = Boolean(parsedUrl.searchParams.get('permanent') === 'true' || body.permanent === true);
+        const ownerId = getLocalApiOwnerId();
+        if (isPermanent) {
+          for (const pid of profileIds) {
+            permanentDeleteProfile(pid, ownerId);
+          }
+          sendJSON(res, 200, { success: true, count: profileIds.length, permanent: true });
+        } else {
+          const result = bulkDeleteProfiles(profileIds, ownerId);
+          sendJSON(res, 200, { success: true, data: result });
+        }
         return;
       }
 
@@ -686,7 +797,8 @@ export function startApiServer(): void {
         const p = getProfileById(id, activeOwnerId);
         if (!p) return sendJSON(res, 404, { success: false, error: 'Profile not found or access denied' });
         const result = await processManager.startProfile(id);
-        return sendJSON(res, result.success ? 200 : 500, result);
+        const cdpPort = getProfileDebugPort(id);
+        return sendJSON(res, result.success ? 200 : 500, { ...result, cdpPort });
       }
 
       // MostLogin / GoLogin Compatibility Route: /api/v1/profile/start or /browser/start
@@ -701,7 +813,7 @@ export function startApiServer(): void {
         const p = getProfileById(id, activeOwnerId);
         if (!p) return sendJSON(res, 404, { code: 404, success: false, error: 'Profile not found or access denied' });
         const result = await processManager.startProfile(id);
-        const cdpPort = 9222;
+        const cdpPort = getProfileDebugPort(id);
         return sendJSON(res, result.success ? 200 : 500, {
           code: result.success ? 0 : 500,
           success: result.success,

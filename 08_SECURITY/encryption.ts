@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { app } from 'electron';
+import { app, safeStorage } from 'electron';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
@@ -10,6 +10,66 @@ const KEY_LENGTH = 32;
 const ITERATIONS = 100000;
 
 let cachedMasterKey: Buffer | null = null;
+
+function isSafeStorageAvailable(): boolean {
+  try {
+    return !!safeStorage && typeof safeStorage.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable();
+  } catch {
+    return false;
+  }
+}
+
+function writeMasterKeyFile(keyPath: string, keyBuffer: Buffer): void {
+  const keyHex = keyBuffer.toString('hex');
+  let payload = keyHex;
+  if (isSafeStorageAvailable()) {
+    try {
+      const encrypted = safeStorage.encryptString(keyHex);
+      payload = 'SAFE_STORAGE_V1:' + encrypted.toString('base64');
+    } catch (err) {
+      console.warn('[SECURITY] safeStorage.encryptString failed for master key, falling back to restricted file permissions:', err);
+    }
+  }
+  fs.writeFileSync(keyPath, payload, { encoding: 'utf8', mode: 0o600 });
+}
+
+function readMasterKeyFile(keyPath: string): Buffer | null {
+  try {
+    const raw = fs.readFileSync(keyPath, 'utf8').trim();
+    if (!raw) return null;
+
+    if (raw.startsWith('SAFE_STORAGE_V1:')) {
+      if (!isSafeStorageAvailable()) {
+        console.error('[SECURITY] safeStorage is not available to decrypt .mahi_master.key');
+        return null;
+      }
+      const b64 = raw.slice('SAFE_STORAGE_V1:'.length);
+      const decryptedHex = safeStorage.decryptString(Buffer.from(b64, 'base64')).trim();
+      const buf = Buffer.from(decryptedHex, 'hex');
+      if (buf.length === KEY_LENGTH) return buf;
+      return null;
+    }
+
+    // Legacy plaintext hex
+    const buf = Buffer.from(raw, 'hex');
+    if (buf.length === KEY_LENGTH) {
+      if (isSafeStorageAvailable()) {
+        try {
+          writeMasterKeyFile(keyPath, buf);
+          console.log('[SECURITY] Migrated .mahi_master.key to safeStorage encrypted format.');
+        } catch {}
+      }
+      return buf;
+    }
+  } catch (err) {
+    console.error('[SECURITY] Failed to read .mahi_master.key:', err);
+  }
+  return null;
+}
+
+export function resetCachedMasterKeyForTesting(): void {
+  cachedMasterKey = null;
+}
 
 function getMasterKeyPath(): string {
   const userDataDir = app ? app.getPath('userData') : path.join(process.cwd(), '.mahi_data');
@@ -24,19 +84,15 @@ export function getOrCreateMasterKey(): Buffer {
 
   const keyPath = getMasterKeyPath();
   if (fs.existsSync(keyPath)) {
-    try {
-      const stored = fs.readFileSync(keyPath, 'utf8').trim();
-      cachedMasterKey = Buffer.from(stored, 'hex');
-      if (cachedMasterKey.length === KEY_LENGTH) {
-        return cachedMasterKey;
-      }
-    } catch {
-      // regenerate if corrupted
+    const stored = readMasterKeyFile(keyPath);
+    if (stored && stored.length === KEY_LENGTH) {
+      cachedMasterKey = stored;
+      return cachedMasterKey;
     }
   }
 
   const newKey = crypto.randomBytes(KEY_LENGTH);
-  fs.writeFileSync(keyPath, newKey.toString('hex'), { mode: 0o600 });
+  writeMasterKeyFile(keyPath, newKey);
   cachedMasterKey = newKey;
   return newKey;
 }
