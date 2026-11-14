@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -7,20 +7,33 @@ import { generateHumanPath } from '../../09_AUTOMATION/ai-humanizer.js';
 import { Profile } from '../../10_CONFIG/shared/types/profile.js';
 import { auditProfileFingerprint } from '../../03_HARDWARE/diagnostics-service.js';
 import { createProfile, deleteProfile } from '../../02_BROWSER/services/profile-service.js';
-import { initSqlEngine, getDatabase } from '../../06_DATABASE/connection.js';
+import { initSqlEngine, getDatabase, setCustomDatabasePath, closeDatabase } from '../../06_DATABASE/connection.js';
+import { initializeDatabase } from '../../06_DATABASE/schema.js';
 
 describe('MAHI BROWSER v2.0 Enterprise Anti-Detect Engine Unit Tests', () => {
   let tempDir: string;
+  let dbPath: string;
+
+  beforeAll(async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi_stealth_test_'));
+    dbPath = path.join(tempDir, 'stealth_test.sqlite');
+    setCustomDatabasePath(dbPath);
+    await initSqlEngine();
+    await initializeDatabase();
+  });
+
+  afterAll(() => {
+    closeDatabase();
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    } catch {}
+  });
 
   beforeEach(async () => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi_stealth_test_'));
     await initSqlEngine();
   });
 
   afterEach(() => {
-    try {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    } catch {}
   });
 
   it('generates consistent deterministic seed and mathematical noise for a profile', () => {

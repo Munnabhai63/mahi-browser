@@ -33,8 +33,13 @@ describe('Task 8: UI Resilience, ErrorBoundary & Error Surfaces Suite', () => {
       const error = new Error('Runtime error in child');
       const errorInfo = { componentStack: '\n    in ProblematicChild\n    in App' };
 
+      const setStateSpy = vi.spyOn(boundary, 'setState').mockImplementation((update: any) => {
+        Object.assign(boundary.state, typeof update === 'function' ? update(boundary.state) : update);
+      });
+
       boundary.componentDidCatch(error, errorInfo);
 
+      expect(setStateSpy).toHaveBeenCalledWith({ errorInfo });
       expect(boundary.state.errorInfo).toEqual(errorInfo);
     });
 
@@ -51,13 +56,23 @@ describe('Task 8: UI Resilience, ErrorBoundary & Error Surfaces Suite', () => {
       boundary.state = {
         hasError: true,
         error: new Error('Simulated failure'),
-        errorInfo: { componentStack: 'mock' },
+        errorInfo: { componentStack: 'mock' } as any,
         showDetails: true,
       };
+
+      const setStateSpy = vi.spyOn(boundary, 'setState').mockImplementation((update: any) => {
+        Object.assign(boundary.state, typeof update === 'function' ? update(boundary.state) : update);
+      });
 
       boundary.handleReset();
 
       expect(resetCalled).toBe(true);
+      expect(setStateSpy).toHaveBeenCalledWith({
+        hasError: false,
+        error: null,
+        errorInfo: null,
+        showDetails: false,
+      });
       expect(boundary.state.hasError).toBe(false);
       expect(boundary.state.error).toBeNull();
       expect(boundary.state.errorInfo).toBeNull();

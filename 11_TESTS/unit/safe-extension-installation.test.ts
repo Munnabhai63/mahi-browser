@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { buildSanitizedLaunchArgs } from '../../02_BROWSER/launcher.js';
@@ -9,18 +9,40 @@ import {
   toggleExtension,
   resolveLocalizedText,
 } from '../../02_BROWSER/services/extension-service.js';
-import { getDatabase, initSqlEngine } from '../../06_DATABASE/connection.js';
+import { getDatabase, initSqlEngine, setCustomDatabasePath, closeDatabase } from '../../06_DATABASE/connection.js';
+import { initializeDatabase } from '../../06_DATABASE/schema.js';
 
 describe('Safe Extension Installation & Lifecycle Suite', () => {
   const tempDir = path.resolve('.mahi_data', 'test_extensions_safe');
+  const dbPath = path.join(tempDir, 'safe_ext_test.sqlite');
   const profileId1 = 'test-prof-ext-1';
   const profileId2 = 'test-prof-ext-2';
   const storage1 = path.join(tempDir, profileId1);
   const storage2 = path.join(tempDir, profileId2);
 
-  beforeEach(async () => {
+  beforeAll(async () => {
+    fs.mkdirSync(tempDir, { recursive: true });
+    setCustomDatabasePath(dbPath);
     await initSqlEngine();
+    await initializeDatabase();
+  });
+
+  afterAll(() => {
+    closeDatabase();
+    try {
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    } catch {}
+  });
+
+  beforeEach(async () => {
     const db = getDatabase();
+
+    try {
+      if (fs.existsSync(storage1)) fs.rmSync(storage1, { recursive: true, force: true });
+      if (fs.existsSync(storage2)) fs.rmSync(storage2, { recursive: true, force: true });
+    } catch {}
 
     fs.mkdirSync(storage1, { recursive: true });
     fs.mkdirSync(storage2, { recursive: true });
@@ -45,9 +67,6 @@ describe('Safe Extension Installation & Lifecycle Suite', () => {
       const db = getDatabase();
       db.prepare('DELETE FROM extensions WHERE profile_id IN (?, ?)').run(profileId1, profileId2);
       db.prepare('DELETE FROM profiles WHERE id IN (?, ?)').run(profileId1, profileId2);
-      if (fs.existsSync(tempDir)) {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      }
     } catch {}
   });
 

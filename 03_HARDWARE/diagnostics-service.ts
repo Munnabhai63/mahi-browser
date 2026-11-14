@@ -223,6 +223,10 @@ export function autoFixProfileFingerprint(profileId: string): ProfileAuditReport
       hardwareConcurrency: isMac ? 12 : 16,
       deviceMemory: 16,
     },
+    network: {
+      ...(s.network || {}),
+      webrtc: 'noise' as any,
+    },
     display: {
       ...(s.display || {}),
       screenWidth: s.display?.screenWidth && s.display.screenWidth >= 1280 ? s.display.screenWidth : 1920,

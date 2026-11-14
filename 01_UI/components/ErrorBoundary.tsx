@@ -31,7 +31,6 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     this.setState({ errorInfo });
-    this.state = { ...this.state, errorInfo };
     console.error('[MAHI ErrorBoundary] Caught unhandled React error:', error, errorInfo);
   }
 
@@ -45,20 +44,16 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (this.props.onReset) {
       this.props.onReset();
     }
-    const nextState = {
+    this.setState({
       hasError: false,
       error: null,
       errorInfo: null,
       showDetails: false,
-    };
-    this.setState(nextState);
-    this.state = nextState;
+    });
   };
 
   toggleDetails = (): void => {
-    const nextShow = !this.state.showDetails;
-    this.setState({ showDetails: nextShow });
-    this.state = { ...this.state, showDetails: nextShow };
+    this.setState((prev) => ({ showDetails: !prev.showDetails }));
   };
 
   render(): ReactNode {
