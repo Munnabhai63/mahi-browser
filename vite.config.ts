@@ -25,6 +25,7 @@ export default defineConfig({
             rollupOptions: {
               external: [
                 'electron',
+                'electron-updater',
                 'sql.js',
                 'node:fs',
                 'node:path',

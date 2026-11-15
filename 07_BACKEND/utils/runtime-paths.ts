@@ -68,14 +68,21 @@ export function getWritableUserDataDir(): string {
     } catch {}
   }
 
-  // 3. OS-specific fallbacks
+  // 3. APPDATA override (supports cross-platform test isolation and Windows user data when APPDATA is set)
+  if (process.env.APPDATA && typeof process.env.APPDATA === 'string') {
+    const appDataCandidate = path.join(process.env.APPDATA, 'mahi-browser');
+    if (!fs.existsSync(appDataCandidate)) {
+      try { fs.mkdirSync(appDataCandidate, { recursive: true }); } catch {}
+    }
+    return appDataCandidate;
+  }
+
+  // 4. OS-specific fallbacks
   let resolvedDir: string;
   const home = os.homedir() || '';
 
   if (process.platform === 'win32') {
-    if (process.env.APPDATA) {
-      resolvedDir = path.join(process.env.APPDATA, 'mahi-browser');
-    } else if (home) {
+    if (home) {
       resolvedDir = path.join(home, 'AppData', 'Roaming', 'mahi-browser');
     } else {
       resolvedDir = path.join(os.tmpdir(), 'mahi-browser-win32');

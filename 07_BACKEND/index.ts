@@ -134,7 +134,7 @@ if (!gotTheLock && !isSmokeTest) {
     logCheckpoint('Step 2: Secondary instance detected. Terminating immediately to prevent DB and port collision.');
   }
   app.quit();
-  setTimeout(() => app.exit(0), 1000);
+  app.exit(0);
 } else {
   if (isSmokeTest && !gotTheLock) {
     logCheckpoint('Step 2: Smoke test running without instance lock.');
@@ -318,7 +318,8 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(async () => {
+if (gotTheLock || isSmokeTest) {
+  app.whenReady().then(async () => {
   logCheckpoint('Step 3: App whenReady fired');
 
   // 0. Display Branded Startup Splash Screen
@@ -426,10 +427,11 @@ app.whenReady().then(async () => {
       createWindow();
     }
   });
-}).catch((startupErr: unknown) => {
-  const errObj = startupErr instanceof Error ? startupErr : new Error(String(startupErr));
-  writeCrashLog('APP_WHEN_READY_FATAL_ERROR', errObj.message, errObj.stack);
-});
+  }).catch((startupErr: unknown) => {
+    const errObj = startupErr instanceof Error ? startupErr : new Error(String(startupErr));
+    writeCrashLog('APP_WHEN_READY_FATAL_ERROR', errObj.message, errObj.stack);
+  });
+}
 
 async function handleDeepLinkUrl(urlStr: string): Promise<void> {
   try {

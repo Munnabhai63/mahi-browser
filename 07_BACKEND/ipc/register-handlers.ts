@@ -2,6 +2,7 @@ import { ipcMain, dialog, BrowserWindow, app, shell } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
+import { getWritableUserDataDir } from '../utils/runtime-paths.js';
 import { verifyLicense, getHWID } from '../../08_SECURITY/license-service.js';
 import { isOnlineRevoked, isGraceExpired, getOnlineStatusSummary, checkLicenseStatusOnline } from '../../08_SECURITY/license-status-service.js';
 import { assertCanCreateProfile, getPlanLimitsInfo, assertCapability } from '../../08_SECURITY/freemium-guard.js';
@@ -1456,7 +1457,7 @@ export function registerIpcHandlers(): void {
   // LICENSING & MAHI PRO
   ipcMain.handle('license:getStatus', async () => {
     try {
-      const userDataDir = app.getPath('userData');
+      const userDataDir = getWritableUserDataDir();
       const licenseFile = path.join(userDataDir, 'offline-license.key');
       if (fs.existsSync(licenseFile)) {
         const rawKey = fs.readFileSync(licenseFile, 'utf8').trim();
@@ -1563,7 +1564,7 @@ export function registerIpcHandlers(): void {
       // 1. Check RSA signature
       const rsaCheck = verifyLicense(rawKey);
       if (rsaCheck.valid) {
-        const userDataDir = app.getPath('userData');
+        const userDataDir = getWritableUserDataDir();
         const licenseFile = path.join(userDataDir, 'offline-license.key');
         fs.writeFileSync(licenseFile, rawKey, 'utf8');
         setActiveUserId('local-license-user');
@@ -2046,8 +2047,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('commercial:login', async (_event, dto) => {
     try {
-      const claimedFile = path.join(app.getPath('userData'), 'claimed-licenses.json');
-      const licenseFile = path.join(app.getPath('userData'), 'offline-license.key');
+      const claimedFile = path.join(getWritableUserDataDir(), 'claimed-licenses.json');
+      const licenseFile = path.join(getWritableUserDataDir(), 'offline-license.key');
 
       // Helper: read claimed licenses { email -> licenseKey }
       function readClaimed(): Record<string, string> {

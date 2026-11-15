@@ -27,7 +27,6 @@
     "!*.pem",
     "!*.key",
     "!**/*.map",
-    "!**/KeygenProvider.*",
     "!**/node_modules/playwright-core/lib/vite/**"
   ],
   "win": {

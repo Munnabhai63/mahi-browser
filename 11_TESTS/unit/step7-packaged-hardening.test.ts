@@ -18,7 +18,7 @@ import {
   webHandoffSessions,
   handleCommercialApiRoutes,
 } from '../../07_BACKEND/commercial/commercial-api-router.js';
-import { evaluateUserEntitlements } from '../../07_BACKEND/commercial/commercial-entitlement-service.js';
+import { evaluateUserEntitlements, checkCapability } from '../../07_BACKEND/commercial/commercial-entitlement-service.js';
 
 describe('Step 7: Packaged Desktop App Hardening & Writable Paths', () => {
   const originalEnv = { ...process.env };
@@ -252,6 +252,7 @@ describe('Step 7: Trial & Subscription Entitlement Hardening', () => {
 
     const entitlements = evaluateUserEntitlements(userId);
     expect(entitlements.plan.tier).toBe('FREE');
+    expect(entitlements.user.planId).toBe('plan_free');
     expect(entitlements.subscription?.status).toBe('EXPIRED');
 
     // Verify DB update persisted
@@ -260,5 +261,38 @@ describe('Step 7: Trial & Subscription Entitlement Hardening', () => {
 
     const updatedUser = db.prepare('SELECT plan_id FROM commercial_users WHERE id = ?').get(userId) as any;
     expect(updatedUser.plan_id).toBe('plan_free');
+  });
+
+  it('checkCapability immediately returns allowed: false when Pro subscription or trial is expired', () => {
+    const db = getDatabase();
+    const userId = `usr_cap_exp_${Date.now()}`;
+    const pastTime = new Date(Date.now() - 3600 * 1000).toISOString();
+    const subId = `sub_cap_exp_${Date.now()}`;
+
+    db.prepare(`
+      INSERT INTO commercial_users (id, email, name, password_hash, salt, role, status, plan_id, created_at, updated_at)
+      VALUES (?, 'capexp@mahibrowser.com', 'Cap Exp User', 'hash', 'salt123', 'USER', 'ACTIVE', 'plan_pro', datetime('now'), datetime('now'))
+    `).run(userId);
+
+    db.prepare(`
+      INSERT INTO commercial_subscriptions (id, user_id, plan_id, status, billing_cycle, starts_at, expires_at, created_at)
+      VALUES (?, ?, 'plan_pro', 'ACTIVE', 'MONTHLY', datetime('now', '-2 months'), ?, datetime('now', '-2 months'))
+    `).run(subId, userId, pastTime);
+
+    // Pro capability check: e.g. team.sharing
+    const result = checkCapability(userId, 'team.sharing');
+    expect(result.allowed).toBe(false);
+    expect(result.entitled).toBe(false);
+
+    // Also check for an expired trial without subscription row
+    const trialUserId = `usr_trial_exp_${Date.now()}`;
+    db.prepare(`
+      INSERT INTO commercial_users (id, email, name, password_hash, salt, role, status, plan_id, trial_expires_at, signup_intent, created_at, updated_at)
+      VALUES (?, 'trialexp@mahibrowser.com', 'Trial Exp', 'hash', 'salt123', 'USER', 'ACTIVE', 'plan_pro', ?, 'trial', datetime('now'), datetime('now'))
+    `).run(trialUserId, pastTime);
+
+    const trialResult = checkCapability(trialUserId, 'team.sharing');
+    expect(trialResult.allowed).toBe(false);
+    expect(trialResult.entitled).toBe(false);
   });
 });

@@ -92,18 +92,23 @@ async function runSmokeTest() {
       reject(new Error(`[SMOKE_HARNESS] Application startup timed out after 30 seconds.`));
     }, 30000);
 
-    child.on('close', (code) => {
+    let finished = false;
+    const finish = (code) => {
+      if (finished) return;
+      finished = true;
       clearTimeout(timeout);
-      console.log(`[SMOKE_HARNESS] Child process exited with code: ${code}`);
+      console.log(`[SMOKE_HARNESS] Child process terminated with code: ${code}`);
 
       // Also verify crash-log.txt if stdout was suppressed by Windows GUI subsystem
-      const userDataDir = process.env.APPDATA
-        ? path.join(process.env.APPDATA, 'mahi-browser')
-        : (process.env.HOME ? path.join(process.env.HOME, '.config', 'mahi-browser') : rootDir);
       const crashLogCandidates = [
-        path.join(userDataDir, 'crash-log.txt'),
         path.join(rootDir, 'crash-log.txt'),
-      ];
+        process.env.APPDATA ? path.join(process.env.APPDATA, 'mahi-browser', 'crash-log.txt') : null,
+        process.env.APPDATA ? path.join(process.env.APPDATA, 'MAHI Browser', 'crash-log.txt') : null,
+        process.env.HOME ? path.join(process.env.HOME, 'Library', 'Application Support', 'mahi-browser', 'crash-log.txt') : null,
+        process.env.HOME ? path.join(process.env.HOME, 'Library', 'Application Support', 'MAHI Browser', 'crash-log.txt') : null,
+        process.env.HOME ? path.join(process.env.HOME, '.config', 'mahi-browser', 'crash-log.txt') : null,
+        process.env.XDG_CONFIG_HOME ? path.join(process.env.XDG_CONFIG_HOME, 'mahi-browser', 'crash-log.txt') : null,
+      ].filter(Boolean);
       let logContents = '';
       for (const logPath of crashLogCandidates) {
         if (fs.existsSync(logPath)) {
@@ -111,7 +116,7 @@ async function runSmokeTest() {
         }
       }
 
-      if (hasPassed || output.includes('[SMOKE_TEST_PASS]') || logContents.includes('SMOKE_TEST: Packaged Application Smoke Test Mode Triggered') || code === 0) {
+      if (hasPassed || output.includes('[SMOKE_TEST_PASS]') || logContents.includes('SMOKE_TEST: Packaged Application Smoke Test Mode Triggered')) {
         console.log('\n======================================================');
         console.log('✓ NATIVE DESKTOP SMOKE TEST PASSED SUCCESSFULLY');
         console.log('======================================================\n');
@@ -119,6 +124,14 @@ async function runSmokeTest() {
       } else {
         reject(new Error(`[SMOKE_HARNESS] Application exited with code ${code} without emitting SMOKE_TEST_PASS.`));
       }
+    };
+
+    child.on('exit', (code) => {
+      setTimeout(() => finish(code), 500);
+    });
+
+    child.on('close', (code) => {
+      finish(code);
     });
 
     child.on('error', (err) => {

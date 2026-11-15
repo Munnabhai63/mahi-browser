@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import pkg from 'electron-updater';
+import { createRequire } from 'node:module';
 import {
   UpdateState,
   UpdateChannel,
@@ -91,8 +91,19 @@ export function getSafeAppVersion(): string {
   return APP_VERSION;
 }
 
-function getAutoUpdater() {
-  return pkg.autoUpdater;
+const esmRequire = createRequire(import.meta.url);
+let autoUpdaterInstance: any = null;
+
+function getAutoUpdater(): any {
+  if (autoUpdaterInstance) return autoUpdaterInstance;
+  try {
+    const updaterMod = esmRequire('electron-updater');
+    autoUpdaterInstance = updaterMod.autoUpdater || updaterMod.default?.autoUpdater || updaterMod;
+    return autoUpdaterInstance;
+  } catch (err) {
+    console.warn('[UpdaterService] Failed to load autoUpdater:', err);
+    return null;
+  }
 }
 
 let activeConfig: UpdateConfig = loadUpdateConfig();
@@ -132,6 +143,7 @@ export function initAutoUpdater(): void {
   activeConfig = loadUpdateConfig();
 
   const autoUpdater = getAutoUpdater();
+  if (!autoUpdater) return;
 
   try {
     autoUpdater.setFeedURL({
@@ -254,6 +266,7 @@ export async function checkForAppUpdates(manual = true, overrideChannel?: Update
     // 1. Packaged Electron runtime path
     if (app && app.isPackaged) {
       const autoUpdater = getAutoUpdater();
+      if (!autoUpdater) return updateStatus;
       autoUpdater.channel = targetChannel === 'BETA' ? 'beta' : 'latest';
       const checkResult = await autoUpdater.checkForUpdates();
       if (checkResult && checkResult.updateInfo) {
@@ -356,6 +369,7 @@ export async function startDownloadUpdate(): Promise<boolean> {
   try {
     if (app && app.isPackaged) {
       const autoUpdater = getAutoUpdater();
+      if (!autoUpdater) return false;
       await autoUpdater.downloadUpdate();
       return true;
     }
@@ -490,6 +504,7 @@ export async function applyAndRestartUpdate(options?: UpdateInstallOptions): Pro
   try {
     if (app && app.isPackaged) {
       const autoUpdater = getAutoUpdater();
+      if (!autoUpdater) return { success: false, error: 'autoUpdater not available' };
       autoUpdater.quitAndInstall();
     } else {
       // Development / Staging simulation
@@ -533,17 +548,19 @@ export function setUpdateConfig(partial: Partial<UpdateConfig>): UpdateConfig {
   // Update live autoUpdater configuration
   try {
     const autoUpdater = getAutoUpdater();
-    if (partial.channel) {
-      autoUpdater.channel = partial.channel === 'BETA' ? 'beta' : 'latest';
-    }
-    if (partial.autoDownload !== undefined) {
-      autoUpdater.autoDownload = partial.autoDownload;
-    }
-    if (partial.feedUrl) {
-      autoUpdater.setFeedURL({
-        provider: 'generic',
-        url: partial.feedUrl,
-      });
+    if (autoUpdater) {
+      if (partial.channel) {
+        autoUpdater.channel = partial.channel === 'BETA' ? 'beta' : 'latest';
+      }
+      if (partial.autoDownload !== undefined) {
+        autoUpdater.autoDownload = partial.autoDownload;
+      }
+      if (partial.feedUrl) {
+        autoUpdater.setFeedURL({
+          provider: 'generic',
+          url: partial.feedUrl,
+        });
+      }
     }
   } catch {}
 

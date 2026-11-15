@@ -16,14 +16,10 @@ import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defa
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
 import { getAllProfileStats, getProfileStats, deleteProfileStats } from '../../07_BACKEND/services/stats-service.js';
 import { getPlanLimitsInfo } from '../../08_SECURITY/freemium-guard.js';
+import { getWritableSubdir } from '../../07_BACKEND/utils/runtime-paths.js';
 
 export function getProfilesDirectory(): string {
-  const userDataDir = app ? app.getPath('userData') : path.join(process.cwd(), '.mahi_data');
-  const profilesDir = path.join(userDataDir, 'profiles');
-  if (!fs.existsSync(profilesDir)) {
-    fs.mkdirSync(profilesDir, { recursive: true });
-  }
-  return profilesDir;
+  return getWritableSubdir('profiles');
 }
 
 export function getProfileStoragePath(profileId: string): string {

@@ -215,6 +215,7 @@ export function evaluateUserEntitlements(
         db.prepare("UPDATE commercial_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
         db.prepare("UPDATE auth_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
       } catch {}
+      user.planId = 'plan_free';
     }
 
     subscription = {
@@ -362,16 +363,20 @@ export function checkCapability(
   }
 
   const defaultFreePlan = DEFAULT_COMMERCIAL_PLANS[0];
-  const plan = user ? (getCommercialPlanById(user.planId) || defaultFreePlan) : defaultFreePlan;
-
   let isSubActive = false;
+  let isTrialActive = Boolean(user?.trialExpiresAt && new Date(user.trialExpiresAt).getTime() > Date.now());
+
   if (user) {
     const db = getDatabase();
     const subRow = db
       .prepare("SELECT * FROM commercial_subscriptions WHERE user_id = ? AND status IN ('ACTIVE', 'TRIAL') ORDER BY starts_at DESC LIMIT 1")
       .get(user.id) as any;
     if (subRow) {
-      const isExpired = subRow.expires_at && new Date(subRow.expires_at).getTime() <= Date.now();
+      const isTrialSub = subRow.billing_cycle === 'TRIAL' || subRow.status === 'TRIAL';
+      const isExpired = Boolean(
+        (subRow.expires_at && new Date(subRow.expires_at).getTime() <= Date.now()) ||
+        (isTrialSub && user.trialExpiresAt && new Date(user.trialExpiresAt).getTime() <= Date.now())
+      );
       if (!isExpired) {
         isSubActive = true;
       } else {
@@ -380,13 +385,29 @@ export function checkCapability(
           db.prepare("UPDATE commercial_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
           db.prepare("UPDATE auth_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
         } catch {}
+        user.planId = 'plan_free';
+        isTrialActive = false;
       }
+    } else if (user.trialExpiresAt && new Date(user.trialExpiresAt).getTime() <= Date.now() && user.planId !== 'plan_free') {
+      try {
+        db.prepare("UPDATE commercial_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
+        db.prepare("UPDATE auth_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
+      } catch {}
+      user.planId = 'plan_free';
+      isTrialActive = false;
     }
   } else if (userId === 'LOCAL_CLIENT' || userId === 'SYSTEM_OWNER' || !userId) {
     isSubActive = hasValidLicense() || hasValidAccountSubscription();
   }
 
-  const caps = resolveCapabilitiesForPlan(plan, isSubActive ? ({ status: 'ACTIVE' } as any) : undefined);
+  const effectivePlan = (isSubActive || isTrialActive)
+    ? (user ? (getCommercialPlanById(user.planId) || defaultFreePlan) : defaultFreePlan)
+    : defaultFreePlan;
+
+  const caps = resolveCapabilitiesForPlan(
+    effectivePlan,
+    (isSubActive || isTrialActive) ? ({ status: 'ACTIVE' } as any) : ({ status: 'EXPIRED' } as any)
+  );
   const isAllowed = Boolean(caps[capability]);
 
   if (!isAllowed) {

@@ -1589,6 +1589,11 @@ export async function handleCommercialApiRoutes(
           } catch {
             user = null;
           }
+        } else {
+          try { db.prepare('DELETE FROM web_handoff_sessions WHERE code = ?').run(handoffCode); } catch {}
+          webHandoffSessions.delete(handoffCode);
+          sendJSON(res, 403, { success: false, error: 'Handoff code has expired, already been used, or is invalid.' });
+          return true;
         }
       }
     } catch {}

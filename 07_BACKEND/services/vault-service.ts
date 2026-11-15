@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import crypto from 'node:crypto';
 import { app, dialog } from 'electron';
+import { getWritableUserDataDir } from '../utils/runtime-paths.js';
 import { getProfiles, createProfile } from '../../02_BROWSER/services/profile-service.js';
 import { getProxies, createProxy } from '../../02_BROWSER/services/proxy-service.js';
 import { getWorkflows, saveWorkflow } from '../../09_AUTOMATION/automation-engine.js';
@@ -79,7 +81,16 @@ export async function exportMasterVault(options: MasterVaultExportOptions = {}):
   if (!targetPath) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
     const defaultName = `MAHI-Vault-Backup-${timestamp}.mahi-vault`;
-    const defaultDir = app.getPath('downloads') || app.getPath('desktop') || process.cwd();
+    let defaultDir = os.tmpdir();
+    try {
+      if (app && typeof app.getPath === 'function') {
+        defaultDir = app.getPath('downloads') || app.getPath('desktop') || getWritableUserDataDir();
+      } else {
+        defaultDir = getWritableUserDataDir();
+      }
+    } catch {
+      defaultDir = getWritableUserDataDir();
+    }
     targetPath = path.join(defaultDir, defaultName);
   }
 
