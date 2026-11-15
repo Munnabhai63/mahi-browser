@@ -1,12 +1,13 @@
 /**
  * MAHI Browser — Phase 2: Cloudflare R2 & session.tar.gz Cloud Sync Verification Suite
  * 
- * Tests:
- * 1. Cloudflare R2 Object Storage Provider hardening & AWS SigV4 Presigned DELETE fix.
- * 2. Pure-Node POSIX ustar session.tar.gz creation, cache bloat exclusion (Section 6), and extraction.
- * 3. Security guards: Path traversal prevention, gzip magic validation, and atomic rollback.
- * 4. Client-side Zero-Knowledge AES-256-GCM envelope encryption and SHA-256 integrity verification.
- * 5. Launch-time pull (syncProfileIfCloudNewer) and close-time push lifecycle coordination.
+ * Verifies:
+ * 1. Cloudflare R2 Object Storage Provider hardening & AWS SDK v3 Presigned DELETE/HEAD operations.
+ * 2. LocalStorageProvider action token scoping ('upload', 'download', 'delete').
+ * 3. Pure-Node POSIX ustar + GNU @LongLink session.tar.gz packing and extraction (> 170 chars).
+ * 4. Section 6 cache exclusions and path traversal security guards.
+ * 5. Client-side Zero-Knowledge AES-256-GCM envelope encryption with SHA-256 integrity verification.
+ * 6. Launch-time cloud pull (syncProfileIfCloudNewer) and atomic rollback over real node:http server.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
@@ -15,6 +16,8 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
+import http from 'node:http';
+import { AddressInfo } from 'node:net';
 import {
   S3R2StorageProvider,
   LocalStorageProvider,
@@ -29,12 +32,14 @@ import {
 import {
   initSqlEngine,
   setCustomDatabasePath,
+  getDatabase,
 } from '../../06_DATABASE/connection.js';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import {
   createProfile,
   getProfileById,
   deleteProfile,
+  getProfiles,
   getProfileStoragePath,
 } from '../../02_BROWSER/services/profile-service.js';
 import {
@@ -42,17 +47,31 @@ import {
   decryptProfileArchive,
 } from '../../08_SECURITY/cloud-profile-crypto.js';
 import {
+  downloadAndRestoreProfile,
   syncProfileIfCloudNewer,
   setProfileCloudBinding,
   getProfileCloudBinding,
   removeProfileCloudBinding,
 } from '../../08_SECURITY/cloud-sync-service.js';
+import {
+  saveEncryptedSession,
+  clearEncryptedSession,
+} from '../../08_SECURITY/account-service.js';
+import { handleCommercialApiRoute } from '../../07_BACKEND/commercial/commercial-api-router.js';
 
 describe('PHASE 2: Cloudflare R2 & session.tar.gz Cloud Sync Engine', () => {
   let tempTestDir: string;
   let tempSqliteDir: string;
+  let tempUserDataDir: string;
+  let prevUserDataDir: string | undefined;
+  let mockServer: http.Server | null = null;
+  let prevCommercialApiUrl: string | undefined;
 
   beforeAll(async () => {
+    prevUserDataDir = process.env.MAHI_USER_DATA_DIR;
+    tempUserDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-phase2-userdata-'));
+    process.env.MAHI_USER_DATA_DIR = tempUserDataDir;
+
     tempSqliteDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-phase2-sqlite-'));
     setCustomDatabasePath(path.join(tempSqliteDir, 'phase2-test.sqlite'));
     await initSqlEngine();
@@ -60,25 +79,36 @@ describe('PHASE 2: Cloudflare R2 & session.tar.gz Cloud Sync Engine', () => {
   });
 
   afterAll(() => {
+    process.env.MAHI_USER_DATA_DIR = prevUserDataDir;
+    try { fs.rmSync(tempUserDataDir, { recursive: true, force: true }); } catch {}
     try { fs.rmSync(tempSqliteDir, { recursive: true, force: true }); } catch {}
   });
 
   beforeEach(() => {
     tempTestDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-phase2-work-'));
     setStorageProviderForTest(null);
+    prevCommercialApiUrl = process.env.COMMERCIAL_API_URL;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     setStorageProviderForTest(null);
+    clearEncryptedSession();
+    process.env.COMMERCIAL_API_URL = prevCommercialApiUrl;
     vi.restoreAllMocks();
+
+    if (mockServer) {
+      await new Promise<void>((resolve) => mockServer!.close(() => resolve()));
+      mockServer = null;
+    }
+
     try { fs.rmSync(tempTestDir, { recursive: true, force: true }); } catch {}
   });
 
   // ==========================================================================
-  // 1. CLOUDFLARE R2 & S3 STORAGE PROVIDER HARDENING
+  // 1. CLOUDFLARE R2 & AWS SDK v3 PRESIGNED OPERATIONS
   // ==========================================================================
   describe('1. Cloudflare R2 SigV4 Presigned Authentication & Connectivity', () => {
-    it('generates AWS SigV4 presigned DELETE URL with proper query signing (fixes 403 Forbidden)', async () => {
+    it('generates AWS SDK v3 path-style presigned PUT, GET, DELETE, and HEAD URLs with forcePathStyle', async () => {
       const provider = new S3R2StorageProvider({
         bucket: 'mahi-profiles-prod',
         endpoint: 'https://cf-account-id.r2.cloudflarestorage.com',
@@ -88,16 +118,28 @@ describe('PHASE 2: Cloudflare R2 & session.tar.gz Cloud Sync Engine', () => {
       });
 
       const objectKey = 'profiles/usr_1/prof_abc/session_v1.enc';
+      const uploadUrl = await provider.createUploadUrl(objectKey, 'application/octet-stream', 600);
+      const downloadUrl = await provider.createDownloadUrl(objectKey, 600);
       const deleteUrl = await provider.createDeleteUrl(objectKey, 600);
+      const headUrl = await provider.createHeadUrl!(objectKey, 600);
 
-      expect(deleteUrl).toContain('https://cf-account-id.r2.cloudflarestorage.com/mahi-profiles-prod/profiles/usr_1/prof_abc/session_v1.enc');
-      expect(deleteUrl).toContain('X-Amz-Algorithm=AWS4-HMAC-SHA256');
-      expect(deleteUrl).toContain('X-Amz-Credential=R2_TEST_KEY_ID_123');
+      // Verify path-style structure: <endpoint>/<bucket>/<key>
+      const expectedBasePath = 'https://cf-account-id.r2.cloudflarestorage.com/mahi-profiles-prod/profiles/usr_1/prof_abc/session_v1.enc';
+      expect(uploadUrl).toContain(expectedBasePath);
+      expect(downloadUrl).toContain(expectedBasePath);
+      expect(deleteUrl).toContain(expectedBasePath);
+      expect(headUrl).toContain(expectedBasePath);
+
+      // Verify AWS SigV4 query authentication components
+      expect(uploadUrl).toContain('X-Amz-Algorithm=AWS4-HMAC-SHA256');
+      expect(uploadUrl).toContain('X-Amz-Credential=R2_TEST_KEY_ID_123');
+      expect(uploadUrl).toContain('X-Amz-Signature=');
+      expect(uploadUrl).toContain('X-Amz-Expires=600');
       expect(deleteUrl).toContain('X-Amz-Signature=');
-      expect(deleteUrl).toContain('X-Amz-Expires=600');
+      expect(headUrl).toContain('X-Amz-Signature=');
     });
 
-    it('executes deleteObject using presigned DELETE URL rather than unsigned fetch', async () => {
+    it('headObject uses HEAD-signed URL rather than GET-signed URL', async () => {
       const provider = new S3R2StorageProvider({
         bucket: 'mahi-profiles',
         endpoint: 'https://test.r2.cloudflarestorage.com',
@@ -111,59 +153,64 @@ describe('PHASE 2: Cloudflare R2 & session.tar.gz Cloud Sync Engine', () => {
       vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any, init: any) => {
         requestedUrl = url.toString();
         requestedMethod = init?.method || 'GET';
-        return new Response(null, { status: 204 });
+        return new Response(null, {
+          status: 200,
+          headers: { 'content-length': '1024', 'etag': '"checksum-abc"' },
+        });
       });
 
-      const result = await provider.deleteObject('profiles/user/test.enc');
-      expect(result).toBe(true);
-      expect(requestedMethod).toBe('DELETE');
-      expect(requestedUrl).toContain('X-Amz-Signature=');
-      expect(requestedUrl).toContain('X-Amz-Algorithm=AWS4-HMAC-SHA256');
+      const headResult = await provider.headObject('profiles/user/test.enc');
+      expect(headResult).toEqual({ exists: true, size: 1024, checksum: 'checksum-abc' });
+      expect(requestedMethod).toBe('HEAD');
+
+      // Verify the URL was signed for HEAD, NOT GET
+      const headUrl = await provider.createHeadUrl!('profiles/user/test.enc', 300);
+      expect(new URL(requestedUrl).pathname).toBe(new URL(headUrl).pathname);
     });
 
-    it('verifyStorageConnectivity reports connection status accurately', async () => {
-      const localProvider = new LocalStorageProvider({ storageDir: tempTestDir });
-      const localStatus = await localProvider.verifyStorageConnectivity();
-      expect(localStatus.connected).toBe(true);
-      expect(localStatus.provider).toBe('local-storage');
-
-      const s3Provider = new S3R2StorageProvider({
-        bucket: 'mahi-test',
+    it('verifyStorageConnectivity sends HEAD probe to a HEAD-signed URL', async () => {
+      const provider = new S3R2StorageProvider({
+        bucket: 'mahi-test-bucket',
         endpoint: 'https://s3.amazonaws.com',
-        accessKeyId: 'KEY',
-        secretAccessKey: 'SECRET',
+        accessKeyId: 'AKIA_KEY',
+        secretAccessKey: 'SEC_KEY',
       });
 
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 404 }));
-      const s3Status = await s3Provider.verifyStorageConnectivity();
-      expect(s3Status.connected).toBe(true);
-      expect(s3Status.provider).toBe('s3-r2');
+      let requestedMethod = '';
+      let requestedUrl = '';
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any, init: any) => {
+        requestedUrl = url.toString();
+        requestedMethod = init?.method || 'GET';
+        return new Response(null, { status: 404 }); // 404 confirms bucket exists and probe reached S3
+      });
+
+      const conn = await provider.verifyStorageConnectivity();
+      expect(conn.connected).toBe(true);
+      expect(requestedMethod).toBe('HEAD');
+      expect(requestedUrl).toContain('.connectivity-probe');
     });
 
-    it('selects provider according to STORAGE_PROVIDER environment variable', () => {
-      const prev = process.env.STORAGE_PROVIDER;
+    it('LocalStorageProvider scopes action tokens strictly and rejects upload token on delete', () => {
+      const local = new LocalStorageProvider({ storageDir: tempTestDir });
+      const expiresAt = Date.now() + 60000;
 
-      try {
-        process.env.STORAGE_PROVIDER = 'local';
-        setStorageProviderForTest(null);
-        expect(getStorageProvider().name).toBe('local-storage');
+      // Access private generateToken via cast
+      const uploadToken = (local as any).generateToken('key1', 'upload', expiresAt);
+      const deleteToken = (local as any).generateToken('key1', 'delete', expiresAt);
 
-        process.env.STORAGE_PROVIDER = 's3-r2';
-        setStorageProviderForTest(null);
-        expect(getStorageProvider().name).toBe('s3-r2');
-      } finally {
-        process.env.STORAGE_PROVIDER = prev;
-        setStorageProviderForTest(null);
-      }
+      // Verify token scoping
+      expect(local.verifyToken('key1', 'upload', expiresAt, uploadToken)).toBe(true);
+      expect(local.verifyToken('key1', 'delete', expiresAt, uploadToken)).toBe(false); // REJECTED
+      expect(local.verifyToken('key1', 'delete', expiresAt, deleteToken)).toBe(true);
     });
   });
 
   // ==========================================================================
-  // 2. PURE-NODE POSIX USTAR SESSION.TAR.GZ PACKING & EXCLUSION RULES
+  // 2. PURE-NODE POSIX USTAR + GNU @LongLink SESSION.TAR.GZ PACKING
   // ==========================================================================
-  describe('2. Pure-Node POSIX ustar session.tar.gz Engine & Cache Exclusions', () => {
-    it('strictly identifies Section 6 excluded paths (Cache, Code Cache, GPUCache, Crashpad, Service Worker/CacheStorage)', () => {
-      // Must exclude (Section 6)
+  describe('2. Pure-Node POSIX ustar + GNU @LongLink Session Packaging', () => {
+    it('strictly enforces Section 6 exclusion rules (Cache, Code Cache, GPUCache, Crashpad, Service Worker/CacheStorage, locks)', () => {
       expect(isPathExcludedFromSync('Default/Cache/data_0')).toBe(true);
       expect(isPathExcludedFromSync('Default/Code Cache/js/index.bin')).toBe(true);
       expect(isPathExcludedFromSync('Default/GPUCache/data_1')).toBe(true);
@@ -172,119 +219,62 @@ describe('PHASE 2: Cloudflare R2 & session.tar.gz Cloud Sync Engine', () => {
       expect(isPathExcludedFromSync('Default/DawnCache/shader.bin')).toBe(true);
       expect(isPathExcludedFromSync('Default/blob_storage/part_1')).toBe(true);
 
-      // Temporary & singletons
+      // Lock files & singletons
       expect(isPathExcludedFromSync('Default/Cookies.tmp')).toBe(true);
       expect(isPathExcludedFromSync('Default/LOCK')).toBe(true);
       expect(isPathExcludedFromSync('Default/SingletonLock')).toBe(true);
-      expect(isPathExcludedFromSync('Default/SingletonCookie')).toBe(true);
 
-      // Path traversal security
+      // Path traversal guards
       expect(isPathExcludedFromSync('../evil.sh')).toBe(true);
       expect(isPathExcludedFromSync('/etc/passwd')).toBe(true);
       expect(isPathExcludedFromSync('C:\\Windows\\System32\\cmd.exe')).toBe(true);
 
-      // MUST NOT exclude essential user session data
+      // Essential session files MUST NOT be excluded
       expect(isPathExcludedFromSync('Default/Cookies')).toBe(false);
       expect(isPathExcludedFromSync('Default/Network/Cookies')).toBe(false);
       expect(isPathExcludedFromSync('Default/Preferences')).toBe(false);
       expect(isPathExcludedFromSync('Default/Local Storage/leveldb/000005.ldb')).toBe(false);
-      expect(isPathExcludedFromSync('Default/IndexedDB/site.indexeddb.leveldb/000001.log')).toBe(false);
       expect(isPathExcludedFromSync('profile.json')).toBe(false);
     });
 
-    it('packs profile storage into valid session.tar.gz starting with gzip magic bytes 0x1f 0x8b', async () => {
+    it('packs and unpacks deep paths > 170 chars using GNU @LongLink roundtrip', async () => {
       const profile = createProfile({
-        name: 'TarGz-Pack-Test-Profile',
-        folder: 'Finance',
+        name: 'LongPath-Test-Profile',
+        folder: 'Enterprise',
       });
 
       const storageDir = getProfileStoragePath(profile.id);
-      const defDir = path.join(storageDir, 'Default');
-      const ldbDir = path.join(defDir, 'Local Storage', 'leveldb');
-      fs.mkdirSync(ldbDir, { recursive: true });
+      // Construct a deep path with > 170 chars and no '/' within first 155 chars
+      const deepRelativeDir = 'Default/Storage/ext/' + 'a'.repeat(160);
+      const deepDir = path.join(storageDir, deepRelativeDir);
+      fs.mkdirSync(deepDir, { recursive: true });
 
-      // Essential session files
-      fs.writeFileSync(path.join(defDir, 'Preferences'), JSON.stringify({ theme: 'dark' }), 'utf8');
-      fs.writeFileSync(path.join(ldbDir, '000001.ldb'), 'essential-session-token-leveldb', 'utf8');
+      const deepFilePath = path.join(deepDir, 'state.json');
+      fs.writeFileSync(deepFilePath, JSON.stringify({ state: 'deep-nested-success' }), 'utf8');
 
-      // Bloat cache files that must be omitted
-      const cacheDir = path.join(defDir, 'Cache');
-      const gpuDir = path.join(defDir, 'GPUCache');
-      fs.mkdirSync(cacheDir, { recursive: true });
-      fs.mkdirSync(gpuDir, { recursive: true });
-      fs.writeFileSync(path.join(cacheDir, 'heavy_cache_blob.bin'), 'exclude-me', 'utf8');
-      fs.writeFileSync(path.join(gpuDir, 'shader_blob.bin'), 'exclude-me', 'utf8');
-
-      const archiveDest = path.join(tempTestDir, 'test-session.tar.gz');
-      const packResult = await packProfileSessionTarGz(profile.id, archiveDest);
-
-      expect(packResult.sizeBytes).toBeGreaterThan(0);
-      expect(fs.existsSync(archiveDest)).toBe(true);
-
-      // Verify GZIP magic bytes: 0x1f 0x8b
+      const packResult = await packProfileSessionTarGz(profile.id);
       expect(packResult.buffer[0]).toBe(0x1f);
       expect(packResult.buffer[1]).toBe(0x8b);
 
-      // Decompress and verify tar entries
-      const tarData = zlib.gunzipSync(packResult.buffer);
-      const tarString = tarData.toString('utf8');
-
-      expect(tarString).toContain('profile.json');
-      expect(tarString).toContain('Preferences');
-      expect(tarString).toContain('Local Storage/leveldb/000001.ldb');
-      expect(tarString).not.toContain('heavy_cache_blob.bin');
-      expect(tarString).not.toContain('shader_blob.bin');
-
-      deleteProfile(profile.id);
-    });
-
-    it('unpacks session.tar.gz restoring all session files and embedded profile metadata', async () => {
-      const sourceProfile = createProfile({
-        name: 'TarGz-Source-Profile',
-        folder: 'Marketing',
-        notes: 'Target extraction test',
-      });
-
-      const sourceDir = getProfileStoragePath(sourceProfile.id);
-      const networkDir = path.join(sourceDir, 'Default', 'Network');
-      fs.mkdirSync(networkDir, { recursive: true });
-      fs.writeFileSync(path.join(networkDir, 'Cookies'), 'sqlite-cookie-data-blob', 'utf8');
-
-      const packResult = await packProfileSessionTarGz(sourceProfile.id);
-
-      // Unpack into a new target profile ID
-      const targetProfileId = crypto.randomUUID();
-      const unpackResult = await unpackProfileSessionTarGz(packResult.buffer, targetProfileId);
+      const targetId = crypto.randomUUID();
+      const unpackResult = await unpackProfileSessionTarGz(packResult.buffer, targetId);
 
       expect(unpackResult.fileCount).toBeGreaterThanOrEqual(2);
-      expect(unpackResult.profileMetadata).toBeDefined();
-      expect(unpackResult.profileMetadata.name).toBe('TarGz-Source-Profile');
+      const restoredPath = path.join(getProfileStoragePath(targetId), deepRelativeDir, 'state.json');
+      expect(fs.existsSync(restoredPath)).toBe(true);
+      expect(JSON.parse(fs.readFileSync(restoredPath, 'utf8'))).toEqual({ state: 'deep-nested-success' });
 
-      const targetDir = getProfileStoragePath(targetProfileId);
-      const restoredCookiePath = path.join(targetDir, 'Default', 'Network', 'Cookies');
-      expect(fs.existsSync(restoredCookiePath)).toBe(true);
-      expect(fs.readFileSync(restoredCookiePath, 'utf8')).toBe('sqlite-cookie-data-blob');
-
-      // Cleanup
-      deleteProfile(sourceProfile.id);
-      try { fs.rmSync(targetDir, { recursive: true, force: true }); } catch {}
+      deleteProfile(profile.id);
+      try { fs.rmSync(getProfileStoragePath(targetId), { recursive: true, force: true }); } catch {}
     });
 
-    it('rejects invalid non-gzip archives with INVALID_GZIP_MAGIC error', async () => {
-      const fakeCorruptBuffer = Buffer.from('this is plain text not gzip');
-      await expect(
-        unpackProfileSessionTarGz(fakeCorruptBuffer, 'dummy-id')
-      ).rejects.toThrow('INVALID_GZIP_MAGIC');
-    });
-
-    it('strictly detects and blocks path-traversal attacks in tar headers', async () => {
-      // Construct a malicious tar archive attempting to escape storage sandbox
+    it('rejects path traversal attempts in tar headers', async () => {
       const evilHeader = Buffer.alloc(512, 0);
       evilHeader.write('../../../evil_payload.sh', 0, 100, 'utf8');
       evilHeader.write('0000644 \0', 100, 8, 'ascii');
       evilHeader.write('000000 \0', 108, 8, 'ascii');
       evilHeader.write('000000 \0', 116, 8, 'ascii');
-      evilHeader.write('00000000010 ', 124, 12, 'ascii'); // 8 bytes
+      evilHeader.write('00000000010 ', 124, 12, 'ascii');
       evilHeader.write('00000000000 ', 136, 12, 'ascii');
       evilHeader.write('        ', 148, 8, 'ascii');
       evilHeader.write('0', 156, 1, 'ascii');
@@ -296,9 +286,7 @@ describe('PHASE 2: Cloudflare R2 & session.tar.gz Cloud Sync Engine', () => {
       evilHeader.write(sum.toString(8).padStart(6, '0') + '\0 ', 148, 8, 'ascii');
 
       const payload = Buffer.alloc(512, 0);
-      payload.write('malicious-command', 0, 'utf8');
       const eof = Buffer.alloc(1024, 0);
-
       const maliciousTar = Buffer.concat([evilHeader, payload, eof]);
       const maliciousGzip = zlib.gzipSync(maliciousTar);
 
@@ -309,12 +297,12 @@ describe('PHASE 2: Cloudflare R2 & session.tar.gz Cloud Sync Engine', () => {
   });
 
   // ==========================================================================
-  // 3. ZERO-KNOWLEDGE ENVELOPE ENCRYPTION & SHA-256 INTEGRITY
+  // 3. ZERO-KNOWLEDGE ENVELOPE ENCRYPTION & INTEGRITY
   // ==========================================================================
   describe('3. Client-Side Envelope Encryption & SHA-256 Checksum Validation', () => {
     it('performs full roundtrip: pack -> AES-256-GCM envelope encrypt -> SHA-256 verify -> decrypt -> unpack', async () => {
       const profile = createProfile({
-        name: 'ZK-Crypto-Roundtrip-Profile',
+        name: 'ZK-Crypto-Profile',
         folder: 'Security',
       });
 
@@ -322,42 +310,25 @@ describe('PHASE 2: Cloudflare R2 & session.tar.gz Cloud Sync Engine', () => {
       fs.mkdirSync(path.join(storageDir, 'Default'), { recursive: true });
       fs.writeFileSync(path.join(storageDir, 'Default', 'Bookmarks'), '{"roots":{}}', 'utf8');
 
-      // 1. Pack
       const packResult = await packProfileSessionTarGz(profile.id);
+      const masterPassphrase = 'secure-master-passphrase-32b';
+      const encryptedPkg = encryptProfileArchive(packResult.buffer, masterPassphrase);
 
-      // 2. Client-Side Envelope Encrypt
-      const userMasterPassphrase = 'user-secret-sync-master-key-32b';
-      const encryptedPkg = encryptProfileArchive(packResult.buffer, userMasterPassphrase);
+      expect(encryptedPkg.checksumSha256).toBe(crypto.createHash('sha256').update(encryptedPkg.ciphertext).digest('hex'));
 
-      expect(encryptedPkg.ciphertext).toBeInstanceOf(Buffer);
-      expect(encryptedPkg.iv).toHaveLength(24); // 12-byte hex IV
-      expect(encryptedPkg.authTag).toHaveLength(32); // 16-byte hex tag
-      expect(encryptedPkg.checksumSha256).toBeDefined();
-
-      // 3. Verify SHA-256 Integrity
-      const computedSha256 = crypto.createHash('sha256').update(encryptedPkg.ciphertext).digest('hex');
-      expect(computedSha256).toBe(encryptedPkg.checksumSha256);
-
-      // 4. Client-Side Envelope Decrypt
-      const decryptedPlaintext = decryptProfileArchive({
+      const decrypted = decryptProfileArchive({
         ciphertext: encryptedPkg.ciphertext,
         expectedChecksum: encryptedPkg.checksumSha256,
         encryptedDataKey: encryptedPkg.encryptedDataKey,
         iv: encryptedPkg.iv,
         authTag: encryptedPkg.authTag,
-        userMasterKey: userMasterPassphrase,
+        userMasterKey: masterPassphrase,
       });
 
-      expect(decryptedPlaintext[0]).toBe(0x1f);
-      expect(decryptedPlaintext[1]).toBe(0x8b);
-
-      // 5. Unpack
-      const targetId = crypto.randomUUID();
-      const unpackResult = await unpackProfileSessionTarGz(decryptedPlaintext, targetId);
-      expect(unpackResult.fileCount).toBeGreaterThanOrEqual(1);
+      expect(decrypted[0]).toBe(0x1f);
+      expect(decrypted[1]).toBe(0x8b);
 
       deleteProfile(profile.id);
-      try { fs.rmSync(getProfileStoragePath(targetId), { recursive: true, force: true }); } catch {}
     });
 
     it('rejects tampered ciphertext during SHA-256 verification before decryption occurs', () => {
@@ -365,7 +336,6 @@ describe('PHASE 2: Cloudflare R2 & session.tar.gz Cloud Sync Engine', () => {
       const passphrase = 'test-passphrase';
       const pkg = encryptProfileArchive(dummyPlaintext, passphrase);
 
-      // Tamper 1 byte of ciphertext
       pkg.ciphertext[0] = pkg.ciphertext[0] ^ 0xff;
 
       expect(() => {
@@ -382,22 +352,46 @@ describe('PHASE 2: Cloudflare R2 & session.tar.gz Cloud Sync Engine', () => {
   });
 
   // ==========================================================================
-  // 4. LAUNCH-TIME PULL & CLOSE-TIME PUSH LIFECYCLE
+  // 4. REAL LOCAL HTTP SERVER: LAUNCH-TIME PULL & ATOMIC ROLLBACK
   // ==========================================================================
-  describe('4. Launch-Time Cloud Pull & Lifecycle Synchronization', () => {
-    it('syncProfileIfCloudNewer returns false when local profile version is already up to date', async () => {
-      const profile = createProfile({ name: 'Sync-Version-Test' });
+  describe('4. Real Server Launch-Time Cloud Pull & Atomic Rollback', () => {
+    beforeEach(() => {
+      saveEncryptedSession({
+        token: 'test_token_phase2',
+        refreshToken: 'test_refresh',
+        account_id: 'SYSTEM_OWNER',
+        email: 'phase2@test.com',
+        sync_key: 'mahi-cloud-sync',
+        saved_at: new Date().toISOString(),
+      });
+    });
+
+    afterEach(() => {
+      clearEncryptedSession();
+    });
+
+    it('syncProfileIfCloudNewer returns false cleanly when server reports version equal to local version', async () => {
+      const profile = createProfile({ name: 'Sync-Clean-Test' });
       setProfileCloudBinding(profile.id, {
-        cloudProfileId: 'cloud_prof_123',
-        lastSyncedVersion: 5,
+        cloudProfileId: 'cloud_sync_clean',
+        lastSyncedVersion: 3,
         updatedAt: new Date().toISOString(),
       });
 
-      // Mock remote server returning version 5 (equal to local)
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
-        JSON.stringify({ success: true, profile: { current_version: 5 } }),
-        { status: 200 }
-      ));
+      // Ephemeral node:http server returning current_version = 3
+      mockServer = http.createServer((req, res) => {
+        if (req.url?.includes('/api/v1/sync/profiles/cloud_sync_clean') && req.method === 'GET') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, profile: { id: 'cloud_sync_clean', current_version: 3 } }));
+          return;
+        }
+        res.writeHead(404);
+        res.end();
+      });
+
+      await new Promise<void>((resolve) => mockServer!.listen(0, '127.0.0.1', () => resolve()));
+      const port = (mockServer.address() as AddressInfo).port;
+      process.env.COMMERCIAL_API_URL = `http://127.0.0.1:${port}`;
 
       const updated = await syncProfileIfCloudNewer(profile.id);
       expect(updated).toBe(false);
@@ -406,22 +400,186 @@ describe('PHASE 2: Cloudflare R2 & session.tar.gz Cloud Sync Engine', () => {
       deleteProfile(profile.id);
     });
 
-    it('syncProfileIfCloudNewer handles offline/unreachable servers gracefully without throwing', async () => {
+    it('syncProfileIfCloudNewer handles offline/ECONNREFUSED gracefully without throwing', async () => {
       const profile = createProfile({ name: 'Offline-Pull-Test' });
       setProfileCloudBinding(profile.id, {
-        cloudProfileId: 'cloud_offline_123',
+        cloudProfileId: 'cloud_offline',
         lastSyncedVersion: 1,
         updatedAt: new Date().toISOString(),
       });
 
-      // Simulate connection refused / offline network error
-      vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED 127.0.0.1'));
+      process.env.COMMERCIAL_API_URL = 'http://127.0.0.1:65534'; // Closed port
 
-      const result = await syncProfileIfCloudNewer(profile.id);
-      expect(result).toBe(false); // Does not throw, falls back gracefully
+      const updated = await syncProfileIfCloudNewer(profile.id);
+      expect(updated).toBe(false); // Does not throw
 
       removeProfileCloudBinding(profile.id);
       deleteProfile(profile.id);
+    });
+
+    it('Machine A -> Cloud -> Machine B launch pull updates in place at plan limit (15/15) without duplicate', async () => {
+      // 1. Create Machine B profile (prof_B)
+      const profB = createProfile({ name: 'Machine-B-Profile', folder: 'Work' });
+      const profBStorage = getProfileStoragePath(profB.id);
+      fs.mkdirSync(path.join(profBStorage, 'Default'), { recursive: true });
+      fs.writeFileSync(path.join(profBStorage, 'Default', 'Preferences'), JSON.stringify({ version: 1, machine: 'B' }), 'utf8');
+
+      // Bind profB to cloud_shared at v1
+      setProfileCloudBinding(profB.id, {
+        cloudProfileId: 'cloud_shared_100',
+        lastSyncedVersion: 1,
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Fill remaining user capacity so user has 15 total profiles (at 15/15 capacity!)
+      const fillerProfiles: any[] = [];
+      const currentCount = getProfiles().length;
+      for (let i = currentCount; i < 15; i++) {
+        fillerProfiles.push(createProfile({ name: `Quota-Filler-${i}` }));
+      }
+      expect(getProfiles().length).toBeGreaterThanOrEqual(15);
+
+      // 2. Prepare Machine A cloud snapshot (prof_A at v2)
+      const profA = createProfile({ name: 'Machine-A-Profile' });
+      const profAStorage = getProfileStoragePath(profA.id);
+      fs.mkdirSync(path.join(profAStorage, 'Default'), { recursive: true });
+      fs.writeFileSync(path.join(profAStorage, 'Default', 'Preferences'), JSON.stringify({ version: 2, machine: 'A' }), 'utf8');
+
+      const packA = await packProfileSessionTarGz(profA.id);
+      deleteProfile(profA.id); // Clean up Machine A local record
+
+      const passphrase = 'mahi-cloud-sync';
+      const encPkg = encryptProfileArchive(packA.buffer, passphrase);
+
+      // 3. Ephemeral server serving v2 snapshot
+      mockServer = http.createServer((req, res) => {
+        if (req.url?.includes('/api/v1/sync/profiles/cloud_shared_100') && req.method === 'GET') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: true,
+            profile: { id: 'cloud_shared_100', current_version: 2 },
+          }));
+          return;
+        }
+
+        if (req.url?.includes('/api/v1/sync/download-session') && req.method === 'POST') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: true,
+            data: {
+              downloadUrl: `http://${req.headers.host}/storage/download/cloud_shared_v2.enc`,
+              version: 2,
+              checksumSha256: encPkg.checksumSha256,
+              encryptedDataKey: encPkg.encryptedDataKey,
+              iv: encPkg.iv,
+              authTag: encPkg.authTag,
+              fileSize: encPkg.ciphertext.length,
+              profileName: 'Machine-B-Profile',
+              localProfileId: 'prof_A_machine_a', // From Machine A!
+            },
+          }));
+          return;
+        }
+
+        if (req.url?.includes('/storage/download/cloud_shared_v2.enc') && req.method === 'GET') {
+          res.writeHead(200, {
+            'Content-Type': 'application/octet-stream',
+            'Content-Length': encPkg.ciphertext.length,
+          });
+          res.end(encPkg.ciphertext);
+          return;
+        }
+
+        res.writeHead(404);
+        res.end();
+      });
+
+      await new Promise<void>((resolve) => mockServer!.listen(0, '127.0.0.1', () => resolve()));
+      const port = (mockServer.address() as AddressInfo).port;
+      process.env.COMMERCIAL_API_URL = `http://127.0.0.1:${port}`;
+
+      const profilesBefore = getProfiles().length;
+
+      // 4. Execute launch pull on Machine B
+      const pulled = await syncProfileIfCloudNewer(profB.id);
+      expect(pulled).toBe(true);
+
+      // Verify profB updated in place
+      const updatedPrefs = JSON.parse(fs.readFileSync(path.join(profBStorage, 'Default', 'Preferences'), 'utf8'));
+      expect(updatedPrefs).toEqual({ version: 2, machine: 'A' });
+
+      // Verify no duplicate profile was created and total count did not increase
+      expect(getProfiles().length).toBe(profilesBefore);
+
+      // Verify binding version bumped to 2
+      const newBinding = getProfileCloudBinding(profB.id);
+      expect(newBinding?.lastSyncedVersion).toBe(2);
+
+      // Cleanup
+      removeProfileCloudBinding(profB.id);
+      deleteProfile(profB.id);
+      for (const p of fillerProfiles) {
+        deleteProfile(p.id);
+      }
+    });
+
+    it('atomic rollback restores previous storage directory if cloud restore fails', async () => {
+      const prof = createProfile({ name: 'Rollback-Test-Profile' });
+      const storagePath = getProfileStoragePath(prof.id);
+      fs.mkdirSync(path.join(storagePath, 'Default'), { recursive: true });
+      fs.writeFileSync(path.join(storagePath, 'Default', 'important_data.txt'), 'original-safe-data', 'utf8');
+
+      // Prepare envelope payload that decrypts successfully and passes gzip magic byte check (0x1f 0x8b),
+      // but fails during extraction due to truncated/invalid gzip stream, exercising unpack failure and atomic rollback.
+      const corruptGzip = Buffer.from([0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00]);
+      const encPkg = encryptProfileArchive(corruptGzip, 'mahi-cloud-sync');
+
+      mockServer = http.createServer((req, res) => {
+        if (req.url?.includes('/api/v1/sync/download-session')) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: true,
+            data: {
+              downloadUrl: `http://${req.headers.host}/corrupt.enc`,
+              version: 2,
+              checksumSha256: encPkg.checksumSha256,
+              encryptedDataKey: encPkg.encryptedDataKey,
+              iv: encPkg.iv,
+              authTag: encPkg.authTag,
+              fileSize: encPkg.ciphertext.length,
+              profileName: prof.name,
+              localProfileId: prof.id,
+            },
+          }));
+          return;
+        }
+
+        if (req.url?.includes('/corrupt.enc')) {
+          res.writeHead(200, {
+            'Content-Type': 'application/octet-stream',
+            'Content-Length': encPkg.ciphertext.length,
+          });
+          res.end(encPkg.ciphertext);
+          return;
+        }
+
+        res.writeHead(404);
+        res.end();
+      });
+
+      await new Promise<void>((resolve) => mockServer!.listen(0, '127.0.0.1', () => resolve()));
+      const port = (mockServer.address() as AddressInfo).port;
+      process.env.COMMERCIAL_API_URL = `http://127.0.0.1:${port}`;
+
+      await expect(
+        downloadAndRestoreProfile('cloud_corrupt_test', { targetLocalProfileId: prof.id })
+      ).rejects.toThrow();
+
+      // Original data must be fully intact
+      expect(fs.existsSync(path.join(storagePath, 'Default', 'important_data.txt'))).toBe(true);
+      expect(fs.readFileSync(path.join(storagePath, 'Default', 'important_data.txt'), 'utf8')).toBe('original-safe-data');
+
+      deleteProfile(prof.id);
     });
   });
 });

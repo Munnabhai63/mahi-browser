@@ -128,24 +128,53 @@ export function isPathExcludedFromSync(relPath: string): boolean {
 }
 
 /**
- * Creates a standard 512-byte POSIX ustar tar header block.
+ * Splits a relative path into POSIX ustar prefix (up to 155 bytes) and name (up to 100 bytes).
+ * Searches backwards across '/' boundaries. Returns null if it cannot fit within ustar limits.
  */
-function createTarHeader(name: string, size: number, mode = 0o644, mtime = Math.floor(Date.now() / 1000), typeflag = '0'): Buffer {
-  const header = Buffer.alloc(512, 0);
-
-  let prefix = '';
-  let filename = name;
-
-  if (Buffer.byteLength(filename, 'utf8') > 100) {
-    const slashIdx = filename.lastIndexOf('/');
-    if (slashIdx !== -1 && slashIdx <= 155) {
-      prefix = filename.substring(0, slashIdx);
-      filename = filename.substring(slashIdx + 1);
-    }
+function splitUstarPath(relPath: string): { prefix: string; name: string } | null {
+  const totalBytes = Buffer.byteLength(relPath, 'utf8');
+  if (totalBytes <= 100) {
+    return { prefix: '', name: relPath };
   }
 
+  // Find a '/' boundary where prefix <= 155 bytes and name <= 100 bytes
+  let slashIdx = relPath.lastIndexOf('/');
+  while (slashIdx !== -1) {
+    const candidatePrefix = relPath.substring(0, slashIdx);
+    const candidateName = relPath.substring(slashIdx + 1);
+
+    const prefixBytes = Buffer.byteLength(candidatePrefix, 'utf8');
+    const nameBytes = Buffer.byteLength(candidateName, 'utf8');
+
+    if (prefixBytes <= 155 && nameBytes <= 100) {
+      return { prefix: candidatePrefix, name: candidateName };
+    }
+
+    if (prefixBytes <= 155 && nameBytes > 100) {
+      break;
+    }
+
+    slashIdx = relPath.lastIndexOf('/', slashIdx - 1);
+  }
+
+  return null;
+}
+
+/**
+ * Creates a standard 512-byte POSIX ustar tar header block.
+ */
+function createTarHeader(
+  name: string,
+  size: number,
+  mode = 0o644,
+  mtime = Math.floor(Date.now() / 1000),
+  typeflag = '0',
+  prefix = ''
+): Buffer {
+  const header = Buffer.alloc(512, 0);
+
   // 0-99: name
-  header.write(filename, 0, 100, 'utf8');
+  header.write(name, 0, 100, 'utf8');
 
   // 100-107: mode (8 bytes octal)
   header.write(mode.toString(8).padStart(6, '0') + ' \0', 100, 8, 'ascii');
@@ -198,6 +227,20 @@ function createTarHeader(name: string, size: number, mode = 0o644, mtime = Math.
   header.write(chksumOctal, 148, 8, 'ascii');
 
   return header;
+}
+
+/**
+ * Creates GNU @LongLink tar blocks (header + padded data) for paths exceeding POSIX ustar limits.
+ */
+function createGnuLongLinkBlocks(relPath: string): Buffer[] {
+  const pathBuf = Buffer.from(relPath + '\0', 'utf8');
+  const longLinkHeader = createTarHeader('././@LongLink', pathBuf.length, 0o644, 0, 'L');
+  const pad = (512 - (pathBuf.length % 512)) % 512;
+  const blocks = [longLinkHeader, pathBuf];
+  if (pad > 0) {
+    blocks.push(Buffer.alloc(pad, 0));
+  }
+  return blocks;
 }
 
 /**
@@ -257,8 +300,19 @@ export async function packProfileSessionTarGz(
           try {
             const stat = fs.statSync(fullPath);
             const content = fs.readFileSync(fullPath);
-            const header = createTarHeader(relPath, stat.size, 0o644, Math.floor(stat.mtimeMs / 1000));
-            chunks.push(header);
+
+            const ustar = splitUstarPath(relPath);
+            if (!ustar) {
+              // Path exceeds POSIX ustar prefix/name limits: emit GNU @LongLink
+              const longLinkBlocks = createGnuLongLinkBlocks(relPath);
+              for (const b of longLinkBlocks) chunks.push(b);
+              const header = createTarHeader(relPath.substring(0, 100), stat.size, 0o644, Math.floor(stat.mtimeMs / 1000), '0', '');
+              chunks.push(header);
+            } else {
+              const header = createTarHeader(ustar.name, stat.size, 0o644, Math.floor(stat.mtimeMs / 1000), '0', ustar.prefix);
+              chunks.push(header);
+            }
+
             chunks.push(content);
             const pad = (512 - (content.length % 512)) % 512;
             if (pad > 0) chunks.push(Buffer.alloc(pad, 0));
@@ -300,7 +354,7 @@ export async function packProfileSessionTarGz(
 
 /**
  * Unpacks a session.tar.gz archive into target profile storage directory with strict
- * path-traversal sanitization and gzip magic validation.
+ * path-traversal sanitization and gzip magic validation. Supports POSIX ustar and GNU @LongLink.
  */
 export async function unpackProfileSessionTarGz(
   tarGzBufferOrPath: Buffer | string,
@@ -329,6 +383,7 @@ export async function unpackProfileSessionTarGz(
   let fileCount = 0;
   let bytesExtracted = 0;
   let profileMetadata: any = null;
+  let pendingLongPath: string | null = null;
 
   while (offset + 512 <= tarBuf.length) {
     const headerBuf = tarBuf.subarray(offset, offset + 512);
@@ -345,10 +400,37 @@ export async function unpackProfileSessionTarGz(
       break; // End of tar archive
     }
 
+    // Parse size
+    const sizeStr = headerBuf.toString('ascii', 124, 136).replace(/\0.*$/, '').trim();
+    const fileSize = parseInt(sizeStr, 8) || 0;
+
+    // Parse typeflag
+    const typeflag = headerBuf[156];
+
+    // Handle GNU @LongLink (typeflag 'L' = 76)
+    if (typeflag === 76) {
+      offset += 512;
+      if (offset + fileSize > tarBuf.length) {
+        throw new Error('CORRUPT_TAR_ARCHIVE: Truncated @LongLink stream encountered.');
+      }
+      const longLinkData = tarBuf.subarray(offset, offset + fileSize);
+      pendingLongPath = longLinkData.toString('utf8').replace(/\0.*$/, '').trim();
+      const pad = (512 - (fileSize % 512)) % 512;
+      offset += fileSize + pad;
+      continue;
+    }
+
     // Extract filename
-    let name = headerBuf.toString('utf8', 0, 100).replace(/\0.*$/, '').trim();
-    let prefix = headerBuf.toString('utf8', 345, 500).replace(/\0.*$/, '').trim();
-    let relPath = prefix ? `${prefix}/${name}` : name;
+    let relPath: string;
+    if (pendingLongPath) {
+      relPath = pendingLongPath;
+      pendingLongPath = null;
+    } else {
+      let name = headerBuf.toString('utf8', 0, 100).replace(/\0.*$/, '').trim();
+      let prefix = headerBuf.toString('utf8', 345, 500).replace(/\0.*$/, '').trim();
+      relPath = prefix ? `${prefix}/${name}` : name;
+    }
+
     relPath = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
 
     // Strict path traversal security check
@@ -357,17 +439,12 @@ export async function unpackProfileSessionTarGz(
       relPath.startsWith('/') ||
       relPath.startsWith('\\') ||
       /^[a-zA-Z]:/.test(relPath) ||
-      path.isAbsolute(relPath)
+      path.isAbsolute(relPath) ||
+      relPath.includes('\0')
     ) {
       throw new Error(`SECURITY_ALERT_PATH_TRAVERSAL: Illegal archive entry path detected: "${relPath}"`);
     }
 
-    // Parse size
-    const sizeStr = headerBuf.toString('ascii', 124, 136).replace(/\0.*$/, '').trim();
-    const fileSize = parseInt(sizeStr, 8) || 0;
-
-    // Parse typeflag
-    const typeflag = headerBuf[156];
     const isDir = typeflag === 53; // '5'
 
     offset += 512;

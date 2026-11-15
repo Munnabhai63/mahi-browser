@@ -2659,7 +2659,7 @@ export async function handleCommercialApiRoutes(
 
     const storage = getStorageProvider();
     if (storage instanceof LocalStorageProvider) {
-      const valid = storage.verifyToken(key, 'upload', expires, token);
+      const valid = storage.verifyToken(key, 'delete', expires, token);
       if (!valid) {
         sendJSON(res, 403, { success: false, error: 'Invalid or expired signature' });
         return true;

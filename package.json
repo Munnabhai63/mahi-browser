@@ -25,6 +25,8 @@
     "dist:all": "npm run build && electron-builder -mwl"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1169.0",
+    "@aws-sdk/s3-request-presigner": "^3.1169.0",
     "clsx": "^2.1.1",
     "electron-updater": "^6.8.9",
     "lucide-react": "^0.468.0",

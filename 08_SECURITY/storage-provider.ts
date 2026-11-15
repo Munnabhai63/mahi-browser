@@ -4,6 +4,14 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  HeadObjectCommand,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getWritableSubdir } from '../07_BACKEND/utils/runtime-paths.js';
 
 export interface ObjectStorageProvider {
@@ -11,6 +19,7 @@ export interface ObjectStorageProvider {
   createUploadUrl(objectKey: string, contentType?: string, expiresInSec?: number): Promise<string>;
   createDownloadUrl(objectKey: string, expiresInSec?: number): Promise<string>;
   createDeleteUrl?(objectKey: string, expiresInSec?: number): Promise<string>;
+  createHeadUrl?(objectKey: string, expiresInSec?: number): Promise<string>;
   deleteObject(objectKey: string): Promise<boolean>;
   headObject(objectKey: string): Promise<{ exists: boolean; size: number; checksum?: string } | null>;
   putObject(objectKey: string, data: Buffer, contentType?: string): Promise<{ success: boolean; size: number }>;
@@ -41,12 +50,12 @@ export class LocalStorageProvider implements ObjectStorageProvider {
     return path.join(this.storageDir, safeKey);
   }
 
-  private generateToken(objectKey: string, action: 'upload' | 'download', expiresAt: number): string {
+  private generateToken(objectKey: string, action: 'upload' | 'download' | 'delete', expiresAt: number): string {
     const payload = `${action}:${objectKey}:${expiresAt}`;
     return crypto.createHmac('sha256', LOCAL_STORAGE_SECRET).update(payload).digest('hex');
   }
 
-  public verifyToken(objectKey: string, action: 'upload' | 'download', expiresAt: number, signature: string): boolean {
+  public verifyToken(objectKey: string, action: 'upload' | 'download' | 'delete', expiresAt: number, signature: string): boolean {
     if (!signature || Date.now() > expiresAt) return false;
     const expected = this.generateToken(objectKey, action, expiresAt);
     const sigBuf = Buffer.from(signature);
@@ -69,7 +78,7 @@ export class LocalStorageProvider implements ObjectStorageProvider {
 
   async createDeleteUrl(objectKey: string, expiresInSec = 900): Promise<string> {
     const expiresAt = Date.now() + (expiresInSec * 1000);
-    const token = this.generateToken(objectKey, 'upload', expiresAt);
+    const token = this.generateToken(objectKey, 'delete', expiresAt);
     return `${this.baseUrl}/api/v1/storage/delete?key=${encodeURIComponent(objectKey)}&expires=${expiresAt}&token=${token}`;
   }
 
@@ -158,6 +167,7 @@ export class S3R2StorageProvider implements ObjectStorageProvider {
   public accessKeyId: string;
   public secretAccessKey: string;
   public region: string;
+  private s3Client: S3Client;
 
   constructor(options?: {
     bucket?: string;
@@ -178,6 +188,23 @@ export class S3R2StorageProvider implements ObjectStorageProvider {
     if (isProduction && (!this.accessKeyId || !this.secretAccessKey)) {
       throw new Error('S3_R2_CONFIG_INVALID: Cloud storage access key ID and secret access key are required in production.');
     }
+
+    const credentials = (this.accessKeyId && this.secretAccessKey)
+      ? {
+          accessKeyId: this.accessKeyId,
+          secretAccessKey: this.secretAccessKey,
+        }
+      : {
+          accessKeyId: this.accessKeyId || 'mock-access-key',
+          secretAccessKey: this.secretAccessKey || 'mock-secret-key',
+        };
+
+    this.s3Client = new S3Client({
+      endpoint: this.endpoint,
+      region: this.region,
+      forcePathStyle: true,
+      credentials,
+    });
   }
 
   public getSecurityPolicy(): BucketSecurityPolicy {
@@ -227,79 +254,41 @@ export class S3R2StorageProvider implements ObjectStorageProvider {
     }
   }
 
-  // Generate AWS SigV4 Presigned URL
-  private generateSigV4Url(method: 'GET' | 'PUT' | 'DELETE', objectKey: string, contentType?: string, expiresInSec = 900): string {
-    const endpointUrl = new URL(this.endpoint);
-    const host = endpointUrl.host;
-    const cleanKey = objectKey.startsWith('/') ? objectKey.substring(1) : objectKey;
-    const path = `/${this.bucket}/${cleanKey}`;
-    
-    const now = new Date();
-    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
-    const dateStamp = amzDate.substring(0, 8);
-
-    const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`;
-
-    const queryParams: Record<string, string> = {
-      'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
-      'X-Amz-Credential': `${this.accessKeyId}/${credentialScope}`,
-      'X-Amz-Date': amzDate,
-      'X-Amz-Expires': expiresInSec.toString(),
-      'X-Amz-SignedHeaders': 'host' + (method === 'PUT' && contentType ? ';content-type' : ''),
-    };
-
-    const canonicalQueryString = Object.keys(queryParams)
-      .sort()
-      .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(queryParams[k])}`)
-      .join('&');
-
-    let canonicalHeaders = `host:${host}\n`;
-    if (method === 'PUT' && contentType) {
-      canonicalHeaders = `content-type:${contentType}\nhost:${host}\n`;
-    }
-
-    const signedHeaders = method === 'PUT' && contentType ? 'content-type;host' : 'host';
-    const payloadHash = 'UNSIGNED-PAYLOAD';
-
-    const canonicalRequest = [
-      method,
-      path,
-      canonicalQueryString,
-      canonicalHeaders,
-      signedHeaders,
-      payloadHash,
-    ].join('\n');
-
-    const hashedCanonicalRequest = crypto.createHash('sha256').update(canonicalRequest).digest('hex');
-
-    const stringToSign = [
-      'AWS4-HMAC-SHA256',
-      amzDate,
-      credentialScope,
-      hashedCanonicalRequest,
-    ].join('\n');
-
-    // Calculate signing key
-    const kDate = crypto.createHmac('sha256', 'AWS4' + this.secretAccessKey).update(dateStamp).digest();
-    const kRegion = crypto.createHmac('sha256', kDate).update(this.region).digest();
-    const kService = crypto.createHmac('sha256', kRegion).update('s3').digest();
-    const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest();
-
-    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
-
-    return `${this.endpoint}${path}?${canonicalQueryString}&X-Amz-Signature=${signature}`;
-  }
-
   async createUploadUrl(objectKey: string, contentType = 'application/octet-stream', expiresInSec = 900): Promise<string> {
-    return this.generateSigV4Url('PUT', objectKey, contentType, expiresInSec);
+    const cleanKey = objectKey.startsWith('/') ? objectKey.substring(1) : objectKey;
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: cleanKey,
+      ContentType: contentType,
+    });
+    return getSignedUrl(this.s3Client, command, { expiresIn: expiresInSec });
   }
 
   async createDownloadUrl(objectKey: string, expiresInSec = 900): Promise<string> {
-    return this.generateSigV4Url('GET', objectKey, undefined, expiresInSec);
+    const cleanKey = objectKey.startsWith('/') ? objectKey.substring(1) : objectKey;
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: cleanKey,
+    });
+    return getSignedUrl(this.s3Client, command, { expiresIn: expiresInSec });
   }
 
   async createDeleteUrl(objectKey: string, expiresInSec = 900): Promise<string> {
-    return this.generateSigV4Url('DELETE', objectKey, undefined, expiresInSec);
+    const cleanKey = objectKey.startsWith('/') ? objectKey.substring(1) : objectKey;
+    const command = new DeleteObjectCommand({
+      Bucket: this.bucket,
+      Key: cleanKey,
+    });
+    return getSignedUrl(this.s3Client, command, { expiresIn: expiresInSec });
+  }
+
+  async createHeadUrl(objectKey: string, expiresInSec = 900): Promise<string> {
+    const cleanKey = objectKey.startsWith('/') ? objectKey.substring(1) : objectKey;
+    const command = new HeadObjectCommand({
+      Bucket: this.bucket,
+      Key: cleanKey,
+    });
+    return getSignedUrl(this.s3Client, command, { expiresIn: expiresInSec });
   }
 
   async deleteObject(objectKey: string): Promise<boolean> {
@@ -323,7 +312,7 @@ export class S3R2StorageProvider implements ObjectStorageProvider {
       };
     }
     try {
-      const probeUrl = await this.createDownloadUrl('.connectivity-probe', 60);
+      const probeUrl = await this.createHeadUrl('.connectivity-probe', 60);
       const res = await fetch(probeUrl, { method: 'HEAD' });
       const connected = res.status === 200 || res.status === 404;
       return {
@@ -342,8 +331,8 @@ export class S3R2StorageProvider implements ObjectStorageProvider {
 
   async headObject(objectKey: string): Promise<{ exists: boolean; size: number; checksum?: string } | null> {
     try {
-      const downloadUrl = await this.createDownloadUrl(objectKey, 300);
-      const res = await fetch(downloadUrl, { method: 'HEAD' });
+      const headUrl = await this.createHeadUrl(objectKey, 300);
+      const res = await fetch(headUrl, { method: 'HEAD' });
       if (res.status === 200) {
         const contentLength = parseInt(res.headers.get('content-length') || '0', 10);
         const etag = res.headers.get('etag')?.replace(/"/g, '') || undefined;

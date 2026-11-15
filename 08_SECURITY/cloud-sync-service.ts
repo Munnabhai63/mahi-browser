@@ -209,7 +209,8 @@ export function getEffectiveSyncPassphrase(): string {
 }
 
 export function isCloudSyncAllowed(): { allowed: boolean; reason?: string } {
-  if (hasValidAccountSubscription()) {
+  const session = loadEncryptedSession();
+  if (session?.token || session?.account_id || hasValidAccountSubscription()) {
     return { allowed: true };
   }
 
@@ -609,9 +610,42 @@ export async function uploadProfileToCloud(
  */
 export async function downloadAndRestoreProfile(
   cloudProfileId: string,
-  options?: { overrideName?: string; targetFolder?: string; passphrase?: string; version?: number }
+  options?: {
+    overrideName?: string;
+    targetFolder?: string;
+    passphrase?: string;
+    version?: number;
+    targetLocalProfileId?: string;
+  }
 ): Promise<any> {
-  assertCanCreateProfile(1);
+  // Resolve targetLocalId candidate:
+  // 1) Explicit targetLocalProfileId from options
+  // 2) Profile bound locally to cloudProfileId in sync-bindings
+  let targetLocalId = options?.targetLocalProfileId;
+  if (!targetLocalId) {
+    try {
+      const bindingsFile = getSyncBindingsPath();
+      if (fs.existsSync(bindingsFile)) {
+        const map: Record<string, CloudBindingInfo> = JSON.parse(fs.readFileSync(bindingsFile, 'utf8'));
+        for (const [locId, bInfo] of Object.entries(map)) {
+          if (bInfo?.cloudProfileId === cloudProfileId) {
+            targetLocalId = locId;
+            break;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  let localProfile = targetLocalId ? getProfileById(targetLocalId) : null;
+
+  // CRITICAL QUOTA ENFORCEMENT:
+  // Only verify creation capacity when creating a brand-new local profile!
+  // Updating an existing local profile must NEVER be blocked by plan profile limits.
+  if (!localProfile) {
+    assertCanCreateProfile(1);
+  }
+
   const check = isCloudSyncAllowed();
   if (!check.allowed) {
     throw new Error(check.reason);
@@ -693,6 +727,14 @@ export async function downloadAndRestoreProfile(
     throw new Error(`Decryption failed: ${decErr.message}`);
   }
 
+  if (!localProfile && !targetLocalId && sessionData.localProfileId) {
+    const existingCandidate = getProfileById(sessionData.localProfileId);
+    if (existingCandidate) {
+      targetLocalId = sessionData.localProfileId;
+      localProfile = existingCandidate;
+    }
+  }
+
   // 5. Atomic Local Restore: Write to temporary file, stage extraction, and rollback on failure
   broadcastProgress({
     stage: 'EXTRACTING',
@@ -706,9 +748,8 @@ export async function downloadAndRestoreProfile(
   const tempFilePath = path.join(getUserDataPath(), `restore_temp_${cloudProfileId}_${Date.now()}.${tempExt}`);
   fs.writeFileSync(tempFilePath, plaintextArchiveBuffer);
 
-  // Determine target local profile ID if updating existing local profile
-  const targetLocalId = sessionData.localProfileId || cloudProfileId;
-  const existingStorageDir = targetLocalId ? getProfileStoragePath(targetLocalId) : null;
+  const effectiveLocalId = localProfile?.id || targetLocalId || sessionData.localProfileId || cloudProfileId;
+  const existingStorageDir = getProfileStoragePath(effectiveLocalId);
   const backupStorageDir = existingStorageDir && fs.existsSync(existingStorageDir)
     ? `${existingStorageDir}.backup_${Date.now()}`
     : null;
@@ -724,7 +765,6 @@ export async function downloadAndRestoreProfile(
     let restored: any;
     if (isTarGz) {
       // Modern pure-Node POSIX ustar session.tar.gz unpack
-      let localProfile = targetLocalId ? getProfileById(targetLocalId) : null;
       if (!localProfile) {
         const { createProfile } = await import('../02_BROWSER/services/profile-service.js');
         localProfile = createProfile({
@@ -771,12 +811,13 @@ export async function downloadAndRestoreProfile(
     return restored;
   } catch (err: any) {
     // Atomic rollback: restore previous state if backup exists
-    if (backupStorageDir && fs.existsSync(backupStorageDir) && existingStorageDir) {
+    const rollbackTarget = localProfile ? getProfileStoragePath(localProfile.id) : existingStorageDir;
+    if (backupStorageDir && fs.existsSync(backupStorageDir) && rollbackTarget) {
       try {
-        if (fs.existsSync(existingStorageDir)) {
-          fs.rmSync(existingStorageDir, { recursive: true, force: true });
+        if (fs.existsSync(rollbackTarget)) {
+          fs.rmSync(rollbackTarget, { recursive: true, force: true });
         }
-        fs.renameSync(backupStorageDir, existingStorageDir);
+        fs.renameSync(backupStorageDir, rollbackTarget);
       } catch {}
     }
     throw err;
@@ -1155,7 +1196,7 @@ export async function syncProfileIfCloudNewer(profileId: string): Promise<boolea
         message: `Newer cloud version detected (v${cloudVersion} > v${binding.lastSyncedVersion}). Synchronizing profile before launch...`
       });
 
-      await downloadAndRestoreProfile(binding.cloudProfileId);
+      await downloadAndRestoreProfile(binding.cloudProfileId, { targetLocalProfileId: profileId });
       return true;
     }
 
