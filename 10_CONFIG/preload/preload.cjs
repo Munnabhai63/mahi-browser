@@ -301,7 +301,6 @@ const api = {
   commercialLogin: (dto) => ipcRenderer.invoke('commercial:login', dto),
   getHwid: () => ipcRenderer.invoke('commercial:getHwid'),
   commercialLogout: () => ipcRenderer.invoke('commercial:logout'),
-  commercialSyncUser: (user) => ipcRenderer.invoke('commercial:syncUser', user),
   commercialGetEntitlements: (userId, deviceId) => ipcRenderer.invoke('commercial:getEntitlements', userId, deviceId),
   commercialGetDevices: (userId) => ipcRenderer.invoke('commercial:getDevices', userId),
   commercialRevokeDevice: (deviceId, userId) => ipcRenderer.invoke('commercial:revokeDevice', deviceId, userId),

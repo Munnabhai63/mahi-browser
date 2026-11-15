@@ -345,7 +345,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
           privacy: { clearDataOnExit: false, defaultPermissions: {}, defaultWebRtcPolicy: 'disable_non_proxied_udp', doNotTrack: true, blockThirdPartyCookiesDefault: false, webrtcPolicyDefault: 'disable_non_proxied_udp' },
           security: { appLockEnabled: false, appLockTimeoutMinutes: 15, encryptionAlgorithm: 'aes-256-gcm' },
           performance: { maxConcurrentProfiles: 10, hardwareAcceleration: true, memorySaver: true },
-          advanced: { enableDebugLogs: false, developerMode: false, enableLocalApi: true, apiPort: 32123, apiAuthToken: AUTH_TOKEN },
+          advanced: { enableDebugLogs: false, developerMode: false, enableLocalApi: true, apiPort: 32123, apiAuthToken: getAuthToken() },
         } as any;
       }
     },
@@ -519,7 +519,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     optimizeFleetMemory: async () => ({ freedMB: 50, status: 'Memory optimized' }),
 
     // Master Vault Backup
-    exportMasterVault: async () => ({ success: true, filePath: 'C:/Users/munaf/Downloads/MAHI-Vault-Backup.mahi-vault' }),
+    exportMasterVault: async () => ({ success: false, filePath: '', error: 'DESKTOP_REQUIRED: Master Vault export requires native desktop runtime.' }),
     importMasterVault: async () => ({ success: true, profilesRestored: 0, proxiesRestored: 0, workflowsRestored: 0, workspacesRestored: 0 }),
 
     // V2 Platform: Folders & Locking
@@ -634,9 +634,6 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     commercialLogout: async () => {
       return { success: true };
     },
-    commercialSyncUser: async (user: any) => {
-      return { success: true };
-    },
     // Starter / Demo Profiles (New User Clean Onboarding)
     getStarterTemplates: async () => [],
     getStarterTemplateById: async () => null,
@@ -705,9 +702,9 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     onSyncProgress: () => () => {},
 
     // Account & Subscription System (v1.1.0+)
-    accountSignup: async () => ({ success: true, token: 'mock-token' }),
-    accountLogin: async () => ({ success: true, token: 'mock-token' }),
-    accountLoginWithToken: async () => ({ success: true, token: 'mock-token' }),
+    accountSignup: async () => ({ success: false, error: 'DESKTOP_REQUIRED: Account registration requires native desktop runtime.' }),
+    accountLogin: async () => ({ success: false, error: 'DESKTOP_REQUIRED: Account login requires native desktop runtime.' }),
+    accountLoginWithToken: async () => ({ success: false, error: 'DESKTOP_REQUIRED: Token login requires native desktop runtime.' }),
     accountLogout: async () => ({ success: true }),
     accountGetStatus: async () => ({ plan: 'free', profile_limit: 15, sync_allowed: false }),
     accountSwitchDevice: async () => ({ success: true, message: 'Device rebound' }),
@@ -761,10 +758,10 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     accountListSessions: async () => ({ success: true, sessions: [{ id: 'sess-1', device_name: 'Current PC', is_current: true, last_used_at: new Date().toISOString() }] }),
     accountRevokeSession: async () => ({ success: true }),
     accountRevokeAllSessions: async () => ({ success: true }),
-    accountRefreshToken: async () => ({ success: true, token: 'mock-refreshed-token' }),
-    accountStartDesktopOAuth: async () => ({ success: true, ticket: 'mock-ticket', authUrl: 'https://admin.mahibrowser.com/api/v1/auth/google/start?intent=desktop_login' }),
-    accountExchangeDesktopCode: async () => ({ success: true, token: 'mock-token', user: { id: 'mock-user', email: 'test@mahibrowser.com' } }),
-    accountActivateTrial: async () => ({ success: true, message: 'Mock trial activated', trialStatus: { isTrialActive: true, daysRemaining: 7, isEligibleForTrial: false } }),
+    accountRefreshToken: async () => ({ success: false, error: 'NO_SESSION: No active account session to refresh.' }),
+    accountStartDesktopOAuth: async () => ({ success: false, ticket: '', authUrl: '', error: 'DESKTOP_REQUIRED: Desktop OAuth requires native desktop runtime.' }),
+    accountExchangeDesktopCode: async () => ({ success: false, error: 'DESKTOP_REQUIRED: Code exchange requires native desktop runtime.' }),
+    accountActivateTrial: async () => ({ success: false, message: 'DESKTOP_REQUIRED: Trial activation requires native desktop runtime.' }),
     accountGetTrialStatus: async () => ({ success: true, isTrialActive: false, daysRemaining: 0, isEligibleForTrial: true }),
     onAccountStatusChanged: () => () => {},
 

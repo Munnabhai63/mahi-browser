@@ -631,7 +631,10 @@ export const WebDashboardApp: React.FC = () => {
       {activeTab === 'account' && (
         <AccountPage
           profileCount={profiles.length}
-          maxProfiles={user?.profileQuota || 100}
+          maxProfiles={
+            user?.profileQuota ??
+            (user?.planId && user.planId !== 'plan_free' && user.planId !== 'free' ? 100 : 15)
+          }
         />
       )}
 

@@ -270,6 +270,56 @@ import { DashboardMetrics } from '../../10_CONFIG/shared/types/ipc.js';
 import { sanitizeError } from '../../08_SECURITY/sanitizer.js';
 import { getProfileStats } from '../services/stats-service.js';
 
+export async function handleProxiesTest(dto: any) {
+  try {
+    const proxyId = dto?.proxyId || dto?.id;
+    if (proxyId) {
+      const savedProxy = getProxyById(proxyId);
+      if (savedProxy) {
+        const hasHostOverride = dto.host !== undefined && dto.host !== savedProxy.host;
+        const hasPortOverride = dto.port !== undefined && Number(dto.port) !== Number(savedProxy.port);
+        const hasProtocolOverride = dto.protocol !== undefined && dto.protocol !== savedProxy.protocol;
+        const hasUsernameOverride = dto.username !== undefined && dto.username !== (savedProxy.username || '');
+        const hasNewPassword = Boolean(dto.password);
+
+        const isUnchanged =
+          !hasHostOverride &&
+          !hasPortOverride &&
+          !hasProtocolOverride &&
+          !hasUsernameOverride &&
+          !hasNewPassword;
+
+        if (isUnchanged) {
+          return await testAndSaveProxyStatus(proxyId);
+        }
+
+        // User supplied edited fields in ProxyConfigModal (host, port, protocol, username, or a new password)
+        // Fall back to stored creds.password only if host/port/protocol still match the saved proxy and !dto.password
+        let password = dto.password;
+        if (!password && !hasHostOverride && !hasPortOverride && !hasProtocolOverride) {
+          const creds = getDecryptedProxyCredentials(proxyId);
+          if (creds) {
+            password = creds.password;
+          }
+        }
+
+        const testDto = {
+          protocol: dto.protocol || savedProxy.protocol,
+          host: dto.host || savedProxy.host,
+          port: dto.port ? Number(dto.port) : savedProxy.port,
+          username: dto.username !== undefined ? dto.username : (savedProxy.username || undefined),
+          password: password || undefined,
+        };
+
+        return await testProxyConnection(testDto as any);
+      }
+    }
+    return await testProxyConnection(dto);
+  } catch (err) {
+    return { success: false, latencyMs: 0, errorMessage: sanitizeError(err) };
+  }
+}
+
 export function registerIpcHandlers(): void {
   function getActiveOwnerId(): string {
     const session = getAccountSession();
@@ -676,27 +726,7 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('proxies:test', async (_event, dto) => {
-    try {
-      const proxyId = dto?.proxyId || dto?.id;
-      if (proxyId) {
-        if (!dto.password) {
-          const creds = getDecryptedProxyCredentials(proxyId);
-          if (creds) {
-            dto = {
-              ...dto,
-              username: dto.username || creds.username,
-              password: creds.password,
-            };
-          }
-        }
-        return await testAndSaveProxyStatus(proxyId);
-      }
-      return await testProxyConnection(dto);
-    } catch (err) {
-      return { success: false, latencyMs: 0, errorMessage: sanitizeError(err) };
-    }
-  });
+  ipcMain.handle('proxies:test', async (_event, dto) => handleProxiesTest(dto));
 
   // COMMERCIAL PROXY PROVIDER PLATFORM (Phase 5)
   ipcMain.handle('proxy:getCatalog', async (_event, query) => {
@@ -2367,15 +2397,6 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('commercial:logout', async () => {
     clearActiveSession();
     return accountLogout();
-  });
-  ipcMain.handle('commercial:syncUser', async (_event, user) => {
-    if (!user || typeof user !== 'object') {
-      return { success: false, error: 'INVALID_USER_DTO' };
-    }
-    if (user.id) {
-      setActiveUserId(user.id);
-    }
-    return { success: true };
   });
   ipcMain.handle('account:logout', async () => {
     clearActiveSession();

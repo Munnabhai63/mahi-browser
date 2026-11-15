@@ -70,8 +70,16 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
         if (saved) {
           const parsed = JSON.parse(saved);
           if (parsed.accessToken && parsed.user) {
+            const restoredUser = {
+              ...parsed.user,
+              profileQuota:
+                parsed.user.profileQuota ??
+                (parsed.user.planId && parsed.user.planId !== 'plan_free' && parsed.user.planId !== 'free'
+                  ? 100
+                  : 15),
+            };
             set({
-              user: parsed.user,
+              user: restoredUser,
               accessToken: parsed.accessToken,
               refreshToken: parsed.refreshToken || null,
               isAuthenticated: true,

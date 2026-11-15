@@ -1,11 +1,21 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 import { useAccountStore } from '../../01_UI/stores/useAccountStore.js';
 import { useAutomationStore } from '../../01_UI/stores/useAutomationStore.js';
 import { useSettingsStore } from '../../01_UI/stores/useSettingsStore.js';
 import { useLogStore } from '../../01_UI/stores/useLogStore.js';
 import { fallbackMahiAPI } from '../../01_UI/api-fallback.js';
+import * as proxyService from '../../02_BROWSER/services/proxy-service.js';
+import { handleProxiesTest } from '../../07_BACKEND/ipc/register-handlers.js';
+
+vi.mock('../../02_BROWSER/services/proxy-service.js', () => ({
+  getProxyById: vi.fn(),
+  testAndSaveProxyStatus: vi.fn(),
+  getDecryptedProxyCredentials: vi.fn(),
+  testProxyConnection: vi.fn(),
+}));
 
 describe('Step 8: Frontend, Preload, IPC Contract & Build-Rewrite Remediation', () => {
   const rootDir = path.resolve(__dirname, '../../');
@@ -23,6 +33,9 @@ describe('Step 8: Frontend, Preload, IPC Contract & Build-Rewrite Remediation', 
     // Check onToastShow is wired
     expect(content).toContain('onToastShow:');
     expect(content).toContain("'toast:show'");
+
+    // commercialSyncUser removed to close arbitrary userId override hole
+    expect(content).not.toContain('commercialSyncUser');
   });
 
   it('preload/index.ts has exact parity with preload.cjs for Step 8 additions', () => {
@@ -32,6 +45,143 @@ describe('Step 8: Frontend, Preload, IPC Contract & Build-Rewrite Remediation', 
     expect(content).toContain("exportNetscapeCookies: (profileId: string, targetFilePath?: string) => ipcRenderer.invoke('archive:exportNetscape', profileId, targetFilePath)");
     expect(content).toContain('onToastShow:');
     expect(content).toContain("'toast:show'");
+    expect(content).not.toContain('commercialSyncUser');
+  });
+
+  it('executes preload.cjs in mocked Electron runtime: proves accountGetPlanLimits({ force: true }) and onToastShow forward arguments and callbacks', async () => {
+    const preloadCjsPath = path.join(rootDir, '10_CONFIG/preload/preload.cjs');
+    const preloadCode = fs.readFileSync(preloadCjsPath, 'utf8');
+
+    let exposedApi: any = null;
+    const eventListeners = new Map<string, Function>();
+
+    const mockIpcRenderer = {
+      invoke: vi.fn(async (channel: string, ...args: any[]) => {
+        return { channel, args };
+      }),
+      on: vi.fn((channel: string, handler: Function) => {
+        eventListeners.set(channel, handler);
+      }),
+      removeListener: vi.fn((channel: string, handler: Function) => {
+        if (eventListeners.get(channel) === handler) {
+          eventListeners.delete(channel);
+        }
+      }),
+    };
+
+    const mockContextBridge = {
+      exposeInMainWorld: vi.fn((key: string, api: any) => {
+        if (key === 'mahiAPI') {
+          exposedApi = api;
+        }
+      }),
+    };
+
+    const sandbox = {
+      require: (mod: string) => {
+        if (mod === 'electron') {
+          return {
+            contextBridge: mockContextBridge,
+            ipcRenderer: mockIpcRenderer,
+          };
+        }
+        throw new Error(`Unexpected require in preload: ${mod}`);
+      },
+      console,
+    };
+
+    vm.runInNewContext(preloadCode, sandbox);
+
+    expect(mockContextBridge.exposeInMainWorld).toHaveBeenCalledWith('mahiAPI', expect.any(Object));
+    expect(exposedApi).toBeDefined();
+    expect(exposedApi.isDesktop).toBe(true);
+    expect(exposedApi.commercialSyncUser).toBeUndefined();
+
+    // Verify accountGetPlanLimits passes { force: true }
+    await exposedApi.accountGetPlanLimits({ force: true });
+    expect(mockIpcRenderer.invoke).toHaveBeenCalledWith('account:getPlanLimits', { force: true });
+
+    // Verify onToastShow callback registration, delivery and cleanup
+    let receivedToast: any = null;
+    const unsub = exposedApi.onToastShow((t: any) => {
+      receivedToast = t;
+    });
+
+    expect(mockIpcRenderer.on).toHaveBeenCalledWith('toast:show', expect.any(Function));
+    const registeredHandler = eventListeners.get('toast:show');
+    expect(registeredHandler).toBeDefined();
+
+    registeredHandler!({}, { message: 'Plan limits refreshed', type: 'info' });
+    expect(receivedToast).toEqual({ message: 'Plan limits refreshed', type: 'info' });
+
+    // Verify unsub invokes removeListener
+    unsub();
+    expect(mockIpcRenderer.removeListener).toHaveBeenCalledWith('toast:show', registeredHandler);
+    expect(eventListeners.has('toast:show')).toBe(false);
+  });
+
+  it('handleProxiesTest routes unchanged proxy to testAndSaveProxyStatus and edited proxy to testProxyConnection', async () => {
+    const saved = {
+      id: 'px-1',
+      protocol: 'http',
+      host: '10.0.0.1',
+      port: 8080,
+      username: 'user1',
+      hasPassword: true,
+      status: 'CONNECTED',
+    };
+
+    (proxyService.getProxyById as any).mockReturnValue(saved);
+    (proxyService.testAndSaveProxyStatus as any).mockResolvedValue({ success: true, latencyMs: 45 });
+    (proxyService.testProxyConnection as any).mockResolvedValue({ success: true, latencyMs: 70 });
+    (proxyService.getDecryptedProxyCredentials as any).mockReturnValue({ username: 'user1', password: 'vault-password' });
+
+    // 1. Unchanged proxy test (no overrides, no new password)
+    const res1 = await handleProxiesTest({ proxyId: 'px-1' });
+    expect(proxyService.testAndSaveProxyStatus).toHaveBeenCalledWith('px-1');
+    expect(res1.success).toBe(true);
+
+    // 2. Unchanged proxy with explicit matching fields
+    await handleProxiesTest({ proxyId: 'px-1', host: '10.0.0.1', port: 8080, protocol: 'http', username: 'user1' });
+    expect(proxyService.testAndSaveProxyStatus).toHaveBeenCalledWith('px-1');
+
+    // 3. Edited proxy with changed host -> calls testProxyConnection
+    await handleProxiesTest({ proxyId: 'px-1', host: '10.0.0.99' });
+    expect(proxyService.testProxyConnection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        host: '10.0.0.99',
+        port: 8080,
+        protocol: 'http',
+      })
+    );
+
+    // 4. Edited proxy with unchanged host/port but keeping saved password
+    await handleProxiesTest({ proxyId: 'px-1', username: 'user2' });
+    expect(proxyService.testProxyConnection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        host: '10.0.0.1',
+        port: 8080,
+        username: 'user2',
+        password: 'vault-password',
+      })
+    );
+
+    // 5. Edited proxy with new password
+    await handleProxiesTest({ proxyId: 'px-1', password: 'brand-new-password' });
+    expect(proxyService.testProxyConnection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        password: 'brand-new-password',
+      })
+    );
+
+    // 6. Raw proxy without saved ID
+    (proxyService.getProxyById as any).mockReturnValue(null);
+    await handleProxiesTest({ host: '9.9.9.9', port: 1080, protocol: 'socks5' });
+    expect(proxyService.testProxyConnection).toHaveBeenCalledWith({
+      host: '9.9.9.9',
+      port: 1080,
+      protocol: 'socks5',
+    });
   });
 
   it('12_SCRIPTS/fix-preload.cjs scopes only to dist-electron and protects React DOM assets', () => {
@@ -50,11 +200,11 @@ describe('Step 8: Frontend, Preload, IPC Contract & Build-Rewrite Remediation', 
     expect(content).toContain("'dist-electron', 'preload'");
   });
 
-  it('register-handlers.ts implements commercial:syncUser and archive:exportNetscape with file save', () => {
+  it('register-handlers.ts removes commercial:syncUser and implements archive:exportNetscape with file save', () => {
     const handlersPath = path.join(rootDir, '07_BACKEND/ipc/register-handlers.ts');
     const content = fs.readFileSync(handlersPath, 'utf8');
 
-    expect(content).toContain("ipcMain.handle('commercial:syncUser'");
+    expect(content).not.toContain("ipcMain.handle('commercial:syncUser'");
     expect(content).toContain("ipcMain.handle('archive:exportNetscape'");
     expect(content).toContain('testAndSaveProxyStatus');
     expect(content).toContain('getDecryptedProxyCredentials');

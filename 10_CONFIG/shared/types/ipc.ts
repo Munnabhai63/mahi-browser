@@ -324,7 +324,7 @@ export interface MahiBrowserAPI {
   optimizeFleetMemory: () => Promise<{ freedMB: number; status: string }>;
 
   // Master Encrypted Vault Backup & Restore
-  exportMasterVault: (options?: MasterVaultExportOptions) => Promise<{ success: boolean; filePath: string }>;
+  exportMasterVault: (options?: MasterVaultExportOptions) => Promise<{ success: boolean; filePath: string; error?: string }>;
   importMasterVault: (bundleJson: string, password?: string) => Promise<MasterVaultImportResult>;
 
   // V2 Platform: Folders & Locking
@@ -359,7 +359,6 @@ export interface MahiBrowserAPI {
   commercialRegister: (dto: any) => Promise<any>;
   commercialLogin: (dto: any) => Promise<any>;
   commercialLogout: () => Promise<{ success: boolean }>;
-  commercialSyncUser: (user: { id: string; email: string; name?: string }) => Promise<any>;
   commercialGetEntitlements: (userId: string, deviceId?: string) => Promise<any>;
   commercialGetDevices: (userId: string) => Promise<any>;
   commercialRevokeDevice: (deviceId: string, userId: string) => Promise<boolean>;
