@@ -1,0 +1,42 @@
+---
+title: "Proxy Configuration & WebRTC Leak Prevention"
+description: "How to configure HTTP/SOCKS5 proxies, rotate 4G/5G mobile proxies, use smart paste, and enforce strict WebRTC IP protection."
+order: 2
+section: "Networking & Security"
+---
+
+# Proxy Configuration & WebRTC Leak Prevention
+
+Network isolation is fundamental to preventing multi-account cross-contamination. MAHI Browser features a built-in forensic proxy engine supporting HTTP, HTTPS, SOCKS4, and SOCKS5 protocols.
+
+## 1. Supported Proxy Protocols
+
+- **HTTP / HTTPS:** Standard web proxies with optional Basic authentication.
+- **SOCKS4 / SOCKS5:** Full protocol proxying with DNS remote resolution to avoid ISP DNS leakage.
+- **Mobile 4G/5G Rotators:** Automated IP rotation via webhook triggers or periodic timer pulses.
+- **Residential Pools:** Granular country, state, city, and ISP targeting.
+
+## 2. Smart Paste Quick Import
+
+You can paste proxies in any standard industry format. MAHI automatically parses the host, port, username, and password:
+
+```text
+host:port:user:pass
+user:pass@host:port
+socks5://user:pass@host:port
+http://host:port
+```
+
+Click **Test Connection** to measure TCP latency, resolve the exit IP, and verify geolocation integrity before saving.
+
+## 3. WebRTC Policy & IP Leak Protection
+
+WebRTC STUN/TURN queries can expose your real local or public IP address even behind an active proxy tunnel. MAHI Browser provides 3 deterministic WebRTC mitigation policies:
+
+| Policy | Behavior | Best Used For |
+| :--- | :--- | :--- |
+| **Default** | Direct STUN/TURN binding allowed | General browsing without proxies |
+| **Proxy Only** | WebRTC ICE queries strictly routed through the active proxy tunnel | Routine proxy accounts |
+| **Disabled** | `media.peerconnection.enabled = false` (Zero WebRTC traffic) | High-risk banking & crypto accounts |
+
+When launching profiles with Camoufox or Chromium, MAHI enforces `network.proxy.type = 1` and `network.proxy.socks_remote_dns = true` to ensure zero DNS leakage to your host ISP.

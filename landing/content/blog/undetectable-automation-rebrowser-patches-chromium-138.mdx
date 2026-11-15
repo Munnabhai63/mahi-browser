@@ -1,0 +1,47 @@
+---
+title: "Bypassing Modern Bot Protections: How Rebrowser-Patches Neutralizes CDP Leaks in Chromium 138"
+description: "An in-depth technical analysis of Chrome DevTools Protocol (CDP) leak vectors, Runtime.enable fingerprinting, and how rebrowser-patches achieves complete automation stealth."
+date: "2026-11-15"
+author: "Munna Bhai"
+category: "Engineering & Anti-Detect"
+readTime: "7 min read"
+---
+
+# Bypassing Modern Bot Protections: How Rebrowser-Patches Neutralizes CDP Leaks in Chromium 138
+
+For over five years, web scraping engineers and multi-accounting operators relied on Puppeteer Extra Stealth to mask automation flags like `navigator.webdriver = false`. However, contemporary bot detection platforms—including Cloudflare Turnstile, DataDome, Kasada, and Akamai—no longer look at high-level JavaScript properties alone.
+
+Instead, they inspect **CDP (Chrome DevTools Protocol) internal runtime anomalies**.
+
+## The Fatal Flaw in Standard Puppeteer & Playwright
+
+When standard Playwright or Puppeteer attaches to a Chromium browser, it issues commands like `Runtime.enable`, `Page.enable`, and `Network.enable`. Under the hood, V8 engine instantiates a background inspector session.
+
+Anti-bot scripts detect this through several subtle side-effects:
+
+1. **`Runtime.evaluate` Execution Context Leaks:** Evaluating code via CDP leaves traces in `console.debug` and stack traces.
+2. **`cdc_` Chromedriver Global Properties:** Puppeteer and Selenium historically left randomized global variables on the `window` object.
+3. **`Object.getOwnPropertyDescriptor` Discrepancies:** Shimming `navigator.webdriver` with `Object.defineProperty` produces prototype descriptors whose `get.toString()` fails native code verification.
+
+## The Rebrowser-Patches Breakthrough
+
+**MAHI Browser** integrates `rebrowser-patches` natively into Chromium 138.0.7204.0:
+
+### 1. `REBROWSER_PATCHES_RUNTIME_FIX_MODE = 'addBinding'`
+Instead of issuing continuous `Runtime.enable` requests across all contexts, `rebrowser-patches` uses an isolated `addBinding` bridge. When scripts run, they execute within a separate V8 microtask realm that remains completely invisible to target page JavaScript.
+
+### 2. Elimination of `--enable-automation`
+Standard browser automation flags explicitly advertise automation to the Blink rendering engine. MAHI sanitizes all launch arguments, completely purging `--enable-automation` and instead injecting:
+```bash
+--disable-blink-features=AutomationControlled
+--mahi-cdp-isolated
+```
+
+### 3. Native Prototype Fidelity
+Property getters for `navigator.webdriver`, `navigator.hardwareConcurrency`, and `navigator.platform` are wrapped in native-looking function proxies where:
+```javascript
+Function.prototype.toString.call(Object.getOwnPropertyDescriptor(Navigator.prototype, 'webdriver').get)
+// Returns: "function get webdriver() { [native code] }"
+```
+
+This guarantees 100% stealth scores across CreepJS, Pixelscan, and BrowserLeaks.

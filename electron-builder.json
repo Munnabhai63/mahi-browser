@@ -152,7 +152,19 @@
     },
     {
       "from": "landing",
-      "to": "landing"
+      "to": "landing",
+      "filter": [
+        "**/*",
+        "!node_modules/**",
+        "!.next/**",
+        "!out/**",
+        "!src/**",
+        "!content/**",
+        "!app/**",
+        "!components/**",
+        "!lib/**",
+        "!scripts/**"
+      ]
     }
   ]
 }

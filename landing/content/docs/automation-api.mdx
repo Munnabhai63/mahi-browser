@@ -1,0 +1,55 @@
+---
+title: "Automation API & Visual RPA Studio"
+description: "Control profiles programmatically via Puppeteer, Playwright, rebrowser-playwright-core, local API on port 32123, and the built-in Cookie Warmer."
+order: 4
+section: "Automation & Developer Tools"
+---
+
+# Automation API & Visual RPA Studio
+
+MAHI Browser provides dual-layer automation support: developers can control browser instances via standard code frameworks (Puppeteer, Playwright, Selenium) or use the no-code Visual RPA Studio.
+
+## 1. Local Profile Launch API (Port 32123)
+
+When MAHI Browser is running on your machine, it exposes an authenticated local HTTP daemon on port `32123`:
+
+### Launch Profile via REST API
+```bash
+curl -X POST http://127.0.0.1:32123/api/v1/profile/start \
+  -H "Content-Type: application/json" \
+  -H "X-MAHI-Key: your_local_api_key" \
+  -d '{"profileId": "f47ac10b-58cc-4372-a567-0e02b2c3d479"}'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "profileId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "debugPort": 34123,
+  "wsEndpoint": "ws://127.0.0.1:34123/devtools/browser/abc-123",
+  "coreType": "chromium"
+}
+```
+
+### Connect with Playwright (`rebrowser-playwright-core`)
+```javascript
+import { chromium } from 'rebrowser-playwright-core';
+
+// Connect over CDP with zero automation leak
+const browser = await chromium.connectOverCDP('http://127.0.0.1:34123');
+const context = browser.contexts()[0];
+const page = await context.newPage();
+
+await page.goto('https://nowsecure.nl');
+console.log(await page.title());
+```
+
+## 2. Built-in Cookie Warmer & Session Healer
+
+The integrated Cookie Warmer automatically nurtures fresh profiles before launching media campaigns:
+
+1. Select a profile in the dashboard and click **Warm Cookies**.
+2. Choose a site pack (Search Engines, News, Tech, E-commerce, Social Media).
+3. The warmer launches the profile in an isolated headless mode with natural Bezier curves, visits weighted domains, and accumulates legitimate first-party cookies.
+4. All session cookies are safely encrypted directly into the profile's SQLite database without ever exposing plaintext tokens to logs.

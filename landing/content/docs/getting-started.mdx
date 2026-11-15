@@ -1,0 +1,46 @@
+---
+title: "Getting Started with MAHI Browser"
+description: "Step-by-step guide to installing MAHI Browser, creating your first stealth profile, and linking Google SSO with desktop deep handoff."
+order: 1
+section: "Core Foundations"
+---
+
+# Getting Started with MAHI Browser
+
+Welcome to **MAHI Browser**, the enterprise dual-engine anti-detect browser designed for secure multi-accounting, affiliate management, web automation, and team collaboration.
+
+## 1. System Requirements & Installation
+
+MAHI Browser runs natively across Windows, macOS, and Linux:
+
+- **Windows:** Windows 10/11 (64-bit). Both installer (`MAHI-Browser-Setup-1.1.9.exe`) and portable standalone builds are available.
+- **macOS:** macOS Monterey 12.0 or higher (`arm64` Apple Silicon & `x64` Intel).
+- **Linux:** Ubuntu 20.04+, Debian 11+, Fedora 36+ (`.AppImage` & `.deb`).
+
+### Download Links
+You can download verified builds directly from the [Download Portal](/download) or use our fast direct triggers:
+- Windows Setup: `/download/setup`
+- Windows Portable: `/download/portable`
+
+## 2. Creating Your First Anti-Detect Profile
+
+1. Open MAHI Browser desktop application.
+2. Click **Create Profile** in the top navigation bar.
+3. Select your target browser engine:
+   - **Chromium 138 Engine:** Best for Google Ads, Facebook Ads, TikTok Ads, and sites requiring modern Chromium Chrome features. Powered by `rebrowser-patches` to eliminate CDP `Runtime.enable` leak vectors.
+   - **Camoufox Engine (Firefox C++):** Best for Cloudflare Turnstile, DataDome, and sites with intense bot protections. Directly overrides C++ internals for 100% native trust without prototype shims.
+4. Customize your operating system profile (Windows, macOS Intel/M1, Linux, Android) or click **Generate Statistical Fingerprint** to synthesize a statistically correlated fingerprint using Bayesian models.
+5. Click **Save & Launch Profile**.
+
+## 3. Seamless 1-Click Google SSO & Desktop Deep Handoff
+
+MAHI Browser links web portal sessions and desktop installations through secure cryptographic deep links:
+
+1. Sign up or log in on [mahibrowser.com/login](/login) or via Google OAuth.
+2. When activating your 7-day free trial on the web portal, click **Open in MAHI Desktop**.
+3. Your browser triggers `mahibrowser://auth?handoff=<single_use_jwt>` or `mahi://auth?handoff=<token>`.
+4. The desktop client intercepts the custom protocol, validates the single-use token against the Fastify gateway, and logs you in instantly with full plan entitlements.
+
+## 4. Offline Coexistence Mode
+
+MAHI Browser supports complete offline operation. If your internet connection drops or you work on an air-gapped machine, your profiles, proxies, and folders remain accessible via local SQLite (`sql.js`). Cloud synchronization automatically resumes when network connectivity is restored.

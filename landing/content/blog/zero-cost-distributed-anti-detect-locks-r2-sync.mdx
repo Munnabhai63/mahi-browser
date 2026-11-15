@@ -1,0 +1,39 @@
+---
+title: "Zero-Cost Multi-Device Anti-Detect Synchronization with Cloudflare R2 and Redis Locks"
+description: "How MAHI Browser built an enterprise-grade cloud synchronization pipeline with zero egress fees using Cloudflare R2 and distributed Redis concurrency locks."
+date: "2026-11-12"
+author: "Munna Bhai"
+category: "Cloud Infrastructure"
+readTime: "6 min read"
+---
+
+# Zero-Cost Multi-Device Anti-Detect Synchronization with Cloudflare R2 and Redis Locks
+
+Managing dozens of virtual assistants and media buyers across the globe requires seamless profile sharing. However, syncing browser user data directories (which often exceed 500 MB per profile due to IndexedDB and cache files) introduces two massive challenges:
+
+1. **Astronomical Cloud Egress Costs:** Traditional S3 providers charge $0.09 per gigabyte of egress traffic. A team syncing 100 profiles daily can rack up hundreds of dollars in bandwidth costs alone.
+2. **Concurrency Collisions:** If two operators launch the same profile simultaneously, SQLite database files corrupt and authentication cookies overwrite each other.
+
+## 1. Zero Egress with Cloudflare R2
+
+MAHI Browser leverages **Cloudflare R2 Object Storage** via standard S3 API compatibility:
+- **$0.00 Egress Fees:** Teammates can pull and push profile snapshots as often as needed without incurring network transfer charges.
+- **Client-Side Encrypted Tarballs:** Before an archive is uploaded to R2, MAHI compresses the profile directory into a `.tar.gz` archive and encrypts it using `AES-256-GCM` with a key derived from your workspace master secret. Cloud storage never sees unencrypted browser history, cookies, or saved sessions.
+
+## 2. Distributed Concurrency Locks with Redis
+
+To ensure that only one operator can run a profile at any given second, MAHI's Fastify Cloud Gateway implements a distributed locking algorithm powered by Redis (`ioredis`):
+
+```typescript
+// Heartbeat-based distributed lease
+const lockKey = `mahi:lock:profile:${profileId}`;
+const acquired = await redis.set(lockKey, workerInstanceId, 'NX', 'EX', 60);
+
+if (!acquired) {
+  throw new ConflictError('Profile is currently locked by another operator.');
+}
+```
+
+The desktop client sends a lightweight keep-alive heartbeat every 20 seconds. When the operator closes the browser, the lock is freed immediately, and the latest delta changes are encrypted and mirrored to R2.
+
+This architecture enables agencies to scale to hundreds of team members with zero data corruption and zero unexpected infrastructure costs.

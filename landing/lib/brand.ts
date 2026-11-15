@@ -1,0 +1,26 @@
+export const BRAND = {
+  name: 'MAHI Browser',
+  legalName: 'MAHI Browser — By Munna Bhai',
+  creator: 'Munna Bhai',
+  tagline: 'Enterprise Dual-Engine Anti-Detect Browser with C++ Native Hooks & Zero-Leak Automation',
+  officialEmail: 'mahiverse.official@gmail.com',
+  hubEmail: 'mahiverse.hub@gmail.com',
+  phone: '+91 9376343629',
+  upiId: '6375823589@slc',
+  version: '1.1.9',
+  website: 'https://mahibrowser.com',
+  appUrl: 'https://app.mahibrowser.com',
+  apiUrl: 'https://api.mahibrowser.com',
+  assets: {
+    logo: '/assets/img/logo.png',
+    favicon: '/assets/img/favicon.ico',
+    upiQr: '/assets/img/payments/mahi-upi-qr.png',
+    masterLogo: '/assets/img/mahi-browser-logo-primary.png',
+  },
+  downloads: {
+    windowsSetup: '/download/setup',
+    windowsPortable: '/download/portable',
+    macDmg: '/releases/MAHI-Browser-1.1.9-macOS-arm64.dmg',
+    linuxAppImage: '/releases/MAHI-Browser-1.1.9-Linux-x64.AppImage',
+  },
+};

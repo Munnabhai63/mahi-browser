@@ -99,7 +99,7 @@ async function verifyCreepJs() {
     const extDir1 = ensureProfileStealthExtension(tempDir1, 'creepjs-probe-1', 'CreepJS Profile 1', settings, {
       nativeStealthActive: false,
     });
-    const extDir2 = ensureProfileStealthExtension(tempDir2, 'creepjs-probe-2', 'CreepJS Profile 2', settings, {
+    const extDir2 = ensureProfileStealthExtension(tempDir2, 'creepjs-probe-1', 'CreepJS Profile 1', settings, {
       nativeStealthActive: false,
     });
 

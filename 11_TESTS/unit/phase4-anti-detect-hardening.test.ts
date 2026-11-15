@@ -24,6 +24,7 @@ import {
   generateStatisticalProfileSettings,
   StatisticalProfileOptions,
 } from '../../03_HARDWARE/fingerprint-generator-service.js';
+import { MANAGED_ENGINE_VERSION } from '../../10_CONFIG/engine-config.js';
 import {
   generateConsistentEnvironmentSettings,
   getDefaultProfileSettings,
@@ -680,6 +681,64 @@ describe('Phase 4: Anti-Detect Engine Hardening', () => {
       expect(unseeded.fingerprint?.deviceMemory).toBeGreaterThanOrEqual(2);
       expect(unseeded.fingerprint?.webglRenderer).toBeDefined();
       expect(unseeded.fingerprint?.clientHints?.brands?.some((b: any) => b.brand === 'Google Chrome')).toBe(true);
+    });
+
+    it('verifies unseeded generateStatisticalProfileSettings aligns clientHints with MANAGED_ENGINE_VERSION', () => {
+      const chromeMajor = MANAGED_ENGINE_VERSION.split('.')[0];
+
+      // Test Chrome engine
+      const unseededChrome = generateStatisticalProfileSettings({
+        os: 'windows',
+        engine: 'chrome',
+      });
+      expect(unseededChrome.browser).toBeDefined();
+      expect(unseededChrome.fingerprint?.clientHints).toBeDefined();
+      const chromeBrands = unseededChrome.fingerprint!.clientHints!.brands;
+      const chromeFullVersions = unseededChrome.fingerprint!.clientHints!.fullVersionList;
+
+      for (const b of chromeBrands) {
+        if (b.brand === 'Chromium' || b.brand === 'Google Chrome') {
+          expect(b.version).toBe(chromeMajor);
+        }
+      }
+      for (const fv of chromeFullVersions) {
+        if (fv.brand === 'Chromium' || fv.brand === 'Google Chrome') {
+          expect(fv.version).toBe(MANAGED_ENGINE_VERSION);
+        }
+      }
+
+      // Test Edge engine
+      const unseededEdge = generateStatisticalProfileSettings({
+        os: 'windows',
+        engine: 'edge',
+      });
+      expect(unseededEdge.fingerprint?.clientHints).toBeDefined();
+      const edgeBrands = unseededEdge.fingerprint!.clientHints!.brands;
+      const edgeFullVersions = unseededEdge.fingerprint!.clientHints!.fullVersionList;
+
+      expect(edgeBrands.some((b: any) => b.brand === 'Microsoft Edge')).toBe(true);
+      expect(edgeBrands.some((b: any) => b.brand === 'Google Chrome')).toBe(false);
+
+      for (const b of edgeBrands) {
+        if (b.brand === 'Chromium' || b.brand === 'Microsoft Edge') {
+          expect(b.version).toBe(chromeMajor);
+        }
+      }
+      for (const fv of edgeFullVersions) {
+        if (fv.brand === 'Chromium' || fv.brand === 'Microsoft Edge') {
+          expect(fv.version).toBe(MANAGED_ENGINE_VERSION);
+        }
+      }
+    });
+
+    it('verifies cookie-warmer-service propagates locale, timezoneId, and proxy for Camoufox', () => {
+      const warmerSrc = fs.readFileSync(path.resolve('09_AUTOMATION/cookie-warmer-service.ts'), 'utf8');
+      expect(warmerSrc).toContain('firefox.launchPersistentContext');
+      expect(warmerSrc).toContain('locale: profile.settings?.locale?.language');
+      expect(warmerSrc).toContain('timezoneId: profile.settings?.locale?.timezone');
+      expect(warmerSrc).toContain('proxy: proxyConfig');
+      expect(warmerSrc).toContain('cleanupStaleLocks(storageDir)');
+      expect(warmerSrc).toContain('getDecryptedProxyCredentials');
     });
 
     it('verifies cookie-warmer-service and automation-engine runtime fix mode and dual engine wiring', () => {

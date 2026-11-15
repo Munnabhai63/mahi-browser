@@ -218,6 +218,92 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
         }
       }
 
+      // Static Next.js assets from landing/out/_next
+      if (cleanPath.startsWith('/_next/') && method === 'GET') {
+        const relPath = cleanPath.substring(7);
+        const safePath = path.normalize(relPath).replace(/^(\.\.[\/\\])+/, '');
+        const nextFilePath = path.join(getLandingBaseDir(), 'out', '_next', safePath);
+        if (fs.existsSync(nextFilePath) && fs.statSync(nextFilePath).isFile()) {
+          const ext = path.extname(nextFilePath).toLowerCase();
+          const mime = ext === '.css' ? 'text/css; charset=utf-8' : ext === '.js' ? 'application/javascript; charset=utf-8' : 'application/octet-stream';
+          res.writeHead(200, {
+            'Content-Type': mime,
+            'Cache-Control': 'public, max-age=31536000, immutable',
+            ...getCorsHeaders(req),
+          });
+          return fs.createReadStream(nextFilePath).pipe(res);
+        }
+      }
+
+      // Next.js static sitemap & robots
+      if (cleanPath === '/sitemap.xml' && method === 'GET') {
+        const sitemapPath = path.join(getLandingBaseDir(), 'out', 'sitemap.xml');
+        if (fs.existsSync(sitemapPath)) {
+          res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8', ...getCorsHeaders(req) });
+          return res.end(fs.readFileSync(sitemapPath, 'utf8'));
+        }
+      }
+
+      if (cleanPath === '/robots.txt' && method === 'GET') {
+        const robotsPath = path.join(getLandingBaseDir(), 'out', 'robots.txt');
+        if (fs.existsSync(robotsPath)) {
+          res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', ...getCorsHeaders(req) });
+          return res.end(fs.readFileSync(robotsPath, 'utf8'));
+        }
+      }
+
+      // Public /pricing Page (Next.js export fallback)
+      if (cleanPath === '/pricing' && method === 'GET') {
+        const outPricing = path.join(getLandingBaseDir(), 'out', 'pricing.html');
+        if (fs.existsSync(outPricing)) {
+          return sendHTML(res, 200, fs.readFileSync(outPricing, 'utf8'));
+        }
+        const legacyPricing = path.join(getLandingBaseDir(), 'pricing.html');
+        if (fs.existsSync(legacyPricing)) {
+          return sendHTML(res, 200, fs.readFileSync(legacyPricing, 'utf8'));
+        }
+      }
+
+      // Public /compare/gologin-alternative Page (Next.js export fallback)
+      if (cleanPath === '/compare/gologin-alternative' && method === 'GET') {
+        const outCompare = path.join(getLandingBaseDir(), 'out', 'compare', 'gologin-alternative.html');
+        if (fs.existsSync(outCompare)) {
+          return sendHTML(res, 200, fs.readFileSync(outCompare, 'utf8'));
+        }
+      }
+
+      // Public /docs and /docs/:slug (Next.js export fallback)
+      if ((cleanPath === '/docs' || cleanPath.startsWith('/docs/')) && method === 'GET') {
+        if (cleanPath === '/docs' || cleanPath === '/docs/') {
+          const outDocs = path.join(getLandingBaseDir(), 'out', 'docs.html');
+          if (fs.existsSync(outDocs)) {
+            return sendHTML(res, 200, fs.readFileSync(outDocs, 'utf8'));
+          }
+        } else {
+          const slug = cleanPath.replace(/^\/docs\/?/, '').replace(/\/$/, '');
+          const outDocSlug = path.join(getLandingBaseDir(), 'out', 'docs', `${slug}.html`);
+          if (fs.existsSync(outDocSlug)) {
+            return sendHTML(res, 200, fs.readFileSync(outDocSlug, 'utf8'));
+          }
+        }
+      }
+
+      // Public /blog and /blog/:slug (Next.js export fallback)
+      if ((cleanPath === '/blog' || cleanPath.startsWith('/blog/')) && method === 'GET') {
+        if (cleanPath === '/blog' || cleanPath === '/blog/') {
+          const outBlog = path.join(getLandingBaseDir(), 'out', 'blog.html');
+          if (fs.existsSync(outBlog)) {
+            return sendHTML(res, 200, fs.readFileSync(outBlog, 'utf8'));
+          }
+        } else {
+          const slug = cleanPath.replace(/^\/blog\/?/, '').replace(/\/$/, '');
+          const outBlogSlug = path.join(getLandingBaseDir(), 'out', 'blog', `${slug}.html`);
+          if (fs.existsSync(outBlogSlug)) {
+            return sendHTML(res, 200, fs.readFileSync(outBlogSlug, 'utf8'));
+          }
+        }
+      }
+
       // Public /signup Page (Onboarding & Identity)
       if (cleanPath === '/signup' && method === 'GET') {
         const signupPath = path.join(getLandingBaseDir(), 'signup.html');

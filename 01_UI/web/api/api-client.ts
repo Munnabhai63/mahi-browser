@@ -40,7 +40,18 @@ export class WebApiClient {
   private onUnauthorized?: () => void;
 
   constructor(config: ApiClientConfig = {}) {
-    this.baseUrl = config.baseUrl || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8989');
+    if (config.baseUrl) {
+      this.baseUrl = config.baseUrl;
+    } else if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      if (hostname === 'app.mahibrowser.com' || (hostname.endsWith('.mahibrowser.com') && hostname !== 'api.mahibrowser.com')) {
+        this.baseUrl = (import.meta as any).env?.VITE_COMMERCIAL_API_URL || 'https://api.mahibrowser.com';
+      } else {
+        this.baseUrl = window.location.origin;
+      }
+    } else {
+      this.baseUrl = 'http://localhost:8989';
+    }
     this.getAccessToken = config.getAccessToken || (() => null);
     this.onUnauthorized = config.onUnauthorized;
   }

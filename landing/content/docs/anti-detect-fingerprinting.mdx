@@ -1,0 +1,43 @@
+---
+title: "Anti-Detect Fingerprinting & Native Hooks"
+description: "Deep dive into Canvas, WebGL, AudioContext, Bayesian Client Hints, Chromium 138 native hooks, and Camoufox C++ spoofing."
+order: 3
+section: "Core Foundations"
+---
+
+# Anti-Detect Fingerprinting & Native Hooks
+
+Modern anti-bot systems (Cloudflare, Akamai, DataDome, CreepJS, Pixelscan) do not simply look at your IP and User-Agent. They evaluate hundreds of hardware, graphic, audio, and prototype signals to spot inconsistencies.
+
+## 1. Statistical Bayesian Fingerprint Engine
+
+Unlike simplistic antidetect browsers that randomize hardware parameters blindly, MAHI Browser uses **Bayesian Generative Networks** (`fingerprint-generator` and `header-generator`) to guarantee that all hardware attributes are statistically correlated:
+
+- An **Apple M1** profile will only select `ANGLE (Apple, Apple M1, Metal)` or `Apple M2` GPUs and macOS native fonts (`SF Pro`, `Helvetica`).
+- A **Windows 11** profile will use `ANGLE (NVIDIA / Intel Direct3D11)` and Windows typography (`Segoe UI`, `Calibri`), Win32 platform strings, and matching high-entropy Client Hints (`sec-ch-ua-platform: "Windows"`).
+- **Client Hints Clamping:** Client hints versions (`sec-ch-ua`, `sec-ch-ua-full-version-list`) are strictly clamped to the managed engine major version (`138`) to prevent fatal dataset divergence.
+
+## 2. Canvas & WebGL Perturbation
+
+To avoid sharing a uniform canvas hash across thousands of profiles:
+
+- MAHI generates a **deterministic PRNG seed** per profile (`profileId`).
+- A subtle, non-visual color noise transform is applied during `toDataURL()` and `getImageData()`.
+- Successive calls on the same profile return the exact same hash across sessions, while distinct profiles emit different, unique hashes.
+
+## 3. AudioContext Noise & Zero Drift
+
+Anti-bot sensors inspect AudioBuffer channel data (`getChannelData()`) for frequency-response fingerprinting:
+
+- MAHI perturbs audio buffer data using deterministic float variations.
+- AudioBuffer caching guarantees that repeated reads to the same buffer do not cause in-place cumulative drift, passing CreepJS audio traps without suspicion.
+
+## 4. Chromium 138 vs Camoufox Dual Engine
+
+| Feature | Chromium 138 Engine | Camoufox Engine (Firefox) |
+| :--- | :--- | :--- |
+| **Base Core** | Chromium 138.0.7204.0 | Firefox 135.0 ESR |
+| **Automation Defense** | `rebrowser-patches` runtime fix (`addBinding`) | Native C++ internal overriding |
+| **CDP Leak Vectors** | Isolated via `--mahi-cdp-isolated` | Zero CDP (Firefox Marionette / Playwright) |
+| **Client Hints** | Fully supported (`navigator.userAgentData`) | Automatically omitted (matches Firefox spec) |
+| **Target Sites** | Google Ads, Meta, TikTok, Amazon | Cloudflare Turnstile, DataDome, Bet365 |

@@ -1,0 +1,40 @@
+---
+title: "Team Workspaces, RBAC & Cloudflare R2 Sync"
+description: "Collaborate with team members, share profiles safely, utilize Redis distributed concurrency locks, and enjoy zero-egress Cloudflare R2 storage sync."
+order: 5
+section: "Team & Enterprise"
+---
+
+# Team Workspaces, RBAC & Cloudflare R2 Sync
+
+Scale your operations across multiple teammates, media buyers, and remote virtual assistants without sharing master passwords or suffering concurrency collisions.
+
+## 1. Role-Based Access Control (RBAC)
+
+Organize team members within dedicated workspaces. Available roles:
+
+- **OWNER:** Full administrative control, billing management, workspace deletion, and member invitation.
+- **ADMIN:** Can create/delete profiles, configure proxy pools, invite members, and adjust workspace settings.
+- **MEMBER:** Can view, edit, and launch assigned profiles.
+- **LAUNCHER:** Execution-only permission. Can launch browser instances without viewing or exporting cookies, proxy credentials, or account passwords.
+
+## 2. Distributed Concurrency Locks (Redis)
+
+When multiple team members share the same profile pool, simultaneous launches can corrupt browser storage or trigger account bans.
+
+MAHI Browser solves this with **Distributed Redis Locks (`ioredis`)**:
+1. When Operator A clicks **Launch Profile**, the Fastify gateway requests a distributed lock in Redis with a 60-second heartbeat.
+2. If Operator B attempts to launch the same profile simultaneously, the server responds with `HTTP 423 Locked`:
+   ```json
+   {
+     "success": false,
+     "error": "Profile is currently locked by session 'sess_98234' on worker node 'host_us_east'."
+   }
+   ```
+3. When Operator A closes the browser, the lock is immediately released and synchronizes changes back to cloud storage.
+
+## 3. Zero-Egress Cloudflare R2 Sync
+
+MAHI profiles are stored as AES-256-GCM encrypted tar archives in Cloudflare R2:
+- **Zero Egress Fees:** Download and sync 100+ GB of browser caches without bandwidth billing surprises.
+- **Client-Side Zero-Knowledge Encryption:** Profile archives are encrypted with your master key before leaving your machine. Cloud servers cannot decrypt your session cookies or browsing history.

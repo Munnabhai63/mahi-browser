@@ -45,7 +45,7 @@ export interface LaunchedProcessInfo {
 /**
  * Remove stale lock files left by previous crashed Chromium sessions
  */
-function cleanupStaleLocks(storageDir: string): void {
+export function cleanupStaleLocks(storageDir: string): void {
   const lockFiles = [
     'SingletonLock',
     'SingletonCookie',

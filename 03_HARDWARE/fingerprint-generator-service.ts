@@ -316,14 +316,27 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
   let clientHints: any = undefined;
   if (engine !== 'camoufox') {
     if (options.seed === undefined && bayesianFp?.navigator?.userAgentData?.brands?.length) {
-      let brands = bayesianFp.navigator.userAgentData.brands;
-      if (engine === 'edge') {
-        brands = brands.map((b: any) => b.brand === 'Google Chrome' ? { ...b, brand: 'Microsoft Edge' } : b);
-      }
-      let fullVersionList = bayesianFp.navigator.userAgentData.fullVersionList || brands.map((b: any) => ({ brand: b.brand, version: `${b.version}.0.0.0` }));
-      if (engine === 'edge') {
-        fullVersionList = fullVersionList.map((b: any) => b.brand === 'Google Chrome' ? { ...b, brand: 'Microsoft Edge' } : b);
-      }
+      let brands = bayesianFp.navigator.userAgentData.brands.map((b: any) => {
+        let brandName = b.brand;
+        if (engine === 'edge' && brandName === 'Google Chrome') {
+          brandName = 'Microsoft Edge';
+        }
+        if (brandName === 'Chromium' || brandName === 'Google Chrome' || brandName === 'Microsoft Edge') {
+          return { brand: brandName, version: chromeMajor };
+        }
+        return { brand: brandName, version: b.version };
+      });
+      let rawFullVersionList = bayesianFp.navigator.userAgentData.fullVersionList || brands.map((b: any) => ({ brand: b.brand, version: `${b.version}.0.0.0` }));
+      let fullVersionList = rawFullVersionList.map((b: any) => {
+        let brandName = b.brand;
+        if (engine === 'edge' && brandName === 'Google Chrome') {
+          brandName = 'Microsoft Edge';
+        }
+        if (brandName === 'Chromium' || brandName === 'Google Chrome' || brandName === 'Microsoft Edge') {
+          return { brand: brandName, version: MANAGED_ENGINE_VERSION };
+        }
+        return { brand: brandName, version: b.version };
+      });
       clientHints = {
         brands,
         mobile: isMobile,

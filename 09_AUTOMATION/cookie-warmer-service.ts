@@ -17,8 +17,9 @@ import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { exportCookies } from '../02_BROWSER/services/cookie-service.js';
 import { chromium, firefox } from 'rebrowser-playwright-core';
 import { processManager } from '../02_BROWSER/process-manager.js';
-import { getProfileDebugPort } from '../02_BROWSER/launcher.js';
+import { getProfileDebugPort, cleanupStaleLocks } from '../02_BROWSER/launcher.js';
 import { resolveExecutablePath } from '../02_BROWSER/detector.js';
+import { getProxyById, getDecryptedProxyCredentials } from '../02_BROWSER/services/proxy-service.js';
 import { getDatabase } from '../06_DATABASE/connection.js';
 
 process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE || 'addBinding';
@@ -372,6 +373,21 @@ export async function warmProfile(
       }
       const executablePath = resolveExecutablePath('camoufox', profile.customExecutablePath);
       const storageDir = getProfileStoragePath(profileId);
+      cleanupStaleLocks(storageDir);
+
+      let proxyConfig: { server: string; username?: string; password?: string } | undefined = undefined;
+      if (!profile.settings?.network?.directConnection && profile.settings?.network?.proxyId) {
+        const proxy = getProxyById(profile.settings.network.proxyId);
+        if (proxy) {
+          const creds = getDecryptedProxyCredentials(proxy.id);
+          proxyConfig = {
+            server: `${proxy.protocol}://${proxy.host}:${proxy.port}`,
+            username: creds?.username,
+            password: creds?.password,
+          };
+        }
+      }
+
       context = await firefox.launchPersistentContext(storageDir, {
         executablePath,
         headless: false,
@@ -380,6 +396,9 @@ export async function warmProfile(
           height: profile.settings?.display?.screenHeight || 1080,
         },
         userAgent: profile.settings?.browser?.userAgent,
+        locale: profile.settings?.locale?.language,
+        timezoneId: profile.settings?.locale?.timezone,
+        proxy: proxyConfig,
       });
     } else {
       if (!wasRunning) {

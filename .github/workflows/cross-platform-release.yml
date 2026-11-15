@@ -69,6 +69,14 @@ jobs:
       - name: Build Web & Electron
         run: npm run build
 
+      - name: Verify Next.js Landing Portal Build & Typecheck
+        run: |
+          cd landing
+          npm ci
+          npm run typecheck
+          npm run build
+        shell: bash
+
       - name: Run CI Test Suite (Linux Xvfb)
         if: runner.os == 'Linux'
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:ci
@@ -106,6 +114,14 @@ jobs:
 
       - name: Build Web & Electron
         run: npm run build
+
+      - name: Verify Next.js Landing Portal Build & Typecheck
+        run: |
+          cd landing
+          npm ci
+          npm run typecheck
+          npm run build
+        shell: bash
 
       - name: Pre-Stage Packaging Resources
         run: node 12_SCRIPTS/stage-packaging-resources.cjs
