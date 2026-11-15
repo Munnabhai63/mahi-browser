@@ -267,6 +267,7 @@ export interface MahiBrowserAPI {
   // Fingerprint Diagnostics & Stealth Auditor
   diagnosticsAudit: (profileId: string) => Promise<ProfileAuditReport>;
   diagnosticsAutoFix: (profileId: string) => Promise<ProfileAuditReport>;
+  generateStatisticalFingerprint?: (options?: any) => Promise<any>;
 
   // Captcha Solver Engine
   captchaGetConfig: () => Promise<CaptchaConfig>;

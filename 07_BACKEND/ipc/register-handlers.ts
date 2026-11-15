@@ -1191,6 +1191,24 @@ export function registerIpcHandlers(): void {
     }
   });
 
+  ipcMain.handle('fingerprint:generateStatistical', async (_event, options) => {
+    try {
+      const { generateStatisticalProfileSettings } = await import('../../03_HARDWARE/fingerprint-generator-service.js');
+      return generateStatisticalProfileSettings(options);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('mahi:generate-statistical-fingerprint', async (_event, options) => {
+    try {
+      const { generateStatisticalProfileSettings } = await import('../../03_HARDWARE/fingerprint-generator-service.js');
+      return generateStatisticalProfileSettings(options);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
   // CAPTCHA SOLVER ENGINE
   ipcMain.handle('captcha:getConfig', async () => {
     try {

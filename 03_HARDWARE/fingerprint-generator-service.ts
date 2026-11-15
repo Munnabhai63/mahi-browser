@@ -1,20 +1,13 @@
 import { FingerprintGenerator } from 'fingerprint-generator';
 import { HeaderGenerator } from 'header-generator';
-import { ProfileSettings } from '../10_CONFIG/shared/types/profile.js';
+import { ProfileSettings, StatisticalProfileOptions } from '../10_CONFIG/shared/types/profile.js';
 import { MANAGED_ENGINE_VERSION } from '../10_CONFIG/engine-config.js';
 import {
   validateAndNormalizeFingerprintCoherence,
   getDeterministicSeed,
-} from '../02_BROWSER/stealth-native-preferences.js';
+} from '../10_CONFIG/shared/utils/fingerprint-coherence.js';
 
-export interface StatisticalProfileOptions {
-  os?: 'windows' | 'macos' | 'linux' | 'android';
-  engine?: 'chromium' | 'chrome' | 'edge' | 'camoufox';
-  locale?: string;
-  timezone?: string;
-  seed?: string | number;
-  deviceCategory?: 'desktop' | 'mobile';
-}
+export type { StatisticalProfileOptions };
 
 const OS_FONTS = {
   windows: [
@@ -136,43 +129,58 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
   const isMacM1 = isMac && (rng() > 0.3); // 70% chance of Apple Silicon on modern macOS
 
   // 2. Resolve Locale and Timezone
-  const localeKey = options.locale || 'en-US';
+  let localeKey = options.locale || 'en-US';
   const regionData = REGION_MAP[localeKey] || {
     timezone: options.timezone || 'America/New_York',
     languagesList: [localeKey, 'en'],
   };
-  const targetTimezone = options.timezone || regionData.timezone;
-  const targetLanguagesList = regionData.languagesList;
+  let targetTimezone = options.timezone || regionData.timezone;
+  let targetLanguagesList = regionData.languagesList;
 
-  // 3. Attempt Bayesian Generation via FingerprintGenerator & HeaderGenerator
+  // 3. Bayesian Generation via FingerprintGenerator & HeaderGenerator (only when unseeded)
   let bayesianFp: any = null;
   let bayesianHeaders: any = null;
-  try {
-    const { fg, hg } = getGenerators();
-    const osMap: Record<string, string> = {
-      windows: 'windows',
-      macos: 'macos',
-      linux: 'linux',
-      android: 'android',
-    };
-    bayesianFp = fg.getFingerprint({
-      operatingSystems: [osMap[targetOs] as any],
-      devices: [isMobile ? 'mobile' : 'desktop'],
-      browsers: engine === 'camoufox'
-        ? [{ name: 'firefox' as any }]
-        : [{ name: engine === 'edge' ? ('edge' as any) : ('chrome' as any) }],
-    })?.fingerprint;
+  if (options.seed === undefined) {
+    try {
+      const { fg, hg } = getGenerators();
+      const osMap: Record<string, string> = {
+        windows: 'windows',
+        macos: 'macos',
+        linux: 'linux',
+        android: 'android',
+      };
+      bayesianFp = fg.getFingerprint({
+        operatingSystems: [osMap[targetOs] as any],
+        devices: [isMobile ? 'mobile' : 'desktop'],
+        browsers: engine === 'camoufox'
+          ? [{ name: 'firefox' as any }]
+          : [{ name: engine === 'edge' ? ('edge' as any) : ('chrome' as any) }],
+      })?.fingerprint;
 
-    bayesianHeaders = hg.getHeaders({
-      operatingSystems: [osMap[targetOs] as any],
-      browsers: engine === 'camoufox'
-        ? [{ name: 'firefox' as any }]
-        : [{ name: engine === 'edge' ? ('edge' as any) : ('chrome' as any) }],
-    });
-  } catch (err) {
-    // Graceful fallback to statistical heuristics if zip-model unpacking is inhibited
-    bayesianFp = null;
-    bayesianHeaders = null;
+      bayesianHeaders = hg.getHeaders({
+        operatingSystems: [osMap[targetOs] as any],
+        browsers: engine === 'camoufox'
+          ? [{ name: 'firefox' as any }]
+          : [{ name: engine === 'edge' ? ('edge' as any) : ('chrome' as any) }],
+      });
+
+      if (!options.locale && bayesianHeaders) {
+        const al = bayesianHeaders['accept-language'] || bayesianHeaders['Accept-Language'];
+        if (al && typeof al === 'string') {
+          const parsed = al.split(',').map((s) => s.split(';')[0].trim()).filter(Boolean);
+          if (parsed.length > 0) {
+            targetLanguagesList = parsed;
+            localeKey = parsed[0];
+            if (!options.timezone && REGION_MAP[localeKey]) {
+              targetTimezone = REGION_MAP[localeKey].timezone;
+            }
+          }
+        }
+      }
+    } catch {
+      bayesianFp = null;
+      bayesianHeaders = null;
+    }
   }
 
   // 4. Synthesize Coherent User-Agent
@@ -217,7 +225,12 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
   let deviceScaleFactor = 1;
   let colorDepth = 24;
 
-  if (isMobile) {
+  if (options.seed === undefined && bayesianFp?.screen?.width && bayesianFp.screen.width >= (isMobile ? 320 : 1280)) {
+    screenWidth = bayesianFp.screen.width;
+    screenHeight = bayesianFp.screen.height || 1080;
+    deviceScaleFactor = bayesianFp.screen.devicePixelRatio || 1;
+    colorDepth = bayesianFp.screen.colorDepth || 24;
+  } else if (isMobile) {
     const mobileResolutions = [
       { w: 412, h: 915, dpr: 2.625 },
       { w: 393, h: 852, dpr: 3 },
@@ -246,23 +259,20 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
       { w: 1536, h: 864, dpr: 1.25 },
       { w: 1366, h: 768, dpr: 1 },
     ];
-    if (options.seed === undefined && bayesianFp?.screen?.width && bayesianFp.screen.width >= 1280) {
-      screenWidth = bayesianFp.screen.width;
-      screenHeight = bayesianFp.screen.height || 1080;
-      deviceScaleFactor = bayesianFp.screen.devicePixelRatio || 1;
-    } else {
-      const picked = desktopResolutions[Math.floor(rng() * desktopResolutions.length)];
-      screenWidth = picked.w;
-      screenHeight = picked.h;
-      deviceScaleFactor = picked.dpr;
-    }
+    const picked = desktopResolutions[Math.floor(rng() * desktopResolutions.length)];
+    screenWidth = picked.w;
+    screenHeight = picked.h;
+    deviceScaleFactor = picked.dpr;
   }
 
   // 6. Synthesize WebGL & WebGPU Hardware Descriptors
   let webglVendor = 'Google Inc. (NVIDIA)';
   let webglRenderer = 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)';
 
-  if (isMobile) {
+  if (options.seed === undefined && bayesianFp?.videoCard?.renderer) {
+    webglVendor = bayesianFp.videoCard.vendor || webglVendor;
+    webglRenderer = bayesianFp.videoCard.renderer;
+  } else if (isMobile) {
     webglVendor = 'ARM';
     webglRenderer = 'Mali-G710 MC10';
   } else if (isMac) {
@@ -286,8 +296,15 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
   }
 
   // 7. Hardware Capacity & Touch Points
-  const hardwareConcurrency = isMobile ? 8 : (isMac ? (isMacM1 ? 8 : 4) : ([8, 12, 16] as const)[Math.floor(rng() * 3)]);
-  const deviceMemory = isMobile ? 8 : ([4, 8, 16] as const)[Math.floor(rng() * 3)];
+  let hardwareConcurrency = isMobile ? 8 : (isMac ? (isMacM1 ? 8 : 4) : ([8, 12, 16] as const)[Math.floor(rng() * 3)]);
+  let deviceMemory = isMobile ? 8 : ([4, 8, 16] as const)[Math.floor(rng() * 3)];
+  if (options.seed === undefined && bayesianFp?.navigator?.hardwareConcurrency) {
+    hardwareConcurrency = bayesianFp.navigator.hardwareConcurrency;
+  }
+  if (options.seed === undefined && bayesianFp?.navigator?.deviceMemory) {
+    deviceMemory = bayesianFp.navigator.deviceMemory;
+  }
+
   const maxTouchPoints = isMobile ? 5 : 0;
   const platformStr = isMobile ? 'Linux armv8l' : (isMac ? 'MacIntel' : (isLinux ? 'Linux x86_64' : 'Win32'));
   const architecture = isMobile ? 'arm' : (isMacM1 ? 'arm64' : 'x86_64');
@@ -298,28 +315,49 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
   // 9. Client Hints (for Chromium-family engines)
   let clientHints: any = undefined;
   if (engine !== 'camoufox') {
-    const brands = engine === 'edge'
-      ? [
-          { brand: 'Not/A)Brand', version: '8' },
-          { brand: 'Chromium', version: chromeMajor },
-          { brand: 'Microsoft Edge', version: chromeMajor },
-        ]
-      : [
-          { brand: 'Not/A)Brand', version: '8' },
-          { brand: 'Chromium', version: chromeMajor },
-          { brand: 'Google Chrome', version: chromeMajor },
-        ];
+    if (options.seed === undefined && bayesianFp?.navigator?.userAgentData?.brands?.length) {
+      let brands = bayesianFp.navigator.userAgentData.brands;
+      if (engine === 'edge') {
+        brands = brands.map((b: any) => b.brand === 'Google Chrome' ? { ...b, brand: 'Microsoft Edge' } : b);
+      }
+      let fullVersionList = bayesianFp.navigator.userAgentData.fullVersionList || brands.map((b: any) => ({ brand: b.brand, version: `${b.version}.0.0.0` }));
+      if (engine === 'edge') {
+        fullVersionList = fullVersionList.map((b: any) => b.brand === 'Google Chrome' ? { ...b, brand: 'Microsoft Edge' } : b);
+      }
+      clientHints = {
+        brands,
+        mobile: isMobile,
+        platform: bayesianFp.navigator.userAgentData.platform || (isWindows ? 'Windows' : (isMac ? 'macOS' : (isLinux ? 'Linux' : 'Android'))),
+        platformVersion: bayesianFp.navigator.userAgentData.platformVersion || (isWindows ? '15.0.0' : (isMac ? '14.5.0' : '6.5.0')),
+        architecture: bayesianFp.navigator.userAgentData.architecture || (isMobile ? 'arm' : (isMacM1 ? 'arm' : 'x86')),
+        model: bayesianFp.navigator.userAgentData.model || (isMobile ? 'Pixel 8' : ''),
+        bitness: bayesianFp.navigator.userAgentData.bitness || '64',
+        fullVersionList,
+      };
+    } else {
+      const brands = engine === 'edge'
+        ? [
+            { brand: 'Not/A)Brand', version: '8' },
+            { brand: 'Chromium', version: chromeMajor },
+            { brand: 'Microsoft Edge', version: chromeMajor },
+          ]
+        : [
+            { brand: 'Not/A)Brand', version: '8' },
+            { brand: 'Chromium', version: chromeMajor },
+            { brand: 'Google Chrome', version: chromeMajor },
+          ];
 
-    clientHints = {
-      brands,
-      mobile: isMobile,
-      platform: isWindows ? 'Windows' : (isMac ? 'macOS' : (isLinux ? 'Linux' : 'Android')),
-      platformVersion: isWindows ? '15.0.0' : (isMac ? '14.5.0' : '6.5.0'),
-      architecture: isMobile ? 'arm' : (isMacM1 ? 'arm' : 'x86'),
-      model: isMobile ? 'Pixel 8' : '',
-      bitness: '64',
-      fullVersionList: brands.map((b) => ({ brand: b.brand, version: `${b.version}.0.0.0` })),
-    };
+      clientHints = {
+        brands,
+        mobile: isMobile,
+        platform: isWindows ? 'Windows' : (isMac ? 'macOS' : (isLinux ? 'Linux' : 'Android')),
+        platformVersion: isWindows ? '15.0.0' : (isMac ? '14.5.0' : '6.5.0'),
+        architecture: isMobile ? 'arm' : (isMacM1 ? 'arm' : 'x86'),
+        model: isMobile ? 'Pixel 8' : '',
+        bitness: '64',
+        fullVersionList: brands.map((b) => ({ brand: b.brand, version: `${b.version}.0.0.0` })),
+      };
+    }
   }
 
   const rawSettings: ProfileSettings = {

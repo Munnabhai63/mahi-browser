@@ -1,8 +1,25 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import vm from 'node:vm';
+import * as child_process from 'node:child_process';
+
+let mockSpawnCalls: Array<{ exe: any; args: any; opts: any }> = [];
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return {
+    ...actual,
+    spawn: vi.fn((exe: any, args: any, opts: any) => {
+      mockSpawnCalls.push({ exe, args, opts });
+      return {
+        pid: 99999,
+        unref: () => {},
+      } as any;
+    }),
+  };
+});
 import {
   generateStatisticalProfileSettings,
   StatisticalProfileOptions,
@@ -519,6 +536,162 @@ describe('Phase 4: Anti-Detect Engine Hardening', () => {
       expect(coherenceCheck?.status).toBe('WARN');
       expect(coherenceCheck?.score).toBeLessThanOrEqual(75);
       expect(coherenceCheck?.recommendation).toMatch(/camoufox/i);
+    });
+  });
+
+  // ==========================================================================
+  // SUITE 7: Phase 4 Remediation Regressions (Adversarial Audit Hardening)
+  // ==========================================================================
+  describe('7. Phase 4 Remediation Regressions', () => {
+    it('verifies 10_CONFIG/shared/constants/defaults.ts and fingerprint-coherence.ts are 100% browser-safe', () => {
+      const defaultsSrc = fs.readFileSync(path.resolve('10_CONFIG/shared/constants/defaults.ts'), 'utf8');
+      expect(defaultsSrc).not.toMatch(/from\s+['"]node:/);
+      expect(defaultsSrc).not.toMatch(/from\s+['"](fs|path|crypto|zlib|adm-zip|fingerprint-generator|header-generator)['"]/);
+      expect(defaultsSrc).not.toContain('fingerprint-generator-service');
+
+      const coherenceSrc = fs.readFileSync(path.resolve('10_CONFIG/shared/utils/fingerprint-coherence.ts'), 'utf8');
+      expect(coherenceSrc).not.toMatch(/from\s+['"]node:/);
+      expect(coherenceSrc).not.toMatch(/from\s+['"](fs|path|crypto|zlib|adm-zip)['"]/);
+
+      // Verify defaults functions execute cleanly without requiring node modules
+      const generated = generateConsistentEnvironmentSettings();
+      expect(generated.browser).toBeDefined();
+      expect(generated.fingerprint).toBeDefined();
+    });
+
+    it('verifies built renderer bundle contains zero Node require leaks or adm-zip references', () => {
+      const distAssetsDir = path.resolve('dist/assets');
+      if (fs.existsSync(distAssetsDir)) {
+        const jsFiles = fs.readdirSync(distAssetsDir).filter((f) => f.endsWith('.js'));
+        for (const file of jsFiles) {
+          const content = fs.readFileSync(path.join(distAssetsDir, file), 'utf8');
+          // Must not contain Node CJS require calls for fs, path, etc.
+          expect(content).not.toMatch(/require\(['"](fs|path|crypto|zlib)['"]\)/);
+          expect(content).not.toContain('adm-zip');
+        }
+      }
+    });
+
+    it('verifies launchCamoufoxProfile schema, locale extraction, WebRTC safety, and proxy prefs in user.js', async () => {
+      const mockExe = path.join(tempDir, os.platform() === 'win32' ? 'mock_camoufox.exe' : 'mock_camoufox');
+      fs.writeFileSync(mockExe, '#!/bin/sh\nexit 0\n', { mode: 0o777 });
+      const origCamou = process.env.CAMOUFOX_EXECUTABLE_PATH;
+      process.env.CAMOUFOX_EXECUTABLE_PATH = mockExe;
+      mockSpawnCalls = [];
+
+      try {
+        const profile = createProfile({
+          name: 'Camoufox Schema Validation Profile',
+          settings: {
+            browser: {
+              engine: 'camoufox',
+              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0',
+            },
+            display: { screenWidth: 1920, screenHeight: 1080 },
+            locale: { language: 'de-DE', timezone: 'Europe/Berlin' },
+            network: { directConnection: true, webrtc: 'disabled' },
+            fingerprint: {
+              platform: 'Win32',
+              hardwareConcurrency: 8,
+              webglVendor: 'Google Inc. (NVIDIA)',
+              webglRenderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 ps_5_0, D3D11)',
+            },
+          } as any,
+        });
+
+        const launchResult = await launchCamoufoxProfile(profile);
+        expect(launchResult.pid).toBe(99999);
+        expect(launchResult.profileId).toBe(profile.id);
+        expect(mockSpawnCalls.length).toBeGreaterThan(0);
+
+        const lastCall = mockSpawnCalls[mockSpawnCalls.length - 1];
+        const capturedSpawnEnv = lastCall.opts?.env || {};
+
+        // 1. Reassemble chunked CAMOU_CONFIG_*
+        let camouConfigRaw = '';
+        let cIdx = 1;
+        while (capturedSpawnEnv[`CAMOU_CONFIG_${cIdx}`]) {
+          camouConfigRaw += capturedSpawnEnv[`CAMOU_CONFIG_${cIdx}`];
+          cIdx++;
+        }
+        expect(camouConfigRaw.length).toBeGreaterThan(0);
+        const camouConfig = JSON.parse(camouConfigRaw);
+
+        // WebGL schema casing: lowercase 'l'
+        expect(camouConfig['webGl:vendor']).toBe('Google Inc. (NVIDIA)');
+        expect(camouConfig['webGl:renderer']).toContain('Direct3D11');
+        expect(camouConfig['webGL:vendor']).toBeUndefined();
+        expect(camouConfig['webGL:renderer']).toBeUndefined();
+
+        // Locale: base language 'de', ISO 3166-1 alpha-2 region 'DE'
+        expect(camouConfig['locale:language']).toBe('de');
+        expect(camouConfig['locale:region']).toBe('DE');
+
+        // WebRTC: on direct or loopback connection, webrtc:ipv4 must NOT be set
+        expect(camouConfig['webrtc:ipv4']).toBeUndefined();
+
+        // 2. Inspect user.js in storageDir
+        const userJsPath = path.join(profile.storagePath, 'user.js');
+        expect(fs.existsSync(userJsPath)).toBe(true);
+        const userJs = fs.readFileSync(userJsPath, 'utf8');
+        expect(userJs).toContain('user_pref("network.proxy.type", 0);');
+        expect(userJs).toContain('user_pref("media.peerconnection.enabled", false);');
+      } finally {
+        if (origCamou) process.env.CAMOUFOX_EXECUTABLE_PATH = origCamou;
+        else delete process.env.CAMOUFOX_EXECUTABLE_PATH;
+      }
+    });
+
+    it('verifies ensureProfileStealthExtension formats sec-ch-ua for Edge engine with Microsoft Edge', () => {
+      const edgeExtDir = ensureProfileStealthExtension(
+        tempDir,
+        'edge-stealth-profile',
+        'Edge Profile',
+        {
+          browser: { engine: 'edge', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0' },
+        },
+        false
+      );
+
+      const rulesPath = path.join(edgeExtDir, 'rules.json');
+      expect(fs.existsSync(rulesPath)).toBe(true);
+      const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
+
+      const headerRule = rules.find((r: any) => r.action?.type === 'modifyHeaders');
+      expect(headerRule).toBeDefined();
+      const secChUa = headerRule.action.requestHeaders.find((h: any) => h.header === 'sec-ch-ua');
+      expect(secChUa).toBeDefined();
+      expect(secChUa.value).toContain('Microsoft Edge');
+      expect(secChUa.value).not.toContain('Google Chrome');
+
+      const secChUaFull = headerRule.action.requestHeaders.find((h: any) => h.header === 'sec-ch-ua-full-version-list');
+      expect(secChUaFull).toBeDefined();
+      expect(secChUaFull.value).toContain('Microsoft Edge');
+    });
+
+    it('verifies unseeded generateStatisticalProfileSettings consumes Bayesian generator output', () => {
+      const unseeded = generateStatisticalProfileSettings({
+        os: 'windows',
+        engine: 'chrome',
+      });
+      expect(unseeded.browser).toBeDefined();
+      expect(unseeded.fingerprint).toBeDefined();
+      expect(unseeded.fingerprint?.hardwareConcurrency).toBeGreaterThanOrEqual(2);
+      expect(unseeded.fingerprint?.deviceMemory).toBeGreaterThanOrEqual(2);
+      expect(unseeded.fingerprint?.webglRenderer).toBeDefined();
+      expect(unseeded.fingerprint?.clientHints?.brands?.some((b: any) => b.brand === 'Google Chrome')).toBe(true);
+    });
+
+    it('verifies cookie-warmer-service and automation-engine runtime fix mode and dual engine wiring', () => {
+      const warmerSrc = fs.readFileSync(path.resolve('09_AUTOMATION/cookie-warmer-service.ts'), 'utf8');
+      expect(warmerSrc).toContain('REBROWSER_PATCHES_RUNTIME_FIX_MODE');
+      expect(warmerSrc).toContain("MAHI_CDP_ISOLATED = '1'");
+      expect(warmerSrc).toContain("from 'rebrowser-playwright-core'");
+      expect(warmerSrc).toContain('firefox.launchPersistentContext');
+
+      const creepScriptSrc = fs.readFileSync(path.resolve('12_SCRIPTS/verify-creepjs.ts'), 'utf8');
+      expect(creepScriptSrc).toContain('--headless=new');
+      expect(creepScriptSrc).toContain('deterministic hash stability');
     });
   });
 });

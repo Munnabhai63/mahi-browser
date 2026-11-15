@@ -235,13 +235,26 @@ export function ensureProfileStealthExtension(
   };
 
   const isCamoufox = settings?.browser?.engine === 'camoufox';
+  const isEdge = settings?.browser?.engine === 'edge';
+  const targetBrandName = isEdge ? 'Microsoft Edge' : 'Google Chrome';
+
+  let secChUaHeader = `"Not/A)Brand";v="8", "Chromium";v="${chromeMajorVer}", "${targetBrandName}";v="${chromeMajorVer}"`;
+  let secChUaFullVersionHeader = `"Not/A)Brand";v="8.0.0.0", "Chromium";v="${chromeFullVer}", "${targetBrandName}";v="${chromeFullVer}"`;
+
+  if (fp.clientHints?.brands && Array.isArray(fp.clientHints.brands) && fp.clientHints.brands.length > 0) {
+    secChUaHeader = fp.clientHints.brands.map((b: any) => `"${b.brand}";v="${b.version}"`).join(', ');
+  }
+  if (fp.clientHints?.fullVersionList && Array.isArray(fp.clientHints.fullVersionList) && fp.clientHints.fullVersionList.length > 0) {
+    secChUaFullVersionHeader = fp.clientHints.fullVersionList.map((b: any) => `"${b.brand}";v="${b.version}"`).join(', ');
+  }
+
   const dnrRequestHeaders = isCamoufox
     ? [
         { header: 'accept-language', operation: 'set', value: acceptLanguageHeader },
       ]
     : [
-        { header: 'sec-ch-ua', operation: 'set', value: `"Not/A)Brand";v="8", "Chromium";v="${chromeMajorVer}", "Google Chrome";v="${chromeMajorVer}"` },
-        { header: 'sec-ch-ua-full-version-list', operation: 'set', value: `"Not/A)Brand";v="8.0.0.0", "Chromium";v="${chromeFullVer}", "Google Chrome";v="${chromeFullVer}"` },
+        { header: 'sec-ch-ua', operation: 'set', value: secChUaHeader },
+        { header: 'sec-ch-ua-full-version-list', operation: 'set', value: secChUaFullVersionHeader },
         { header: 'sec-ch-ua-platform', operation: 'set', value: `"${clientHintsPlatform}"` },
         { header: 'sec-ch-ua-mobile', operation: 'set', value: clientHintsMobile },
         { header: 'sec-ch-ua-model', operation: 'set', value: `"${clientHintsModel}"` },
@@ -2249,11 +2262,23 @@ export async function launchCamoufoxProfile(
       '-new-instance',
     ];
 
-    // Proxy handling
-    let proxyIp: string | undefined;
+    // Proxy and WebRTC configuration
+    let resolvedPublicIp: string | undefined;
+    const firefoxPrefs: Record<string, any> = {};
+
     if (!settings?.network?.directConnection && settings?.network?.proxyId) {
       const proxy = getProxyById(settings.network.proxyId);
       if (proxy) {
+        try {
+          debugLog(`[Camoufox Launcher] Testing proxy health for ${proxy.host}:${proxy.port}...`);
+          const healthResult = await testAndSaveProxyStatus(proxy.id);
+          if (healthResult?.ip && !healthResult.ip.startsWith('127.') && healthResult.ip !== '0.0.0.0') {
+            resolvedPublicIp = healthResult.ip;
+          }
+        } catch (healthErr: any) {
+          debugLog(`[Camoufox Launcher] Proxy health check note: ${healthErr.message}`);
+        }
+
         const credentials = getDecryptedProxyCredentials(proxy.id);
         if (credentials?.username && credentials?.password) {
           proxyTunnel = await createProxyTunnel({
@@ -2264,37 +2289,116 @@ export async function launchCamoufoxProfile(
             password: credentials.password,
             profileId: profile.id,
           });
-          proxyIp = '127.0.0.1';
+
+          // Local tunnel is an HTTP proxy
+          firefoxPrefs['network.proxy.type'] = 1;
+          firefoxPrefs['network.proxy.http'] = '127.0.0.1';
+          firefoxPrefs['network.proxy.http_port'] = proxyTunnel.port;
+          firefoxPrefs['network.proxy.ssl'] = '127.0.0.1';
+          firefoxPrefs['network.proxy.ssl_port'] = proxyTunnel.port;
+          firefoxPrefs['network.proxy.no_proxies_on'] = 'localhost, 127.0.0.1';
         } else {
-          proxyIp = proxy.host;
+          // Direct unauthenticated proxy
+          firefoxPrefs['network.proxy.type'] = 1;
+          firefoxPrefs['network.proxy.no_proxies_on'] = 'localhost, 127.0.0.1';
+          const isSocks = proxy.protocol === 'socks4' || proxy.protocol === 'socks5';
+          if (isSocks) {
+            firefoxPrefs['network.proxy.socks'] = proxy.host;
+            firefoxPrefs['network.proxy.socks_port'] = proxy.port;
+            firefoxPrefs['network.proxy.socks_version'] = proxy.protocol === 'socks4' ? 4 : 5;
+            firefoxPrefs['network.proxy.socks_remote_dns'] = true;
+          } else {
+            firefoxPrefs['network.proxy.http'] = proxy.host;
+            firefoxPrefs['network.proxy.http_port'] = proxy.port;
+            firefoxPrefs['network.proxy.ssl'] = proxy.host;
+            firefoxPrefs['network.proxy.ssl_port'] = proxy.port;
+          }
         }
+      } else {
+        firefoxPrefs['network.proxy.type'] = 0;
       }
+    } else {
+      // Direct connection
+      firefoxPrefs['network.proxy.type'] = 0;
     }
+
+    // WebRTC policy
+    const webrtcOpt = settings?.network?.webrtc || 'default';
+    if (webrtcOpt === 'disabled') {
+      firefoxPrefs['media.peerconnection.enabled'] = false;
+    } else if (webrtcOpt === 'proxy_only' || (!resolvedPublicIp && firefoxPrefs['network.proxy.type'] === 1)) {
+      firefoxPrefs['media.peerconnection.ice.proxy_only_if_behind_proxy'] = true;
+      firefoxPrefs['media.peerconnection.ice.default_address_only'] = true;
+    }
+
+    // Synchronize Firefox user.js prefs in profile storage
+    const userJsPath = path.join(storageDir, 'user.js');
+    let existingUserJs = '';
+    if (fs.existsSync(userJsPath)) {
+      try { existingUserJs = fs.readFileSync(userJsPath, 'utf8'); } catch {}
+    }
+    const MAHI_BLOCK_START = '// --- MAHI CAMOUFOX NETWORK CONFIG START ---';
+    const MAHI_BLOCK_END = '// --- MAHI CAMOUFOX NETWORK CONFIG END ---';
+    const blockRegex = new RegExp(`${MAHI_BLOCK_START}[\\s\\S]*?${MAHI_BLOCK_END}\\n?`, 'g');
+    const cleanedUserJs = existingUserJs.replace(blockRegex, '').trim();
+
+    const prefLines: string[] = [MAHI_BLOCK_START];
+    for (const [key, val] of Object.entries(firefoxPrefs)) {
+      const serializedVal = typeof val === 'string' ? JSON.stringify(val) : String(val);
+      prefLines.push(`user_pref("${key}", ${serializedVal});`);
+    }
+    prefLines.push(MAHI_BLOCK_END);
+    const finalUserJs = cleanedUserJs ? `${cleanedUserJs}\n\n${prefLines.join('\n')}\n` : `${prefLines.join('\n')}\n`;
+    fs.writeFileSync(userJsPath, finalUserJs, 'utf8');
 
     // Startup URL
     const startupUrl = settings?.browser?.startupUrl?.trim() || 'about:blank';
     args.push(startupUrl);
 
-    // Build Camoufox JSON configuration
+    // Resolve ISO 3166-1 alpha-2 region code and base language
+    const rawLang = loc.language || 'en-US';
+    const langParts = rawLang.split(/[-_]/);
+    const baseLang = langParts[0].toLowerCase() || 'en';
+    let regionCode = langParts.length > 1 ? langParts[1].toUpperCase() : '';
+    if (!regionCode || regionCode.length !== 2) {
+      const tzToRegion: Record<string, string> = {
+        'America/New_York': 'US',
+        'America/Chicago': 'US',
+        'America/Los_Angeles': 'US',
+        'Europe/London': 'GB',
+        'Europe/Paris': 'FR',
+        'Europe/Berlin': 'DE',
+        'Europe/Madrid': 'ES',
+        'Europe/Rome': 'IT',
+        'Europe/Moscow': 'RU',
+        'Asia/Tokyo': 'JP',
+        'Asia/Shanghai': 'CN',
+        'Asia/Kolkata': 'IN',
+        'Asia/Dubai': 'AE',
+        'Asia/Singapore': 'SG',
+        'Australia/Sydney': 'AU',
+        'America/Sao_Paulo': 'BR',
+        'America/Toronto': 'CA',
+      };
+      regionCode = (loc.timezone && tzToRegion[loc.timezone]) || 'US';
+    }
+
+    // Build Camoufox JSON configuration (exact keys validated against camoufox@0.5.9)
     const camouConfigObj: Record<string, any> = {
       'navigator.userAgent': settings?.browser?.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0',
       'navigator.platform': fp.platform || 'Win32',
       'navigator.hardwareConcurrency': fp.hardwareConcurrency || 8,
       'screen.width': disp.screenWidth || 1920,
       'screen.height': disp.screenHeight || 1080,
-      'webGL:vendor': fp.webglVendor || 'Google Inc. (NVIDIA)',
-      'webGL:renderer': fp.webglRenderer || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      'webGl:vendor': fp.webglVendor || 'Google Inc. (NVIDIA)',
+      'webGl:renderer': fp.webglRenderer || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)',
       'timezone': loc.timezone || 'America/New_York',
-      'locale:language': loc.language || 'en-US',
-      'locale:region': loc.timezone ? (loc.timezone.split('/')[1] || loc.timezone) : 'US',
-      'webrtc:ipv4': proxyIp || '0.0.0.0',
+      'locale:language': baseLang,
+      'locale:region': regionCode,
     };
 
-    if (proxyTunnel) {
-      camouConfigObj.proxy = {
-        host: '127.0.0.1',
-        port: proxyTunnel.port,
-      };
+    if (resolvedPublicIp) {
+      camouConfigObj['webrtc:ipv4'] = resolvedPublicIp;
     }
 
     // Serialize and chunk Camoufox configuration payload into CAMOU_CONFIG_1, CAMOU_CONFIG_2, ...
@@ -2306,9 +2410,18 @@ export async function launchCamoufoxProfile(
       chunkedEnv[`CAMOU_CONFIG_${chunkIdx}`] = camouJson.substring(i, i + CHUNK_SIZE);
     }
 
+    // Chunk preferences into CAMOU_PREFS_1, CAMOU_PREFS_2, ...
+    const prefsJson = JSON.stringify(firefoxPrefs);
+    const chunkedPrefsEnv: Record<string, string> = {};
+    for (let i = 0; i < prefsJson.length; i += CHUNK_SIZE) {
+      const chunkIdx = Math.floor(i / CHUNK_SIZE) + 1;
+      chunkedPrefsEnv[`CAMOU_PREFS_${chunkIdx}`] = prefsJson.substring(i, i + CHUNK_SIZE);
+    }
+
     const camouEnv: Record<string, string | undefined> = {
       ...process.env,
       ...chunkedEnv,
+      ...chunkedPrefsEnv,
     };
 
     const child = spawn(executablePath, args, {

@@ -27,7 +27,8 @@
     "!*.pem",
     "!*.key",
     "!**/*.map",
-    "!**/node_modules/playwright-core/lib/vite/**"
+    "!**/node_modules/playwright-core/lib/vite/**",
+    "!**/node_modules/rebrowser-playwright-core/lib/vite/**"
   ],
   "win": {
     "target": [
@@ -122,6 +123,8 @@
   },
   "asar": true,
   "asarUnpack": [
+    "**/node_modules/adm-zip/**",
+    "**/node_modules/tslib/**",
     "**/node_modules/fingerprint-generator/**",
     "**/node_modules/header-generator/**",
     "**/node_modules/generative-bayesian-network/**"

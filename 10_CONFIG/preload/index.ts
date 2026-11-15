@@ -159,6 +159,7 @@ const api: MahiBrowserAPI = {
   // Fingerprint Diagnostics & Stealth Auditor
   diagnosticsAudit: (profileId: string) => ipcRenderer.invoke('diagnostics:audit', profileId),
   diagnosticsAutoFix: (profileId: string) => ipcRenderer.invoke('diagnostics:autoFix', profileId),
+  generateStatisticalFingerprint: (options?: any) => ipcRenderer.invoke('fingerprint:generateStatistical', options),
 
   // Captcha Solver Engine
   captchaGetConfig: () => ipcRenderer.invoke('captcha:getConfig'),

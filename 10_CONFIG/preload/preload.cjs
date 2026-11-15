@@ -158,6 +158,7 @@ const api = {
   // Fingerprint Diagnostics & Stealth Auditor
   diagnosticsAudit: (profileId) => ipcRenderer.invoke('diagnostics:audit', profileId),
   diagnosticsAutoFix: (profileId) => ipcRenderer.invoke('diagnostics:autoFix', profileId),
+  generateStatisticalFingerprint: (options) => ipcRenderer.invoke('fingerprint:generateStatistical', options),
 
   // Captcha Solver Engine
   captchaGetConfig: () => ipcRenderer.invoke('captcha:getConfig'),

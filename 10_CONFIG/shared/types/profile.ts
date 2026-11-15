@@ -2,6 +2,15 @@ export type ProfileStatus = 'READY' | 'STARTING' | 'RUNNING' | 'STOPPING' | 'STO
 
 export type BrowserEngine = 'chromium' | 'chrome' | 'edge' | 'camoufox';
 
+export interface StatisticalProfileOptions {
+  os?: 'windows' | 'macos' | 'linux' | 'android';
+  engine?: 'chromium' | 'chrome' | 'edge' | 'camoufox';
+  locale?: string;
+  timezone?: string;
+  seed?: string | number;
+  deviceCategory?: 'desktop' | 'mobile';
+}
+
 export type WebRTCMode = 'default' | 'disabled' | 'public_interface_only' | 'proxy_only';
 
 export interface BrowserConfig {

@@ -15,10 +15,14 @@ import crypto from 'node:crypto';
 import { getProfileById, updateProfile, getProfileStoragePath } from '../02_BROWSER/services/profile-service.js';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { exportCookies } from '../02_BROWSER/services/cookie-service.js';
-import { chromium } from 'rebrowser-playwright-core';
+import { chromium, firefox } from 'rebrowser-playwright-core';
 import { processManager } from '../02_BROWSER/process-manager.js';
 import { getProfileDebugPort } from '../02_BROWSER/launcher.js';
+import { resolveExecutablePath } from '../02_BROWSER/detector.js';
 import { getDatabase } from '../06_DATABASE/connection.js';
+
+process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE || 'addBinding';
+process.env.MAHI_CDP_ISOLATED = '1';
 
 export interface WarmerSite {
   url: string;
@@ -351,46 +355,67 @@ export async function warmProfile(
   updateProfile(profileId, { tags: currentTags });
 
   const wasRunning = processManager.isRunning(profileId);
+  const isCamoufox = profile.settings?.browser?.engine === 'camoufox';
   let browserObj: any = null;
+  let context: any = null;
   let sitesVisited = 0;
   let sitesFailed = 0;
   let retriesCount = 0;
   const maxRetries = options.maxSiteRetries ?? 1;
 
   try {
-    if (!wasRunning) {
-      await processManager.startProfile(profileId);
-      // Wait for browser to initialize
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-    }
-
-    const debugPort = getProfileDebugPort(profileId);
-    let connectErr: any = null;
-    for (let cdpAttempt = 0; cdpAttempt < 5; cdpAttempt++) {
-      try {
-        browserObj = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`, { timeout: 10000 });
-        connectErr = null;
-        break;
-      } catch (err) {
-        connectErr = err;
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (isCamoufox) {
+      if (wasRunning) {
+        throw new Error(
+          `Cookie warmer cannot attach over CDP to an already-running Camoufox profile. Please stop profile "${profile.name}" before starting the cookie warmer.`
+        );
       }
-    }
-    if (!browserObj && connectErr) {
-      throw connectErr;
-    }
+      const executablePath = resolveExecutablePath('camoufox', profile.customExecutablePath);
+      const storageDir = getProfileStoragePath(profileId);
+      context = await firefox.launchPersistentContext(storageDir, {
+        executablePath,
+        headless: false,
+        viewport: {
+          width: profile.settings?.display?.screenWidth || 1920,
+          height: profile.settings?.display?.screenHeight || 1080,
+        },
+        userAgent: profile.settings?.browser?.userAgent,
+      });
+    } else {
+      if (!wasRunning) {
+        await processManager.startProfile(profileId);
+        // Wait for browser to initialize
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
 
-    const contexts = browserObj.contexts();
-    const context = contexts.length > 0 ? contexts[0] : await browserObj.newContext();
+      const debugPort = getProfileDebugPort(profileId);
+      let connectErr: any = null;
+      for (let cdpAttempt = 0; cdpAttempt < 5; cdpAttempt++) {
+        try {
+          browserObj = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`, { timeout: 10000 });
+          connectErr = null;
+          break;
+        } catch (err) {
+          connectErr = err;
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
+      if (!browserObj && connectErr) {
+        throw connectErr;
+      }
 
-    // Minimize browser window to avoid disruption
-    try {
-      const page = await context.newPage();
-      const session = await context.newCDPSession(page);
-      const { windowId } = await session.send('Browser.getWindowForTarget');
-      await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'minimized' } });
-      await page.close();
-    } catch {}
+      const contexts = browserObj.contexts();
+      context = contexts.length > 0 ? contexts[0] : await browserObj.newContext();
+
+      // Minimize browser window to avoid disruption
+      try {
+        const page = await context.newPage();
+        const session = await context.newCDPSession(page);
+        const { windowId } = await session.send('Browser.getWindowForTarget');
+        await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'minimized' } });
+        await page.close();
+      } catch {}
+    }
 
     warmerController.status = 'WARMING';
 
@@ -467,6 +492,9 @@ export async function warmProfile(
   } finally {
     activeWarmers.delete(profileId);
 
+    if (context && isCamoufox) {
+      try { await context.close(); } catch {}
+    }
     if (browserObj) {
       try { await browserObj.close(); } catch {}
     }
