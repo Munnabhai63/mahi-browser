@@ -128,6 +128,8 @@ import {
   updateProxy,
   deleteProxy,
   testProxyConnection,
+  testAndSaveProxyStatus,
+  getDecryptedProxyCredentials,
 } from '../../02_BROWSER/services/proxy-service.js';
 
 import {
@@ -676,6 +678,20 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('proxies:test', async (_event, dto) => {
     try {
+      const proxyId = dto?.proxyId || dto?.id;
+      if (proxyId) {
+        if (!dto.password) {
+          const creds = getDecryptedProxyCredentials(proxyId);
+          if (creds) {
+            dto = {
+              ...dto,
+              username: dto.username || creds.username,
+              password: creds.password,
+            };
+          }
+        }
+        return await testAndSaveProxyStatus(proxyId);
+      }
       return await testProxyConnection(dto);
     } catch (err) {
       return { success: false, latencyMs: 0, errorMessage: sanitizeError(err) };
@@ -862,12 +878,30 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('extensions:installFromStore', async () => {
-    throw new Error('Curated store feature has been removed');
+  ipcMain.handle('extensions:installFromStore', async (_event, profileId?: string, _storeExtensionId?: string) => {
+    try {
+      if (profileId) {
+        const activeOwnerId = getActiveOwnerId();
+        const p = getProfileById(profileId, activeOwnerId);
+        if (!p) throw new Error(`Profile ${profileId} not found or access denied`);
+      }
+      throw new Error('Curated store feature has been deprecated. Please install via Chrome Web Store URL.');
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
   });
 
-  ipcMain.handle('extensions:installBatch', async () => {
-    return { installedCount: 0, extensions: [] };
+  ipcMain.handle('extensions:installBatch', async (_event, dto?: { profileId?: string; extensionIds?: string[] }) => {
+    try {
+      if (dto?.profileId) {
+        const activeOwnerId = getActiveOwnerId();
+        const p = getProfileById(dto.profileId, activeOwnerId);
+        if (!p) throw new Error(`Profile ${dto.profileId} not found or access denied`);
+      }
+      return { installedCount: 0, extensions: [] };
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
   });
 
   ipcMain.handle('extensions:installFromWebStore', async (_event, profileId: string, webStoreUrl: string) => {
@@ -1021,9 +1055,21 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('archive:exportNetscape', async (_event, profileId: string) => {
+  ipcMain.handle('archive:exportNetscape', async (_event, profileId: string, targetFilePath?: string) => {
     try {
-      return exportNetscapeCookies(profileId);
+      const activeOwnerId = getActiveOwnerId();
+      const p = getProfileById(profileId, activeOwnerId);
+      if (!p) throw new Error(`Profile ${profileId} not found or access denied`);
+      const text = exportNetscapeCookies(profileId);
+      if (targetFilePath && typeof targetFilePath === 'string') {
+        const resolved = path.resolve(targetFilePath);
+        const parent = path.dirname(resolved);
+        if (!fs.existsSync(parent)) {
+          fs.mkdirSync(parent, { recursive: true });
+        }
+        fs.writeFileSync(resolved, text, 'utf8');
+      }
+      return text;
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -2321,6 +2367,15 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('commercial:logout', async () => {
     clearActiveSession();
     return accountLogout();
+  });
+  ipcMain.handle('commercial:syncUser', async (_event, user) => {
+    if (!user || typeof user !== 'object') {
+      return { success: false, error: 'INVALID_USER_DTO' };
+    }
+    if (user.id) {
+      setActiveUserId(user.id);
+    }
+    return { success: true };
   });
   ipcMain.handle('account:logout', async () => {
     clearActiveSession();

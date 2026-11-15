@@ -11,7 +11,7 @@ interface ProxyState {
   parseAndCreateProxy: (rawString: string, customName?: string) => Promise<{ proxy: ProxyItem; testResult: ProxyTestResult } | null>;
   updateProxy: (id: string, dto: UpdateProxyDTO) => Promise<ProxyItem | null>;
   deleteProxy: (id: string) => Promise<boolean>;
-  testProxy: (dto: Partial<CreateProxyDTO>) => Promise<ProxyTestResult>;
+  testProxy: (dto: Partial<CreateProxyDTO> & { proxyId?: string; id?: string }) => Promise<ProxyTestResult>;
 }
 
 export const useProxyStore = create<ProxyState>((set, get) => ({
@@ -119,7 +119,7 @@ export const useProxyStore = create<ProxyState>((set, get) => ({
     }
   },
 
-  testProxy: async (dto) => {
+  testProxy: async (dto: Partial<CreateProxyDTO> & { proxyId?: string; id?: string }) => {
     try {
       const result = await window.mahiAPI.testProxy(dto);
       if (result.success) {

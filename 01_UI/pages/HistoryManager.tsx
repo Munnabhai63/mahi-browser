@@ -43,8 +43,12 @@ export const HistoryManagerPage: React.FC<HistoryManagerProps> = ({ onNavigate }
         });
         setHistory(res);
       }
-    } catch {
-      // ignore
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Failed to load history',
+        message: err?.message || 'Could not retrieve browsing records.',
+      });
     } finally {
       setLoading(false);
     }
@@ -56,17 +60,25 @@ export const HistoryManagerPage: React.FC<HistoryManagerProps> = ({ onNavigate }
 
   const handleDeleteOne = async (id: string) => {
     if (!activeProfileId) return;
-    await window.mahiAPI.deleteHistoryItem(activeProfileId, id);
-    showToast({ type: 'info', title: 'History Deleted', message: 'Record removed.' });
-    loadHistory();
+    try {
+      await window.mahiAPI.deleteHistoryItem(activeProfileId, id);
+      showToast({ type: 'info', title: 'History Deleted', message: 'Record removed.' });
+      loadHistory();
+    } catch (err: any) {
+      showToast({ type: 'error', title: 'Delete Failed', message: err?.message || 'Could not delete record.' });
+    }
   };
 
   const handleClearAll = async () => {
     if (!activeProfileId) return;
-    await window.mahiAPI.clearHistory(activeProfileId);
-    showToast({ type: 'info', title: 'History Purged', message: 'All browsing history removed.' });
-    setIsClearConfirmOpen(false);
-    loadHistory();
+    try {
+      await window.mahiAPI.clearHistory(activeProfileId);
+      showToast({ type: 'info', title: 'History Purged', message: 'All browsing history removed.' });
+      setIsClearConfirmOpen(false);
+      loadHistory();
+    } catch (err: any) {
+      showToast({ type: 'error', title: 'Purge Failed', message: err?.message || 'Could not purge history.' });
+    }
   };
 
   return (

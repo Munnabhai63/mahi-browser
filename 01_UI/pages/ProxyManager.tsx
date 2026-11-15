@@ -161,6 +161,7 @@ export const ProxyManagerPage: React.FC<ProxyManagerProps> = ({ onNavigate }) =>
   const handleTestProxy = async (p: ProxyItem) => {
     setTestingId(p.id);
     await testProxy({
+      proxyId: p.id,
       protocol: p.protocol,
       host: p.host,
       port: p.port,
@@ -175,6 +176,7 @@ export const ProxyManagerPage: React.FC<ProxyManagerProps> = ({ onNavigate }) =>
     for (const p of proxies) {
       setTestingId(p.id);
       await testProxy({
+        proxyId: p.id,
         protocol: p.protocol,
         host: p.host,
         port: p.port,

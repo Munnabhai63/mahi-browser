@@ -163,6 +163,7 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
 
     try {
       const res = await window.mahiAPI.testProxy({
+        proxyId: (initialProxy as any)?.id,
         host: cleanHost,
         port: cleanPort,
         protocol,

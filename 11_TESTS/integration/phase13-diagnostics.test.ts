@@ -42,7 +42,7 @@ describe('Phase 13: Real-Time Fingerprint Stealth & Leak Diagnostics Suite', () 
     expect(report.profileName).toBe('Diagnostics Test Profile');
     expect(report.overallScore).toBeGreaterThanOrEqual(90);
     expect(report.stealthGrade).toBe('ULTRA');
-    expect(report.checks.length).toBe(8);
+    expect(report.checks.length).toBe(9);
 
     const checkIds = report.checks.map((c) => c.id);
     expect(checkIds).toContain('check-webrtc');
@@ -53,6 +53,7 @@ describe('Phase 13: Real-Time Fingerprint Stealth & Leak Diagnostics Suite', () 
     expect(checkIds).toContain('check-clientrects');
     expect(checkIds).toContain('check-locale');
     expect(checkIds).toContain('check-display');
+    expect(checkIds).toContain('check-coherence');
   });
 
   it('should detect anti-bot leak vulnerabilities when protections are disabled', () => {
@@ -101,7 +102,7 @@ describe('Phase 13: Real-Time Fingerprint Stealth & Leak Diagnostics Suite', () 
     expect(fixedReport.stealthGrade).toBe('ULTRA');
     expect(fixedReport.failCount).toBe(0);
     expect(fixedReport.warnCount).toBe(0);
-    expect(fixedReport.passedCount).toBe(8);
+    expect(fixedReport.passedCount).toBe(9);
 
     // Verify all individual checks are PASS
     for (const check of fixedReport.checks) {

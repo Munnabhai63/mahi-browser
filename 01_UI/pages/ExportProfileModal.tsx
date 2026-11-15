@@ -49,18 +49,17 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
     if (!profile) return;
     setLoading(true);
 
-    const savePath = await window.mahiAPI.openSaveDialog({
-      title: `Export ${profile.name}`,
-      defaultPath: `${profile.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.mahi-profile`,
-      filters: [{ name: 'Mahi Profile Archive (*.mahi-profile)', extensions: ['mahi-profile'] }],
-    });
-
-    if (!savePath) {
-      setLoading(false);
-      return;
-    }
-
     try {
+      const savePath = await window.mahiAPI.openSaveDialog({
+        title: `Export ${profile.name}`,
+        defaultPath: `${profile.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.mahi-profile`,
+        filters: [{ name: 'Mahi Profile Archive (*.mahi-profile)', extensions: ['mahi-profile'] }],
+      });
+
+      if (!savePath) {
+        return;
+      }
+
       const res = await window.mahiAPI.exportProfile({
         profileId: profile.id,
         targetFilePath: savePath,
@@ -92,23 +91,24 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
     setLoading(true);
 
     try {
-      const text = await window.mahiAPI.exportNetscapeCookies(profile.id);
-      setNetscapeText(text);
-
       const savePath = await window.mahiAPI.openSaveDialog({
         title: `Export Cookies - ${profile.name}`,
         defaultPath: `${profile.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_cookies.txt`,
         filters: [{ name: 'Netscape Cookie File (*.txt)', extensions: ['txt'] }],
       });
 
-      if (savePath) {
-        // Direct download feedback
-        showToast({
-          type: 'success',
-          title: 'Netscape Cookies Exported',
-          message: `Generated standard Netscape cookie file for ${profile.name}`,
-        });
+      if (!savePath) {
+        return;
       }
+
+      const text = await window.mahiAPI.exportNetscapeCookies(profile.id, savePath);
+      setNetscapeText(text);
+
+      showToast({
+        type: 'success',
+        title: 'Netscape Cookies Exported',
+        message: `Saved Netscape cookie file to ${savePath}`,
+      });
     } catch (err: any) {
       showToast({ type: 'error', title: 'Cookie Export Failed', message: err.message });
     } finally {
@@ -120,18 +120,17 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
     if (bulkSelectedIds.length === 0) return;
     setLoading(true);
 
-    const savePath = await window.mahiAPI.openSaveDialog({
-      title: `Export ${bulkSelectedIds.length} Profiles`,
-      defaultPath: `MAHI_Workspace_Backup_${new Date().toISOString().slice(0, 10)}.mahi-backup`,
-      filters: [{ name: 'Mahi Workspace Backup (*.mahi-backup)', extensions: ['mahi-backup'] }],
-    });
-
-    if (!savePath) {
-      setLoading(false);
-      return;
-    }
-
     try {
+      const savePath = await window.mahiAPI.openSaveDialog({
+        title: `Export ${bulkSelectedIds.length} Profiles`,
+        defaultPath: `MAHI_Workspace_Backup_${new Date().toISOString().slice(0, 10)}.mahi-backup`,
+        filters: [{ name: 'Mahi Workspace Backup (*.mahi-backup)', extensions: ['mahi-backup'] }],
+      });
+
+      if (!savePath) {
+        return;
+      }
+
       const res = await window.mahiAPI.exportBulkProfiles({
         profileIds: bulkSelectedIds,
         targetFilePath: savePath,

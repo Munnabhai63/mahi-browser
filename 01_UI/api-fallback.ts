@@ -6,64 +6,62 @@ import { CONTACT_CONFIG } from '../10_CONFIG/contact-config.js';
 
 // Resilient API fallback — routes ALL calls through the local REST API
 // This activates when preload/IPC is not available (e.g. ESM preload failure)
-if (typeof window !== 'undefined' && !window.mahiAPI) {
-  console.warn('⚠️ FALLBACK API ACTIVATED - using REST API bridge');
-  const API_BASE = 'http://localhost:32123';
-  const AUTH_TOKEN = (typeof localStorage !== 'undefined' && localStorage.getItem('mahi_local_api_token')) || '';
+const API_BASE = 'http://localhost:32123';
+const getAuthToken = () => (typeof localStorage !== 'undefined' && localStorage.getItem('mahi_local_api_token')) || '';
 
-  const authHeaders = (): Record<string, string> => ({
-    'Authorization': `Bearer ${AUTH_TOKEN}`,
-    'Content-Type': 'application/json',
+const authHeaders = (): Record<string, string> => ({
+  'Authorization': `Bearer ${getAuthToken()}`,
+  'Content-Type': 'application/json',
+});
+
+async function apiGet(path: string) {
+  const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || body.message || `API ${res.status}: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+async function apiPost(path: string, body?: unknown) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: body ? JSON.stringify(body) : undefined,
   });
-
-  async function apiGet(path: string) {
-    const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || body.message || `API ${res.status}: ${res.statusText}`);
-    }
-    return res.json();
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error || errBody.message || `API ${res.status}: ${res.statusText}`);
   }
+  return res.json();
+}
 
-  async function apiPost(path: string, body?: unknown) {
-    const res = await fetch(`${API_BASE}${path}`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      throw new Error(errBody.error || errBody.message || `API ${res.status}: ${res.statusText}`);
-    }
-    return res.json();
+async function apiPut(path: string, body: unknown) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error || errBody.message || `API ${res.status}: ${res.statusText}`);
   }
+  return res.json();
+}
 
-  async function apiPut(path: string, body: unknown) {
-    const res = await fetch(`${API_BASE}${path}`, {
-      method: 'PUT',
-      headers: authHeaders(),
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      throw new Error(errBody.error || errBody.message || `API ${res.status}: ${res.statusText}`);
-    }
-    return res.json();
+async function apiDelete(path: string) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error || errBody.message || `API ${res.status}: ${res.statusText}`);
   }
+  return res.json();
+}
 
-  async function apiDelete(path: string) {
-    const res = await fetch(`${API_BASE}${path}`, {
-      method: 'DELETE',
-      headers: authHeaders(),
-    });
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      throw new Error(errBody.error || errBody.message || `API ${res.status}: ${res.statusText}`);
-    }
-    return res.json();
-  }
-
-  const fallbackApi: MahiBrowserAPI = {
+export const fallbackMahiAPI: MahiBrowserAPI = {
     // Profiles - all go through real REST API
     getProfiles: async () => {
       try {
@@ -280,7 +278,7 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     previewImportProfile: async () => ({ valid: true, isEncrypted: false, profileName: 'Imported', cookieCount: 0, extensionCount: 0, browserEngine: 'chrome' as const, formatVersion: '1.0', exportedAt: new Date().toISOString(), folder: 'General', tags: [], historyCount: 0 }),
     importProfile: async () => ({} as any),
     exportProfile: async () => ({ success: true, filePath: '' }),
-    exportNetscapeCookies: async () => '# Netscape HTTP Cookie File\n',
+    exportNetscapeCookies: async (profileId: string, targetFilePath?: string) => '# Netscape HTTP Cookie File\n',
     exportBulkProfiles: async () => ({ success: true, filePath: '', profileCount: 0 }),
     importCrossPlatformProfiles: async () => ({ success: true, importedCount: 0, profiles: [] }),
 
@@ -578,7 +576,7 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
         return { success: true, message: 'Shortcuts refreshed (fallback)', shortcuts: ['MAHI BROWSER.lnk'] };
       }
     },
-    createProfileShortcut: async () => ({ success: true, path: 'C:/Users/munaf/Desktop/MAHI - Profile.lnk' }),
+    createProfileShortcut: async () => ({ success: false, path: '' }),
 
     // Commercial APIs Fallback
     commercialRegister: async (dto: any) => {
@@ -651,7 +649,7 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
 
     // Central Entitlements & Capabilities
     getEntitlements: async () => null,
-    checkCapability: async () => ({ entitled: true }),
+    checkCapability: async () => ({ entitled: false, reason: 'DESKTOP_OR_LICENSE_REQUIRED' }),
     getHwid: async () => {
       try {
         const r = await apiGet('/license/status');
@@ -673,6 +671,7 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
     onActivityLogAdded: () => () => {},
     onUpdateStatusChanged: () => () => {},
     onFleetResourceUsage: () => () => {},
+    onToastShow: () => () => {},
     getManagedEngineStatus: async () => ({
       installed: true,
       version: '138.0.7204.0',
@@ -753,7 +752,7 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
       success: true,
       payments: [],
     }),
-    accountGetPlanLimits: async () => ({ isPro: false, plan: 'free', maxProfiles: 15, expiresAt: null }),
+    accountGetPlanLimits: async (dto?: { force?: boolean }) => ({ isPro: false, plan: 'free', maxProfiles: 15, expiresAt: null }),
     accountRefreshPlanLimits: async () => ({ isPro: false, plan: 'free', maxProfiles: 15, expiresAt: null }),
     accountVerifyEmail: async () => ({ success: true }),
     accountResendVerification: async () => ({ success: true }),
@@ -825,9 +824,13 @@ if (typeof window !== 'undefined' && !window.mahiAPI) {
       activeSessionCount: 0,
       lastUpdated: new Date().toISOString(),
     }),
-    isDesktop: false,
-  };
+  isDesktop: false,
+};
 
-  (window as any).mahiAPI = fallbackApi;
+if (typeof window !== 'undefined' && !window.mahiAPI) {
+  console.warn('⚠️ FALLBACK API ACTIVATED - using REST API bridge');
+  (window as any).mahiAPI = fallbackMahiAPI;
 }
+
+export default fallbackMahiAPI;
 

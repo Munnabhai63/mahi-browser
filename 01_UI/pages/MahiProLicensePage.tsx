@@ -29,6 +29,7 @@ import {
   LicenseDurationType,
   CreateLicenseDTO,
 } from '../../10_CONFIG/shared/types/license.js';
+import { ConfirmModal } from '../components/ConfirmModal.js';
 import { NavigationPage } from '../components/Sidebar.js';
 
 interface MahiProLicensePageProps {
@@ -72,6 +73,7 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createdRawKey, setCreatedRawKey] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<{ id: string; name: string } | null>(null);
 
   const [newCustomer, setNewCustomer] = useState('');
   const [newAccountId, setNewAccountId] = useState('');
@@ -197,16 +199,8 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
     }
   };
 
-  const handleRevoke = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to revoke the license for "${name}"?`)) return;
-    const ok = await adminRevoke(id);
-    if (ok) {
-      showToast({
-        type: 'warning',
-        title: 'License Revoked',
-        message: `License for "${name}" has been revoked.`,
-      });
-    }
+  const handleRevoke = (id: string, name: string) => {
+    setRevokeTarget({ id, name });
   };
 
   const handleExtend = async () => {
@@ -503,6 +497,28 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
             </div>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={Boolean(revokeTarget)}
+        title="Revoke Pro License"
+        message={`Are you sure you want to revoke the license for "${revokeTarget?.name}"?`}
+        confirmLabel="Revoke License"
+        isDestructive={true}
+        onConfirm={async () => {
+          if (!revokeTarget) return;
+          const target = revokeTarget;
+          setRevokeTarget(null);
+          const ok = await adminRevoke(target.id);
+          if (ok) {
+            showToast({
+              type: 'warning',
+              title: 'License Revoked',
+              message: `License for "${target.name}" has been revoked.`,
+            });
+          }
+        }}
+        onCancel={() => setRevokeTarget(null)}
+      />
     </div>
   );
 };

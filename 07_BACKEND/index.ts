@@ -279,8 +279,19 @@ function createWindow(): void {
     }
   });
 
+  function isSafeExternalUrl(targetUrl: string): boolean {
+    try {
+      const parsed = new URL(targetUrl);
+      return parsed.protocol === 'https:' || parsed.protocol === 'http:' || parsed.protocol === 'mailto:';
+    } catch {
+      return false;
+    }
+  }
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url);
+    if (isSafeExternalUrl(details.url)) {
+      shell.openExternal(details.url);
+    }
     return { action: 'deny' };
   });
 
@@ -291,7 +302,9 @@ function createWindow(): void {
       return;
     }
     event.preventDefault();
-    shell.openExternal(url);
+    if (isSafeExternalUrl(url)) {
+      shell.openExternal(url);
+    }
   });
 
   mainWindow.webContents.on('will-redirect', (event, url) => {

@@ -16,6 +16,7 @@ import {
   EyeOff
 } from 'lucide-react';
 import { useToastStore } from '../stores/useToastStore.js';
+import { ConfirmModal } from './ConfirmModal.js';
 import { NavigationPage } from './Sidebar.js';
 
 interface CloudProfile {
@@ -55,6 +56,7 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [progressMsg, setProgressMsg] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CloudProfile | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -158,16 +160,8 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
     }
   };
 
-  const handleDelete = async (p: CloudProfile) => {
-    if (!confirm(`Are you sure you want to delete "${p.name}" from Cloud storage? This cannot be undone.`)) return;
-
-    try {
-      await window.mahiAPI.deleteCloudProfile(p.id);
-      showToast({ type: 'success', title: 'Deleted', message: `Profile "${p.name}" deleted from Cloud.` });
-      loadData();
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Delete Failed', message: err.message });
-    }
+  const handleDelete = (p: CloudProfile) => {
+    setDeleteTarget(p);
   };
 
   const handleSyncAll = async () => {
@@ -417,6 +411,27 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
           </table>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={Boolean(deleteTarget)}
+        title="Delete Cloud Backup"
+        message={`Are you sure you want to delete "${deleteTarget?.name}" from Cloud storage? This cannot be undone.`}
+        confirmLabel="Delete from Cloud"
+        isDestructive={true}
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          const target = deleteTarget;
+          setDeleteTarget(null);
+          try {
+            await window.mahiAPI.deleteCloudProfile(target.id);
+            showToast({ type: 'success', title: 'Deleted', message: `Profile "${target.name}" deleted from Cloud.` });
+            loadData();
+          } catch (err: any) {
+            showToast({ type: 'error', title: 'Delete Failed', message: err.message });
+          }
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 };

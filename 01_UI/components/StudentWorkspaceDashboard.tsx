@@ -87,6 +87,7 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
     currentPlan === 'pro' ||
     currentPlan === 'trial' ||
     currentPlan.startsWith('pro_') ||
+    currentPlan.startsWith('professional_') ||
     currentUser?.planName?.toUpperCase() === 'PRO' ||
     currentUser?.planName?.toUpperCase() === 'TRIAL'
   );
@@ -139,9 +140,11 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
             <div>
               <div className="text-[10px] text-slate-400 font-semibold uppercase">License Access</div>
               <div className="font-bold text-xs flex items-center gap-1.5 mt-0.5">
-                <span className="text-emerald-400 flex items-center gap-1">
+                <span className={`flex items-center gap-1 ${
+                  isBusiness ? 'text-indigo-400' : isProActive ? 'text-emerald-400' : 'text-slate-400'
+                }`}>
                   <CheckCircle2 size={13} />
-                  <span>MAHI PRO ACTIVE</span>
+                  <span>{planBadgeTitle} {isProActive ? 'ACTIVE' : ''}</span>
                 </span>
               </div>
             </div>

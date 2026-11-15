@@ -23,9 +23,11 @@ export const useLogStore = create<LogState>((set, get) => ({
     try {
       if (window.mahiAPI) {
         const logs = await window.mahiAPI.getActivityLogs(get().filter);
-        set({ logs, loading: false });
+        set({ logs });
       }
     } catch {
+      // ignore
+    } finally {
       set({ loading: false });
     }
   },

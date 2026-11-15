@@ -123,7 +123,7 @@ export class WebApiClient {
     return this.request<{
       token: string;
       tokens: { accessToken: string; refreshToken: string; expiresIn: number };
-      user: { id: string; email: string; name: string; role: string; planId: string };
+      user: { id: string; email: string; name: string; role: string; planId: string; profileQuota?: number };
     }>('/api/v1/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password, platform: 'web-dashboard' }),

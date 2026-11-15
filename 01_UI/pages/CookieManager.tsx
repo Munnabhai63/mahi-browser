@@ -48,8 +48,12 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
         });
         setCookies(res);
       }
-    } catch {
-      // ignore
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Failed to load cookies',
+        message: err?.message || 'Could not retrieve cookie jar.',
+      });
     } finally {
       setLoading(false);
     }
@@ -61,58 +65,82 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
 
   const handleDeleteOne = async (cookieId: string) => {
     if (!activeProfileId) return;
-    await window.mahiAPI.deleteCookie(activeProfileId, cookieId);
-    showToast({ type: 'info', title: 'Cookie Removed', message: 'Cookie deleted.' });
-    loadCookies();
+    try {
+      await window.mahiAPI.deleteCookie(activeProfileId, cookieId);
+      showToast({ type: 'info', title: 'Cookie Removed', message: 'Cookie deleted.' });
+      loadCookies();
+    } catch (err: any) {
+      showToast({ type: 'error', title: 'Delete Failed', message: err?.message || 'Could not remove cookie.' });
+    }
   };
 
   const handleClearAll = async () => {
     if (!activeProfileId) return;
-    await window.mahiAPI.deleteAllCookies(activeProfileId);
-    showToast({ type: 'info', title: 'Cookies Cleared', message: 'All cookies purged.' });
-    setIsClearConfirmOpen(false);
-    loadCookies();
+    try {
+      await window.mahiAPI.deleteAllCookies(activeProfileId);
+      showToast({ type: 'info', title: 'Cookies Cleared', message: 'All cookies purged.' });
+      setIsClearConfirmOpen(false);
+      loadCookies();
+    } catch (err: any) {
+      showToast({ type: 'error', title: 'Clear Failed', message: err?.message || 'Could not purge cookies.' });
+    }
   };
 
   const handleImport = async () => {
     if (!activeProfileId || !importContent.trim()) return;
-    const result = await window.mahiAPI.importCookies(activeProfileId, importContent);
-    if (result.importedCount > 0) {
-      showToast({
-        type: 'success',
-        title: 'Cookies Imported',
-        message: `Imported ${result.importedCount} cookies.`,
-      });
-      setIsImportModalOpen(false);
-      setImportContent('');
-      loadCookies();
-    } else {
+    try {
+      const result = await window.mahiAPI.importCookies(activeProfileId, importContent);
+      if (result.importedCount > 0) {
+        showToast({
+          type: 'success',
+          title: 'Cookies Imported',
+          message: `Imported ${result.importedCount} cookies.`,
+        });
+        setIsImportModalOpen(false);
+        setImportContent('');
+        loadCookies();
+      } else {
+        showToast({
+          type: 'error',
+          title: 'Import Failed',
+          message: result.errors[0] || 'Invalid cookie syntax',
+        });
+      }
+    } catch (err: any) {
       showToast({
         type: 'error',
-        title: 'Import Failed',
-        message: result.errors[0] || 'Invalid cookie syntax',
+        title: 'Import Error',
+        message: err?.message || 'Could not process cookies.',
       });
     }
   };
 
   const handleConfirmExport = async () => {
     if (!activeProfileId) return;
-    const data = await window.mahiAPI.exportCookies({
-      profileId: activeProfileId,
-      format: exportFormat,
-      includeSensitive: true,
-    });
+    try {
+      const data = await window.mahiAPI.exportCookies({
+        profileId: activeProfileId,
+        format: exportFormat,
+        includeSensitive: true,
+      });
 
-    const blob = new Blob([data], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `cookies_${activeProfileId}_${exportFormat}.${exportFormat === 'json' ? 'json' : 'txt'}`;
-    a.click();
-    URL.revokeObjectURL(url);
+      const blob = new Blob([data], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cookies_${activeProfileId}_${exportFormat}.${exportFormat === 'json' ? 'json' : 'txt'}`;
+      a.click();
+      URL.revokeObjectURL(url);
 
-    setIsExportWarningOpen(false);
-    showToast({ type: 'success', title: 'Cookies Exported', message: 'Download started.' });
+      setIsExportWarningOpen(false);
+      showToast({ type: 'success', title: 'Cookies Exported', message: 'Download started.' });
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Export Failed',
+        message: err?.message || 'Could not export cookies.',
+      });
+    }
   };
 
   return (

@@ -20,11 +20,6 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handleDemoFill = () => {
-    setEmail('admin@mahibrowser.com');
-    setPassword('MahiAdmin2026!');
-  };
-
   return (
     <div className="min-h-screen w-screen bg-[#070b14] flex items-center justify-center p-4 relative overflow-hidden font-sans">
       {/* Background Glow Accents */}
@@ -126,13 +121,6 @@ export const LoginPage: React.FC = () => {
             className="text-teal-400 hover:text-teal-300 font-semibold"
           >
             {isRegisterMode ? 'Already have an account? Sign In' : 'Need an account? Register'}
-          </button>
-          <button
-            type="button"
-            onClick={handleDemoFill}
-            className="text-slate-500 hover:text-slate-300 text-[11px]"
-          >
-            Fill Demo
           </button>
         </div>
 

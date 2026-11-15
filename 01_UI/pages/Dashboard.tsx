@@ -42,6 +42,39 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const { workflows, fetchWorkflows } = useAutomationStore();
   const { logs, fetchLogs } = useLogStore();
   const { showToast } = useToastStore();
+  const { currentUser, planLimits, trialStatus } = useAccountStore();
+  const isPro = Boolean(planLimits?.isPro || (planLimits?.plan && planLimits.plan !== 'free'));
+  const currentPlan = (planLimits?.plan || currentUser?.planName || (isPro ? 'pro' : 'free')).toLowerCase();
+
+  const isBusiness = Boolean(
+    currentPlan === 'business' ||
+    currentPlan?.startsWith('business_') ||
+    currentPlan === 'team' ||
+    currentPlan === 'enterprise'
+  );
+  const isProfessional = Boolean(
+    isPro ||
+    currentPlan === 'pro' ||
+    currentPlan?.startsWith('pro_') ||
+    currentPlan?.startsWith('professional_')
+  );
+  const isTrial = Boolean(currentPlan === 'trial' || trialStatus?.isTrialActive);
+
+  const envBadgeLabel = isBusiness
+    ? 'Business Environment'
+    : isProfessional
+    ? 'Pro Environment'
+    : isTrial
+    ? 'Trial Environment'
+    : 'Free Environment';
+
+  const envBadgeClass = isBusiness
+    ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20'
+    : isProfessional
+    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+    : isTrial
+    ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20'
+    : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20';
 
   // Master Vault Modal State
   const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
@@ -141,8 +174,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             <h1 className="text-xl font-bold text-slate-800 dark:text-white">
               Workspace Dashboard
             </h1>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-              Pro Environment
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${envBadgeClass}`}>
+              {envBadgeLabel}
             </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">

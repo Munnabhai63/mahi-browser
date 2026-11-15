@@ -29,10 +29,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         const theme = settings.general.theme || 'light';
         const isLocked = Boolean(settings.security.appLockEnabled && settings.security.appLockPinHash);
 
-        set({ settings, theme, isLocked, loading: false });
+        set({ settings, theme, isLocked });
         get().setTheme(theme);
       }
     } catch {
+      // ignore
+    } finally {
       set({ loading: false });
     }
   },

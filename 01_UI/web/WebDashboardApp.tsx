@@ -61,6 +61,7 @@ export const WebDashboardApp: React.FC = () => {
   // Modals controlled from layout header
   const [isHeaderCreateProfileOpen, setIsHeaderCreateProfileOpen] = useState(false);
   const [isHeaderCreateWorkspaceOpen, setIsHeaderCreateWorkspaceOpen] = useState(false);
+  const [bannerNotice, setBannerNotice] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
 
   // Active Cloud Browser Session
   const [activeCloudSession, setActiveCloudSession] = useState<{
@@ -271,10 +272,10 @@ export const WebDashboardApp: React.FC = () => {
         });
         recordAudit('CLOUD_SESSION_STARTED', `profile:${profile.id}`, `Cloud browser session launched for ${profile.name}`, 'SUCCESS');
       } else {
-        alert(`Cloud Browser Launch Failed: ${res.error?.message || 'Unknown error'}`);
+        setBannerNotice({ type: 'error', message: `Cloud Browser Launch Failed: ${res.error?.message || 'Unknown error'}` });
       }
     } catch (err: any) {
-      alert(`Failed to launch Cloud Browser: ${err.message}`);
+      setBannerNotice({ type: 'error', message: `Failed to launch Cloud Browser: ${err.message}` });
     }
   };
 
@@ -486,6 +487,13 @@ export const WebDashboardApp: React.FC = () => {
   // Determine if desktop agent is online
   const isDesktopOnline = devices.some((d) => d.isOnline && d.platform === 'windows');
 
+  // Derive real current user role in active workspace
+  const currentMember = members.find((m) => m.userId === user?.id);
+  const currentUserRole: 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER' =
+    currentWorkspace?.ownerUserId === user?.id || (currentWorkspace?.userRole === 'OWNER')
+      ? 'OWNER'
+      : ((currentMember?.role?.toUpperCase() as any) || (currentWorkspace?.userRole as any) || 'MEMBER');
+
   return (
     <WebDashboardLayout
       activeTab={activeTab}
@@ -497,6 +505,22 @@ export const WebDashboardApp: React.FC = () => {
       onOpenCreateProfile={() => setIsHeaderCreateProfileOpen(true)}
       isDesktopOnline={isDesktopOnline}
     >
+      {bannerNotice && (
+        <div className={`p-3.5 mb-4 rounded-xl flex items-center justify-between text-xs font-semibold ${
+          bannerNotice.type === 'error'
+            ? 'bg-rose-500/15 border border-rose-500/30 text-rose-400'
+            : 'bg-teal-500/15 border border-teal-500/30 text-teal-300'
+        }`}>
+          <span>{bannerNotice.message}</span>
+          <button
+            onClick={() => setBannerNotice(null)}
+            className="text-slate-400 hover:text-white ml-2 text-sm font-bold"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Dynamic Content Views */}
       {activeTab === 'overview' && (
         <OverviewPage
@@ -537,7 +561,7 @@ export const WebDashboardApp: React.FC = () => {
           currentWorkspace={currentWorkspace}
           members={members}
           sharedProfiles={sharedProfiles}
-          currentUserRole="OWNER"
+          currentUserRole={currentUserRole}
           isLoading={isLoadingData}
           onSelectWorkspace={setCurrentWorkspace}
           onCreateWorkspace={handleCreateWorkspace}

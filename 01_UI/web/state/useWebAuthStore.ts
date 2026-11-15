@@ -104,6 +104,7 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
           name: user.name || user.email.split('@')[0],
           role: user.role,
           planId: user.planId || 'plan_free',
+          profileQuota: user.profileQuota ?? (user.planId && user.planId !== 'plan_free' && user.planId !== 'free' ? 100 : 15),
         };
 
         set({

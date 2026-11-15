@@ -41,16 +41,17 @@ export const useAutomationStore = create<AutomationState>((set, get) => ({
     try {
       if (window.mahiAPI) {
         const workflows = await window.mahiAPI.getWorkflows();
-        set({ workflows, loading: false });
+        set({ workflows });
       }
     } catch (err: unknown) {
-      set({ loading: false });
       const msg = err instanceof Error ? err.message : String(err);
       useToastStore.getState().showToast({
         type: 'error',
         title: 'Failed to load workflows',
         message: msg,
       });
+    } finally {
+      set({ loading: false });
     }
   },
 

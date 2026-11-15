@@ -100,7 +100,7 @@ const api = {
   previewImportProfile: (filePath, password) => ipcRenderer.invoke('archive:preview', filePath, password),
   importProfile: (options) => ipcRenderer.invoke('archive:import', options),
   exportProfile: (options) => ipcRenderer.invoke('archive:export', options),
-  exportNetscapeCookies: (profileId) => ipcRenderer.invoke('archive:exportNetscape', profileId),
+  exportNetscapeCookies: (profileId, targetFilePath) => ipcRenderer.invoke('archive:exportNetscape', profileId, targetFilePath),
   exportBulkProfiles: (options) => ipcRenderer.invoke('archive:exportBulk', options),
   importCrossPlatformProfiles: (dto) => ipcRenderer.invoke('archive:importCrossPlatform', dto),
 
@@ -260,6 +260,13 @@ const api = {
       ipcRenderer.removeListener('resources:fleetUsage', handler);
     };
   },
+  onToastShow: (callback) => {
+    const handler = (_event, toast) => callback(toast);
+    ipcRenderer.on('toast:show', handler);
+    return () => {
+      ipcRenderer.removeListener('toast:show', handler);
+    };
+  },
 
   // Folders & Locking (V2)
   getFolders: (workspaceId) => ipcRenderer.invoke('folders:get', workspaceId),
@@ -355,7 +362,7 @@ const api = {
   accountSubmitManualUpiPayment: (payload) => ipcRenderer.invoke('account:submitManualUpiPayment', payload),
   accountGetPaymentStatus: () => ipcRenderer.invoke('account:getPaymentStatus'),
   accountGetSession: () => ipcRenderer.invoke('account:getSession'),
-  accountGetPlanLimits: () => ipcRenderer.invoke('account:getPlanLimits'),
+  accountGetPlanLimits: (dto) => ipcRenderer.invoke('account:getPlanLimits', dto),
   accountRefreshPlanLimits: () => ipcRenderer.invoke('account:refreshPlanLimits'),
   accountVerifyEmail: (dto) => ipcRenderer.invoke('account:verifyEmail', dto),
   accountResendVerification: (dto) => ipcRenderer.invoke('account:resendVerification', dto),

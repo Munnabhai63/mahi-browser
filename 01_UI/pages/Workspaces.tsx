@@ -38,6 +38,7 @@ import {
 } from '../../10_CONFIG/shared/types/workspace.js';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
+import { ConfirmModal } from '../components/ConfirmModal.js';
 
 export const WorkspacesPage: React.FC = () => {
   const { profiles, fetchProfiles, startProfile, stopProfile } = useProfileStore();
@@ -60,6 +61,7 @@ export const WorkspacesPage: React.FC = () => {
 
   const [loading, setLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'members' | 'shares' | 'invites' | 'audit' | 'assignments'>('members');
+  const [removeMemberTarget, setRemoveMemberTarget] = useState<string | null>(null);
 
   // Modals
   const [showCreateWsModal, setShowCreateWsModal] = useState<boolean>(false);
@@ -257,17 +259,8 @@ export const WorkspacesPage: React.FC = () => {
     }
   };
 
-  const handleRemoveMember = async (targetUserId: string) => {
-    if (!confirm('Are you sure you want to remove this member from the workspace?')) return;
-    try {
-      if (window.mahiAPI?.teamWorkspaceRemoveMember) {
-        await window.mahiAPI.teamWorkspaceRemoveMember(activeWorkspaceId, targetUserId);
-        await loadTeamWorkspaceDetails(activeWorkspaceId);
-        showToast({ type: 'info', title: 'Member Removed', message: 'User access revoked' });
-      }
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Remove Failed', message: err.message });
-    }
+  const handleRemoveMember = (targetUserId: string) => {
+    setRemoveMemberTarget(targetUserId);
   };
 
   const handleShareProfile = async () => {
@@ -1009,6 +1002,29 @@ export const WorkspacesPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={Boolean(removeMemberTarget)}
+        title="Remove Workspace Member"
+        message="Are you sure you want to remove this member from the workspace? Their access to shared resources will be revoked."
+        confirmLabel="Remove Member"
+        isDestructive={true}
+        onConfirm={async () => {
+          if (!removeMemberTarget) return;
+          const targetId = removeMemberTarget;
+          setRemoveMemberTarget(null);
+          try {
+            if (window.mahiAPI?.teamWorkspaceRemoveMember) {
+              await window.mahiAPI.teamWorkspaceRemoveMember(activeWorkspaceId, targetId);
+              await loadTeamWorkspaceDetails(activeWorkspaceId);
+              showToast({ type: 'info', title: 'Member Removed', message: 'User access revoked' });
+            }
+          } catch (err: any) {
+            showToast({ type: 'error', title: 'Remove Failed', message: err.message });
+          }
+        }}
+        onCancel={() => setRemoveMemberTarget(null)}
+      />
     </div>
   );
 };

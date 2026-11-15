@@ -68,11 +68,11 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
     currentUser?.planName?.toUpperCase() === 'BUSINESS'
   );
 
-  const isPaidOrTrial = isBusiness || isPro || currentPlan === 'pro' || currentPlan === 'trial' || currentPlan === 'starter' || currentPlan.startsWith('pro_');
+  const isPaidOrTrial = isBusiness || isPro || currentPlan === 'pro' || currentPlan === 'trial' || currentPlan === 'starter' || currentPlan.startsWith('pro_') || currentPlan.startsWith('professional_');
   const planBadgeText = isBusiness
     ? (currentPlan === 'enterprise' ? 'ENTERPRISE' : currentPlan.includes('team') ? 'TEAM' : 'BUSINESS')
     : currentPlan === 'trial' ? 'TRIAL'
-    : (currentPlan === 'pro' || currentPlan.startsWith('pro_')) ? 'PRO'
+    : (currentPlan === 'pro' || currentPlan.startsWith('pro_') || currentPlan.startsWith('professional_')) ? 'PRO'
     : currentPlan === 'starter' ? 'STARTER'
     : (isPro ? 'PRO' : 'FREE');
 

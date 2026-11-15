@@ -158,7 +158,7 @@ export interface MahiBrowserAPI {
   parseAndCreateProxy: (rawString: string, customName?: string) => Promise<{ proxy: ProxyItem; testResult: ProxyTestResult }>;
   updateProxy: (id: string, dto: UpdateProxyDTO) => Promise<ProxyItem>;
   deleteProxy: (id: string) => Promise<boolean>;
-  testProxy: (dto: Partial<CreateProxyDTO>) => Promise<ProxyTestResult>;
+  testProxy: (dto: Partial<CreateProxyDTO> & { proxyId?: string; id?: string }) => Promise<ProxyTestResult>;
 
   // Commercial Proxy Catalog & Provider Platform (Phase 5)
   getProxyCatalog: (query?: ProxyCatalogQuery) => Promise<ProxyCatalogResult>;
@@ -208,7 +208,7 @@ export interface MahiBrowserAPI {
   previewImportProfile: (filePath: string, password?: string) => Promise<ImportProfilePreview>;
   importProfile: (options: ImportProfileOptions) => Promise<Profile>;
   exportProfile: (options: ExportProfileOptions) => Promise<{ success: boolean; filePath: string }>;
-  exportNetscapeCookies: (profileId: string) => Promise<string>;
+  exportNetscapeCookies: (profileId: string, targetFilePath?: string) => Promise<string>;
   exportBulkProfiles: (options: BulkExportOptions) => Promise<{ success: boolean; filePath: string; profileCount: number }>;
   importCrossPlatformProfiles: (dto: CrossPlatformImportDTO) => Promise<CrossPlatformImportResult>;
 
@@ -436,6 +436,7 @@ export interface MahiBrowserAPI {
   onEngineDownloadProgress: (callback: (status: ManagedEngineStatus) => void) => () => void;
   onLicenseStatusChanged: (callback: (status: any) => void) => () => void;
   onLicenseStatusToast: (callback: (toast: { title: string; message: string; type: string }) => void) => () => void;
+  onToastShow: (callback: (toast: { type: 'info' | 'warning' | 'error' | 'success'; title: string; message: string }) => void) => () => void;
   isDesktop?: boolean;
 }
 

@@ -100,7 +100,7 @@ const api: MahiBrowserAPI = {
   previewImportProfile: (filePath, password) => ipcRenderer.invoke('archive:preview', filePath, password),
   importProfile: (options) => ipcRenderer.invoke('archive:import', options),
   exportProfile: (options) => ipcRenderer.invoke('archive:export', options),
-  exportNetscapeCookies: (profileId) => ipcRenderer.invoke('archive:exportNetscape', profileId),
+  exportNetscapeCookies: (profileId: string, targetFilePath?: string) => ipcRenderer.invoke('archive:exportNetscape', profileId, targetFilePath),
   exportBulkProfiles: (options) => ipcRenderer.invoke('archive:exportBulk', options),
   importCrossPlatformProfiles: (dto) => ipcRenderer.invoke('archive:importCrossPlatform', dto),
 
@@ -260,6 +260,13 @@ const api: MahiBrowserAPI = {
     ipcRenderer.on('resources:fleetUsage', handler);
     return () => {
       ipcRenderer.removeListener('resources:fleetUsage', handler);
+    };
+  },
+  onToastShow: (callback: (toast: { type: 'info' | 'warning' | 'error' | 'success'; title: string; message: string }) => void) => {
+    const handler = (_event: unknown, toast: any) => callback(toast);
+    ipcRenderer.on('toast:show', handler);
+    return () => {
+      ipcRenderer.removeListener('toast:show', handler);
     };
   },
 

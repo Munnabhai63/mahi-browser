@@ -246,7 +246,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
             if (window.mahiAPI?.accountExchangeDesktopCode) {
               loginRes = await window.mahiAPI.accountExchangeDesktopCode(ticket, data.code);
             } else {
-              loginRes = await accountLoginWithToken('mock-token');
+              loginRes = { success: false, error: 'Desktop application API is unavailable. Please run inside MAHI Browser desktop client.' };
             }
             if (loginRes?.success) {
               showToast({
@@ -741,9 +741,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                         <Users size={13} /> {currentPlan.toUpperCase()} ACTIVE
                       </span>
                     )}
-                    {currentPlan === 'pro' && (
+                    {(currentPlan === 'pro' || currentPlan.startsWith('pro_') || currentPlan.startsWith('professional_')) && (
                       <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                        <Zap size={13} /> PRO ACTIVE
+                        <Zap size={13} /> {currentPlan.startsWith('professional_') ? currentPlan.replace('_', ' ').toUpperCase() : 'PRO'} ACTIVE
                       </span>
                     )}
                     {currentPlan === 'trial' && (
@@ -751,7 +751,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                         <Sparkles size={13} /> 7-DAY TRIAL {trialStatus?.daysRemaining ? `(${trialStatus.daysRemaining}d left)` : ''}
                       </span>
                     )}
-                    {currentPlan !== 'pro' && currentPlan !== 'trial' && !currentPlan.startsWith('pro_') && currentPlan !== 'business' && !currentPlan.startsWith('business_') && currentPlan !== 'team' && currentPlan !== 'enterprise' && (
+                    {currentPlan !== 'pro' && currentPlan !== 'trial' && !currentPlan.startsWith('pro_') && !currentPlan.startsWith('professional_') && currentPlan !== 'business' && !currentPlan.startsWith('business_') && currentPlan !== 'team' && currentPlan !== 'enterprise' && (
                       <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-700 text-slate-300 border border-slate-600">
                         FREE PLAN ({planLimits?.maxProfiles || 15} Profiles)
                       </span>

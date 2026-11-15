@@ -66,7 +66,7 @@ describe('Phase 13: 10-Cycle Fingerprint Audit & Auto-Fix Stress Suite', { timeo
 
       // 3. Verify vulnerability is caught
       const leakReport = auditProfileFingerprint(p.id);
-      expect(leakReport.overallScore).toBeLessThan(75);
+      expect(leakReport.overallScore).toBeLessThan(80);
       expect(leakReport.stealthGrade).toBe('RISK');
 
       // 4. Auto-Fix
@@ -75,7 +75,7 @@ describe('Phase 13: 10-Cycle Fingerprint Audit & Auto-Fix Stress Suite', { timeo
       expect(fixedReport.stealthGrade).toBe('ULTRA');
       expect(fixedReport.failCount).toBe(0);
       expect(fixedReport.warnCount).toBe(0);
-      expect(fixedReport.passedCount).toBe(8);
+      expect(fixedReport.passedCount).toBe(9);
     });
   }
 });

@@ -299,9 +299,15 @@ export const useAccountStore = create<AccountState>()(
       },
 
       accountLogout: async () => {
-        if (!window.mahiAPI) return;
         try {
-          await window.mahiAPI.accountLogout();
+          if (window.mahiAPI?.accountLogout) {
+            await window.mahiAPI.accountLogout();
+          }
+        } catch {}
+        try {
+          if (window.mahiAPI && (window.mahiAPI as any).commercialLogout) {
+            await (window.mahiAPI as any).commercialLogout();
+          }
         } catch {}
         set({
           accountSession: null,
@@ -309,6 +315,12 @@ export const useAccountStore = create<AccountState>()(
           trialStatus: null,
           unassignedGuestProfiles: [],
           planLimits: { isPro: false, plan: 'free', maxProfiles: 15, expiresAt: null },
+          commercialUser: null,
+          commercialToken: null,
+          entitlements: null,
+          userDevices: [],
+          isAccountModalOpen: false,
+          commercialError: null,
         });
         useProfileStore.getState().fetchProfiles().catch(() => {});
       },
@@ -628,22 +640,7 @@ export const useAccountStore = create<AccountState>()(
       },
 
       logout: async () => {
-        try {
-          if (window.mahiAPI && (window.mahiAPI as any).commercialLogout) {
-            await (window.mahiAPI as any).commercialLogout();
-          }
-        } catch {}
-
-        set({
-          commercialUser: null,
-          commercialToken: null,
-          entitlements: null,
-          userDevices: [],
-          currentUser: null,
-          isAccountModalOpen: false,
-          commercialError: null,
-        });
-        useProfileStore.getState().fetchProfiles().catch(() => {});
+        await get().accountLogout();
       },
 
       switchAccount: (email) => {
@@ -678,9 +675,7 @@ export const useAccountStore = create<AccountState>()(
           savedAccounts: state.savedAccounts,
           rememberMe: state.rememberMe,
           commercialUser: state.commercialUser,
-          commercialToken: state.commercialToken,
           currentUser: state.currentUser,
-          accountSession: state.accountSession,
           planLimits: state.planLimits,
         };
       },

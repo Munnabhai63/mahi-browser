@@ -93,6 +93,10 @@ export const App: React.FC = () => {
         addLog(log);
       });
 
+      const unsubToast = window.mahiAPI.onToastShow?.((data) => {
+        useToastStore.getState().showToast(data);
+      });
+
       const unsubAccount = window.mahiAPI.onAccountStatusChanged?.(() => {
         useAccountStore.getState().fetchPlanLimits({ force: true }).catch((err) => {
           console.debug('[App] Account limits sync notice:', err);
@@ -110,6 +114,7 @@ export const App: React.FC = () => {
       return () => {
         unsubStatus();
         unsubLogs();
+        unsubToast?.();
         unsubAccount?.();
         window.removeEventListener('focus', handleWindowFocus);
       };

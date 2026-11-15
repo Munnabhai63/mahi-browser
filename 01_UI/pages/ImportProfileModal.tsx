@@ -67,9 +67,19 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
       if (res.valid && res.profileName) {
         setOverrideName(`${res.profileName} (Imported)`);
         setTargetFolder(res.folder || 'Imported');
+      } else if (!res.valid) {
+        showToast({
+          type: 'error',
+          title: 'Invalid Archive',
+          message: res.errorMessage || 'Failed to read profile archive.',
+        });
       }
-    } catch {
-      // ignore
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Validation Failed',
+        message: err?.message || 'Could not validate file.',
+      });
     } finally {
       setLoading(false);
     }
@@ -278,6 +288,18 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
                   <div>🍪 {preview.cookieCount} Cookies</div>
                   <div>🧩 {preview.extensionCount} Extensions</div>
                   <div>🌐 {preview.browserEngine.toUpperCase()}</div>
+                </div>
+              </div>
+            )}
+
+            {preview && !preview.valid && (
+              <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-5 space-y-2">
+                <div className="flex items-center space-x-2 font-bold text-xs text-rose-600 dark:text-rose-400">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>Invalid Profile Archive</span>
+                </div>
+                <div className="text-xs text-rose-500">
+                  {preview.errorMessage || 'This archive could not be verified or the password was incorrect.'}
                 </div>
               </div>
             )}

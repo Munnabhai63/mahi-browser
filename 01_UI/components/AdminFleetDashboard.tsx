@@ -23,6 +23,7 @@ import {
 import { useLicenseStore } from '../stores/useLicenseStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { LicenseRecord, CreateLicenseDTO } from '../../10_CONFIG/shared/types/license.js';
+import { ConfirmModal } from './ConfirmModal.js';
 import { NavigationPage } from './Sidebar.js';
 
 interface AdminFleetDashboardProps {
@@ -46,6 +47,7 @@ export const AdminFleetDashboard: React.FC<AdminFleetDashboardProps> = ({ onNavi
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<LicenseRecord | null>(null);
 
   // Quick Issue Student Modal
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
@@ -139,16 +141,8 @@ export const AdminFleetDashboard: React.FC<AdminFleetDashboardProps> = ({ onNavi
     }
   };
 
-  const handleRevokeStudent = async (lic: LicenseRecord) => {
-    if (!confirm(`Are you sure you want to REVOKE access for student "${lic.customerName}"? They will be locked out immediately.`)) return;
-    const ok = await adminRevoke(lic.id, 'Revoked from Master Admin Dashboard');
-    if (ok) {
-      showToast({
-        type: 'warning',
-        title: 'Student Access Revoked',
-        message: `${lic.customerName} has been locked out.`,
-      });
-    }
+  const handleRevokeStudent = (lic: LicenseRecord) => {
+    setRevokeTarget(lic);
   };
 
   const handleIssueStudentKey = async (e: React.FormEvent) => {
@@ -674,6 +668,28 @@ export const AdminFleetDashboard: React.FC<AdminFleetDashboardProps> = ({ onNavi
           </div>
         </div>
       )}
+      {/* Revoke Student Access Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(revokeTarget)}
+        title="Revoke Student Access"
+        message={`Are you sure you want to REVOKE access for student "${revokeTarget?.customerName}"? They will be locked out immediately.`}
+        confirmLabel="Revoke Access"
+        isDestructive={true}
+        onConfirm={async () => {
+          if (!revokeTarget) return;
+          const target = revokeTarget;
+          setRevokeTarget(null);
+          const ok = await adminRevoke(target.id, 'Revoked from Master Admin Dashboard');
+          if (ok) {
+            showToast({
+              type: 'warning',
+              title: 'Student Access Revoked',
+              message: `${target.customerName} has been locked out.`,
+            });
+          }
+        }}
+        onCancel={() => setRevokeTarget(null)}
+      />
     </div>
   );
 };

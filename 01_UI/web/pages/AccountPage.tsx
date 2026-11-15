@@ -85,10 +85,12 @@ export const AccountPage: React.FC<AccountPageProps> = ({
             <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
               <span className="text-xs font-semibold text-slate-300">Active License Tier</span>
               <div className="text-lg font-bold text-white font-mono text-teal-300">
-                {user?.planId?.toUpperCase() || 'MAHI PRO LIFETIME'}
+                {user?.planId ? user.planId.replace('_', ' ').toUpperCase() : 'MAHI FREE'}
               </div>
               <div className="text-[10px] text-slate-400">
-                Full multi-window synchronizer, cloud sync, and commercial proxy catalog access.
+                {user?.planId && user.planId !== 'free' && user.planId !== 'plan_free'
+                  ? 'Full multi-window synchronizer, cloud sync, and commercial proxy catalog access.'
+                  : 'Standard antidetect browsing, local profile storage, and community support.'}
               </div>
             </div>
           </div>

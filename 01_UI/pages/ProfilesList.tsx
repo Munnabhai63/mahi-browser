@@ -189,16 +189,22 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
 
   const toggleSynchronizer = async () => {
     try {
-      const runningCount = profiles.filter((p) => p.status === 'RUNNING').length;
+      const running = profiles.filter((p) => p.status === 'RUNNING');
       if (!isSyncActive) {
+        if (running.length < 2) {
+          setIsSynchronizerModalOpen(true);
+          return;
+        }
+        const masterId = running[0].id;
+        const slaveIds = running.slice(1).map((p) => p.id);
         if (window.mahiAPI?.synchronizerStart) {
-          await window.mahiAPI.synchronizerStart();
+          await window.mahiAPI.synchronizerStart(masterId, slaveIds);
         }
         setIsSyncActive(true);
         showToast({
           type: 'success',
           title: '🪞 Action Synchronizer ON',
-          message: `Mirroring mouse, typing & scroll across all running profiles (${runningCount} active)!`,
+          message: `Mirroring master profile across ${slaveIds.length} running profiles!`,
         });
       } else {
         if (window.mahiAPI?.synchronizerStop) {
@@ -359,9 +365,11 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
     showToast({ type: 'info', title: 'Testing Proxy...', message: `Checking connection to ${proxy.host}:${proxy.port}...` });
     try {
       const res = await window.mahiAPI.testProxy({
+        proxyId: proxy.id,
         host: proxy.host,
         port: proxy.port,
         protocol: proxy.protocol,
+        username: proxy.username,
       });
 
       if (res.success) {
@@ -799,34 +807,18 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
     if (h.includes('-nl') || h.includes('.nl')) return 'NL';
     if (h.includes('-sg') || h.includes('.sg')) return 'SG';
     if (h.includes('-jp') || h.includes('.jp')) return 'JP';
+    if (h.includes('-au') || h.includes('.au')) return 'AU';
+    if (h.includes('-br') || h.includes('.br')) return 'BR';
+    if (h.includes('-es') || h.includes('.es')) return 'ES';
+    if (h.includes('-it') || h.includes('.it')) return 'IT';
+    if (h.includes('-ru') || h.includes('.ru')) return 'RU';
+    if (h.includes('-kr') || h.includes('.kr')) return 'KR';
+    if (h.includes('-hk') || h.includes('.hk')) return 'HK';
+    if (h.includes('-ch') || h.includes('.ch')) return 'CH';
+    if (h.includes('-se') || h.includes('.se')) return 'SE';
+    if (h.includes('-pl') || h.includes('.pl')) return 'PL';
 
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 2000);
-      const res = await fetch(`https://freeipapi.com/api/json/${host}`, { signal: ctrl.signal });
-      clearTimeout(t);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.countryCode && data.countryCode.length === 2) {
-          return data.countryCode.toUpperCase();
-        }
-      }
-    } catch {}
-
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 2000);
-      const res = await fetch(`https://ipapi.co/${host}/country/`, { signal: ctrl.signal });
-      clearTimeout(t);
-      if (res.ok) {
-        const text = (await res.text()).trim().toUpperCase();
-        if (text.length === 2 && /^[A-Z]{2}$/.test(text)) {
-          return text;
-        }
-      }
-    } catch {}
-
-    return 'US'; // Default standard proxy location
+    return 'US'; // Default standard proxy location without external network leak
   };
 
   // Parse proxy string: supports host:port, host:port:user:pass, protocol://host:port, protocol://user:pass@host:port

@@ -44,7 +44,7 @@ describe('P1 Production Bug Fix: Preload Integrity, Quick Profile Creation & Ses
       expect(code).toContain('accountSignup: (dto) => ipcRenderer.invoke(\'account:signup\', dto)');
       expect(code).toContain('accountLogin: (dto) => ipcRenderer.invoke(\'account:login\', dto)');
       expect(code).toContain('accountGetSession: () => ipcRenderer.invoke(\'account:getSession\')');
-      expect(code).toContain('accountGetPlanLimits: () => ipcRenderer.invoke(\'account:getPlanLimits\')');
+      expect(code).toContain('accountGetPlanLimits: (dto) => ipcRenderer.invoke(\'account:getPlanLimits\', dto)');
       expect(code).toContain('contextBridge.exposeInMainWorld(\'mahiAPI\', api)');
     });
   });

@@ -20,10 +20,12 @@ import {
   Clock,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
+import { useToastStore } from '../stores/useToastStore.js';
 import { ProfileAuditReport, DiagnosticCheck, DiagnosticStatus } from '../../10_CONFIG/shared/types/diagnostics.js';
 
 export const Diagnostics: React.FC = () => {
   const { profiles, fetchProfiles } = useProfileStore();
+  const { showToast } = useToastStore();
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [fixing, setFixing] = useState<boolean>(false);
@@ -54,8 +56,13 @@ export const Diagnostics: React.FC = () => {
         const res = await window.mahiAPI.diagnosticsAudit(profileId);
         setReport(res);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Audit failed:', err);
+      showToast({
+        type: 'error',
+        title: 'Audit Failed',
+        message: err?.message || 'Could not complete profile diagnostics audit.',
+      });
     } finally {
       setLoading(false);
     }
@@ -69,9 +76,19 @@ export const Diagnostics: React.FC = () => {
         const res = await window.mahiAPI.diagnosticsAutoFix(selectedProfileId);
         setReport(res);
         await fetchProfiles();
+        showToast({
+          type: 'success',
+          title: 'Diagnostics Auto-Fix Complete',
+          message: 'Profile configuration discrepancies resolved.',
+        });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Auto fix failed:', err);
+      showToast({
+        type: 'error',
+        title: 'Auto-Fix Failed',
+        message: err?.message || 'Could not resolve diagnostic issues.',
+      });
     } finally {
       setFixing(false);
     }

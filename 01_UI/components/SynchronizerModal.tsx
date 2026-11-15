@@ -257,7 +257,7 @@ export const SynchronizerModal: React.FC<SynchronizerModalProps> = ({ isOpen, on
             </label>
             <select
               value={masterId}
-              onChange={(e) => setMasterId(e.target.value)}
+              onChange={(e) => handleMasterChange(e.target.value)}
               disabled={isActive}
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 font-bold text-slate-800 dark:text-slate-200"
             >

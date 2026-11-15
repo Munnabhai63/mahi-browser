@@ -48,18 +48,25 @@ if (fs.existsSync(wasmSrc)) {
   console.log('sql-wasm.wasm bundled to dist targets.');
 }
 
-// Ensure zero occurrences of keygen or leaked paths in all compiled/bundled distribution files
-const sanitizeTargets = [
-  path.join(__dirname, '..', 'dist-electron', 'main', 'index.js'),
-  path.join(__dirname, '..', 'dist-electron', 'preload', 'index.cjs'),
-  path.join(__dirname, '..', 'dist-electron', 'preload', 'index.js'),
-  path.join(__dirname, '..', 'node_modules', 'playwright-core', 'lib', 'coreBundle.js'),
-];
-const assetsDir = path.join(__dirname, '..', 'dist', 'assets');
-if (fs.existsSync(assetsDir)) {
-  for (const f of fs.readdirSync(assetsDir)) {
-    if (f.endsWith('.js') || f.endsWith('.html')) {
-      sanitizeTargets.push(path.join(assetsDir, f));
+// Ensure zero occurrences of proprietary licensing vendor identifiers in Electron outputs only.
+// Scoped strictly to dist-electron outputs — NEVER mutate node_modules, NEVER mutate React DOM assets (keygen:!0),
+// and NEVER run indiscriminate regex replace on the entire distribution.
+const sanitizeTargets = [];
+
+const mainDir = path.join(__dirname, '..', 'dist-electron', 'main');
+if (fs.existsSync(mainDir)) {
+  for (const f of fs.readdirSync(mainDir)) {
+    if (f.endsWith('.js')) {
+      sanitizeTargets.push(path.join(mainDir, f));
+    }
+  }
+}
+
+const preloadDir = path.join(__dirname, '..', 'dist-electron', 'preload');
+if (fs.existsSync(preloadDir)) {
+  for (const f of fs.readdirSync(preloadDir)) {
+    if (f.endsWith('.js') || f.endsWith('.cjs')) {
+      sanitizeTargets.push(path.join(preloadDir, f));
     }
   }
 }
@@ -82,14 +89,6 @@ for (const target of sanitizeTargets) {
     }
     if (content.includes('case "keygen"')) {
       content = content.replaceAll('case "keygen"', 'case "kg_provider"');
-      mod = true;
-    }
-    if (content.includes('keygen:!0')) {
-      content = content.replaceAll('keygen:!0', 'kg_opt:!0');
-      mod = true;
-    }
-    if (/keygen/i.test(content)) {
-      content = content.replace(/keygen/gi, 'key_service');
       mod = true;
     }
     if (mod) {
