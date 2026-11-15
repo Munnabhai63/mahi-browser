@@ -2,6 +2,28 @@ import crypto from 'node:crypto';
 import { getDatabase } from '../06_DATABASE/connection.js';
 import { getJwtSecret } from '../08_SECURITY/install-secrets.js';
 import { getEmailProvider } from './email-service.js';
+import { isPostgresConfigured, getCentralRepository } from '../06_DATABASE/central-repository.js';
+
+function mapRowToAuthUser(row: any): AuthUser {
+  return {
+    id: row.id,
+    email: row.email,
+    normalizedEmail: row.normalized_email || row.normalizedEmail || row.email.toLowerCase(),
+    name: row.name || 'User',
+    role: (row.role as AuthUserRole) || 'USER',
+    status: (row.status as AuthUserStatus) || 'ACTIVE',
+    emailVerified: row.email_verified === 1 || row.email_verified === true || Boolean(row.emailVerified),
+    emailVerifiedAt: row.email_verified_at || row.emailVerifiedAt || undefined,
+    planId: row.plan_id || row.planId || 'plan_free',
+    profileQuota: row.profile_quota ?? row.profileQuota ?? 10,
+    googleSub: row.google_sub || row.googleSub || undefined,
+    avatarUrl: row.avatar_url || row.avatarUrl || undefined,
+    authProvider: row.auth_provider || row.authProvider || undefined,
+    createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+    updatedAt: row.updated_at || row.updatedAt || new Date().toISOString(),
+    lastLoginAt: row.last_login_at || row.lastLoginAt || undefined,
+  };
+}
 
 // ============================================================================
 // CONSTANTS & TYPES
@@ -154,6 +176,11 @@ export function verifyAccessToken(token: string): JWTPayload | null {
 // ============================================================================
 export function logSecurityEvent(userId: string | null, action: string, details: string, result: 'SUCCESS' | 'FAILURE' | 'BLOCKED', ipAddress?: string): void {
   try {
+    if (isPostgresConfigured()) {
+      const repo = getCentralRepository();
+      repo.logAuthSecurity(userId, action, details, ipAddress || '127.0.0.1', result).catch(() => {});
+      return;
+    }
     const db = getDatabase();
     const id = `sec_${crypto.randomUUID()}`;
     const now = new Date().toISOString();
@@ -218,7 +245,6 @@ export async function registerCentralUser(params: {
   name?: string;
   ipAddress?: string;
 }): Promise<{ success: boolean; user?: AuthUser; tokens?: AuthTokens; error?: string }> {
-  const db = getDatabase();
   const rawEmail = (params.email || '').trim();
   const normalizedEmail = rawEmail.toLowerCase();
 
@@ -230,7 +256,124 @@ export async function registerCentralUser(params: {
     return { success: false, error: 'Password must be at least 8 characters long.' };
   }
 
-  // Check unique email
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const existing = await repo.findAuthUserByEmail(normalizedEmail);
+    if (existing) {
+      logSecurityEvent(null, 'REGISTER_DUPLICATE', `Registration blocked for existing email: ${normalizedEmail}`, 'BLOCKED', params.ipAddress);
+      return { success: false, error: 'An account with this email address already exists.' };
+    }
+
+    const userId = `usr_${crypto.randomUUID()}`;
+    const salt = generateSalt();
+    const passwordHash = hashPassword(params.password, salt);
+    const now = new Date().toISOString();
+    const name = (params.name || normalizedEmail.split('@')[0] || 'User').trim();
+    const planId = 'plan_free';
+    const profileQuota = 10;
+    const role: AuthUserRole = 'USER';
+    const status: AuthUserStatus = 'PENDING_VERIFICATION';
+
+    await repo.createAuthUser({
+      id: userId,
+      email: normalizedEmail,
+      normalized_email: normalizedEmail,
+      password_hash: passwordHash,
+      salt,
+      name,
+      role,
+      status,
+      email_verified: 0,
+      email_verified_at: null,
+      plan_id: planId,
+      profile_quota: profileQuota,
+      created_at: now,
+      updated_at: now,
+      last_login_at: now,
+    });
+
+    try {
+      await repo.createCommercialUser({
+        id: userId,
+        email: normalizedEmail,
+        password_hash: passwordHash,
+        salt,
+        name,
+        role,
+        status: 'ACTIVE',
+        plan_id: planId,
+        created_at: now,
+        updated_at: now,
+        last_login_at: now,
+      });
+    } catch {}
+
+    const rawVerifyToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashToken(rawVerifyToken);
+    const tokenId = `tok_${crypto.randomUUID()}`;
+    const expiresAt = new Date(Date.now() + VERIFY_TOKEN_EXP_HOURS * 3600 * 1000).toISOString();
+
+    await repo.createVerificationToken({
+      id: tokenId,
+      token_hash: tokenHash,
+      user_id: userId,
+      email: normalizedEmail,
+      type: 'EMAIL_VERIFICATION',
+      expires_at: expiresAt,
+      created_at: now,
+    });
+
+    const verifyUrl = `https://mahibrowser.com/verify-email?token=${rawVerifyToken}`;
+    try {
+      await getEmailProvider().sendVerificationEmail(rawEmail, rawVerifyToken, verifyUrl);
+    } catch (err: any) {
+      console.warn('[CentralAuth] Failed to send verification email:', err?.message);
+    }
+
+    logSecurityEvent(userId, 'REGISTER', `New user registered: ${normalizedEmail}`, 'SUCCESS', params.ipAddress);
+
+    const sessionId = `ses_${crypto.randomUUID()}`;
+    const rawRefreshToken = crypto.randomBytes(32).toString('hex');
+    const refreshHash = hashToken(rawRefreshToken);
+    const sessionExp = new Date(Date.now() + REFRESH_TOKEN_EXP_DAYS * 24 * 3600 * 1000).toISOString();
+
+    await repo.createAuthSession({
+      id: sessionId,
+      user_id: userId,
+      refresh_token_hash: refreshHash,
+      device_id: 'dev-desktop-initial',
+      device_name: 'Primary Device',
+      platform: process.platform || 'windows',
+      ip_address: params.ipAddress || '127.0.0.1',
+      is_revoked: 0,
+      created_at: now,
+      last_used_at: now,
+      expires_at: sessionExp,
+    });
+
+    const accessToken = signAccessToken({
+      userId,
+      email: rawEmail,
+      role,
+      planId,
+      profileQuota,
+      sessionId,
+    });
+
+    const userRow = await repo.findAuthUserById(userId);
+    return {
+      success: true,
+      user: mapRowToAuthUser(userRow),
+      tokens: {
+        accessToken,
+        refreshToken: rawRefreshToken,
+        expiresIn: ACCESS_TOKEN_EXP_SECONDS,
+        tokenType: 'Bearer',
+      },
+    };
+  }
+
+  const db = getDatabase();
   const existing = db.prepare('SELECT id FROM auth_users WHERE normalized_email = ?').get(normalizedEmail);
   if (existing) {
     logSecurityEvent(null, 'REGISTER_DUPLICATE', `Registration blocked for existing email: ${normalizedEmail}`, 'BLOCKED', params.ipAddress);
@@ -322,8 +465,32 @@ export async function verifyEmailToken(rawToken: string, ipAddress?: string): Pr
     return { success: false, error: 'Verification token is required.' };
   }
 
-  const db = getDatabase();
   const tokenHash = hashToken(rawToken);
+
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const row = await repo.findVerificationTokenByHash(tokenHash);
+    if (!row) {
+      return { success: false, error: 'Invalid or expired verification token.' };
+    }
+    if (row.used_at) {
+      return { success: false, error: 'This verification token has already been used.' };
+    }
+    const now = new Date().toISOString();
+    if (row.expires_at < now) {
+      return { success: false, error: 'Verification token has expired. Please request a new one.' };
+    }
+    await repo.consumeVerificationToken(tokenHash);
+    await repo.updateAuthUser(row.user_id, {
+      email_verified: 1,
+      email_verified_at: now,
+      status: 'ACTIVE',
+    });
+    logSecurityEvent(row.user_id, 'VERIFY_EMAIL', `Email verified for ${row.email}`, 'SUCCESS', ipAddress);
+    return { success: true };
+  }
+
+  const db = getDatabase();
   const row = db.prepare(`
     SELECT * FROM auth_verification_tokens 
     WHERE token_hash = ? AND type = 'EMAIL_VERIFICATION'
@@ -352,8 +519,41 @@ export async function verifyEmailToken(rawToken: string, ipAddress?: string): Pr
 }
 
 export async function resendEmailVerification(email: string, ipAddress?: string): Promise<{ success: boolean; error?: string }> {
-  const db = getDatabase();
   const normalizedEmail = (email || '').trim().toLowerCase();
+
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const user = await repo.findAuthUserByEmail(normalizedEmail);
+    if (!user) {
+      return { success: true };
+    }
+    if (user.email_verified === 1 || user.email_verified === true) {
+      return { success: false, error: 'Email is already verified.' };
+    }
+    const now = new Date().toISOString();
+    const rawVerifyToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashToken(rawVerifyToken);
+    const tokenId = `tok_${crypto.randomUUID()}`;
+    const expiresAt = new Date(Date.now() + VERIFY_TOKEN_EXP_HOURS * 3600 * 1000).toISOString();
+
+    await repo.invalidatePendingVerificationTokens(user.id, 'EMAIL_VERIFICATION');
+    await repo.createVerificationToken({
+      id: tokenId,
+      token_hash: tokenHash,
+      user_id: user.id,
+      email: normalizedEmail,
+      type: 'EMAIL_VERIFICATION',
+      expires_at: expiresAt,
+      created_at: now,
+    });
+
+    const verifyUrl = `https://mahibrowser.com/verify-email?token=${rawVerifyToken}`;
+    await getEmailProvider().sendVerificationEmail(user.email, rawVerifyToken, verifyUrl);
+    logSecurityEvent(user.id, 'RESEND_VERIFICATION', `Resent verification to ${normalizedEmail}`, 'SUCCESS', ipAddress);
+    return { success: true };
+  }
+
+  const db = getDatabase();
   const user = db.prepare('SELECT id, email, email_verified, status FROM auth_users WHERE normalized_email = ?').get(normalizedEmail) as any;
 
   if (!user) {
@@ -401,7 +601,6 @@ export async function loginCentralUser(params: {
   platform?: string;
   ipAddress?: string;
 }): Promise<{ success: boolean; user?: AuthUser; session?: { id: string; deviceId: string; deviceName: string; platform: string }; tokens?: AuthTokens; error?: string; lockedRemainingMs?: number }> {
-  const db = getDatabase();
   const rawEmail = (params.email || '').trim();
   const normalizedEmail = rawEmail.toLowerCase();
   const rateLimitKey = `${params.ipAddress || '127.0.0.1'}:${normalizedEmail}`;
@@ -420,6 +619,96 @@ export async function loginCentralUser(params: {
     return { success: false, error: 'Email and password are required.' };
   }
 
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const row = await repo.findAuthUserByEmail(normalizedEmail);
+    if (!row) {
+      recordLoginFailure(rateLimitKey);
+      logSecurityEvent(null, 'LOGIN_FAILED', `Non-existent user attempted: ${normalizedEmail}`, 'FAILURE', params.ipAddress);
+      return { success: false, error: 'Invalid email or password.' };
+    }
+
+    if (row.password_hash === 'OAUTH_GOOGLE' || (!row.password_hash && row.google_sub) || (row.auth_provider === 'GOOGLE' && row.password_hash === 'OAUTH_GOOGLE')) {
+      return {
+        success: false,
+        error: 'This account was created with Google Sign-In and has no password set. Please use "Continue with Google" or use "Forgot Password" to set a password.',
+      };
+    }
+
+    const isValid = verifyPassword(params.password, row.salt, row.password_hash);
+    if (!isValid) {
+      recordLoginFailure(rateLimitKey);
+      logSecurityEvent(row.id, 'LOGIN_FAILED', `Invalid password for user: ${normalizedEmail}`, 'FAILURE', params.ipAddress);
+      return { success: false, error: 'Invalid email or password.' };
+    }
+
+    if (row.status === 'SUSPENDED') {
+      logSecurityEvent(row.id, 'LOGIN_BLOCKED', `Suspended user attempted login: ${normalizedEmail}`, 'BLOCKED', params.ipAddress);
+      return { success: false, error: 'Your account has been suspended. Please contact support.' };
+    }
+
+    if (row.status === 'DISABLED') {
+      logSecurityEvent(row.id, 'LOGIN_BLOCKED', `Disabled user attempted login: ${normalizedEmail}`, 'BLOCKED', params.ipAddress);
+      return { success: false, error: 'Your account has been disabled.' };
+    }
+
+    clearLoginAttempts(rateLimitKey);
+
+    const now = new Date().toISOString();
+    await repo.updateAuthUser(row.id, { last_login_at: now });
+
+    const sessionId = `ses_${crypto.randomUUID()}`;
+    const rawRefreshToken = crypto.randomBytes(32).toString('hex');
+    const refreshHash = hashToken(rawRefreshToken);
+    const sessionExp = new Date(Date.now() + REFRESH_TOKEN_EXP_DAYS * 24 * 3600 * 1000).toISOString();
+    const deviceId = params.deviceId || `dev_${crypto.randomUUID().substring(0, 8)}`;
+    const deviceName = params.deviceName || 'Windows PC';
+    const platform = params.platform || process.platform || 'windows';
+
+    await repo.createAuthSession({
+      id: sessionId,
+      user_id: row.id,
+      refresh_token_hash: refreshHash,
+      device_id: deviceId,
+      device_name: deviceName,
+      platform,
+      ip_address: params.ipAddress || '127.0.0.1',
+      is_revoked: 0,
+      created_at: now,
+      last_used_at: now,
+      expires_at: sessionExp,
+    });
+
+    const accessToken = signAccessToken({
+      userId: row.id,
+      email: row.email,
+      role: row.role as AuthUserRole,
+      planId: row.plan_id || row.planId,
+      profileQuota: row.profile_quota ?? row.profileQuota ?? 10,
+      sessionId,
+    });
+
+    logSecurityEvent(row.id, 'LOGIN_SUCCESS', `User logged in from ${deviceName} (${platform})`, 'SUCCESS', params.ipAddress);
+
+    return {
+      success: true,
+      user: mapRowToAuthUser(row),
+      session: {
+        id: sessionId,
+        deviceId,
+        deviceName,
+        platform,
+      },
+      tokens: {
+        accessToken,
+        refreshToken: rawRefreshToken,
+        expiresIn: ACCESS_TOKEN_EXP_SECONDS,
+        tokenType: 'Bearer',
+      },
+    };
+  }
+
+  const db = getDatabase();
   const row = db.prepare('SELECT * FROM auth_users WHERE normalized_email = ?').get(normalizedEmail) as any;
   if (!row) {
     recordLoginFailure(rateLimitKey);
@@ -517,8 +806,60 @@ export async function refreshAccessToken(rawRefreshToken: string, ipAddress?: st
     return { success: false, error: 'Refresh token is required.' };
   }
 
-  const db = getDatabase();
   const refreshHash = hashToken(rawRefreshToken);
+
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const session = await repo.findAuthSessionByTokenHash(refreshHash);
+    if (!session) {
+      return { success: false, error: 'Invalid or revoked refresh session.' };
+    }
+    if (session.is_revoked === 1 || session.is_revoked === true) {
+      logSecurityEvent(session.user_id, 'REFRESH_REVOKED', `Attempted refresh on revoked session: ${session.id}`, 'BLOCKED', ipAddress);
+      return { success: false, error: 'This session has been revoked. Please sign in again.' };
+    }
+    const now = new Date().toISOString();
+    if (session.expires_at < now) {
+      return { success: false, error: 'Session has expired. Please sign in again.' };
+    }
+    const userRow = await repo.findAuthUserById(session.user_id);
+    if (!userRow || userRow.status === 'SUSPENDED' || userRow.status === 'DISABLED') {
+      return { success: false, error: 'Account is no longer active.' };
+    }
+    const user = mapRowToAuthUser(userRow);
+    const newRawRefreshToken = crypto.randomBytes(32).toString('hex');
+    const newRefreshHash = hashToken(newRawRefreshToken);
+    const newSessionExp = new Date(Date.now() + REFRESH_TOKEN_EXP_DAYS * 24 * 3600 * 1000).toISOString();
+
+    await repo.updateAuthSession(session.id, {
+      refresh_token_hash: newRefreshHash,
+      last_used_at: now,
+      expires_at: newSessionExp,
+      ip_address: ipAddress || session.ip_address || '127.0.0.1',
+    });
+
+    const accessToken = signAccessToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      planId: user.planId,
+      profileQuota: user.profileQuota,
+      sessionId: session.id,
+    });
+
+    return {
+      success: true,
+      user,
+      tokens: {
+        accessToken,
+        refreshToken: newRawRefreshToken,
+        expiresIn: ACCESS_TOKEN_EXP_SECONDS,
+        tokenType: 'Bearer',
+      },
+    };
+  }
+
+  const db = getDatabase();
   const session = db.prepare('SELECT * FROM auth_sessions WHERE refresh_token_hash = ?').get(refreshHash) as any;
 
   if (!session) {
@@ -658,12 +999,45 @@ export function revokeAllUserSessions(userId: string, exceptSessionId?: string, 
 // FORGOT PASSWORD & RESET PASSWORD
 // ============================================================================
 export async function requestPasswordReset(email: string, ipAddress?: string): Promise<{ success: boolean; message: string }> {
-  const db = getDatabase();
   const normalizedEmail = (email || '').trim().toLowerCase();
-  const user = db.prepare('SELECT id, email, status FROM auth_users WHERE normalized_email = ?').get(normalizedEmail) as any;
-
-  // Always return user-safe generic message to prevent email enumeration
   const safeMessage = 'If an account exists with that email, a password reset link has been dispatched.';
+
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const user = await repo.findAuthUserByEmail(normalizedEmail);
+    if (!user || user.status === 'DISABLED') {
+      return { success: true, message: safeMessage };
+    }
+    const now = new Date().toISOString();
+    const rawResetToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashToken(rawResetToken);
+    const tokenId = `tok_${crypto.randomUUID()}`;
+    const expiresAt = new Date(Date.now() + RESET_TOKEN_EXP_HOURS * 3600 * 1000).toISOString();
+
+    await repo.invalidatePendingVerificationTokens(user.id, 'PASSWORD_RESET');
+    await repo.createVerificationToken({
+      id: tokenId,
+      token_hash: tokenHash,
+      user_id: user.id,
+      email: normalizedEmail,
+      type: 'PASSWORD_RESET',
+      expires_at: expiresAt,
+      created_at: now,
+    });
+
+    const resetUrl = `https://mahibrowser.com/reset-password?token=${rawResetToken}`;
+    try {
+      await getEmailProvider().sendPasswordResetEmail(user.email, rawResetToken, resetUrl);
+    } catch (err: any) {
+      console.warn('[CentralAuth] Failed to send password reset email:', err?.message);
+    }
+
+    logSecurityEvent(user.id, 'PASSWORD_RESET_REQUESTED', `Reset token issued for ${normalizedEmail}`, 'SUCCESS', ipAddress);
+    return { success: true, message: safeMessage };
+  }
+
+  const db = getDatabase();
+  const user = db.prepare('SELECT id, email, status FROM auth_users WHERE normalized_email = ?').get(normalizedEmail) as any;
 
   if (!user || user.status === 'DISABLED') {
     return { success: true, message: safeMessage };
@@ -724,8 +1098,42 @@ export async function resetPasswordWithToken(
     return { success: false, error: 'New password must be at least 8 characters long.' };
   }
 
-  const db = getDatabase();
   const tokenHash = hashToken(token);
+
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const row = await repo.findVerificationTokenByHash(tokenHash);
+    if (!row) {
+      return { success: false, error: 'Invalid or expired password reset link.' };
+    }
+    if (row.used_at) {
+      return { success: false, error: 'This password reset link has already been used.' };
+    }
+    const now = new Date().toISOString();
+    if (row.expires_at < now) {
+      return { success: false, error: 'Password reset link has expired. Please request a new one.' };
+    }
+    const newSalt = generateSalt();
+    const newPasswordHash = hashPassword(newPassword, newSalt);
+    await repo.updateAuthUser(row.user_id, {
+      password_hash: newPasswordHash,
+      salt: newSalt,
+      updated_at: now,
+    });
+    try {
+      await repo.updateCommercialUser(row.user_id, {
+        password_hash: newPasswordHash,
+        salt: newSalt,
+        updated_at: now,
+      });
+    } catch {}
+    await repo.consumeVerificationToken(tokenHash);
+    await repo.revokeAllUserSessions(row.user_id);
+    logSecurityEvent(row.user_id, 'PASSWORD_RESET', `Password successfully reset; all sessions revoked`, 'SUCCESS', ipAddress);
+    return { success: true };
+  }
+
+  const db = getDatabase();
   const row = db.prepare(`
     SELECT * FROM auth_verification_tokens 
     WHERE token_hash = ? AND type = 'PASSWORD_RESET'
@@ -819,4 +1227,71 @@ export function getCentralUserByEmail(email: string): AuthUser | null {
     updatedAt: row.updated_at,
     lastLoginAt: row.last_login_at || undefined,
   };
+}
+
+// ============================================================================
+// ASYNC CENTRAL DATA ACCESS EQUIVALENTS (POSTGRESQL / SQLITE FALLBACK)
+// ============================================================================
+
+export async function getCentralUserByIdAsync(id: string): Promise<AuthUser | null> {
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const row = await repo.findAuthUserById(id);
+    return row ? mapRowToAuthUser(row) : null;
+  }
+  return getCentralUserById(id);
+}
+
+export async function getCentralUserByEmailAsync(email: string): Promise<AuthUser | null> {
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const row = await repo.findAuthUserByEmail(email);
+    return row ? mapRowToAuthUser(row) : null;
+  }
+  return getCentralUserByEmail(email);
+}
+
+export async function logoutSessionAsync(sessionId: string, ipAddress?: string): Promise<boolean> {
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    return repo.revokeAuthSession(sessionId);
+  }
+  return logoutSession(sessionId, ipAddress);
+}
+
+export async function listUserSessionsAsync(userId: string, currentSessionId?: string): Promise<AuthSessionRecord[]> {
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const rows = await repo.listUserAuthSessions(userId);
+    return rows.map((r: any) => ({
+      id: r.id,
+      userId: r.user_id || r.userId,
+      deviceId: r.device_id || r.deviceId,
+      deviceName: r.device_name || r.deviceName,
+      platform: r.platform,
+      ipAddress: r.ip_address || r.ipAddress,
+      isRevoked: r.is_revoked === 1 || r.is_revoked === true,
+      isCurrent: currentSessionId ? r.id === currentSessionId : false,
+      createdAt: r.created_at || r.createdAt,
+      lastUsedAt: r.last_used_at || r.lastUsedAt,
+      expiresAt: r.expires_at || r.expiresAt,
+    }));
+  }
+  return listUserSessions(userId, currentSessionId);
+}
+
+export async function revokeUserSessionAsync(userId: string, sessionId: string, ipAddress?: string): Promise<boolean> {
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    return repo.revokeAuthSession(sessionId);
+  }
+  return revokeUserSession(userId, sessionId, ipAddress).success;
+}
+
+export async function revokeAllUserSessionsAsync(userId: string, exceptSessionId?: string, ipAddress?: string): Promise<number> {
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    return repo.revokeAllUserSessions(userId);
+  }
+  return revokeAllUserSessions(userId, exceptSessionId, ipAddress);
 }

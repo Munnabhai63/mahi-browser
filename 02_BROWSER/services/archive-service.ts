@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
-import * as electron from 'electron';
+import * as electron from '../../08_SECURITY/electron-bridge.js';
 import {
   ExportProfileOptions,
   BulkExportOptions,

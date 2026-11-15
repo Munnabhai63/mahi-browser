@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import https from 'node:https';
-import { app } from 'electron';
+import { app } from './electron-bridge.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 
 const CONTENT_JSON_URL = 'https://mahibrowser.com/content.json';

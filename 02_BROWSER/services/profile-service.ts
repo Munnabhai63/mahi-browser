@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { app } from 'electron';
+import { app } from '../../08_SECURITY/electron-bridge.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import {
   Profile,

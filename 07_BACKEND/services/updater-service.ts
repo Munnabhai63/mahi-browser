@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow } from '../../08_SECURITY/electron-bridge.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';

@@ -54,7 +54,7 @@ local match = false
 local ok, data = pcall(cjson.decode, current)
 if ok and data and data.deviceId == ARGV[1] then
   match = true
-elseif string.find(current, '"deviceId":"' .. ARGV[1] .. '"') or string.find(current, '"deviceId": "' .. ARGV[1] .. '"') then
+elseif string.find(current, '"deviceId":"' .. ARGV[1] .. '"', 1, true) or string.find(current, '"deviceId": "' .. ARGV[1] .. '"', 1, true) then
   match = true
 end
 
@@ -76,7 +76,7 @@ local match = false
 local ok, data = pcall(cjson.decode, current)
 if ok and data and data.deviceId == ARGV[1] then
   match = true
-elseif string.find(current, '"deviceId":"' .. ARGV[1] .. '"') or string.find(current, '"deviceId": "' .. ARGV[1] .. '"') then
+elseif string.find(current, '"deviceId":"' .. ARGV[1] .. '"', 1, true) or string.find(current, '"deviceId": "' .. ARGV[1] .. '"', 1, true) then
   match = true
 end
 
@@ -307,8 +307,10 @@ export class RedisDistributedLockService {
     const lockKey = this.getLockKey(cloudProfileId);
     const evalRes = await this.client.eval(LUA_RELEASE_LOCK, 1, lockKey, deviceId);
 
-    if (evalRes === 1 || evalRes === 0) {
+    if (evalRes === 1) {
       return { released: true, cloudProfileId };
+    } else if (evalRes === 0) {
+      return { released: false, cloudProfileId, reason: 'LOCK_NOT_FOUND' };
     } else {
       return { released: false, cloudProfileId, reason: 'LOCK_HELD_BY_ANOTHER' };
     }

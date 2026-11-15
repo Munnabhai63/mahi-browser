@@ -2,12 +2,14 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { spawn } from 'node:child_process';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import {
   isPostgresConfigured,
   checkPostgresHealth,
   getPrismaClient,
+  setPrismaClientForTest,
 } from '../../06_DATABASE/prisma-client.js';
 import {
   getCentralRepository,
@@ -26,11 +28,17 @@ import {
   renewProfileLockAsync,
   releaseProfileLockAsync,
   getProfileLockStatusAsync,
+  createUploadSession,
 } from '../../07_BACKEND/services/cloud-profile-service.js';
 import {
   startFastifyCloudGateway,
   stopFastifyCloudGateway,
 } from '../../07_BACKEND/server/cloud-gateway.js';
+import {
+  signAccessToken,
+  registerCentralUser,
+  getCentralUserByIdAsync,
+} from '../../05_AUTH/central-auth-service.js';
 
 describe('Phase 3: Fastify Cloud Gateway, PostgreSQL/Prisma & Redis Mutex', () => {
   let testDir: string;
@@ -447,6 +455,290 @@ describe('Phase 3: Fastify Cloud Gateway, PostgreSQL/Prisma & Redis Mutex', () =
       expect(content).toContain('node:22');
       expect(content).toContain('32123');
       expect(content).toContain('start:gateway');
+    });
+  });
+
+  // ==========================================================================
+  // 4. VERIFIED PHASE 3 DEFECT HARDENING & INTEGRATION FLOWS
+  // ==========================================================================
+  describe('4. Verified Phase 3 Defect Hardening & Integration Flows', () => {
+    it('boots standalone Fastify Gateway cleanly via tsx child process without electron errors', async () => {
+      const tsxCli = path.join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
+      const script = path.join(process.cwd(), '12_SCRIPTS', 'start-gateway.ts');
+      const testPort = 32199;
+
+      const child = spawn(process.execPath, [tsxCli, script], {
+        env: {
+          ...process.env,
+          PORT: String(testPort),
+          NODE_ENV: 'test',
+        },
+        stdio: 'pipe',
+      });
+
+      let serverReady = false;
+      try {
+        for (let i = 0; i < 30; i++) {
+          try {
+            const res = await fetch(`http://127.0.0.1:${testPort}/health`);
+            if (res.ok) {
+              const body = await res.json();
+              if (body.status === 'ok') {
+                serverReady = true;
+                expect(body.service).toBe('mahi-cloud-gateway');
+                expect(body.database).toBeDefined();
+                break;
+              }
+            }
+          } catch {}
+          await new Promise((r) => setTimeout(r, 200));
+        }
+        expect(serverReady).toBe(true);
+      } finally {
+        child.kill();
+        try {
+          process.kill(child.pid!);
+        } catch {}
+      }
+    });
+
+    it('receives authenticated POST /v1/profiles immediately through Fastify without hanging', async () => {
+      const testToken = signAccessToken({
+        userId: 'usr_stream_hang_test',
+        email: 'streamhang@mahi.local',
+        role: 'USER',
+        planId: 'plan_pro',
+        profileQuota: 50,
+        sessionId: 'ses_stream_hang_1',
+      });
+
+      // Prepare user in DB
+      const db = getDatabase();
+      const nowIso = new Date().toISOString();
+      db.prepare(`
+        INSERT OR IGNORE INTO auth_users (id, email, normalized_email, password_hash, salt, name, status, created_at, updated_at)
+        VALUES ('usr_stream_hang_test', 'streamhang@mahi.local', 'streamhang@mahi.local', 'hash', 'salt', 'Stream Test', 'ACTIVE', ?, ?)
+      `).run(nowIso, nowIso);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      const res = await fetch(`http://127.0.0.1:${gatewayPort}/v1/profiles`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${testToken}`,
+        },
+        body: JSON.stringify({
+          name: 'Stream Hang Verification Profile',
+          browser: 'chrome',
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      expect([200, 201, 400]).toContain(res.status);
+      const json = await res.json();
+      expect(json).toBeDefined();
+    });
+
+    it('returns HTTP 423 Locked on lock contention via POST /api/v1/sync/lock/acquire', async () => {
+      const lockProfileId = 'prof-contention-test-423';
+      const testToken = signAccessToken({
+        userId: 'usr_contention_test',
+        email: 'contend@mahi.local',
+        role: 'USER',
+        planId: 'plan_pro',
+        profileQuota: 50,
+        sessionId: 'ses_contention_1',
+      });
+
+      const db = getDatabase();
+      const nowIso = new Date().toISOString();
+      db.prepare(`
+        INSERT OR IGNORE INTO auth_users (id, email, normalized_email, password_hash, salt, name, status, created_at, updated_at)
+        VALUES ('usr_contention_test', 'contend@mahi.local', 'contend@mahi.local', 'hash', 'salt', 'Contend User', 'ACTIVE', ?, ?)
+      `).run(nowIso, nowIso);
+
+      db.prepare(`
+        INSERT OR IGNORE INTO cloud_profiles (id, owner_id, local_profile_id, name, created_at, updated_at)
+        VALUES (?, 'usr_contention_test', ?, 'Lock Contend Profile', ?, ?)
+      `).run(lockProfileId, lockProfileId, nowIso, nowIso);
+
+      // Device 1 acquires lock
+      const res1 = await fetch(`http://127.0.0.1:${gatewayPort}/api/v1/sync/lock/acquire`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${testToken}`,
+        },
+        body: JSON.stringify({
+          cloudProfileId: lockProfileId,
+          deviceId: 'dev_laptop_one',
+          deviceName: 'Laptop One',
+          ttlSeconds: 300,
+        }),
+      });
+      expect(res1.status).toBe(200);
+      const data1 = await res1.json();
+      expect(data1.acquired).toBe(true);
+
+      // Device 2 attempts to acquire same profile -> MUST return 423
+      const res2 = await fetch(`http://127.0.0.1:${gatewayPort}/api/v1/sync/lock/acquire`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${testToken}`,
+        },
+        body: JSON.stringify({
+          cloudProfileId: lockProfileId,
+          deviceId: 'dev_desktop_two',
+          deviceName: 'Desktop Two',
+          ttlSeconds: 300,
+        }),
+      });
+      expect(res2.status).toBe(423);
+      const data2 = await res2.json();
+      expect(data2.acquired).toBe(false);
+      expect(data2.heldBy).toBe('Laptop One');
+    });
+
+    it('handles hijacked route security headers, empty JSON bodies, and rejects untrusted CORS', async () => {
+      // Security headers on hijacked route
+      const resMe = await fetch(`http://127.0.0.1:${gatewayPort}/api/v1/auth/me`);
+      expect(resMe.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(resMe.headers.get('x-frame-options')).toBe('DENY');
+      expect(resMe.headers.get('x-gateway-engine')).toBe('Fastify-Node22');
+
+      // Empty JSON body on POST /api/v1/auth/logout should NOT return Fastify 400
+      const resLogout = await fetch(`http://127.0.0.1:${gatewayPort}/api/v1/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: '',
+      });
+      expect(resLogout.status).not.toBe(400);
+
+      // Untrusted CORS origin rejection
+      const resCors = await fetch(`http://127.0.0.1:${gatewayPort}/health`, {
+        headers: {
+          'Origin': 'https://evil-untrusted-site.com',
+        },
+      });
+      expect(resCors.headers.get('access-control-allow-origin')).not.toBe('https://evil-untrusted-site.com');
+    });
+
+    it('wires PostgresCentralRepository cleanly when PostgreSQL is configured', async () => {
+      const createdUsers: any[] = [];
+      const createdSessions: any[] = [];
+      const createdUploadSessions: any[] = [];
+      const updatedUsers: any[] = [];
+
+      const mockPrisma: any = {
+        auth_users: {
+          findFirst: async ({ where }: any) => {
+            const email = where?.OR?.[0]?.email || where?.email;
+            return createdUsers.find((u) => u.email === email) || null;
+          },
+          findUnique: async ({ where }: any) => {
+            return createdUsers.find((u) => u.id === where.id) || null;
+          },
+          create: async ({ data }: any) => {
+            createdUsers.push(data);
+            return data;
+          },
+          update: async ({ where, data }: any) => {
+            const user = createdUsers.find((u) => u.id === where.id);
+            if (user) Object.assign(user, data);
+            updatedUsers.push({ id: where.id, ...data });
+            return user || data;
+          },
+        },
+        auth_verification_tokens: {
+          create: async ({ data }: any) => data,
+          findUnique: async () => null,
+          updateMany: async () => ({ count: 1 }),
+        },
+        auth_sessions: {
+          create: async ({ data }: any) => {
+            createdSessions.push(data);
+            return data;
+          },
+          findUnique: async () => null,
+          findMany: async () => createdSessions,
+          update: async ({ data }: any) => data,
+          updateMany: async () => ({ count: 1 }),
+        },
+        commercial_users: {
+          create: async ({ data }: any) => data,
+          findUnique: async () => null,
+        },
+        cloud_profiles: {
+          findMany: async () => [],
+          findUnique: async () => null,
+          create: async ({ data }: any) => ({ ...data, storage_bytes: 0n }),
+        },
+        cloud_profile_versions: {
+          findFirst: async () => null,
+        },
+        cloud_sync_upload_sessions: {
+          create: async ({ data }: any) => {
+            createdUploadSessions.push(data);
+            return data;
+          },
+          findUnique: async () => null,
+          update: async ({ data }: any) => data,
+        },
+        auth_security_logs: {
+          create: async ({ data }: any) => data,
+        },
+        cloud_sync_audit_logs: {
+          create: async ({ data }: any) => data,
+        },
+        $queryRaw: async () => [{ '?column?': 1 }],
+      };
+
+      try {
+        setPrismaClientForTest(mockPrisma);
+        expect(isPostgresConfigured()).toBe(true);
+
+        const repo = getCentralRepository();
+        expect(repo).toBeInstanceOf(PostgresCentralRepository);
+
+        // Register central user via repo
+        const regRes = await registerCentralUser({
+          email: 'pg-wired-user@mahi.local',
+          password: 'password12345',
+          name: 'Prisma User',
+        });
+        expect(regRes.success).toBe(true);
+        expect(createdUsers.length).toBe(1);
+        expect(createdUsers[0].email).toBe('pg-wired-user@mahi.local');
+
+        // Look up central user async
+        const user = await getCentralUserByIdAsync(createdUsers[0].id);
+        expect(user).not.toBeNull();
+        expect(user?.email).toBe('pg-wired-user@mahi.local');
+
+        // Create upload session via repo
+        const uploadRes = await createUploadSession(createdUsers[0].id, {
+          localProfileId: 'local-prof-pg-001',
+          profileName: 'PG Cloud Profile',
+          baseVersion: 0,
+          expectedSize: 2048,
+          expectedChecksum: 'sha256-mock-checksum',
+          encryptedDataKey: 'mock-key',
+          iv: 'mock-iv',
+          authTag: 'mock-tag',
+          deviceId: 'device-pg-1',
+        });
+        expect(uploadRes.sessionId).toBeDefined();
+        expect(createdUploadSessions.length).toBe(1);
+        expect(createdUploadSessions[0].expected_size).toBe(2048n);
+      } finally {
+        setPrismaClientForTest(null);
+      }
     });
   });
 });

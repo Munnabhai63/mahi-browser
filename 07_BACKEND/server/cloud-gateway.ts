@@ -21,6 +21,33 @@ export interface FastifyGatewayOptions {
 
 let activeGatewayInstance: FastifyInstance | null = null;
 
+export function isTrustedOrigin(origin?: string): boolean {
+  if (!origin) return true;
+  if (
+    origin.startsWith('http://localhost') ||
+    origin.startsWith('https://localhost') ||
+    origin.startsWith('http://127.0.0.1') ||
+    origin.startsWith('https://127.0.0.1') ||
+    origin.startsWith('mahibrowser://') ||
+    origin.startsWith('mahi://') ||
+    origin === 'https://mahibrowser.com' ||
+    origin.endsWith('.mahibrowser.com')
+  ) {
+    return true;
+  }
+  const customOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  if (customOrigins.includes(origin)) {
+    return true;
+  }
+  if (process.env.NODE_ENV === 'development' && process.env.CORS_ALLOW_ALL === 'true') {
+    return true;
+  }
+  return false;
+}
+
 export function getFastifyCloudGateway(): FastifyInstance | null {
   return activeGatewayInstance;
 }
@@ -36,25 +63,16 @@ export async function createFastifyCloudGateway(
     bodyLimit: options.bodyLimit ?? (250 * 1024 * 1024), // 250 MB for R2 profile session blobs
   });
 
-  // 1. CORS Configuration (Section 2 - Desktop & Web multi-origin support)
+  // 1. CORS Configuration (Section 2 - Desktop & Web multi-origin support with strict origin verification)
   await app.register(cors, {
     origin: (origin, cb) => {
       // Allow requests with no origin (Electron desktop, curl, mobile apps, native callers)
       if (!origin) return cb(null, true);
-      // Allow localhost, 127.0.0.1, and mahibrowser:// custom protocol
-      if (
-        origin.startsWith('http://localhost') ||
-        origin.startsWith('http://127.0.0.1') ||
-        origin.startsWith('https://localhost') ||
-        origin.startsWith('https://127.0.0.1') ||
-        origin.startsWith('mahibrowser://') ||
-        origin.startsWith('mahi://') ||
-        origin.endsWith('.mahibrowser.com') ||
-        origin === 'https://mahibrowser.com'
-      ) {
+      if (isTrustedOrigin(origin)) {
         return cb(null, true);
       }
-      return cb(null, true); // Dev & cloud permissive fallback
+      // Reject untrusted origins
+      return cb(null, false);
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
     allowedHeaders: [
@@ -65,13 +83,18 @@ export async function createFastifyCloudGateway(
       'Range',
       'X-Device-Id',
       'X-Workspace-Id',
+      'X-API-Key',
+      'Idempotency-Key',
+      'X-Admin-Secret',
+      'X-Mahi-Signature',
+      'X-Request-Id',
     ],
     exposedHeaders: ['Content-Range', 'X-Total-Count', 'Content-Disposition'],
     credentials: true,
   });
 
   // 2. Security Headers (Section 2 & Production Hardening)
-  app.addHook('onSend', async (request, reply) => {
+  app.addHook('onSend', async (_request, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('X-Frame-Options', 'DENY');
     reply.header('X-XSS-Protection', '1; mode=block');
@@ -79,7 +102,21 @@ export async function createFastifyCloudGateway(
     reply.header('X-Gateway-Engine', 'Fastify-Node22');
   });
 
-  // 3. Binary & URL-Encoded Content-Type Parsers
+  // 3. Application/JSON Parser with Empty Body Toleration
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    if (!body || (typeof body === 'string' && body.trim() === '')) {
+      return done(null, {});
+    }
+    try {
+      const json = JSON.parse(body as string);
+      done(null, json);
+    } catch (err: any) {
+      err.statusCode = 400;
+      done(err, undefined);
+    }
+  });
+
+  // 4. Binary & URL-Encoded Content-Type Parsers
   app.addContentTypeParser(
     ['application/octet-stream', 'application/x-tar', 'application/gzip', 'application/x-gzip'],
     { parseAs: 'buffer' },
@@ -105,7 +142,7 @@ export async function createFastifyCloudGateway(
     }
   );
 
-  // 4. Health Check Helper
+  // 5. Health Check Helper
   const getHealthStatus = async () => {
     const [pgHealth, redisHealth] = await Promise.all([
       checkPostgresHealth(),
@@ -148,7 +185,7 @@ export async function createFastifyCloudGateway(
     };
   };
 
-  // 5. Dedicated Native Fastify Health Check Endpoints
+  // 6. Dedicated Native Fastify Health Check Endpoints
   app.get('/health', async (_request, _reply) => {
     return getHealthStatus();
   });
@@ -157,11 +194,30 @@ export async function createFastifyCloudGateway(
     return getHealthStatus();
   });
 
-  // 6. Universal Gateway Route Adapter (Delegates to Central and Commercial API Handlers)
+  // 7. Universal Gateway Route Adapter (Delegates to Central and Commercial API Handlers)
   app.setNotFoundHandler(async (request, reply) => {
     reply.hijack();
     const req = request.raw;
     const res = reply.raw;
+
+    // Explicitly set security headers on hijacked responses
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('X-Gateway-Engine', 'Fastify-Node22');
+
+    // Compute validated CORS headers for hijacked responses
+    const origin = (req.headers.origin as string) || '';
+    if (origin && isTrustedOrigin(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        'Authorization, Content-Type, X-API-Key, X-Admin-Secret, x-mahi-token, Idempotency-Key, X-Mahi-Signature, X-Request-Id, X-Device-Id, X-Workspace-Id, Range'
+      );
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD');
+    }
 
     // Attach parsed payloads for downstream consume
     (req as any).body = request.body;

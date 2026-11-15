@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { app } from 'electron';
+import { app } from './electron-bridge.js';
 import { FREE_PROFILE_LIMIT, PRO_PROFILE_LIMIT } from '../10_CONFIG/freemium-limits.js';
 import { verifyLicense } from './license-service.js';
 import { isOnlineRevoked, isGraceExpired } from './license-status-service.js';

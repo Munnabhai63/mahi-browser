@@ -13,12 +13,14 @@ let testPrismaInstance: any = null;
  */
 export function isPostgresConfigured(): boolean {
   if (testPrismaInstance) return true;
+  if (process.env.VITEST && !testPrismaInstance) {
+    // In Vitest offline suites without an injected mock Prisma, keep PostgreSQL disabled so tests run against SQLite offline
+    return false;
+  }
   const url = process.env.DATABASE_URL;
   return Boolean(
     url &&
-    (url.startsWith('postgres://') ||
-     url.startsWith('postgresql://') ||
-     process.env.STORAGE_BACKEND === 'postgres')
+    (url.startsWith('postgres://') || url.startsWith('postgresql://'))
   );
 }
 

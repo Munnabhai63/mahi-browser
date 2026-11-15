@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import { exec } from 'node:child_process';
-import { app, shell } from 'electron';
+import { app, shell } from '../08_SECURITY/electron-bridge.js';
 
 export interface DistributionInfo {
   localIps: string[];

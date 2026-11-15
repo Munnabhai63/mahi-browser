@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { app, BrowserWindow, Notification } from 'electron';
+import { app, BrowserWindow, Notification } from './electron-bridge.js';
 import { getHWID, verifyLicense } from './license-service.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 

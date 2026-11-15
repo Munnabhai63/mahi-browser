@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
-import * as electron from 'electron';
+import * as electron from '../../08_SECURITY/electron-bridge.js';
 
 /**
  * Safely resolves the Electron app object if running in an Electron main process.
@@ -134,7 +134,7 @@ export function getWritableSubdir(subdirName: string): string {
 export function getBundledResourcePath(...segments: string[]): string | undefined {
   const app = getElectronApp();
   const candidates: (string | null | undefined)[] = [
-    process.resourcesPath ? path.join(process.resourcesPath, ...segments) : null,
+    (process as any).resourcesPath ? path.join((process as any).resourcesPath, ...segments) : null,
     (() => {
       if (app && typeof app.getAppPath === 'function') {
         try {
@@ -168,7 +168,7 @@ export function getBundledResourcePath(...segments: string[]): string | undefine
 export function getLandingBaseDir(): string {
   const app = getElectronApp();
   const candidates: (string | null | undefined)[] = [
-    process.resourcesPath ? path.join(process.resourcesPath, 'landing') : null,
+    (process as any).resourcesPath ? path.join((process as any).resourcesPath, 'landing') : null,
     (() => {
       if (app && typeof app.getAppPath === 'function') {
         try {

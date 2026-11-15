@@ -25,6 +25,7 @@ export interface ObjectStorageProvider {
   putObject(objectKey: string, data: Buffer, contentType?: string): Promise<{ success: boolean; size: number }>;
   getObject(objectKey: string): Promise<Buffer | null>;
   verifyStorageConnectivity(): Promise<{ connected: boolean; provider: string; message: string }>;
+  isProductionReady(): boolean;
 }
 
 // Secret key used to sign URLs in LocalStorageProvider
@@ -42,6 +43,10 @@ export class LocalStorageProvider implements ObjectStorageProvider {
     if (!fs.existsSync(this.storageDir)) {
       fs.mkdirSync(this.storageDir, { recursive: true });
     }
+  }
+
+  isProductionReady(): boolean {
+    return false;
   }
 
   private resolveFilePath(objectKey: string): string {
@@ -205,6 +210,10 @@ export class S3R2StorageProvider implements ObjectStorageProvider {
       forcePathStyle: true,
       credentials,
     });
+  }
+
+  public isProductionReady(): boolean {
+    return Boolean(this.accessKeyId && this.secretAccessKey && this.bucket && this.endpoint);
   }
 
   public getSecurityPolicy(): BucketSecurityPolicy {

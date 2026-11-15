@@ -21,8 +21,10 @@ import {
   saveIdempotentResponse,
 } from '../services/remote-api-service.js';
 import { WebhookService } from '../services/webhook-service.js';
-import { verifyAccessToken, getCentralUserById } from '../../05_AUTH/central-auth-service.js';
+import { verifyAccessToken, getCentralUserById, getCentralUserByIdAsync } from '../../05_AUTH/central-auth-service.js';
+import { isPostgresConfigured, getCentralRepository } from '../../06_DATABASE/central-repository.js';
 import { getUserDevices } from './commercial-device-service.js';
+import { isTrustedOrigin } from '../server/cloud-gateway.js';
 import {
   getProfiles,
   createProfile,
@@ -79,6 +81,16 @@ import { TeamPermission, TeamRole } from '../../10_CONFIG/shared/types/workspace
 // ============================================================================
 
 export function parseRawBody(req: http.IncomingMessage): Promise<string> {
+  if ((req as any).rawBuffer !== undefined && Buffer.isBuffer((req as any).rawBuffer)) {
+    return Promise.resolve((req as any).rawBuffer.toString('utf8'));
+  }
+  if ((req as any).body !== undefined) {
+    if (typeof (req as any).body === 'string') return Promise.resolve((req as any).body);
+    return Promise.resolve(JSON.stringify((req as any).body));
+  }
+  if (req.readableEnded) {
+    return Promise.resolve('');
+  }
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', (chunk) => {
@@ -90,6 +102,20 @@ export function parseRawBody(req: http.IncomingMessage): Promise<string> {
 }
 
 export function parseBody(req: http.IncomingMessage): Promise<any> {
+  if ((req as any).body !== undefined && typeof (req as any).body === 'object') {
+    return Promise.resolve((req as any).body);
+  }
+  if ((req as any).rawBuffer !== undefined && Buffer.isBuffer((req as any).rawBuffer)) {
+    try {
+      const str = (req as any).rawBuffer.toString('utf8');
+      return Promise.resolve(str ? JSON.parse(str) : {});
+    } catch {
+      return Promise.reject(new Error('Invalid JSON payload'));
+    }
+  }
+  if (req.readableEnded) {
+    return Promise.resolve({});
+  }
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', (chunk) => {
@@ -121,18 +147,27 @@ export function sendRemoteJSON(
   rateLimitInfo?: { limit: number; remaining: number; resetSeconds: number }
 ): void {
   const origin = (req.headers.origin as string) || '';
-  const allowedOrigins = ['https://app.mahibrowser.com', 'https://admin.mahibrowser.com', 'http://localhost:8989'];
-  const allowOrigin = allowedOrigins.includes(origin) ? origin : 'https://app.mahibrowser.com';
+  const existingOrigin = typeof res?.getHeader === 'function' ? res.getHeader('Access-Control-Allow-Origin') : undefined;
+  let allowOrigin: string | undefined;
+  if (existingOrigin) {
+    allowOrigin = String(existingOrigin);
+  } else if (origin && isTrustedOrigin(origin)) {
+    allowOrigin = origin;
+  }
 
   const headers: Record<string, string | number> = {
     'Content-Type': 'application/json',
     'X-Request-Id': requestId,
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
-    'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-API-Key, Idempotency-Key, X-Request-Id',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-API-Key, Idempotency-Key, X-Request-Id, X-Admin-Secret, x-mahi-token',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, HEAD',
   };
+
+  if (allowOrigin) {
+    headers['Access-Control-Allow-Origin'] = allowOrigin;
+    headers['Access-Control-Allow-Credentials'] = 'true';
+  }
 
   if (rateLimitInfo) {
     headers['X-RateLimit-Limit'] = rateLimitInfo.limit;
@@ -166,6 +201,89 @@ export function sendRemoteJSON(
 // ============================================================================
 // AUTHENTICATION RESOLUTION
 // ============================================================================
+
+export async function resolveRemoteAuthAsync(req: http.IncomingMessage): Promise<RemoteAuthContext | null> {
+  const remoteService = RemoteApiService.getInstance();
+
+  // 1. Check X-API-Key header or Bearer mahi_live_...
+  const apiKeyHeader = (req.headers['x-api-key'] as string) || '';
+  const authHeader = (req.headers['authorization'] as string) || '';
+
+  let candidateApiKey = '';
+  if (apiKeyHeader) {
+    candidateApiKey = apiKeyHeader.trim();
+  } else if (authHeader.startsWith('Bearer mahi_')) {
+    candidateApiKey = authHeader.substring(7).trim();
+  }
+
+  if (candidateApiKey) {
+    if (isPostgresConfigured()) {
+      const repo = getCentralRepository();
+      const keyHash = crypto.createHash('sha256').update(candidateApiKey).digest('hex');
+      const keyRecord = await repo.findRemoteApiKeyByHash(keyHash);
+      if (!keyRecord || keyRecord.status !== 'ACTIVE') return null;
+      if (keyRecord.expires_at && new Date(keyRecord.expires_at).getTime() < Date.now()) return null;
+
+      const user = await repo.findAuthUserById(keyRecord.user_id);
+      if (!user || user.status !== 'ACTIVE') return null;
+
+      let scopes: RemoteApiScope[] = [];
+      try {
+        scopes = typeof keyRecord.scopes_json === 'string' ? JSON.parse(keyRecord.scopes_json) : (keyRecord.scopes_json || []);
+      } catch {
+        scopes = ['profiles:read'];
+      }
+
+      await repo.updateRemoteApiKeyLastUsed(keyRecord.id);
+
+      return {
+        authType: 'API_KEY',
+        userId: user.id,
+        email: user.email,
+        userRole: user.role as any,
+        apiKeyId: keyRecord.id,
+        apiKeyPrefix: keyRecord.key_prefix,
+        apiKeyScopes: scopes,
+        workspaceId: keyRecord.workspace_id || undefined,
+      };
+    }
+
+    const keyAuth = remoteService.authenticateApiKey(candidateApiKey);
+    if (!keyAuth) return null;
+
+    return {
+      authType: 'API_KEY',
+      userId: keyAuth.user.id,
+      email: keyAuth.user.email,
+      userRole: keyAuth.user.role as any,
+      apiKeyId: keyAuth.keyRecord.id,
+      apiKeyPrefix: keyAuth.keyRecord.keyPrefix,
+      apiKeyScopes: keyAuth.keyRecord.scopes,
+      workspaceId: keyAuth.keyRecord.workspaceId || undefined,
+      workspaceRole: keyAuth.workspaceRole,
+    };
+  }
+
+  // 2. Check Central Auth Bearer JWT
+  if (authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7).trim();
+    const payload = verifyAccessToken(token);
+    if (!payload) return null;
+
+    const user = await getCentralUserByIdAsync(payload.userId);
+    if (!user || user.status !== 'ACTIVE') return null;
+
+    return {
+      authType: 'JWT',
+      userId: user.id,
+      email: user.email,
+      userRole: user.role as any,
+      sessionId: payload.sessionId,
+    };
+  }
+
+  return null;
+}
 
 export function resolveRemoteAuth(req: http.IncomingMessage): RemoteAuthContext | null {
   const remoteService = RemoteApiService.getInstance();
@@ -347,7 +465,7 @@ export async function handleRemoteApiRoutes(
   }
 
   // Extract Authentication
-  const auth = resolveRemoteAuth(req);
+  const auth = await resolveRemoteAuthAsync(req);
   if (!auth) {
     sendRemoteJSON(
       req,
@@ -469,6 +587,27 @@ export async function handleRemoteApiRoutes(
     // ========================================================================
     if (route === 'api-keys' && method === 'GET') {
       const workspaceId = parsedUrl.searchParams.get('workspaceId') || undefined;
+      if (isPostgresConfigured()) {
+        const repo = getCentralRepository();
+        const rawKeys = await repo.listRemoteApiKeys(auth.userId);
+        const filtered = workspaceId ? rawKeys.filter((k: any) => k.workspace_id === workspaceId) : rawKeys;
+        const keys = filtered.map((k: any) => ({
+          id: k.id,
+          userId: k.user_id,
+          workspaceId: k.workspace_id || null,
+          name: k.name,
+          keyPrefix: k.key_prefix,
+          scopes: typeof k.scopes_json === 'string' ? JSON.parse(k.scopes_json) : (k.scopes_json || []),
+          status: k.status,
+          rateLimitPerMin: k.rate_limit_per_min,
+          requestsCountMonth: k.requests_count_month,
+          lastUsedAt: k.last_used_at || null,
+          createdAt: k.created_at,
+          expiresAt: k.expires_at || null,
+        }));
+        sendRemoteJSON(req, res, 200, { success: true, data: keys }, requestId, rateLimit);
+        return true;
+      }
       const keys = remoteService.listApiKeys(auth.userId, workspaceId);
       sendRemoteJSON(req, res, 200, { success: true, data: keys }, requestId, rateLimit);
       return true;
@@ -476,6 +615,65 @@ export async function handleRemoteApiRoutes(
 
     if (route === 'api-keys' && method === 'POST') {
       const body = await parseBody(req);
+      if (isPostgresConfigured()) {
+        const repo = getCentralRepository();
+        const dto = body as CreateRemoteApiKeyDTO;
+        const trimmedName = (dto.name || '').trim();
+        if (!trimmedName) throw new Error('API key name is required');
+        const entropy = crypto.randomBytes(24).toString('hex');
+        const rawSecretKey = `mahi_live_${entropy}`;
+        const keyPrefix = rawSecretKey.substring(0, 14);
+        const keyHash = crypto.createHash('sha256').update(rawSecretKey).digest('hex');
+        const id = `key_${crypto.randomUUID()}`;
+        const now = new Date();
+        let expiresAt: string | null = null;
+        if (dto.expiresInDays && dto.expiresInDays > 0) {
+          expiresAt = new Date(now.getTime() + dto.expiresInDays * 86400000).toISOString();
+        }
+        const scopes = dto.scopes && dto.scopes.length > 0 ? dto.scopes : ['profiles:read'];
+        const rateLimitVal = dto.rateLimitPerMin && dto.rateLimitPerMin > 0 ? dto.rateLimitPerMin : 120;
+
+        await repo.createRemoteApiKey({
+          id,
+          user_id: auth.userId,
+          workspace_id: dto.workspaceId || null,
+          name: trimmedName,
+          key_prefix: keyPrefix,
+          key_hash: keyHash,
+          scopes_json: JSON.stringify(scopes),
+          status: 'ACTIVE',
+          rate_limit_per_min: rateLimitVal,
+          requests_count_month: 0,
+          created_at: now.toISOString(),
+          expires_at: expiresAt,
+        });
+
+        const responsePayload = {
+          success: true,
+          data: {
+            apiKey: {
+              id,
+              userId: auth.userId,
+              workspaceId: dto.workspaceId || null,
+              name: trimmedName,
+              keyPrefix,
+              scopes,
+              status: 'ACTIVE',
+              rateLimitPerMin: rateLimitVal,
+              requestsCountMonth: 0,
+              createdAt: now.toISOString(),
+              expiresAt,
+            },
+            secretKey: rawSecretKey,
+            note: 'Save this secret key securely now. It will never be shown again.',
+          },
+        };
+        if (idempotencyKey) {
+          saveIdempotentResponse(idempotencyKey, auth.userId, route, 201, responsePayload);
+        }
+        sendRemoteJSON(req, res, 201, responsePayload, requestId, rateLimit);
+        return true;
+      }
       const created = remoteService.createApiKey(auth.userId, body as CreateRemoteApiKeyDTO);
       const responsePayload = {
         success: true,
@@ -495,6 +693,16 @@ export async function handleRemoteApiRoutes(
     const keyRevokeMatch = route.match(/^api-keys\/([a-zA-Z0-9_-]+)$/);
     if (keyRevokeMatch && method === 'DELETE') {
       const keyId = keyRevokeMatch[1];
+      if (isPostgresConfigured()) {
+        const repo = getCentralRepository();
+        const success = await repo.revokeRemoteApiKey(keyId);
+        if (!success) {
+          sendRemoteJSON(req, res, 404, { success: false, error: { code: 'NOT_FOUND', message: 'API key not found' } }, requestId, rateLimit);
+          return true;
+        }
+        sendRemoteJSON(req, res, 200, { success: true, data: { revoked: true, keyId } }, requestId, rateLimit);
+        return true;
+      }
       const success = remoteService.revokeApiKey(keyId, auth.userId);
       if (!success) {
         sendRemoteJSON(req, res, 404, { success: false, error: { code: 'NOT_FOUND', message: 'API key not found' } }, requestId, rateLimit);

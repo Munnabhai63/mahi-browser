@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow, app, shell } from 'electron';
+import { ipcMain, dialog, BrowserWindow, app, shell } from '../../08_SECURITY/electron-bridge.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';

@@ -5,6 +5,7 @@
  */
 
 import { getPrismaClient, isPostgresConfigured } from './prisma-client.js';
+export { isPostgresConfigured } from './prisma-client.js';
 import { getDatabase } from './connection.js';
 
 export interface CentralRepository {
@@ -15,6 +16,43 @@ export interface CentralRepository {
   findAuthUserById(id: string): Promise<any | null>;
   createAuthUser(data: any): Promise<any>;
   updateAuthUser(id: string, data: any): Promise<any>;
+
+  // Auth Sessions
+  createAuthSession(data: any): Promise<any>;
+  findAuthSessionByTokenHash(tokenHash: string): Promise<any | null>;
+  updateAuthSession(id: string, data: any): Promise<any>;
+  revokeAuthSession(id: string): Promise<boolean>;
+  revokeAllUserSessions(userId: string): Promise<number>;
+  listUserAuthSessions(userId: string): Promise<any[]>;
+
+  // Verification Tokens
+  createVerificationToken(data: any): Promise<any>;
+  findVerificationTokenByHash(tokenHash: string): Promise<any | null>;
+  consumeVerificationToken(tokenHash: string): Promise<any | null>;
+  invalidatePendingVerificationTokens(userId: string, type?: string): Promise<number>;
+
+  // Convenience Aliases for Auth Flow
+  findUserByEmail?(email: string): Promise<any | null>;
+  findUserById?(id: string): Promise<any | null>;
+  createUser?(data: any): Promise<any>;
+  updateUser?(id: string, data: any): Promise<any>;
+  updateUserLastLogin?(id: string, timestamp?: string): Promise<any>;
+  updateUserPassword?(id: string, passwordHash: string, salt: string): Promise<any>;
+  markUserEmailVerified?(id: string): Promise<any>;
+  createSession?(data: any): Promise<any>;
+  findSessionByTokenHash?(tokenHash: string): Promise<any | null>;
+  rotateSessionToken?(sessionId: string, newHash: string, expiresAt: string, ip?: string): Promise<any>;
+  findVerificationToken?(tokenHash: string): Promise<any | null>;
+  markVerificationTokenUsed?(tokenHashOrId: string): Promise<any | null>;
+
+  // Security Logs
+  logAuthSecurity(userId: string | null, action: string, details?: string, ip?: string, result?: string): Promise<any>;
+
+  // Commercial Users
+  findCommercialUserById(id: string): Promise<any | null>;
+  findCommercialUserByEmail(email: string): Promise<any | null>;
+  createCommercialUser(data: any): Promise<any>;
+  updateCommercialUser(id: string, data: any): Promise<any>;
 
   // Cloud Profiles
   findCloudProfileById(id: string): Promise<any | null>;
@@ -28,15 +66,37 @@ export interface CentralRepository {
   getLatestCloudProfileVersion(cloudProfileId: string): Promise<any | null>;
   getCloudProfileVersion(cloudProfileId: string, version: number): Promise<any | null>;
 
+  // Upload Sessions
+  createUploadSessionRecord(data: any): Promise<any>;
+  findUploadSessionById(id: string): Promise<any | null>;
+  updateUploadSessionRecord(id: string, data: any): Promise<any>;
+
+  // Cloud Sync Audits
+  logCloudSyncAudit(userId: string, action: string, details?: string, cloudProfileId?: string, deviceId?: string): Promise<any>;
+
   // Team Workspaces
   findWorkspaceById(id: string): Promise<any | null>;
   createWorkspace(data: any): Promise<any>;
+  updateWorkspace(id: string, data: any): Promise<any>;
+  deleteWorkspace(id: string): Promise<boolean>;
   listUserWorkspaces(userId: string): Promise<any[]>;
+
+  // Team Workspace Members
+  addWorkspaceMember(data: any): Promise<any>;
+  findWorkspaceMember(workspaceId: string, userId: string): Promise<any | null>;
+  listWorkspaceMembers(workspaceId: string): Promise<any[]>;
+  updateWorkspaceMemberRole(workspaceId: string, userId: string, role: string): Promise<any>;
+  removeWorkspaceMember(workspaceId: string, userId: string): Promise<boolean>;
 
   // Remote API Keys
   findRemoteApiKeyByHash(keyHash: string): Promise<any | null>;
   createRemoteApiKey(data: any): Promise<any>;
   listRemoteApiKeys(userId: string): Promise<any[]>;
+  revokeRemoteApiKey(id: string): Promise<boolean>;
+  updateRemoteApiKeyLastUsed(id: string): Promise<any>;
+
+  // Remote API Key Audits
+  logRemoteApiKeyAudit(apiKeyId: string, userId: string, endpoint: string, method: string, statusCode: number, ipAddress?: string): Promise<any>;
 
   // Cloud Profile Locks (DB persistence fallback)
   findLock(cloudProfileId: string): Promise<any | null>;
@@ -51,12 +111,12 @@ export interface CentralRepository {
 export class PostgresCentralRepository implements CentralRepository {
   public backendName: 'postgres' = 'postgres';
 
-  private get client() {
+  private get client(): any {
     const prisma = getPrismaClient();
     if (!prisma) {
       throw new Error('PostgresCentralRepository requires DATABASE_URL to be configured');
     }
-    return prisma;
+    return prisma as any;
   }
 
   // --- Auth Users ---
@@ -90,7 +150,7 @@ export class PostgresCentralRepository implements CentralRepository {
         email_verified: data.email_verified ? 1 : 0,
         email_verified_at: data.email_verified_at || null,
         plan_id: data.plan_id || 'plan_free',
-        profile_quota: data.profile_quota || 10,
+        profile_quota: data.profile_quota ?? 10,
         trial_started_at: data.trial_started_at || null,
         trial_expires_at: data.trial_expires_at || null,
         trial_used: data.trial_used ? 1 : 0,
@@ -110,40 +170,254 @@ export class PostgresCentralRepository implements CentralRepository {
       where: { id },
       data: {
         ...data,
+        updated_at: new Date().toISOString(),
+      },
+    });
+  }
+
+  // --- Auth Sessions ---
+  async createAuthSession(data: any): Promise<any> {
+    return this.client.auth_sessions.create({
+      data: {
+        id: data.id,
+        user_id: data.user_id || data.userId,
+        refresh_token_hash: data.refresh_token_hash || data.refreshTokenHash,
+        device_id: data.device_id || data.deviceId,
+        device_name: data.device_name || data.deviceName || 'Unknown Device',
+        platform: data.platform || 'windows',
+        ip_address: data.ip_address || data.ipAddress || null,
+        is_revoked: data.is_revoked ? 1 : 0,
+        created_at: data.created_at || new Date().toISOString(),
+        last_used_at: data.last_used_at || new Date().toISOString(),
+        expires_at: data.expires_at || data.expiresAt,
+      },
+    });
+  }
+
+  async findAuthSessionByTokenHash(tokenHash: string): Promise<any | null> {
+    return this.client.auth_sessions.findUnique({
+      where: { refresh_token_hash: tokenHash },
+    });
+  }
+
+  async updateAuthSession(id: string, data: any): Promise<any> {
+    return this.client.auth_sessions.update({
+      where: { id },
+      data,
+    });
+  }
+
+  async revokeAuthSession(id: string): Promise<boolean> {
+    try {
+      await this.client.auth_sessions.update({
+        where: { id },
+        data: { is_revoked: 1 },
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async revokeAllUserSessions(userId: string): Promise<number> {
+    const res = await this.client.auth_sessions.updateMany({
+      where: { user_id: userId, is_revoked: 0 },
+      data: { is_revoked: 1 },
+    });
+    return res.count ?? 0;
+  }
+
+  async listUserAuthSessions(userId: string): Promise<any[]> {
+    return this.client.auth_sessions.findMany({
+      where: { user_id: userId },
+      orderBy: { created_at: 'desc' },
+    });
+  }
+
+  // --- Verification Tokens ---
+  async createVerificationToken(data: any): Promise<any> {
+    return this.client.auth_verification_tokens.create({
+      data: {
+        id: data.id,
+        token_hash: data.token_hash || data.tokenHash,
+        user_id: data.user_id || data.userId,
+        email: data.email,
+        type: data.type || 'EMAIL_VERIFY',
+        expires_at: data.expires_at || data.expiresAt,
+        created_at: data.created_at || new Date().toISOString(),
+        used_at: data.used_at || null,
+      },
+    });
+  }
+
+  async findVerificationTokenByHash(tokenHash: string): Promise<any | null> {
+    return this.client.auth_verification_tokens.findUnique({
+      where: { token_hash: tokenHash },
+    });
+  }
+
+  async consumeVerificationToken(tokenHash: string): Promise<any | null> {
+    const token = await this.client.auth_verification_tokens.findUnique({
+      where: { token_hash: tokenHash },
+    });
+    if (!token || token.used_at) return null;
+    return this.client.auth_verification_tokens.update({
+      where: { token_hash: tokenHash },
+      data: { used_at: new Date().toISOString() },
+    });
+  }
+
+  async invalidatePendingVerificationTokens(userId: string, type = 'EMAIL_VERIFICATION'): Promise<number> {
+    const now = new Date().toISOString();
+    const res = await this.client.auth_verification_tokens.updateMany({
+      where: { user_id: userId, type, used_at: null },
+      data: { used_at: now },
+    });
+    return res.count ?? 0;
+  }
+
+  // Convenience Aliases for Auth Flow
+  async findUserByEmail(email: string): Promise<any | null> {
+    return this.findAuthUserByEmail(email);
+  }
+
+  async findUserById(id: string): Promise<any | null> {
+    return this.findAuthUserById(id);
+  }
+
+  async createUser(data: any): Promise<any> {
+    return this.createAuthUser(data);
+  }
+
+  async updateUser(id: string, data: any): Promise<any> {
+    return this.updateAuthUser(id, data);
+  }
+
+  async updateUserLastLogin(id: string, timestamp?: string): Promise<any> {
+    return this.updateAuthUser(id, { last_login_at: timestamp || new Date().toISOString() });
+  }
+
+  async updateUserPassword(id: string, passwordHash: string, salt: string): Promise<any> {
+    return this.updateAuthUser(id, { password_hash: passwordHash, salt });
+  }
+
+  async markUserEmailVerified(id: string): Promise<any> {
+    const now = new Date().toISOString();
+    return this.updateAuthUser(id, { email_verified: 1, email_verified_at: now, status: 'ACTIVE' });
+  }
+
+  async createSession(data: any): Promise<any> {
+    return this.createAuthSession(data);
+  }
+
+  async findSessionByTokenHash(tokenHash: string): Promise<any | null> {
+    return this.findAuthSessionByTokenHash(tokenHash);
+  }
+
+  async rotateSessionToken(sessionId: string, newHash: string, expiresAt: string, ip?: string): Promise<any> {
+    return this.updateAuthSession(sessionId, {
+      refresh_token_hash: newHash,
+      expires_at: expiresAt,
+      last_used_at: new Date().toISOString(),
+      ip_address: ip || '127.0.0.1',
+    });
+  }
+
+  async findVerificationToken(tokenHash: string): Promise<any | null> {
+    return this.findVerificationTokenByHash(tokenHash);
+  }
+
+  async markVerificationTokenUsed(tokenHashOrId: string): Promise<any | null> {
+    return this.consumeVerificationToken(tokenHashOrId);
+  }
+
+  // --- Security Logs ---
+  async logAuthSecurity(userId: string | null, action: string, details?: string, ip?: string, result = 'SUCCESS'): Promise<any> {
+    return this.client.auth_security_logs.create({
+      data: {
+        id: crypto.randomUUID(),
+        user_id: userId,
+        action,
+        ip_address: ip || null,
+        details: details || null,
+        result,
+        created_at: new Date().toISOString(),
+      },
+    });
+  }
+
+  // --- Commercial Users ---
+  async findCommercialUserById(id: string): Promise<any | null> {
+    return this.client.commercial_users.findUnique({
+      where: { id },
+    });
+  }
+
+  async findCommercialUserByEmail(email: string): Promise<any | null> {
+    return this.client.commercial_users.findUnique({
+      where: { email },
+    });
+  }
+
+  async createCommercialUser(data: any): Promise<any> {
+    return this.client.commercial_users.create({
+      data: {
+        id: data.id,
+        email: data.email,
+        password_hash: data.password_hash || data.passwordHash,
+        salt: data.salt,
+        role: data.role || 'USER',
+        status: data.status || 'ACTIVE',
+        tier: data.tier || 'FREE',
+        quota_profiles: data.quota_profiles ?? 10,
+        quota_extra: data.quota_extra ?? 0,
+        plan_expires_at: data.plan_expires_at || null,
+        features_json: data.features_json || '{}',
+        created_at: data.created_at || new Date().toISOString(),
         updated_at: data.updated_at || new Date().toISOString(),
+      },
+    });
+  }
+
+  async updateCommercialUser(id: string, data: any): Promise<any> {
+    return this.client.commercial_users.update({
+      where: { id },
+      data: {
+        ...data,
+        updated_at: new Date().toISOString(),
       },
     });
   }
 
   // --- Cloud Profiles ---
   async findCloudProfileById(id: string): Promise<any | null> {
-    const profile = await this.client.cloud_profiles.findUnique({
+    const p = await this.client.cloud_profiles.findUnique({
       where: { id },
     });
-    if (!profile) return null;
+    if (!p) return null;
     return {
-      ...profile,
-      storage_bytes: Number(profile.storage_bytes),
+      ...p,
+      storage_bytes: Number(p.storage_bytes),
     };
   }
 
   async createCloudProfile(data: any): Promise<any> {
-    const profile = await this.client.cloud_profiles.create({
+    const created = await this.client.cloud_profiles.create({
       data: {
         id: data.id,
         owner_id: data.owner_id || data.ownerId,
         local_profile_id: data.local_profile_id || data.localProfileId,
         name: data.name,
-        current_version: data.current_version || data.currentVersion || 1,
+        current_version: data.current_version ?? data.currentVersion ?? 1,
         status: data.status || 'ACTIVE',
-        storage_bytes: BigInt(data.storage_bytes || data.storageBytes || 0),
+        storage_bytes: BigInt(data.storage_bytes ?? data.storageBytes ?? 0),
         created_at: data.created_at || new Date().toISOString(),
         updated_at: data.updated_at || new Date().toISOString(),
       },
     });
     return {
-      ...profile,
-      storage_bytes: Number(profile.storage_bytes),
+      ...created,
+      storage_bytes: Number(created.storage_bytes),
     };
   }
 
@@ -152,16 +426,15 @@ export class PostgresCentralRepository implements CentralRepository {
     if (updateData.storage_bytes !== undefined) {
       updateData.storage_bytes = BigInt(updateData.storage_bytes);
     }
-    const profile = await this.client.cloud_profiles.update({
+    updateData.updated_at = new Date().toISOString();
+
+    const updated = await this.client.cloud_profiles.update({
       where: { id },
-      data: {
-        ...updateData,
-        updated_at: updateData.updated_at || new Date().toISOString(),
-      },
+      data: updateData,
     });
     return {
-      ...profile,
-      storage_bytes: Number(profile.storage_bytes),
+      ...updated,
+      storage_bytes: Number(updated.storage_bytes),
     };
   }
 
@@ -181,7 +454,7 @@ export class PostgresCentralRepository implements CentralRepository {
       where: { owner_id: ownerId },
       orderBy: { updated_at: 'desc' },
     });
-    return profiles.map((p) => ({
+    return profiles.map((p: any) => ({
       ...p,
       storage_bytes: Number(p.storage_bytes),
     }));
@@ -195,7 +468,7 @@ export class PostgresCentralRepository implements CentralRepository {
         cloud_profile_id: data.cloud_profile_id || data.cloudProfileId,
         version: data.version,
         object_key: data.object_key || data.objectKey,
-        file_size: BigInt(data.file_size || data.fileSize),
+        file_size: BigInt(data.file_size ?? data.fileSize ?? 0),
         checksum_sha256: data.checksum_sha256 || data.checksumSha256,
         encrypted_data_key: data.encrypted_data_key || data.encryptedDataKey,
         iv: data.iv,
@@ -237,6 +510,63 @@ export class PostgresCentralRepository implements CentralRepository {
     };
   }
 
+  // --- Upload Sessions ---
+  async createUploadSessionRecord(data: any): Promise<any> {
+    return this.client.cloud_sync_upload_sessions.create({
+      data: {
+        id: data.id,
+        user_id: data.user_id || data.userId,
+        cloud_profile_id: data.cloud_profile_id || data.cloudProfileId,
+        base_version: data.base_version ?? data.baseVersion ?? 0,
+        target_version: data.target_version ?? data.targetVersion ?? 1,
+        object_key: data.object_key || data.objectKey,
+        expected_size: BigInt(data.expected_size ?? data.expectedSize ?? 0),
+        expected_checksum: data.expected_checksum || data.expectedChecksum,
+        encrypted_data_key: data.encrypted_data_key || data.encryptedDataKey,
+        iv: data.iv,
+        auth_tag: data.auth_tag || data.authTag,
+        source_device_id: data.source_device_id || data.sourceDeviceId,
+        source_device_name: data.source_device_name || data.sourceDeviceName || null,
+        status: data.status || 'PENDING',
+        expires_at: data.expires_at || data.expiresAt,
+        created_at: data.created_at || new Date().toISOString(),
+      },
+    });
+  }
+
+  async findUploadSessionById(id: string): Promise<any | null> {
+    const s = await this.client.cloud_sync_upload_sessions.findUnique({
+      where: { id },
+    });
+    if (!s) return null;
+    return {
+      ...s,
+      expected_size: Number(s.expected_size),
+    };
+  }
+
+  async updateUploadSessionRecord(id: string, data: any): Promise<any> {
+    return this.client.cloud_sync_upload_sessions.update({
+      where: { id },
+      data,
+    });
+  }
+
+  // --- Cloud Sync Audits ---
+  async logCloudSyncAudit(userId: string, action: string, details?: string, cloudProfileId?: string, deviceId?: string): Promise<any> {
+    return this.client.cloud_sync_audit_logs.create({
+      data: {
+        id: crypto.randomUUID(),
+        user_id: userId,
+        cloud_profile_id: cloudProfileId || null,
+        action,
+        device_id: deviceId || null,
+        details: details || null,
+        created_at: new Date().toISOString(),
+      },
+    });
+  }
+
   // --- Team Workspaces ---
   async findWorkspaceById(id: string): Promise<any | null> {
     return this.client.team_workspaces.findUnique({
@@ -258,6 +588,27 @@ export class PostgresCentralRepository implements CentralRepository {
     });
   }
 
+  async updateWorkspace(id: string, data: any): Promise<any> {
+    return this.client.team_workspaces.update({
+      where: { id },
+      data: {
+        ...data,
+        updated_at: new Date().toISOString(),
+      },
+    });
+  }
+
+  async deleteWorkspace(id: string): Promise<boolean> {
+    try {
+      await this.client.team_workspaces.delete({
+        where: { id },
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async listUserWorkspaces(userId: string): Promise<any[]> {
     return this.client.team_workspaces.findMany({
       where: {
@@ -268,6 +619,54 @@ export class PostgresCentralRepository implements CentralRepository {
       },
       orderBy: { created_at: 'desc' },
     });
+  }
+
+  // --- Team Workspace Members ---
+  async addWorkspaceMember(data: any): Promise<any> {
+    return this.client.team_workspace_members.create({
+      data: {
+        id: data.id,
+        workspace_id: data.workspace_id || data.workspaceId,
+        user_id: data.user_id || data.userId,
+        role: data.role || 'MEMBER',
+        status: data.status || 'ACTIVE',
+        invited_by_user_id: data.invited_by_user_id || data.invitedByUserId || null,
+        joined_at: data.joined_at || new Date().toISOString(),
+        created_at: data.created_at || new Date().toISOString(),
+        updated_at: data.updated_at || new Date().toISOString(),
+      },
+    });
+  }
+
+  async findWorkspaceMember(workspaceId: string, userId: string): Promise<any | null> {
+    return this.client.team_workspace_members.findFirst({
+      where: { workspace_id: workspaceId, user_id: userId },
+    });
+  }
+
+  async listWorkspaceMembers(workspaceId: string): Promise<any[]> {
+    return this.client.team_workspace_members.findMany({
+      where: { workspace_id: workspaceId },
+      orderBy: { created_at: 'asc' },
+    });
+  }
+
+  async updateWorkspaceMemberRole(workspaceId: string, userId: string, role: string): Promise<any> {
+    return this.client.team_workspace_members.updateMany({
+      where: { workspace_id: workspaceId, user_id: userId },
+      data: { role, updated_at: new Date().toISOString() },
+    });
+  }
+
+  async removeWorkspaceMember(workspaceId: string, userId: string): Promise<boolean> {
+    try {
+      await this.client.team_workspace_members.deleteMany({
+        where: { workspace_id: workspaceId, user_id: userId },
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   // --- Remote API Keys ---
@@ -302,6 +701,41 @@ export class PostgresCentralRepository implements CentralRepository {
     return this.client.remote_api_keys.findMany({
       where: { user_id: userId },
       orderBy: { created_at: 'desc' },
+    });
+  }
+
+  async revokeRemoteApiKey(id: string): Promise<boolean> {
+    try {
+      await this.client.remote_api_keys.update({
+        where: { id },
+        data: { status: 'REVOKED', revoked_at: new Date().toISOString() },
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async updateRemoteApiKeyLastUsed(id: string): Promise<any> {
+    return this.client.remote_api_keys.update({
+      where: { id },
+      data: { last_used_at: new Date().toISOString() },
+    });
+  }
+
+  // --- Remote API Key Audits ---
+  async logRemoteApiKeyAudit(apiKeyId: string, userId: string, endpoint: string, method: string, statusCode: number, ipAddress?: string): Promise<any> {
+    return this.client.remote_api_key_audits.create({
+      data: {
+        id: crypto.randomUUID(),
+        api_key_id: apiKeyId,
+        user_id: userId,
+        endpoint,
+        method,
+        status_code: statusCode,
+        ip_address: ipAddress || null,
+        created_at: new Date().toISOString(),
+      },
     });
   }
 
@@ -352,7 +786,7 @@ export class PostgresCentralRepository implements CentralRepository {
 export class SqliteCentralRepository implements CentralRepository {
   public backendName: 'sqlite' = 'sqlite';
 
-  private get db() {
+  private get db(): any {
     return getDatabase();
   }
 
@@ -390,7 +824,7 @@ export class SqliteCentralRepository implements CentralRepository {
       data.email_verified ? 1 : 0,
       data.email_verified_at || null,
       data.plan_id || 'plan_free',
-      data.profile_quota || 10,
+      data.profile_quota ?? 10,
       data.trial_started_at || null,
       data.trial_expires_at || null,
       data.trial_used ? 1 : 0,
@@ -408,10 +842,212 @@ export class SqliteCentralRepository implements CentralRepository {
   async updateAuthUser(id: string, data: any): Promise<any> {
     const fields = Object.keys(data);
     if (fields.length === 0) return this.findAuthUserById(id);
-    const sets = fields.map((f) => `${f} = ?`).join(', ');
-    const values = fields.map((f) => data[f]);
+    const sets = fields.map((f: string) => `${f} = ?`).join(', ');
+    const values = fields.map((f: string) => data[f]);
     this.db.prepare(`UPDATE auth_users SET ${sets} WHERE id = ?`).run(...values, id);
     return this.findAuthUserById(id);
+  }
+
+  // --- Auth Sessions ---
+  async createAuthSession(data: any): Promise<any> {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO auth_sessions (
+        id, user_id, refresh_token_hash, device_id, device_name, platform, ip_address, is_revoked, created_at, last_used_at, expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      data.id,
+      data.user_id || data.userId,
+      data.refresh_token_hash || data.refreshTokenHash,
+      data.device_id || data.deviceId,
+      data.device_name || data.deviceName || 'Unknown Device',
+      data.platform || 'windows',
+      data.ip_address || data.ipAddress || null,
+      data.is_revoked ? 1 : 0,
+      data.created_at || now,
+      data.last_used_at || now,
+      data.expires_at || data.expiresAt
+    );
+    return data;
+  }
+
+  async findAuthSessionByTokenHash(tokenHash: string): Promise<any | null> {
+    const row = this.db.prepare('SELECT * FROM auth_sessions WHERE refresh_token_hash = ?').get(tokenHash);
+    return row || null;
+  }
+
+  async updateAuthSession(id: string, data: any): Promise<any> {
+    const fields = Object.keys(data);
+    if (fields.length === 0) return null;
+    const sets = fields.map((f: string) => `${f} = ?`).join(', ');
+    const values = fields.map((f: string) => data[f]);
+    this.db.prepare(`UPDATE auth_sessions SET ${sets} WHERE id = ?`).run(...values, id);
+    return true;
+  }
+
+  async revokeAuthSession(id: string): Promise<boolean> {
+    const res = this.db.prepare('UPDATE auth_sessions SET is_revoked = 1 WHERE id = ?').run(id);
+    return res.changes > 0;
+  }
+
+  async revokeAllUserSessions(userId: string): Promise<number> {
+    const res = this.db.prepare('UPDATE auth_sessions SET is_revoked = 1 WHERE user_id = ? AND is_revoked = 0').run(userId);
+    return res.changes;
+  }
+
+  async listUserAuthSessions(userId: string): Promise<any[]> {
+    return this.db.prepare('SELECT * FROM auth_sessions WHERE user_id = ? ORDER BY created_at DESC').all(userId) as any[];
+  }
+
+  // --- Verification Tokens ---
+  async createVerificationToken(data: any): Promise<any> {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO auth_verification_tokens (id, token_hash, user_id, email, type, expires_at, created_at, used_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      data.id,
+      data.token_hash || data.tokenHash,
+      data.user_id || data.userId,
+      data.email,
+      data.type || 'EMAIL_VERIFY',
+      data.expires_at || data.expiresAt,
+      data.created_at || now,
+      data.used_at || null
+    );
+    return data;
+  }
+
+  async findVerificationTokenByHash(tokenHash: string): Promise<any | null> {
+    const row = this.db.prepare('SELECT * FROM auth_verification_tokens WHERE token_hash = ?').get(tokenHash);
+    return row || null;
+  }
+
+  async consumeVerificationToken(tokenHash: string): Promise<any | null> {
+    const token = await this.findVerificationTokenByHash(tokenHash);
+    if (!token || token.used_at) return null;
+    const now = new Date().toISOString();
+    this.db.prepare('UPDATE auth_verification_tokens SET used_at = ? WHERE token_hash = ?').run(now, tokenHash);
+    return { ...token, used_at: now };
+  }
+
+  async invalidatePendingVerificationTokens(userId: string, type = 'EMAIL_VERIFICATION'): Promise<number> {
+    const now = new Date().toISOString();
+    const res = this.db.prepare(`
+      UPDATE auth_verification_tokens SET used_at = ?
+      WHERE user_id = ? AND type = ? AND used_at IS NULL
+    `).run(now, userId, type);
+    return res.changes;
+  }
+
+  // Convenience Aliases for Auth Flow
+  async findUserByEmail(email: string): Promise<any | null> {
+    return this.findAuthUserByEmail(email);
+  }
+
+  async findUserById(id: string): Promise<any | null> {
+    return this.findAuthUserById(id);
+  }
+
+  async createUser(data: any): Promise<any> {
+    return this.createAuthUser(data);
+  }
+
+  async updateUser(id: string, data: any): Promise<any> {
+    return this.updateAuthUser(id, data);
+  }
+
+  async updateUserLastLogin(id: string, timestamp?: string): Promise<any> {
+    return this.updateAuthUser(id, { last_login_at: timestamp || new Date().toISOString() });
+  }
+
+  async updateUserPassword(id: string, passwordHash: string, salt: string): Promise<any> {
+    return this.updateAuthUser(id, { password_hash: passwordHash, salt });
+  }
+
+  async markUserEmailVerified(id: string): Promise<any> {
+    const now = new Date().toISOString();
+    return this.updateAuthUser(id, { email_verified: 1, email_verified_at: now, status: 'ACTIVE' });
+  }
+
+  async createSession(data: any): Promise<any> {
+    return this.createAuthSession(data);
+  }
+
+  async findSessionByTokenHash(tokenHash: string): Promise<any | null> {
+    return this.findAuthSessionByTokenHash(tokenHash);
+  }
+
+  async rotateSessionToken(sessionId: string, newHash: string, expiresAt: string, ip?: string): Promise<any> {
+    return this.updateAuthSession(sessionId, {
+      refresh_token_hash: newHash,
+      expires_at: expiresAt,
+      last_used_at: new Date().toISOString(),
+      ip_address: ip || '127.0.0.1',
+    });
+  }
+
+  async findVerificationToken(tokenHash: string): Promise<any | null> {
+    return this.findVerificationTokenByHash(tokenHash);
+  }
+
+  async markVerificationTokenUsed(tokenHashOrId: string): Promise<any | null> {
+    return this.consumeVerificationToken(tokenHashOrId);
+  }
+
+  // --- Security Logs ---
+  async logAuthSecurity(userId: string | null, action: string, details?: string, ip?: string, result = 'SUCCESS'): Promise<any> {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO auth_security_logs (id, user_id, action, ip_address, details, result, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, userId, action, ip || null, details || null, result, now);
+    return { id, user_id: userId, action, result };
+  }
+
+  // --- Commercial Users ---
+  async findCommercialUserById(id: string): Promise<any | null> {
+    const row = this.db.prepare('SELECT * FROM commercial_users WHERE id = ?').get(id);
+    return row || null;
+  }
+
+  async findCommercialUserByEmail(email: string): Promise<any | null> {
+    const row = this.db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(email);
+    return row || null;
+  }
+
+  async createCommercialUser(data: any): Promise<any> {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO commercial_users (
+        id, email, password_hash, salt, role, status, tier, quota_profiles, quota_extra, plan_expires_at, features_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      data.id,
+      data.email,
+      data.password_hash || data.passwordHash,
+      data.salt,
+      data.role || 'USER',
+      data.status || 'ACTIVE',
+      data.tier || 'FREE',
+      data.quota_profiles ?? 10,
+      data.quota_extra ?? 0,
+      data.plan_expires_at || null,
+      data.features_json || '{}',
+      data.created_at || now,
+      data.updated_at || now
+    );
+    return this.findCommercialUserById(data.id);
+  }
+
+  async updateCommercialUser(id: string, data: any): Promise<any> {
+    const fields = Object.keys(data);
+    if (fields.length === 0) return this.findCommercialUserById(id);
+    const sets = fields.map((f: string) => `${f} = ?`).join(', ');
+    const values = fields.map((f: string) => data[f]);
+    this.db.prepare(`UPDATE commercial_users SET ${sets} WHERE id = ?`).run(...values, id);
+    return this.findCommercialUserById(id);
   }
 
   // --- Cloud Profiles ---
@@ -430,9 +1066,9 @@ export class SqliteCentralRepository implements CentralRepository {
       data.owner_id || data.ownerId,
       data.local_profile_id || data.localProfileId,
       data.name,
-      data.current_version || data.currentVersion || 1,
+      data.current_version ?? data.currentVersion ?? 1,
       data.status || 'ACTIVE',
-      data.storage_bytes || data.storageBytes || 0,
+      data.storage_bytes ?? data.storageBytes ?? 0,
       data.created_at || now,
       data.updated_at || now
     );
@@ -442,8 +1078,8 @@ export class SqliteCentralRepository implements CentralRepository {
   async updateCloudProfile(id: string, data: any): Promise<any> {
     const fields = Object.keys(data);
     if (fields.length === 0) return this.findCloudProfileById(id);
-    const sets = fields.map((f) => `${f} = ?`).join(', ');
-    const values = fields.map((f) => data[f]);
+    const sets = fields.map((f: string) => `${f} = ?`).join(', ');
+    const values = fields.map((f: string) => data[f]);
     this.db.prepare(`UPDATE cloud_profiles SET ${sets} WHERE id = ?`).run(...values, id);
     return this.findCloudProfileById(id);
   }
@@ -474,7 +1110,7 @@ export class SqliteCentralRepository implements CentralRepository {
       data.cloud_profile_id || data.cloudProfileId,
       data.version,
       data.object_key || data.objectKey,
-      data.file_size || data.fileSize,
+      data.file_size ?? data.fileSize ?? 0,
       data.checksum_sha256 || data.checksumSha256,
       data.encrypted_data_key || data.encryptedDataKey,
       data.iv,
@@ -504,6 +1140,60 @@ export class SqliteCentralRepository implements CentralRepository {
     return row || null;
   }
 
+  // --- Upload Sessions ---
+  async createUploadSessionRecord(data: any): Promise<any> {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO cloud_sync_upload_sessions (
+        id, user_id, cloud_profile_id, base_version, target_version, object_key, expected_size, expected_checksum,
+        encrypted_data_key, iv, auth_tag, source_device_id, source_device_name, status, expires_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      data.id,
+      data.user_id || data.userId,
+      data.cloud_profile_id || data.cloudProfileId,
+      data.base_version ?? data.baseVersion ?? 0,
+      data.target_version ?? data.targetVersion ?? 1,
+      data.object_key || data.objectKey,
+      data.expected_size ?? data.expectedSize ?? 0,
+      data.expected_checksum || data.expectedChecksum,
+      data.encrypted_data_key || data.encryptedDataKey,
+      data.iv,
+      data.auth_tag || data.authTag,
+      data.source_device_id || data.sourceDeviceId,
+      data.source_device_name || data.sourceDeviceName || null,
+      data.status || 'PENDING',
+      data.expires_at || data.expiresAt,
+      data.created_at || now
+    );
+    return data;
+  }
+
+  async findUploadSessionById(id: string): Promise<any | null> {
+    const row = this.db.prepare('SELECT * FROM cloud_sync_upload_sessions WHERE id = ?').get(id);
+    return row || null;
+  }
+
+  async updateUploadSessionRecord(id: string, data: any): Promise<any> {
+    const fields = Object.keys(data);
+    if (fields.length === 0) return null;
+    const sets = fields.map((f: string) => `${f} = ?`).join(', ');
+    const values = fields.map((f: string) => data[f]);
+    this.db.prepare(`UPDATE cloud_sync_upload_sessions SET ${sets} WHERE id = ?`).run(...values, id);
+    return true;
+  }
+
+  // --- Cloud Sync Audits ---
+  async logCloudSyncAudit(userId: string, action: string, details?: string, cloudProfileId?: string, deviceId?: string): Promise<any> {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO cloud_sync_audit_logs (id, user_id, cloud_profile_id, action, device_id, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, userId, cloudProfileId || null, action, deviceId || null, details || null, now);
+    return { id, user_id: userId, action };
+  }
+
   // --- Team Workspaces ---
   async findWorkspaceById(id: string): Promise<any | null> {
     const row = this.db.prepare('SELECT * FROM team_workspaces WHERE id = ?').get(id);
@@ -527,6 +1217,24 @@ export class SqliteCentralRepository implements CentralRepository {
     return this.findWorkspaceById(data.id);
   }
 
+  async updateWorkspace(id: string, data: any): Promise<any> {
+    const fields = Object.keys(data);
+    if (fields.length === 0) return this.findWorkspaceById(id);
+    const sets = fields.map((f: string) => `${f} = ?`).join(', ');
+    const values = fields.map((f: string) => data[f]);
+    this.db.prepare(`UPDATE team_workspaces SET ${sets} WHERE id = ?`).run(...values, id);
+    return this.findWorkspaceById(id);
+  }
+
+  async deleteWorkspace(id: string): Promise<boolean> {
+    try {
+      this.db.prepare('DELETE FROM team_workspaces WHERE id = ?').run(id);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async listUserWorkspaces(userId: string): Promise<any[]> {
     return this.db.prepare(`
       SELECT DISTINCT w.* FROM team_workspaces w
@@ -534,6 +1242,47 @@ export class SqliteCentralRepository implements CentralRepository {
       WHERE w.owner_user_id = ? OR (m.user_id = ? AND m.status = 'ACTIVE')
       ORDER BY w.created_at DESC
     `).all(userId, userId) as any[];
+  }
+
+  // --- Team Workspace Members ---
+  async addWorkspaceMember(data: any): Promise<any> {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO team_workspace_members (
+        id, workspace_id, user_id, role, status, invited_by_user_id, joined_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      data.id,
+      data.workspace_id || data.workspaceId,
+      data.user_id || data.userId,
+      data.role || 'MEMBER',
+      data.status || 'ACTIVE',
+      data.invited_by_user_id || data.invitedByUserId || null,
+      data.joined_at || now,
+      data.created_at || now,
+      data.updated_at || now
+    );
+    return data;
+  }
+
+  async findWorkspaceMember(workspaceId: string, userId: string): Promise<any | null> {
+    const row = this.db.prepare('SELECT * FROM team_workspace_members WHERE workspace_id = ? AND user_id = ?').get(workspaceId, userId);
+    return row || null;
+  }
+
+  async listWorkspaceMembers(workspaceId: string): Promise<any[]> {
+    return this.db.prepare('SELECT * FROM team_workspace_members WHERE workspace_id = ? ORDER BY created_at ASC').all(workspaceId) as any[];
+  }
+
+  async updateWorkspaceMemberRole(workspaceId: string, userId: string, role: string): Promise<any> {
+    const now = new Date().toISOString();
+    this.db.prepare('UPDATE team_workspace_members SET role = ?, updated_at = ? WHERE workspace_id = ? AND user_id = ?').run(role, now, workspaceId, userId);
+    return true;
+  }
+
+  async removeWorkspaceMember(workspaceId: string, userId: string): Promise<boolean> {
+    const res = this.db.prepare('DELETE FROM team_workspace_members WHERE workspace_id = ? AND user_id = ?').run(workspaceId, userId);
+    return res.changes > 0;
   }
 
   // --- Remote API Keys ---
@@ -570,6 +1319,27 @@ export class SqliteCentralRepository implements CentralRepository {
 
   async listRemoteApiKeys(userId: string): Promise<any[]> {
     return this.db.prepare('SELECT * FROM remote_api_keys WHERE user_id = ? ORDER BY created_at DESC').all(userId) as any[];
+  }
+
+  async revokeRemoteApiKey(id: string): Promise<boolean> {
+    const res = this.db.prepare('UPDATE remote_api_keys SET status = "REVOKED", revoked_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+    return res.changes > 0;
+  }
+
+  async updateRemoteApiKeyLastUsed(id: string): Promise<any> {
+    this.db.prepare('UPDATE remote_api_keys SET last_used_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+    return true;
+  }
+
+  // --- Remote API Key Audits ---
+  async logRemoteApiKeyAudit(apiKeyId: string, userId: string, endpoint: string, method: string, statusCode: number, ipAddress?: string): Promise<any> {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO remote_api_key_audits (id, api_key_id, user_id, endpoint, method, status_code, ip_address, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, apiKeyId, userId, endpoint, method, statusCode, ipAddress || null, now);
+    return { id, api_key_id: apiKeyId, status_code: statusCode };
   }
 
   // --- Locks ---

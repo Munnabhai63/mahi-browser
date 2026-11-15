@@ -28,7 +28,7 @@
     "db:push": "prisma db push",
     "db:migrate:sqlite-to-pg": "tsx 12_SCRIPTS/migrate-sqlite-to-postgres.ts",
     "start:gateway": "tsx 12_SCRIPTS/start-gateway.ts",
-    "build:gateway": "tsc -p tsconfig.json",
+    "build:gateway": "tsc -p tsconfig.gateway.json --noEmit",
     "postinstall": "prisma generate --no-hints || exit 0"
   },
   "dependencies": {

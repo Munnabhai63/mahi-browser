@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import https from 'node:https';
 import http from 'node:http';
-import { app, BrowserWindow, safeStorage } from 'electron';
+import { app, BrowserWindow, safeStorage } from './electron-bridge.js';
 import { getHWID } from './license-service.js';
 import { getInstallSecrets } from './install-secrets.js';
 import { ADMIN_API_BASE_URL } from './license-status-service.js';

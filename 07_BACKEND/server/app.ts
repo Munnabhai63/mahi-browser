@@ -121,6 +121,17 @@ function parseBody(req: http.IncomingMessage): Promise<any> {
   if ((req as any).body !== undefined && typeof (req as any).body === 'object') {
     return Promise.resolve((req as any).body);
   }
+  if ((req as any).rawBuffer !== undefined && Buffer.isBuffer((req as any).rawBuffer)) {
+    try {
+      const str = (req as any).rawBuffer.toString('utf8');
+      return Promise.resolve(str ? JSON.parse(str) : {});
+    } catch {
+      return Promise.reject(new Error('Invalid JSON payload'));
+    }
+  }
+  if (req.readableEnded) {
+    return Promise.resolve({});
+  }
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', (chunk) => {

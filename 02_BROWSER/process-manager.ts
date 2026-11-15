@@ -1,5 +1,5 @@
 import { ChildProcess, exec } from 'node:child_process';
-import { BrowserWindow } from 'electron';
+import { BrowserWindow } from '../08_SECURITY/electron-bridge.js';
 import { Profile, ProfileStatus } from '../10_CONFIG/shared/types/profile.js';
 import { getProfileById, updateProfileStatus, findProfileByNumber } from './services/profile-service.js';
 

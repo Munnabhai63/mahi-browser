@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import https from 'node:https';
 import http from 'node:http';
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow } from './electron-bridge.js';
 import { getHWID, verifyLicense } from './license-service.js';
 import { ADMIN_API_BASE_URL, isOnlineRevoked, isGraceExpired } from './license-status-service.js';
 import { hasValidLicense, assertCanCreateProfile } from './freemium-guard.js';

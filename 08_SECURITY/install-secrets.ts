@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, safeStorage } from 'electron';
+import { app, safeStorage } from './electron-bridge.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 
 export interface InstallSecrets {

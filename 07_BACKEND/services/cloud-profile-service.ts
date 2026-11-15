@@ -4,6 +4,7 @@ import { getStorageProvider } from '../../08_SECURITY/storage-provider.js';
 import { evaluateUserEntitlements } from '../commercial/commercial-entitlement-service.js';
 import { TeamRole, TeamPermission, ROLE_PERMISSIONS } from '../../10_CONFIG/shared/types/workspace.js';
 import { isRedisConfigured, redisLockService } from '../../08_SECURITY/redis-lock-service.js';
+import { isPostgresConfigured, getCentralRepository } from '../../06_DATABASE/central-repository.js';
 
 /**
  * Check if a user has access to a cloud profile, either directly as owner
@@ -56,6 +57,60 @@ export function verifyUserProfileAccess(
     isOwner: false,
     sharedEnvelope: share.encrypted_key_envelope,
   };
+}
+
+export async function verifyUserProfileAccessAsync(
+  userId: string,
+  cloudProfileId: string,
+  requiredPermission: TeamPermission = 'PROFILE_VIEW'
+): Promise<{ profile: any; isOwner: boolean; sharedEnvelope?: string } | null> {
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const profile = await repo.findCloudProfileById(cloudProfileId);
+    if (!profile || profile.status === 'DELETED') return null;
+    if (profile.owner_id === userId) {
+      return { profile, isOwner: true };
+    }
+    try {
+      const share = await (repo as any).client?.team_profile_shares?.findFirst({
+        where: {
+          cloud_profile_id: cloudProfileId,
+          workspace: {
+            status: 'ACTIVE',
+            members: {
+              some: {
+                user_id: userId,
+                status: 'ACTIVE',
+              },
+            },
+          },
+        },
+        include: {
+          workspace: {
+            include: {
+              members: {
+                where: { user_id: userId, status: 'ACTIVE' },
+              },
+            },
+          },
+        },
+      });
+      if (share && share.workspace?.members?.length > 0) {
+        const member = share.workspace.members[0];
+        const role = member.role as TeamRole;
+        const allowed = (ROLE_PERMISSIONS[role] || []).includes(requiredPermission);
+        if (allowed) {
+          return {
+            profile,
+            isOwner: false,
+            sharedEnvelope: share.encrypted_key_envelope,
+          };
+        }
+      }
+    } catch {}
+    return null;
+  }
+  return verifyUserProfileAccess(userId, cloudProfileId, requiredPermission);
 }
 
 export interface CloudProfileRecord {
@@ -127,6 +182,19 @@ function logCloudAudit(userId: string, action: string, details?: string, cloudPr
   }
 }
 
+async function logCloudAuditAsync(userId: string, action: string, details?: string, cloudProfileId?: string, deviceId?: string) {
+  try {
+    if (isPostgresConfigured()) {
+      const repo = getCentralRepository();
+      await repo.logCloudSyncAudit(userId, action, details, cloudProfileId, deviceId);
+      return;
+    }
+    logCloudAudit(userId, action, details, cloudProfileId, deviceId);
+  } catch (err) {
+    console.error('[CloudProfileService] Failed to log audit event:', err);
+  }
+}
+
 /**
  * Get cloud sync usage and quota for a user.
  */
@@ -159,6 +227,30 @@ export function getUserSyncUsage(userId: string) {
   };
 }
 
+export async function getUserSyncUsageAsync(userId: string) {
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const profiles = await repo.listCloudProfiles(userId);
+    const active = profiles.filter((p: any) => p.status !== 'DELETED');
+    const profileCount = active.length;
+    const usedBytes = active.reduce((acc: number, p: any) => acc + Number(p.storage_bytes || 0), 0);
+    const entitlements = evaluateUserEntitlements(userId);
+    const planLimits = entitlements.plan.limits;
+    const maxProfiles = planLimits.maxProfiles || 10;
+    const totalBytes = DEFAULT_MAX_STORAGE_BYTES;
+    return {
+      profile_count: profileCount,
+      max_profiles: maxProfiles,
+      used_bytes: usedBytes,
+      total_bytes: totalBytes,
+      used_mb: parseFloat((usedBytes / (1024 * 1024)).toFixed(2)),
+      total_mb: parseFloat((totalBytes / (1024 * 1024)).toFixed(2)),
+      quota_percent: totalBytes > 0 ? Math.min(100, parseFloat(((usedBytes / totalBytes) * 100).toFixed(1))) : 0,
+    };
+  }
+  return getUserSyncUsage(userId);
+}
+
 /**
  * List all active cloud profiles for the user.
  */
@@ -186,6 +278,42 @@ export function listUserCloudProfiles(userId: string): CloudProfileRecord[] {
       latest_version: latestVersion || undefined,
     };
   });
+}
+
+export async function listUserCloudProfilesAsync(userId: string): Promise<CloudProfileRecord[]> {
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const profiles = await repo.listCloudProfiles(userId);
+    const active = profiles.filter((p: any) => p.status !== 'DELETED');
+    const records: CloudProfileRecord[] = [];
+    for (const p of active) {
+      const latestVersion = await repo.getLatestCloudProfileVersion(p.id);
+      const storageBytes = Number(p.storage_bytes || 0);
+      const sizeMb = storageBytes ? parseFloat((storageBytes / (1024 * 1024)).toFixed(2)) : 0;
+      records.push({
+        id: p.id,
+        owner_id: p.owner_id,
+        local_profile_id: p.local_profile_id,
+        name: p.name,
+        current_version: p.current_version,
+        status: p.status,
+        storage_bytes: storageBytes,
+        created_at: p.created_at,
+        updated_at: p.updated_at,
+        latest_version: latestVersion ? {
+          version: latestVersion.version,
+          file_size: Number(latestVersion.file_size || 0),
+          checksum_sha256: latestVersion.checksum_sha256,
+          encrypted_data_key: latestVersion.encrypted_data_key,
+          iv: latestVersion.iv,
+          auth_tag: latestVersion.auth_tag,
+          created_at: latestVersion.created_at,
+        } : undefined,
+      });
+    }
+    return records;
+  }
+  return listUserCloudProfiles(userId);
 }
 
 /**
@@ -217,6 +345,39 @@ export function getCloudProfile(userId: string, cloudProfileId: string): CloudPr
   };
 }
 
+export async function getCloudProfileAsync(userId: string, cloudProfileId: string): Promise<CloudProfileRecord | null> {
+  if (isPostgresConfigured()) {
+    const access = await verifyUserProfileAccessAsync(userId, cloudProfileId, 'PROFILE_VIEW');
+    if (!access) return null;
+    const repo = getCentralRepository();
+    const profile = access.profile;
+    const latestVersion = await repo.getLatestCloudProfileVersion(profile.id);
+    const storageBytes = Number(profile.storage_bytes || 0);
+    const sizeMb = storageBytes ? parseFloat((storageBytes / (1024 * 1024)).toFixed(2)) : 0;
+    return {
+      id: profile.id,
+      owner_id: profile.owner_id,
+      local_profile_id: profile.local_profile_id,
+      name: profile.name,
+      current_version: profile.current_version,
+      status: profile.status,
+      storage_bytes: storageBytes,
+      created_at: profile.created_at,
+      updated_at: profile.updated_at,
+      latest_version: latestVersion ? {
+        version: latestVersion.version,
+        file_size: Number(latestVersion.file_size || 0),
+        checksum_sha256: latestVersion.checksum_sha256,
+        encrypted_data_key: access.sharedEnvelope || latestVersion.encrypted_data_key,
+        iv: latestVersion.iv,
+        auth_tag: latestVersion.auth_tag,
+        created_at: latestVersion.created_at,
+      } : undefined,
+    };
+  }
+  return getCloudProfile(userId, cloudProfileId);
+}
+
 /**
  * Create an upload session with optimistic concurrency and quota verification.
  */
@@ -224,6 +385,84 @@ export async function createUploadSession(
   userId: string,
   params: CreateUploadSessionParams
 ): Promise<UploadSessionResult> {
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    if (params.expectedSize > MAX_INDIVIDUAL_ARCHIVE_BYTES) {
+      throw new Error(`Profile archive exceeds maximum 200MB limit (size: ${(params.expectedSize / (1024 * 1024)).toFixed(1)} MB)`);
+    }
+
+    const usage = await getUserSyncUsageAsync(userId);
+    if (usage.used_bytes + params.expectedSize > usage.total_bytes) {
+      throw new Error(`Cloud storage quota exceeded! Current usage: ${usage.used_mb}MB / ${usage.total_mb}MB.`);
+    }
+
+    const profiles = await repo.listCloudProfiles(userId);
+    const existing = profiles.find((p: any) => p.local_profile_id === params.localProfileId && p.status !== 'DELETED');
+
+    let cloudProfileId: string;
+    let targetVersion: number;
+
+    if (existing) {
+      cloudProfileId = existing.id;
+      if (params.baseVersion > 0 && params.baseVersion !== existing.current_version) {
+        await logCloudAuditAsync(userId, 'SYNC_CONFLICT', `Conflict on profile ${existing.id}: base=${params.baseVersion}, current=${existing.current_version}`, existing.id, params.deviceId);
+        return {
+          conflict: true,
+          currentVersion: existing.current_version,
+          cloudProfileId: existing.id,
+          message: `Version conflict: Cloud has version ${existing.current_version}, but upload was based on version ${params.baseVersion}.`,
+        };
+      }
+      targetVersion = existing.current_version + 1;
+    } else {
+      if (usage.profile_count >= usage.max_profiles) {
+        throw new Error(`Maximum allowed cloud profiles limit reached (${usage.max_profiles} profiles). Upgrade plan to sync more.`);
+      }
+      cloudProfileId = crypto.randomUUID();
+      targetVersion = 1;
+    }
+
+    const safeRandomId = crypto.randomBytes(16).toString('hex');
+    const objectKey = `profiles/${userId}/${cloudProfileId}/${safeRandomId}_v${targetVersion}.enc`;
+
+    const storage = getStorageProvider();
+    const uploadUrl = await storage.createUploadUrl(objectKey, 'application/octet-stream', 900);
+
+    const sessionId = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    const now = new Date().toISOString();
+
+    await repo.createUploadSessionRecord({
+      id: sessionId,
+      cloud_profile_id: cloudProfileId,
+      user_id: userId,
+      target_version: targetVersion,
+      base_version: params.baseVersion,
+      object_key: objectKey,
+      expected_size: params.expectedSize,
+      expected_checksum: params.expectedChecksum,
+      encrypted_data_key: params.encryptedDataKey,
+      iv: params.iv,
+      auth_tag: params.authTag,
+      source_device_id: params.deviceId,
+      source_device_name: params.deviceName || 'Unknown Device',
+      status: 'PENDING',
+      expires_at: expiresAt,
+      created_at: now,
+    });
+
+    await logCloudAuditAsync(userId, 'UPLOAD_SESSION_CREATED', `Target version ${targetVersion}`, cloudProfileId, params.deviceId);
+
+    return {
+      conflict: false,
+      sessionId,
+      uploadUrl,
+      objectKey,
+      targetVersion,
+      cloudProfileId,
+    };
+  }
+
   const db = getDatabase();
 
   // 1. Quota Enforcement: Check archive size
@@ -331,6 +570,76 @@ export async function finalizeUploadSession(
   sourceDeviceId: string,
   sourceDeviceName?: string
 ): Promise<{ success: boolean; cloudProfileId: string; version: number }> {
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const session = await repo.findUploadSessionById(sessionId);
+    if (!session || session.user_id !== userId) {
+      throw new Error('Upload session not found or unauthorized');
+    }
+    if (session.status !== 'PENDING') {
+      throw new Error(`Upload session already processed (status: ${session.status})`);
+    }
+    if (new Date(session.expires_at).getTime() < Date.now()) {
+      await repo.updateUploadSessionRecord(sessionId, { status: 'EXPIRED' });
+      throw new Error('Upload session expired. Please retry.');
+    }
+
+    const storage = getStorageProvider();
+    const head = await storage.headObject(session.object_key);
+    if (!head || !head.exists) {
+      throw new Error('Object not found on storage provider. Upload was not completed.');
+    }
+    if (head.size !== session.expected_size) {
+      throw new Error(`Object size mismatch! Expected ${session.expected_size} bytes, got ${head.size} bytes.`);
+    }
+
+    const now = new Date().toISOString();
+    const versionId = crypto.randomUUID();
+
+    const existing = await repo.findCloudProfileById(session.cloud_profile_id);
+    if (existing) {
+      await repo.updateCloudProfile(session.cloud_profile_id, {
+        name: profileName,
+        current_version: session.target_version,
+        status: 'ACTIVE',
+        storage_bytes: session.expected_size,
+      });
+    } else {
+      await repo.createCloudProfile({
+        id: session.cloud_profile_id,
+        owner_id: userId,
+        local_profile_id: localProfileId,
+        name: profileName,
+        current_version: session.target_version,
+        status: 'ACTIVE',
+        storage_bytes: session.expected_size,
+      });
+    }
+
+    await repo.createCloudProfileVersion({
+      id: versionId,
+      cloud_profile_id: session.cloud_profile_id,
+      version: session.target_version,
+      object_key: session.object_key,
+      file_size: session.expected_size,
+      checksum_sha256: session.expected_checksum,
+      encrypted_data_key: session.encrypted_data_key,
+      iv: session.iv,
+      auth_tag: session.auth_tag,
+      source_device_id: sourceDeviceId,
+      source_device_name: sourceDeviceName || 'Unknown Device',
+    });
+
+    await repo.updateUploadSessionRecord(sessionId, { status: 'COMPLETED' });
+    await logCloudAuditAsync(userId, 'UPLOAD_FINALIZED', `Activated version ${session.target_version}`, session.cloud_profile_id, sourceDeviceId);
+
+    return {
+      success: true,
+      cloudProfileId: session.cloud_profile_id,
+      version: session.target_version,
+    };
+  }
+
   const db = getDatabase();
 
   const session = db.prepare(`
@@ -440,6 +749,43 @@ export async function createDownloadSession(
   cloudProfileId: string,
   targetVersion?: number
 ) {
+  if (isPostgresConfigured()) {
+    const access = await verifyUserProfileAccessAsync(userId, cloudProfileId, 'PROFILE_RUN');
+    if (!access) {
+      throw new Error('Cloud profile not found or access denied');
+    }
+    const repo = getCentralRepository();
+    const profile = access.profile;
+
+    let verRow: any;
+    if (targetVersion && targetVersion > 0) {
+      verRow = await repo.getCloudProfileVersion(cloudProfileId, targetVersion);
+    } else {
+      verRow = await repo.getLatestCloudProfileVersion(cloudProfileId);
+    }
+
+    if (!verRow) {
+      throw new Error('Requested profile version not found in storage');
+    }
+
+    const storage = getStorageProvider();
+    const downloadUrl = await storage.createDownloadUrl(verRow.object_key, 900);
+
+    await logCloudAuditAsync(userId, 'DOWNLOAD_REQUESTED', `Version ${verRow.version} (${access.isOwner ? 'owner' : 'team_member'})`, cloudProfileId);
+
+    return {
+      downloadUrl,
+      version: verRow.version,
+      checksumSha256: verRow.checksum_sha256,
+      encryptedDataKey: access.sharedEnvelope || verRow.encrypted_data_key,
+      iv: verRow.iv,
+      authTag: verRow.auth_tag,
+      fileSize: verRow.file_size,
+      profileName: profile.name,
+      localProfileId: profile.local_profile_id,
+    };
+  }
+
   const access = verifyUserProfileAccess(userId, cloudProfileId, 'PROFILE_RUN');
   if (!access) {
     throw new Error('Cloud profile not found or access denied');
@@ -488,6 +834,32 @@ export async function createDownloadSession(
  * Delete a cloud profile and its storage objects.
  */
 export async function deleteCloudProfile(userId: string, cloudProfileId: string): Promise<boolean> {
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const profile = await repo.findCloudProfileById(cloudProfileId);
+    if (!profile || profile.owner_id !== userId) {
+      throw new Error('Profile not found or access denied');
+    }
+    const storage = getStorageProvider();
+    try {
+      const versions = await (repo as any).client?.cloud_profile_versions?.findMany({
+        where: { cloud_profile_id: cloudProfileId },
+        select: { object_key: true },
+      });
+      if (versions) {
+        for (const v of versions) {
+          if (v.object_key) {
+            await storage.deleteObject(v.object_key).catch(() => {});
+          }
+        }
+      }
+    } catch {}
+    await repo.deleteLock(cloudProfileId);
+    await repo.deleteCloudProfile(cloudProfileId);
+    await logCloudAuditAsync(userId, 'CLOUD_PROFILE_DELETED', `Deleted profile and all versions`, cloudProfileId);
+    return true;
+  }
+
   const db = getDatabase();
 
   const profile = db.prepare(`
@@ -734,7 +1106,7 @@ export async function acquireProfileLockAsync(
 
     const redisRes = await redisLockService.acquireLock(cloudProfileId, deviceId, deviceName, userId, ttlSeconds);
     if (redisRes.acquired) {
-      logCloudAudit(userId, 'LOCK_ACQUIRED', `Locked by ${deviceName} (Redis)`, cloudProfileId, deviceId);
+      await logCloudAuditAsync(userId, 'LOCK_ACQUIRED', `Locked by ${deviceName} (Redis)`, cloudProfileId, deviceId);
       return {
         acquired: true,
         expiresAt: redisRes.expiresAt,
@@ -749,6 +1121,43 @@ export async function acquireProfileLockAsync(
     };
   }
 
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + (ttlSeconds * 1000)).toISOString();
+    const existing = await repo.findLock(cloudProfileId);
+    if (existing && new Date(existing.expires_at).getTime() > now.getTime()) {
+      if (existing.device_id === deviceId) {
+        await repo.upsertLock({
+          cloudProfileId,
+          deviceId,
+          deviceName,
+          userId,
+          lockedAt: now.toISOString(),
+          expiresAt,
+        });
+        return { acquired: true, expiresAt };
+      } else {
+        return {
+          acquired: false,
+          heldBy: existing.device_name || existing.device_id,
+          deviceId: existing.device_id,
+          expiresAt: existing.expires_at,
+        };
+      }
+    }
+    await repo.upsertLock({
+      cloudProfileId,
+      deviceId,
+      deviceName,
+      userId,
+      lockedAt: now.toISOString(),
+      expiresAt,
+    });
+    await logCloudAuditAsync(userId, 'LOCK_ACQUIRED', `Locked by ${deviceName} (Postgres)`, cloudProfileId, deviceId);
+    return { acquired: true, expiresAt };
+  }
+
   return acquireProfileLock(userId, cloudProfileId, deviceId, deviceName, ttlSeconds);
 }
 
@@ -760,13 +1169,11 @@ export async function renewProfileLockAsync(
 ): Promise<{ renewed: boolean; expiresAt?: string }> {
   if (isRedisConfigured()) {
     try {
-      const db = getDatabase();
-      const profile = db.prepare(`SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'`).get(cloudProfileId) as any;
-      if (profile) {
-        const access = verifyUserProfileAccess(userId, cloudProfileId, 'PROFILE_RUN');
-        if (!access) {
-          throw new Error('Access denied: Profile not found or not shared with you');
-        }
+      const access = await verifyUserProfileAccessAsync(userId, cloudProfileId, 'PROFILE_RUN');
+      if (!access && !isPostgresConfigured()) {
+        const db = getDatabase();
+        const profile = db.prepare(`SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'`).get(cloudProfileId) as any;
+        if (profile) throw new Error('Access denied: Profile not found or not shared with you');
       }
     } catch (e: any) {
       if (e?.message?.startsWith('Access denied')) throw e;
@@ -779,6 +1186,24 @@ export async function renewProfileLockAsync(
     };
   }
 
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const existing = await repo.findLock(cloudProfileId);
+    if (!existing || existing.device_id !== deviceId) {
+      return { renewed: false };
+    }
+    const expiresAt = new Date(Date.now() + (ttlSeconds * 1000)).toISOString();
+    await repo.upsertLock({
+      cloudProfileId,
+      deviceId,
+      deviceName: existing.device_name,
+      userId,
+      lockedAt: existing.locked_at,
+      expiresAt,
+    });
+    return { renewed: true, expiresAt };
+  }
+
   return renewProfileLock(userId, cloudProfileId, deviceId, ttlSeconds);
 }
 
@@ -789,13 +1214,11 @@ export async function releaseProfileLockAsync(
 ): Promise<{ released: boolean }> {
   if (isRedisConfigured()) {
     try {
-      const db = getDatabase();
-      const profile = db.prepare(`SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'`).get(cloudProfileId) as any;
-      if (profile) {
-        const access = verifyUserProfileAccess(userId, cloudProfileId, 'PROFILE_VIEW');
-        if (!access) {
-          throw new Error('Access denied: Profile not found or not shared with you');
-        }
+      const access = await verifyUserProfileAccessAsync(userId, cloudProfileId, 'PROFILE_VIEW');
+      if (!access && !isPostgresConfigured()) {
+        const db = getDatabase();
+        const profile = db.prepare(`SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'`).get(cloudProfileId) as any;
+        if (profile) throw new Error('Access denied: Profile not found or not shared with you');
       }
     } catch (e: any) {
       if (e?.message?.startsWith('Access denied')) throw e;
@@ -803,9 +1226,22 @@ export async function releaseProfileLockAsync(
 
     const redisRes = await redisLockService.releaseLock(cloudProfileId, deviceId);
     if (redisRes.released) {
-      logCloudAudit(userId, 'LOCK_RELEASED', `Lock released by ${deviceId} (Redis)`, cloudProfileId, deviceId);
+      await logCloudAuditAsync(userId, 'LOCK_RELEASED', `Lock released by ${deviceId} (Redis)`, cloudProfileId, deviceId);
     }
     return { released: redisRes.released };
+  }
+
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const existing = await repo.findLock(cloudProfileId);
+    if (existing && existing.device_id === deviceId) {
+      const res = await repo.deleteLock(cloudProfileId);
+      if (res) {
+        await logCloudAuditAsync(userId, 'LOCK_RELEASED', `Lock released by ${deviceId} (Postgres)`, cloudProfileId, deviceId);
+      }
+      return { released: res };
+    }
+    return { released: false };
   }
 
   return releaseProfileLock(userId, cloudProfileId, deviceId);
@@ -817,13 +1253,11 @@ export async function getProfileLockStatusAsync(
 ): Promise<{ isLocked: boolean; heldBy?: string; deviceId?: string; expiresAt?: string }> {
   if (isRedisConfigured()) {
     try {
-      const db = getDatabase();
-      const profile = db.prepare(`SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'`).get(cloudProfileId) as any;
-      if (profile) {
-        const access = verifyUserProfileAccess(userId, cloudProfileId, 'PROFILE_VIEW');
-        if (!access) {
-          throw new Error('Access denied: Profile not found or not shared with you');
-        }
+      const access = await verifyUserProfileAccessAsync(userId, cloudProfileId, 'PROFILE_VIEW');
+      if (!access && !isPostgresConfigured()) {
+        const db = getDatabase();
+        const profile = db.prepare(`SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'`).get(cloudProfileId) as any;
+        if (profile) throw new Error('Access denied: Profile not found or not shared with you');
       }
     } catch (e: any) {
       if (e?.message?.startsWith('Access denied')) throw e;
@@ -838,6 +1272,22 @@ export async function getProfileLockStatusAsync(
       heldBy: redisRes.heldBy,
       deviceId: redisRes.deviceId,
       expiresAt: redisRes.expiresAt,
+    };
+  }
+
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const lock = await repo.findLock(cloudProfileId);
+    if (!lock) return { isLocked: false };
+    if (new Date(lock.expires_at).getTime() < Date.now()) {
+      await repo.deleteLock(cloudProfileId);
+      return { isLocked: false };
+    }
+    return {
+      isLocked: true,
+      heldBy: lock.device_name || lock.device_id,
+      deviceId: lock.device_id,
+      expiresAt: lock.expires_at,
     };
   }
 

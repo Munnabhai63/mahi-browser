@@ -2,7 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { URL } from 'node:url';
-import { app } from 'electron';
+import { app } from '../../08_SECURITY/electron-bridge.js';
 import { getAppSettings } from '../services/settings-service.js';
 import {
   getProfiles,
@@ -320,6 +320,20 @@ function sendFile(res: http.ServerResponse, filePath: string, downloadName: stri
 }
 
 function parseBody(req: http.IncomingMessage): Promise<any> {
+  if ((req as any).body !== undefined && typeof (req as any).body === 'object') {
+    return Promise.resolve((req as any).body);
+  }
+  if ((req as any).rawBuffer !== undefined && Buffer.isBuffer((req as any).rawBuffer)) {
+    try {
+      const str = (req as any).rawBuffer.toString('utf8');
+      return Promise.resolve(str ? JSON.parse(str) : {});
+    } catch {
+      return Promise.reject(new Error('Invalid JSON in request body'));
+    }
+  }
+  if (req.readableEnded) {
+    return Promise.resolve({});
+  }
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', (chunk) => {

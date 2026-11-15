@@ -5,7 +5,7 @@ import https from 'node:https';
 import http from 'node:http';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
-import { app } from 'electron';
+import { app } from '../08_SECURITY/electron-bridge.js';
 import {
   MANAGED_ENGINE_VERSION,
   MANAGED_ENGINE_SHA256,

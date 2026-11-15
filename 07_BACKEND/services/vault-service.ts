@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { app, dialog } from 'electron';
+import { app, dialog } from '../../08_SECURITY/electron-bridge.js';
 import { getWritableUserDataDir } from '../utils/runtime-paths.js';
 import { getProfiles, createProfile } from '../../02_BROWSER/services/profile-service.js';
 import { getProxies, createProxy } from '../../02_BROWSER/services/proxy-service.js';

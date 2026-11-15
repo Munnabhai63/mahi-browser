@@ -1,5 +1,5 @@
 import { exec } from 'node:child_process';
-import { BrowserWindow } from 'electron';
+import { BrowserWindow } from '../08_SECURITY/electron-bridge.js';
 import { processManager } from '../02_BROWSER/process-manager.js';
 import { ProfileResourceUsage, FleetResourceSummary } from '../10_CONFIG/shared/types/resources.js';
 

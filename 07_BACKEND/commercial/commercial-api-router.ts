@@ -28,6 +28,12 @@ import {
   getCentralUserById,
   getCentralUserByEmail,
   verifyAccessToken,
+  getCentralUserByIdAsync,
+  getCentralUserByEmailAsync,
+  logoutSessionAsync,
+  listUserSessionsAsync,
+  revokeUserSessionAsync,
+  revokeAllUserSessionsAsync,
 } from '../../05_AUTH/central-auth-service.js';
 import {
   getCommercialPlans,
@@ -134,6 +140,8 @@ import {
   renewProfileLockAsync,
   releaseProfileLockAsync,
   getProfileLockStatusAsync,
+  listUserCloudProfilesAsync,
+  getCloudProfileAsync,
 } from '../services/cloud-profile-service.js';
 import {
   createTeamWorkspace,
@@ -158,13 +166,25 @@ import {
 } from '../services/team-workspace-service.js';
 import { getStorageProvider, LocalStorageProvider } from '../../08_SECURITY/storage-provider.js';
 import { handleRemoteApiRoutes } from './remote-api-router.js';
+import { isTrustedOrigin } from '../server/cloud-gateway.js';
 
 function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
+  const existingOrigin = typeof res?.getHeader === 'function' ? res.getHeader('Access-Control-Allow-Origin') : undefined;
+  if (!existingOrigin && typeof res?.setHeader === 'function') {
+    const req = (res as any).__req as http.IncomingMessage | undefined;
+    const origin = (req?.headers?.origin as string) || '';
+    if (origin && isTrustedOrigin(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Authorization, Content-Type, X-API-Key, X-Admin-Secret, x-mahi-token, Idempotency-Key, X-Mahi-Signature, X-Request-Id'
+    );
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
+  }
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-API-Key, X-Admin-Secret, x-mahi-token',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   });
   res.end(JSON.stringify(data));
 }
@@ -1509,7 +1529,7 @@ export async function handleCommercialApiRoutes(
     const authHeader = (req.headers['authorization'] as string) || (req.headers['x-mahi-token'] ? `Bearer ${req.headers['x-mahi-token']}` : '');
     const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
-    const centralUser = getCentralUserById(auth.userId);
+    const centralUser = await getCentralUserByIdAsync(auth.userId);
     const commUser = getUserById(auth.userId);
     const user = {
       ...(commUser || {}),
@@ -1771,7 +1791,7 @@ export async function handleCommercialApiRoutes(
       return true;
     }
     const currentSessionId = (auth as any).sessionId;
-    const sessions = listUserSessions(auth.userId, currentSessionId);
+    const sessions = await listUserSessionsAsync(auth.userId, currentSessionId);
     sendJSON(res, 200, { success: true, data: sessions });
     return true;
   }
@@ -1783,8 +1803,8 @@ export async function handleCommercialApiRoutes(
       return true;
     }
     const body = await parseBody(req);
-    const resRevoke = revokeUserSession(auth.userId, body.sessionId, clientIp);
-    sendJSON(res, 200, { success: resRevoke.success });
+    const success = await revokeUserSessionAsync(auth.userId, body.sessionId, clientIp);
+    sendJSON(res, 200, { success });
     return true;
   }
 
@@ -1796,7 +1816,7 @@ export async function handleCommercialApiRoutes(
     }
     const body = await parseBody(req);
     const currentSessionId = (auth as any).sessionId;
-    const revokedCount = revokeAllUserSessions(auth.userId, body.keepCurrent ? currentSessionId : undefined, clientIp);
+    const revokedCount = await revokeAllUserSessionsAsync(auth.userId, body.keepCurrent ? currentSessionId : undefined, clientIp);
     sendJSON(res, 200, { success: true, revokedCount });
     return true;
   }
@@ -1811,7 +1831,7 @@ export async function handleCommercialApiRoutes(
       return true;
     }
     // Look up in central users first, then legacy
-    const centralUser = getCentralUserById(auth.userId);
+    const centralUser = await getCentralUserByIdAsync(auth.userId);
     const commUser = getUserById(auth.userId);
     if (!centralUser && !commUser) {
       sendJSON(res, 404, { success: false, error: 'User not found.' });
@@ -2705,7 +2725,7 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
       return true;
     }
-    const profiles = listUserCloudProfiles(user.userId);
+    const profiles = await listUserCloudProfilesAsync(user.userId);
     sendJSON(res, 200, { success: true, profiles });
     return true;
   }
@@ -2717,7 +2737,7 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 401, { success: false, error: 'Unauthorized.' });
       return true;
     }
-    const profile = getCloudProfile(user.userId, syncProfileDetailMatch[1]);
+    const profile = await getCloudProfileAsync(user.userId, syncProfileDetailMatch[1]);
     if (!profile) {
       sendJSON(res, 404, { success: false, error: 'Cloud profile not found' });
       return true;
