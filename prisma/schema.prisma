@@ -1,0 +1,904 @@
+// MAHI Browser Central Database — PostgreSQL Schema
+// Powered by Prisma v6 for Central Cloud Gateway & Supabase/Hosted Postgres
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ============================================================================
+// 1. AUTH & CENTRAL IDENTITY
+// ============================================================================
+
+model auth_users {
+  id                 String                     @id
+  email              String                     @unique
+  normalized_email   String                     @unique
+  password_hash      String
+  salt               String
+  name               String
+  role               String                     @default("USER")
+  status             String                     @default("ACTIVE")
+  email_verified     Int                        @default(0)
+  email_verified_at  String?
+  plan_id            String                     @default("plan_free")
+  profile_quota      Int                        @default(10)
+  trial_started_at   String?
+  trial_expires_at   String?
+  trial_used         Int                        @default(0)
+  signup_intent      String?
+  google_sub         String?
+  avatar_url         String?
+  auth_provider      String?                    @default("LOCAL")
+  created_at         String
+  updated_at         String
+  last_login_at      String?
+
+  sessions           auth_sessions[]
+  verification_tokens auth_verification_tokens[]
+  cloud_profiles     cloud_profiles[]
+  upload_sessions    cloud_sync_upload_sessions[]
+  workspaces         team_workspaces[]
+  workspace_members  team_workspace_members[]
+  workspace_keys     team_workspace_keys[]
+
+  @@index([normalized_email])
+}
+
+model auth_sessions {
+  id                 String     @id
+  user_id            String
+  refresh_token_hash String     @unique
+  device_id          String
+  device_name        String
+  platform           String
+  ip_address         String?
+  is_revoked         Int        @default(0)
+  created_at         String
+  last_used_at       String
+  expires_at         String
+
+  user               auth_users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([refresh_token_hash])
+}
+
+model auth_verification_tokens {
+  id         String     @id
+  token_hash String     @unique
+  user_id    String
+  email      String
+  type       String
+  expires_at String
+  created_at String
+  used_at    String?
+
+  user       auth_users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([token_hash])
+}
+
+model auth_security_logs {
+  id         String  @id
+  user_id    String?
+  action     String
+  ip_address String?
+  details    String?
+  result     String
+  created_at String
+}
+
+model oauth_states {
+  state         String  @id
+  nonce         String
+  provider      String  @default("google")
+  intent        String  @default("trial")
+  plan_id       String?
+  billing_cycle String?
+  return_url    String?
+  expires_at    String
+  created_at    String
+
+  @@index([expires_at])
+}
+
+model web_handoff_sessions {
+  code       String @id
+  token      String
+  user_json  String
+  created_at BigInt
+  expires_at BigInt
+  used       Int    @default(0)
+
+  @@index([expires_at])
+  @@index([used])
+}
+
+// ============================================================================
+// 2. COMMERCIAL & BILLING ARCHITECTURE
+// ============================================================================
+
+model commercial_users {
+  id                    String                     @id
+  email                 String                     @unique
+  password_hash         String
+  salt                  String
+  name                  String
+  role                  String                     @default("USER")
+  status                String                     @default("ACTIVE")
+  plan_id               String                     @default("plan_free")
+  bonus_profiles        Int                        @default(0)
+  bonus_proxy_bytes     BigInt                     @default(0)
+  feature_overrides     String                     @default("{}")
+  trial_started_at      String?
+  trial_expires_at      String?
+  trial_used            Int                        @default(0)
+  signup_intent         String?
+  pending_plan_id       String?
+  pending_billing_cycle String?
+  google_sub            String?
+  avatar_url            String?
+  auth_provider         String?                    @default("LOCAL")
+  created_at            String
+  updated_at            String
+  last_login_at         String?
+
+  subscriptions         commercial_subscriptions[]
+}
+
+model commercial_plans {
+  id            String  @id
+  name          String
+  tier          String
+  price_monthly Float   @default(0)
+  price_annual  Float   @default(0)
+  limits_json   String
+  is_active     Int     @default(1)
+  created_at    String
+  updated_at    String?
+}
+
+model commercial_subscriptions {
+  id                   String           @id
+  user_id              String
+  plan_id              String
+  license_id           String?
+  status               String           @default("ACTIVE")
+  billing_cycle        String           @default("MONTHLY")
+  starts_at            String
+  expires_at           String?
+  payment_provider     String?
+  external_sub_id      String?
+  auto_renew           Int              @default(1)
+  pricing_version      Int?
+  cancel_at_period_end Int              @default(0)
+  created_at           String
+  updated_at           String?
+
+  user                 commercial_users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model commercial_devices {
+  id             String  @id
+  user_id        String
+  license_id     String?
+  device_id      String
+  device_name    String
+  platform       String?
+  os_info        String
+  client_version String
+  ip_address     String?
+  activated_at   String
+  last_seen_at   String
+  status         String  @default("ACTIVE")
+  created_at     String?
+}
+
+model commercial_audit_logs {
+  id          String  @id
+  actor_id    String
+  actor_name  String
+  actor_role  String
+  action      String
+  target_type String
+  target_id   String?
+  details     String?
+  ip_address  String?
+  result      String  @default("SUCCESS")
+  created_at  String
+
+  @@index([actor_id])
+  @@index([action])
+  @@index([created_at])
+}
+
+model software_versions {
+  id                    String  @id
+  version               String  @unique
+  release_notes         String  @default("")
+  min_supported_version String  @default("1.0.0")
+  download_url_setup    String?
+  download_url_portable String?
+  is_mandatory          Int     @default(0)
+  released_at           String
+}
+
+model licenses {
+  id                 String            @id
+  license_key_hash   String            @unique
+  key_masked         String
+  customer_name      String
+  account_id         String?
+  status             String            @default("NOT_ACTIVATED")
+  duration_type      String
+  max_devices        Int               @default(1)
+  starts_at          String
+  expires_at         String?
+  created_at         String
+  created_by         String            @default("OWNER")
+  revoked_at         String?
+  last_validation_at String?
+  notes              String?
+
+  devices            license_devices[]
+}
+
+model license_devices {
+  id           String   @id
+  license_id   String
+  device_id    String
+  device_name  String
+  ip_address   String?
+  activated_at String
+  last_seen_at String
+  status       String   @default("ACTIVE")
+
+  license      licenses @relation(fields: [license_id], references: [id], onDelete: Cascade)
+}
+
+model commercial_payments {
+  id                  String  @id
+  user_id             String
+  subscription_id     String?
+  provider            String  @default("stripe")
+  external_order_id   String?
+  external_payment_id String? @unique
+  amount_cents        Int
+  currency            String  @default("USD")
+  status              String  @default("PENDING")
+  plan_id             String
+  billing_cycle       String  @default("MONTHLY")
+  receipt_url         String?
+  metadata_json       String?
+  created_at          String
+  updated_at          String
+
+  @@index([user_id])
+  @@index([external_payment_id])
+  @@index([status])
+}
+
+model commercial_billing_invoices {
+  id              String  @id
+  user_id         String
+  payment_id      String?
+  invoice_number  String  @unique
+  amount_cents    Int
+  currency        String  @default("USD")
+  status          String  @default("PAID")
+  period_start    String
+  period_end      String
+  pdf_url         String?
+  pricing_version Int?
+  plan_id         String?
+  plan_name       String?
+  discount_paise  Int     @default(0)
+  tax_paise       Int     @default(0)
+  created_at      String
+
+  @@index([user_id])
+}
+
+model commercial_webhook_events {
+  id           String @id
+  provider     String
+  event_type   String
+  payload_json String
+  status       String @default("PROCESSED")
+  created_at   String
+
+  @@index([provider, event_type])
+}
+
+model pricing_audit_log {
+  id                   String  @id
+  admin_id             String
+  action               String
+  old_data             String?
+  new_data             String?
+  subscriber_policy    String?
+  pricing_version      Int?
+  provider_sync_result String?
+  created_at           String
+
+  @@index([pricing_version])
+}
+
+// ============================================================================
+// 3. CLOUD PROFILES & STORAGE
+// ============================================================================
+
+model cloud_profiles {
+  id                String                  @id
+  owner_id          String
+  local_profile_id  String
+  name              String
+  current_version   Int                     @default(1)
+  status            String                  @default("ACTIVE")
+  storage_bytes     BigInt                  @default(0)
+  created_at        String
+  updated_at        String
+
+  owner             auth_users              @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  versions          cloud_profile_versions[]
+  lock              cloud_profile_locks?
+  shares            team_profile_shares[]
+
+  @@index([owner_id])
+  @@index([owner_id, local_profile_id])
+}
+
+model cloud_profile_versions {
+  id                 String         @id
+  cloud_profile_id   String
+  version            Int
+  object_key         String
+  file_size          BigInt
+  checksum_sha256    String
+  encrypted_data_key String
+  iv                 String
+  auth_tag           String
+  source_device_id   String
+  source_device_name String?
+  created_at         String
+
+  profile            cloud_profiles @relation(fields: [cloud_profile_id], references: [id], onDelete: Cascade)
+
+  @@index([cloud_profile_id])
+  @@index([cloud_profile_id, version])
+}
+
+model cloud_profile_locks {
+  cloud_profile_id String         @id
+  device_id        String
+  device_name      String
+  user_id          String
+  locked_at        String
+  expires_at       String
+
+  profile          cloud_profiles @relation(fields: [cloud_profile_id], references: [id], onDelete: Cascade)
+
+  @@index([expires_at])
+}
+
+model cloud_sync_upload_sessions {
+  id                 String     @id
+  cloud_profile_id   String
+  user_id            String
+  target_version     Int
+  base_version       Int
+  object_key         String
+  expected_size      BigInt
+  expected_checksum  String
+  encrypted_data_key String
+  iv                 String
+  auth_tag           String
+  status             String     @default("PENDING")
+  expires_at         String
+  created_at         String
+
+  user               auth_users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+model cloud_sync_audit_logs {
+  id               String  @id
+  user_id          String
+  cloud_profile_id String?
+  action           String
+  device_id        String?
+  details          String?
+  created_at       String
+
+  @@index([user_id])
+  @@index([action])
+}
+
+// ============================================================================
+// 4. TEAM WORKSPACES & RBAC
+// ============================================================================
+
+model team_workspaces {
+  id             String                      @id
+  name           String
+  description    String?                     @default("")
+  owner_user_id  String
+  status         String                      @default("ACTIVE")
+  created_at     String
+  updated_at     String
+
+  owner          auth_users                  @relation(fields: [owner_user_id], references: [id], onDelete: Cascade)
+  members        team_workspace_members[]
+  invitations    team_workspace_invitations[]
+  profile_shares team_profile_shares[]
+  keys           team_workspace_keys[]
+  audit_logs     team_workspace_audit_logs[]
+
+  @@index([owner_user_id])
+  @@index([status])
+}
+
+model team_workspace_members {
+  id           String          @id
+  workspace_id String
+  user_id      String
+  role         String          @default("MEMBER")
+  status       String          @default("ACTIVE")
+  invited_by   String?
+  joined_at    String
+  created_at   String
+
+  workspace    team_workspaces @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  user         auth_users      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([workspace_id, user_id])
+  @@index([user_id])
+  @@index([workspace_id])
+  @@index([workspace_id, status])
+}
+
+model team_workspace_invitations {
+  id           String          @id
+  workspace_id String
+  email        String
+  role         String          @default("MEMBER")
+  token_hash   String          @unique
+  invited_by   String
+  status       String          @default("PENDING")
+  expires_at   String
+  created_at   String
+
+  workspace    team_workspaces @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@index([token_hash])
+  @@index([workspace_id])
+  @@index([email])
+  @@index([status])
+}
+
+model team_profile_shares {
+  id                     String          @id
+  workspace_id           String
+  cloud_profile_id       String
+  shared_by              String
+  permission_level       String          @default("RUN")
+  encrypted_key_envelope String
+  created_at             String
+  revoked_at             String?
+
+  workspace              team_workspaces @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  profile                cloud_profiles  @relation(fields: [cloud_profile_id], references: [id], onDelete: Cascade)
+
+  @@index([workspace_id])
+  @@index([cloud_profile_id])
+}
+
+model team_workspace_keys {
+  id                      String          @id
+  workspace_id            String
+  user_id                 String
+  encrypted_workspace_key String
+  created_at              String
+
+  workspace               team_workspaces @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  user                    auth_users      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([workspace_id, user_id])
+  @@index([workspace_id, user_id])
+}
+
+model team_workspace_audit_logs {
+  id           String          @id
+  workspace_id String
+  user_id      String
+  action       String
+  target_id    String?
+  details      String?
+  created_at   String
+
+  workspace    team_workspaces @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@index([workspace_id])
+  @@index([user_id])
+  @@index([action])
+}
+
+// ============================================================================
+// 5. REMOTE API KEYS & WEBHOOKS
+// ============================================================================
+
+model remote_api_keys {
+  id                   String                  @id
+  user_id              String
+  workspace_id         String?
+  name                 String
+  key_prefix           String
+  key_hash             String                  @unique
+  scopes_json          String                  @default("[\"profiles:read\"]")
+  status               String                  @default("ACTIVE")
+  rate_limit_per_min   Int                     @default(120)
+  requests_count_month Int                     @default(0)
+  last_used_at         String?
+  expires_at           String?
+  created_at           String
+  revoked_at           String?
+
+  audits               remote_api_key_audits[]
+
+  @@index([user_id])
+  @@index([workspace_id])
+  @@index([key_hash])
+  @@index([status])
+}
+
+model remote_api_key_audits {
+  id         String          @id
+  key_id     String
+  user_id    String
+  action     String
+  ip_address String?
+  details    String?
+  created_at String
+
+  apiKey     remote_api_keys @relation(fields: [key_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([key_id])
+}
+
+model webhook_endpoints {
+  id               String              @id
+  user_id          String
+  workspace_id     String?
+  url              String
+  description      String?
+  secret_hash      String
+  secret_encrypted String
+  events_json      String              @default("[\"*\"]")
+  status           String              @default("ACTIVE")
+  failure_count    Int                 @default(0)
+  last_delivery_at String?
+  created_at       String
+  updated_at       String
+
+  deliveries       webhook_deliveries[]
+
+  @@index([user_id])
+  @@index([workspace_id])
+  @@index([status])
+}
+
+model webhook_deliveries {
+  id              String            @id
+  endpoint_id     String
+  event_id        String
+  event_type      String
+  payload_json    String
+  destination_url String
+  status_code     Int?
+  response_body   String?
+  duration_ms     Int?
+  attempt_count   Int               @default(1)
+  success         Int               @default(0)
+  error_message   String?
+  delivered_at    String
+
+  endpoint        webhook_endpoints @relation(fields: [endpoint_id], references: [id], onDelete: Cascade)
+
+  @@index([endpoint_id])
+  @@index([event_id])
+  @@index([success])
+}
+
+model api_idempotency_records {
+  idempotency_key String
+  user_id         String
+  endpoint        String
+  status_code     Int
+  response_json   String
+  created_at      String
+  expires_at      String
+
+  @@id([idempotency_key, user_id])
+  @@index([idempotency_key, user_id])
+}
+
+// ============================================================================
+// 6. PROXY PROVIDERS & NETWORK INFRASTRUCTURE
+// ============================================================================
+
+model proxy_providers {
+  id                String @id
+  name              String
+  description       String?
+  website           String?
+  is_enabled        Int    @default(1)
+  priority          Int    @default(100)
+  capabilities_json String
+  created_at        String
+  updated_at        String
+}
+
+model proxy_provider_sessions {
+  id                  String                @id
+  provider_id         String
+  proxy_id            String?
+  user_id             String
+  workspace_id        String?
+  profile_id          String?
+  network_type        String
+  country             String
+  region              String?
+  city                String?
+  session_type        String
+  upstream_session_id String
+  ttl_minutes         Int?
+  expires_at          String?
+  rotatable           Int                   @default(1)
+  rotation_count      Int                   @default(0)
+  status              String                @default("ACTIVE")
+  bytes_used          BigInt                @default(0)
+  created_at          String
+  updated_at          String
+
+  usage_records       proxy_usage_records[]
+
+  @@index([user_id])
+  @@index([workspace_id])
+  @@index([proxy_id])
+  @@index([provider_id])
+  @@index([status])
+}
+
+model proxy_usage_records {
+  id          String                   @id
+  session_id  String?
+  provider_id String
+  user_id     String
+  bytes_used  BigInt                   @default(0)
+  recorded_at String
+
+  session     proxy_provider_sessions? @relation(fields: [session_id], references: [id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([session_id])
+}
+
+model proxy_provider_health {
+  provider_id     String  @id
+  status          String  @default("UNCONFIGURED")
+  latency_ms      Int?
+  last_checked_at String
+  error_message   String?
+}
+
+// ============================================================================
+// 7. CLOUD BROWSER INFRASTRUCTURE
+// ============================================================================
+
+model cloud_browser_regions {
+  id           String                  @id
+  name         String
+  endpoint_url String                  @default("")
+  gateway_url  String?
+  status       String                  @default("ACTIVE")
+  is_default   Int                     @default(0)
+  is_active    Int                     @default(1)
+  created_at   String
+  updated_at   String?
+
+  workers      cloud_browser_workers[]
+}
+
+model cloud_browser_workers {
+  id                String                @id
+  region_id         String
+  hostname          String                @default("localhost")
+  ip_address        String                @default("127.0.0.1")
+  status            String                @default("ONLINE")
+  capacity          Int                   @default(10)
+  capacity_slots    Int?                  @default(10)
+  active_sessions   Int                   @default(0)
+  used_slots        Int?                  @default(0)
+  cpu_usage_pct     Float?                @default(0.0)
+  memory_usage_mb   Float?                @default(0.0)
+  ram_usage_pct     Float?                @default(0.0)
+  last_heartbeat_at String
+  created_at        String
+  updated_at        String
+
+  region            cloud_browser_regions @relation(fields: [region_id], references: [id], onDelete: Restrict)
+
+  @@index([region_id])
+  @@index([status])
+}
+
+model cloud_browser_sessions {
+  id                   String                 @id
+  user_id              String
+  workspace_id         String?
+  profile_id           String
+  worker_id            String?
+  region_id            String                 @default("in-west")
+  status               String                 @default("REQUESTED")
+  resource_class       String                 @default("STANDARD")
+  profile_version      Int                    @default(1)
+  lock_id              String?
+  session_token_hash   String?
+  stream_gateway_url   String?
+  cdp_port             Int?
+  duration_seconds     Int                    @default(0)
+  max_duration_seconds Int                    @default(3600)
+  idle_timeout_seconds Int                    @default(600)
+  last_activity_at     String
+  started_at           String?
+  ended_at             String?
+  termination_reason   String?
+  error_message        String?
+  created_at           String
+  updated_at           String
+
+  events               cloud_browser_events[]
+
+  @@index([user_id])
+  @@index([profile_id])
+  @@index([status])
+  @@index([worker_id])
+}
+
+model cloud_browser_events {
+  id           String                 @id
+  session_id   String
+  user_id      String
+  event_type   String
+  details_json String?
+  created_at   String
+
+  session      cloud_browser_sessions @relation(fields: [session_id], references: [id], onDelete: Cascade)
+
+  @@index([session_id])
+  @@index([event_type])
+}
+
+model cloud_browser_usage {
+  id               String  @id
+  user_id          String
+  workspace_id     String?
+  session_id       String
+  duration_seconds Int
+  resource_class   String  @default("STANDARD")
+  region_id        String  @default("in-west")
+  created_at       String?
+
+  @@index([user_id])
+  @@index([workspace_id])
+}
+
+// ============================================================================
+// 8. SUPPORT, FUNNEL & MOBILE NOTIFICATIONS
+// ============================================================================
+
+model support_tickets {
+  id                String  @id
+  ticket_number     String  @unique
+  category          String
+  user_email        String?
+  user_name         String?
+  message           String
+  reply             String?
+  source            String? @default("landing_ai_chat")
+  status            String? @default("OPEN")
+  is_escalated      Int     @default(0)
+  escalation_reason String?
+  email_sent        Int     @default(0)
+  admin_notes       String?
+  created_at        String
+  updated_at        String
+
+  @@index([category])
+  @@index([status])
+  @@index([created_at])
+}
+
+model demo_requests {
+  id                 String  @id
+  full_name          String
+  email              String
+  company_name       String?
+  team_size          String?
+  use_case           String?
+  contact_method     String? @default("Email")
+  preferred_datetime String?
+  message            String?
+  status             String  @default("NEW")
+  admin_notes        String?
+  created_at         String
+  updated_at         String
+
+  @@index([status])
+  @@index([email])
+}
+
+model funnel_events {
+  id            String  @id
+  event_name    String
+  user_id       String?
+  anonymous_id  String?
+  plan_id       String?
+  billing_cycle String?
+  source_url    String?
+  ip_address    String?
+  metadata_json String  @default("{}")
+  created_at    String
+
+  @@index([event_name])
+  @@index([created_at])
+}
+
+model mobile_device_tokens {
+  id           String  @id
+  user_id      String
+  device_id    String
+  push_token   String
+  platform     String  @default("android")
+  device_model String?
+  os_version   String?
+  app_version  String?
+  status       String  @default("ACTIVE")
+  last_seen_at String
+  created_at   String
+  updated_at   String
+
+  @@index([user_id])
+  @@index([device_id])
+}
+
+model mobile_notification_preferences {
+  user_id           String @id
+  security_alerts   Int    @default(1)
+  cloud_sessions    Int    @default(1)
+  automation_alerts Int    @default(1)
+  workspace_alerts  Int    @default(1)
+  proxy_alerts      Int    @default(1)
+  updated_at        String
+}
+
+model mobile_notifications {
+  id         String  @id
+  user_id    String
+  category   String
+  title      String
+  body       String
+  data_json  String?
+  read       Int     @default(0)
+  created_at String
+
+  @@index([user_id])
+  @@index([category])
+}

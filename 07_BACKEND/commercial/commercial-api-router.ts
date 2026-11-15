@@ -130,6 +130,10 @@ import {
   renewProfileLock,
   releaseProfileLock,
   getProfileLockStatus,
+  acquireProfileLockAsync,
+  renewProfileLockAsync,
+  releaseProfileLockAsync,
+  getProfileLockStatusAsync,
 } from '../services/cloud-profile-service.js';
 import {
   createTeamWorkspace,
@@ -166,6 +170,9 @@ function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
 }
 
 function parseBody(req: http.IncomingMessage): Promise<any> {
+  if ((req as any).body !== undefined && typeof (req as any).body === 'object') {
+    return Promise.resolve((req as any).body);
+  }
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', (chunk) => {
@@ -184,6 +191,9 @@ function parseBody(req: http.IncomingMessage): Promise<any> {
 }
 
 function parseRawBuffer(req: http.IncomingMessage): Promise<Buffer> {
+  if ((req as any).rawBuffer !== undefined && Buffer.isBuffer((req as any).rawBuffer)) {
+    return Promise.resolve((req as any).rawBuffer);
+  }
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     req.on('data', (chunk) => {
@@ -2798,7 +2808,7 @@ export async function handleCommercialApiRoutes(
     }
     try {
       const body = await parseBody(req);
-      const result = acquireProfileLock(
+      const result = await acquireProfileLockAsync(
         user.userId,
         body.cloudProfileId,
         body.deviceId,
@@ -2820,7 +2830,7 @@ export async function handleCommercialApiRoutes(
     }
     try {
       const body = await parseBody(req);
-      const result = renewProfileLock(user.userId, body.cloudProfileId, body.deviceId, body.ttlSeconds);
+      const result = await renewProfileLockAsync(user.userId, body.cloudProfileId, body.deviceId, body.ttlSeconds);
       sendJSON(res, 200, result);
     } catch (err: any) {
       sendJSON(res, 400, { success: false, error: err.message });
@@ -2836,7 +2846,7 @@ export async function handleCommercialApiRoutes(
     }
     try {
       const body = await parseBody(req);
-      const result = releaseProfileLock(user.userId, body.cloudProfileId, body.deviceId);
+      const result = await releaseProfileLockAsync(user.userId, body.cloudProfileId, body.deviceId);
       sendJSON(res, 200, result);
     } catch (err: any) {
       sendJSON(res, 400, { success: false, error: err.message });
@@ -2851,7 +2861,7 @@ export async function handleCommercialApiRoutes(
       return true;
     }
     const profileId = parsedUrl.searchParams.get('cloudProfileId') || '';
-    const status = getProfileLockStatus(user.userId, profileId);
+    const status = await getProfileLockStatusAsync(user.userId, profileId);
     sendJSON(res, 200, { success: true, data: status });
     return true;
   }

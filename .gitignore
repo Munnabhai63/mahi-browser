@@ -11,6 +11,7 @@ release/
 Thumbs.db
 .env
 .env.*
+!.env*.example
 keys.json
 _ADMIN_KEYGEN/
 *.pem

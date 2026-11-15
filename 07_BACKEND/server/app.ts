@@ -118,6 +118,9 @@ function requireMasterAdminAuth(req: http.IncomingMessage, res: http.ServerRespo
 }
 
 function parseBody(req: http.IncomingMessage): Promise<any> {
+  if ((req as any).body !== undefined && typeof (req as any).body === 'object') {
+    return Promise.resolve((req as any).body);
+  }
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', (chunk) => {
@@ -135,29 +138,28 @@ function parseBody(req: http.IncomingMessage): Promise<any> {
   });
 }
 
-export function createCentralApiServer(): http.Server {
-  return http.createServer(async (req, res) => {
-    (res as any).__req = req;
+export async function handleCentralApiRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<any> {
+  (res as any).__req = req;
 
-    // Handle CORS preflight
-    if (req.method === 'OPTIONS') {
-      const corsHeaders = getCorsHeaders(req);
-      res.writeHead(204, corsHeaders);
-      res.end();
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    const corsHeaders = getCorsHeaders(req);
+    res.writeHead(204, corsHeaders);
+    res.end();
+    return;
+  }
+
+  const parsedUrl = new URL(req.url || '/', 'http://127.0.0.1');
+  const pathname = parsedUrl.pathname;
+  const cleanPath = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+  const method = req.method?.toUpperCase() || 'GET';
+
+  try {
+    // Commercial API Layer (/api/v1/*)
+    const handledCommercial = await handleCommercialApiRoutes(req, res, pathname, method, parsedUrl);
+    if (handledCommercial) {
       return;
     }
-
-    const parsedUrl = new URL(req.url || '/', 'http://127.0.0.1');
-    const pathname = parsedUrl.pathname;
-    const cleanPath = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
-    const method = req.method?.toUpperCase() || 'GET';
-
-    try {
-      // Commercial API Layer (/api/v1/*)
-      const handledCommercial = await handleCommercialApiRoutes(req, res, pathname, method, parsedUrl);
-      if (handledCommercial) {
-        return;
-      }
 
       // Super Admin dynamic secret verification endpoint
       if (pathname === '/api/v2/super-admin/auth/verify' && method === 'POST') {
@@ -597,5 +599,8 @@ export function createCentralApiServer(): http.Server {
     } catch (err: any) {
       return sendJSON(res, 500, { success: false, error: err.message || 'Internal Server Error' });
     }
-  });
+}
+
+export function createCentralApiServer(): http.Server {
+  return http.createServer(handleCentralApiRequest);
 }

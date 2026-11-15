@@ -20,6 +20,8 @@ import {
 } from '../../05_AUTH/central-auth-service.js';
 import { DevelopmentEmailProvider } from '../../05_AUTH/email-service.js';
 import { assertCanCreateProfile, getPlanLimitsInfo } from '../../08_SECURITY/freemium-guard.js';
+import { clearEncryptedSession, clearCachedStatus } from '../../08_SECURITY/account-service.js';
+import { setActiveUserId } from '../../07_BACKEND/commercial/session-context.js';
 
 describe('PHASE 1: Central Account & Authentication Service', () => {
   const testDbDir = path.join(process.cwd(), '.test_phase1_auth');
@@ -31,6 +33,9 @@ describe('PHASE 1: Central Account & Authentication Service', () => {
     setCustomDatabasePath(testDbPath);
     await initializeDatabase();
     DevelopmentEmailProvider.clear();
+    clearEncryptedSession();
+    clearCachedStatus();
+    setActiveUserId(null);
   });
 
   afterAll(() => {

@@ -3,6 +3,7 @@ import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getStorageProvider } from '../../08_SECURITY/storage-provider.js';
 import { evaluateUserEntitlements } from '../commercial/commercial-entitlement-service.js';
 import { TeamRole, TeamPermission, ROLE_PERMISSIONS } from '../../10_CONFIG/shared/types/workspace.js';
+import { isRedisConfigured, redisLockService } from '../../08_SECURITY/redis-lock-service.js';
 
 /**
  * Check if a user has access to a cloud profile, either directly as owner
@@ -704,4 +705,141 @@ export function getProfileLockStatus(userId: string, cloudProfileId: string) {
     deviceId: lock.device_id,
     expiresAt: lock.expires_at,
   };
+}
+
+// ============================================================================
+// ASYNC DISTRIBUTED PROFILE LOCKING (REDIS WITH SQLITE FALLBACK)
+// ============================================================================
+
+export async function acquireProfileLockAsync(
+  userId: string,
+  cloudProfileId: string,
+  deviceId: string,
+  deviceName: string,
+  ttlSeconds = 300
+): Promise<{ acquired: boolean; heldBy?: string; deviceId?: string; expiresAt?: string }> {
+  if (isRedisConfigured()) {
+    try {
+      const db = getDatabase();
+      const profile = db.prepare(`SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'`).get(cloudProfileId) as any;
+      if (profile) {
+        const access = verifyUserProfileAccess(userId, cloudProfileId, 'PROFILE_RUN');
+        if (!access) {
+          throw new Error('Access denied: Profile not found or not shared with you');
+        }
+      }
+    } catch (e: any) {
+      if (e?.message?.startsWith('Access denied')) throw e;
+    }
+
+    const redisRes = await redisLockService.acquireLock(cloudProfileId, deviceId, deviceName, userId, ttlSeconds);
+    if (redisRes.acquired) {
+      logCloudAudit(userId, 'LOCK_ACQUIRED', `Locked by ${deviceName} (Redis)`, cloudProfileId, deviceId);
+      return {
+        acquired: true,
+        expiresAt: redisRes.expiresAt,
+        deviceId: redisRes.deviceId,
+      };
+    }
+    return {
+      acquired: false,
+      heldBy: redisRes.heldBy,
+      deviceId: redisRes.deviceId,
+      expiresAt: redisRes.expiresAt,
+    };
+  }
+
+  return acquireProfileLock(userId, cloudProfileId, deviceId, deviceName, ttlSeconds);
+}
+
+export async function renewProfileLockAsync(
+  userId: string,
+  cloudProfileId: string,
+  deviceId: string,
+  ttlSeconds = 300
+): Promise<{ renewed: boolean; expiresAt?: string }> {
+  if (isRedisConfigured()) {
+    try {
+      const db = getDatabase();
+      const profile = db.prepare(`SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'`).get(cloudProfileId) as any;
+      if (profile) {
+        const access = verifyUserProfileAccess(userId, cloudProfileId, 'PROFILE_RUN');
+        if (!access) {
+          throw new Error('Access denied: Profile not found or not shared with you');
+        }
+      }
+    } catch (e: any) {
+      if (e?.message?.startsWith('Access denied')) throw e;
+    }
+
+    const redisRes = await redisLockService.renewLock(cloudProfileId, deviceId, ttlSeconds);
+    return {
+      renewed: redisRes.renewed,
+      expiresAt: redisRes.expiresAt,
+    };
+  }
+
+  return renewProfileLock(userId, cloudProfileId, deviceId, ttlSeconds);
+}
+
+export async function releaseProfileLockAsync(
+  userId: string,
+  cloudProfileId: string,
+  deviceId: string
+): Promise<{ released: boolean }> {
+  if (isRedisConfigured()) {
+    try {
+      const db = getDatabase();
+      const profile = db.prepare(`SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'`).get(cloudProfileId) as any;
+      if (profile) {
+        const access = verifyUserProfileAccess(userId, cloudProfileId, 'PROFILE_VIEW');
+        if (!access) {
+          throw new Error('Access denied: Profile not found or not shared with you');
+        }
+      }
+    } catch (e: any) {
+      if (e?.message?.startsWith('Access denied')) throw e;
+    }
+
+    const redisRes = await redisLockService.releaseLock(cloudProfileId, deviceId);
+    if (redisRes.released) {
+      logCloudAudit(userId, 'LOCK_RELEASED', `Lock released by ${deviceId} (Redis)`, cloudProfileId, deviceId);
+    }
+    return { released: redisRes.released };
+  }
+
+  return releaseProfileLock(userId, cloudProfileId, deviceId);
+}
+
+export async function getProfileLockStatusAsync(
+  userId: string,
+  cloudProfileId: string
+): Promise<{ isLocked: boolean; heldBy?: string; deviceId?: string; expiresAt?: string }> {
+  if (isRedisConfigured()) {
+    try {
+      const db = getDatabase();
+      const profile = db.prepare(`SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'`).get(cloudProfileId) as any;
+      if (profile) {
+        const access = verifyUserProfileAccess(userId, cloudProfileId, 'PROFILE_VIEW');
+        if (!access) {
+          throw new Error('Access denied: Profile not found or not shared with you');
+        }
+      }
+    } catch (e: any) {
+      if (e?.message?.startsWith('Access denied')) throw e;
+    }
+
+    const redisRes = await redisLockService.getLockStatus(cloudProfileId);
+    if (!redisRes.isLocked) {
+      return { isLocked: false };
+    }
+    return {
+      isLocked: true,
+      heldBy: redisRes.heldBy,
+      deviceId: redisRes.deviceId,
+      expiresAt: redisRes.expiresAt,
+    };
+  }
+
+  return getProfileLockStatus(userId, cloudProfileId);
 }
