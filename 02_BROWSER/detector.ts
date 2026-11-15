@@ -132,9 +132,120 @@ export function getMahiCustomCorePath(): string | null {
 
 export const getStealthOrbitaEnginePath = getMahiCustomCorePath;
 
+/**
+ * Resolves the Camoufox (C++ Patched Firefox) binary path.
+ * Checks process.env.CAMOUFOX_EXECUTABLE_PATH, ~/.mahi/cores/camoufox*, ~/.cache/camoufox,
+ * and standard OS installation paths.
+ */
+export function getCamoufoxExecutablePath(): string | null {
+  if (process.env.CAMOUFOX_EXECUTABLE_PATH && fs.existsSync(process.env.CAMOUFOX_EXECUTABLE_PATH)) {
+    return process.env.CAMOUFOX_EXECUTABLE_PATH;
+  }
+
+  const platform = os.platform();
+  const home = os.homedir();
+  const exeName = platform === 'win32' ? 'camoufox.exe' : 'camoufox';
+
+  // 1. Check ~/.mahi/cores/camoufox*
+  const mahiCoresDir = path.join(home, '.mahi', 'cores');
+  if (fs.existsSync(mahiCoresDir)) {
+    try {
+      const entries = fs.readdirSync(mahiCoresDir);
+      for (const entry of entries) {
+        if (entry.toLowerCase().startsWith('camoufox')) {
+          const direct = path.join(mahiCoresDir, entry, exeName);
+          if (fs.existsSync(direct)) return direct;
+          const binFallback = path.join(mahiCoresDir, entry, platform === 'win32' ? 'camoufox.exe' : 'camoufox-bin');
+          if (fs.existsSync(binFallback)) return binFallback;
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Check ~/.cache/camoufox
+  const cacheDir = path.join(home, '.cache', 'camoufox');
+  if (fs.existsSync(cacheDir)) {
+    const cacheExe = path.join(cacheDir, exeName);
+    if (fs.existsSync(cacheExe)) return cacheExe;
+    try {
+      const subEntries = fs.readdirSync(cacheDir);
+      for (const sub of subEntries) {
+        const subExe = path.join(cacheDir, sub, exeName);
+        if (fs.existsSync(subExe)) return subExe;
+      }
+    } catch {}
+  }
+
+  // 3. Check OS standard locations
+  if (platform === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA || '';
+    const programFiles = process.env['ProgramFiles'] || 'C:\\Program Files';
+    const candidates = [
+      path.join(localAppData, 'Camoufox', 'camoufox.exe'),
+      path.join(programFiles, 'Camoufox', 'camoufox.exe'),
+      path.join(home, 'AppData', 'Local', 'Programs', 'Camoufox', 'camoufox.exe'),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return c;
+    }
+  } else if (platform === 'darwin') {
+    const candidates = [
+      '/Applications/Camoufox.app/Contents/MacOS/camoufox',
+      path.join(home, 'Applications', 'Camoufox.app', 'Contents', 'MacOS', 'camoufox'),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return c;
+    }
+  } else {
+    // Linux
+    const candidates = [
+      '/usr/bin/camoufox',
+      '/usr/local/bin/camoufox',
+      '/opt/camoufox/camoufox',
+      '/usr/bin/camoufox-bin',
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return c;
+    }
+  }
+
+  return null;
+}
+
+export function isCamoufoxInstalled(): boolean {
+  return getCamoufoxExecutablePath() !== null;
+}
+
+export function getEngineAvailability(): {
+  chromium138: boolean;
+  camoufox: boolean;
+  chrome: boolean;
+  edge: boolean;
+} {
+  const sys = detectSystemBrowsers();
+  const hasManaged = isProductionChromiumInstalled() || isManagedEngineInstalled() || Boolean(getBundledEngineExecutablePath());
+  return {
+    chromium138: hasManaged,
+    camoufox: isCamoufoxInstalled(),
+    chrome: sys.some((b) => b.engine === 'chrome'),
+    edge: sys.some((b) => b.engine === 'edge'),
+  };
+}
+
 export function resolveExecutablePath(engine: BrowserEngine, customPath?: string): string {
   if (customPath && fs.existsSync(customPath)) {
     return customPath;
+  }
+
+  // Camoufox Dual-Engine resolution: strictly enforce honest binary resolution
+  if (engine === 'camoufox') {
+    const camou = getCamoufoxExecutablePath();
+    if (camou && fs.existsSync(camou)) {
+      return camou;
+    }
+    throw new Error(
+      'Camoufox engine executable not found. Please install Camoufox or set the CAMOUFOX_EXECUTABLE_PATH environment variable. (MAHI Anti-Detect never falsely substitutes Chromium for Camoufox).'
+    );
   }
 
   // 1. Authoritative Bundled Production Chromium Engine (Packaged with MAHI Browser)

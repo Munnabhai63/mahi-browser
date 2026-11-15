@@ -234,6 +234,23 @@ export function ensureProfileStealthExtension(
         ],
   };
 
+  const isCamoufox = settings?.browser?.engine === 'camoufox';
+  const dnrRequestHeaders = isCamoufox
+    ? [
+        { header: 'accept-language', operation: 'set', value: acceptLanguageHeader },
+      ]
+    : [
+        { header: 'sec-ch-ua', operation: 'set', value: `"Not/A)Brand";v="8", "Chromium";v="${chromeMajorVer}", "Google Chrome";v="${chromeMajorVer}"` },
+        { header: 'sec-ch-ua-full-version-list', operation: 'set', value: `"Not/A)Brand";v="8.0.0.0", "Chromium";v="${chromeFullVer}", "Google Chrome";v="${chromeFullVer}"` },
+        { header: 'sec-ch-ua-platform', operation: 'set', value: `"${clientHintsPlatform}"` },
+        { header: 'sec-ch-ua-mobile', operation: 'set', value: clientHintsMobile },
+        { header: 'sec-ch-ua-model', operation: 'set', value: `"${clientHintsModel}"` },
+        { header: 'sec-ch-ua-platform-version', operation: 'set', value: `"${clientHintsPlatformVersion}"` },
+        { header: 'sec-ch-ua-arch', operation: 'set', value: `"${clientHintsArch}"` },
+        { header: 'sec-ch-ua-bitness', operation: 'set', value: '"64"' },
+        { header: 'accept-language', operation: 'set', value: acceptLanguageHeader },
+      ];
+
   // Declarative Net Request rules to spoof HTTP request headers:
   // Sec-CH-UA, Sec-CH-UA-Full-Version-List, Sec-CH-UA-Platform, Sec-CH-UA-Mobile, Sec-CH-UA-Model, Sec-CH-UA-Platform-Version, Accept-Language
   // and block remote CDP debugging port leakage (both 9222 and profile-specific debugPort)
@@ -243,17 +260,7 @@ export function ensureProfileStealthExtension(
       priority: 1,
       action: {
         type: 'modifyHeaders',
-        requestHeaders: [
-          { header: 'sec-ch-ua', operation: 'set', value: `"Not/A)Brand";v="8", "Chromium";v="${chromeMajorVer}", "Google Chrome";v="${chromeMajorVer}"` },
-          { header: 'sec-ch-ua-full-version-list', operation: 'set', value: `"Not/A)Brand";v="8.0.0.0", "Chromium";v="${chromeFullVer}", "Google Chrome";v="${chromeFullVer}"` },
-          { header: 'sec-ch-ua-platform', operation: 'set', value: `"${clientHintsPlatform}"` },
-          { header: 'sec-ch-ua-mobile', operation: 'set', value: clientHintsMobile },
-          { header: 'sec-ch-ua-model', operation: 'set', value: `"${clientHintsModel}"` },
-          { header: 'sec-ch-ua-platform-version', operation: 'set', value: `"${clientHintsPlatformVersion}"` },
-          { header: 'sec-ch-ua-arch', operation: 'set', value: `"${clientHintsArch}"` },
-          { header: 'sec-ch-ua-bitness', operation: 'set', value: '"64"' },
-          { header: 'accept-language', operation: 'set', value: acceptLanguageHeader },
-        ],
+        requestHeaders: dnrRequestHeaders,
       },
       condition: {
         urlFilter: '*',
@@ -403,19 +410,25 @@ export function ensureProfileStealthExtension(
   // -------------------------------------------------------------
   try {
     if (typeof Navigator !== 'undefined' && Navigator.prototype) {
+      var proto = Navigator.prototype;
+      var origWbDesc = Object.getOwnPropertyDescriptor(proto, 'webdriver');
       var getterObj = {
         get webdriver() { return false; }
       };
-      var origGetter = Object.getOwnPropertyDescriptor(getterObj, 'webdriver').get;
+      var fallbackGetter = Object.getOwnPropertyDescriptor(getterObj, 'webdriver').get;
+      var origGetter = (origWbDesc && typeof origWbDesc.get === 'function') ? origWbDesc.get : fallbackGetter;
       var proxyWebdriver = new Proxy(origGetter, {
         apply: function() { return false; }
       });
-      Object.defineProperty(Navigator.prototype, 'webdriver', {
+      Object.defineProperty(proto, 'webdriver', {
         get: proxyWebdriver,
         enumerable: true,
         configurable: true
       });
       registerNative(proxyWebdriver, 'get webdriver');
+      if (origWbDesc && typeof origWbDesc.get === 'function') {
+        registerNative(origWbDesc.get, 'get webdriver');
+      }
     }
     if (typeof navigator !== 'undefined') {
       try { delete navigator.webdriver; } catch(e) {}
@@ -433,27 +446,29 @@ export function ensureProfileStealthExtension(
     }
   } catch(e) {}
 
-  // Chrome Runtime Mocking
-  try {
-    if (!window.chrome) { window.chrome = {}; }
-    if (!window.chrome.runtime) {
-      window.chrome.runtime = {
-        connect: function() {},
-        sendMessage: function() {},
-        id: undefined
-      };
-    }
-    if (!window.chrome.app) {
-      window.chrome.app = {
-        isInstalled: false,
-        InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
-        RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
-        getDetails: function() { return null; },
-        getIsInstalled: function() { return false; },
-        runningState: function() { return 'cannot_run'; }
-      };
-    }
-  } catch(e) {}
+  // Chrome Runtime Mocking (for Chromium-family engines)
+  if (!${isCamoufox}) {
+    try {
+      if (!window.chrome) { window.chrome = {}; }
+      if (!window.chrome.runtime) {
+        window.chrome.runtime = {
+          connect: function() {},
+          sendMessage: function() {},
+          id: undefined
+        };
+      }
+      if (!window.chrome.app) {
+        window.chrome.app = {
+          isInstalled: false,
+          InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+          RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
+          getDetails: function() { return null; },
+          getIsInstalled: function() { return false; },
+          runningState: function() { return 'cannot_run'; }
+        };
+      }
+    } catch(e) {}
+  }
 
   // -------------------------------------------------------------
   // 2. Hardware Navigator Overrides & Locale/Languages
@@ -558,98 +573,100 @@ export function ensureProfileStealthExtension(
     // -------------------------------------------------------------
     // User-Agent Client Hints (navigator.userAgentData) Native Masking
     // -------------------------------------------------------------
-    try {
-      var brandVersion = ${JSON.stringify(chromeMajorVer)};
-      var chromeFullVer = ${JSON.stringify(chromeFullVer)};
-      var defaultBrands = [
-        { brand: "Not/A)Brand", version: "8" },
-        { brand: "Chromium", version: brandVersion },
-        { brand: "Google Chrome", version: brandVersion }
-      ];
-      var defaultFullVersionList = [
-        { brand: "Not/A)Brand", version: "8.0.0.0" },
-        { brand: "Chromium", version: chromeFullVer },
-        { brand: "Google Chrome", version: chromeFullVer }
-      ];
+    if (!${isCamoufox}) {
+      try {
+        var brandVersion = ${JSON.stringify(chromeMajorVer)};
+        var chromeFullVer = ${JSON.stringify(chromeFullVer)};
+        var defaultBrands = [
+          { brand: "Not/A)Brand", version: "8" },
+          { brand: "Chromium", version: brandVersion },
+          { brand: "Google Chrome", version: brandVersion }
+        ];
+        var defaultFullVersionList = [
+          { brand: "Not/A)Brand", version: "8.0.0.0" },
+          { brand: "Chromium", version: chromeFullVer },
+          { brand: "Google Chrome", version: chromeFullVer }
+        ];
 
-      var chPlatform = ${JSON.stringify(clientHintsPlatform)};
-      var chMobile = ${isMobile ? 'true' : 'false'};
-      var chModel = ${JSON.stringify(clientHintsModel)};
-      var chPlatformVersion = ${JSON.stringify(clientHintsPlatformVersion)};
-      var chArch = ${JSON.stringify(clientHintsArch)};
-      var chBitness = "64";
+        var chPlatform = ${JSON.stringify(clientHintsPlatform)};
+        var chMobile = ${isMobile ? 'true' : 'false'};
+        var chModel = ${JSON.stringify(clientHintsModel)};
+        var chPlatformVersion = ${JSON.stringify(clientHintsPlatformVersion)};
+        var chArch = ${JSON.stringify(clientHintsArch)};
+        var chBitness = "64";
 
-      var getBrands = function() { return defaultBrands; };
-      var getMobile = function() { return chMobile; };
-      var getPlatform = function() { return chPlatform; };
-      var getHighEntropyValues = function(hints) {
-        var res = {
-          brands: defaultBrands,
-          mobile: chMobile,
-          platform: chPlatform
+        var getBrands = function() { return defaultBrands; };
+        var getMobile = function() { return chMobile; };
+        var getPlatform = function() { return chPlatform; };
+        var getHighEntropyValues = function(hints) {
+          var res = {
+            brands: defaultBrands,
+            mobile: chMobile,
+            platform: chPlatform
+          };
+          if (!Array.isArray(hints)) return Promise.resolve(res);
+          for (var i = 0; i < hints.length; i++) {
+            var h = hints[i];
+            if (h === 'architecture') res.architecture = chArch;
+            if (h === 'bitness') res.bitness = chBitness;
+            if (h === 'model') res.model = chModel;
+            if (h === 'platformVersion') res.platformVersion = chPlatformVersion;
+            if (h === 'uaFullVersion') res.uaFullVersion = chromeFullVer;
+            if (h === 'fullVersionList') res.fullVersionList = defaultFullVersionList;
+          }
+          return Promise.resolve(res);
         };
-        if (!Array.isArray(hints)) return Promise.resolve(res);
-        for (var i = 0; i < hints.length; i++) {
-          var h = hints[i];
-          if (h === 'architecture') res.architecture = chArch;
-          if (h === 'bitness') res.bitness = chBitness;
-          if (h === 'model') res.model = chModel;
-          if (h === 'platformVersion') res.platformVersion = chPlatformVersion;
-          if (h === 'uaFullVersion') res.uaFullVersion = chromeFullVer;
-          if (h === 'fullVersionList') res.fullVersionList = defaultFullVersionList;
+        var toJSON = function() {
+          return {
+            brands: defaultBrands,
+            mobile: chMobile,
+            platform: chPlatform
+          };
+        };
+
+        var uaDataObj;
+        var uaTargetProto = (typeof window.NavigatorUAData !== 'undefined' && window.NavigatorUAData.prototype) ? window.NavigatorUAData.prototype : null;
+        if (uaTargetProto) {
+          Object.defineProperties(uaTargetProto, {
+            brands: { get: getBrands, enumerable: true, configurable: true },
+            mobile: { get: getMobile, enumerable: true, configurable: true },
+            platform: { get: getPlatform, enumerable: true, configurable: true },
+            getHighEntropyValues: { value: getHighEntropyValues, enumerable: true, configurable: true, writable: true },
+            toJSON: { value: toJSON, enumerable: true, configurable: true, writable: true },
+          });
+          uaDataObj = Object.create(uaTargetProto);
+        } else {
+          uaDataObj = {};
+          Object.defineProperties(uaDataObj, {
+            brands: { get: getBrands, enumerable: true, configurable: true },
+            mobile: { get: getMobile, enumerable: true, configurable: true },
+            platform: { get: getPlatform, enumerable: true, configurable: true },
+            getHighEntropyValues: { value: getHighEntropyValues, enumerable: true, configurable: true, writable: true },
+            toJSON: { value: toJSON, enumerable: true, configurable: true, writable: true },
+          });
         }
-        return Promise.resolve(res);
-      };
-      var toJSON = function() {
-        return {
-          brands: defaultBrands,
-          mobile: chMobile,
-          platform: chPlatform
-        };
-      };
 
-      var uaDataObj;
-      var uaTargetProto = (typeof window.NavigatorUAData !== 'undefined' && window.NavigatorUAData.prototype) ? window.NavigatorUAData.prototype : null;
-      if (uaTargetProto) {
-        Object.defineProperties(uaTargetProto, {
-          brands: { get: getBrands, enumerable: true, configurable: true },
-          mobile: { get: getMobile, enumerable: true, configurable: true },
-          platform: { get: getPlatform, enumerable: true, configurable: true },
-          getHighEntropyValues: { value: getHighEntropyValues, enumerable: true, configurable: true, writable: true },
-          toJSON: { value: toJSON, enumerable: true, configurable: true, writable: true },
+        registerNative(getBrands, 'get brands');
+        registerNative(getMobile, 'get mobile');
+        registerNative(getPlatform, 'get platform');
+        registerNative(getHighEntropyValues, 'getHighEntropyValues');
+        registerNative(toJSON, 'toJSON');
+
+        var origUaDataDesc = Object.getOwnPropertyDescriptor(Navigator.prototype, 'userAgentData');
+        var proxyUaData = new Proxy(origUaDataDesc && origUaDataDesc.get ? origUaDataDesc.get : function() { return uaDataObj; }, {
+          apply: function() { return uaDataObj; }
         });
-        uaDataObj = Object.create(uaTargetProto);
-      } else {
-        uaDataObj = {};
-        Object.defineProperties(uaDataObj, {
-          brands: { get: getBrands, enumerable: true, configurable: true },
-          mobile: { get: getMobile, enumerable: true, configurable: true },
-          platform: { get: getPlatform, enumerable: true, configurable: true },
-          getHighEntropyValues: { value: getHighEntropyValues, enumerable: true, configurable: true, writable: true },
-          toJSON: { value: toJSON, enumerable: true, configurable: true, writable: true },
+
+        Object.defineProperty(Navigator.prototype, 'userAgentData', {
+          get: proxyUaData,
+          enumerable: true,
+          configurable: true
         });
-      }
 
-      registerNative(getBrands, 'get brands');
-      registerNative(getMobile, 'get mobile');
-      registerNative(getPlatform, 'get platform');
-      registerNative(getHighEntropyValues, 'getHighEntropyValues');
-      registerNative(toJSON, 'toJSON');
-
-      var origUaDataDesc = Object.getOwnPropertyDescriptor(Navigator.prototype, 'userAgentData');
-      var proxyUaData = new Proxy(origUaDataDesc && origUaDataDesc.get ? origUaDataDesc.get : function() { return uaDataObj; }, {
-        apply: function() { return uaDataObj; }
-      });
-
-      Object.defineProperty(Navigator.prototype, 'userAgentData', {
-        get: proxyUaData,
-        enumerable: true,
-        configurable: true
-      });
-
-      registerNative(proxyUaData, 'get userAgentData');
-      if (origUaDataDesc && origUaDataDesc.get) registerNative(origUaDataDesc.get, 'get userAgentData');
-    } catch(e) {}
+        registerNative(proxyUaData, 'get userAgentData');
+        if (origUaDataDesc && origUaDataDesc.get) registerNative(origUaDataDesc.get, 'get userAgentData');
+      } catch(e) {}
+    }
 
     if (${isMobile}) {
       try {
@@ -2125,12 +2142,14 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
     '--no-service-autorun',
     '--suppress-message-center-popups',
     '--disable-infobars',
+    '--disable-blink-features=AutomationControlled',
     '--disable-features=Translate,OptimizationHints,MediaRouter,ExtensionDeveloperModeWarning,PrivacySandboxSettings4,ChromeForTestingDisclaimer,HttpsFirstMode,HttpsUpgrades'
   );
 
-  // In Normal User Mode, NEVER add test automation switches
+  // In Normal User Mode, NEVER add test automation switches.
+  // In Automation Mode, inject rebrowser-patches CDP isolation switch.
   if (mode === 'automation') {
-    // Automation mode retains clean flags unless automation script requests specific flags
+    args.push('--mahi-cdp-isolated');
   }
 
   // Native Font Masking Mode (--font-masking-mode=1|2|3)
@@ -2193,6 +2212,145 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
 }
 
 /**
+ * Dedicated launch branch for Camoufox (C++ Patched Firefox) profiles.
+ * Suppresses all Chromium-specific flags and applies clean Firefox CLI flags and
+ * chunked CAMOU_CONFIG_* environment variables for deep anti-detect spoofing.
+ */
+export async function launchCamoufoxProfile(
+  profile: Profile,
+  launchOptions?: { mode?: 'normal' | 'automation' }
+): Promise<LaunchedProcessInfo> {
+  debugLog(`=======================================================`);
+  debugLog(`[Camoufox Launcher] Starting launch sequence for profile: "${profile.name}" (ID: ${profile.id})`);
+
+  let proxyTunnel: ProxyTunnelHandle | undefined;
+
+  try {
+    const executablePath = resolveExecutablePath('camoufox', profile.customExecutablePath);
+    debugLog(`[Camoufox Launcher] Executable resolved: "${executablePath}"`);
+
+    const storageDir = path.resolve(profile.storagePath);
+    if (!fs.existsSync(storageDir)) {
+      fs.mkdirSync(storageDir, { recursive: true });
+    } else {
+      cleanupStaleLocks(storageDir);
+    }
+
+    const settings = profile.settings || ({} as any);
+    const fp = settings.fingerprint || {};
+    const disp = settings.display || {};
+    const loc = settings.locale || {};
+
+    // Build clean Firefox CLI arguments
+    const args: string[] = [
+      '-profile',
+      storageDir,
+      '-no-remote',
+      '-new-instance',
+    ];
+
+    // Proxy handling
+    let proxyIp: string | undefined;
+    if (!settings?.network?.directConnection && settings?.network?.proxyId) {
+      const proxy = getProxyById(settings.network.proxyId);
+      if (proxy) {
+        const credentials = getDecryptedProxyCredentials(proxy.id);
+        if (credentials?.username && credentials?.password) {
+          proxyTunnel = await createProxyTunnel({
+            upstreamHost: proxy.host,
+            upstreamPort: proxy.port,
+            upstreamProtocol: proxy.protocol,
+            username: credentials.username,
+            password: credentials.password,
+            profileId: profile.id,
+          });
+          proxyIp = '127.0.0.1';
+        } else {
+          proxyIp = proxy.host;
+        }
+      }
+    }
+
+    // Startup URL
+    const startupUrl = settings?.browser?.startupUrl?.trim() || 'about:blank';
+    args.push(startupUrl);
+
+    // Build Camoufox JSON configuration
+    const camouConfigObj: Record<string, any> = {
+      'navigator.userAgent': settings?.browser?.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0',
+      'navigator.platform': fp.platform || 'Win32',
+      'navigator.hardwareConcurrency': fp.hardwareConcurrency || 8,
+      'screen.width': disp.screenWidth || 1920,
+      'screen.height': disp.screenHeight || 1080,
+      'webGL:vendor': fp.webglVendor || 'Google Inc. (NVIDIA)',
+      'webGL:renderer': fp.webglRenderer || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      'timezone': loc.timezone || 'America/New_York',
+      'locale:language': loc.language || 'en-US',
+      'locale:region': loc.timezone ? (loc.timezone.split('/')[1] || loc.timezone) : 'US',
+      'webrtc:ipv4': proxyIp || '0.0.0.0',
+    };
+
+    if (proxyTunnel) {
+      camouConfigObj.proxy = {
+        host: '127.0.0.1',
+        port: proxyTunnel.port,
+      };
+    }
+
+    // Serialize and chunk Camoufox configuration payload into CAMOU_CONFIG_1, CAMOU_CONFIG_2, ...
+    const camouJson = JSON.stringify(camouConfigObj);
+    const CHUNK_SIZE = 1800;
+    const chunkedEnv: Record<string, string> = {};
+    for (let i = 0; i < camouJson.length; i += CHUNK_SIZE) {
+      const chunkIdx = Math.floor(i / CHUNK_SIZE) + 1;
+      chunkedEnv[`CAMOU_CONFIG_${chunkIdx}`] = camouJson.substring(i, i + CHUNK_SIZE);
+    }
+
+    const camouEnv: Record<string, string | undefined> = {
+      ...process.env,
+      ...chunkedEnv,
+    };
+
+    const child = spawn(executablePath, args, {
+      detached: true,
+      windowsHide: false,
+      stdio: 'ignore',
+      env: camouEnv,
+    });
+
+    if (!child.pid) {
+      if (proxyTunnel) proxyTunnel.close();
+      throw new Error(`Failed to spawn Camoufox process — no PID returned from OS.`);
+    }
+
+    try {
+      child.unref();
+    } catch {}
+
+    debugLog(`[Camoufox Launcher] Spawned successfully with PID: ${child.pid}`);
+    debugLog(`=======================================================`);
+
+    return {
+      process: child,
+      pid: child.pid,
+      profileId: profile.id,
+      startedAt: new Date().toISOString(),
+      executablePath,
+      storageDir,
+      proxyTunnel,
+    };
+  } catch (err: unknown) {
+    if (proxyTunnel) {
+      try { proxyTunnel.close(); } catch {}
+    }
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    debugLog(`[Camoufox Launcher CRITICAL ERROR] Failed to launch profile "${profile.name}": ${errorMsg}`);
+    debugLog(`=======================================================`);
+    throw (err instanceof Error ? err : new Error(errorMsg));
+  }
+}
+
+/**
  * Launches an isolated browser instance with full error handling and step-by-step logging.
  */
 export async function launchBrowser(profile: Profile, launchOptions?: { mode?: 'normal' | 'automation' }): Promise<LaunchedProcessInfo> {
@@ -2201,13 +2359,19 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
 
   let proxyTunnel: ProxyTunnelHandle | undefined;
 
+  // Dedicated isolated Camoufox launch branch
+  if (profile.settings?.browser?.engine === 'camoufox') {
+    return await launchCamoufoxProfile(profile, launchOptions);
+  }
+
   try {
     // -------------------------------------------------------------
     // Step 1: Resolve Browser Executable Path (Multi-Core Resolution & Managed Engine)
     // -------------------------------------------------------------
     const multiCore = resolveMultiCoreExecutablePath(
       profile.settings?.browser?.userAgent,
-      profile.customExecutablePath
+      profile.customExecutablePath,
+      profile.settings?.browser?.engine
     );
     let executablePath: string = multiCore.executablePath;
 
@@ -2326,8 +2490,10 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
     }
 
     // Native C++ CDP Execution Isolation (rebrowser-patches parity)
-    if (isNativeStealth) {
-      args.push('--mahi-cdp-isolated');
+    if (isNativeStealth || launchOptions?.mode === 'automation') {
+      if (!args.includes('--mahi-cdp-isolated')) {
+        args.push('--mahi-cdp-isolated');
+      }
       debugLog(`[Launcher Step 4/7] Configured native CDP execution isolation (--mahi-cdp-isolated).`);
     }
 

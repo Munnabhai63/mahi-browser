@@ -15,7 +15,7 @@ import crypto from 'node:crypto';
 import { getProfileById, updateProfile, getProfileStoragePath } from '../02_BROWSER/services/profile-service.js';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { exportCookies } from '../02_BROWSER/services/cookie-service.js';
-import { chromium } from 'playwright-core';
+import { chromium } from 'rebrowser-playwright-core';
 import { processManager } from '../02_BROWSER/process-manager.js';
 import { getProfileDebugPort } from '../02_BROWSER/launcher.js';
 import { getDatabase } from '../06_DATABASE/connection.js';

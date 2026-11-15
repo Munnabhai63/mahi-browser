@@ -18,7 +18,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { chromium, Page } from 'playwright-core';
+import { chromium, firefox, Page } from 'rebrowser-playwright-core';
 import { getDatabase } from '../06_DATABASE/connection.js';
 import {
   AutomationWorkflow,
@@ -681,15 +681,70 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
   try {
     runController.status = 'RUNNING';
 
-    if (isAlreadyRunning) {
-      const debugPort = getProfileDebugPort(profile.id);
-      try {
-        browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`, { timeout: 8000 });
-        runController.browser = browser;
-        const contexts = browser.contexts();
-        context = contexts.length > 0 ? contexts[0] : await browser.newContext();
-        runController.context = context;
-      } catch {
+    // Propagate rebrowser-patches runtime isolation modes
+    process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE || 'addBinding';
+
+    const isCamoufox = profile.settings?.browser?.engine === 'camoufox';
+
+    if (isCamoufox) {
+      if (isAlreadyRunning) {
+        throw new Error(
+          `Automation workflow cannot attach over CDP to an already-running Camoufox profile. Please stop profile "${profile.name}" before starting the automation run.`
+        );
+      }
+      cleanupStaleLocks(profile.storagePath);
+      context = await firefox.launchPersistentContext(profile.storagePath, {
+        executablePath,
+        headless: false,
+        viewport: {
+          width: profile.settings.display.screenWidth,
+          height: profile.settings.display.screenHeight,
+        },
+        userAgent: profile.settings.browser.userAgent,
+        locale: profile.settings.locale.language,
+        timezoneId: profile.settings.locale.timezone,
+        proxy: proxyConfig,
+      });
+      runController.context = context;
+    } else {
+      process.env.MAHI_CDP_ISOLATED = '1';
+      const cleanChromiumArgs = [
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-blink-features=AutomationControlled',
+        '--mahi-cdp-isolated',
+      ];
+
+      if (isAlreadyRunning) {
+        const debugPort = getProfileDebugPort(profile.id);
+        try {
+          browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`, { timeout: 8000 });
+          runController.browser = browser;
+          const contexts = browser.contexts();
+          context = contexts.length > 0 ? contexts[0] : await browser.newContext();
+          runController.context = context;
+        } catch {
+          cleanupStaleLocks(profile.storagePath);
+          context = await chromium.launchPersistentContext(profile.storagePath, {
+            executablePath,
+            headless: false,
+            viewport: {
+              width: profile.settings.display.screenWidth,
+              height: profile.settings.display.screenHeight,
+            },
+            userAgent: profile.settings.browser.userAgent,
+            locale: profile.settings.locale.language,
+            timezoneId: profile.settings.locale.timezone,
+            proxy: proxyConfig,
+            args: cleanChromiumArgs,
+            env: {
+              ...process.env,
+              MAHI_CDP_ISOLATED: '1',
+            },
+          });
+          runController.context = context;
+        }
+      } else {
         cleanupStaleLocks(profile.storagePath);
         context = await chromium.launchPersistentContext(profile.storagePath, {
           executablePath,
@@ -702,26 +757,14 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
           locale: profile.settings.locale.language,
           timezoneId: profile.settings.locale.timezone,
           proxy: proxyConfig,
-          args: ['--no-first-run', '--no-default-browser-check'],
+          args: cleanChromiumArgs,
+          env: {
+            ...process.env,
+            MAHI_CDP_ISOLATED: '1',
+          },
         });
         runController.context = context;
       }
-    } else {
-      cleanupStaleLocks(profile.storagePath);
-      context = await chromium.launchPersistentContext(profile.storagePath, {
-        executablePath,
-        headless: false,
-        viewport: {
-          width: profile.settings.display.screenWidth,
-          height: profile.settings.display.screenHeight,
-        },
-        userAgent: profile.settings.browser.userAgent,
-        locale: profile.settings.locale.language,
-        timezoneId: profile.settings.locale.timezone,
-        proxy: proxyConfig,
-        args: ['--no-first-run', '--no-default-browser-check'],
-      });
-      runController.context = context;
     }
 
     const pages = context.pages();

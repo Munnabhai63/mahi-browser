@@ -2,7 +2,7 @@ export interface GeneralSettings {
   language: string;
   theme: 'light' | 'dark' | 'system';
   startupBehavior: 'dashboard' | 'last_profiles' | 'none';
-  defaultBrowserEngine: 'chromium' | 'chrome' | 'edge';
+  defaultBrowserEngine: 'chromium' | 'chrome' | 'edge' | 'camoufox';
   defaultDownloadFolder: string;
 }
 

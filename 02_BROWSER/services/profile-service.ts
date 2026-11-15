@@ -17,6 +17,7 @@ import { logActivity } from '../../07_BACKEND/services/audit-service.js';
 import { getAllProfileStats, getProfileStats, deleteProfileStats } from '../../07_BACKEND/services/stats-service.js';
 import { getPlanLimitsInfo } from '../../08_SECURITY/freemium-guard.js';
 import { getWritableSubdir } from '../../07_BACKEND/utils/runtime-paths.js';
+import { validateAndNormalizeFingerprintCoherence } from '../stealth-native-preferences.js';
 
 export function getProfilesDirectory(): string {
   return getWritableSubdir('profiles');
@@ -292,6 +293,8 @@ export function createProfile(dto: CreateProfileDTO): Profile {
     fingerprint: dto.settings?.fingerprint ? { ...(dto.settings?.fingerprint || {}) } : undefined,
   };
 
+  const { normalizedSettings } = validateAndNormalizeFingerprintCoherence(mergedSettings);
+
   db.prepare(`
     INSERT INTO profiles (id, name, description, folder, notes, status, storage_path, pinned, owner_id, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, 'STOPPED', ?, 0, ?, ?, ?)
@@ -310,7 +313,7 @@ export function createProfile(dto: CreateProfileDTO): Profile {
   db.prepare(`
     INSERT INTO profile_settings (profile_id, settings_json)
     VALUES (?, ?)
-  `).run(id, JSON.stringify(mergedSettings));
+  `).run(id, JSON.stringify(normalizedSettings));
 
   if (dto.tags && dto.tags.length > 0) {
     const insertTag = db.prepare('INSERT OR IGNORE INTO profile_tags (profile_id, tag_name) VALUES (?, ?)');
@@ -321,10 +324,10 @@ export function createProfile(dto: CreateProfileDTO): Profile {
     }
   }
 
-  if (mergedSettings.network.proxyId) {
+  if (normalizedSettings.network?.proxyId) {
     db.prepare('INSERT OR REPLACE INTO profile_proxies (profile_id, proxy_id) VALUES (?, ?)').run(
       id,
-      mergedSettings.network.proxyId
+      normalizedSettings.network.proxyId
     );
   }
 
@@ -364,16 +367,17 @@ export function updateProfile(id: string, dto: UpdateProfileDTO, ownerId?: strin
       permissions: { ...existing.settings.permissions, ...(dto.settings.permissions || {}) },
     };
 
+    const { normalizedSettings } = validateAndNormalizeFingerprintCoherence(mergedSettings);
 
     db.prepare(`
       INSERT OR REPLACE INTO profile_settings (profile_id, settings_json)
       VALUES (?, ?)
-    `).run(id, JSON.stringify(mergedSettings));
+    `).run(id, JSON.stringify(normalizedSettings));
 
-    if (mergedSettings.network.proxyId) {
+    if (normalizedSettings.network?.proxyId) {
       db.prepare('INSERT OR REPLACE INTO profile_proxies (profile_id, proxy_id) VALUES (?, ?)').run(
         id,
-        mergedSettings.network.proxyId
+        normalizedSettings.network.proxyId
       );
     } else {
       db.prepare('DELETE FROM profile_proxies WHERE profile_id = ?').run(id);

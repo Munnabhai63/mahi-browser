@@ -121,6 +121,11 @@
     "packageCategory": "net"
   },
   "asar": true,
+  "asarUnpack": [
+    "**/node_modules/fingerprint-generator/**",
+    "**/node_modules/header-generator/**",
+    "**/node_modules/generative-bayesian-network/**"
+  ],
   "extraResources": [
     {
       "from": "node_modules/sql.js/dist/sql-wasm.wasm",

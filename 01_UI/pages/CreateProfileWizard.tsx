@@ -73,6 +73,48 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
     setSettings(consistent);
   };
 
+  const handleEngineChange = (newEngine: 'chromium' | 'chrome' | 'edge' | 'camoufox') => {
+    const isCamoufox = newEngine === 'camoufox';
+    const currentUa = settings.browser.userAgent || '';
+    const isMobile = currentUa.includes('Android') || settings.mobile?.enable;
+    const isMac = currentUa.includes('Macintosh');
+    const isLinux = currentUa.includes('Linux') && !isMobile;
+
+    let newUa = currentUa;
+    if (isCamoufox) {
+      if (!newUa.includes('Firefox')) {
+        newUa = isMobile
+          ? 'Mozilla/5.0 (Android 14; Mobile; rv:135.0) Gecko/135.0 Firefox/135.0'
+          : (isMac
+            ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0'
+            : (isLinux
+              ? 'Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0'
+              : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0'));
+      }
+    } else {
+      if (newUa.includes('Firefox')) {
+        newUa = isMobile
+          ? 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36'
+          : (isMac
+            ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
+            : (isLinux
+              ? 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
+              : (newEngine === 'edge'
+                ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0'
+                : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36')));
+      }
+    }
+
+    setSettings((prev) => ({
+      ...prev,
+      browser: {
+        ...prev.browser,
+        engine: newEngine,
+        userAgent: newUa,
+      },
+    }));
+  };
+
   const handleCreate = async () => {
     if (!name.trim() || isDeploying) return;
     setIsDeploying(true);
@@ -382,16 +424,12 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
                   </label>
                   <select
                     value={settings.browser.engine}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        browser: { ...settings.browser, engine: e.target.value as any },
-                      })
-                    }
+                    onChange={(e) => handleEngineChange(e.target.value as any)}
                     className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500 capitalize"
                   >
+                    <option value="chromium">Chromium 138 (Stealth)</option>
+                    <option value="camoufox">Camoufox (Patched Firefox)</option>
                     <option value="chrome">Google Chrome (Managed CfT)</option>
-                    <option value="chromium">Chromium Core</option>
                     <option value="edge">Microsoft Edge</option>
                   </select>
                 </div>
@@ -518,20 +556,16 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mt-2">
               Browser Engine Architecture
             </label>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
+                { id: 'chromium', name: 'Chromium 138', desc: 'Native C++ Stealth Engine' },
+                { id: 'camoufox', name: 'Camoufox', desc: 'Patched Firefox Engine' },
                 { id: 'chrome', name: 'Google Chrome', desc: 'Standard Chrome runtime' },
                 { id: 'edge', name: 'Microsoft Edge', desc: 'Edge Chromium runtime' },
-                { id: 'chromium', name: 'Chromium Core', desc: 'Clean open-source engine' },
               ].map((eng) => (
                 <div
                   key={eng.id}
-                  onClick={() =>
-                    setSettings({
-                      ...settings,
-                      browser: { ...settings.browser, engine: eng.id as any },
-                    })
-                  }
+                  onClick={() => handleEngineChange(eng.id as any)}
                   className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
                     settings.browser.engine === eng.id
                       ? 'bg-teal-500/10 border-teal-500 text-teal-600 dark:text-teal-400 font-bold'

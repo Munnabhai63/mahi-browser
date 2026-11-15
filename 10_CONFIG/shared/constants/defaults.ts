@@ -1,5 +1,6 @@
 import { ProfileSettings, AppSettings } from '../types/index.js';
 import { MANAGED_ENGINE_VERSION } from '../../engine-config.js';
+import { generateStatisticalProfileSettings, StatisticalProfileOptions } from '../../../03_HARDWARE/fingerprint-generator-service.js';
 
 const majorVersion = MANAGED_ENGINE_VERSION.split('.')[0] || '138';
 
@@ -39,6 +40,18 @@ export const DEFAULT_USER_AGENTS = [
     value: `Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${MANAGED_ENGINE_VERSION} Mobile Safari/537.36`,
     platform: 'Linux armv8l',
     os: 'Android 13',
+  },
+  {
+    label: 'Firefox 135 on Windows 11 (64-bit / Camoufox)',
+    value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0',
+    platform: 'Win32',
+    os: 'Windows 11',
+  },
+  {
+    label: 'Firefox 135 on macOS Sequoia (Camoufox)',
+    value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0',
+    platform: 'MacIntel',
+    os: 'macOS',
   },
 ];
 
@@ -116,53 +129,8 @@ export function getDefaultProfileSettings(_os?: 'windows' | 'mac' | 'linux' | st
   };
 }
 
-export function generateConsistentEnvironmentSettings(): ProfileSettings {
-  const uaIndex = Math.floor(Math.random() * DEFAULT_USER_AGENTS.length);
-  const selectedUA = DEFAULT_USER_AGENTS[uaIndex];
-
-  const resIndex = Math.floor(Math.random() * SCREEN_RESOLUTIONS.length);
-  const selectedRes = SCREEN_RESOLUTIONS[resIndex];
-
-  const tzIndex = Math.floor(Math.random() * TIMEZONES.length);
-  const selectedTz = TIMEZONES[tzIndex];
-
-  const langIndex = Math.floor(Math.random() * LANGUAGES.length);
-  const selectedLang = LANGUAGES[langIndex];
-
-  return {
-    browser: {
-      engine: 'chrome',
-      version: MANAGED_ENGINE_VERSION,
-      userAgent: selectedUA.value,
-      startupUrl: 'about:blank',
-      homepage: 'about:blank',
-      additionalArgs: [],
-      enableExtensions: true,
-      hardwareAcceleration: true,
-    },
-    display: {
-      screenWidth: selectedRes.width,
-      screenHeight: selectedRes.height,
-      deviceScaleFactor: selectedRes.scale,
-      colorDepth: 24,
-    },
-    locale: {
-      language: selectedLang.value,
-      timezone: selectedTz.value,
-      languagesList: selectedLang.list,
-    },
-    network: {
-      directConnection: true,
-      webrtc: 'default',
-    },
-    permissions: {
-      camera: 'prompt',
-      microphone: 'prompt',
-      geolocation: 'prompt',
-      notifications: 'prompt',
-      midi: 'prompt',
-    },
-  };
+export function generateConsistentEnvironmentSettings(options?: StatisticalProfileOptions): ProfileSettings {
+  return generateStatisticalProfileSettings(options);
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {

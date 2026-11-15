@@ -236,6 +236,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
                 <option value="chrome">Google Chrome Engine</option>
                 <option value="edge">Microsoft Edge Engine</option>
                 <option value="chromium">Chromium Core Engine</option>
+                <option value="camoufox">Camoufox (Patched Firefox)</option>
               </select>
             </div>
 

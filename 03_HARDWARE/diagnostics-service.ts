@@ -223,10 +223,22 @@ export function autoFixProfileFingerprint(profileId: string): ProfileAuditReport
 
   const s = profile.settings || ({} as any);
   const fp = s.fingerprint || {};
+  const isCamoufox = s.browser?.engine === 'camoufox';
   const isMac = s.browser?.userAgent && s.browser.userAgent.includes('Macintosh');
+
+  let fixedUa = s.browser?.userAgent;
+  if (isCamoufox && (!fixedUa || !fixedUa.includes('Firefox'))) {
+    fixedUa = isMac
+      ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0'
+      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0';
+  }
 
   const updatedSettings = {
     ...s,
+    browser: {
+      ...(s.browser || {}),
+      userAgent: fixedUa,
+    },
     fingerprint: {
       ...fp,
       canvas: 'noise',

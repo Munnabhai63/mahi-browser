@@ -50,7 +50,44 @@ export function validateAndNormalizeFingerprintCoherence(settings: any): Fingerp
   normalized.display = normalized.display || {};
   normalized.locale = normalized.locale || {};
 
-  const ua = String(normalized.browser.userAgent || '');
+  let ua = String(normalized.browser.userAgent || '');
+  const engine = normalized.browser.engine || 'chrome';
+
+  // 0. Engine vs User-Agent Coherence
+  if (engine === 'camoufox') {
+    if (!ua.includes('Firefox') && !ua.includes('Gecko/')) {
+      warnings.push(`Engine "camoufox" requires Firefox/Gecko User-Agent. Normalized from "${ua}".`);
+      if (ua.includes('Android') || ua.includes('Mobile') || normalized.mobile?.enable) {
+        normalized.browser.userAgent = 'Mozilla/5.0 (Android 14; Mobile; rv:135.0) Gecko/135.0 Firefox/135.0';
+      } else if (ua.includes('Macintosh')) {
+        normalized.browser.userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0';
+      } else if (ua.includes('Linux') || ua.includes('X11')) {
+        normalized.browser.userAgent = 'Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0';
+      } else {
+        normalized.browser.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0';
+      }
+      ua = normalized.browser.userAgent;
+    }
+  } else if (ua.includes('Firefox') && !ua.includes('Chrome') && !ua.includes('AppleWebKit')) {
+    warnings.push(`Chromium engine "${engine}" contradicts Firefox User-Agent. Normalized to Chromium User-Agent.`);
+    if (ua.includes('Android') || ua.includes('Mobile') || normalized.mobile?.enable) {
+      normalized.browser.userAgent = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36';
+    } else if (ua.includes('Macintosh')) {
+      normalized.browser.userAgent = engine === 'edge'
+        ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0'
+        : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
+    } else if (ua.includes('Linux') || ua.includes('X11')) {
+      normalized.browser.userAgent = engine === 'edge'
+        ? 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0'
+        : 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
+    } else if (engine === 'edge') {
+      normalized.browser.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0';
+    } else {
+      normalized.browser.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
+    }
+    ua = normalized.browser.userAgent;
+  }
+
   const fp = normalized.fingerprint;
   const isMobile = Boolean(
     ua.includes('Android') ||
@@ -132,13 +169,64 @@ export function validateAndNormalizeFingerprintCoherence(settings: any): Fingerp
     fp.hardwareConcurrency = closest;
   }
 
-  const validDeviceMemory = [1, 2, 4, 8, 16];
+  const validDeviceMemory = [1, 2, 4, 8, 16, 32];
   if (fp.deviceMemory && !validDeviceMemory.includes(fp.deviceMemory)) {
-    const closest = validDeviceMemory.reduce((prev, curr) =>
+    const anomalyClamp = [1, 2, 4, 8, 16];
+    const closest = anomalyClamp.reduce((prev, curr) =>
       Math.abs(curr - fp.deviceMemory) < Math.abs(prev - fp.deviceMemory) ? curr : prev
     );
     warnings.push(`deviceMemory ${fp.deviceMemory} is an unnatural anomaly. Clamped to ${closest}.`);
     fp.deviceMemory = closest;
+  }
+
+  // 3. Screen Dimensions vs Desktop/Mobile Coherence
+  if (isMobile) {
+    if (normalized.display.screenWidth && normalized.display.screenWidth >= 1200) {
+      warnings.push(`Screen width ${normalized.display.screenWidth} contradicts Mobile device. Normalized to 412x915.`);
+      normalized.display.screenWidth = 412;
+      normalized.display.screenHeight = 915;
+      normalized.display.deviceScaleFactor = 2.625;
+    }
+  } else {
+    if (normalized.display.screenWidth && normalized.display.screenWidth < 800) {
+      warnings.push(`Screen width ${normalized.display.screenWidth} is too small for desktop profile. Normalized to 1920x1080.`);
+      normalized.display.screenWidth = 1920;
+      normalized.display.screenHeight = 1080;
+      normalized.display.deviceScaleFactor = 1;
+    }
+  }
+
+  // 4. Font-List OS Coherence
+  const MAC_ONLY_FONTS = new Set([
+    'Apple Color Emoji', 'Apple SD Gothic Neo', 'Avenir', 'Avenir Next', 'Baskerville',
+    'Chalkboard', 'Didot', 'Futura', 'Geneva', 'Gill Sans', 'Helvetica Neue',
+    'Lucida Grande', 'Menlo', 'Monaco', 'Optima', 'SF Pro', 'PingFang SC',
+  ]);
+  const WIN_ONLY_FONTS = new Set([
+    'Segoe UI', 'Calibri', 'Cambria', 'Consolas', 'MS Gothic', 'MS PGothic',
+    'MS Sans Serif', 'MS Serif', 'Palatino Linotype', 'Tahoma',
+  ]);
+
+  if (Array.isArray(fp.fonts) && fp.fonts.length > 0) {
+    if (isWindows) {
+      const filtered = fp.fonts.filter((f: string) => !MAC_ONLY_FONTS.has(f));
+      if (filtered.length !== fp.fonts.length) {
+        warnings.push(`macOS fonts detected on Windows profile. Removed contradictory fonts.`);
+        fp.fonts = filtered.length > 0 ? filtered : ['Arial', 'Calibri', 'Segoe UI', 'Tahoma', 'Times New Roman'];
+      }
+    } else if (isMac) {
+      const filtered = fp.fonts.filter((f: string) => !WIN_ONLY_FONTS.has(f));
+      if (filtered.length !== fp.fonts.length) {
+        warnings.push(`Windows fonts detected on macOS profile. Removed contradictory fonts.`);
+        fp.fonts = filtered.length > 0 ? filtered : ['Arial', 'Helvetica', 'Helvetica Neue', 'Menlo', 'SF Pro'];
+      }
+    } else if (isLinux) {
+      const filtered = fp.fonts.filter((f: string) => !WIN_ONLY_FONTS.has(f) && !MAC_ONLY_FONTS.has(f));
+      if (filtered.length !== fp.fonts.length) {
+        warnings.push(`Windows/macOS proprietary fonts detected on Linux profile. Removed contradictory fonts.`);
+        fp.fonts = filtered.length > 0 ? filtered : ['DejaVu Sans', 'Liberation Sans', 'Ubuntu', 'FreeSans'];
+      }
+    }
   }
 
   return {

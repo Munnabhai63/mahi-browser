@@ -50,7 +50,7 @@ export const UniversalBulkImportModal: React.FC<UniversalBulkImportModalProps> =
   const [parsedItems, setParsedItems] = useState<ParsedAccountItem[]>([]);
   const [folder, setFolder] = useState('General');
   const [targetOs, setTargetOs] = useState<'windows' | 'macos' | 'linux'>('windows');
-  const [browserEngine, setBrowserEngine] = useState<'chrome' | 'edge'>('chrome');
+  const [browserEngine, setBrowserEngine] = useState<'chrome' | 'edge' | 'chromium' | 'camoufox'>('chrome');
   const [customTag, setCustomTag] = useState('Bulk-Import');
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
@@ -315,6 +315,8 @@ export const UniversalBulkImportModal: React.FC<UniversalBulkImportModalProps> =
               >
                 <option value="chrome">Google Chrome</option>
                 <option value="edge">Microsoft Edge</option>
+                <option value="chromium">Chromium 138 (Stealth)</option>
+                <option value="camoufox">Camoufox (Patched Firefox)</option>
               </select>
             </div>
 

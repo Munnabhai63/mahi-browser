@@ -283,17 +283,44 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
               <select
                 value={settings.browser.engine}
                 onChange={(e) => {
+                  const newEngine = e.target.value as any;
+                  const isCamoufox = newEngine === 'camoufox';
+                  const currentUa = settings.browser.userAgent || '';
+                  const isMobile = currentUa.includes('Android') || settings.mobile?.enable;
+                  const isMac = currentUa.includes('Macintosh');
+                  const isLinux = currentUa.includes('Linux') && !isMobile;
+                  let newUa = currentUa;
+                  if (isCamoufox && !newUa.includes('Firefox')) {
+                    newUa = isMobile
+                      ? 'Mozilla/5.0 (Android 14; Mobile; rv:135.0) Gecko/135.0 Firefox/135.0'
+                      : (isMac
+                        ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0'
+                        : (isLinux
+                          ? 'Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0'
+                          : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0'));
+                  } else if (!isCamoufox && newUa.includes('Firefox')) {
+                    newUa = isMobile
+                      ? 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36'
+                      : (isMac
+                        ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
+                        : (isLinux
+                          ? 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
+                          : (newEngine === 'edge'
+                            ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0'
+                            : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36')));
+                  }
                   setSettings({
                     ...settings,
-                    browser: { ...settings.browser, engine: e.target.value as any },
+                    browser: { ...settings.browser, engine: newEngine, userAgent: newUa },
                   });
                   setIsDirty(true);
                 }}
                 className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500"
               >
+                <option value="chromium">Chromium 138 (Stealth)</option>
+                <option value="camoufox">Camoufox (Patched Firefox)</option>
                 <option value="chrome">Google Chrome (Default)</option>
                 <option value="edge">Microsoft Edge</option>
-                <option value="chromium">Chromium Core</option>
               </select>
             </div>
 

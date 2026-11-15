@@ -1,6 +1,6 @@
 export type ProfileStatus = 'READY' | 'STARTING' | 'RUNNING' | 'STOPPING' | 'STOPPED' | 'ERROR';
 
-export type BrowserEngine = 'chromium' | 'chrome' | 'edge';
+export type BrowserEngine = 'chromium' | 'chrome' | 'edge' | 'camoufox';
 
 export type WebRTCMode = 'default' | 'disabled' | 'public_interface_only' | 'proxy_only';
 
@@ -59,6 +59,19 @@ export interface FingerprintConfig {
   maxTouchPoints?: number;
   fonts?: string[];
   isM1?: boolean;
+  platform?: string;
+  architecture?: string;
+  os?: 'windows' | 'macos' | 'linux' | 'android' | string;
+  clientHints?: {
+    brands?: Array<{ brand: string; version: string }>;
+    mobile?: boolean;
+    platform?: string;
+    platformVersion?: string;
+    architecture?: string;
+    model?: string;
+    bitness?: string;
+    fullVersionList?: Array<{ brand: string; version: string }>;
+  };
 }
 
 export interface ProfileSettings {
