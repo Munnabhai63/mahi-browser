@@ -20,6 +20,7 @@ import { useProxyStore } from '../stores/useProxyStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
 import { CountryFlag, getFlagEmoji } from './CountryFlag.js';
+import { parseProxyInput } from '../utils/phase1-ui-helpers.js';
 
 interface ProxyConfigModalProps {
   profile: Profile;
@@ -90,53 +91,14 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
   // Smart Parser for all proxy string formats
   const handleSmartParse = (text: string) => {
     setRawInput(text);
-    let s = text.trim().replace(/^["']|["']$/g, '');
-    if (!s) return;
+    const parsed = parseProxyInput(text);
+    if (!parsed) return;
 
-    let detectedProto: ProxyProtocol = protocol;
-
-    // Check protocol prefix first
-    const protoMatch = s.match(/^(https?|socks[45]?):\/\//i);
-    if (protoMatch) {
-      const p = protoMatch[1].toLowerCase();
-      if (p === 'http' || p === 'https' || p === 'socks4' || p === 'socks5') {
-        detectedProto = p as ProxyProtocol;
-        setProtocol(detectedProto);
-      }
-      s = s.slice(protoMatch[0].length);
-    }
-
-    // Remove trailing slashes or URL paths
-    s = s.replace(/\/+.*$/, '');
-
-    // Check user:pass@host:port
-    const atIdx = s.indexOf('@');
-    if (atIdx > 0) {
-      const creds = s.slice(0, atIdx);
-      s = s.slice(atIdx + 1);
-      const [u, ...pParts] = creds.split(':');
-      try {
-        setUsername(decodeURIComponent(u || ''));
-        setPassword(decodeURIComponent(pParts.join(':') || ''));
-      } catch {
-        setUsername(u || '');
-        setPassword(pParts.join(':') || '');
-      }
-    }
-
-    // Parse host:port or host:port:user:pass
-    const parts = s.split(':');
-    if (parts.length >= 2) {
-      setHost(parts[0].trim());
-      const pNum = parseInt(parts[1].trim(), 10);
-      if (!isNaN(pNum)) setPort(pNum);
-
-      // host:port:user:pass
-      if (parts.length >= 4 && atIdx === -1) {
-        setUsername(parts[2].trim());
-        setPassword(parts.slice(3).join(':').trim());
-      }
-    }
+    setProtocol(parsed.protocol as ProxyProtocol);
+    setHost(parsed.host);
+    if (!isNaN(parsed.port)) setPort(parsed.port);
+    if (parsed.username !== undefined) setUsername(parsed.username);
+    if (parsed.password !== undefined) setPassword(parsed.password);
   };
 
   // Paste from clipboard button

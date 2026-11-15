@@ -34,6 +34,14 @@ interface AccountModalProps {
   onClose: () => void;
 }
 
+function getAdminApiBaseUrl(): string {
+  return (
+    (import.meta as any).env?.VITE_MAHI_API_URL ||
+    (import.meta as any).env?.VITE_MAHI_ADMIN_URL ||
+    'https://admin.mahibrowser.com'
+  );
+}
+
 export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) => {
   const {
     accountSession,
@@ -242,9 +250,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       }
     }
 
+    const adminBaseUrl = getAdminApiBaseUrl();
+
     if (!googleAuthUrl) {
       ticket = 'dsk_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
-      googleAuthUrl = `https://admin.mahibrowser.com/api/v1/auth/google/start?intent=desktop_login&handoff=${encodeURIComponent(ticket)}`;
+      googleAuthUrl = `${adminBaseUrl}/api/v1/auth/google/start?intent=desktop_login&handoff=${encodeURIComponent(ticket)}`;
     }
     
     if (typeof window !== 'undefined') {
@@ -261,7 +271,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
         return;
       }
       try {
-        const res = await fetch(`https://admin.mahibrowser.com/api/v1/auth/desktop-status?ticket=${encodeURIComponent(ticket)}`);
+        const res = await fetch(`${adminBaseUrl}/api/v1/auth/desktop-status?ticket=${encodeURIComponent(ticket)}`);
         if (res.ok) {
           const data = await res.json();
           // Authenticated status returns single-use authorization code (NEVER raw session token)

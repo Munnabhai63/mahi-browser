@@ -24,12 +24,13 @@ const __dirname = path.dirname(__filename);
 const projectDir = process.cwd();
 const localAppDataDir = getWritableUserDataDir();
 const desktopDir = process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'Desktop') : projectDir;
+const isTestEnv = Boolean(process.env.VITEST || process.env.VITEST_WORKER_ID || process.env.NODE_ENV === 'test');
 
 if (!fs.existsSync(localAppDataDir)) {
   try { fs.mkdirSync(localAppDataDir, { recursive: true }); } catch {}
 }
 
-const crashLogPaths = isAppPackaged()
+const crashLogPaths = (isAppPackaged() || isTestEnv)
   ? [
       path.join(localAppDataDir, 'crash-log.txt'),
       path.join(localAppDataDir, 'mahi_debug.log'),
@@ -93,7 +94,7 @@ process.on('unhandledRejection', (reason: unknown) => {
 // Clear previous crash logs on fresh startup
 try {
   const header = `=== MAHI BROWSER SESSION STARTED AT ${new Date().toISOString()} ===\n`;
-  if (!isAppPackaged()) {
+  if (!isAppPackaged() && !isTestEnv) {
     try { fs.writeFileSync(path.join(projectDir, 'crash-log.txt'), header, 'utf8'); } catch {}
   }
   try { fs.writeFileSync(path.join(localAppDataDir, 'crash-log.txt'), header, 'utf8'); } catch {}
