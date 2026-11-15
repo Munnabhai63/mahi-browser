@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
+import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 
 let SQL: SqlJsStatic | null = null;
 let dbInstance: Database | null = null;
@@ -74,24 +75,7 @@ export function getDatabasePath(): string {
     return currentDbPath;
   }
 
-  let userDataDir = '';
-  if (process.env.APPDATA) {
-    userDataDir = path.join(process.env.APPDATA, 'mahi-browser');
-  } else if (process.env.HOME) {
-    userDataDir = path.join(process.env.HOME, '.mahi-browser');
-  } else {
-    userDataDir = path.join(process.cwd(), '.mahi_data');
-  }
-
-  if (!userDataDir) {
-    userDataDir = process.env.APPDATA 
-      ? path.join(process.env.APPDATA, 'mahi_browser')
-      : path.join(process.cwd(), '.mahi_data');
-  }
-
-  if (!fs.existsSync(userDataDir)) {
-    fs.mkdirSync(userDataDir, { recursive: true });
-  }
+  const userDataDir = getWritableUserDataDir();
   currentDbPath = path.join(userDataDir, 'mahi_browser.sqlite');
   return currentDbPath;
 }

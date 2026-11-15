@@ -23,6 +23,7 @@ import {
 import { getActiveUpdateProvider } from './updater-provider.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
 import { getDatabase, flushDatabaseToDisk } from '../../06_DATABASE/connection.js';
+import { getWritableUserDataDir } from '../utils/runtime-paths.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 
 function safeLogActivity(level: 'INFO' | 'WARNING' | 'ERROR', action: string, details: string) {
@@ -39,8 +40,7 @@ export { compareSemVer, isValidTransition };
 export type UpdaterState = UpdateState;
 
 function getConfigPath(): string {
-  const dataDir = path.join(process.cwd(), '.mahi_data');
-  return path.join(dataDir, 'updater_config.json');
+  return path.join(getWritableUserDataDir(), 'updater_config.json');
 }
 
 export function loadUpdateConfig(): UpdateConfig {
@@ -383,7 +383,7 @@ export async function startDownloadUpdate(): Promise<boolean> {
     });
 
     const primaryFile = currentPendingManifest.files[0];
-    const updateDir = path.join(process.cwd(), '.mahi_data', 'updates');
+    const updateDir = path.join(getWritableUserDataDir(), 'updates');
     if (!fs.existsSync(updateDir)) {
       fs.mkdirSync(updateDir, { recursive: true });
     }

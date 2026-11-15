@@ -184,6 +184,17 @@ CREATE TABLE IF NOT EXISTS local_license_cache (
   grace_expires_at TEXT NOT NULL,
   signature TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS web_handoff_sessions (
+  code TEXT PRIMARY KEY,
+  token TEXT NOT NULL,
+  user_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_web_handoff_expires ON web_handoff_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_web_handoff_used ON web_handoff_sessions(used);
 `;
 
 export function tableExists(db: any, tableName: string): boolean {
@@ -1511,4 +1522,17 @@ export async function initializeDatabase(): Promise<void> {
   addColumnIfNotExists(db, 'cloud_browser_usage', 'resource_class', "TEXT NOT NULL DEFAULT 'STANDARD'");
   addColumnIfNotExists(db, 'cloud_browser_usage', 'region_id', "TEXT NOT NULL DEFAULT 'in-west'");
   addColumnIfNotExists(db, 'cloud_browser_usage', 'created_at', "TEXT");
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS web_handoff_sessions (
+      code TEXT PRIMARY KEY,
+      token TEXT NOT NULL,
+      user_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_web_handoff_expires ON web_handoff_sessions(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_web_handoff_used ON web_handoff_sessions(used);
+  `);
 }

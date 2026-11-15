@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
+import { getWritableSubdir } from '../07_BACKEND/utils/runtime-paths.js';
 
 export interface ObjectStorageProvider {
   name: string;
@@ -24,7 +25,7 @@ export class LocalStorageProvider implements ObjectStorageProvider {
   private baseUrl: string;
 
   constructor(options?: { storageDir?: string; baseUrl?: string }) {
-    this.storageDir = options?.storageDir || path.join(process.cwd(), '.mahi_data', 'cloud_storage');
+    this.storageDir = options?.storageDir || getWritableSubdir('cloud_storage');
     this.baseUrl = options?.baseUrl || (process.env.COMMERCIAL_API_URL || 'http://127.0.0.1:8989');
 
     if (!fs.existsSync(this.storageDir)) {

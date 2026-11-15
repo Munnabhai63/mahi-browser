@@ -2,24 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import https from 'node:https';
 import { app } from 'electron';
+import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 
 const CONTENT_JSON_URL = 'https://mahibrowser.com/content.json';
 const DEFAULT_PRICE_INR = 599;
 const FETCH_TIMEOUT_MS = 3000;
 
 function getUserDataPath(): string {
-  try {
-    if (app && typeof app.getPath === 'function') {
-      return app.getPath('userData');
-    }
-  } catch {}
-
-  if (process.env.APPDATA) {
-    return path.join(process.env.APPDATA, 'mahi-browser');
-  } else if (process.env.HOME) {
-    return path.join(process.env.HOME, '.mahi-browser');
-  }
-  return path.join(process.cwd(), '.mahi_data');
+  return getWritableUserDataDir();
 }
 
 function getPriceCacheFilePath(): string {

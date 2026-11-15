@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { app, BrowserWindow, Notification } from 'electron';
 import { getHWID, verifyLicense } from './license-service.js';
+import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -37,18 +38,7 @@ let isRevokedMemory = false;
 let checkIntervalTimer: NodeJS.Timeout | null = null;
 
 function getUserDataPath(): string {
-  try {
-    if (app && typeof app.getPath === 'function') {
-      return app.getPath('userData');
-    }
-  } catch {}
-
-  if (process.env.APPDATA) {
-    return path.join(process.env.APPDATA, 'mahi-browser');
-  } else if (process.env.HOME) {
-    return path.join(process.env.HOME, '.mahi-browser');
-  }
-  return path.join(process.cwd(), '.mahi_data');
+  return getWritableUserDataDir();
 }
 
 function getCacheFilePath(): string {

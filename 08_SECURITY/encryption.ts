@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { app, safeStorage } from 'electron';
+import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
@@ -72,7 +73,7 @@ export function resetCachedMasterKeyForTesting(): void {
 }
 
 function getMasterKeyPath(): string {
-  const userDataDir = app ? app.getPath('userData') : path.join(process.cwd(), '.mahi_data');
+  const userDataDir = getWritableUserDataDir();
   if (!fs.existsSync(userDataDir)) {
     fs.mkdirSync(userDataDir, { recursive: true });
   }

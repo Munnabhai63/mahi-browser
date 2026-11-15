@@ -288,12 +288,24 @@ export function pruneWebHandoffSessions(): void {
   for (const [code, session] of webHandoffSessions.entries()) {
     if (session.expiresAt <= now || session.used) {
       webHandoffSessions.delete(code);
+      try {
+        const db = getDatabase();
+        db.prepare('DELETE FROM web_handoff_sessions WHERE code = ?').run(code);
+      } catch {}
     }
   }
+  try {
+    const db = getDatabase();
+    db.prepare('DELETE FROM web_handoff_sessions WHERE expires_at <= ? OR used = 1').run(now);
+  } catch {}
 }
 
 export function _resetWebHandoffSessions(): void {
   webHandoffSessions.clear();
+  try {
+    const db = getDatabase();
+    db.prepare('DELETE FROM web_handoff_sessions').run();
+  } catch {}
 }
 
 export function getDesktopAuthSuccessHtml(params: {
@@ -1497,15 +1509,26 @@ export async function handleCommercialApiRoutes(
 
     const handoffCode = `mb_web_${crypto.randomBytes(24).toString('hex')}`;
     const now = Date.now();
-    webHandoffSessions.set(handoffCode, {
+    const expiresAt = now + WEB_HANDOFF_TTL_MS;
+    const sessionObj: WebHandoffSession = {
       code: handoffCode,
       userId: auth.userId,
       token,
       user,
       createdAt: now,
-      expiresAt: now + WEB_HANDOFF_TTL_MS,
+      expiresAt,
       used: false,
-    });
+    };
+    webHandoffSessions.set(handoffCode, sessionObj);
+
+    try {
+      const db = getDatabase();
+      db.prepare(
+        'INSERT INTO web_handoff_sessions (code, token, user_json, created_at, expires_at, used) VALUES (?, ?, ?, ?, ?, 0)'
+      ).run(handoffCode, token, JSON.stringify(user), now, expiresAt);
+    } catch (dbErr) {
+      console.error('[WEB_HANDOFF] Failed to persist session to SQLite:', dbErr);
+    }
 
     sendJSON(res, 200, {
       success: true,
@@ -1527,25 +1550,71 @@ export async function handleCommercialApiRoutes(
       return true;
     }
 
-    const session = webHandoffSessions.get(handoffCode);
     const now = Date.now();
+    let token: string | null = null;
+    let user: any = null;
 
-    if (!session || session.used || session.expiresAt <= now) {
-      if (session) {
-        webHandoffSessions.delete(handoffCode);
-      }
+    // Fast memory check (handles test mocks that update in-memory session.expiresAt)
+    const memSession = webHandoffSessions.get(handoffCode);
+    if (memSession && (memSession.used || memSession.expiresAt <= now)) {
+      try {
+        const db = getDatabase();
+        db.prepare('DELETE FROM web_handoff_sessions WHERE code = ?').run(handoffCode);
+      } catch {}
+      webHandoffSessions.delete(handoffCode);
       sendJSON(res, 403, { success: false, error: 'Handoff code has expired, already been used, or is invalid.' });
       return true;
     }
 
-    // Mark as used immediately to prevent replay, then delete
-    session.used = true;
+    // 1. Try atomic SQLite consumption first (Single-Use Anti-Replay)
+    try {
+      const db = getDatabase();
+      const row = db.prepare('SELECT * FROM web_handoff_sessions WHERE code = ?').get(handoffCode) as any;
+      if (row) {
+        if (row.used === 1 || row.expires_at <= now) {
+          try { db.prepare('DELETE FROM web_handoff_sessions WHERE code = ?').run(handoffCode); } catch {}
+          webHandoffSessions.delete(handoffCode);
+          sendJSON(res, 403, { success: false, error: 'Handoff code has expired, already been used, or is invalid.' });
+          return true;
+        }
+
+        const updateRes = db.prepare(
+          'UPDATE web_handoff_sessions SET used = 1 WHERE code = ? AND used = 0 AND expires_at > ?'
+        ).run(handoffCode, now);
+
+        if (updateRes.changes === 1) {
+          token = row.token;
+          try {
+            user = JSON.parse(row.user_json);
+          } catch {
+            user = null;
+          }
+        }
+      }
+    } catch {}
+
+    // 2. Fallback or sync with in-memory map
+    if (!token) {
+      const session = webHandoffSessions.get(handoffCode);
+      if (!session || session.used || session.expiresAt <= now) {
+        if (session) {
+          webHandoffSessions.delete(handoffCode);
+        }
+        sendJSON(res, 403, { success: false, error: 'Handoff code has expired, already been used, or is invalid.' });
+        return true;
+      }
+      session.used = true;
+      token = session.token;
+      user = session.user;
+    }
+
+    // Always clear from in-memory map once consumed
     webHandoffSessions.delete(handoffCode);
 
     sendJSON(res, 200, {
       success: true,
-      token: session.token,
-      user: session.user,
+      token,
+      user,
     });
     return true;
   }

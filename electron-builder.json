@@ -28,7 +28,6 @@
     "!*.key",
     "!**/*.map",
     "!**/KeygenProvider.*",
-    "!**/node_modules/electron-updater/**",
     "!**/node_modules/playwright-core/lib/vite/**"
   ],
   "win": {
@@ -143,6 +142,10 @@
     {
       "from": ".mahi_data/engines/138.0.7204.0",
       "to": "engines/138.0.7204.0"
+    },
+    {
+      "from": "landing",
+      "to": "landing"
     }
   ]
 }

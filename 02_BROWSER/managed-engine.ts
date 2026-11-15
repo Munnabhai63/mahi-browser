@@ -22,6 +22,7 @@ import {
   DEFAULT_MAHI_ENGINE_MANIFEST,
   type MahiEngineManifest,
 } from '../10_CONFIG/engine-config.js';
+import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 
 const execAsync = promisify(exec);
 
@@ -95,20 +96,7 @@ function broadcastProgress(update: Partial<ManagedEngineProgress>) {
  * Uses Electron app.getPath('userData') in runtime, or %APPDATA%/mahi-browser fallback.
  */
 export function getUserDataPath(): string {
-  try {
-    if (app && typeof app.getPath === 'function') {
-      const p = app.getPath('userData');
-      if (p) return p;
-    }
-  } catch {}
-
-  if (process.env.APPDATA) {
-    return path.join(process.env.APPDATA, 'mahi-browser');
-  } else if (process.env.HOME) {
-    return path.join(process.env.HOME, '.mahi-browser');
-  }
-
-  return path.join(process.cwd(), '.mahi_data');
+  return getWritableUserDataDir();
 }
 
 /**

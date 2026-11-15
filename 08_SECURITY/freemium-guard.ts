@@ -8,20 +8,10 @@ import { getDynamicPrice } from './price-service.js';
 import { getDatabase } from '../06_DATABASE/connection.js';
 import { hasValidAccountSubscription, getAccountPlanLimits, isBusinessPlan, readCachedStatus, getAccountSession } from './account-service.js';
 import { getActiveUserId } from '../07_BACKEND/commercial/session-context.js';
+import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 
 function getUserDataPath(): string {
-  try {
-    if (app && typeof app.getPath === 'function') {
-      return app.getPath('userData');
-    }
-  } catch {}
-
-  if (process.env.APPDATA) {
-    return path.join(process.env.APPDATA, 'mahi-browser');
-  } else if (process.env.HOME) {
-    return path.join(process.env.HOME, '.mahi-browser');
-  }
-  return path.join(process.cwd(), '.mahi_data');
+  return getWritableUserDataDir();
 }
 
 /**

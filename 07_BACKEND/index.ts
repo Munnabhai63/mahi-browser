@@ -13,6 +13,7 @@ import { startLicenseStatusService } from '../08_SECURITY/license-status-service
 import { startPriceSync } from '../08_SECURITY/price-service.js';
 import { startResourceMonitoring, stopResourceMonitoring } from '../03_HARDWARE/resource-monitor-service.js';
 import { provisionEngineOnStartup } from '../02_BROWSER/managed-engine.js';
+import { getWritableUserDataDir, getBundledResourcePath, isAppPackaged } from './utils/runtime-paths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,18 +22,23 @@ const __dirname = path.dirname(__filename);
 // 1. Crash Logger & Checkpoints System
 // -------------------------------------------------------------
 const projectDir = process.cwd();
-const localAppDataDir = process.env.APPDATA ? path.join(process.env.APPDATA, 'mahi-browser') : projectDir;
+const localAppDataDir = getWritableUserDataDir();
 const desktopDir = process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'Desktop') : projectDir;
 
 if (!fs.existsSync(localAppDataDir)) {
   try { fs.mkdirSync(localAppDataDir, { recursive: true }); } catch {}
 }
 
-const crashLogPaths = [
-  path.join(projectDir, 'crash-log.txt'),
-  path.join(localAppDataDir, 'crash-log.txt'),
-  path.join(localAppDataDir, 'mahi_debug.log'),
-];
+const crashLogPaths = isAppPackaged()
+  ? [
+      path.join(localAppDataDir, 'crash-log.txt'),
+      path.join(localAppDataDir, 'mahi_debug.log'),
+    ]
+  : [
+      path.join(projectDir, 'crash-log.txt'),
+      path.join(localAppDataDir, 'crash-log.txt'),
+      path.join(localAppDataDir, 'mahi_debug.log'),
+    ];
 
 export function writeCrashLog(type: string, message: string, stack?: string): void {
   const timestamp = new Date().toISOString();
@@ -87,8 +93,10 @@ process.on('unhandledRejection', (reason: unknown) => {
 // Clear previous crash logs on fresh startup
 try {
   const header = `=== MAHI BROWSER SESSION STARTED AT ${new Date().toISOString()} ===\n`;
-  fs.writeFileSync(path.join(projectDir, 'crash-log.txt'), header, 'utf8');
-  fs.writeFileSync(path.join(localAppDataDir, 'crash-log.txt'), header, 'utf8');
+  if (!isAppPackaged()) {
+    try { fs.writeFileSync(path.join(projectDir, 'crash-log.txt'), header, 'utf8'); } catch {}
+  }
+  try { fs.writeFileSync(path.join(localAppDataDir, 'crash-log.txt'), header, 'utf8'); } catch {}
 } catch {}
 
 logCheckpoint('Step 1: Application Initializing', `Electron version: ${process.versions.electron}`);
@@ -114,19 +122,25 @@ try {
   writeCrashLog('PROTOCOL_CLIENT_ERROR', String(err));
 }
 
-// Single instance lock check (Non-blocking: Never terminate user window)
+// Single instance lock check (Strict single-instance lock to avoid SQLite/port collision)
 logCheckpoint('Step 2: Checking Instance Status');
+const isSmokeTest = process.argv.includes('--smoke-test');
 const gotTheLock = app.requestSingleInstanceLock();
-if (!gotTheLock) {
+if (!gotTheLock && !isSmokeTest) {
   const hasDeepLink = process.argv.some(arg => typeof arg === 'string' && arg.startsWith('mahi://'));
   if (hasDeepLink) {
     logCheckpoint('Step 2: Second instance with deep-link detected. Yielding to primary instance and exiting.');
-    app.quit();
   } else {
-    logCheckpoint('Step 2: Multi-instance / parallel launch detected. Proceeding to launch UI window.');
+    logCheckpoint('Step 2: Secondary instance detected. Terminating immediately to prevent DB and port collision.');
   }
+  app.quit();
+  setTimeout(() => app.exit(0), 1000);
 } else {
-  logCheckpoint('Step 2: Primary Instance Lock Acquired');
+  if (isSmokeTest && !gotTheLock) {
+    logCheckpoint('Step 2: Smoke test running without instance lock.');
+  } else {
+    logCheckpoint('Step 2: Primary Instance Lock Acquired');
+  }
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -134,29 +148,22 @@ let splashWindow: BrowserWindow | null = null;
 
 function resolveAppIconPath(): string | undefined {
   const iconFileName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
-  const candidates = [
-    path.join(process.resourcesPath, iconFileName),
-    path.join(projectDir, '13_ASSETS', 'resources', iconFileName),
-    path.join(projectDir, 'resources', iconFileName),
-    path.join(projectDir, '13_ASSETS', 'brand', 'mahi-browser.ico'),
-    path.join(projectDir, '13_ASSETS', 'brand', 'mahi-browser-icon.png'),
-  ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return undefined;
+  return (
+    getBundledResourcePath(iconFileName) ||
+    getBundledResourcePath('13_ASSETS', 'brand', process.platform === 'win32' ? 'mahi-browser.ico' : 'mahi-browser-icon.png') ||
+    getBundledResourcePath('13_ASSETS', 'resources', iconFileName) ||
+    getBundledResourcePath('resources', iconFileName) ||
+    getBundledResourcePath('icon.ico') ||
+    getBundledResourcePath('icon.png')
+  );
 }
 
 function resolveSplashPath(): string | undefined {
-  const candidates = [
-    path.join(process.resourcesPath, 'splash.html'),
-    path.join(projectDir, '13_ASSETS', 'resources', 'splash.html'),
-    path.join(projectDir, 'resources', 'splash.html'),
-  ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return undefined;
+  return (
+    getBundledResourcePath('splash.html') ||
+    getBundledResourcePath('13_ASSETS', 'resources', 'splash.html') ||
+    getBundledResourcePath('resources', 'splash.html')
+  );
 }
 
 function createSplashWindow(): void {
@@ -321,7 +328,7 @@ app.whenReady().then(async () => {
 
   // 1. Initialize SQLite Database
   try {
-    const userDataPath = app.getPath('userData');
+    const userDataPath = getWritableUserDataDir();
     const dbPath = path.join(userDataPath, 'mahi_browser.sqlite');
     logCheckpoint('Step 3: Setting Database Path', dbPath);
     setCustomDatabasePath(dbPath);
@@ -336,7 +343,7 @@ app.whenReady().then(async () => {
 
     // Attempt recovery by recreating clean database
     try {
-      const userDataPath = app.getPath('userData');
+      const userDataPath = getWritableUserDataDir();
       const dbPath = path.join(userDataPath, 'mahi_browser.sqlite');
       if (fs.existsSync(dbPath)) {
         const bakPath = `${dbPath}.corrupt.${Date.now()}.bak`;

@@ -8,6 +8,7 @@ import { getHWID } from './license-service.js';
 import { getInstallSecrets } from './install-secrets.js';
 import { ADMIN_API_BASE_URL } from './license-status-service.js';
 import { CONTACT_CONFIG } from '../10_CONFIG/contact-config.js';
+import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 
 // ============================================================================
 // CONSTANTS & PUBLIC KEY FOR SIGNATURE VERIFICATION
@@ -72,18 +73,7 @@ let currentSession: AccountSession | null = null;
 let statusCheckTimer: NodeJS.Timeout | null = null;
 
 function getUserDataPath(): string {
-  try {
-    if (app && typeof app.getPath === 'function') {
-      return app.getPath('userData');
-    }
-  } catch {}
-
-  if (process.env.APPDATA) {
-    return path.join(process.env.APPDATA, 'mahi-browser');
-  } else if (process.env.HOME) {
-    return path.join(process.env.HOME, '.mahi-browser');
-  }
-  return path.join(process.cwd(), '.mahi_data');
+  return getWritableUserDataDir();
 }
 
 export const ACCOUNT_SERVICE_MODULE = 'account-service';

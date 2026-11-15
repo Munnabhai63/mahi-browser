@@ -196,18 +196,27 @@ export function evaluateUserEntitlements(
   // 3. Fetch Plan
   const plan = getCommercialPlanById(user.planId) || defaultFreePlan;
 
-  // 4. Fetch Active Subscription
+  // 4. Fetch Active or Trial Subscription
   const subRow = db.prepare(
-    "SELECT * FROM commercial_subscriptions WHERE user_id = ? AND status = 'ACTIVE' ORDER BY starts_at DESC LIMIT 1"
+    "SELECT * FROM commercial_subscriptions WHERE user_id = ? AND status IN ('ACTIVE', 'TRIAL') ORDER BY starts_at DESC LIMIT 1"
   ).get(user.id) as any;
 
   let subscription: CommercialSubscription | undefined;
   if (subRow) {
-    const isTrialSub = subRow.billing_cycle === 'TRIAL';
+    const isTrialSub = subRow.billing_cycle === 'TRIAL' || subRow.status === 'TRIAL';
     const isExpired = Boolean(
       (subRow.expires_at && new Date(subRow.expires_at).getTime() <= Date.now()) ||
       (isTrialSub && user.trialExpiresAt && new Date(user.trialExpiresAt).getTime() <= Date.now())
     );
+
+    if (isExpired) {
+      try {
+        db.prepare("UPDATE commercial_subscriptions SET status = 'EXPIRED' WHERE id = ?").run(subRow.id);
+        db.prepare("UPDATE commercial_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
+        db.prepare("UPDATE auth_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
+      } catch {}
+    }
+
     subscription = {
       id: subRow.id,
       userId: subRow.user_id,
@@ -221,6 +230,12 @@ export function evaluateUserEntitlements(
       externalSubId: subRow.external_sub_id || undefined,
       createdAt: subRow.created_at,
     };
+  } else if (user.trialExpiresAt && new Date(user.trialExpiresAt).getTime() <= Date.now() && user.planId !== 'plan_free') {
+    try {
+      db.prepare("UPDATE commercial_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
+      db.prepare("UPDATE auth_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
+      user.planId = 'plan_free';
+    } catch {}
   }
 
   // 5. Check License Binding (if any)
@@ -353,11 +368,19 @@ export function checkCapability(
   if (user) {
     const db = getDatabase();
     const subRow = db
-      .prepare("SELECT * FROM commercial_subscriptions WHERE user_id = ? AND status = 'ACTIVE' ORDER BY starts_at DESC LIMIT 1")
+      .prepare("SELECT * FROM commercial_subscriptions WHERE user_id = ? AND status IN ('ACTIVE', 'TRIAL') ORDER BY starts_at DESC LIMIT 1")
       .get(user.id) as any;
     if (subRow) {
       const isExpired = subRow.expires_at && new Date(subRow.expires_at).getTime() <= Date.now();
-      if (!isExpired) isSubActive = true;
+      if (!isExpired) {
+        isSubActive = true;
+      } else {
+        try {
+          db.prepare("UPDATE commercial_subscriptions SET status = 'EXPIRED' WHERE id = ?").run(subRow.id);
+          db.prepare("UPDATE commercial_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
+          db.prepare("UPDATE auth_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
+        } catch {}
+      }
     }
   } else if (userId === 'LOCAL_CLIENT' || userId === 'SYSTEM_OWNER' || !userId) {
     isSubActive = hasValidLicense() || hasValidAccountSubscription();

@@ -20,6 +20,7 @@ import {
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { encryptProfileArchive, decryptProfileArchive } from './cloud-profile-crypto.js';
 import { getDeviceId, getDeviceName } from '../03_HARDWARE/device-id.js';
+import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 
 const MAX_PROFILE_BYTES = 200 * 1024 * 1024; // 200MB
 const MAX_USER_QUOTA_BYTES = 1024 * 1024 * 1024; // 1GB
@@ -30,18 +31,7 @@ export function getApiBaseUrl(): string {
 }
 
 function getUserDataPath(): string {
-  try {
-    if (app && typeof app.getPath === 'function') {
-      return app.getPath('userData');
-    }
-  } catch {}
-
-  if (process.env.APPDATA) {
-    return path.join(process.env.APPDATA, 'mahi-browser');
-  } else if (process.env.HOME) {
-    return path.join(process.env.HOME, '.mahi-browser');
-  }
-  return path.join(process.cwd(), '.mahi_data');
+  return getWritableUserDataDir();
 }
 
 function getSyncConfigPath(): string {

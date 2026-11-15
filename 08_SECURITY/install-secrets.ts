@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { app, safeStorage } from 'electron';
+import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 
 export interface InstallSecrets {
   jwtSecret: string;
@@ -73,29 +74,7 @@ export function resetCachedSecretsForTesting(): void {
 }
 
 function getSecretsFilePath(): string {
-  let baseDir = '';
-  try {
-    if (app && typeof app.getPath === 'function') {
-      baseDir = app.getPath('userData');
-    }
-  } catch {}
-
-  if (!baseDir) {
-    if (process.env.APPDATA) {
-      baseDir = path.join(process.env.APPDATA, 'mahi-browser');
-    } else if (process.env.HOME) {
-      baseDir = path.join(process.env.HOME, '.mahi-browser');
-    } else {
-      baseDir = path.join(process.cwd(), '.mahi_data');
-    }
-  }
-
-  if (!fs.existsSync(baseDir)) {
-    try {
-      fs.mkdirSync(baseDir, { recursive: true });
-    } catch {}
-  }
-
+  const baseDir = getWritableUserDataDir();
   return path.join(baseDir, 'install-secrets.json');
 }
 

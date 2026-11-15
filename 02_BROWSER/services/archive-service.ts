@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import crypto from 'node:crypto';
+import * as electron from 'electron';
 import {
   ExportProfileOptions,
   BulkExportOptions,
@@ -27,6 +29,18 @@ interface RawArchiveFileStructure {
   isEncrypted: boolean;
   saltHex?: string;
   payload: string; // Base64 JSON or encrypted ciphertext
+}
+
+function getDefaultExportDir(): string {
+  try {
+    const electronObj = electron as any;
+    const app = electronObj?.app || electronObj?.default?.app;
+    if (app && typeof app.getPath === 'function') {
+      const p = app.getPath('downloads');
+      if (p && fs.existsSync(p)) return p;
+    }
+  } catch {}
+  return os.tmpdir();
 }
 
 const EXCLUDED_DIRS = new Set([
@@ -162,7 +176,7 @@ export function exportProfileToArchive(options: ExportProfileOptions): { success
     };
   }
 
-  const targetPath = options.targetFilePath || path.join(process.cwd(), `${profile.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.mahi-profile`);
+  const targetPath = options.targetFilePath || path.join(getDefaultExportDir(), `${profile.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.mahi-profile`);
   const parentDir = path.dirname(targetPath);
   if (!fs.existsSync(parentDir)) {
     fs.mkdirSync(parentDir, { recursive: true });
@@ -450,7 +464,7 @@ export function exportBulkProfilesToArchive(options: BulkExportOptions): { succe
     };
   }
 
-  const targetPath = options.targetFilePath || path.join(process.cwd(), `MAHI_Backup_${Date.now()}.mahi-backup`);
+  const targetPath = options.targetFilePath || path.join(getDefaultExportDir(), `MAHI_Backup_${Date.now()}.mahi-backup`);
   const parentDir = path.dirname(targetPath);
   if (!fs.existsSync(parentDir)) {
     fs.mkdirSync(parentDir, { recursive: true });

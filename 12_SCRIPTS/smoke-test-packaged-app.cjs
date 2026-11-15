@@ -41,7 +41,14 @@ function resolveExecutable() {
     if (fs.existsSync(p)) return { cmd: p, args: ['--smoke-test', '--no-sandbox'] };
   }
 
-  // Fallback: Run via Electron development runner
+  // In CI release pipelines, the packaged binary MUST exist. Dev fallback is forbidden.
+  if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') {
+    throw new Error(
+      `[SMOKE_HARNESS] No packaged desktop binary found in release/ directory for ${platform}-${arch} during CI release run. Refusing dev runner fallback.`
+    );
+  }
+
+  // Fallback: Run via Electron development runner (local dev only)
   const npxCmd = platform === 'win32' ? 'npx.cmd' : 'npx';
   return { cmd: npxCmd, args: ['electron', '.', '--smoke-test'] };
 }
@@ -90,10 +97,18 @@ async function runSmokeTest() {
       console.log(`[SMOKE_HARNESS] Child process exited with code: ${code}`);
 
       // Also verify crash-log.txt if stdout was suppressed by Windows GUI subsystem
-      const crashLog = path.join(rootDir, 'crash-log.txt');
+      const userDataDir = process.env.APPDATA
+        ? path.join(process.env.APPDATA, 'mahi-browser')
+        : (process.env.HOME ? path.join(process.env.HOME, '.config', 'mahi-browser') : rootDir);
+      const crashLogCandidates = [
+        path.join(userDataDir, 'crash-log.txt'),
+        path.join(rootDir, 'crash-log.txt'),
+      ];
       let logContents = '';
-      if (fs.existsSync(crashLog)) {
-        logContents = fs.readFileSync(crashLog, 'utf8');
+      for (const logPath of crashLogCandidates) {
+        if (fs.existsSync(logPath)) {
+          logContents += fs.readFileSync(logPath, 'utf8') + '\n';
+        }
       }
 
       if (hasPassed || output.includes('[SMOKE_TEST_PASS]') || logContents.includes('SMOKE_TEST: Packaged Application Smoke Test Mode Triggered') || code === 0) {

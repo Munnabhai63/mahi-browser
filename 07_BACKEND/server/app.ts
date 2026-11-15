@@ -27,6 +27,7 @@ import { getDownloadPortalHtml } from './download-portal-html.js';
 import { getDistributionInfo, fixDesktopShortcuts } from '../../03_HARDWARE/distribution-service.js';
 import { handleCommercialApiRoutes } from '../commercial/commercial-api-router.js';
 import { assertCanCreateProfile } from '../../08_SECURITY/freemium-guard.js';
+import { getLandingBaseDir } from '../utils/runtime-paths.js';
 import {
   authenticateRequest,
   isLocalSuperAdminEnabled,
@@ -179,7 +180,7 @@ export function createCentralApiServer(): http.Server {
       if (cleanPath.startsWith('/assets/') && method === 'GET') {
         const relPath = cleanPath.substring(8);
         const safePath = path.normalize(relPath).replace(/^(\.\.[\/\\])+/, '');
-        const assetFilePath = path.join(process.cwd(), 'landing', 'assets', safePath);
+        const assetFilePath = path.join(getLandingBaseDir(), 'assets', safePath);
         if (fs.existsSync(assetFilePath) && fs.statSync(assetFilePath).isFile()) {
           const ext = path.extname(assetFilePath).toLowerCase();
           const mimeMap: Record<string, string> = {
@@ -206,7 +207,7 @@ export function createCentralApiServer(): http.Server {
 
       // Public /signup Page (Onboarding & Identity)
       if (cleanPath === '/signup' && method === 'GET') {
-        const signupPath = path.join(process.cwd(), 'landing', 'signup.html');
+        const signupPath = path.join(getLandingBaseDir(), 'signup.html');
         if (fs.existsSync(signupPath)) {
           return sendHTML(res, 200, fs.readFileSync(signupPath, 'utf8'));
         }
@@ -214,7 +215,7 @@ export function createCentralApiServer(): http.Server {
 
       // Public /login Page
       if (cleanPath === '/login' && method === 'GET') {
-        const loginPath = path.join(process.cwd(), 'landing', 'login.html');
+        const loginPath = path.join(getLandingBaseDir(), 'login.html');
         if (fs.existsSync(loginPath)) {
           return sendHTML(res, 200, fs.readFileSync(loginPath, 'utf8'));
         }
@@ -222,7 +223,7 @@ export function createCentralApiServer(): http.Server {
 
       // Public /book-demo Page (Enterprise & Team Lead Capture)
       if (cleanPath === '/book-demo' && method === 'GET') {
-        const demoPath = path.join(process.cwd(), 'landing', 'book-demo.html');
+        const demoPath = path.join(getLandingBaseDir(), 'book-demo.html');
         if (fs.existsSync(demoPath)) {
           return sendHTML(res, 200, fs.readFileSync(demoPath, 'utf8'));
         }
@@ -243,7 +244,7 @@ export function createCentralApiServer(): http.Server {
 
       // 0. Public Root Landing Page
       if ((cleanPath === '' || cleanPath === '/') && method === 'GET') {
-        const indexPath = path.join(process.cwd(), 'landing', 'index.html');
+        const indexPath = path.join(getLandingBaseDir(), 'index.html');
         if (fs.existsSync(indexPath)) {
           return sendHTML(res, 200, fs.readFileSync(indexPath, 'utf8'));
         }
@@ -251,7 +252,7 @@ export function createCentralApiServer(): http.Server {
 
       // 0. Customer Account & Onboarding Dashboard (/dashboard)
       if (cleanPath === '/dashboard' && method === 'GET') {
-        const downloadHtmlPath = path.join(process.cwd(), 'landing', 'download.html');
+        const downloadHtmlPath = path.join(getLandingBaseDir(), 'download.html');
         if (fs.existsSync(downloadHtmlPath)) {
           return sendHTML(res, 200, fs.readFileSync(downloadHtmlPath, 'utf8'));
         }
@@ -261,7 +262,7 @@ export function createCentralApiServer(): http.Server {
 
       // 0. Client Download & Installation Portal
       if ((cleanPath === '/download' || cleanPath === '/install' || cleanPath === '/client' || cleanPath === '/setup' || cleanPath === '/get' || cleanPath === '/app') && method === 'GET') {
-        const downloadHtmlPath = path.join(process.cwd(), 'landing', 'download.html');
+        const downloadHtmlPath = path.join(getLandingBaseDir(), 'download.html');
         if (fs.existsSync(downloadHtmlPath)) {
           return sendHTML(res, 200, fs.readFileSync(downloadHtmlPath, 'utf8'));
         }

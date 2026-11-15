@@ -16,6 +16,7 @@
 
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { getWritableSubdir } from '../utils/runtime-paths.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import {
   CloudBrowserSession,
@@ -50,7 +51,7 @@ export interface StartCloudSessionResult {
 
 export class CloudBrowserControlPlane {
   private static instance: CloudBrowserControlPlane;
-  private basePath = path.resolve('.mahi_data', 'cloud-workers');
+  private basePath = getWritableSubdir('cloud-workers');
 
   private constructor() {}
 
