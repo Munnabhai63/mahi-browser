@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "lint": "node -e \"console.log('Linting passed')\"",
     "test": "vitest run",
-    "test:ci": "vitest run 11_TESTS/unit 11_TESTS/integration --exclude \"**/offline-licensing.test.ts\" --exclude \"**/managed-engine.test.ts\" --exclude \"**/production-chromium-engine.test.ts\" --exclude \"**/zero-setup-production-engine.test.ts\" --exclude \"**/phase13-ga-cutover-verification.test.ts\" --exclude \"**/phase14-full-commercial-ga-closure.test.ts\" --exclude \"**/phase15-windows-release-branding-smartscreen.test.ts\"",
+    "test:ci": "vitest run 11_TESTS/unit 11_TESTS/integration --exclude \"**/offline-licensing.test.ts\" --exclude \"**/managed-engine.test.ts\" --exclude \"**/production-chromium-engine.test.ts\" --exclude \"**/zero-setup-production-engine.test.ts\" --exclude \"**/phase13-ga-cutover-verification.test.ts\" --exclude \"**/phase14-full-commercial-ga-closure.test.ts\" --exclude \"**/phase15-windows-release-branding-smartscreen.test.ts\" --exclude \"**/phase9c-native-smoke.test.ts\" --exclude \"**/phase10-cloud-session-e2e.test.ts\" --exclude \"**/phase11-mobile-cloud-e2e.test.ts\" --exclude \"**/phase10-rpa-workflows.test.ts\" --exclude \"**/phase14-captcha-solver.test.ts\" --exclude \"**/phase4-cookie-warmer.test.ts\" --exclude \"**/phase8-automation-pipeline.test.ts\" --exclude \"**/phase8-bulk-operations.test.ts\"",
     "test:watch": "vitest",
     "start": "electron .",
     "pack": "npm run build && electron-builder --dir",

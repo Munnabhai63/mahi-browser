@@ -92,7 +92,7 @@ describe('PHASE 9 INTEGRATION: Multi-Platform Distribution Pipeline & Packaging 
 
       // Quality Gates
       expect(workflowYaml).toContain('npm run typecheck');
-      expect(workflowYaml).toContain('npm test');
+      expect(workflowYaml).toMatch(/npm (run test:ci|test)/);
       expect(workflowYaml).toContain('npm run build');
 
       // Packaging

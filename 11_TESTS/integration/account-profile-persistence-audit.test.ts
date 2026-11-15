@@ -38,7 +38,7 @@ import {
 } from '../../08_SECURITY/cloud-profile-crypto.js';
 import { importCookies, getCookies } from '../../02_BROWSER/services/cookie-service.js';
 import { setActiveUserId, getActiveUserId, clearActiveSession } from '../../07_BACKEND/commercial/session-context.js';
-import { AccountSession } from '../../08_SECURITY/account-service.js';
+import { AccountSession, clearEncryptedSession } from '../../08_SECURITY/account-service.js';
 import { startApiServer, stopApiServer } from '../../07_BACKEND/api/local-api-server.js';
 import { saveAppSettings } from '../../07_BACKEND/services/settings-service.js';
 import { getInstallSecrets } from '../../08_SECURITY/install-secrets.js';
@@ -54,6 +54,8 @@ describe('MAHI BROWSER — ACCOUNT PROFILE PERSISTENCE & CLOUD RESTORE AUDIT', (
   const USER_B_ID = 'usr_uuid_account_b_1142';
 
   beforeAll(async () => {
+    clearEncryptedSession();
+    clearActiveSession();
     tempBaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-audit-lifecycle-'));
     dbPath = path.join(tempBaseDir, 'mahi_audit.sqlite');
     setCustomDatabasePath(dbPath);
@@ -636,6 +638,7 @@ describe('MAHI BROWSER — ACCOUNT PROFILE PERSISTENCE & CLOUD RESTORE AUDIT', (
 
     try {
       // Create a profile for User A
+      clearEncryptedSession();
       setActiveUserId(USER_A_ID);
       const profileA = createProfile({
         name: 'UserA-REST-Protected-Profile',
