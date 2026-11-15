@@ -80,7 +80,7 @@ export const ACCOUNT_SERVICE_MODULE = 'account-service';
 console.log('[account-service] Account & subscription module initialized');
 
 export function getAdminApiBaseUrl(): string {
-  return process.env.MAHI_ADMIN_URL || ADMIN_API_BASE_URL;
+  return process.env.MAHI_ADMIN_URL || process.env.MAHI_API_URL || ADMIN_API_BASE_URL;
 }
 
 function getSessionFilePath(): string {

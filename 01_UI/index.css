@@ -88,3 +88,17 @@ img[src*="/brand/"] {
   object-fit: contain;
 }
 
+/* Section 3 UI/UX Design Tokens & 5-State Interactive Controls */
+.interactive-control {
+  transition: all 150ms ease-in-out;
+}
+.interactive-control:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.interactive-control:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+

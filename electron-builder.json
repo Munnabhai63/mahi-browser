@@ -5,7 +5,7 @@
   "protocols": [
     {
       "name": "MAHI Browser Protocol",
-      "schemes": ["mahi"]
+      "schemes": ["mahibrowser", "mahi"]
     }
   ],
   "directories": {

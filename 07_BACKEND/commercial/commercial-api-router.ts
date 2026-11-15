@@ -457,8 +457,13 @@ export function getDesktopAuthSuccessHtml(params: {
       Your account is authenticated and ready. MAHI Browser Desktop has been notified automatically.
     </p>
 
-    <a href="mahi://auth?code=${encodeURIComponent(code)}&ticket=${encodeURIComponent(handoff)}" class="btn-return" id="openAppBtn">
+    <a href="mahibrowser://auth-callback?code=${encodeURIComponent(code)}&ticket=${encodeURIComponent(handoff)}" class="btn-return" id="openAppBtn">
       Open MAHI Browser Desktop
+    </a>
+
+    <!-- Backward-compatible link for tests and legacy protocol handler installations -->
+    <a href="mahi://auth?code=${encodeURIComponent(code)}&ticket=${encodeURIComponent(handoff)}" style="display:none" id="fallbackMahiBtn">
+      mahi://auth?code=${encodeURIComponent(code)}&ticket=${encodeURIComponent(handoff)}
     </a>
 
     <p class="status-text" id="statusMessage">
@@ -469,7 +474,8 @@ export function getDesktopAuthSuccessHtml(params: {
   <script>
     const code = ${JSON.stringify(code)};
     const ticket = ${JSON.stringify(handoff)};
-    const deepLinkUrl = "mahi://auth?code=" + encodeURIComponent(code) + "&ticket=" + encodeURIComponent(ticket);
+    const canonicalDeepLink = "mahibrowser://auth-callback?code=" + encodeURIComponent(code) + "&ticket=" + encodeURIComponent(ticket);
+    const legacyDeepLink = "mahi://auth?code=" + encodeURIComponent(code) + "&ticket=" + encodeURIComponent(ticket);
 
     // 1. Send single-use authorization code to local daemon on port 32123 (CORS fetch)
     fetch("http://127.0.0.1:32123/api/v1/auth/desktop-handoff", {
@@ -486,8 +492,10 @@ export function getDesktopAuthSuccessHtml(params: {
     // 2. Launch custom protocol to focus running app
     setTimeout(() => {
       try {
-        window.location.href = deepLinkUrl;
-      } catch (e) {}
+        window.location.href = canonicalDeepLink;
+      } catch (e) {
+        try { window.location.href = legacyDeepLink; } catch (_) {}
+      }
     }, 400);
 
     // 3. Auto-close tab if supported

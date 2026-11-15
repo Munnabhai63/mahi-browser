@@ -102,32 +102,50 @@ try {
 logCheckpoint('Step 1: Application Initializing', `Electron version: ${process.versions.electron}`);
 
 // Use software rendering to prevent GPU driver crashes on diverse hardware
-try {
-  app.disableHardwareAcceleration();
-  logCheckpoint('Step 1: Hardware Acceleration Disabled');
-} catch (err: unknown) {
-  writeCrashLog('HW_ACCEL_ERROR', String(err));
+if (app?.disableHardwareAcceleration) {
+  try {
+    app.disableHardwareAcceleration();
+    logCheckpoint('Step 1: Hardware Acceleration Disabled');
+  } catch (err: unknown) {
+    writeCrashLog('HW_ACCEL_ERROR', String(err));
+  }
 }
 
 // Set Windows Application User Model ID for taskbar grouping
-if (process.platform === 'win32') {
+if (process.platform === 'win32' && app?.setAppUserModelId) {
   app.setAppUserModelId('com.mahibrowser.app');
 }
 
-// Register custom protocol client for seamless deep linking (GoLogin Parity: mahi://auth?token=...)
-try {
-  app.setAsDefaultProtocolClient('mahi');
-  logCheckpoint('Step 1: Custom protocol client "mahi" registered');
-} catch (err: unknown) {
-  writeCrashLog('PROTOCOL_CLIENT_ERROR', String(err));
+// Shared helper for deep-link protocol URL matching (canonical mahibrowser:// and legacy mahi://)
+export function isMahiProtocolUrl(arg: unknown): arg is string {
+  return typeof arg === 'string' && (arg.startsWith('mahibrowser://') || arg.startsWith('mahi://'));
 }
+
+// Register custom protocol clients for seamless deep linking (GoLogin Parity: mahibrowser:// and mahi://)
+export function registerProtocolClients(schemes: string[] = ['mahibrowser', 'mahi']): void {
+  if (!app?.setAsDefaultProtocolClient) return;
+  for (const scheme of schemes) {
+    try {
+      if (process.defaultApp && process.argv.length >= 2) {
+        app.setAsDefaultProtocolClient(scheme, process.execPath, [path.resolve(process.argv[1])]);
+      } else {
+        app.setAsDefaultProtocolClient(scheme);
+      }
+      logCheckpoint(`Step 1: Custom protocol client "${scheme}" registered`);
+    } catch (err: unknown) {
+      writeCrashLog('PROTOCOL_CLIENT_ERROR', `Failed to register scheme ${scheme}: ${String(err)}`);
+    }
+  }
+}
+
+registerProtocolClients();
 
 // Single instance lock check (Strict single-instance lock to avoid SQLite/port collision)
 logCheckpoint('Step 2: Checking Instance Status');
 const isSmokeTest = process.argv.includes('--smoke-test');
-const gotTheLock = app.requestSingleInstanceLock();
-if (!gotTheLock && !isSmokeTest) {
-  const hasDeepLink = process.argv.some(arg => typeof arg === 'string' && arg.startsWith('mahi://'));
+const gotTheLock = app?.requestSingleInstanceLock ? app.requestSingleInstanceLock() : true;
+if (!gotTheLock && !isSmokeTest && app?.quit) {
+  const hasDeepLink = process.argv.some(isMahiProtocolUrl);
   if (hasDeepLink) {
     logCheckpoint('Step 2: Second instance with deep-link detected. Yielding to primary instance and exiting.');
   } else {
@@ -331,7 +349,7 @@ function createWindow(): void {
   }
 }
 
-if (gotTheLock || isSmokeTest) {
+if ((gotTheLock || isSmokeTest) && app?.whenReady) {
   app.whenReady().then(async () => {
   logCheckpoint('Step 3: App whenReady fired');
 
@@ -428,29 +446,31 @@ if (gotTheLock || isSmokeTest) {
 
   // Check process.argv for initial cold deep-link launch (Windows/Linux)
   if (Array.isArray(process.argv)) {
-    const coldDeepLink = process.argv.find(arg => typeof arg === 'string' && arg.startsWith('mahi://'));
+    const coldDeepLink = process.argv.find(isMahiProtocolUrl);
     if (coldDeepLink) {
       logCheckpoint('Startup: Cold deep-link URL detected in process.argv', coldDeepLink);
       handleDeepLinkUrl(coldDeepLink);
     }
   }
 
-  app.on('activate', () => {
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      createWindow();
-    }
-  });
+    app?.on?.('activate', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        createWindow();
+      }
+    });
   }).catch((startupErr: unknown) => {
     const errObj = startupErr instanceof Error ? startupErr : new Error(String(startupErr));
     writeCrashLog('APP_WHEN_READY_FATAL_ERROR', errObj.message, errObj.stack);
   });
 }
 
-async function handleDeepLinkUrl(urlStr: string): Promise<void> {
+export async function handleDeepLinkUrl(urlStr: string): Promise<boolean> {
   try {
     logCheckpoint('DeepLink: Processing auth handoff signal', urlStr);
     const parsed = new URL(urlStr);
-    if (parsed.protocol !== 'mahi:' || parsed.hostname !== 'auth') return;
+    const isValidProtocol = parsed.protocol === 'mahibrowser:' || parsed.protocol === 'mahi:';
+    const isValidHost = parsed.hostname === 'auth' || parsed.hostname === 'auth-callback';
+    if (!isValidProtocol || !isValidHost) return false;
 
     const handoff = parsed.searchParams.get('handoff');
     const token = parsed.searchParams.get('token');
@@ -521,16 +541,19 @@ async function handleDeepLinkUrl(urlStr: string): Promise<void> {
           emitStatus();
         }
       }
+      return true;
     }
+    return false;
   } catch (err: any) {
     logCheckpoint('DeepLink: Failed to process deep link URL', err?.message || String(err));
+    return false;
   }
 }
 
-app.on('second-instance', (_event, argv) => {
+app?.on?.('second-instance', (_event, argv) => {
   logCheckpoint('Event: second-instance detected - focusing or reopening main window');
   if (Array.isArray(argv)) {
-    const deepLink = argv.find(arg => typeof arg === 'string' && arg.startsWith('mahi://'));
+    const deepLink = argv.find(isMahiProtocolUrl);
     if (deepLink) {
       handleDeepLinkUrl(deepLink);
     }
@@ -544,10 +567,12 @@ app.on('second-instance', (_event, argv) => {
   }
 });
 
-app.on('open-url', (event, url) => {
+app?.on?.('open-url', (event, url) => {
   event.preventDefault();
   logCheckpoint('Event: open-url detected', url);
-  handleDeepLinkUrl(url);
+  if (isMahiProtocolUrl(url)) {
+    handleDeepLinkUrl(url);
+  }
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
@@ -571,19 +596,19 @@ async function performCleanExit(): Promise<void> {
     writeCrashLog('BEFORE_QUIT_CLEANUP_ERROR', String(err));
   } finally {
     setTimeout(() => {
-      app.exit(0);
+      app?.exit?.(0);
     }, 150);
   }
 }
 
-app.on('before-quit', (e) => {
+app?.on?.('before-quit', (e) => {
   if (!isQuitting) {
     e.preventDefault();
     performCleanExit();
   }
 });
 
-app.on('window-all-closed', () => {
+app?.on?.('window-all-closed', () => {
   logCheckpoint('Event: window-all-closed');
   if (process.platform !== 'darwin') {
     performCleanExit();

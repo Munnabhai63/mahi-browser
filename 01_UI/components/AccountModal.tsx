@@ -24,6 +24,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { useAccountStore } from '../stores/useAccountStore.js';
+import { useProfileStore } from '../stores/useProfileStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { BrandLogo } from './BrandLogo.js';
 import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
@@ -131,6 +132,30 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       onClose();
     }
   }, [isOpen, isGoogleLoading, isUserLoggedIn, accountSession?.email]);
+
+  // Listen for account:statusChanged IPC event from deep-link login
+  useEffect(() => {
+    if (!isOpen) return;
+    const unsub = window.mahiAPI?.onAccountStatusChanged?.(async () => {
+      setIsGoogleLoading(false);
+      setIsLoading(false);
+      try {
+        await fetchPlanLimits({ force: true });
+        await useProfileStore.getState().fetchProfiles();
+      } catch (err) {
+        console.debug('[AccountModal] post-statusChanged refresh notice:', err);
+      }
+      showToast({
+        type: 'success',
+        title: 'Signed In',
+        message: 'Account signed in successfully via deep link!',
+      });
+      onClose();
+    });
+    return () => {
+      unsub?.();
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

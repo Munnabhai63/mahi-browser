@@ -8,18 +8,18 @@ export const ToastContainer: React.FC = () => {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 flex flex-col space-y-2.5 max-w-sm w-full select-none pointer-events-none">
+    <div className="fixed top-5 right-5 z-50 flex flex-col space-y-2.5 max-w-sm w-full select-none pointer-events-none">
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`pointer-events-auto p-4 rounded-xl shadow-lg border flex items-start space-x-3 transition-all transform animate-in slide-in-from-bottom-5 duration-200 ${
+          className={`pointer-events-auto p-4 rounded-xl shadow-xl border flex items-start space-x-3 transition-all transform animate-in slide-in-from-top-5 duration-200 backdrop-blur-md bg-slate-900/85 ${
             toast.type === 'success'
-              ? 'bg-slate-900 text-slate-100 border-emerald-500/40 dark:border-emerald-500/50'
+              ? 'text-slate-100 border-emerald-500/50 shadow-emerald-500/10'
               : toast.type === 'error'
-              ? 'bg-slate-900 text-slate-100 border-rose-500/40 dark:border-rose-500/50'
+              ? 'text-slate-100 border-rose-500/50 shadow-rose-500/10'
               : toast.type === 'warning'
-              ? 'bg-slate-900 text-slate-100 border-amber-500/40 dark:border-amber-500/50'
-              : 'bg-slate-900 text-slate-100 border-slate-700'
+              ? 'text-slate-100 border-amber-500/50 shadow-amber-500/10'
+              : 'text-slate-100 border-teal-500/40 shadow-teal-500/10'
           }`}
         >
           <div className="mt-0.5">

@@ -95,16 +95,19 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
 
     let detectedProto: ProxyProtocol = protocol;
 
-    // Check protocol prefix
+    // Check protocol prefix first
     const protoMatch = s.match(/^(https?|socks[45]?):\/\//i);
     if (protoMatch) {
       const p = protoMatch[1].toLowerCase();
       if (p === 'http' || p === 'https' || p === 'socks4' || p === 'socks5') {
-        detectedProto = p;
-        setProtocol(p);
+        detectedProto = p as ProxyProtocol;
+        setProtocol(detectedProto);
       }
       s = s.slice(protoMatch[0].length);
     }
+
+    // Remove trailing slashes or URL paths
+    s = s.replace(/\/+.*$/, '');
 
     // Check user:pass@host:port
     const atIdx = s.indexOf('@');
@@ -112,8 +115,13 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
       const creds = s.slice(0, atIdx);
       s = s.slice(atIdx + 1);
       const [u, ...pParts] = creds.split(':');
-      setUsername(u || '');
-      setPassword(pParts.join(':') || '');
+      try {
+        setUsername(decodeURIComponent(u || ''));
+        setPassword(decodeURIComponent(pParts.join(':') || ''));
+      } catch {
+        setUsername(u || '');
+        setPassword(pParts.join(':') || '');
+      }
     }
 
     // Parse host:port or host:port:user:pass

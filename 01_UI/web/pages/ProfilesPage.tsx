@@ -120,45 +120,56 @@ export const ProfilesPage: React.FC<ProfilesPageProps> = ({
     }
   };
 
-  const getSyncStatusBadge = (status?: string, isLocked?: boolean) => {
+  const getSyncStatusBadge = (status?: string, isLocked?: boolean, lockedBy?: string, syncProgress?: number) => {
     if (isLocked) {
       return (
-        <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-          <Lock className="w-3 h-3" />
-          <span>LOCKED</span>
+        <span
+          className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-500 border border-rose-500/30 shadow-xs"
+          title={`In use by ${lockedBy || 'Another Device'}`}
+        >
+          <Lock className="w-3 h-3 text-rose-500 shrink-0" />
+          <span>In use by {lockedBy || 'Another Device'}</span>
         </span>
       );
     }
 
-    switch (status) {
-      case 'SYNCED':
-        return (
-          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span>SYNCED</span>
-          </span>
-        );
-      case 'CONFLICT':
-        return (
-          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
-            <AlertTriangle className="w-3 h-3" />
-            <span>CONFLICT</span>
-          </span>
-        );
-      case 'PENDING':
-        return (
-          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-            <RefreshCw className="w-3 h-3 animate-spin" />
-            <span>PENDING</span>
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
-            <span>OFFLINE</span>
-          </span>
-        );
+    if (status === 'SYNCING') {
+      return (
+        <span
+          className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-500/15 text-sky-500 border border-sky-500/30 shadow-xs animate-pulse"
+          title="Syncing browser session to cloud storage"
+        >
+          <RefreshCw className="w-3 h-3 text-sky-500 animate-spin shrink-0" />
+          <span>Syncing {syncProgress !== undefined ? `${syncProgress}%` : '...'}</span>
+        </span>
+      );
     }
+
+    if (status === 'RUNNING') {
+      return (
+        <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-600 text-white border border-emerald-500 shadow-xs">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-200 animate-ping shrink-0" />
+          <span>Running</span>
+        </span>
+      );
+    }
+
+    if (status === 'STARTING') {
+      return (
+        <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-500 border border-amber-500/30 shadow-xs">
+          <RefreshCw className="w-3 h-3 text-amber-500 animate-spin shrink-0" />
+          <span>Launching...</span>
+        </span>
+      );
+    }
+
+    // Default READY / SYNCED state
+    return (
+      <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-xs">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+        <span>Ready</span>
+      </span>
+    );
   };
 
   return (
@@ -329,7 +340,7 @@ export const ProfilesPage: React.FC<ProfilesPageProps> = ({
                     </td>
 
                     {/* Sync State Badge */}
-                    <td className="py-3 px-4">{getSyncStatusBadge(p.syncStatus, p.isLocked)}</td>
+                    <td className="py-3 px-4">{getSyncStatusBadge(p.syncStatus, p.isLocked, p.lockedBy)}</td>
 
                     {/* Assigned Proxy */}
                     <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">

@@ -8,7 +8,7 @@ import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 // ============================================================================
 // CONFIGURATION CONSTANTS
 // ============================================================================
-export const ADMIN_API_BASE_URL = process.env.MAHI_ADMIN_URL || 'https://admin.mahibrowser.com';
+export const ADMIN_API_BASE_URL = process.env.MAHI_ADMIN_URL || process.env.MAHI_API_URL || 'https://admin.mahibrowser.com';
 const GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days grace period
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;   // 6 hours check interval
 const STARTUP_DELAY_MS = 5000;                   // 5s non-blocking delay on startup
