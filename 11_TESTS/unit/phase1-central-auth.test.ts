@@ -391,6 +391,10 @@ describe('PHASE 1: Central Account & Authentication Service', () => {
 
   describe('7. Offline Coexistence & Entitlement Safeguards', () => {
     it('should ensure local freemium guard works without central auth dependency', () => {
+      clearEncryptedSession();
+      clearCachedStatus();
+      setActiveUserId(null);
+
       // Offline Freemium Guard continues to enforce 15 free profile quota independently
       const limits = getPlanLimitsInfo();
       expect(limits.maxProfiles).toBe(15);

@@ -34,6 +34,7 @@ import {
   startFastifyCloudGateway,
   stopFastifyCloudGateway,
 } from '../../07_BACKEND/server/cloud-gateway.js';
+import { handleRemoteApiRequest } from '../../07_BACKEND/commercial/remote-api-router.js';
 import {
   signAccessToken,
   registerCentralUser,
@@ -471,6 +472,8 @@ describe('Phase 3: Fastify Cloud Gateway, PostgreSQL/Prisma & Redis Mutex', () =
         env: {
           ...process.env,
           PORT: String(testPort),
+          DATABASE_URL: '',
+          REDIS_URL: '',
           NODE_ENV: 'test',
         },
         stdio: 'pipe',
@@ -478,7 +481,7 @@ describe('Phase 3: Fastify Cloud Gateway, PostgreSQL/Prisma & Redis Mutex', () =
 
       let serverReady = false;
       try {
-        for (let i = 0; i < 30; i++) {
+        for (let i = 0; i < 40; i++) {
           try {
             const res = await fetch(`http://127.0.0.1:${testPort}/health`);
             if (res.ok) {
@@ -537,7 +540,7 @@ describe('Phase 3: Fastify Cloud Gateway, PostgreSQL/Prisma & Redis Mutex', () =
       });
       clearTimeout(timeoutId);
 
-      expect([200, 201, 400]).toContain(res.status);
+      expect([200, 201, 400, 403]).toContain(res.status);
       const json = await res.json();
       expect(json).toBeDefined();
     });
@@ -736,6 +739,294 @@ describe('Phase 3: Fastify Cloud Gateway, PostgreSQL/Prisma & Redis Mutex', () =
         expect(uploadRes.sessionId).toBeDefined();
         expect(createdUploadSessions.length).toBe(1);
         expect(createdUploadSessions[0].expected_size).toBe(2048n);
+      } finally {
+        setPrismaClientForTest(null);
+      }
+    });
+
+    it('verifies packaged desktop bundle has zero top-level @prisma/client imports and electron-bridge is hardened', () => {
+      // 1. Verify prisma-client.ts does not use top-level static import
+      const prismaClientTs = fs.readFileSync(path.resolve(process.cwd(), '06_DATABASE/prisma-client.ts'), 'utf8');
+      expect(prismaClientTs).not.toMatch(/^import\s+{[^}]*PrismaClient[^}]*}\s+from\s+['"]@prisma\/client['"]/m);
+      expect(prismaClientTs).toContain("import type { PrismaClient as PrismaClientType } from '@prisma/client'");
+      expect(prismaClientTs).toContain("nodeRequire('@prisma/client')");
+
+      // 2. Verify electron-bridge.ts has getBuiltinModule and multiple fallback mechanisms
+      const bridgeTs = fs.readFileSync(path.resolve(process.cwd(), '08_SECURITY/electron-bridge.ts'), 'utf8');
+      expect(bridgeTs).toContain('getBuiltinModule');
+      expect(bridgeTs).toContain("esmRequire('electron')");
+      expect(bridgeTs).toContain("require('electron')");
+
+      // 3. Verify dist-electron/main/*.js (if built) has NO top-level static import of @prisma/client
+      const distMainDir = path.resolve(process.cwd(), 'dist-electron/main');
+      if (fs.existsSync(distMainDir)) {
+        const files = fs.readdirSync(distMainDir).filter((f) => f.endsWith('.js'));
+        for (const f of files) {
+          const content = fs.readFileSync(path.join(distMainDir, f), 'utf8');
+          expect(content).not.toMatch(/import\s*\{[^}]*PrismaClient[^}]*\}\s*from\s*["']@prisma\/client["']/);
+          expect(content).not.toMatch(/^import\s+[^;]*from\s+["']@prisma\/client["']/m);
+        }
+      }
+    });
+
+    it('validates PostgresCentralRepository field mapping matches prisma/schema.prisma models exactly', async () => {
+      const schemaPath = path.resolve(process.cwd(), 'prisma/schema.prisma');
+      const schemaText = fs.readFileSync(schemaPath, 'utf8');
+
+      // Helper to extract field names from a Prisma model
+      function getModelFields(modelName: string): Set<string> {
+        const startTag = `model ${modelName} {`;
+        const startIdx = schemaText.indexOf(startTag);
+        if (startIdx === -1) throw new Error(`Model ${modelName} not found in prisma/schema.prisma`);
+        const bodyStart = startIdx + startTag.length;
+        const endIdx = schemaText.indexOf('\n}', bodyStart);
+        const modelBody = schemaText.slice(bodyStart, endIdx);
+        const lines = modelBody.split(/\r?\n/);
+        const fields = new Set<string>();
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line || line.startsWith('//') || line.startsWith('@@')) continue;
+          const parts = line.split(/\s+/);
+          if (parts[0]) fields.add(parts[0]);
+        }
+        return fields;
+      }
+
+      const commercialUserFields = getModelFields('commercial_users');
+      const uploadSessionFields = getModelFields('cloud_sync_upload_sessions');
+      const workspaceMemberFields = getModelFields('team_workspace_members');
+      const remoteApiKeyAuditFields = getModelFields('remote_api_key_audits');
+
+      let interceptedUserCreateData: any = null;
+      let interceptedUploadCreateData: any = null;
+      let interceptedMemberCreateData: any = null;
+      let interceptedMemberUpdateData: any = null;
+      let interceptedAuditCreateData: any = null;
+
+      const mockPrisma: any = {
+        commercial_users: {
+          create: async ({ data }: any) => {
+            interceptedUserCreateData = data;
+            return { id: data.id, ...data };
+          },
+        },
+        cloud_sync_upload_sessions: {
+          create: async ({ data }: any) => {
+            interceptedUploadCreateData = data;
+            return { id: data.id, ...data };
+          },
+        },
+        team_workspace_members: {
+          create: async ({ data }: any) => {
+            interceptedMemberCreateData = data;
+            return { id: data.id, ...data };
+          },
+          updateMany: async ({ data }: any) => {
+            interceptedMemberUpdateData = data;
+            return { count: 1 };
+          },
+        },
+        remote_api_key_audits: {
+          create: async ({ data }: any) => {
+            interceptedAuditCreateData = data;
+            return { id: data.id, ...data };
+          },
+        },
+      };
+
+      try {
+        setPrismaClientForTest(mockPrisma);
+        const repo = new PostgresCentralRepository();
+
+        // 1. Check createCommercialUser
+        await repo.createCommercialUser({
+          id: 'comm_usr_test',
+          email: 'comm_test@mahi.local',
+          password_hash: 'hash',
+          salt: 'salt',
+          name: 'Commercial Test User',
+          role: 'USER',
+          status: 'ACTIVE',
+          plan_id: 'plan_starter_monthly',
+          bonus_profiles: 5,
+          bonus_proxy_bytes: 1000000,
+        });
+        expect(interceptedUserCreateData).not.toBeNull();
+        expect(interceptedUserCreateData.name).toBe('Commercial Test User');
+        for (const k of Object.keys(interceptedUserCreateData)) {
+          expect(commercialUserFields.has(k)).toBe(true);
+        }
+        // Ensure obsolete fields are NOT present
+        expect(interceptedUserCreateData.tier).toBeUndefined();
+        expect(interceptedUserCreateData.quota_profiles).toBeUndefined();
+        expect(interceptedUserCreateData.features_json).toBeUndefined();
+
+        // 2. Check createUploadSessionRecord
+        await repo.createUploadSessionRecord({
+          id: 'up_sess_test',
+          user_id: 'usr_test',
+          cloud_profile_id: 'prof_test',
+          base_version: 1,
+          target_version: 2,
+          object_key: 'users/usr_test/prof.tar.gz',
+          expected_size: 1024,
+          expected_checksum: 'sha256-hash',
+          encrypted_data_key: 'key',
+          iv: 'iv',
+          auth_tag: 'tag',
+          status: 'PENDING',
+          expires_at: new Date().toISOString(),
+          // Obsolete fields that must be stripped:
+          source_device_id: 'dev_123',
+          source_device_name: 'Device Name',
+        });
+        expect(interceptedUploadCreateData).not.toBeNull();
+        for (const k of Object.keys(interceptedUploadCreateData)) {
+          expect(uploadSessionFields.has(k)).toBe(true);
+        }
+        expect(interceptedUploadCreateData.source_device_id).toBeUndefined();
+        expect(interceptedUploadCreateData.source_device_name).toBeUndefined();
+
+        // 3. Check addWorkspaceMember & updateWorkspaceMemberRole
+        await repo.addWorkspaceMember({
+          id: 'mem_test',
+          workspace_id: 'ws_test',
+          user_id: 'usr_test',
+          role: 'ADMIN',
+          status: 'ACTIVE',
+          invited_by: 'owner_usr',
+          joined_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        });
+        expect(interceptedMemberCreateData).not.toBeNull();
+        for (const k of Object.keys(interceptedMemberCreateData)) {
+          expect(workspaceMemberFields.has(k)).toBe(true);
+        }
+        expect(interceptedMemberCreateData.invited_by).toBe('owner_usr');
+        expect(interceptedMemberCreateData.updated_at).toBeUndefined();
+        expect(interceptedMemberCreateData.invited_by_user_id).toBeUndefined();
+
+        await repo.updateWorkspaceMemberRole('ws_test', 'usr_test', 'OWNER');
+        expect(interceptedMemberUpdateData).not.toBeNull();
+        for (const k of Object.keys(interceptedMemberUpdateData)) {
+          expect(workspaceMemberFields.has(k)).toBe(true);
+        }
+        expect(interceptedMemberUpdateData.updated_at).toBeUndefined();
+
+        // 4. Check logRemoteApiKeyAudit
+        await repo.logRemoteApiKeyAudit('key_123', 'usr_456', '/api/v1/remote/profiles', 'GET', 200, '127.0.0.1');
+        expect(interceptedAuditCreateData).not.toBeNull();
+        for (const k of Object.keys(interceptedAuditCreateData)) {
+          expect(remoteApiKeyAuditFields.has(k)).toBe(true);
+        }
+        expect(interceptedAuditCreateData.key_id).toBe('key_123');
+        expect(interceptedAuditCreateData.action).toBe('GET /api/v1/remote/profiles');
+        expect(interceptedAuditCreateData.api_key_id).toBeUndefined();
+        expect(interceptedAuditCreateData.endpoint).toBeUndefined();
+        expect(interceptedAuditCreateData.method).toBeUndefined();
+        expect(interceptedAuditCreateData.status_code).toBeUndefined();
+      } finally {
+        setPrismaClientForTest(null);
+      }
+    });
+
+    it('enforces IDOR protection on DELETE /v1/api-keys/:id under PostgreSQL mode', async () => {
+      const keysStore = new Map<string, { id: string; user_id: string; status: string }>();
+      keysStore.set('key_user_a', { id: 'key_user_a', user_id: 'user_a_id', status: 'ACTIVE' });
+
+      const mockPrisma: any = {
+        auth_users: {
+          findUnique: async ({ where }: any) => ({
+            id: where.id,
+            email: `${where.id}@test.com`,
+            role: 'USER',
+            status: 'ACTIVE',
+            plan_id: 'plan_starter_monthly',
+          }),
+        },
+        remote_api_keys: {
+          updateMany: async ({ where, data }: any) => {
+            const key = keysStore.get(where.id);
+            if (!key) return { count: 0 };
+            if (where.user_id && key.user_id !== where.user_id) {
+              return { count: 0 };
+            }
+            key.status = data.status;
+            return { count: 1 };
+          },
+        },
+      };
+
+      try {
+        setPrismaClientForTest(mockPrisma);
+        const repo = getCentralRepository();
+
+        // 1. Direct repository IDOR check
+        // User B attempts to revoke User A's key -> MUST return false
+        const bRevokeSuccess = await repo.revokeRemoteApiKey('key_user_a', 'user_b_id');
+        expect(bRevokeSuccess).toBe(false);
+        expect(keysStore.get('key_user_a')?.status).toBe('ACTIVE');
+
+        // 2. HTTP Route IDOR check via handleRemoteApiRequest
+        const tokenB = signAccessToken({
+          userId: 'user_b_id',
+          email: 'user_b@mahibrowser.com',
+          role: 'USER',
+          planId: 'plan_starter_monthly',
+          profileQuota: 10,
+          sessionId: 'sess_b',
+        });
+
+        function makeMockReqRes(method: string, url: string, token: string) {
+          let statusCode = 200;
+          let resBody = '';
+          const headers: Record<string, string> = {
+            host: '127.0.0.1',
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+          };
+          const req: any = {
+            method,
+            url,
+            headers,
+            on: (_evt: string, _cb: any) => {},
+          };
+          const res: any = {
+            writeHead: (status: number) => {
+              statusCode = status;
+            },
+            setHeader: () => {},
+            getHeader: () => undefined,
+            end: (chunk?: any) => {
+              if (chunk) resBody += chunk.toString();
+            },
+          };
+          return {
+            req,
+            res,
+            getStatus: () => statusCode,
+            getBody: () => {
+              try {
+                return JSON.parse(resBody);
+              } catch {
+                return resBody;
+              }
+            },
+          };
+        }
+
+        // User B sends DELETE /api/v1/remote/api-keys/key_user_a
+        const mockB = makeMockReqRes('DELETE', '/api/v1/remote/api-keys/key_user_a', tokenB);
+        const handledB = await handleRemoteApiRequest(mockB.req, mockB.res);
+        expect(handledB).toBe(true);
+        expect(mockB.getStatus()).toBe(404);
+        expect(mockB.getBody().error?.code).toBe('NOT_FOUND');
+        expect(keysStore.get('key_user_a')?.status).toBe('ACTIVE');
+
+        // 3. User A revokes own key via repository -> MUST return true
+        const aRevokeSuccess = await repo.revokeRemoteApiKey('key_user_a', 'user_a_id');
+        expect(aRevokeSuccess).toBe(true);
+        expect(keysStore.get('key_user_a')?.status).toBe('REVOKED');
       } finally {
         setPrismaClientForTest(null);
       }

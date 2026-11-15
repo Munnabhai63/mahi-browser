@@ -26,9 +26,21 @@ export const isElectronRuntime: boolean = Boolean(
 let electronMod: any = null;
 if (isElectronRuntime) {
   try {
-    electronMod = esmRequire('electron');
-  } catch {
-    electronMod = null;
+    if (typeof (process as any).getBuiltinModule === 'function') {
+      electronMod = (process as any).getBuiltinModule('electron');
+    }
+  } catch {}
+
+  if (!electronMod) {
+    try {
+      electronMod = esmRequire('electron');
+    } catch {}
+  }
+
+  if (!electronMod && typeof (globalThis as any).require === 'function') {
+    try {
+      electronMod = (globalThis as any).require('electron');
+    } catch {}
   }
 }
 

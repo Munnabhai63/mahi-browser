@@ -3,9 +3,12 @@
  * Provides lazy connection management, health check probes, and test injection.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { createRequire } from 'node:module';
+import type { PrismaClient as PrismaClientType } from '@prisma/client';
 
-let prismaInstance: PrismaClient | null = null;
+const nodeRequire = createRequire(import.meta.url);
+
+let prismaInstance: PrismaClientType | null = null;
 let testPrismaInstance: any = null;
 
 /**
@@ -13,8 +16,9 @@ let testPrismaInstance: any = null;
  */
 export function isPostgresConfigured(): boolean {
   if (testPrismaInstance) return true;
-  if (process.env.VITEST && !testPrismaInstance) {
-    // In Vitest offline suites without an injected mock Prisma, keep PostgreSQL disabled so tests run against SQLite offline
+  // If running in Electron desktop runtime (or Vitest offline suites without an injected mock Prisma),
+  // PostgreSQL is disabled so desktop runtime and offline tests run against SQLite without needing a live PG server.
+  if ((typeof process !== 'undefined' && process.versions?.electron) || (process.env.VITEST && !testPrismaInstance)) {
     return false;
   }
   const url = process.env.DATABASE_URL;
@@ -28,9 +32,9 @@ export function isPostgresConfigured(): boolean {
  * Returns the lazy-initialized singleton PrismaClient instance.
  * Returns null if PostgreSQL is not configured and no test client has been injected.
  */
-export function getPrismaClient(): PrismaClient | null {
+export function getPrismaClient(): PrismaClientType | null {
   if (testPrismaInstance) {
-    return testPrismaInstance as PrismaClient;
+    return testPrismaInstance as PrismaClientType;
   }
 
   if (!isPostgresConfigured()) {
@@ -38,9 +42,16 @@ export function getPrismaClient(): PrismaClient | null {
   }
 
   if (!prismaInstance) {
-    prismaInstance = new PrismaClient({
-      log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-    });
+    try {
+      const prismaMod = nodeRequire('@prisma/client');
+      const PrismaCtor = prismaMod.PrismaClient || prismaMod.default?.PrismaClient || prismaMod;
+      prismaInstance = new PrismaCtor({
+        log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+      });
+    } catch (err: any) {
+      console.error('[PrismaClient] Failed to load @prisma/client:', err?.message || err);
+      return null;
+    }
   }
 
   return prismaInstance;
@@ -110,4 +121,4 @@ export function setPrismaClientForTest(client: any): void {
   testPrismaInstance = client;
 }
 
-export { PrismaClient };
+export type { PrismaClientType as PrismaClient };

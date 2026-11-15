@@ -695,7 +695,7 @@ export async function handleRemoteApiRoutes(
       const keyId = keyRevokeMatch[1];
       if (isPostgresConfigured()) {
         const repo = getCentralRepository();
-        const success = await repo.revokeRemoteApiKey(keyId);
+        const success = await repo.revokeRemoteApiKey(keyId, auth.userId);
         if (!success) {
           sendRemoteJSON(req, res, 404, { success: false, error: { code: 'NOT_FOUND', message: 'API key not found' } }, requestId, rateLimit);
           return true;

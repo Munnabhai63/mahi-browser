@@ -654,6 +654,7 @@ describe('MAHI BROWSER — ACCOUNT PROFILE PERSISTENCE & CLOUD RESTORE AUDIT', (
       expect(jsonA.data.some((p: any) => p.id === profileA.id)).toBe(true);
 
       // 2. Switch session context to User B
+      clearEncryptedSession();
       setActiveUserId(USER_B_ID);
 
       // GET /profiles as User B MUST NOT return profileA

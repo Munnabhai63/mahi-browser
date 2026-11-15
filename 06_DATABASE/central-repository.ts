@@ -92,7 +92,7 @@ export interface CentralRepository {
   findRemoteApiKeyByHash(keyHash: string): Promise<any | null>;
   createRemoteApiKey(data: any): Promise<any>;
   listRemoteApiKeys(userId: string): Promise<any[]>;
-  revokeRemoteApiKey(id: string): Promise<boolean>;
+  revokeRemoteApiKey(id: string, userId?: string): Promise<boolean>;
   updateRemoteApiKeyLastUsed(id: string): Promise<any>;
 
   // Remote API Key Audits
@@ -360,21 +360,23 @@ export class PostgresCentralRepository implements CentralRepository {
   }
 
   async createCommercialUser(data: any): Promise<any> {
+    const now = new Date().toISOString();
     return this.client.commercial_users.create({
       data: {
         id: data.id,
         email: data.email,
         password_hash: data.password_hash || data.passwordHash,
         salt: data.salt,
+        name: data.name || data.email.split('@')[0],
         role: data.role || 'USER',
         status: data.status || 'ACTIVE',
-        tier: data.tier || 'FREE',
-        quota_profiles: data.quota_profiles ?? 10,
-        quota_extra: data.quota_extra ?? 0,
-        plan_expires_at: data.plan_expires_at || null,
-        features_json: data.features_json || '{}',
-        created_at: data.created_at || new Date().toISOString(),
-        updated_at: data.updated_at || new Date().toISOString(),
+        plan_id: data.plan_id || data.planId || 'plan_free',
+        bonus_profiles: data.bonus_profiles ?? data.bonusProfiles ?? 0,
+        bonus_proxy_bytes: BigInt(data.bonus_proxy_bytes ?? data.bonusProxyBytes ?? 0),
+        feature_overrides: typeof data.feature_overrides === 'string' ? data.feature_overrides : JSON.stringify(data.feature_overrides || {}),
+        created_at: data.created_at || now,
+        updated_at: data.updated_at || now,
+        last_login_at: data.last_login_at || null,
       },
     });
   }
@@ -525,8 +527,6 @@ export class PostgresCentralRepository implements CentralRepository {
         encrypted_data_key: data.encrypted_data_key || data.encryptedDataKey,
         iv: data.iv,
         auth_tag: data.auth_tag || data.authTag,
-        source_device_id: data.source_device_id || data.sourceDeviceId,
-        source_device_name: data.source_device_name || data.sourceDeviceName || null,
         status: data.status || 'PENDING',
         expires_at: data.expires_at || data.expiresAt,
         created_at: data.created_at || new Date().toISOString(),
@@ -630,10 +630,9 @@ export class PostgresCentralRepository implements CentralRepository {
         user_id: data.user_id || data.userId,
         role: data.role || 'MEMBER',
         status: data.status || 'ACTIVE',
-        invited_by_user_id: data.invited_by_user_id || data.invitedByUserId || null,
+        invited_by: data.invited_by || data.invited_by_user_id || data.invitedByUserId || null,
         joined_at: data.joined_at || new Date().toISOString(),
         created_at: data.created_at || new Date().toISOString(),
-        updated_at: data.updated_at || new Date().toISOString(),
       },
     });
   }
@@ -654,7 +653,7 @@ export class PostgresCentralRepository implements CentralRepository {
   async updateWorkspaceMemberRole(workspaceId: string, userId: string, role: string): Promise<any> {
     return this.client.team_workspace_members.updateMany({
       where: { workspace_id: workspaceId, user_id: userId },
-      data: { role, updated_at: new Date().toISOString() },
+      data: { role },
     });
   }
 
@@ -704,13 +703,17 @@ export class PostgresCentralRepository implements CentralRepository {
     });
   }
 
-  async revokeRemoteApiKey(id: string): Promise<boolean> {
+  async revokeRemoteApiKey(id: string, userId?: string): Promise<boolean> {
     try {
-      await this.client.remote_api_keys.update({
-        where: { id },
+      const where: any = { id };
+      if (userId) {
+        where.user_id = userId;
+      }
+      const res = await this.client.remote_api_keys.updateMany({
+        where,
         data: { status: 'REVOKED', revoked_at: new Date().toISOString() },
       });
-      return true;
+      return res.count > 0;
     } catch {
       return false;
     }
@@ -725,16 +728,19 @@ export class PostgresCentralRepository implements CentralRepository {
 
   // --- Remote API Key Audits ---
   async logRemoteApiKeyAudit(apiKeyId: string, userId: string, endpoint: string, method: string, statusCode: number, ipAddress?: string): Promise<any> {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const action = `${method.toUpperCase()} ${endpoint}`;
+    const details = JSON.stringify({ statusCode, method, endpoint });
     return this.client.remote_api_key_audits.create({
       data: {
-        id: crypto.randomUUID(),
-        api_key_id: apiKeyId,
+        id,
+        key_id: apiKeyId,
         user_id: userId,
-        endpoint,
-        method,
-        status_code: statusCode,
+        action,
         ip_address: ipAddress || null,
-        created_at: new Date().toISOString(),
+        details,
+        created_at: now,
       },
     });
   }
@@ -1021,22 +1027,20 @@ export class SqliteCentralRepository implements CentralRepository {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO commercial_users (
-        id, email, password_hash, salt, role, status, tier, quota_profiles, quota_extra, plan_expires_at, features_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, email, password_hash, salt, name, role, status, plan_id, created_at, updated_at, last_login_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       data.id,
       data.email,
       data.password_hash || data.passwordHash,
       data.salt,
+      data.name || data.email.split('@')[0],
       data.role || 'USER',
       data.status || 'ACTIVE',
-      data.tier || 'FREE',
-      data.quota_profiles ?? 10,
-      data.quota_extra ?? 0,
-      data.plan_expires_at || null,
-      data.features_json || '{}',
+      data.plan_id || data.planId || 'plan_free',
       data.created_at || now,
-      data.updated_at || now
+      data.updated_at || now,
+      data.last_login_at || null
     );
     return this.findCommercialUserById(data.id);
   }
@@ -1146,8 +1150,8 @@ export class SqliteCentralRepository implements CentralRepository {
     this.db.prepare(`
       INSERT INTO cloud_sync_upload_sessions (
         id, user_id, cloud_profile_id, base_version, target_version, object_key, expected_size, expected_checksum,
-        encrypted_data_key, iv, auth_tag, source_device_id, source_device_name, status, expires_at, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        encrypted_data_key, iv, auth_tag, status, expires_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       data.id,
       data.user_id || data.userId,
@@ -1160,8 +1164,6 @@ export class SqliteCentralRepository implements CentralRepository {
       data.encrypted_data_key || data.encryptedDataKey,
       data.iv,
       data.auth_tag || data.authTag,
-      data.source_device_id || data.sourceDeviceId,
-      data.source_device_name || data.sourceDeviceName || null,
       data.status || 'PENDING',
       data.expires_at || data.expiresAt,
       data.created_at || now
@@ -1249,18 +1251,17 @@ export class SqliteCentralRepository implements CentralRepository {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO team_workspace_members (
-        id, workspace_id, user_id, role, status, invited_by_user_id, joined_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, workspace_id, user_id, role, status, invited_by, joined_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       data.id,
       data.workspace_id || data.workspaceId,
       data.user_id || data.userId,
       data.role || 'MEMBER',
       data.status || 'ACTIVE',
-      data.invited_by_user_id || data.invitedByUserId || null,
+      data.invited_by || data.invited_by_user_id || data.invitedByUserId || null,
       data.joined_at || now,
-      data.created_at || now,
-      data.updated_at || now
+      data.created_at || now
     );
     return data;
   }
@@ -1275,8 +1276,7 @@ export class SqliteCentralRepository implements CentralRepository {
   }
 
   async updateWorkspaceMemberRole(workspaceId: string, userId: string, role: string): Promise<any> {
-    const now = new Date().toISOString();
-    this.db.prepare('UPDATE team_workspace_members SET role = ?, updated_at = ? WHERE workspace_id = ? AND user_id = ?').run(role, now, workspaceId, userId);
+    this.db.prepare('UPDATE team_workspace_members SET role = ? WHERE workspace_id = ? AND user_id = ?').run(role, workspaceId, userId);
     return true;
   }
 
@@ -1321,8 +1321,14 @@ export class SqliteCentralRepository implements CentralRepository {
     return this.db.prepare('SELECT * FROM remote_api_keys WHERE user_id = ? ORDER BY created_at DESC').all(userId) as any[];
   }
 
-  async revokeRemoteApiKey(id: string): Promise<boolean> {
-    const res = this.db.prepare('UPDATE remote_api_keys SET status = "REVOKED", revoked_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+  async revokeRemoteApiKey(id: string, userId?: string): Promise<boolean> {
+    const now = new Date().toISOString();
+    let res;
+    if (userId) {
+      res = this.db.prepare('UPDATE remote_api_keys SET status = "REVOKED", revoked_at = ? WHERE id = ? AND user_id = ?').run(now, id, userId);
+    } else {
+      res = this.db.prepare('UPDATE remote_api_keys SET status = "REVOKED", revoked_at = ? WHERE id = ?').run(now, id);
+    }
     return res.changes > 0;
   }
 
@@ -1335,11 +1341,13 @@ export class SqliteCentralRepository implements CentralRepository {
   async logRemoteApiKeyAudit(apiKeyId: string, userId: string, endpoint: string, method: string, statusCode: number, ipAddress?: string): Promise<any> {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
+    const action = `${method.toUpperCase()} ${endpoint}`;
+    const details = JSON.stringify({ statusCode, method, endpoint });
     this.db.prepare(`
-      INSERT INTO remote_api_key_audits (id, api_key_id, user_id, endpoint, method, status_code, ip_address, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, apiKeyId, userId, endpoint, method, statusCode, ipAddress || null, now);
-    return { id, api_key_id: apiKeyId, status_code: statusCode };
+      INSERT INTO remote_api_key_audits (id, key_id, user_id, action, ip_address, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, apiKeyId, userId, action, ipAddress || null, details, now);
+    return { id, key_id: apiKeyId, user_id: userId, action, details };
   }
 
   // --- Locks ---

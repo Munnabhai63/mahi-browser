@@ -70,10 +70,10 @@ import { getAccountSession } from '../../08_SECURITY/account-service.js';
 import { getActiveUserId } from '../commercial/session-context.js';
 
 export function getLocalApiOwnerId(): string {
-  const session = getAccountSession();
-  if (session?.account_id) return session.account_id;
   const activeUser = getActiveUserId();
   if (activeUser) return activeUser;
+  const session = getAccountSession();
+  if (session?.account_id) return session.account_id;
   return 'SYSTEM_OWNER';
 }
 
