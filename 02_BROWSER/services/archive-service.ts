@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import * as electron from 'electron';
 import {
   ExportProfileOptions,
@@ -59,6 +60,353 @@ const EXCLUDED_DIRS = new Set([
   'crashpad',
   '.tmp'
 ]);
+
+/**
+ * Strict parity check for paths excluded from cloud profile synchronization (Section 6).
+ * Excludes browser caches (Cache, Code Cache, GPUCache, Crashpad, Service Worker/CacheStorage, etc.),
+ * temporary files (.tmp, .lock, .journal), and Chromium runtime singletons.
+ */
+export function isPathExcludedFromSync(relPath: string): boolean {
+  if (!relPath || typeof relPath !== 'string') return true;
+
+  // Path traversal guard
+  if (
+    relPath.includes('..') ||
+    relPath.startsWith('/') ||
+    relPath.startsWith('\\') ||
+    /^[a-zA-Z]:/.test(relPath)
+  ) {
+    return true;
+  }
+
+  const normalized = relPath.replace(/\\/g, '/');
+  const lower = normalized.toLowerCase();
+  const segments = lower.split('/').filter(Boolean);
+
+  // Excluded directories per Section 6 & chromium session hygiene
+  const excludedSegmentNames = new Set([
+    'cache',
+    'code cache',
+    'gpucache',
+    'crashpad',
+    'dawncache',
+    'dawngraphitecache',
+    'dawnwebgpucache',
+    'blob_storage',
+    'scriptcache',
+    'shared dictionary',
+    'fonts_config',
+    'cachestorage',
+    '.tmp'
+  ]);
+
+  for (const seg of segments) {
+    if (excludedSegmentNames.has(seg)) {
+      return true;
+    }
+  }
+
+  // Check multi-segment patterns like service worker/cachestorage
+  if (lower.includes('service worker/cachestorage') || lower.includes('service worker/cache')) {
+    return true;
+  }
+
+  const fileName = segments[segments.length - 1] || '';
+  if (
+    fileName.endsWith('.tmp') ||
+    fileName.endsWith('.lock') ||
+    fileName === 'lock' ||
+    fileName.endsWith('.journal') ||
+    fileName.startsWith('singleton') || // SingletonLock, SingletonCookie, SingletonSocket
+    fileName === '.ds_store' ||
+    fileName === 'thumbs.db'
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Creates a standard 512-byte POSIX ustar tar header block.
+ */
+function createTarHeader(name: string, size: number, mode = 0o644, mtime = Math.floor(Date.now() / 1000), typeflag = '0'): Buffer {
+  const header = Buffer.alloc(512, 0);
+
+  let prefix = '';
+  let filename = name;
+
+  if (Buffer.byteLength(filename, 'utf8') > 100) {
+    const slashIdx = filename.lastIndexOf('/');
+    if (slashIdx !== -1 && slashIdx <= 155) {
+      prefix = filename.substring(0, slashIdx);
+      filename = filename.substring(slashIdx + 1);
+    }
+  }
+
+  // 0-99: name
+  header.write(filename, 0, 100, 'utf8');
+
+  // 100-107: mode (8 bytes octal)
+  header.write(mode.toString(8).padStart(6, '0') + ' \0', 100, 8, 'ascii');
+
+  // 108-115: uid
+  header.write('000000 \0', 108, 8, 'ascii');
+
+  // 116-123: gid
+  header.write('000000 \0', 116, 8, 'ascii');
+
+  // 124-135: size (12 bytes octal)
+  const sizeOctal = size.toString(8).padStart(11, '0') + ' ';
+  header.write(sizeOctal, 124, 12, 'ascii');
+
+  // 136-147: mtime (12 bytes octal)
+  const mtimeOctal = mtime.toString(8).padStart(11, '0') + ' ';
+  header.write(mtimeOctal, 136, 12, 'ascii');
+
+  // 148-155: chksum (initialized to 8 spaces)
+  header.write('        ', 148, 8, 'ascii');
+
+  // 156: typeflag
+  header.write(typeflag, 156, 1, 'ascii');
+
+  // 257-262: magic (ustar\0)
+  header.write('ustar\0', 257, 6, 'ascii');
+
+  // 263-264: version (00)
+  header.write('00', 263, 2, 'ascii');
+
+  // 265-296: uname
+  header.write('mahi', 265, 32, 'utf8');
+
+  // 297-328: gname
+  header.write('mahi', 297, 32, 'utf8');
+
+  // 345-499: prefix
+  if (prefix) {
+    header.write(prefix, 345, 155, 'utf8');
+  }
+
+  // Calculate checksum: sum of all 512 bytes with chksum field as spaces
+  let sum = 0;
+  for (let i = 0; i < 512; i++) {
+    sum += header[i];
+  }
+
+  // Write checksum: 6 octal digits + null + space
+  const chksumOctal = sum.toString(8).padStart(6, '0') + '\0 ';
+  header.write(chksumOctal, 148, 8, 'ascii');
+
+  return header;
+}
+
+/**
+ * Packs profile storage and configuration into a pure-Node POSIX ustar session.tar.gz archive.
+ * Strictly excludes cache bloat (Section 6) and embeds profile configuration.
+ */
+export async function packProfileSessionTarGz(
+  profileId: string,
+  outputTarGzPath?: string
+): Promise<{ sizeBytes: number; fileCount: number; buffer: Buffer }> {
+  const profile = getProfileById(profileId);
+  const baseDir = getProfileStoragePath(profileId);
+
+  const chunks: Buffer[] = [];
+  let fileCount = 0;
+
+  // 1. Pack profile metadata as profile.json entry
+  if (profile) {
+    const metaJson = JSON.stringify({
+      formatVersion: '2.0',
+      profileId: profile.id,
+      name: profile.name,
+      description: profile.description,
+      browserEngine: profile.settings?.browser?.engine || 'chromium',
+      fingerprint: profile.settings?.fingerprint,
+      settings: profile.settings,
+      tags: profile.tags,
+      folder: profile.folder,
+      notes: profile.notes,
+      exportedAt: new Date().toISOString(),
+    }, null, 2);
+
+    const metaBuf = Buffer.from(metaJson, 'utf8');
+    const header = createTarHeader('profile.json', metaBuf.length);
+    chunks.push(header);
+    chunks.push(metaBuf);
+    const pad = (512 - (metaBuf.length % 512)) % 512;
+    if (pad > 0) chunks.push(Buffer.alloc(pad, 0));
+    fileCount++;
+  }
+
+  // 2. Scan and pack profile storage files (excluding cache bloat per Section 6)
+  if (fs.existsSync(baseDir)) {
+    function scanDir(currentDir: string) {
+      const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(currentDir, entry.name);
+        const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+
+        if (isPathExcludedFromSync(relPath)) {
+          continue;
+        }
+
+        if (entry.isDirectory()) {
+          scanDir(fullPath);
+        } else if (entry.isFile()) {
+          try {
+            const stat = fs.statSync(fullPath);
+            const content = fs.readFileSync(fullPath);
+            const header = createTarHeader(relPath, stat.size, 0o644, Math.floor(stat.mtimeMs / 1000));
+            chunks.push(header);
+            chunks.push(content);
+            const pad = (512 - (content.length % 512)) % 512;
+            if (pad > 0) chunks.push(Buffer.alloc(pad, 0));
+            fileCount++;
+          } catch (readErr) {
+            console.warn(`[ArchiveService] Skip unreadable file ${relPath}:`, readErr);
+          }
+        }
+      }
+    }
+
+    try {
+      scanDir(baseDir);
+    } catch (scanErr) {
+      console.warn(`[ArchiveService] Error scanning directory ${baseDir}:`, scanErr);
+    }
+  }
+
+  // 3. Tar end of archive marker (two 512-byte zero blocks = 1024 bytes)
+  chunks.push(Buffer.alloc(1024, 0));
+
+  const tarBuffer = Buffer.concat(chunks);
+  const compressedGzip = zlib.gzipSync(tarBuffer, { level: 6 });
+
+  if (outputTarGzPath) {
+    const parent = path.dirname(outputTarGzPath);
+    if (!fs.existsSync(parent)) {
+      fs.mkdirSync(parent, { recursive: true });
+    }
+    fs.writeFileSync(outputTarGzPath, compressedGzip);
+  }
+
+  return {
+    sizeBytes: compressedGzip.length,
+    fileCount,
+    buffer: compressedGzip,
+  };
+}
+
+/**
+ * Unpacks a session.tar.gz archive into target profile storage directory with strict
+ * path-traversal sanitization and gzip magic validation.
+ */
+export async function unpackProfileSessionTarGz(
+  tarGzBufferOrPath: Buffer | string,
+  targetProfileId: string
+): Promise<{ fileCount: number; bytesExtracted: number; profileMetadata?: any }> {
+  let rawBuffer: Buffer;
+  if (typeof tarGzBufferOrPath === 'string') {
+    if (!fs.existsSync(tarGzBufferOrPath)) {
+      throw new Error(`FILE_NOT_FOUND: Archive file not found at ${tarGzBufferOrPath}`);
+    }
+    rawBuffer = fs.readFileSync(tarGzBufferOrPath);
+  } else {
+    rawBuffer = tarGzBufferOrPath;
+  }
+
+  // 1. Verify GZIP Magic Bytes (0x1f 0x8b)
+  if (rawBuffer.length < 2 || rawBuffer[0] !== 0x1f || rawBuffer[1] !== 0x8b) {
+    throw new Error('INVALID_GZIP_MAGIC: Archive does not start with gzip magic bytes 0x1f 0x8b');
+  }
+
+  const tarBuf = zlib.gunzipSync(rawBuffer);
+  const targetDir = getProfileStoragePath(targetProfileId);
+  fs.mkdirSync(targetDir, { recursive: true });
+
+  let offset = 0;
+  let fileCount = 0;
+  let bytesExtracted = 0;
+  let profileMetadata: any = null;
+
+  while (offset + 512 <= tarBuf.length) {
+    const headerBuf = tarBuf.subarray(offset, offset + 512);
+
+    // Check if end of archive (zero block)
+    let isZero = true;
+    for (let i = 0; i < 512; i++) {
+      if (headerBuf[i] !== 0) {
+        isZero = false;
+        break;
+      }
+    }
+    if (isZero) {
+      break; // End of tar archive
+    }
+
+    // Extract filename
+    let name = headerBuf.toString('utf8', 0, 100).replace(/\0.*$/, '').trim();
+    let prefix = headerBuf.toString('utf8', 345, 500).replace(/\0.*$/, '').trim();
+    let relPath = prefix ? `${prefix}/${name}` : name;
+    relPath = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
+
+    // Strict path traversal security check
+    if (
+      relPath.includes('..') ||
+      relPath.startsWith('/') ||
+      relPath.startsWith('\\') ||
+      /^[a-zA-Z]:/.test(relPath) ||
+      path.isAbsolute(relPath)
+    ) {
+      throw new Error(`SECURITY_ALERT_PATH_TRAVERSAL: Illegal archive entry path detected: "${relPath}"`);
+    }
+
+    // Parse size
+    const sizeStr = headerBuf.toString('ascii', 124, 136).replace(/\0.*$/, '').trim();
+    const fileSize = parseInt(sizeStr, 8) || 0;
+
+    // Parse typeflag
+    const typeflag = headerBuf[156];
+    const isDir = typeflag === 53; // '5'
+
+    offset += 512;
+
+    if (isDir) {
+      const outDirPath = path.join(targetDir, relPath);
+      fs.mkdirSync(outDirPath, { recursive: true });
+    } else {
+      if (offset + fileSize > tarBuf.length) {
+        throw new Error('CORRUPT_TAR_ARCHIVE: Truncated tar stream encountered.');
+      }
+      const fileData = tarBuf.subarray(offset, offset + fileSize);
+      const outFilePath = path.join(targetDir, relPath);
+      const parentDir = path.dirname(outFilePath);
+      if (!fs.existsSync(parentDir)) {
+        fs.mkdirSync(parentDir, { recursive: true });
+      }
+      fs.writeFileSync(outFilePath, fileData);
+      fileCount++;
+      bytesExtracted += fileSize;
+
+      if (relPath === 'profile.json') {
+        try {
+          profileMetadata = JSON.parse(fileData.toString('utf8'));
+        } catch {}
+      }
+
+      // Advance past data and 512-byte padding
+      const pad = (512 - (fileSize % 512)) % 512;
+      offset += fileSize + pad;
+    }
+  }
+
+  return {
+    fileCount,
+    bytesExtracted,
+    profileMetadata: profileMetadata || undefined,
+  };
+}
 
 export function collectEssentialStorageFiles(profileId: string): Record<string, string> {
   const baseDir = getProfileStoragePath(profileId);

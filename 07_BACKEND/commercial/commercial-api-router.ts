@@ -2648,6 +2648,33 @@ export async function handleCommercialApiRoutes(
     return true;
   }
 
+  if (routePath === '/api/v1/storage/delete' && method === 'DELETE') {
+    const key = parsedUrl.searchParams.get('key');
+    const expires = parseInt(parsedUrl.searchParams.get('expires') || '0', 10);
+    const token = parsedUrl.searchParams.get('token') || '';
+    if (!key || !token) {
+      sendJSON(res, 400, { success: false, error: 'Missing storage parameters' });
+      return true;
+    }
+
+    const storage = getStorageProvider();
+    if (storage instanceof LocalStorageProvider) {
+      const valid = storage.verifyToken(key, 'upload', expires, token);
+      if (!valid) {
+        sendJSON(res, 403, { success: false, error: 'Invalid or expired signature' });
+        return true;
+      }
+    }
+
+    try {
+      const deleted = await storage.deleteObject(key);
+      sendJSON(res, deleted ? 200 : 404, { success: deleted });
+    } catch (err: any) {
+      sendJSON(res, 500, { success: false, error: err.message });
+    }
+    return true;
+  }
+
   // -------------------------------------------------------------
   // 14. PHASE 2 CLOUD PROFILE SYNC ENDPOINTS (Protected)
   // -------------------------------------------------------------
@@ -2673,7 +2700,7 @@ export async function handleCommercialApiRoutes(
     return true;
   }
 
-  const syncProfileDetailMatch = routePath.match(/^\/api\/v1\/sync\/profile\/([a-zA-Z0-9_-]+)$/);
+  const syncProfileDetailMatch = routePath.match(/^\/api\/v1\/sync\/profiles?\/([a-zA-Z0-9_-]+)$/);
   if (syncProfileDetailMatch && method === 'GET') {
     const user = getAuthUser(req);
     if (!user) {

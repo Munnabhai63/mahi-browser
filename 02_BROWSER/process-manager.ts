@@ -185,9 +185,15 @@ class ProcessManager {
 
       debugLog(`[ProcessManager] Preparing to launch "${profile.name}"...`);
 
-      // Cloud lock coordination: if profile has active cloud binding, check/acquire distributed lock
+      // Cloud lock coordination & pre-launch cloud sync pull
       try {
-        const { getProfileCloudBinding, acquireCloudLock } = await import('../08_SECURITY/cloud-sync-service.js');
+        const {
+          getProfileCloudBinding,
+          acquireCloudLock,
+          syncProfileIfCloudNewer,
+          getSyncConfig
+        } = await import('../08_SECURITY/cloud-sync-service.js');
+
         const binding = getProfileCloudBinding(profileId);
         if (binding?.cloudProfileId) {
           const lockRes = await acquireCloudLock(binding.cloudProfileId);
@@ -196,6 +202,15 @@ class ProcessManager {
             debugLog(`[ProcessManager ERROR] ${errorMsg}`);
             this.notifyStatus(profileId, 'STOPPED', undefined, errorMsg);
             return { success: false, error: errorMsg };
+          }
+
+          // Launch-time cloud pull: pull latest cloud version if updated remotely
+          if (getSyncConfig().autoSync) {
+            try {
+              await syncProfileIfCloudNewer(profileId);
+            } catch (syncPullErr) {
+              debugLog(`[ProcessManager] Pre-launch cloud sync notice: ${syncPullErr}`);
+            }
           }
         }
       } catch {

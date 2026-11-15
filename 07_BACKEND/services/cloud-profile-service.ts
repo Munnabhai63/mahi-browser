@@ -82,6 +82,7 @@ export interface CreateUploadSessionParams {
   localProfileId: string;
   profileName: string;
   baseVersion: number;
+  archiveFormat?: string;
   expectedSize: number;
   expectedChecksum: string;
   encryptedDataKey: string;

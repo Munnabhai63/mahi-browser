@@ -10,10 +10,12 @@ export interface ObjectStorageProvider {
   name: string;
   createUploadUrl(objectKey: string, contentType?: string, expiresInSec?: number): Promise<string>;
   createDownloadUrl(objectKey: string, expiresInSec?: number): Promise<string>;
+  createDeleteUrl?(objectKey: string, expiresInSec?: number): Promise<string>;
   deleteObject(objectKey: string): Promise<boolean>;
   headObject(objectKey: string): Promise<{ exists: boolean; size: number; checksum?: string } | null>;
   putObject(objectKey: string, data: Buffer, contentType?: string): Promise<{ success: boolean; size: number }>;
   getObject(objectKey: string): Promise<Buffer | null>;
+  verifyStorageConnectivity(): Promise<{ connected: boolean; provider: string; message: string }>;
 }
 
 // Secret key used to sign URLs in LocalStorageProvider
@@ -65,6 +67,12 @@ export class LocalStorageProvider implements ObjectStorageProvider {
     return `${this.baseUrl}/api/v1/storage/download?key=${encodeURIComponent(objectKey)}&expires=${expiresAt}&token=${token}`;
   }
 
+  async createDeleteUrl(objectKey: string, expiresInSec = 900): Promise<string> {
+    const expiresAt = Date.now() + (expiresInSec * 1000);
+    const token = this.generateToken(objectKey, 'upload', expiresAt);
+    return `${this.baseUrl}/api/v1/storage/delete?key=${encodeURIComponent(objectKey)}&expires=${expiresAt}&token=${token}`;
+  }
+
   async deleteObject(objectKey: string): Promise<boolean> {
     const fullPath = this.resolveFilePath(objectKey);
     if (fs.existsSync(fullPath)) {
@@ -109,6 +117,15 @@ export class LocalStorageProvider implements ObjectStorageProvider {
       return null;
     }
     return fs.readFileSync(fullPath);
+  }
+
+  async verifyStorageConnectivity(): Promise<{ connected: boolean; provider: string; message: string }> {
+    const exists = fs.existsSync(this.storageDir);
+    return {
+      connected: exists,
+      provider: this.name,
+      message: exists ? `Local storage directory accessible at ${this.storageDir}` : `Storage directory not accessible`,
+    };
   }
 }
 
@@ -211,7 +228,7 @@ export class S3R2StorageProvider implements ObjectStorageProvider {
   }
 
   // Generate AWS SigV4 Presigned URL
-  private generateSigV4Url(method: 'GET' | 'PUT', objectKey: string, contentType?: string, expiresInSec = 900): string {
+  private generateSigV4Url(method: 'GET' | 'PUT' | 'DELETE', objectKey: string, contentType?: string, expiresInSec = 900): string {
     const endpointUrl = new URL(this.endpoint);
     const host = endpointUrl.host;
     const cleanKey = objectKey.startsWith('/') ? objectKey.substring(1) : objectKey;
@@ -281,17 +298,45 @@ export class S3R2StorageProvider implements ObjectStorageProvider {
     return this.generateSigV4Url('GET', objectKey, undefined, expiresInSec);
   }
 
+  async createDeleteUrl(objectKey: string, expiresInSec = 900): Promise<string> {
+    return this.generateSigV4Url('DELETE', objectKey, undefined, expiresInSec);
+  }
+
   async deleteObject(objectKey: string): Promise<boolean> {
     try {
-      const res = await fetch(`${this.endpoint}/${this.bucket}/${objectKey}`, {
+      const deleteUrl = await this.createDeleteUrl(objectKey, 300);
+      const res = await fetch(deleteUrl, {
         method: 'DELETE',
-        headers: {
-          'Host': new URL(this.endpoint).host
-        }
       });
       return res.status >= 200 && res.status < 300;
     } catch {
       return false;
+    }
+  }
+
+  async verifyStorageConnectivity(): Promise<{ connected: boolean; provider: string; message: string }> {
+    if (!this.accessKeyId || !this.secretAccessKey) {
+      return {
+        connected: false,
+        provider: this.name,
+        message: 'Missing S3/R2 access credentials',
+      };
+    }
+    try {
+      const probeUrl = await this.createDownloadUrl('.connectivity-probe', 60);
+      const res = await fetch(probeUrl, { method: 'HEAD' });
+      const connected = res.status === 200 || res.status === 404;
+      return {
+        connected,
+        provider: this.name,
+        message: connected ? `Connected to ${this.bucket} on ${this.endpoint}` : `Storage returned HTTP ${res.status}`,
+      };
+    } catch (err: any) {
+      return {
+        connected: false,
+        provider: this.name,
+        message: err?.message || 'Storage connection failed',
+      };
     }
   }
 
@@ -339,6 +384,17 @@ let activeStorageProvider: ObjectStorageProvider | null = null;
 
 export function getStorageProvider(): ObjectStorageProvider {
   if (activeStorageProvider) {
+    return activeStorageProvider;
+  }
+
+  // Explicit provider override via STORAGE_PROVIDER environment variable
+  const explicitProvider = (process.env.STORAGE_PROVIDER || '').toLowerCase();
+  if (explicitProvider === 'local') {
+    activeStorageProvider = new LocalStorageProvider();
+    return activeStorageProvider;
+  }
+  if (explicitProvider === 's3-r2' || explicitProvider === 'r2' || explicitProvider === 's3') {
+    activeStorageProvider = new S3R2StorageProvider();
     return activeStorageProvider;
   }
 

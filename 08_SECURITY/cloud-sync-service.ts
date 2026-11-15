@@ -9,7 +9,12 @@ import { ADMIN_API_BASE_URL, isOnlineRevoked, isGraceExpired } from './license-s
 import { hasValidLicense, assertCanCreateProfile } from './freemium-guard.js';
 import { hasValidAccountSubscription, getAccountSyncKey, loadEncryptedSession } from './account-service.js';
 import { getProfileById, getProfiles, getProfileStoragePath } from '../02_BROWSER/services/profile-service.js';
-import { exportProfileToArchive, importProfileFromArchive } from '../02_BROWSER/services/archive-service.js';
+import {
+  exportProfileToArchive,
+  importProfileFromArchive,
+  packProfileSessionTarGz,
+  unpackProfileSessionTarGz
+} from '../02_BROWSER/services/archive-service.js';
 import {
   CloudProfileMetadata,
   CloudSyncUsage,
@@ -413,27 +418,16 @@ export async function uploadProfileToCloud(
   });
   updateLocalSyncStatus(profileId, 'SYNCING');
 
-  const tempExportPath = path.join(getUserDataPath(), `sync_temp_${profileId}_${Date.now()}.mahi-profile`);
+  const tempExportPath = path.join(getUserDataPath(), `sync_temp_${profileId}_${Date.now()}.tar.gz`);
 
   try {
-    // 1. Export profile archive (with cookies, sessions, storage; caches excluded)
-    exportProfileToArchive({
-      profileId,
-      targetFilePath: tempExportPath,
-      includeCookies: true,
-      includeHistory: true,
-      includeExtensions: true,
-      includeBrowserSettings: true,
-      includeStorage: true,
-      password: effectivePassphrase
-    });
-
-    const fileStat = fs.statSync(tempExportPath);
-    if (fileStat.size > MAX_PROFILE_BYTES) {
-      throw new Error(`Profile exceeds maximum 200MB limit (size: ${(fileStat.size / (1024 * 1024)).toFixed(1)} MB)`);
+    // 1. Pack profile session into pure-Node POSIX ustar session.tar.gz (cache excluded per Section 6)
+    const packResult = await packProfileSessionTarGz(profileId, tempExportPath);
+    if (packResult.sizeBytes > MAX_PROFILE_BYTES) {
+      throw new Error(`Profile exceeds maximum 200MB limit (size: ${(packResult.sizeBytes / (1024 * 1024)).toFixed(1)} MB)`);
     }
 
-    const archiveBuffer = fs.readFileSync(tempExportPath);
+    const archiveBuffer = packResult.buffer;
 
     // 2. Client-Side Zero-Knowledge Envelope Encryption (AES-256-GCM + random data key wrapped by user sync key)
     broadcastProgress({
@@ -464,6 +458,7 @@ export async function uploadProfileToCloud(
       localProfileId: profileId,
       profileName: profile.name,
       baseVersion,
+      archiveFormat: 'tar.gz',
       expectedSize: encryptedPackage.ciphertext.length,
       expectedChecksum: encryptedPackage.checksumSha256,
       encryptedDataKey: encryptedPackage.encryptedDataKey,
@@ -706,11 +701,13 @@ export async function downloadAndRestoreProfile(
     message: 'Atomically restoring profile data and website sessions...'
   });
 
-  const tempFilePath = path.join(getUserDataPath(), `restore_temp_${cloudProfileId}_${Date.now()}.mahi-profile`);
+  const isTarGz = plaintextArchiveBuffer.length >= 2 && plaintextArchiveBuffer[0] === 0x1f && plaintextArchiveBuffer[1] === 0x8b;
+  const tempExt = isTarGz ? 'tar.gz' : 'mahi-profile';
+  const tempFilePath = path.join(getUserDataPath(), `restore_temp_${cloudProfileId}_${Date.now()}.${tempExt}`);
   fs.writeFileSync(tempFilePath, plaintextArchiveBuffer);
 
   // Determine target local profile ID if updating existing local profile
-  const targetLocalId = sessionData.localProfileId;
+  const targetLocalId = sessionData.localProfileId || cloudProfileId;
   const existingStorageDir = targetLocalId ? getProfileStoragePath(targetLocalId) : null;
   const backupStorageDir = existingStorageDir && fs.existsSync(existingStorageDir)
     ? `${existingStorageDir}.backup_${Date.now()}`
@@ -724,12 +721,29 @@ export async function downloadAndRestoreProfile(
   }
 
   try {
-    const restored = importProfileFromArchive({
-      sourceFilePath: tempFilePath,
-      password: effectivePassphrase,
-      overrideName: options?.overrideName,
-      targetFolder: options?.targetFolder
-    });
+    let restored: any;
+    if (isTarGz) {
+      // Modern pure-Node POSIX ustar session.tar.gz unpack
+      let localProfile = targetLocalId ? getProfileById(targetLocalId) : null;
+      if (!localProfile) {
+        const { createProfile } = await import('../02_BROWSER/services/profile-service.js');
+        localProfile = createProfile({
+          name: options?.overrideName || sessionData.profileName || 'Cloud Restored Profile',
+          folder: options?.targetFolder || 'General',
+          tags: [],
+          notes: '',
+        });
+      }
+      await unpackProfileSessionTarGz(tempFilePath, localProfile.id);
+      restored = localProfile;
+    } else {
+      restored = importProfileFromArchive({
+        sourceFilePath: tempFilePath,
+        password: effectivePassphrase,
+        overrideName: options?.overrideName,
+        targetFolder: options?.targetFolder
+      });
+    }
 
     // Cleanup backup on success
     if (backupStorageDir && fs.existsSync(backupStorageDir)) {
@@ -1101,6 +1115,54 @@ export function syncAllProfiles(): void {
   const profiles = getProfiles();
   for (const p of profiles) {
     enqueueSync(p.id);
+  }
+}
+
+/**
+ * Checks if cloud version for a bound profile is newer than local synced version.
+ * If cloud version is higher, pulls and atomically restores latest snapshot before launch.
+ * Returns true if synced, false if already up-to-date or offline.
+ */
+export async function syncProfileIfCloudNewer(profileId: string): Promise<boolean> {
+  try {
+    const binding = getProfileCloudBinding(profileId);
+    if (!binding?.cloudProfileId) {
+      return false;
+    }
+
+    const authHeaders = getSyncAuthHeaders();
+    const baseUrl = getApiBaseUrl();
+
+    // Query cloud profile metadata
+    const res = await requestApi(`${baseUrl}/api/v1/sync/profiles/${binding.cloudProfileId}`, {
+      method: 'GET',
+      headers: authHeaders,
+    });
+
+    if (res.statusCode !== 200) {
+      return false; // Server unreachable or offline: continue with local profile
+    }
+
+    const payload = JSON.parse(res.body.toString('utf8'));
+    const cloudProfile = payload.profile || payload.data || payload;
+    const cloudVersion = cloudProfile.current_version || cloudProfile.version || 0;
+
+    if (cloudVersion > binding.lastSyncedVersion) {
+      broadcastProgress({
+        stage: 'DOWNLOADING',
+        profileId,
+        percent: 10,
+        message: `Newer cloud version detected (v${cloudVersion} > v${binding.lastSyncedVersion}). Synchronizing profile before launch...`
+      });
+
+      await downloadAndRestoreProfile(binding.cloudProfileId);
+      return true;
+    }
+
+    return false;
+  } catch (err: any) {
+    console.warn(`[CloudSync] Background sync check failed for ${profileId} (continuing offline):`, err?.message);
+    return false;
   }
 }
 
