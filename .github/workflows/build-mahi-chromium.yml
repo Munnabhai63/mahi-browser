@@ -3,6 +3,17 @@ name: Build MAHI Chromium Engine
 on:
   workflow_dispatch:
     inputs:
+      # Note: mac-x64 target retired from active matrix due to GitHub Actions macos-13 runner deprecation (use mac-arm64)
+      target_platform:
+        description: 'Target platform to build'
+        type: choice
+        required: true
+        default: 'win64'
+        options:
+          - 'win64'
+          - 'linux64'
+          - 'mac-arm64'
+          - 'all'
       chromium_version:
         description: 'Target Chromium Version'
         required: true
@@ -21,39 +32,34 @@ permissions:
   contents: write
 
 jobs:
+  resolve-matrix:
+    name: Resolve Target Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: matrix
+        run: |
+          TARGET="${{ github.event.inputs.target_platform || 'win64' }}"
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] || [ "$TARGET" = "all" ]; then
+            echo 'matrix=[{"target":"win64","os":"windows-2022","platform_key":"win64","archive_subdir":"chrome-win","archive_name":"chrome-win.zip","binary_name":"chrome.exe"},{"target":"mac-arm64","os":"macos-14","platform_key":"mac-arm64","archive_subdir":"chrome-mac-arm64","archive_name":"chrome-mac-arm64.zip","binary_name":"chrome"},{"target":"linux64","os":"ubuntu-22.04","platform_key":"linux64","archive_subdir":"chrome-linux64","archive_name":"chrome-linux64.zip","binary_name":"chrome"}]' >> $GITHUB_OUTPUT
+          elif [ "$TARGET" = "win64" ]; then
+            echo 'matrix=[{"target":"win64","os":"windows-2022","platform_key":"win64","archive_subdir":"chrome-win","archive_name":"chrome-win.zip","binary_name":"chrome.exe"}]' >> $GITHUB_OUTPUT
+          elif [ "$TARGET" = "mac-arm64" ]; then
+            echo 'matrix=[{"target":"mac-arm64","os":"macos-14","platform_key":"mac-arm64","archive_subdir":"chrome-mac-arm64","archive_name":"chrome-mac-arm64.zip","binary_name":"chrome"}]' >> $GITHUB_OUTPUT
+          elif [ "$TARGET" = "linux64" ]; then
+            echo 'matrix=[{"target":"linux64","os":"ubuntu-22.04","platform_key":"linux64","archive_subdir":"chrome-linux64","archive_name":"chrome-linux64.zip","binary_name":"chrome"}]' >> $GITHUB_OUTPUT
+          fi
+
   build-engine:
     name: Build ${{ matrix.target }}
+    needs: resolve-matrix
     timeout-minutes: 360
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: win64
-            os: windows-2022
-            platform_key: win64
-            archive_subdir: chrome-win
-            archive_name: chrome-win.zip
-            binary_name: chrome.exe
-          - target: mac-arm64
-            os: macos-14
-            platform_key: mac-arm64
-            archive_subdir: chrome-mac-arm64
-            archive_name: chrome-mac-arm64.zip
-            binary_name: chrome
-          - target: mac-x64
-            os: macos-13
-            platform_key: mac-x64
-            archive_subdir: chrome-mac-x64
-            archive_name: chrome-mac-x64.zip
-            binary_name: chrome
-          - target: linux64
-            os: ubuntu-22.04
-            platform_key: linux64
-            archive_subdir: chrome-linux64
-            archive_name: chrome-linux64.zip
-            binary_name: chrome
-
-    runs-on: ${{ matrix.os }}
+        include: ${{ fromJson(needs.resolve-matrix.outputs.matrix) }}
 
     steps:
       - name: Checkout MAHI Browser Repository
@@ -131,6 +137,15 @@ jobs:
           git fetch --depth 1 origin "refs/tags/${VERSION}:refs/tags/${VERSION}" || true
           git checkout -f "refs/tags/${VERSION}" || git checkout -f "$VERSION" || git checkout -b "mahi-138" "$VERSION"
           gclient sync --no-history -D --force --reset
+
+      - name: Install Chromium Linux Build Dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cd ../chromium/src
+          if [ -f "build/install-build-deps.sh" ]; then
+            sudo ./build/install-build-deps.sh --no-prompt --no-arm --no-chromeos-fonts
+          fi
 
       - name: Apply MAHI C++ Anti-Detect Patches (Linux / macOS)
         if: runner.os != 'Windows'

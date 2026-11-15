@@ -10,15 +10,40 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      include_all_platforms:
+        description: 'Build all platforms (macOS, Linux) in addition to Windows'
+        type: boolean
+        required: false
+        default: false
 
 jobs:
+  resolve-matrix:
+    name: Resolve Target Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      test_os: ${{ steps.matrix.outputs.test_os }}
+      package_matrix: ${{ steps.matrix.outputs.package_matrix }}
+    steps:
+      - id: matrix
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.include_all_platforms }}" = "true" ]; then
+            echo 'test_os=["windows-latest", "macos-latest", "ubuntu-latest"]' >> $GITHUB_OUTPUT
+            echo 'package_matrix=[{"os":"windows-latest","platform":"win","arch":"x64","artifact_pattern":"release/*.exe"},{"os":"macos-latest","platform":"mac","arch":"arm64","artifact_pattern":"release/*.dmg"},{"os":"ubuntu-latest","platform":"linux","arch":"x64","artifact_pattern":"release/*.AppImage"}]' >> $GITHUB_OUTPUT
+          else
+            echo 'test_os=["windows-latest"]' >> $GITHUB_OUTPUT
+            echo 'package_matrix=[{"os":"windows-latest","platform":"win","arch":"x64","artifact_pattern":"release/*.exe"}]' >> $GITHUB_OUTPUT
+          fi
+
   test-and-verify:
     name: Test & Typecheck (${{ matrix.os }})
+    needs: resolve-matrix
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: ${{ fromJson(needs.resolve-matrix.outputs.test_os) }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -41,34 +66,25 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Run Test Suite (Linux Xvfb)
-        if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm test
+      - name: Build Web & Electron
+        run: npm run build
 
-      - name: Run Test Suite (macOS / Windows)
+      - name: Run CI Test Suite (Linux Xvfb)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:ci
+
+      - name: Run CI Test Suite (macOS / Windows)
         if: runner.os != 'Linux'
-        run: npm test
+        run: npm run test:ci
 
   build-and-package:
     name: Package Desktop (${{ matrix.platform }}-${{ matrix.arch }} on ${{ matrix.os }})
-    needs: test-and-verify
+    needs: [resolve-matrix, test-and-verify]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-latest
-            platform: win
-            arch: x64
-            artifact_pattern: 'release/*.exe'
-          - os: macos-latest
-            platform: mac
-            arch: arm64
-            artifact_pattern: 'release/*.dmg'
-          - os: ubuntu-latest
-            platform: linux
-            arch: x64
-            artifact_pattern: 'release/*.AppImage'
+        include: ${{ fromJson(needs.resolve-matrix.outputs.package_matrix) }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4

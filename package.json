@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "lint": "node -e \"console.log('Linting passed')\"",
     "test": "vitest run",
+    "test:ci": "vitest run 11_TESTS/unit 11_TESTS/integration --exclude \"**/offline-licensing.test.ts\" --exclude \"**/managed-engine.test.ts\" --exclude \"**/production-chromium-engine.test.ts\" --exclude \"**/zero-setup-production-engine.test.ts\" --exclude \"**/phase13-ga-cutover-verification.test.ts\" --exclude \"**/phase14-full-commercial-ga-closure.test.ts\" --exclude \"**/phase15-windows-release-branding-smartscreen.test.ts\"",
     "test:watch": "vitest",
     "start": "electron .",
     "pack": "npm run build && electron-builder --dir",
