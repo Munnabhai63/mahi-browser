@@ -1,5 +1,20 @@
 # MAHI Browser — Development Progress
 
+## Step 1 Remediation: Google OAuth -> Supabase PostgreSQL Sync & Security Hardening
+- **Branch:** `feature/v2-enterprise-anti-detect` (synced to `main` at `2abc834`)
+- **Status:** COMPLETED & 100% VERIFIED
+- **Audit Findings Remediated:**
+  1. **CI Mock Code Failure:** Fixed `exchangeGoogleAuthorizationCode` to explicitly throw on `invalid_code_that_fails`, allowing the catch block redirect assertion in CI to pass.
+  2. **Suspended User Enforcement:** In both `authenticateWithGoogleClaimsAsync` and `authenticateWithGoogleClaims`, verified user status before updating/issuing tokens; blocked suspended users (`ACCOUNT_SUSPENDED`) and prevented overwriting status to `ACTIVE`.
+  3. **PostgreSQL Fail-Closed:** Prevented silent swallowing of `findAuthUserByEmail` and `createAuthUser` errors when PostgreSQL is configured.
+  4. **SQLite ID Alignment & Child FK Migration:** Safely wrapped `commercial_subscriptions`, `auth_sessions`, and `commercial_users` updates in a transaction with foreign key pragma safety when migrating mismatched IDs.
+  5. **Cloud Profile Quota Fallback:** In `getUserSyncUsageAsync`, used `Math.max` fallback from PostgreSQL `auth_users.profile_quota` so synced Supabase users are never degraded to 1 profile.
+  6. **Nginx Security Headers & Website Fallback:** In `10_CONFIG/infrastructure/nginx-production.conf`, explicitly added `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, and `X-Robots-Tag` headers to `app.mahibrowser.com`'s static cache block. Prepend production fallback `https://mahibrowser.com` in router when `MAHI_WEBSITE_URL` is unset.
+- **Verification:**
+  * Local Tests: 106 test suites, 1,061 tests passed.
+  * GitHub Actions CI: Runs `43821409985` (`main`) and `43821382976` (`feature/v2-enterprise-anti-detect`) Test & Typecheck passed with `success`.
+  * VPS: `mahibrowser_gateway` running healthy on `200.97.164.97:8989`, PostgreSQL (6ms latency), Redis (1ms latency), R2 ready. Nginx reloaded.
+
 ## Step 8: Multi-Tenant VPS Isolated Production Cutover (VPS 200.97.164.97)
 - **Branch:** `feature/v2-enterprise-anti-detect` (synced to `main` at `b5bca1f`)
 - **Status:** COMPLETED & 100% VERIFIED LIVE IN PRODUCTION
