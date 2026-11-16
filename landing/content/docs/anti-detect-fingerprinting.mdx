@@ -1,11 +1,11 @@
 ---
-title: "Anti-Detect Fingerprinting & Native Hooks"
-description: "Deep dive into Canvas, WebGL, AudioContext, Bayesian Client Hints, Chromium 138 native hooks, and Camoufox C++ spoofing."
+title: "Anti-Detect Fingerprinting & Stealth Architecture"
+description: "Deep dive into Canvas, WebGL, AudioContext, Bayesian Client Hints, Chromium 138 MV3 stealth injection, and Camoufox C++ spoofing."
 order: 3
 section: "Core Foundations"
 ---
 
-# Anti-Detect Fingerprinting & Native Hooks
+# Anti-Detect Fingerprinting & Stealth Architecture
 
 Modern anti-bot systems (Cloudflare, Akamai, DataDome, CreepJS, Pixelscan) do not simply look at your IP and User-Agent. They evaluate hundreds of hardware, graphic, audio, and prototype signals to spot inconsistencies.
 
@@ -38,6 +38,6 @@ Anti-bot sensors inspect AudioBuffer channel data (`getChannelData()`) for frequ
 | :--- | :--- | :--- |
 | **Base Core** | Chromium 138.0.7204.0 | Firefox 135.0 ESR |
 | **Automation Defense** | `rebrowser-patches` runtime fix (`addBinding`) | Native C++ internal overriding |
-| **CDP Leak Vectors** | Isolated via `--mahi-cdp-isolated` | Zero CDP (Firefox Marionette / Playwright) |
+| **CDP Leak Vectors** | Isolated via `rebrowser-patches` runtime fix | Zero CDP (Firefox Marionette / Playwright) |
 | **Client Hints** | Fully supported (`navigator.userAgentData`) | Automatically omitted (matches Firefox spec) |
 | **Target Sites** | Google Ads, Meta, TikTok, Amazon | Cloudflare Turnstile, DataDome, Bet365 |

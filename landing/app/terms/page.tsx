@@ -42,7 +42,7 @@ export default function TermsOfServicePage() {
         <section className="space-y-2">
           <h2 className="text-lg font-bold text-white">4. Disclaimer of Warranties</h2>
           <p>
-            The software is provided on an "as-is" and "as-available" basis without warranties of any kind. While our C++ engine hooks and rebrowser-patches are rigorously maintained to pass contemporary detection frameworks, we do not guarantee indefinite bypass of third-party security defenses that update their heuristics outside our control.
+            The software is provided on an "as-is" and "as-available" basis without warranties of any kind. While our stealth injection engines and rebrowser-patches are rigorously maintained to pass contemporary detection frameworks, we do not guarantee indefinite bypass of third-party security defenses that update their heuristics outside our control.
           </p>
         </section>
 

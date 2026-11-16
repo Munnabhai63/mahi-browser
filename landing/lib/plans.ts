@@ -34,7 +34,7 @@ export const PUBLIC_PLANS: PublicPlan[] = [
     features: [
       '15 Browser Profiles (Offline SQLite)',
       'Dual Engine (Chromium 138 + Camoufox)',
-      'C++ Native Hooks & Bezier Humanizer',
+      'JavaScript MV3 Stealth & Bezier Humanizer',
       'Canvas, WebGL & Audio Perturbation',
       'Custom Proxy (HTTP / SOCKS5)',
       'Community Support',

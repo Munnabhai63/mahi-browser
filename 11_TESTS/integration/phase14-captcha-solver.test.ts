@@ -13,8 +13,23 @@ import {
 import { saveWorkflow, runWorkflow } from '../../09_AUTOMATION/automation-engine.js';
 import { createProfile } from '../../02_BROWSER/services/profile-service.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
+import { getProductionChromiumExecutablePath } from '../../02_BROWSER/managed-engine.js';
 
-describe('Phase 14: Automated Captcha Solver Engine Suite', () => {
+const REAL_CHROMIUM = (() => {
+  try {
+    const p = getProductionChromiumExecutablePath();
+    const ok = fs.existsSync(p) && (fs.statSync(p).size > 10_000_000 || (process.platform === 'win32' && fs.existsSync(path.join(path.dirname(p), 'chrome.dll'))));
+    if (!ok) {
+      console.log('[SKIP REASON] phase14-captcha-solver: Real Chromium binary (>10MB / chrome.dll) not found on host');
+    }
+    return ok;
+  } catch {
+    console.log('[SKIP REASON] phase14-captcha-solver: Failed to inspect Chromium executable path');
+    return false;
+  }
+})();
+
+describe.skipIf(!REAL_CHROMIUM)('Phase 14: Automated Captcha Solver Engine Suite [requires real Chromium binary on host]', () => {
   let tempDir: string;
   let profileId: string;
 

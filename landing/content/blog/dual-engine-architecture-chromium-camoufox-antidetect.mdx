@@ -29,7 +29,7 @@ To solve this, MAHI Browser introduced the **Dual Engine Architecture**:
 ### 1. Chromium 138 for Chromium Targets
 For Chrome, Edge, and Android mobile emulation, MAHI runs our hardened Chromium 138 engine with `rebrowser-patches` and Bayesian Client Hints spoofing.
 
-### 2. Camoufox Engine (Native C++ Firefox) for Gecko Targets
+### 2. Camoufox Engine (Native C++ Firefox, Downloaded On-Demand) for Gecko Targets
 When you select a Firefox profile in MAHI:
 - We launch genuine **Camoufox** (a custom C++ fork of Firefox ESR 135).
 - Fingerprint parameters (`webGl:vendor`, `webGl:renderer`, `timezone`, `locale:language`, `locale:region`) are passed directly to Firefox's C++ rendering engine via chunked environment variables (`CAMOU_CONFIG_1..N`).

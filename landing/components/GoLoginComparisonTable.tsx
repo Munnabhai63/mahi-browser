@@ -17,7 +17,7 @@ const COMPARISON_DATA: ComparisonFeature[] = [
   {
     category: 'Browser Engine & Core',
     feature: 'Chromium Engine Version',
-    mahi: { value: 'Chromium 138.0.7204.0 (Latest C++ Patched)', highlight: true },
+    mahi: { value: 'Chromium 138.0.7204.0 (MV3 Main-World Stealth)', highlight: true },
     gologin: { value: 'Orbita (Chromium 132 - Outdated)' },
     adspower: { value: 'SunBrowser (Chromium 130)' },
     multilogin: { value: 'Mimic (Chromium 126)' },
@@ -49,7 +49,7 @@ const COMPARISON_DATA: ComparisonFeature[] = [
   {
     category: 'Anti-Detect & Stealth Technology',
     feature: 'Hooking Mechanism',
-    mahi: { value: 'Deep C++ Native Engine & ANGLE Overwrites', highlight: true },
+    mahi: { value: 'MV3 Main-World Stealth + Coherent Mathematical Noise', highlight: true },
     gologin: { value: 'JavaScript Prototype Injections' },
     adspower: { value: 'JS Prototype Injections' },
     multilogin: { value: 'Hybrid C++ & JS' },

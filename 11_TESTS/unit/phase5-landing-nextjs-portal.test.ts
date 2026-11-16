@@ -165,6 +165,44 @@ describe('Phase 5: Next.js 14 Landing, Docs & Blog Portal + Web Cloud Console Pr
       expect(robotsContent).toContain('User-Agent: ClaudeBot');
       expect(robotsContent).toContain('Sitemap: https://mahibrowser.com/sitemap.xml');
     });
+
+    it('should contain exactly 101 static assets in landing/out/assets with exact byte sizes for critical assets', () => {
+      const assetsOutDir = path.join(outDir, 'assets');
+      if (!fs.existsSync(assetsOutDir)) {
+        const pubAssets = path.join(landingDir, 'public', 'assets');
+        expect(fs.existsSync(pubAssets)).toBe(true);
+        return;
+      }
+
+      function countFilesRecursive(dir: string): number {
+        let count = 0;
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            count += countFilesRecursive(fullPath);
+          } else if (entry.isFile()) {
+            count++;
+          }
+        }
+        return count;
+      }
+
+      const totalFiles = countFilesRecursive(assetsOutDir);
+      expect(totalFiles).toBe(101);
+
+      const logoPath = path.join(assetsOutDir, 'img', 'logo.png');
+      expect(fs.existsSync(logoPath)).toBe(true);
+      expect(fs.statSync(logoPath).size).toBe(735223);
+
+      const faviconPath = path.join(assetsOutDir, 'img', 'favicon.ico');
+      expect(fs.existsSync(faviconPath)).toBe(true);
+      expect(fs.statSync(faviconPath).size).toBe(128042);
+
+      const upiPath = path.join(assetsOutDir, 'img', 'payments', 'mahi-upi-qr.png');
+      expect(fs.existsSync(upiPath)).toBe(true);
+      expect(fs.statSync(upiPath).size).toBe(125717);
+    });
   });
 
   describe('5. Electron Packaging ExtraResources Filter Safeguards', () => {

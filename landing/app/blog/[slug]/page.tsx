@@ -136,7 +136,7 @@ export default function SingleBlogPostPage({ params }: BlogPostPageProps) {
           Experience Undetectable Dual-Engine Browsing
         </h3>
         <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-          MAHI Browser integrates all the C++ native modifications and rebrowser-patches covered in this article. Download now and start with 15 free offline profiles.
+          MAHI Browser integrates JavaScript MV3 stealth injection, rebrowser-patches automation, and on-demand Camoufox C++ Gecko. Download now and start with 15 free offline profiles.
         </p>
         <div className="flex flex-wrap items-center gap-3 pt-1">
           <Link

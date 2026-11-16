@@ -28,7 +28,7 @@ const GOLOGIN_COMPARISON_FAQS = [
   {
     question: 'Why is GoLogin Orbita getting flagged by Cloudflare and CreepJS in 2026?',
     answer:
-      'GoLogin relies on Orbita, which is based on an older Chromium 132 core with JavaScript prototype overrides for Canvas and WebGL. Modern bot mitigation frameworks detect prototype tampering via Object.getOwnPropertyDescriptor and flag older Chromium versions visiting contemporary web properties. MAHI Browser uses native C++ engine hooks in Chromium 138 with rebrowser-patches.',
+      'GoLogin relies on Orbita, which is based on an older Chromium core. Modern bot mitigation frameworks flag older Chromium versions. MAHI Browser uses Chromium 138 with JavaScript-layer MV3 main-world stealth injection (canvas/audio/WebGL/timezone/client-hints coherence) and rebrowser-patches runtime automation (with optional native C++ engine builds available).',
   },
   {
     question: 'How does MAHI Browser pricing compare with GoLogin?',
@@ -57,7 +57,7 @@ export default function GoLoginAlternativePage() {
           </span>
         </h1>
         <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
-          Discover why media buyers, affiliate marketers, and automation engineers are moving from GoLogin’s aging Orbita browser to MAHI Browser’s dual-engine C++ architecture.
+          Discover why media buyers, affiliate marketers, and automation engineers are moving from GoLogin’s aging Orbita browser to MAHI Browser’s dual-engine architecture (Chromium 138 + on-demand Camoufox C++ Gecko).
         </p>
       </div>
 

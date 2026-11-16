@@ -14,8 +14,23 @@ import {
 import { createProxy } from '../../02_BROWSER/services/proxy-service.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
+import { getProductionChromiumExecutablePath } from '../../02_BROWSER/managed-engine.js';
 
-describe('Phase 8: Bulk Profile Operations Suite & Staggered Batch Launcher', () => {
+const REAL_CHROMIUM = (() => {
+  try {
+    const p = getProductionChromiumExecutablePath();
+    const ok = fs.existsSync(p) && (fs.statSync(p).size > 10_000_000 || (process.platform === 'win32' && fs.existsSync(path.join(path.dirname(p), 'chrome.dll'))));
+    if (!ok) {
+      console.log('[SKIP REASON] phase8-bulk-operations: Real Chromium binary (>10MB / chrome.dll) not found on host');
+    }
+    return ok;
+  } catch {
+    console.log('[SKIP REASON] phase8-bulk-operations: Failed to inspect Chromium executable path');
+    return false;
+  }
+})();
+
+describe.skipIf(!REAL_CHROMIUM)('Phase 8: Bulk Profile Operations Suite & Staggered Batch Launcher [requires real Chromium binary on host]', () => {
   let tempDir: string;
   let profileIds: string[] = [];
   let proxyIds: string[] = [];

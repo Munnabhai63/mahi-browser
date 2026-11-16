@@ -16,8 +16,23 @@ import {
 } from '../../09_AUTOMATION/automation-engine.js';
 import { RPA_TEMPLATES } from '../../10_CONFIG/shared/constants/automation-templates.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
+import { getProductionChromiumExecutablePath } from '../../02_BROWSER/managed-engine.js';
 
-describe('Phase 10: Visual No-Code RPA Workflow Studio & Real-Browser Automation Engine', () => {
+const REAL_CHROMIUM = (() => {
+  try {
+    const p = getProductionChromiumExecutablePath();
+    const ok = fs.existsSync(p) && (fs.statSync(p).size > 10_000_000 || (process.platform === 'win32' && fs.existsSync(path.join(path.dirname(p), 'chrome.dll'))));
+    if (!ok) {
+      console.log('[SKIP REASON] phase10-rpa-workflows: Real Chromium binary (>10MB / chrome.dll) not found on host');
+    }
+    return ok;
+  } catch {
+    console.log('[SKIP REASON] phase10-rpa-workflows: Failed to inspect Chromium executable path');
+    return false;
+  }
+})();
+
+describe.skipIf(!REAL_CHROMIUM)('Phase 10: Visual No-Code RPA Workflow Studio & Real-Browser Automation Engine [requires real Chromium binary on host]', () => {
   let tempDir: string;
   let profileId1: string;
   let profileId2: string;

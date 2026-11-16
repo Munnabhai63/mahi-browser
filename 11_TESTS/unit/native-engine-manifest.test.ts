@@ -35,6 +35,36 @@ describe('Native Engine Manifest Discovery Suite (BUG-02 Regression)', () => {
     }
   });
 
+  it('evaluates hasNativeStealthEngine to true when mahi-engine.json is directly adjacent to executable in chrome-win64', () => {
+    const tempBase = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-adjacent-test-'));
+    try {
+      const subDir = path.join(tempBase, 'chrome-win64');
+      fs.mkdirSync(subDir, { recursive: true });
+      const fakeExe = path.join(subDir, 'chrome.exe');
+      fs.writeFileSync(fakeExe, 'MZ_ADJACENT_BINARY', 'utf8');
+
+      // Adjacent manifest placed directly beside the executable
+      const adjacentManifestPath = path.join(subDir, 'mahi-engine.json');
+      fs.writeFileSync(
+        adjacentManifestPath,
+        JSON.stringify({
+          engine: 'mahi-chromium',
+          version: '138.0.7204.0',
+          nativeStealth: true,
+          rebrowserPatched: true,
+        }),
+        'utf8'
+      );
+
+      const manifest = resolveEngineManifest(fakeExe);
+      expect(manifest).not.toBeNull();
+      expect(manifest?.nativeStealth).toBe(true);
+      expect(hasNativeStealthEngine(fakeExe)).toBe(true);
+    } finally {
+      try { fs.rmSync(tempBase, { recursive: true, force: true }); } catch {}
+    }
+  });
+
   it('evaluates hasNativeStealthEngine to false on stock build without manifest', () => {
     const tempBase = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-stock-test-'));
     try {

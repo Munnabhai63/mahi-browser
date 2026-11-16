@@ -681,6 +681,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     downloadManagedEngine: async () => ({ success: true, path: 'Default' }),
     repairManagedEngine: async () => ({ success: true, path: 'Default' }),
     onEngineDownloadProgress: () => () => {},
+    onCamoufoxDownloadProgress: (_callback: (status: any) => void) => () => {},
     onLicenseStatusChanged: () => () => {},
     onLicenseStatusToast: () => () => {},
 

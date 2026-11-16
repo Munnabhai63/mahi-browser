@@ -6,7 +6,7 @@ import { getAllBlogPosts } from '../../lib/mdx';
 export const metadata: Metadata = {
   title: 'Engineering Blog — Anti-Detect & Browser Stealth Research',
   description:
-    'Deep dives on browser fingerprinting, C++ native ANGLE hooks, rebrowser-patches CDP leaks, Camoufox, and distributed multi-seat locks.',
+    'Deep dives on browser fingerprinting, JavaScript MV3 stealth injection, rebrowser-patches CDP leaks, Camoufox C++ Gecko, and distributed multi-seat locks.',
 };
 
 export default function BlogIndexPage() {

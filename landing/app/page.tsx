@@ -34,7 +34,7 @@ export default function HomePage() {
 
           {/* Subtitle */}
           <p className="mx-auto max-w-3xl text-base sm:text-xl text-slate-300 leading-relaxed font-normal">
-            Bypass Cloudflare Turnstile, DataDome, and CreepJS with zero leaks. Built with C++ native hooks,{' '}
+            Bypass Cloudflare Turnstile, DataDome, and CreepJS with zero leaks. Built with JavaScript MV3 main-world stealth injection,{' '}
             <strong className="text-white font-semibold">rebrowser-patches</strong> CDP isolation, offline SQLite architecture, and Redis-locked team profile synchronization.
           </p>
 
@@ -110,8 +110,8 @@ export default function HomePage() {
                   Cr
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-white">Chromium 138 C++ Engine</h3>
-                  <p className="text-xs text-slate-400">Patched Blink / V8 Core</p>
+                  <h3 className="text-xl font-bold text-white">Chromium 138 Stealth Engine</h3>
+                  <p className="text-xs text-slate-400">JavaScript MV3 Stealth Core (Native C++ Optional)</p>
                 </div>
               </div>
               <span className="rounded bg-red-950 border border-red-800/60 px-2.5 py-1 text-xs font-bold text-red-300">
@@ -120,7 +120,7 @@ export default function HomePage() {
             </div>
 
             <p className="text-sm text-slate-300 leading-relaxed">
-              Equipped with our native C++ ANGLE hooks, Client Hints major-version normalizer, and integrated rebrowser-patches. Eliminates CDP debugger leaks and delivers flawless browser coherence.
+              Equipped with JavaScript-layer MV3 main-world stealth injection (canvas/audio/WebGL/timezone/client-hints coherence) and rebrowser-patches automation. Native C++ engine available as an optional, separately provisioned build.
             </p>
 
             <ul className="space-y-2.5 text-xs text-slate-300">
@@ -163,7 +163,7 @@ export default function HomePage() {
             </div>
 
             <p className="text-sm text-slate-300 leading-relaxed">
-              When targets specifically watch for Chromium signatures, switch to Camoufox with one click. Built with native C++ hooks directly inside Gecko for Canvas, AudioContext, Font enumeration, and WebRTC.
+              When targets specifically watch for Chromium signatures, switch to Camoufox with one click. Built on a hardened C++ Firefox fork (downloaded on demand) with native Gecko hooks for Canvas, AudioContext, Font enumeration, and WebRTC.
             </p>
 
             <ul className="space-y-2.5 text-xs text-slate-300">

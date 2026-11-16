@@ -104,7 +104,40 @@ export function getUserDataPath(): string {
  * Root directory where all managed engines are housed.
  */
 export function getEnginesBaseDir(): string {
-  return path.join(getUserDataPath(), 'engines');
+  return process.env.MAHI_ENGINES_DIR || path.join(getUserDataPath(), 'engines');
+}
+
+export interface EnginePlatformLayout {
+  platformKey: string;
+  archiveSubdir: string;
+  executableName: string;
+}
+
+export function resolveEnginePlatformLayout(
+  platform: string = process.platform,
+  arch: string = process.arch
+): EnginePlatformLayout {
+  if (platform === 'win32') {
+    return {
+      platformKey: 'win64',
+      archiveSubdir: 'chrome-win',
+      executableName: 'chrome.exe',
+    };
+  } else if (platform === 'darwin') {
+    const isArm = arch === 'arm64';
+    return {
+      platformKey: isArm ? 'mac-arm64' : 'mac-x64',
+      archiveSubdir: isArm ? 'chrome-mac-arm64' : 'chrome-mac-x64',
+      executableName: 'chrome',
+    };
+  } else {
+    // Linux
+    return {
+      platformKey: 'linux64',
+      archiveSubdir: 'chrome-linux',
+      executableName: 'chrome',
+    };
+  }
 }
 
 /**
@@ -115,10 +148,9 @@ export function getBundledEngineExecutablePath(
   targetPlatform: string = process.platform,
   targetArch: string = process.arch
 ): string | null {
-  const archiveSubdir = CHROMIUM_PRODUCTION_CONFIG.archiveSubdir;
-  const executableName = targetPlatform === 'win32'
-    ? CHROMIUM_PRODUCTION_CONFIG.executableRelativePath
-    : (targetPlatform === 'darwin' ? (targetArch === 'arm64' ? 'chrome-mac-arm64/chrome' : 'chrome-mac-x64/chrome') : 'chrome');
+  const layout = resolveEnginePlatformLayout(targetPlatform, targetArch);
+  const archiveSubdir = layout.archiveSubdir;
+  const executableName = layout.executableName;
 
   const candidates: string[] = [];
 
@@ -171,50 +203,60 @@ export function getProductionChromiumExecutablePath(
   targetPlatform: string = process.platform,
   targetArch: string = process.arch
 ): string {
+  const layout = resolveEnginePlatformLayout(targetPlatform, targetArch);
+
   // 1. Check bundled application resources first (Zero-setup installer bundle)
   const bundledPath = getBundledEngineExecutablePath(CHROMIUM_PRODUCTION_VERSION, targetPlatform, targetArch);
   if (bundledPath && fs.existsSync(bundledPath)) {
     return bundledPath;
   }
 
-  // 2. Check application-managed user engines directory (AppData/Roaming/mahi-browser/engines)
+  // 2. Check application-managed user engines directory (AppData/Roaming/mahi-browser/engines or MAHI_ENGINES_DIR)
   const baseDir = path.join(getEnginesBaseDir(), CHROMIUM_PRODUCTION_VERSION);
-  let userManagedCandidate: string;
-  if (targetPlatform === 'win32') {
-    userManagedCandidate = path.join(baseDir, CHROMIUM_PRODUCTION_CONFIG.archiveSubdir, CHROMIUM_PRODUCTION_CONFIG.executableRelativePath);
+  const primaryCandidate = path.join(baseDir, layout.archiveSubdir, layout.executableName);
+
+  if (fs.existsSync(primaryCandidate)) {
+    return primaryCandidate;
+  }
+
+  // Fallback candidate checks for linux64 / mac layout variants if they exist on disk
+  if (targetPlatform === 'linux') {
+    const linux64Candidate = path.join(baseDir, 'chrome-linux64', 'chrome');
+    if (fs.existsSync(linux64Candidate)) return linux64Candidate;
   } else if (targetPlatform === 'darwin') {
-    const macSubdir = targetArch === 'arm64' ? 'chrome-mac-arm64' : 'chrome-mac-x64';
-    userManagedCandidate = path.join(baseDir, macSubdir, 'chrome');
-  } else {
-    userManagedCandidate = path.join(baseDir, 'chrome-linux64', 'chrome');
+    const macAppCandidate = path.join(baseDir, layout.archiveSubdir, 'Chromium.app', 'Contents', 'MacOS', 'Chromium');
+    if (fs.existsSync(macAppCandidate)) return macAppCandidate;
+    const macDirectCandidate = path.join(baseDir, layout.archiveSubdir, 'chrome');
+    if (fs.existsSync(macDirectCandidate)) return macDirectCandidate;
   }
 
-  if (fs.existsSync(userManagedCandidate)) {
-    return userManagedCandidate;
-  }
-
-  // 3. Check workspace directory (.mahi_data/engines) for dev/standalone runtime
-  const localDevCandidate = path.join(
-    process.cwd(),
-    '.mahi_data',
-    'engines',
-    CHROMIUM_PRODUCTION_VERSION,
-    targetPlatform === 'win32' ? CHROMIUM_PRODUCTION_CONFIG.archiveSubdir : (targetPlatform === 'darwin' ? (targetArch === 'arm64' ? 'chrome-mac-arm64' : 'chrome-mac-x64') : 'chrome-linux64'),
-    targetPlatform === 'win32' ? CHROMIUM_PRODUCTION_CONFIG.executableRelativePath : 'chrome'
-  );
-  if (fs.existsSync(localDevCandidate)) {
-    return localDevCandidate;
+  // 3. Check workspace directory (.mahi_data/engines) for dev/standalone runtime (only if MAHI_ENGINES_DIR is not overridden)
+  if (!process.env.MAHI_ENGINES_DIR) {
+    const localDevCandidate = path.join(
+      process.cwd(),
+      '.mahi_data',
+      'engines',
+      CHROMIUM_PRODUCTION_VERSION,
+      layout.archiveSubdir,
+      layout.executableName
+    );
+    if (fs.existsSync(localDevCandidate)) {
+      return localDevCandidate;
+    }
   }
 
   // 4. Return canonical user-managed target path (where repair / provisioning will install if needed)
-  return userManagedCandidate;
+  return primaryCandidate;
 }
 
 /**
  * Checks whether the production unbranded Chromium binary exists on disk and is executable.
  */
-export function isProductionChromiumInstalled(): boolean {
-  const exePath = getProductionChromiumExecutablePath();
+export function isProductionChromiumInstalled(
+  targetPlatform: string = process.platform,
+  targetArch: string = process.arch
+): boolean {
+  const exePath = getProductionChromiumExecutablePath(targetPlatform, targetArch);
   return fs.existsSync(exePath);
 }
 
@@ -247,11 +289,15 @@ export function getManagedEngineExecutablePath(
 /**
  * Checks whether the managed browser engine binary exists on disk and is ready to launch.
  */
-export function isManagedEngineInstalled(version: string = MANAGED_ENGINE_VERSION): boolean {
+export function isManagedEngineInstalled(
+  version: string = MANAGED_ENGINE_VERSION,
+  targetPlatform: string = process.platform,
+  targetArch: string = process.arch
+): boolean {
   if (version === CHROMIUM_PRODUCTION_VERSION) {
-    return isProductionChromiumInstalled();
+    return isProductionChromiumInstalled(targetPlatform, targetArch);
   }
-  const exePath = getManagedEngineExecutablePath(version);
+  const exePath = getManagedEngineExecutablePath(version, targetPlatform, targetArch);
   return fs.existsSync(exePath);
 }
 

@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import {
   CURRENT_ENGINE_DISTRIBUTION,
   CHROMIUM_PRODUCTION_CONFIG,
@@ -13,9 +14,34 @@ import {
   isProductionChromiumInstalled,
   getManagedEngineExecutablePath,
   isManagedEngineInstalled,
+  resolveEnginePlatformLayout,
+  getEnginesBaseDir,
 } from '../../02_BROWSER/managed-engine.js';
 
+const REAL_CHROMIUM = (() => {
+  try {
+    const p = getProductionChromiumExecutablePath();
+    return fs.existsSync(p) && (fs.statSync(p).size > 10_000_000 || (process.platform === 'win32' && fs.existsSync(path.join(path.dirname(p), 'chrome.dll'))));
+  } catch {
+    return false;
+  }
+})();
+
 describe('Production Unbranded Chromium Engine Suite (P0 Batch 1)', () => {
+  let tempEnginesDir: string;
+
+  beforeAll(() => {
+    const tempBase = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-prod-engine-test-'));
+    tempEnginesDir = path.join(tempBase, 'engines');
+    fs.mkdirSync(tempEnginesDir, { recursive: true });
+  });
+
+  afterAll(() => {
+    try {
+      fs.rmSync(path.dirname(tempEnginesDir), { recursive: true, force: true });
+    } catch {}
+  });
+
   it('declares CHROMIUM_PRODUCTION as the active engine policy', () => {
     expect(CURRENT_ENGINE_DISTRIBUTION).toBe('CHROMIUM_PRODUCTION');
   });
@@ -41,26 +67,48 @@ describe('Production Unbranded Chromium Engine Suite (P0 Batch 1)', () => {
     expect(CHROMIUM_PRODUCTION_CONFIG.fileSizeBytes).toBe(296108021);
   });
 
-  it('resolves production Chromium executable path in isolated engine directory', () => {
+  it('resolves production Chromium executable path in isolated engine directory derived from layout', () => {
+    const layout = resolveEnginePlatformLayout();
     const exePath = getProductionChromiumExecutablePath();
-    expect(exePath).toContain(path.join('engines', CHROMIUM_PRODUCTION_VERSION, 'chrome-win', 'chrome.exe'));
-    expect(exePath.endsWith(path.join('chrome-win', 'chrome.exe'))).toBe(true);
+    expect(exePath).toContain(path.join('engines', CHROMIUM_PRODUCTION_VERSION, layout.archiveSubdir, layout.executableName));
+    expect(exePath.endsWith(path.join(layout.archiveSubdir, layout.executableName))).toBe(true);
   });
 
-  it('verifies production Chromium is installed and accessible', () => {
-    expect(isProductionChromiumInstalled()).toBe(true);
-    const exePath = getProductionChromiumExecutablePath();
-    expect(fs.existsSync(exePath)).toBe(true);
-  });
+  it('verifies engine detection with mock binary in MAHI_ENGINES_DIR override', () => {
+    const prevEnv = process.env.MAHI_ENGINES_DIR;
+    process.env.MAHI_ENGINES_DIR = tempEnginesDir;
+    try {
+      const layout = resolveEnginePlatformLayout();
+      const mockVersionDir = path.join(tempEnginesDir, CHROMIUM_PRODUCTION_VERSION, layout.archiveSubdir);
+      const mockExe = path.join(mockVersionDir, layout.executableName);
 
-  it('resolves production Chromium when CHROMIUM_PRODUCTION_VERSION is queried', () => {
-    const exePath = getManagedEngineExecutablePath(CHROMIUM_PRODUCTION_VERSION);
-    expect(exePath).toBe(getProductionChromiumExecutablePath());
-    expect(isManagedEngineInstalled(CHROMIUM_PRODUCTION_VERSION)).toBe(true);
+      // Initially false before binary creation
+      expect(isProductionChromiumInstalled()).toBe(false);
+
+      // Create fake mock binary
+      fs.mkdirSync(mockVersionDir, { recursive: true });
+      fs.writeFileSync(mockExe, 'MZ_MOCK_PROD_CHROMIUM_BINARY', 'utf8');
+
+      // Evaluates to true and resolves to mock binary
+      expect(isProductionChromiumInstalled()).toBe(true);
+      expect(getProductionChromiumExecutablePath()).toBe(mockExe);
+      expect(getManagedEngineExecutablePath(CHROMIUM_PRODUCTION_VERSION)).toBe(mockExe);
+      expect(isManagedEngineInstalled(CHROMIUM_PRODUCTION_VERSION)).toBe(true);
+
+      // Clean up mock binary
+      fs.rmSync(mockExe, { force: true });
+      expect(isProductionChromiumInstalled()).toBe(false);
+    } finally {
+      if (prevEnv !== undefined) {
+        process.env.MAHI_ENGINES_DIR = prevEnv;
+      } else {
+        delete process.env.MAHI_ENGINES_DIR;
+      }
+    }
   });
 
   it('preserves backwards-compatible access to CfT engine for regression safety', () => {
-    const cftPath = getManagedEngineExecutablePath('138.0.7204.183');
+    const cftPath = getManagedEngineExecutablePath('138.0.7204.183', 'win32', 'x64');
     expect(cftPath).toContain(path.join('engines', '138.0.7204.183', 'chrome-win64', 'chrome.exe'));
   });
 
@@ -70,7 +118,7 @@ describe('Production Unbranded Chromium Engine Suite (P0 Batch 1)', () => {
     expect(pkg.name).toBe('mahi-browser');
   });
 
-  it('verifies production Chromium binary metadata and absence of CfT branding', () => {
+  it.skipIf(!REAL_CHROMIUM)('verifies production Chromium binary metadata and absence of CfT branding [requires real Chromium on host]', () => {
     const exePath = getProductionChromiumExecutablePath();
     expect(fs.existsSync(exePath)).toBe(true);
 
@@ -86,7 +134,7 @@ describe('Production Unbranded Chromium Engine Suite (P0 Batch 1)', () => {
     }
   });
 
-  it('launches production unbranded Chromium cleanly via launcher', async () => {
+  it.skipIf(!REAL_CHROMIUM)('launches production unbranded Chromium cleanly via launcher [requires real Chromium on host]', async () => {
     const { launchBrowser } = await import('../../02_BROWSER/launcher.js');
     const testStorage = path.resolve('.mahi_data', 'profiles', 'test-unit-unbranded');
     fs.mkdirSync(testStorage, { recursive: true });

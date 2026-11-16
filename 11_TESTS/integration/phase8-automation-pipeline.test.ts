@@ -40,8 +40,23 @@ import { automationScheduler } from '../../09_AUTOMATION/automation-scheduler.js
 import { handleRemoteApiRequest } from '../../07_BACKEND/commercial/remote-api-router.js';
 import { RemoteApiService } from '../../07_BACKEND/services/remote-api-service.js';
 import { registerCentralUser } from '../../05_AUTH/central-auth-service.js';
+import { getProductionChromiumExecutablePath } from '../../02_BROWSER/managed-engine.js';
 
-describe('Phase 8: Automation Pipeline & Production Integration', () => {
+const REAL_CHROMIUM = (() => {
+  try {
+    const p = getProductionChromiumExecutablePath();
+    const ok = fs.existsSync(p) && (fs.statSync(p).size > 10_000_000 || (process.platform === 'win32' && fs.existsSync(path.join(path.dirname(p), 'chrome.dll'))));
+    if (!ok) {
+      console.log('[SKIP REASON] phase8-automation-pipeline: Real Chromium binary (>10MB / chrome.dll) not found on host');
+    }
+    return ok;
+  } catch {
+    console.log('[SKIP REASON] phase8-automation-pipeline: Failed to inspect Chromium executable path');
+    return false;
+  }
+})();
+
+describe.skipIf(!REAL_CHROMIUM)('Phase 8: Automation Pipeline & Production Integration [requires real Chromium binary on host]', () => {
   let tempDir: string;
   let profile1: any;
   let profile2: any;

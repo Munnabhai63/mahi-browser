@@ -11,12 +11,12 @@ export const DEFAULT_FAQS: FaqItem[] = [
   {
     question: 'What makes MAHI Browser different from GoLogin, Multilogin, or AdsPower?',
     answer:
-      'Unlike legacy anti-detect browsers that rely on easily detectable JavaScript prototype overrides or outdated forks (such as GoLogin Orbita on Chromium 132), MAHI Browser is built on a C++ native patched Chromium 138 engine and Camoufox (custom C++ Firefox). We integrate rebrowser-patches at the engine level to eliminate CDP Runtime.Enable leaks, offer local-first SQLite offline operation, and support distributed Cloudflare R2 multi-seat profile sync with Redis concurrency locks.',
+      'Unlike legacy anti-detect browsers that rely on easily detectable prototypes on outdated browser forks, MAHI Browser uses Chromium 138 with JavaScript-layer MV3 main-world stealth injection (canvas/audio/WebGL/timezone/client-hints coherence) plus an on-demand Camoufox C++ hardened Gecko engine (with optional native C++ Chromium builds available). We integrate rebrowser-patches to eliminate CDP Runtime.Enable leaks, offer local-first SQLite offline operation, and support distributed multi-seat profile sync with Redis concurrency locks.',
   },
   {
     question: 'How does the Dual-Engine (Chromium 138 + Camoufox) architecture protect against detection?',
     answer:
-      'Certain anti-fraud systems (like DataDome, Akamai, and Cloudflare Turnstile) inspect browser-specific execution characteristics. By offering both patched Chromium 138 and Camoufox (hardened C++ Firefox engine with C++ Canvas/Audio/Font hooks), you can isolate profiles into completely distinct rendering and networking stacks, making cross-engine profile correlation virtually impossible.',
+      'Certain anti-fraud systems (like DataDome, Akamai, and Cloudflare Turnstile) inspect browser-specific execution characteristics. By offering both Chromium 138 and on-demand Camoufox (hardened C++ Firefox engine with native Gecko Canvas/Audio/Font hooks, downloaded on demand), you can isolate profiles into completely distinct rendering and networking stacks, making cross-engine profile correlation virtually impossible.',
   },
   {
     question: 'Does MAHI Browser work completely offline without sending data to servers?',

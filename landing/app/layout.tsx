@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     template: '%s | MAHI Browser',
   },
   description:
-    'Enterprise Dual-Engine Anti-Detect Browser with C++ Native Hooks, Rebrowser-Patches Zero CDP Leaks, and Distributed Multi-Seat Profile Sync.',
+    'Enterprise Anti-Detect Browser with Chromium 138 JavaScript MV3 Stealth Injection, On-Demand Camoufox C++ Hardened Gecko, Rebrowser-Patches Automation, and Multi-Seat Sync.',
   keywords: [
     'anti-detect browser',
     'antidetect browser',
@@ -45,7 +45,7 @@ export const metadata: Metadata = {
     siteName: BRAND.name,
     title: 'MAHI Browser — Enterprise Dual-Engine Anti-Detect Browser',
     description:
-      'Undetectable Chromium 138 + Camoufox C++ engines with zero CDP leaks, distributed Redis concurrency locks, and local SQLite offline operation.',
+      'Undetectable Chromium 138 with JS-layer MV3 stealth + on-demand Camoufox C++ Gecko engine, distributed Redis concurrency locks, and local SQLite offline operation.',
     images: [
       {
         url: BRAND.assets.logo,
@@ -59,7 +59,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'MAHI Browser — Enterprise Dual-Engine Anti-Detect',
     description:
-      'Undetectable Chromium 138 + Camoufox C++ engines with zero CDP leaks, distributed Redis locks, and local SQLite storage.',
+      'Undetectable Chromium 138 with JS-layer MV3 stealth + on-demand Camoufox C++ Gecko engine, distributed Redis locks, and local SQLite storage.',
     images: [BRAND.assets.logo],
   },
   robots: {

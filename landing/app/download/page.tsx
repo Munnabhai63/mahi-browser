@@ -20,7 +20,7 @@ export default function DownloadPage() {
           Download MAHI Browser
         </h1>
         <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
-          Install the native desktop application on your workstation or VPS. Features complete offline SQLite storage, native C++ stealth hooks, and dual Chromium 138 + Camoufox engines.
+          Install the native desktop application on your workstation or VPS. Features complete offline SQLite storage, Chromium 138 with JS-layer MV3 stealth injection, and on-demand Camoufox C++ Gecko engine.
         </p>
       </div>
 

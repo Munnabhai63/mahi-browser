@@ -2,7 +2,7 @@ export const BRAND = {
   name: 'MAHI Browser',
   legalName: 'MAHI Browser — By Munna Bhai',
   creator: 'Munna Bhai',
-  tagline: 'Enterprise Dual-Engine Anti-Detect Browser with C++ Native Hooks & Zero-Leak Automation',
+  tagline: 'Enterprise Anti-Detect Browser with JS-Layer MV3 Stealth & Camoufox C++ Engine',
   officialEmail: 'mahiverse.official@gmail.com',
   hubEmail: 'mahiverse.hub@gmail.com',
   phone: '+91 9376343629',

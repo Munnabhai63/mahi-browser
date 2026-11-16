@@ -123,7 +123,7 @@ export default function FingerprintPreview() {
             Cryptographic Anti-Detect Engine
           </h3>
           <p className="text-xs sm:text-sm text-slate-400">
-            Real-time inspection of low-level C++ native hooks & WebGL/Canvas mathematical perturbations.
+            Real-time inspection of low-level MV3 stealth hooks & WebGL/Canvas mathematical perturbations.
           </p>
         </div>
 
@@ -207,7 +207,7 @@ export default function FingerprintPreview() {
             <div className="text-slate-300 truncate text-[11px]">{currentFp.webglRenderer}</div>
           </div>
           <p className="text-[11px] text-slate-400">
-            Overwritten via C++ ANGLE hook before WebGL initialization to prevent unmasked vendor enumeration.
+            Overwritten via main-world WebGL hook before context initialization to prevent unmasked vendor enumeration.
           </p>
         </div>
 

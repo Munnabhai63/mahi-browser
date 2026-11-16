@@ -41,11 +41,11 @@ describe('Managed Version-Pinned Browser Engine Suite', () => {
   });
 
   it('should resolve the correct engine path structure for win64', () => {
-    const exePath = getManagedEngineExecutablePath();
+    const exePath = getManagedEngineExecutablePath(MANAGED_ENGINE_VERSION, 'win32', 'x64');
     expect(exePath).toContain(path.join('engines', MANAGED_ENGINE_VERSION, 'chrome-win64', 'chrome.exe'));
     expect(exePath.endsWith(path.join('chrome-win64', 'chrome.exe'))).toBe(true);
 
-    const customVersionPath = getManagedEngineExecutablePath('130.0.0.0');
+    const customVersionPath = getManagedEngineExecutablePath('130.0.0.0', 'win32', 'x64');
     expect(customVersionPath).toContain(path.join('engines', '130.0.0.0', 'chrome-win64', 'chrome.exe'));
   });
 
