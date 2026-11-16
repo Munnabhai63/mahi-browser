@@ -12,6 +12,7 @@ export function getSuperAdminHtml(): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
   <title>MAHI BROWSER — Master Super Admin Suite</title>
   <style>
     ${ADMIN_STYLESHEET}
