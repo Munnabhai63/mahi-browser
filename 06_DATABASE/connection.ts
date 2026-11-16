@@ -1,7 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 let SQL: SqlJsStatic | null = null;
 let dbInstance: Database | null = null;

@@ -49,6 +49,12 @@ function resolveExecutable() {
   }
 
   // Fallback: Run via Electron development runner (local dev only)
+  try {
+    const electronBinary = require('electron');
+    if (typeof electronBinary === 'string' && fs.existsSync(electronBinary)) {
+      return { cmd: electronBinary, args: ['.', '--smoke-test'] };
+    }
+  } catch {}
   const npxCmd = platform === 'win32' ? 'npx.cmd' : 'npx';
   return { cmd: npxCmd, args: ['electron', '.', '--smoke-test'] };
 }
@@ -68,6 +74,7 @@ async function runSmokeTest() {
 
     let output = '';
     let hasPassed = false;
+    let hasWindowPassed = false;
 
     child.stdout.on('data', (chunk) => {
       const str = chunk.toString();
@@ -75,6 +82,9 @@ async function runSmokeTest() {
       process.stdout.write(str);
       if (str.includes('[SMOKE_TEST_PASS]')) {
         hasPassed = true;
+      }
+      if (str.includes('[SMOKE_TEST_WINDOW_PASS]')) {
+        hasWindowPassed = true;
       }
     });
 
@@ -84,6 +94,9 @@ async function runSmokeTest() {
       process.stderr.write(str);
       if (str.includes('[SMOKE_TEST_PASS]')) {
         hasPassed = true;
+      }
+      if (str.includes('[SMOKE_TEST_WINDOW_PASS]')) {
+        hasWindowPassed = true;
       }
     });
 
@@ -116,13 +129,24 @@ async function runSmokeTest() {
         }
       }
 
-      if (hasPassed || output.includes('[SMOKE_TEST_PASS]') || logContents.includes('SMOKE_TEST: Packaged Application Smoke Test Mode Triggered')) {
+      const hasFatalCrash = logContents.includes('[CRASH / ERROR EVENT:');
+      if (hasFatalCrash) {
+        console.error('\n❌ [SMOKE_HARNESS_FAILURE] Detected fatal crash log entry in crash-log.txt:');
+        console.error(logContents);
+        reject(new Error('[SMOKE_HARNESS] Crash log contains fatal error event.'));
+        return;
+      }
+
+      const windowLoaded = hasWindowPassed || output.includes('[SMOKE_TEST_WINDOW_PASS]') || logContents.includes('SMOKE_TEST: Main window finished loading');
+      const appPassed = hasPassed || output.includes('[SMOKE_TEST_PASS]') || logContents.includes('SMOKE_TEST: Packaged Application Smoke Test Mode Triggered');
+
+      if (appPassed && windowLoaded) {
         console.log('\n======================================================');
-        console.log('✓ NATIVE DESKTOP SMOKE TEST PASSED SUCCESSFULLY');
+        console.log('✓ NATIVE DESKTOP SMOKE TEST & WINDOW LOAD PASSED');
         console.log('======================================================\n');
         resolve();
       } else {
-        reject(new Error(`[SMOKE_HARNESS] Application exited with code ${code} without emitting SMOKE_TEST_PASS.`));
+        reject(new Error(`[SMOKE_HARNESS] Application exited with code ${code} without completing window load (appPassed=${appPassed}, windowLoaded=${windowLoaded}). Output:\n${output}\nLogs:\n${logContents}`));
       }
     };
 

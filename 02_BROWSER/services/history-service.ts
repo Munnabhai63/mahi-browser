@@ -1,9 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { getProfileStoragePath } from './profile-service.js';
 import { HistoryItem, HistoryFilterOptions } from '../../10_CONFIG/shared/types/history.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
 import crypto from 'node:crypto';
+
+const esmRequire = createRequire(import.meta.url);
 
 function getMahiCustomHistoryPath(profileId: string): string {
   const base = getProfileStoragePath(profileId);
@@ -45,7 +48,12 @@ function loadChromiumHistory(profileId: string): HistoryItem[] {
 
   try {
     const fileBuffer = fs.readFileSync(dbPath);
-    const SQL = require('sql.js');
+    let SQL: any;
+    try {
+      SQL = esmRequire('sql.js');
+    } catch {
+      return [];
+    }
     let db: any;
     try {
       const sqlJs = SQL.default || SQL;

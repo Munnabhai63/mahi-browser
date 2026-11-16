@@ -200,7 +200,7 @@ function createSplashWindow(): void {
       resizable: false,
       center: true,
       alwaysOnTop: true,
-      show: true,
+      show: !process.argv.includes('--smoke-test'),
       icon: iconPath,
       backgroundColor: '#00000000',
       webPreferences: {
@@ -211,7 +211,7 @@ function createSplashWindow(): void {
 
     splashWindow.loadFile(splashPath);
   } catch (splashErr) {
-    console.error('Splash window initialization warning:', splashErr);
+    writeCrashLog('SPLASH_WINDOW_ERROR', String(splashErr));
   }
 }
 
@@ -247,8 +247,10 @@ function createWindow(): void {
   mainWindow.on('ready-to-show', () => {
     logCheckpoint('Step 6: Window ready-to-show event fired');
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-      mainWindow.focus();
+      if (!process.argv.includes('--smoke-test')) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
       logCheckpoint('Step 6: Main window displayed successfully');
 
       if (splashWindow && !splashWindow.isDestroyed()) {
@@ -268,8 +270,10 @@ function createWindow(): void {
   setTimeout(() => {
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
       logCheckpoint('Step 6: Safety fallback window show triggered');
-      mainWindow.show();
-      mainWindow.focus();
+      if (!process.argv.includes('--smoke-test')) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
       if (splashWindow && !splashWindow.isDestroyed()) {
         try {
           splashWindow.destroy();
@@ -355,9 +359,7 @@ if ((gotTheLock || isSmokeTest) && app?.whenReady) {
   logCheckpoint('Step 3: App whenReady fired');
 
   // 0. Display Branded Startup Splash Screen
-  if (!process.argv.includes('--smoke-test')) {
-    createSplashWindow();
-  }
+  createSplashWindow();
 
   // 1. Initialize SQLite Database
   try {
@@ -427,22 +429,49 @@ if ((gotTheLock || isSmokeTest) && app?.whenReady) {
     writeCrashLog('API_SERVER_START_ERROR', String(apiErr));
   }
 
+  // 4. Create Main Window & Load UI
+  try {
+    createWindow();
+    if (!mainWindow) {
+      throw new Error('createWindow completed but mainWindow is null');
+    }
+  } catch (winErr: unknown) {
+    writeCrashLog('CREATE_WINDOW_ERROR', String(winErr));
+    await performCleanExit();
+    return;
+  }
+
   // Packaged Application Native Smoke Test Mode
   if (process.argv.includes('--smoke-test')) {
     logCheckpoint('SMOKE_TEST: Packaged Application Smoke Test Mode Triggered');
     console.log('[SMOKE_TEST] Main Process Initialized');
     console.log('[SMOKE_TEST] SQLite Database Initialized');
+    console.log('[SMOKE_TEST] Splash & Main BrowserWindow Created');
     console.log(`[SMOKE_TEST] Platform: ${process.platform} Arch: ${process.arch}`);
-    console.log('[SMOKE_TEST_PASS] MAHI Browser initialized cleanly without error.');
-    await performCleanExit();
-    return;
-  }
 
-  // 4. Create Main Window & Load UI
-  try {
-    createWindow();
-  } catch (winErr: unknown) {
-    writeCrashLog('CREATE_WINDOW_ERROR', String(winErr));
+    const smokeTimeout = setTimeout(async () => {
+      console.error('[SMOKE_TEST_ERROR] Window load timed out after 15s in smoke test mode');
+      writeCrashLog('SMOKE_TEST_TIMEOUT', 'Window did-finish-load not received within 15 seconds');
+      await performCleanExit();
+    }, 15000);
+
+    mainWindow.webContents.once('did-finish-load', async () => {
+      clearTimeout(smokeTimeout);
+      logCheckpoint('SMOKE_TEST: Main window finished loading HTML bundle');
+      console.log('[SMOKE_TEST_WINDOW_PASS] BrowserWindow loaded successfully');
+      console.log('[SMOKE_TEST_PASS] MAHI Browser initialized cleanly without error.');
+      await performCleanExit();
+    });
+
+    mainWindow.webContents.once('did-fail-load', async (_event, errorCode, errorDescription, validatedURL) => {
+      clearTimeout(smokeTimeout);
+      const failMsg = `Failed to load ${validatedURL}: [${errorCode}] ${errorDescription}`;
+      console.error(`[SMOKE_TEST_FAIL] ${failMsg}`);
+      writeCrashLog('SMOKE_TEST_LOAD_FAILED', failMsg);
+      await performCleanExit();
+    });
+
+    return;
   }
 
   // Check process.argv for initial cold deep-link launch (Windows/Linux)
@@ -564,7 +593,11 @@ app?.on?.('second-instance', (_event, argv) => {
     mainWindow.show();
     mainWindow.focus();
   } else {
-    createWindow();
+    try {
+      createWindow();
+    } catch (winErr: unknown) {
+      writeCrashLog('SECOND_INSTANCE_WINDOW_ERROR', String(winErr));
+    }
   }
 });
 

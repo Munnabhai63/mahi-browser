@@ -1,7 +1,11 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import * as electron from '../../08_SECURITY/electron-bridge.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Safely resolves the Electron app object if running in an Electron main process.

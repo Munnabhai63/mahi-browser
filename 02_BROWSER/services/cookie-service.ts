@@ -1,8 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { createRequire } from 'node:module';
 import initSqlJs from 'sql.js';
 import { initSqlEngine } from '../../06_DATABASE/connection.js';
+
+const esmRequire = createRequire(import.meta.url);
 import { getProfileStoragePath } from './profile-service.js';
 import {
   CookieItem,
@@ -57,7 +60,12 @@ function loadChromiumCookies(profileId: string): CookieItem[] {
   try {
     // Read file into buffer (avoids locking conflicts with running Chrome)
     const fileBuffer = fs.readFileSync(dbPath);
-    const SQL = require('sql.js');
+    let SQL: any;
+    try {
+      SQL = esmRequire('sql.js');
+    } catch {
+      return [];
+    }
     // Use synchronous sql.js constructor with the buffer
     let db: any;
     try {
