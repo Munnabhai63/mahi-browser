@@ -481,5 +481,16 @@ describe('Step 1: Google OAuth -> Supabase PostgreSQL Sync & Error Redirect', ()
     // 6. Verify getUserSyncUsageAsync respects PostgreSQL profile_quota (50) and is not downgraded to free tier (1)
     const usage = await getUserSyncUsageAsync(pgNewId);
     expect(usage.max_profiles).toBe(50);
+
+    // 7. Verify a free plan user with profile_quota = 1 receives max_profiles === 1 (not forced up to 10)
+    const freeUserId = `usr_free_user_${Date.now()}`;
+    authUsersMap.set(freeUserId, {
+      id: freeUserId,
+      email: `free-${Date.now()}@example.com`,
+      plan_id: 'free',
+      profile_quota: 1,
+    });
+    const freeUsage = await getUserSyncUsageAsync(freeUserId);
+    expect(freeUsage.max_profiles).toBe(1);
   });
 });

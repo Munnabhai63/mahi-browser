@@ -244,9 +244,10 @@ export async function getUserSyncUsageAsync(userId: string) {
 
     const entitlements = evaluateUserEntitlements(userId);
     const planLimits = entitlements?.plan?.limits;
-    const localMax = (planLimits && typeof planLimits.maxProfiles === 'number') ? planLimits.maxProfiles : 0;
+    const isFreePlan = entitlements?.plan?.tier === 'FREE' || centralUser?.plan_id === 'free' || centralUser?.profile_quota === 1;
+    const localMax = (!isFreePlan && planLimits && typeof planLimits.maxProfiles === 'number') ? planLimits.maxProfiles : 0;
     const pgQuota = (centralUser && typeof centralUser.profile_quota === 'number') ? centralUser.profile_quota : 0;
-    const maxProfiles = Math.max(localMax, pgQuota, 10);
+    const maxProfiles = Math.max(localMax, pgQuota) || 10;
     const totalBytes = DEFAULT_MAX_STORAGE_BYTES;
     return {
       profile_count: profileCount,

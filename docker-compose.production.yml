@@ -7,6 +7,8 @@ services:
       dockerfile: Dockerfile.gateway
     container_name: mahibrowser_gateway
     restart: unless-stopped
+    mem_limit: 1024m
+    cpus: 1.5
     ports:
       - "127.0.0.1:8989:8989"
     env_file:
@@ -30,7 +32,9 @@ services:
     image: redis:7-alpine
     container_name: mahibrowser_redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--port", "6379"]
+    command: ["redis-server", "--appendonly", "yes", "--port", "6379", "--maxmemory", "200mb", "--maxmemory-policy", "noeviction", "--requirepass", "${REDIS_PASSWORD}"]
+    mem_limit: 256m
+    cpus: 0.5
     ports:
       - "127.0.0.1:6380:6379"
     volumes:
