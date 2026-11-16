@@ -1,5 +1,14 @@
 # MAHI Browser — Development Progress
 
+## Step 2 Remediation: Admin Edge Bypass Closure, Redis Guard & Paid Quota Logic
+- **Branch:** `feature/v2-enterprise-anti-detect` (synced to `main` at `8c45ad8`)
+- **Status:** COMPLETED & 100% VERIFIED LIVE ON VPS
+- **Remediations Implemented:**
+  1. **Nginx Admin Gate Bypass Closure:** In `10_CONFIG/infrastructure/nginx-production.conf` and `/etc/nginx/sites-available/mahibrowser.com`, explicitly blocked `location ~* ^/(admin|web|super-admin|root-admin|master-admin)(/|$) { return 404; }` and `location ~* ^/api/v[12]/(admin|super-admin)(/|$) { return 404; }` on `api.mahibrowser.com`. Also blocked `location ~* ^/api/v[12]/(admin|super-admin)(/|$) { return 404; }` and prefix locations on `mahibrowser.com`. Verified: `https://api.mahibrowser.com/admin` and `https://api.mahibrowser.com/api/v2/admin/dashboard` return HTTP 404.
+  2. **Admin Edge Basic Auth Preservation:** `admin.mahibrowser.com` remains shielded behind Nginx Basic Auth (`auth_basic`). Unauthenticated requests return HTTP 401; authenticated requests with credentials return HTTP 200.
+  3. **Redis Password Guard & Container Healthcheck:** In `docker-compose.production.yml`, enforced `${REDIS_PASSWORD:?REDIS_PASSWORD must be set}` so Redis fails to start if password env is unset. Added container environment and healthcheck `["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]`. Verified both `mahibrowser_gateway` and `mahibrowser_redis` are running healthy.
+  4. **Paid Upgrade Cloud Quota Preservation:** In `07_BACKEND/services/cloud-profile-service.ts`, ensured users with local active paid subscriptions (`entitlements.plan.tier !== 'FREE'`) or PostgreSQL upgrades are not suppressed to free quota even if `centralUser.plan_id === 'free'` during sync delays. Added automated regression assertion in `11_TESTS/unit/step1-google-oauth-supabase-sync.test.ts`.
+
 ## Step 2: Free Quota Floor Fix, Redis Auth, Container Limits & Admin Edge Protection
 - **Branch:** `feature/v2-enterprise-anti-detect` (synced to `main` at `1ea646d`)
 - **Status:** COMPLETED & 100% VERIFIED LIVE ON VPS
