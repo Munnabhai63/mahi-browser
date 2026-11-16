@@ -1,17 +1,56 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { PUBLIC_PLANS, PublicPlan } from '../lib/plans';
 import { BRAND } from '../lib/brand';
 
 export default function PricingTable() {
+  const [plans, setPlans] = useState<PublicPlan[]>(PUBLIC_PLANS);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('annual');
   const [category, setCategory] = useState<'PERSONAL' | 'BUSINESS'>('PERSONAL');
   const [currency, setCurrency] = useState<'INR' | 'USD' | 'EUR'>('INR');
   const [showUpiModal, setShowUpiModal] = useState(false);
 
-  const filteredPlans = PUBLIC_PLANS.filter((p) => p.category === category || p.id === 'free');
+  useEffect(() => {
+    fetch(`${BRAND.apiUrl}/api/v1/pricing/catalog`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        const catalogPlans = json?.data?.plans || json?.data?.catalog?.plans || json?.data;
+        if (Array.isArray(catalogPlans)) {
+          setPlans((prev) =>
+            prev.map((local) => {
+              const matched = catalogPlans.find((r: any) => r.planId === local.id || r.id === local.id);
+              if (!matched) return local;
+              const monthlyInr = matched.monthlyPricePaise
+                ? matched.monthlyPricePaise / 100
+                : matched.price?.monthlyPricePaise
+                ? matched.price.monthlyPricePaise / 100
+                : local.monthlyPrice.INR;
+              const annualInr = matched.annualPricePaise
+                ? matched.annualPricePaise / 100
+                : matched.price?.annualPricePaise
+                ? matched.price.annualPricePaise / 100
+                : local.annualPrice.INR;
+              return {
+                ...local,
+                monthlyPrice: {
+                  ...local.monthlyPrice,
+                  INR: monthlyInr,
+                },
+                annualPrice: {
+                  ...local.annualPrice,
+                  INR: annualInr,
+                },
+              };
+            })
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const filteredPlans = plans.filter((p) => p.category === category || p.id === 'free');
 
   const formatPrice = (plan: PublicPlan) => {
     const raw = billingCycle === 'annual' ? plan.annualPrice[currency] : plan.monthlyPrice[currency];

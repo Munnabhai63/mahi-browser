@@ -33,24 +33,26 @@ export default function SignupPage() {
 
       const data = await resp.json().catch(() => ({}));
       if (resp.ok && (data.token || data.user)) {
-        const token = data.token || 'demo-token';
-        localStorage.setItem('mahi_auth_token', token);
-        localStorage.setItem('mahi_access_token', token);
-        window.location.href = `/download?token=${token}`;
+        const token = data.token;
+        if (token) {
+          localStorage.setItem('mahi_auth_token', token);
+          localStorage.setItem('mahi_access_token', token);
+          window.location.href = `/download?token=${token}`;
+        } else {
+          window.location.href = `/download`;
+        }
       } else {
         setErrorMsg(data.message || data.error || 'Failed to create account. Please try another email.');
       }
     } catch {
-      // Offline fallback: redirect with trial params
-      localStorage.setItem('mahi_auth_token', 'local-trial-active');
-      window.location.href = `/download?token=local-trial-active`;
+      setErrorMsg('Network error connecting to MAHI Cloud Auth Gateway.');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleGoogleOAuth = () => {
-    window.location.href = `${BRAND.apiUrl}/api/v1/auth/google/start?redirect_uri=${encodeURIComponent(
+    window.location.href = `${BRAND.apiUrl}/api/v1/auth/google/start?returnUrl=${encodeURIComponent(
       `${BRAND.website}/download`
     )}`;
   };

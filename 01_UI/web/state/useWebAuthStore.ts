@@ -64,6 +64,67 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
       });
     });
 
+    // 1. Hydrate token from URL query string (?token= or ?accessToken=) when redirected from login
+    if (typeof window !== 'undefined') {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlToken = urlParams.get('token') || urlParams.get('accessToken');
+        if (urlToken) {
+          // Clean the query string without reloading the page
+          const cleanUrl = window.location.pathname + (window.location.hash || '');
+          window.history.replaceState({}, document.title, cleanUrl);
+
+          let decodedUser: WebUser = {
+            id: 'hydrated',
+            email: '',
+            name: 'User',
+            role: 'user',
+            planId: 'free',
+            profileQuota: 15,
+          };
+          try {
+            const parts = urlToken.split('.');
+            if (parts.length === 3) {
+              const base64Url = parts[1];
+              const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+              const jsonPayload = decodeURIComponent(
+                atob(base64)
+                  .split('')
+                  .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+                  .join('')
+              );
+              const payload = JSON.parse(jsonPayload);
+              decodedUser = {
+                id: payload.userId || payload.id || 'hydrated',
+                email: payload.email || '',
+                name: payload.name || (payload.email ? payload.email.split('@')[0] : 'User'),
+                role: payload.role || 'user',
+                planId: payload.planId || 'free',
+                profileQuota:
+                  payload.profileQuota ??
+                  (payload.planId && payload.planId !== 'plan_free' && payload.planId !== 'free' ? 100 : 15),
+              };
+            }
+          } catch {}
+
+          set({
+            accessToken: urlToken,
+            user: decodedUser,
+            isAuthenticated: true,
+            isLoading: false,
+          });
+
+          if (window.sessionStorage) {
+            window.sessionStorage.setItem(
+              STORAGE_KEY,
+              JSON.stringify({ accessToken: urlToken, user: decodedUser })
+            );
+          }
+          return;
+        }
+      } catch {}
+    }
+
     if (typeof window !== 'undefined' && window.sessionStorage) {
       try {
         const saved = window.sessionStorage.getItem(STORAGE_KEY);

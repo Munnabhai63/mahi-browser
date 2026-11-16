@@ -174,6 +174,7 @@ describe('Phase 5: Next.js 14 Landing, Docs & Blog Portal + Web Cloud Console Pr
       expect(landingResource.filter).toContain('!node_modules/**');
       expect(landingResource.filter).toContain('!.next/**');
       expect(landingResource.filter).toContain('!out/**');
+      expect(landingResource.filter).toContain('!public/**');
     });
   });
 

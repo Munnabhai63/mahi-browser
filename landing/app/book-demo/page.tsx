@@ -19,23 +19,27 @@ export default function BookDemoPage() {
     setIsLoading(true);
 
     try {
-      await fetch(`${BRAND.apiUrl}/api/v1/commercial/leads`, {
+      const resp = await fetch(`${BRAND.apiUrl}/api/v1/commercial/demo-request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name,
+          fullName: name,
           email,
-          company,
+          companyName: company,
           teamSize,
           useCase,
-          phone,
-          source: 'enterprise_demo_page',
-          timestamp: new Date().toISOString(),
+          contactMethod: phone,
+          message: `Fleet Size: ${teamSize} | Primary Use Case: ${useCase}`,
         }),
       });
-      setSubmitted(true);
+      if (resp.ok) {
+        setSubmitted(true);
+      } else {
+        const data = await resp.json().catch(() => ({}));
+        alert(data.error || 'Failed to submit demo request. Please verify your details.');
+      }
     } catch {
-      setSubmitted(true); // graceful offline UX
+      alert('Network error connecting to MAHI Enterprise API.');
     } finally {
       setIsLoading(false);
     }

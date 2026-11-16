@@ -158,12 +158,20 @@
         "!node_modules/**",
         "!.next/**",
         "!out/**",
+        "!public/**",
         "!src/**",
         "!content/**",
         "!app/**",
         "!components/**",
         "!lib/**",
-        "!scripts/**"
+        "!scripts/**",
+        "!package.json",
+        "!package-lock.json",
+        "!tsconfig.json",
+        "!next.config.mjs",
+        "!tailwind.config.ts",
+        "!postcss.config.mjs",
+        "!next-env.d.ts"
       ]
     }
   ]

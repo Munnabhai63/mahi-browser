@@ -95,7 +95,8 @@ export default function RootLayout({
     },
     sameAs: [
       'https://github.com/Munnabhai63/mahi-browser',
-      'https://t.me/mahibrowser',
+      'https://x.com/MunaBhai63',
+      'https://linkedin.com/in/mahipal-choudhary-153ba83b1',
     ],
   };
 

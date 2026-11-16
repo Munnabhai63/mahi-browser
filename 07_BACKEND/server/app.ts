@@ -225,7 +225,22 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
         const nextFilePath = path.join(getLandingBaseDir(), 'out', '_next', safePath);
         if (fs.existsSync(nextFilePath) && fs.statSync(nextFilePath).isFile()) {
           const ext = path.extname(nextFilePath).toLowerCase();
-          const mime = ext === '.css' ? 'text/css; charset=utf-8' : ext === '.js' ? 'application/javascript; charset=utf-8' : 'application/octet-stream';
+          const nextMimeMap: Record<string, string> = {
+            '.css': 'text/css; charset=utf-8',
+            '.js': 'application/javascript; charset=utf-8',
+            '.json': 'application/json; charset=utf-8',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.svg': 'image/svg+xml',
+            '.ico': 'image/x-icon',
+            '.woff': 'font/woff',
+            '.woff2': 'font/woff2',
+            '.ttf': 'font/ttf',
+            '.txt': 'text/plain; charset=utf-8',
+            '.map': 'application/json',
+          };
+          const mime = nextMimeMap[ext] || 'application/octet-stream';
           res.writeHead(200, {
             'Content-Type': mime,
             'Cache-Control': 'public, max-age=31536000, immutable',
@@ -249,6 +264,42 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
         if (fs.existsSync(robotsPath)) {
           res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', ...getCorsHeaders(req) });
           return res.end(fs.readFileSync(robotsPath, 'utf8'));
+        }
+      }
+
+      // Public /privacy Page (Next.js export fallback)
+      if (cleanPath === '/privacy' && method === 'GET') {
+        const outPrivacy = path.join(getLandingBaseDir(), 'out', 'privacy.html');
+        if (fs.existsSync(outPrivacy)) {
+          return sendHTML(res, 200, fs.readFileSync(outPrivacy, 'utf8'));
+        }
+        const legacyPrivacy = path.join(getLandingBaseDir(), 'privacy.html');
+        if (fs.existsSync(legacyPrivacy)) {
+          return sendHTML(res, 200, fs.readFileSync(legacyPrivacy, 'utf8'));
+        }
+      }
+
+      // Public /terms Page (Next.js export fallback)
+      if (cleanPath === '/terms' && method === 'GET') {
+        const outTerms = path.join(getLandingBaseDir(), 'out', 'terms.html');
+        if (fs.existsSync(outTerms)) {
+          return sendHTML(res, 200, fs.readFileSync(outTerms, 'utf8'));
+        }
+        const legacyTerms = path.join(getLandingBaseDir(), 'terms.html');
+        if (fs.existsSync(legacyTerms)) {
+          return sendHTML(res, 200, fs.readFileSync(legacyTerms, 'utf8'));
+        }
+      }
+
+      // Public /aup Page (Next.js export fallback)
+      if (cleanPath === '/aup' && method === 'GET') {
+        const outAup = path.join(getLandingBaseDir(), 'out', 'aup.html');
+        if (fs.existsSync(outAup)) {
+          return sendHTML(res, 200, fs.readFileSync(outAup, 'utf8'));
+        }
+        const legacyAup = path.join(getLandingBaseDir(), 'aup.html');
+        if (fs.existsSync(legacyAup)) {
+          return sendHTML(res, 200, fs.readFileSync(legacyAup, 'utf8'));
         }
       }
 

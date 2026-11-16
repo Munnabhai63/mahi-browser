@@ -69,7 +69,7 @@ const DOWNLOAD_OPTIONS: DownloadOption[] = [
     os: 'linux',
     arch: 'x64',
     fileExt: '.deb',
-    downloadUrl: '/releases/mahi-browser_1.1.9_amd64.deb',
+    downloadUrl: '/releases/MAHI-Browser-1.1.9-Linux-x64.deb',
     notes: 'DPKG package with systemd sandbox integration and apt compatibility',
   },
 ];
@@ -122,7 +122,7 @@ export default function DownloadButtons() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          event: 'download_click',
+          eventName: 'download_click',
           optionId: opt.id,
           os: opt.os,
           arch: opt.arch,
@@ -153,17 +153,18 @@ export default function DownloadButtons() {
 
       if (resp.ok) {
         const data = await resp.json();
-        const deepLink = data.deepLinkUrl || `mahi://auth?handoff=${data.handoffToken || authToken}`;
-        setHandoffStatus('Opening MAHI Desktop Application...');
-        window.location.href = deepLink;
+        const deepLink = data.protocolUrl || (data.handoffCode ? `mahi://auth?handoff=${encodeURIComponent(data.handoffCode)}` : '');
+        if (deepLink) {
+          setHandoffStatus('Opening MAHI Desktop Application...');
+          window.location.href = deepLink;
+        } else {
+          setHandoffStatus('Could not generate desktop handoff link.');
+        }
       } else {
-        // Fallback deep link
-        window.location.href = `mahi://auth?handoff=${authToken}`;
-        setHandoffStatus('Dispatched handoff to MAHI Desktop.');
+        setHandoffStatus('Failed to initiate desktop handoff session.');
       }
     } catch {
-      window.location.href = `mahi://auth?handoff=${authToken}`;
-      setHandoffStatus('Dispatched handoff to MAHI Desktop.');
+      setHandoffStatus('Error connecting to authentication service.');
     } finally {
       setIsHandoffLoading(false);
     }

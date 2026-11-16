@@ -316,26 +316,58 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
   let clientHints: any = undefined;
   if (engine !== 'camoufox') {
     if (options.seed === undefined && bayesianFp?.navigator?.userAgentData?.brands?.length) {
-      let brands = bayesianFp.navigator.userAgentData.brands.map((b: any) => {
-        let brandName = b.brand;
-        if (engine === 'edge' && brandName === 'Google Chrome') {
-          brandName = 'Microsoft Edge';
+      const isGreaseBrand = (name: string): boolean => {
+        return /not.*brand/i.test(name) || (name.includes('Not') && name.includes('Brand'));
+      };
+      const targetPrimaryBrand = engine === 'edge' ? 'Microsoft Edge' : 'Google Chrome';
+      const normalizeBrandName = (rawName: string): string => {
+        if (isGreaseBrand(rawName)) {
+          return rawName;
         }
-        if (brandName === 'Chromium' || brandName === 'Google Chrome' || brandName === 'Microsoft Edge') {
+        if (rawName === 'Chromium') {
+          return 'Chromium';
+        }
+        if (rawName === 'HeadlessChrome' || /chrome/i.test(rawName) || /edge/i.test(rawName)) {
+          return targetPrimaryBrand;
+        }
+        return rawName;
+      };
+
+      let brands = bayesianFp.navigator.userAgentData.brands.map((b: any) => {
+        const brandName = normalizeBrandName(b.brand);
+        if (brandName === 'Chromium' || brandName === targetPrimaryBrand) {
           return { brand: brandName, version: chromeMajor };
         }
         return { brand: brandName, version: b.version };
       });
+
+      if (!brands.some((b: any) => b.brand === targetPrimaryBrand)) {
+        brands.push({ brand: targetPrimaryBrand, version: chromeMajor });
+      }
+      const seenBrands = new Set<string>();
+      brands = brands.filter((b: any) => {
+        if (seenBrands.has(b.brand)) return false;
+        seenBrands.add(b.brand);
+        return true;
+      });
+
       let rawFullVersionList = bayesianFp.navigator.userAgentData.fullVersionList || brands.map((b: any) => ({ brand: b.brand, version: `${b.version}.0.0.0` }));
       let fullVersionList = rawFullVersionList.map((b: any) => {
-        let brandName = b.brand;
-        if (engine === 'edge' && brandName === 'Google Chrome') {
-          brandName = 'Microsoft Edge';
-        }
-        if (brandName === 'Chromium' || brandName === 'Google Chrome' || brandName === 'Microsoft Edge') {
+        const brandName = normalizeBrandName(b.brand);
+        if (brandName === 'Chromium' || brandName === targetPrimaryBrand) {
           return { brand: brandName, version: MANAGED_ENGINE_VERSION };
         }
         return { brand: brandName, version: b.version };
+      });
+
+      if (!fullVersionList.some((fv: any) => fv.brand === targetPrimaryBrand)) {
+        fullVersionList.push({ brand: targetPrimaryBrand, version: MANAGED_ENGINE_VERSION });
+      }
+      const seenFv = new Set<string>();
+      fullVersionList = fullVersionList.filter((b: any) => {
+        if (seenFv.has(b.brand)) return false;
+        seenFv.add(b.brand);
+        return true;
       });
       clientHints = {
         brands,
@@ -368,7 +400,12 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
         architecture: isMobile ? 'arm' : (isMacM1 ? 'arm' : 'x86'),
         model: isMobile ? 'Pixel 8' : '',
         bitness: '64',
-        fullVersionList: brands.map((b) => ({ brand: b.brand, version: `${b.version}.0.0.0` })),
+        fullVersionList: brands.map((b) => ({
+          brand: b.brand,
+          version: (b.brand === 'Chromium' || b.brand === 'Google Chrome' || b.brand === 'Microsoft Edge')
+            ? MANAGED_ENGINE_VERSION
+            : `${b.version}.0.0.0`,
+        })),
       };
     }
   }

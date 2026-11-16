@@ -38,7 +38,7 @@ export default function LoginPage() {
   };
 
   const handleGoogleOAuth = () => {
-    window.location.href = `${BRAND.apiUrl}/api/v1/auth/google/start?redirect_uri=${encodeURIComponent(
+    window.location.href = `${BRAND.apiUrl}/api/v1/auth/google/start?returnUrl=${encodeURIComponent(
       `${BRAND.website}/download`
     )}`;
   };

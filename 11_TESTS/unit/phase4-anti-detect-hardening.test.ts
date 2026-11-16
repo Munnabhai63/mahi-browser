@@ -731,6 +731,40 @@ describe('Phase 4: Anti-Detect Engine Hardening', () => {
       }
     });
 
+    it('proves HeadlessChrome never leaks in unseeded clientHints across 100 random iterations', () => {
+      const chromeMajor = MANAGED_ENGINE_VERSION.split('.')[0];
+      for (let i = 0; i < 100; i++) {
+        const engineChoice = i % 2 === 0 ? 'chrome' : 'edge';
+        const targetOs = i % 3 === 0 ? 'windows' : (i % 3 === 1 ? 'mac' : 'linux');
+        const unseeded = generateStatisticalProfileSettings({
+          os: targetOs,
+          engine: engineChoice,
+        });
+
+        expect(unseeded.fingerprint).toBeDefined();
+        const brands = unseeded.fingerprint?.clientHints?.brands || [];
+        const fullVersionList = unseeded.fingerprint?.clientHints?.fullVersionList || [];
+
+        expect(brands.length).toBeGreaterThan(0);
+        expect(brands.some((b: any) => b.brand.toLowerCase().includes('headless'))).toBe(false);
+        expect(fullVersionList.some((fv: any) => fv.brand.toLowerCase().includes('headless'))).toBe(false);
+
+        if (engineChoice === 'chrome') {
+          expect(brands.some((b: any) => b.brand === 'Google Chrome')).toBe(true);
+          const chromeBrand = brands.find((b: any) => b.brand === 'Google Chrome');
+          expect(chromeBrand?.version).toBe(chromeMajor);
+          const chromeFv = fullVersionList.find((fv: any) => fv.brand === 'Google Chrome');
+          expect(chromeFv?.version).toBe(MANAGED_ENGINE_VERSION);
+        } else {
+          expect(brands.some((b: any) => b.brand === 'Microsoft Edge')).toBe(true);
+          const edgeBrand = brands.find((b: any) => b.brand === 'Microsoft Edge');
+          expect(edgeBrand?.version).toBe(chromeMajor);
+          const edgeFv = fullVersionList.find((fv: any) => fv.brand === 'Microsoft Edge');
+          expect(edgeFv?.version).toBe(MANAGED_ENGINE_VERSION);
+        }
+      }
+    });
+
     it('verifies cookie-warmer-service propagates locale, timezoneId, and proxy for Camoufox', () => {
       const warmerSrc = fs.readFileSync(path.resolve('09_AUTOMATION/cookie-warmer-service.ts'), 'utf8');
       expect(warmerSrc).toContain('firefox.launchPersistentContext');
