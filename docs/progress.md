@@ -1,5 +1,16 @@
 # MAHI Browser — Development Progress
 
+## Step 2: Free Quota Floor Fix, Redis Auth, Container Limits & Admin Edge Protection
+- **Branch:** `feature/v2-enterprise-anti-detect` (synced to `main` at `1ea646d`)
+- **Status:** COMPLETED & 100% VERIFIED LIVE ON VPS
+- **What is Built & Hardened:**
+  1. **Free-Tier Cloud Quota Floor:** Updated `07_BACKEND/services/cloud-profile-service.ts` so `maxProfiles = Math.max(localMax, pgQuota) || 10;`, ensuring free plan users (`profileLimit: 1`) are strictly limited to `1` profile, while paid users honor `pgQuota` (`50`, `100`, etc.) and unconfigured users fall back to `10`.
+  2. **Container Resource Hardening (`docker-compose.production.yml`):** Imposed strict memory/CPU bounds to protect neighboring VPS tenants (`mahibrowser_gateway`: `1024m` / `1.5` CPUs, `mahibrowser_redis`: `256m` / `0.5` CPUs).
+  3. **Redis Auth & Lock Protection:** Configured `mahibrowser_redis` with `--maxmemory 200mb --maxmemory-policy noeviction --requirepass "${REDIS_PASSWORD}"`, preventing eviction of active profile locks, and updated `REDIS_URL` in VPS `.env`.
+  4. **PostgreSQL Connection Pool Limit:** Appended `&connection_limit=10` to `DATABASE_URL` in VPS `.env` for Supabase Session Pooler stability.
+  5. **Admin Edge Protection (`admin.mahibrowser.com`):** Configured HTTP Basic Auth (`auth_basic "MAHI Restricted Admin"; auth_basic_user_file /etc/nginx/.htpasswd_mahi_admin;`) at Nginx edge. Unauthenticated requests receive HTTP 401 Unauthorized with WWW-Authenticate header.
+  6. **Automated SQLite Volume Backups:** Installed daily cron at 02:00 AM UTC (`/etc/cron.d/mahibrowser_backup`) backing up `/var/lib/mahibrowser` to `/root/mahi_backups/` with 14-day retention.
+
 ## Step 1 Remediation: Google OAuth -> Supabase PostgreSQL Sync & Security Hardening
 - **Branch:** `feature/v2-enterprise-anti-detect` (synced to `main` at `2abc834`)
 - **Status:** COMPLETED & 100% VERIFIED
