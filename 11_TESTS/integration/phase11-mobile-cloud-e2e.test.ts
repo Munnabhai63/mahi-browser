@@ -11,7 +11,7 @@ import {
   workerProfileLoader,
 } from '../../07_BACKEND/cloud-browser/index.js';
 
-describe('Phase 11 — Mobile Cloud Companion E2E Suite', () => {
+describe.skipIf(!process.env.MAHI_E2E)('Phase 11 — Mobile Cloud Companion E2E Suite', () => {
   const testUserId = `user_mob_${Date.now()}`;
   const testDeviceId = `android_pixel8_${Date.now()}`;
   const testProfileId = `prof_mob_e2e_${Date.now()}`;

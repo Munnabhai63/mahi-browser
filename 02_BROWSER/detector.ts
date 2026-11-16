@@ -158,6 +158,40 @@ export function getCamoufoxExecutablePath(): string | null {
 
   const platform = os.platform();
   const home = os.homedir();
+  const enginesDir = getEnginesBaseDir();
+
+  // 0. Check provisioned marker file in engines/camoufox/mahi-camoufox.json
+  const markerPath = path.join(enginesDir, 'camoufox', 'mahi-camoufox.json');
+  if (fs.existsSync(markerPath)) {
+    try {
+      const marker = JSON.parse(fs.readFileSync(markerPath, 'utf8'));
+      if (marker && marker.executablePath && fs.existsSync(marker.executablePath)) {
+        const stat = fs.statSync(marker.executablePath);
+        if (stat.size > 10 * 1024 * 1024) {
+          return marker.executablePath;
+        }
+      }
+    } catch {}
+  }
+
+  // 0b. Glob check inside engines/camoufox for any camoufox* binary
+  const camoufoxEnginesDir = path.join(enginesDir, 'camoufox');
+  if (fs.existsSync(camoufoxEnginesDir)) {
+    try {
+      const files = fs.readdirSync(camoufoxEnginesDir);
+      for (const f of files) {
+        const full = path.join(camoufoxEnginesDir, f);
+        const lower = f.toLowerCase();
+        if (lower.startsWith('camoufox') && (platform === 'win32' ? lower.endsWith('.exe') : true)) {
+          const stat = fs.statSync(full);
+          if (stat.isFile() && stat.size > 10 * 1024 * 1024) {
+            return full;
+          }
+        }
+      }
+    } catch {}
+  }
+
   const exeName = platform === 'win32' ? 'camoufox.exe' : 'camoufox';
 
   // 1. Check ~/.mahi/cores/camoufox*

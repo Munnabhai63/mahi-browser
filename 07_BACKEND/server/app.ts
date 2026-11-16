@@ -189,11 +189,17 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
         }
       }
 
-      // Static assets from landing/assets
+      // Static assets from landing/public/assets, landing/out/assets or landing/assets
       if (cleanPath.startsWith('/assets/') && method === 'GET') {
         const relPath = cleanPath.substring(8);
         const safePath = path.normalize(relPath).replace(/^(\.\.[\/\\])+/, '');
-        const assetFilePath = path.join(getLandingBaseDir(), 'assets', safePath);
+        let assetFilePath = path.join(getLandingBaseDir(), 'out', 'assets', safePath);
+        if (!fs.existsSync(assetFilePath)) {
+          assetFilePath = path.join(getLandingBaseDir(), 'public', 'assets', safePath);
+        }
+        if (!fs.existsSync(assetFilePath)) {
+          assetFilePath = path.join(getLandingBaseDir(), 'assets', safePath);
+        }
         if (fs.existsSync(assetFilePath) && fs.statSync(assetFilePath).isFile()) {
           const ext = path.extname(assetFilePath).toLowerCase();
           const mimeMap: Record<string, string> = {

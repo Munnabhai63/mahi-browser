@@ -24,12 +24,14 @@ MASTER_SRC = r'13_ASSETS/brand/mahi-browser-logo-master.png'
 BRAND_DIR = r'13_ASSETS/brand'
 RESOURCES_DIR = r'13_ASSETS/resources'
 LANDING_IMG_DIR = r'landing/assets/img'
+LANDING_PUBLIC_IMG_DIR = r'landing/public/assets/img'
 ANDROID_RES_DIR = r'android/app/src/main/res'
 
 def ensure_dirs():
     os.makedirs(BRAND_DIR, exist_ok=True)
     os.makedirs(RESOURCES_DIR, exist_ok=True)
     os.makedirs(LANDING_IMG_DIR, exist_ok=True)
+    os.makedirs(LANDING_PUBLIC_IMG_DIR, exist_ok=True)
     for folder in ['mipmap-mdpi', 'mipmap-hdpi', 'mipmap-xhdpi', 'mipmap-xxhdpi', 'mipmap-xxxhdpi', 'drawable']:
         os.makedirs(os.path.join(ANDROID_RES_DIR, folder), exist_ok=True)
 
@@ -268,9 +270,11 @@ def main():
     favicon_ico_path = os.path.join(BRAND_DIR, 'favicon.ico')
     root_favicon_path = 'favicon.ico'
     landing_favicon_path = os.path.join(LANDING_IMG_DIR, 'favicon.ico')
+    landing_pub_fav_path = os.path.join(LANDING_PUBLIC_IMG_DIR, 'favicon.ico')
     app_icon_512.save(favicon_ico_path, format='ICO', sizes=[(16, 16), (32, 32), (48, 48)])
     app_icon_512.save(root_favicon_path, format='ICO', sizes=[(16, 16), (32, 32), (48, 48)])
     app_icon_512.save(landing_favicon_path, format='ICO', sizes=[(16, 16), (32, 32), (48, 48)])
+    app_icon_512.save(landing_pub_fav_path, format='ICO', sizes=[(16, 16), (32, 32), (48, 48)])
 
     # PNG favicons
     for size, name in [(16, 'favicon-16x16.png'), (32, 'favicon-32x32.png'), (180, 'apple-touch-icon.png')]:
@@ -283,6 +287,11 @@ def main():
     full_logo_trans.save(landing_logo_path, 'PNG')
     landing_mark_path = os.path.join(LANDING_IMG_DIR, 'mahi-browser-mark.png')
     dragon_mark_trans.save(landing_mark_path, 'PNG')
+
+    landing_pub_logo = os.path.join(LANDING_PUBLIC_IMG_DIR, 'mahi-browser-logo.png')
+    full_logo_trans.save(landing_pub_logo, 'PNG')
+    landing_pub_mark = os.path.join(LANDING_PUBLIC_IMG_DIR, 'mahi-browser-mark.png')
+    dragon_mark_trans.save(landing_pub_mark, 'PNG')
     print('Saved web favicons and landing logos.')
 
     # 9. Android mipmap resources

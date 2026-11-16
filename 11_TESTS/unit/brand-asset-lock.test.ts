@@ -48,7 +48,9 @@ describe('Official Brand Asset Lock & Non-Draggable Verification Suite', () => {
 
   describe('2. Aspect Ratio and Exact Color Preservation (No CSS Filters)', () => {
     it('verifies no CSS filters recolor or modify brand logo identity', () => {
-      const stylesPath = path.resolve(root, 'landing/assets/css/styles.css');
+      const stylesPath = fs.existsSync(path.resolve(root, 'landing/public/assets/css/styles.css'))
+        ? path.resolve(root, 'landing/public/assets/css/styles.css')
+        : path.resolve(root, 'landing/assets/css/styles.css');
       const css = fs.readFileSync(stylesPath, 'utf8');
 
       // Check brand logo selectors do not apply hue-rotate, invert, sepia, or color filters
@@ -63,7 +65,9 @@ describe('Official Brand Asset Lock & Non-Draggable Verification Suite', () => {
     });
 
     it('verifies footer brand image preserves aspect ratio and contains no filter', () => {
-      const stylesPath = path.resolve(root, 'landing/assets/css/styles.css');
+      const stylesPath = fs.existsSync(path.resolve(root, 'landing/public/assets/css/styles.css'))
+        ? path.resolve(root, 'landing/public/assets/css/styles.css')
+        : path.resolve(root, 'landing/assets/css/styles.css');
       const css = fs.readFileSync(stylesPath, 'utf8');
 
       const footerMatch = css.match(/\.footer-brand-logo-img\s*\{([^}]+)\}/);
@@ -77,7 +81,9 @@ describe('Official Brand Asset Lock & Non-Draggable Verification Suite', () => {
 
   describe('3. Non-Draggable Product Branding Protection', () => {
     it('verifies CSS rules prevent native dragging and text selection on brand logos', () => {
-      const stylesPath = path.resolve(root, 'landing/assets/css/styles.css');
+      const stylesPath = fs.existsSync(path.resolve(root, 'landing/public/assets/css/styles.css'))
+        ? path.resolve(root, 'landing/public/assets/css/styles.css')
+        : path.resolve(root, 'landing/assets/css/styles.css');
       const css = fs.readFileSync(stylesPath, 'utf8');
 
       expect(css).toContain('-webkit-user-drag: none');
@@ -111,7 +117,9 @@ describe('Official Brand Asset Lock & Non-Draggable Verification Suite', () => {
     });
 
     it('verifies landing main.js attaches dragstart preventDefault listeners to brand logos', () => {
-      const jsPath = path.resolve(root, 'landing/assets/js/main.js');
+      const jsPath = fs.existsSync(path.resolve(root, 'landing/public/assets/js/main.js'))
+        ? path.resolve(root, 'landing/public/assets/js/main.js')
+        : path.resolve(root, 'landing/assets/js/main.js');
       const js = fs.readFileSync(jsPath, 'utf8');
 
       expect(js).toContain('initBrandDragLock');
@@ -129,14 +137,18 @@ describe('Official Brand Asset Lock & Non-Draggable Verification Suite', () => {
 
   describe('4. Legacy Green M Elimination', () => {
     it('confirms the legacy 11,477-byte green M icon is not in landing/assets/img/logo.png', () => {
-      const logoPath = path.resolve(root, 'landing/assets/img/logo.png');
+      const logoPath = fs.existsSync(path.resolve(root, 'landing/public/assets/img/logo.png'))
+        ? path.resolve(root, 'landing/public/assets/img/logo.png')
+        : path.resolve(root, 'landing/assets/img/logo.png');
       const stat = fs.statSync(logoPath);
       expect(stat.size).not.toBe(11477);
       expect(stat.size).toBe(735223); // Exact size of ASSET_B (Red Dragon Mark)
     });
 
     it('confirms the legacy 21,954-byte favicon is not in landing/assets/img/favicon.ico', () => {
-      const favPath = path.resolve(root, 'landing/assets/img/favicon.ico');
+      const favPath = fs.existsSync(path.resolve(root, 'landing/public/assets/img/favicon.ico'))
+        ? path.resolve(root, 'landing/public/assets/img/favicon.ico')
+        : path.resolve(root, 'landing/assets/img/favicon.ico');
       const stat = fs.statSync(favPath);
       expect(stat.size).not.toBe(21954);
     });

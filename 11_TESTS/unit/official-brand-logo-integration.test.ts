@@ -84,12 +84,16 @@ describe('Official MAHI Browser Brand Logo Integration Suite', () => {
       expect(fs.existsSync(path.resolve(root, 'favicon.ico'))).toBe(true);
       expect(fs.existsSync(path.resolve(root, 'public/favicon.ico'))).toBe(true);
       expect(fs.existsSync(path.resolve(root, 'public/brand/mahi-browser-mark.png'))).toBe(true);
-      expect(fs.existsSync(path.resolve(root, 'landing/assets/img/favicon.ico'))).toBe(true);
-      expect(fs.existsSync(path.resolve(root, 'landing/assets/img/logo.png'))).toBe(true);
+      const favExists = fs.existsSync(path.resolve(root, 'landing/public/assets/img/favicon.ico')) || fs.existsSync(path.resolve(root, 'landing/assets/img/favicon.ico'));
+      const logoExists = fs.existsSync(path.resolve(root, 'landing/public/assets/img/logo.png')) || fs.existsSync(path.resolve(root, 'landing/assets/img/logo.png'));
+      expect(favExists).toBe(true);
+      expect(logoExists).toBe(true);
     });
 
     it('verifies landing logo.png is replaced with official brand mark', () => {
-      const landingLogoPath = path.resolve(root, 'landing/assets/img/logo.png');
+      const landingLogoPath = fs.existsSync(path.resolve(root, 'landing/public/assets/img/logo.png'))
+        ? path.resolve(root, 'landing/public/assets/img/logo.png')
+        : path.resolve(root, 'landing/assets/img/logo.png');
       const stat = fs.statSync(landingLogoPath);
       expect(stat.size).toBeGreaterThan(5_000);
     });

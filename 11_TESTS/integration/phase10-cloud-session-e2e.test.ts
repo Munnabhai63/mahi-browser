@@ -17,7 +17,7 @@ import {
 import { getDatabase, initSqlEngine } from '../../06_DATABASE/connection.js';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 
-describe('Phase 10: Real Cloud Browser Worker & Interactive Session E2E Suite', () => {
+describe.skipIf(!process.env.MAHI_E2E)('Phase 10: Real Cloud Browser Worker & Interactive Session E2E Suite', () => {
   const testSessionId = `e2e_cloud_session_${Date.now()}`;
   const testUserId = `user_e2e_${Date.now()}`;
   const testProfileId = `prof_e2e_${Date.now()}`;

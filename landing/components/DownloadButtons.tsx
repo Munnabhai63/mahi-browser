@@ -348,7 +348,7 @@ export default function DownloadButtons() {
           SHA-256 Checksum Integrity & Multi-Layer Stealth Verification
         </div>
         <p>
-          All MAHI Browser releases include published SHA-256 checksums for cryptographic integrity verification. Every profile features Bayesian statistical fingerprint coherence and multi-layer stealth hardening tested against modern detection suites. For offline and air-gapped environments, MAHI Browser operates completely locally using embedded SQLite storage with zero cloud dependencies.
+          All MAHI Browser releases include published SHA-256 checksums for cryptographic integrity verification. Shipped builds operate with JavaScript-layer stealth (MV3 main-world injection) and rebrowser-patches flags; native C++ engine available as an optional, separately provisioned build. For offline and air-gapped environments, MAHI Browser operates completely locally using embedded SQLite storage with zero cloud dependencies.
         </p>
       </div>
     </div>

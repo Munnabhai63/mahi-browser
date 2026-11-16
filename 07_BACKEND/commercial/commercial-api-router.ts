@@ -98,7 +98,7 @@ import {
 } from './commercial-device-service.js';
 import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import { getCentralRepository } from '../../06_DATABASE/central-repository.js';
+import { getCentralRepository, isPostgresConfigured } from '../../06_DATABASE/central-repository.js';
 import {
   paymentService,
   PaymentProviderType,
@@ -1603,46 +1603,75 @@ export async function handleCommercialApiRoutes(
     let token: string | null = null;
     let user: any = null;
 
-    // Fast memory check (handles test mocks that update in-memory session.expiresAt)
-    const memSession = webHandoffSessions.get(handoffCode);
-    if (memSession && (memSession.used || memSession.expiresAt <= now)) {
+    // Multi-replica production mode: when PostgreSQL is configured, the central DB is the
+    // single source of truth across all gateway replicas. Consume atomically via CentralRepository.
+    // If null, it was already consumed by another replica or is expired/invalid -> 403 immediately.
+    if (isPostgresConfigured()) {
       try {
         const repo = getCentralRepository();
-        await repo.consumeWebHandoffSessionAtomically(handoffCode, now);
-      } catch {}
-      webHandoffSessions.delete(handoffCode);
-      sendJSON(res, 403, { success: false, error: 'Handoff code has expired, already been used, or is invalid.' });
-      return true;
-    }
-
-    // 1. Try atomic CentralRepository consumption first (PostgreSQL / SQLite atomic)
-    try {
-      const repo = getCentralRepository();
-      const consumed = await repo.consumeWebHandoffSessionAtomically(handoffCode, now);
-      if (consumed) {
-        token = consumed.token;
-        user = consumed.user;
-        webHandoffSessions.delete(handoffCode);
-      }
-    } catch {}
-
-    // 2. Fallback or sync with in-memory map
-    if (!token) {
-      const session = webHandoffSessions.get(handoffCode);
-      if (!session || session.used || session.expiresAt <= now) {
-        if (session) {
+        const consumed = await repo.consumeWebHandoffSessionAtomically(handoffCode, now);
+        if (consumed) {
+          token = consumed.token;
+          user = consumed.user;
           webHandoffSessions.delete(handoffCode);
+        } else {
+          webHandoffSessions.delete(handoffCode);
+          sendJSON(res, 403, { success: false, error: 'Handoff code has expired, already been used, or is invalid.' });
+          return true;
         }
+      } catch (pgErr) {
+        console.error('[WEB_HANDOFF] PostgreSQL atomic consumption error:', pgErr);
         sendJSON(res, 403, { success: false, error: 'Handoff code has expired, already been used, or is invalid.' });
         return true;
       }
-      session.used = true;
-      token = session.token;
-      user = session.user;
+    } else {
+      // Single-process dev / SQLite fallback
+      // Fast memory check (handles test mocks that update in-memory session.expiresAt)
+      const memSession = webHandoffSessions.get(handoffCode);
+      if (memSession && (memSession.used || memSession.expiresAt <= now)) {
+        try {
+          const repo = getCentralRepository();
+          await repo.consumeWebHandoffSessionAtomically(handoffCode, now);
+        } catch {}
+        webHandoffSessions.delete(handoffCode);
+        sendJSON(res, 403, { success: false, error: 'Handoff code has expired, already been used, or is invalid.' });
+        return true;
+      }
+
+      // Try central repo (SQLite atomic)
+      try {
+        const repo = getCentralRepository();
+        const consumed = await repo.consumeWebHandoffSessionAtomically(handoffCode, now);
+        if (consumed) {
+          token = consumed.token;
+          user = consumed.user;
+          webHandoffSessions.delete(handoffCode);
+        }
+      } catch {}
+
+      // Fallback to in-memory map
+      if (!token) {
+        const session = webHandoffSessions.get(handoffCode);
+        if (!session || session.used || session.expiresAt <= now) {
+          if (session) {
+            webHandoffSessions.delete(handoffCode);
+          }
+          sendJSON(res, 403, { success: false, error: 'Handoff code has expired, already been used, or is invalid.' });
+          return true;
+        }
+        session.used = true;
+        token = session.token;
+        user = session.user;
+      }
+
+      webHandoffSessions.delete(handoffCode);
     }
 
-    // Always clear from in-memory map once consumed
-    webHandoffSessions.delete(handoffCode);
+    // Optional deviceId validation if present in body and session
+    if (body?.deviceId && user?.deviceId && body.deviceId !== user.deviceId) {
+      sendJSON(res, 403, { success: false, error: 'Handoff code device mismatch.' });
+      return true;
+    }
 
     sendJSON(res, 200, {
       success: true,

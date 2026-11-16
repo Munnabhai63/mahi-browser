@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import os from 'node:os';
 import https from 'node:https';
 import http from 'node:http';
 import { exec } from 'node:child_process';
@@ -322,7 +323,8 @@ export async function verifyManifestDownloadUrl(version: string = MANAGED_ENGINE
 export function downloadFileWithProgress(
   url: string,
   destinationPath: string,
-  onProgress?: (received: number, total: number) => void
+  onProgress?: (received: number, total: number) => void,
+  label?: string
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     function makeRequest(currentUrl: string, redirectCount = 0) {
@@ -347,9 +349,11 @@ export function downloadFileWithProgress(
 
           if (response.statusCode !== 200) {
             response.resume();
+            let host = 'remote server';
+            try { host = new URL(currentUrl).hostname; } catch {}
             reject(
               new Error(
-                `Failed to download engine from Google CDN: HTTP ${response.statusCode} (${response.statusMessage})`
+                `Failed to download ${label || 'engine'} from ${host}: HTTP ${response.statusCode} (${response.statusMessage})`
               )
             );
             return;
@@ -827,24 +831,56 @@ export function resolveEngineManifest(executablePath: string): MahiEngineManifes
   if (!executablePath || typeof executablePath !== 'string') return null;
 
   try {
+    let realPath = executablePath;
+    try {
+      if (fs.existsSync(executablePath)) {
+        realPath = fs.realpathSync(executablePath);
+      }
+    } catch {}
+
     const candidateDirs: string[] = [];
-    const directDir = path.dirname(executablePath);
+    const directDir = path.dirname(realPath);
     candidateDirs.push(directDir);
 
-    // macOS .app structure: /Applications/MAHI.app/Contents/MacOS/chrome -> check Contents/ and .app root
-    const norm = executablePath.replace(/\\/g, '/').toLowerCase();
-    if (norm.includes('.app/')) {
-      let cur = directDir;
-      for (let i = 0; i < 3; i++) {
-        const parent = path.dirname(cur);
-        if (parent && parent !== cur) {
-          candidateDirs.push(parent);
-          cur = parent;
-        }
+    // Parent and grandparent directories up to 3 levels up across all platforms
+    let cur = directDir;
+    for (let i = 0; i < 3; i++) {
+      const parent = path.dirname(cur);
+      if (parent && parent !== cur) {
+        candidateDirs.push(parent);
+        cur = parent;
       }
     }
 
+    // Check ~/.mahi/cores/ and ~/.mahi/engines/
+    const home = os.homedir();
+    const mahiCoresDir = path.join(home, '.mahi', 'cores');
+    if (fs.existsSync(mahiCoresDir)) {
+      candidateDirs.push(mahiCoresDir);
+      try {
+        const sub = fs.readdirSync(mahiCoresDir);
+        for (const s of sub) {
+          candidateDirs.push(path.join(mahiCoresDir, s));
+        }
+      } catch {}
+    }
+
+    const mahiEnginesDir = path.join(home, '.mahi', 'engines');
+    if (fs.existsSync(mahiEnginesDir)) {
+      candidateDirs.push(mahiEnginesDir);
+      try {
+        const sub = fs.readdirSync(mahiEnginesDir);
+        for (const s of sub) {
+          candidateDirs.push(path.join(mahiEnginesDir, s));
+        }
+      } catch {}
+    }
+
+    const visitedDirs = new Set<string>();
     for (const dir of candidateDirs) {
+      if (!dir || visitedDirs.has(dir)) continue;
+      visitedDirs.add(dir);
+
       const manifestPath = path.join(dir, 'mahi-engine.json');
       if (fs.existsSync(manifestPath)) {
         try {
@@ -867,14 +903,13 @@ export function resolveEngineManifest(executablePath: string): MahiEngineManifes
 export function hasNativeStealthEngine(executablePath: string): boolean {
   if (!executablePath || typeof executablePath !== 'string') return false;
 
-  // Stock googleapis snapshot builds (chrome-win, chrome-linux, chrome-mac) never have native C++ stealth
-  const norm = executablePath.replace(/\\/g, '/').toLowerCase();
-  if (norm.includes('/chrome-win/') || norm.includes('/chrome-linux/') || norm.includes('/chrome-mac/')) {
-    return false;
+  const manifest = resolveEngineManifest(executablePath);
+  if (manifest && manifest.nativeStealth === true) {
+    return true;
   }
 
-  const manifest = resolveEngineManifest(executablePath);
-  return Boolean(manifest && manifest.nativeStealth === true);
+  // Stock googleapis snapshot builds without manifest never have native C++ stealth
+  return false;
 }
 export { DEFAULT_MAHI_ENGINE_MANIFEST };
 export type { MahiEngineManifest };

@@ -116,29 +116,31 @@ describe('Production Unbranded Chromium Engine Suite (P0 Batch 1)', () => {
     } catch {}
   });
 
-  it('validates release/latest.yml artifact manifest integrity', () => {
-    const ymlPath = path.resolve('release', 'latest.yml');
-    expect(fs.existsSync(ymlPath)).toBe(true);
-    const content = fs.readFileSync(ymlPath, 'utf8');
-    expect(content).toMatch(/version:\s*1\.1\.[0-9]/);
-    expect(content).toMatch(/MAHI-Browser-Setup-1\.1\.[0-9]\.exe/);
-    expect(content).toContain('sha512:');
-    expect(content).toContain('size:');
-  });
+  describe.skipIf(!fs.existsSync(path.resolve('release', 'latest.yml')))('Release Artifacts Validation (Packaged builds only)', () => {
+    it('validates release/latest.yml artifact manifest integrity', () => {
+      const ymlPath = path.resolve('release', 'latest.yml');
+      expect(fs.existsSync(ymlPath)).toBe(true);
+      const content = fs.readFileSync(ymlPath, 'utf8');
+      expect(content).toMatch(/version:\s*1\.1\.[0-9]/);
+      expect(content).toMatch(/MAHI-Browser-Setup-1\.1\.[0-9]\.exe/);
+      expect(content).toContain('sha512:');
+      expect(content).toContain('size:');
+    });
 
-  it('validates release/latest.json manifest matches packaged installer hash', () => {
-    const jsonPath = path.resolve('release', 'latest.json');
-    expect(fs.existsSync(jsonPath)).toBe(true);
-    const manifest = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-    const pkg = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'));
-    expect(manifest.version).toBe(pkg.version);
-    expect(manifest.channel).toBe('STABLE');
-    expect(manifest.files.length).toBeGreaterThanOrEqual(2);
+    it('validates release/latest.json manifest matches packaged installer hash', () => {
+      const jsonPath = path.resolve('release', 'latest.json');
+      expect(fs.existsSync(jsonPath)).toBe(true);
+      const manifest = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+      const pkg = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'));
+      expect(manifest.version).toBe(pkg.version);
+      expect(manifest.channel).toBe('STABLE');
+      expect(manifest.files.length).toBeGreaterThanOrEqual(2);
 
-    const setupFile = manifest.files.find((f: any) => f.name.includes('Setup'));
-    expect(setupFile).toBeDefined();
-    expect(setupFile.size).toBeGreaterThan(200 * 1024 * 1024);
-    expect(setupFile.sha256.length).toBe(64);
+      const setupFile = manifest.files.find((f: any) => f.name.includes('Setup'));
+      expect(setupFile).toBeDefined();
+      expect(setupFile.size).toBeGreaterThan(200 * 1024 * 1024);
+      expect(setupFile.sha256.length).toBe(64);
+    });
   });
 
   it('enforces clean runtime policy without CfT or automation banners in launch arguments', async () => {

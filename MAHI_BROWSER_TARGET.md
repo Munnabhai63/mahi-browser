@@ -12,7 +12,7 @@
 
 The objective of this repository is to transform **MAHI Browser** into a **100% production-identical counterpart to GoLogin**, matching its exact technology stack, programming languages, cloud architecture, deep-link authentication, anti-detect stealth engine, and pixel-perfect UI/UX micro-interactions.
 
-Every single layer—from the public landing page, SEO documentation, and one-click Google OAuth desktop handoff to the encrypted Cloudflare R2 profile sync, distributed Redis locks, and C++ patched Chromium/Camoufox engine—must behave with commercial perfection.
+Every single layer—from the public landing page, SEO documentation, and one-click Google OAuth desktop handoff to the encrypted Cloudflare R2 profile sync, distributed Redis locks, and stealth Chromium (MV3 main-world injection + rebrowser-patches flags; native C++ engine available as an optional build) and Camoufox—must behave with commercial perfection.
 
 ```mermaid
 flowchart TD
@@ -76,7 +76,7 @@ To eliminate all discrepancies with GoLogin, each subsystem must strictly use th
 | **Central Database** | **PostgreSQL (Supabase or Hosted Postgres), Prisma** | Migration from `06_DATABASE/schema.ts` | Relational store for users, profile metadata, workspaces, and audit logs. |
 | **Session Object Storage**| **Cloudflare R2 (S3-Compatible API), AWS SDK v3** | `08_SECURITY/storage-provider.ts` | Storing compressed encrypted profile cookies/storage with zero bandwidth fees. |
 | **Concurrency Locks** | **Redis (`ioredis`), Upstash Serverless Redis** | `07_BACKEND/commercial/commercial-api-router.ts` | Distributed mutex locks preventing multi-device profile corruption. |
-| **Anti-Detect Engine** | **Chromium 138 C++ + rebrowser-patches + Camoufox** | `02_BROWSER/` & `F:\UserData\Downloads\ai-power-tools\` | Hardware, Canvas, WebGL, AudioContext, and CDP leak-free browser execution. |
+| **Anti-Detect Engine** | **Chromium 138 (MV3 Main-World JS + rebrowser flags; native C++ optional) + Camoufox** | `02_BROWSER/` & `F:\UserData\Downloads\ai-power-tools\` | Hardware, Canvas, WebGL, AudioContext, and CDP leak-free browser execution. |
 
 ---
 

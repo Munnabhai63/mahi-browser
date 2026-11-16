@@ -28,5 +28,4 @@ electron-builder-candidate.json
 landing/.next/
 landing/out/
 landing/node_modules/
-landing/public/assets
 *.tsbuildinfo

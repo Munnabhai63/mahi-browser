@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { execSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { verifyLicense, getHWID } from '../../08_SECURITY/license-service.js';
 
-describe('Offline RSA-2048 Licensing & Keygen Integration', () => {
+const keygenPath = path.resolve(process.cwd(), '../mahi-keygen/keygen.cjs');
+
+describe.skipIf(!fs.existsSync(keygenPath))('Offline RSA-2048 Licensing & Keygen Integration', () => {
   it('should generate a valid 1-year signed key for current machine HWID', () => {
     const currentHwid = getHWID();
-    const keygenPath = path.resolve(process.cwd(), '../mahi-keygen/keygen.cjs');
 
     const output = execSync(`node "${keygenPath}" "${currentHwid}" 12`).toString();
     const keyMatch = output.match(/LICENSE KEY:\r?\n(MAHI-[A-Za-z0-9+/=_-]+)/);

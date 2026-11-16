@@ -132,6 +132,10 @@ notBefore=Oct  7 01:34:46 2026 GMT
 notAfter=Jan  5 01:34:45 2027 GMT
 ```
 
+### 4.5 Stealth Architecture Classification
+- **Shipped Engine Model:** JavaScript-layer stealth (MV3 main-world injection) with rebrowser-patches command-line flags and randomized fingerprint canvas/audio/WebGL perturbations.
+- **Native C++ Engine:** Native C++ engine available as an optional, separately provisioned build via `mahi-engine.json` manifest discovery.
+
 ---
 
 ## 5. Critical Coexistence Audit (All Existing Projects)

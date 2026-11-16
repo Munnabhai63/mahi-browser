@@ -660,4 +660,39 @@ describe('Task 6: Stealth Script Injection & Anti-Detect Fidelity Suite', () => 
     expect(childWin.Object.prototype.toString.call(childWin.navigator.userAgentData)).toBe('[object NavigatorUAData]');
     expect(childWin.WebGLRenderingContext.prototype.getParameter(37445)).toContain('Google Inc.');
   });
+
+  it('guarantees patchRealm idempotency and prevents unbounded proxy growth across 50 iframes (BUG-10)', () => {
+    const parentSb = createMockBrowserContext();
+    const parentCtx = vm.createContext(parentSb);
+    vm.runInContext(stealthScriptCode, parentCtx);
+
+    // Create 50 mock iframes and repeatedly access contentWindow & contentDocument
+    const childRealms: any[] = [];
+    for (let i = 0; i < 50; i++) {
+      const childSb = createMockBrowserContext();
+      const iframeElem: any = Object.create(parentSb.HTMLIFrameElement.prototype);
+      iframeElem._contentWindow = childSb;
+      iframeElem._contentDocument = childSb.document;
+
+      // Access multiple times on the same iframe
+      const w1 = iframeElem.contentWindow;
+      const w2 = iframeElem.contentWindow;
+      const d1 = iframeElem.contentDocument;
+      expect(w1).toBe(childSb);
+      expect(w2).toBe(childSb);
+      expect(d1).toBe(childSb.document);
+      childRealms.push(childSb);
+    }
+
+    // Verify all child realms retain proper [native code] toString output
+    for (const realm of childRealms) {
+      expect(realm.navigator.webdriver).toBe(false);
+      expect(realm.Function.prototype.toString.call(realm.HTMLCanvasElement.prototype.toDataURL)).toBe(
+        'function toDataURL() { [native code] }'
+      );
+      expect(realm.Function.prototype.toString.call(realm.Date.prototype.getTimezoneOffset)).toBe(
+        'function getTimezoneOffset() { [native code] }'
+      );
+    }
+  });
 });

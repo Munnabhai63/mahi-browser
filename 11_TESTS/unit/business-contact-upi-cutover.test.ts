@@ -122,7 +122,9 @@ describe('Production Business Contact & UPI Cutover Verification', () => {
     });
 
     it('verifies the authoritative Slice QR asset exists in public and landing folders', () => {
-      const landingQrPath = path.resolve(process.cwd(), 'landing/assets/img/payments/mahi-upi-qr.png');
+      const landingQrPath = fs.existsSync(path.resolve(process.cwd(), 'landing/public/assets/img/payments/mahi-upi-qr.png'))
+        ? path.resolve(process.cwd(), 'landing/public/assets/img/payments/mahi-upi-qr.png')
+        : path.resolve(process.cwd(), 'landing/assets/img/payments/mahi-upi-qr.png');
       const publicQrPath = path.resolve(process.cwd(), 'public/brand/mahi-upi-qr.png');
       const brandAssetPath = path.resolve(process.cwd(), '13_ASSETS/brand/approved/mahi-upi-qr.png');
 

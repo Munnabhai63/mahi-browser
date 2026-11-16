@@ -50,13 +50,18 @@ if (fs.existsSync(downloadPath)) {
   console.log(`✓ Synchronized ${downloadPath} to v${version}`);
 }
 
-// 4. landing/assets/js/main.js
-const mainJsPath = path.join(rootDir, 'landing', 'assets', 'js', 'main.js');
-if (fs.existsSync(mainJsPath)) {
-  let js = fs.readFileSync(mainJsPath, 'utf8');
-  js = js.replace(/MAHI-Browser-Setup-1\.1\.[0-9]+\.exe \(v1\.1\.[0-9]+\)/g, `MAHI-Browser-Setup-${version}.exe (v${version})`);
-  fs.writeFileSync(mainJsPath, js, 'utf8');
-  console.log(`✓ Synchronized ${mainJsPath} to v${version}`);
+// 4. landing/assets/js/main.js and landing/public/assets/js/main.js
+const mainJsPaths = [
+  path.join(rootDir, 'landing', 'assets', 'js', 'main.js'),
+  path.join(rootDir, 'landing', 'public', 'assets', 'js', 'main.js'),
+];
+for (const mainJsPath of mainJsPaths) {
+  if (fs.existsSync(mainJsPath)) {
+    let js = fs.readFileSync(mainJsPath, 'utf8');
+    js = js.replace(/MAHI-Browser-Setup-1\.1\.[0-9]+\.exe \(v1\.1\.[0-9]+\)/g, `MAHI-Browser-Setup-${version}.exe (v${version})`);
+    fs.writeFileSync(mainJsPath, js, 'utf8');
+    console.log(`✓ Synchronized ${mainJsPath} to v${version}`);
+  }
 }
 
 console.log('[SYNC_LANDING] Complete.');

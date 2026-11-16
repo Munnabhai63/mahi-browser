@@ -327,6 +327,11 @@ const api = {
     ipcRenderer.on('engine:downloadProgress', handler);
     return () => ipcRenderer.removeListener('engine:downloadProgress', handler);
   },
+  onCamoufoxDownloadProgress: (callback) => {
+    const handler = (_event, status) => callback(status);
+    ipcRenderer.on('engine:camoufox:progress', handler);
+    return () => ipcRenderer.removeListener('engine:camoufox:progress', handler);
+  },
 
   // Cloud Profile Sync (GoLogin-style)
   getCloudSyncAllowed: () => ipcRenderer.invoke('sync:isAllowed'),

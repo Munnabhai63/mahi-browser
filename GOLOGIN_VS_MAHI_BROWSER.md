@@ -128,7 +128,7 @@ flowchart TD
   - Engine Launcher: [`02_BROWSER/launcher.ts`](file:///c:/Users/munaf/Desktop/mahai%20brouser/02_BROWSER/launcher.ts)
   - Native Stealth Preferences: [`02_BROWSER/stealth-native-preferences.ts`](file:///c:/Users/munaf/Desktop/mahai%20brouser/02_BROWSER/stealth-native-preferences.ts)
   - Hardware Fingerprinting: [`03_HARDWARE/`](file:///c:/Users/munaf/Desktop/mahai%20brouser/03_HARDWARE)
-  - **Status:** Custom Chromium 138 with canvas seeds, audio jitter, WebGL vendor, client rects, fonts, timezone, and WebRTC policy spoofing.
+  - **Status:** JavaScript-layer stealth (MV3 main-world injection) with canvas seeds, audio jitter, WebGL vendor, client rects, fonts, timezone, and WebRTC policy spoofing + rebrowser-patches flags; native C++ engine available as an optional, separately provisioned build.
   - **Super-Weapon Gap / Opportunity (The 9 New Skills):**
     - `rebrowser-patches` (`F:\UserData\Downloads\ai-power-tools\rebrowser-patches`): Eliminates CDP `Runtime.evaluate` leaks that flag GoLogin on Cloudflare Turnstile.
     - `camoufox` (`F:\UserData\Downloads\ai-power-tools\camoufox`): Gives MAHI a C++ Firefox engine that GoLogin does not have!

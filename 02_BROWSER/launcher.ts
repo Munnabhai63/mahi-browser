@@ -393,11 +393,28 @@ export function ensureProfileStealthExtension(
   })(${JSON.stringify(profileId + '_' + profileName)});
 
   // Closure-scoped native registry for Function.prototype.toString spoofing (never leaks to window)
-  var hookedProxies = [];
+  var hookedProxies = typeof Map !== 'undefined' ? new Map() : null;
+  var hookedProxiesList = hookedProxies ? null : [];
   function registerNative(fn, name) {
     if (typeof fn === 'function') {
-      hookedProxies.push({ fn: fn, name: name || fn.name || '' });
+      var n = name || fn.name || '';
+      if (hookedProxies) {
+        hookedProxies.set(fn, n);
+      } else if (hookedProxiesList) {
+        hookedProxiesList.push({ fn: fn, name: n });
+      }
     }
+  }
+  function lookupNativeName(fn) {
+    if (hookedProxies) {
+      return hookedProxies.get(fn);
+    }
+    if (hookedProxiesList) {
+      for (var i = 0; i < hookedProxiesList.length; i++) {
+        if (fn === hookedProxiesList[i].fn) return hookedProxiesList[i].name;
+      }
+    }
+    return void 0;
   }
 
   // Universal Function.prototype.toString Masking
@@ -408,17 +425,15 @@ export function ensureProfileStealthExtension(
         if (thisArg === origToString || thisArg === proxyToString) {
           return 'function toString() { [native code] }';
         }
-        for (var i = 0; i < hookedProxies.length; i++) {
-          if (thisArg === hookedProxies[i].fn) {
-            return 'function ' + hookedProxies[i].name + '() { [native code] }';
-          }
+        var foundName = lookupNativeName(thisArg);
+        if (foundName !== undefined) {
+          return 'function ' + foundName + '() { [native code] }';
         }
         return target.apply(thisArg, argumentsList);
       }
     });
     Function.prototype.toString = proxyToString;
     registerNative(proxyToString, 'toString');
-    registerNative(origToString, 'toString');
   } catch(e) {}
 
   // Shared Stealth Configuration & Perturbation Primitives
@@ -492,8 +507,11 @@ export function ensureProfileStealthExtension(
   // Synchronous Cross-Realm <iframe> Hooking & Comprehensive Stealth Propagation
   try {
     var patchedWindows = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
-    var patchRealm = function(targetWin) {
+    var patchedFramesRealms = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+    var patchRealm = function(targetWin, depth) {
       if (!targetWin || (patchedWindows && patchedWindows.has(targetWin))) return;
+      if (depth && depth > 1) return;
+      var nextDepth = (depth || 0) + 1;
       try {
         if (patchedWindows) patchedWindows.add(targetWin);
 
@@ -505,17 +523,15 @@ export function ensureProfileStealthExtension(
               if (thisArg === frameOrigToString || thisArg === frameProxyToString) {
                 return 'function toString() { [native code] }';
               }
-              for (var i = 0; i < hookedProxies.length; i++) {
-                if (thisArg === hookedProxies[i].fn) {
-                  return 'function ' + hookedProxies[i].name + '() { [native code] }';
-                }
+              var found = lookupNativeName(thisArg);
+              if (found !== undefined) {
+                return 'function ' + found + '() { [native code] }';
               }
               return target.apply(thisArg, argumentsList);
             }
           });
           targetWin.Function.prototype.toString = frameProxyToString;
           registerNative(frameProxyToString, 'toString');
-          registerNative(frameOrigToString, 'toString');
         }
 
         // 2. Navigator.prototype spoofing in targetWin
@@ -547,7 +563,6 @@ export function ensureProfileStealthExtension(
                 configurable: desc ? desc.configurable : true
               });
               registerNative(proxy, 'get ' + prop);
-              if (desc && typeof desc.get === 'function') registerNative(desc.get, 'get ' + prop);
             } catch(e) {}
           }
           spoofTargetNav('webdriver', false);
@@ -790,7 +805,36 @@ export function ensureProfileStealthExtension(
             });
             targetWin.Date.prototype.getTimezoneOffset = proxyDateTz;
             registerNative(proxyDateTz, 'getTimezoneOffset');
-            registerNative(origDateTz, 'getTimezoneOffset');
+          } catch(e) {}
+        }
+
+        // 5. frames in targetWin
+        if (targetWin && (!patchedFramesRealms || !patchedFramesRealms.has(targetWin))) {
+          if (patchedFramesRealms) patchedFramesRealms.add(targetWin);
+          try {
+            var origTWinFramesDesc = Object.getOwnPropertyDescriptor(targetWin, 'frames');
+            if (origTWinFramesDesc && origTWinFramesDesc.get) {
+              var origGetTWinFrames = origTWinFramesDesc.get;
+              var proxyGetTWinFrames = new Proxy(origGetTWinFrames, {
+                apply: function(target, thisArg, args) {
+                  var framesObj = target.apply(thisArg, args);
+                  try {
+                    if (framesObj && framesObj.length) {
+                      for (var fi = 0; fi < framesObj.length; fi++) {
+                        try { patchRealm(framesObj[fi], nextDepth); } catch(e) {}
+                      }
+                    }
+                  } catch(e) {}
+                  return framesObj;
+                }
+              });
+              Object.defineProperty(targetWin, 'frames', {
+                get: proxyGetTWinFrames,
+                enumerable: origTWinFramesDesc.enumerable,
+                configurable: origTWinFramesDesc.configurable
+              });
+              registerNative(proxyGetTWinFrames, 'get frames');
+            }
           } catch(e) {}
         }
       } catch(e) {}
@@ -803,7 +847,7 @@ export function ensureProfileStealthExtension(
         var proxyGetCW = new Proxy(origGetCW, {
           apply: function(target, thisArg, args) {
             var win = target.apply(thisArg, args);
-            if (win) patchRealm(win);
+            if (win) patchRealm(win, 1);
             return win;
           }
         });
@@ -813,7 +857,6 @@ export function ensureProfileStealthExtension(
           configurable: origContentWindowDesc.configurable
         });
         registerNative(proxyGetCW, 'get contentWindow');
-        registerNative(origGetCW, 'get contentWindow');
       }
 
       var origContentDocDesc = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'contentDocument');
@@ -822,7 +865,7 @@ export function ensureProfileStealthExtension(
         var proxyGetCD = new Proxy(origGetCD, {
           apply: function(target, thisArg, args) {
             var doc = target.apply(thisArg, args);
-            if (doc && doc.defaultView) patchRealm(doc.defaultView);
+            if (doc && doc.defaultView) patchRealm(doc.defaultView, 1);
             return doc;
           }
         });
@@ -832,11 +875,11 @@ export function ensureProfileStealthExtension(
           configurable: origContentDocDesc.configurable
         });
         registerNative(proxyGetCD, 'get contentDocument');
-        registerNative(origGetCD, 'get contentDocument');
       }
     }
 
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && (!patchedFramesRealms || !patchedFramesRealms.has(window))) {
+      if (patchedFramesRealms) patchedFramesRealms.add(window);
       var origFramesDesc = Object.getOwnPropertyDescriptor(window, 'frames');
       if (origFramesDesc && origFramesDesc.get) {
         var origGetFrames = origFramesDesc.get;
@@ -846,7 +889,7 @@ export function ensureProfileStealthExtension(
             try {
               if (framesObj && framesObj.length) {
                 for (var fi = 0; fi < framesObj.length; fi++) {
-                  try { patchRealm(framesObj[fi]); } catch(e) {}
+                  try { patchRealm(framesObj[fi], 1); } catch(e) {}
                 }
               }
             } catch(e) {}
@@ -859,7 +902,6 @@ export function ensureProfileStealthExtension(
           configurable: origFramesDesc.configurable
         });
         registerNative(proxyGetFrames, 'get frames');
-        registerNative(origGetFrames, 'get frames');
       }
     }
   } catch(e) {}
@@ -3383,7 +3425,12 @@ export async function launchCamoufoxProfile(
       executablePath = resolveExecutablePath('camoufox', profile.customExecutablePath);
     } catch {
       debugLog(`[Camoufox Launcher] Camoufox not found locally, provisioning on-demand...`);
-      executablePath = await ensureCamoufoxInstalled();
+      executablePath = await ensureCamoufoxInstalled({
+        onProgress: (receivedBytes, totalBytes) => {
+          const pct = totalBytes > 0 ? Math.round((receivedBytes / totalBytes) * 100) : 0;
+          debugLog(`[Camoufox Provisioner] Downloading: ${receivedBytes}/${totalBytes} (${pct}%)`);
+        }
+      });
     }
     debugLog(`[Camoufox Launcher] Executable resolved: "${executablePath}"`);
 

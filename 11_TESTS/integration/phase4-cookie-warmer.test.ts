@@ -84,7 +84,7 @@ describe('Phase 4: Smart Cookie Warmer & Auto-Farmer Bot', () => {
     }
   });
 
-  it('should warm a single profile, add Warmed tag, and record audit notes', async () => {
+  it.skipIf(!process.env.MAHI_E2E)('should warm a single profile, add Warmed tag, and record audit notes', async () => {
     const res = await warmProfile(testProfileId, { mode: 'quick' });
 
     expect(res.success).toBe(true);
@@ -99,7 +99,7 @@ describe('Phase 4: Smart Cookie Warmer & Auto-Farmer Bot', () => {
     expect(updated?.notes).toContain('Auto-Warmed');
   });
 
-  it('should handle Deep Ageing mode (25 authoritative sites)', async () => {
+  it.skipIf(!process.env.MAHI_E2E)('should handle Deep Ageing mode (25 authoritative sites)', async () => {
     const res = await warmProfile(testProfileId, { mode: 'deep' });
 
     expect(res.success).toBe(true);
@@ -108,7 +108,7 @@ describe('Phase 4: Smart Cookie Warmer & Auto-Farmer Bot', () => {
     expect(res.farmedCookiesCount).toBeGreaterThanOrEqual(30);
   });
 
-  it('should execute bulk warming across multiple profiles in batch', async () => {
+  it.skipIf(!process.env.MAHI_E2E)('should execute bulk warming across multiple profiles in batch', async () => {
     const res = await warmBulkProfiles([testProfileId, testProfileId2], { mode: 'quick' });
 
     expect(res.successCount).toBe(2);

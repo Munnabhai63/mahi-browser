@@ -434,10 +434,21 @@ export interface MahiBrowserAPI {
   onUpdateStatusChanged: (callback: (status: UpdateStatusEvent) => void) => () => void;
   onFleetResourceUsage: (callback: (summary: FleetResourceSummary) => void) => () => void;
   onEngineDownloadProgress: (callback: (status: ManagedEngineStatus) => void) => () => void;
+  onCamoufoxDownloadProgress: (callback: (status: CamoufoxProgressEvent) => void) => () => void;
   onLicenseStatusChanged: (callback: (status: any) => void) => () => void;
   onLicenseStatusToast: (callback: (toast: { title: string; message: string; type: string }) => void) => () => void;
   onToastShow: (callback: (toast: { type: 'info' | 'warning' | 'error' | 'success'; title: string; message: string }) => void) => () => void;
   isDesktop?: boolean;
+}
+
+export interface CamoufoxProgressEvent {
+  stage: 'RESOLVING' | 'DOWNLOADING' | 'VERIFYING' | 'EXTRACTING' | 'READY' | 'FAILED';
+  receivedBytes?: number;
+  totalBytes?: number;
+  percent?: number;
+  tag?: string;
+  assetName?: string;
+  error?: string;
 }
 
 export interface ManagedEngineStatus {

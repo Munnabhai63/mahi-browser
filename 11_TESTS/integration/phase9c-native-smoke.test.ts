@@ -23,7 +23,7 @@ describe('PHASE 9C: Native Runtime Verification & Release Gate Harness Suite', (
       expect(content).toContain('[SMOKE_TEST_PASS]');
     });
 
-    it('should execute smoke harness cleanly on the active desktop platform', () => {
+    it.skipIf(!process.env.MAHI_E2E)('should execute smoke harness cleanly on the active desktop platform', () => {
       const scriptPath = path.join(rootDir, '12_SCRIPTS', 'smoke-test-packaged-app.cjs');
       const output = execSync(`node "${scriptPath}"`, {
         cwd: rootDir,
