@@ -75,7 +75,7 @@ export function getDatabasePath(): string {
     if (!fs.existsSync(testDir)) {
       fs.mkdirSync(testDir, { recursive: true });
     }
-    currentDbPath = path.join(testDir, `mahi_test_worker_${workerId}.sqlite`);
+    currentDbPath = path.join(testDir, `mahi_test_worker_${workerId}_${process.pid}.sqlite`);
     return currentDbPath;
   }
 
@@ -337,4 +337,14 @@ export function closeDatabase(): void {
     } catch {}
     dbInstance = null;
   }
+}
+
+if (typeof process !== 'undefined') {
+  process.on('exit', () => {
+    try {
+      if (currentDbPath && fs.existsSync(currentDbPath) && currentDbPath.includes('test-auto-isolated')) {
+        fs.unlinkSync(currentDbPath);
+      }
+    } catch {}
+  });
 }

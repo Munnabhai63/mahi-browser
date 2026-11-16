@@ -98,6 +98,7 @@ import {
 } from './commercial-device-service.js';
 import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
+import { getCentralRepository } from '../../06_DATABASE/central-repository.js';
 import {
   paymentService,
   PaymentProviderType,
@@ -1565,19 +1566,24 @@ export async function handleCommercialApiRoutes(
     webHandoffSessions.set(handoffCode, sessionObj);
 
     try {
-      const db = getDatabase();
-      db.prepare(
-        'INSERT INTO web_handoff_sessions (code, token, user_json, created_at, expires_at, used) VALUES (?, ?, ?, ?, ?, 0)'
-      ).run(handoffCode, token, JSON.stringify(user), now, expiresAt);
+      const repo = getCentralRepository();
+      await repo.createWebHandoffSession({
+        code: handoffCode,
+        token,
+        userJson: JSON.stringify(user),
+        createdAt: now,
+        expiresAt,
+      });
     } catch (dbErr) {
-      console.error('[WEB_HANDOFF] Failed to persist session to SQLite:', dbErr);
+      console.error('[WEB_HANDOFF] Failed to persist session to central repository:', dbErr);
     }
 
     sendJSON(res, 200, {
       success: true,
       handoffCode,
       expiresInSeconds: 120,
-      protocolUrl: `mahi://auth?handoff=${encodeURIComponent(handoffCode)}`,
+      protocolUrl: `mahibrowser://auth-callback?handoff=${encodeURIComponent(handoffCode)}`,
+      legacyProtocolUrl: `mahi://auth?handoff=${encodeURIComponent(handoffCode)}`,
     });
     return true;
   }
@@ -1601,43 +1607,22 @@ export async function handleCommercialApiRoutes(
     const memSession = webHandoffSessions.get(handoffCode);
     if (memSession && (memSession.used || memSession.expiresAt <= now)) {
       try {
-        const db = getDatabase();
-        db.prepare('DELETE FROM web_handoff_sessions WHERE code = ?').run(handoffCode);
+        const repo = getCentralRepository();
+        await repo.consumeWebHandoffSessionAtomically(handoffCode, now);
       } catch {}
       webHandoffSessions.delete(handoffCode);
       sendJSON(res, 403, { success: false, error: 'Handoff code has expired, already been used, or is invalid.' });
       return true;
     }
 
-    // 1. Try atomic SQLite consumption first (Single-Use Anti-Replay)
+    // 1. Try atomic CentralRepository consumption first (PostgreSQL / SQLite atomic)
     try {
-      const db = getDatabase();
-      const row = db.prepare('SELECT * FROM web_handoff_sessions WHERE code = ?').get(handoffCode) as any;
-      if (row) {
-        if (row.used === 1 || row.expires_at <= now) {
-          try { db.prepare('DELETE FROM web_handoff_sessions WHERE code = ?').run(handoffCode); } catch {}
-          webHandoffSessions.delete(handoffCode);
-          sendJSON(res, 403, { success: false, error: 'Handoff code has expired, already been used, or is invalid.' });
-          return true;
-        }
-
-        const updateRes = db.prepare(
-          'UPDATE web_handoff_sessions SET used = 1 WHERE code = ? AND used = 0 AND expires_at > ?'
-        ).run(handoffCode, now);
-
-        if (updateRes.changes === 1) {
-          token = row.token;
-          try {
-            user = JSON.parse(row.user_json);
-          } catch {
-            user = null;
-          }
-        } else {
-          try { db.prepare('DELETE FROM web_handoff_sessions WHERE code = ?').run(handoffCode); } catch {}
-          webHandoffSessions.delete(handoffCode);
-          sendJSON(res, 403, { success: false, error: 'Handoff code has expired, already been used, or is invalid.' });
-          return true;
-        }
+      const repo = getCentralRepository();
+      const consumed = await repo.consumeWebHandoffSessionAtomically(handoffCode, now);
+      if (consumed) {
+        token = consumed.token;
+        user = consumed.user;
+        webHandoffSessions.delete(handoffCode);
       }
     } catch {}
 

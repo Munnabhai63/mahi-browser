@@ -13,6 +13,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getWritableSubdir } from '../07_BACKEND/utils/runtime-paths.js';
+import { getInstallSecrets } from './install-secrets.js';
 
 export interface ObjectStorageProvider {
   name: string;
@@ -29,7 +30,19 @@ export interface ObjectStorageProvider {
 }
 
 // Secret key used to sign URLs in LocalStorageProvider
-const LOCAL_STORAGE_SECRET = process.env.LOCAL_STORAGE_SECRET || 'mahi-local-storage-secret-key-32b-secure';
+function getLocalStorageSecret(): string {
+  if (process.env.LOCAL_STORAGE_SECRET) {
+    return process.env.LOCAL_STORAGE_SECRET;
+  }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('FATAL: LOCAL_STORAGE_SECRET must be explicitly configured in production environment.');
+  }
+  try {
+    return getInstallSecrets().jwtSecret;
+  } catch {
+    return 'mahi-dev-local-storage-secret-key-32b-fallback';
+  }
+}
 
 export class LocalStorageProvider implements ObjectStorageProvider {
   public name = 'local-storage';
@@ -57,7 +70,7 @@ export class LocalStorageProvider implements ObjectStorageProvider {
 
   private generateToken(objectKey: string, action: 'upload' | 'download' | 'delete', expiresAt: number): string {
     const payload = `${action}:${objectKey}:${expiresAt}`;
-    return crypto.createHmac('sha256', LOCAL_STORAGE_SECRET).update(payload).digest('hex');
+    return crypto.createHmac('sha256', getLocalStorageSecret()).update(payload).digest('hex');
   }
 
   public verifyToken(objectKey: string, action: 'upload' | 'download' | 'delete', expiresAt: number, signature: string): boolean {

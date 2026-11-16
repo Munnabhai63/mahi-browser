@@ -102,6 +102,10 @@ export interface CentralRepository {
   findLock(cloudProfileId: string): Promise<any | null>;
   upsertLock(data: { cloudProfileId: string; deviceId: string; deviceName: string; userId: string; lockedAt: string; expiresAt: string }): Promise<any>;
   deleteLock(cloudProfileId: string): Promise<boolean>;
+
+  // Web Handoff Sessions
+  createWebHandoffSession(data: { code: string; token: string; userJson: string; createdAt: number; expiresAt: number }): Promise<any>;
+  consumeWebHandoffSessionAtomically(code: string, now: number): Promise<{ token: string; user: any } | null>;
 }
 
 // ============================================================================
@@ -783,6 +787,36 @@ export class PostgresCentralRepository implements CentralRepository {
       return false;
     }
   }
+
+  async createWebHandoffSession(data: { code: string; token: string; userJson: string; createdAt: number; expiresAt: number }): Promise<any> {
+    return this.client.web_handoff_sessions.create({
+      data: {
+        code: data.code,
+        token: data.token,
+        user_json: data.userJson,
+        created_at: BigInt(data.createdAt),
+        expires_at: BigInt(data.expiresAt),
+        used: 0,
+      },
+    });
+  }
+
+  async consumeWebHandoffSessionAtomically(code: string, now: number): Promise<{ token: string; user: any } | null> {
+    const updated = await this.client.$executeRaw`
+      UPDATE web_handoff_sessions 
+      SET used = 1 
+      WHERE code = ${code} AND used = 0 AND expires_at > ${BigInt(now)}
+    `;
+    if (updated === 1) {
+      const session = await this.client.web_handoff_sessions.findUnique({ where: { code } });
+      if (session) {
+        let user: any = null;
+        try { user = JSON.parse(session.user_json); } catch {}
+        return { token: session.token, user };
+      }
+    }
+    return null;
+  }
 }
 
 // ============================================================================
@@ -1378,6 +1412,31 @@ export class SqliteCentralRepository implements CentralRepository {
     } catch {
       return false;
     }
+  }
+
+  async createWebHandoffSession(data: { code: string; token: string; userJson: string; createdAt: number; expiresAt: number }): Promise<any> {
+    this.db.prepare(
+      'INSERT INTO web_handoff_sessions (code, token, user_json, created_at, expires_at, used) VALUES (?, ?, ?, ?, ?, 0)'
+    ).run(data.code, data.token, data.userJson, data.createdAt, data.expiresAt);
+    return data;
+  }
+
+  async consumeWebHandoffSessionAtomically(code: string, now: number): Promise<{ token: string; user: any } | null> {
+    const row = this.db.prepare('SELECT * FROM web_handoff_sessions WHERE code = ?').get(code) as any;
+    if (!row) return null;
+    if (row.used === 1 || Number(row.expires_at) <= now) {
+      try { this.db.prepare('DELETE FROM web_handoff_sessions WHERE code = ?').run(code); } catch {}
+      return null;
+    }
+    const updateRes = this.db.prepare(
+      'UPDATE web_handoff_sessions SET used = 1 WHERE code = ? AND used = 0 AND expires_at > ?'
+    ).run(code, now);
+    if (updateRes.changes === 1) {
+      let user: any = null;
+      try { user = JSON.parse(row.user_json); } catch {}
+      return { token: row.token, user };
+    }
+    return null;
   }
 }
 

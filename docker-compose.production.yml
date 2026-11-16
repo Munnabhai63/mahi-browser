@@ -7,6 +7,8 @@ services:
       dockerfile: Dockerfile.gateway
     container_name: mahibrowser_gateway
     restart: unless-stopped
+    depends_on:
+      - mahibrowser_redis
     mem_limit: 1024m
     cpus: 1.5
     ports:
@@ -28,7 +30,6 @@ services:
         max-file: "3"
 
   mahibrowser_redis:
-    profiles: ["local-redis"]
     image: redis:7-alpine
     container_name: mahibrowser_redis
     restart: unless-stopped

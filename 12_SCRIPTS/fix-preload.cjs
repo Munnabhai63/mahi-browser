@@ -9,6 +9,10 @@ const destDir = path.join(__dirname, '..', 'dist-electron', 'preload');
 const destCjs = path.join(destDir, 'index.cjs');
 const destJs = path.join(destDir, 'index.js');
 
+if (!fs.existsSync(destDir)) {
+  fs.mkdirSync(destDir, { recursive: true });
+}
+
 console.log('fix-preload: src =', src, 'exists =', fs.existsSync(src));
 
 if (fs.existsSync(src)) {

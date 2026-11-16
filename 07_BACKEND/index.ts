@@ -13,6 +13,7 @@ import { startLicenseStatusService } from '../08_SECURITY/license-status-service
 import { startPriceSync } from '../08_SECURITY/price-service.js';
 import { startResourceMonitoring, stopResourceMonitoring } from '../03_HARDWARE/resource-monitor-service.js';
 import { provisionEngineOnStartup } from '../02_BROWSER/managed-engine.js';
+import { releaseAllCloudLocks } from '../08_SECURITY/cloud-sync-service.js';
 import { getWritableUserDataDir, getBundledResourcePath, isAppPackaged } from './utils/runtime-paths.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -621,6 +622,7 @@ async function performCleanExit(): Promise<void> {
   isQuitting = true;
   logCheckpoint('Event: performCleanExit - stopping services and closing app');
   try {
+    await releaseAllCloudLocks().catch(() => {});
     stopResourceMonitoring();
     await processManager.stopAll();
     stopApiServer();

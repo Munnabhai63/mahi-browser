@@ -317,9 +317,9 @@ export async function verifyManifestDownloadUrl(version: string = MANAGED_ENGINE
 }
 
 /**
- * Internal helper to download a URL with redirect handling and progress tracking.
+ * Helper to download a URL with redirect handling and progress tracking.
  */
-function downloadFileWithProgress(
+export function downloadFileWithProgress(
   url: string,
   destinationPath: string,
   onProgress?: (received: number, total: number) => void
@@ -403,7 +403,7 @@ function downloadFileWithProgress(
 /**
  * Extracts a zip archive to a destination directory using system tar (bsdtar), unzip, or PowerShell.
  */
-async function extractZipArchive(zipPath: string, destDir: string): Promise<void> {
+export async function extractZipArchive(zipPath: string, destDir: string): Promise<void> {
   if (!fs.existsSync(destDir)) {
     fs.mkdirSync(destDir, { recursive: true });
   }

@@ -907,8 +907,11 @@ export async function resolveSyncConflict(
 // ============================================================================
 // DISTRIBUTED PROFILE LOCKING (Client-side coordination)
 // ============================================================================
-let activeLockRenewInterval: NodeJS.Timeout | null = null;
-let currentLockedCloudProfileId: string | null = null;
+const activeLockHeartbeats = new Map<string, NodeJS.Timeout>();
+
+export function getActiveLockHeartbeatCount(): number {
+  return activeLockHeartbeats.size;
+}
 
 export async function acquireCloudLock(
   cloudProfileId: string,
@@ -936,12 +939,17 @@ export async function acquireCloudLock(
 
     const data = JSON.parse(res.body.toString('utf8'));
     if (res.statusCode === 200 && data.acquired) {
-      currentLockedCloudProfileId = cloudProfileId;
-      // Start background heartbeat renewal every 60 seconds
-      if (activeLockRenewInterval) clearInterval(activeLockRenewInterval);
-      activeLockRenewInterval = setInterval(() => {
+      // Clear any existing heartbeat interval strictly for this specific profile
+      const existing = activeLockHeartbeats.get(cloudProfileId);
+      if (existing) {
+        clearInterval(existing);
+        activeLockHeartbeats.delete(cloudProfileId);
+      }
+      // Start dedicated background heartbeat renewal every 60 seconds for this profile
+      const timer = setInterval(() => {
         renewCloudLock(cloudProfileId).catch(() => {});
       }, 60000);
+      activeLockHeartbeats.set(cloudProfileId, timer);
       return { acquired: true, expiresAt: data.expiresAt };
     }
 
@@ -979,11 +987,11 @@ export async function renewCloudLock(cloudProfileId: string, ttlSeconds = 300): 
 }
 
 export async function releaseCloudLock(cloudProfileId: string): Promise<boolean> {
-  if (activeLockRenewInterval) {
-    clearInterval(activeLockRenewInterval);
-    activeLockRenewInterval = null;
+  const timer = activeLockHeartbeats.get(cloudProfileId);
+  if (timer) {
+    clearInterval(timer);
+    activeLockHeartbeats.delete(cloudProfileId);
   }
-  currentLockedCloudProfileId = null;
 
   try {
     const authHeaders = getSyncAuthHeaders();
@@ -1007,6 +1015,18 @@ export async function releaseCloudLock(cloudProfileId: string): Promise<boolean>
   } catch {
     return false;
   }
+}
+
+export async function releaseAllCloudLocks(): Promise<void> {
+  const profileIds = Array.from(activeLockHeartbeats.keys());
+  for (const pid of profileIds) {
+    const timer = activeLockHeartbeats.get(pid);
+    if (timer) {
+      clearInterval(timer);
+      activeLockHeartbeats.delete(pid);
+    }
+  }
+  await Promise.allSettled(profileIds.map((pid) => releaseCloudLock(pid)));
 }
 
 export async function getCloudLockStatus(cloudProfileId: string): Promise<{ isLocked: boolean; heldBy?: string; expiresAt?: string }> {

@@ -8,6 +8,7 @@ import {
   getBundledEngineExecutablePath,
   isProductionChromiumInstalled,
   getProductionChromiumExecutablePath,
+  getEnginesBaseDir,
   resolveEngineManifest,
   hasNativeStealthEngine,
   type MahiEngineManifest,
@@ -195,6 +196,9 @@ export function getCamoufoxExecutablePath(): string | null {
     const programFiles = process.env['ProgramFiles'] || 'C:\\Program Files';
     const candidates = [
       path.join(localAppData, 'Camoufox', 'camoufox.exe'),
+      path.join(localAppData, 'camoufox', 'camoufox', 'Cache', 'camoufox.exe'),
+      path.join(localAppData, 'camoufox', 'Cache', 'camoufox.exe'),
+      path.join(getEnginesBaseDir(), 'camoufox', 'camoufox.exe'),
       path.join(programFiles, 'Camoufox', 'camoufox.exe'),
       path.join(home, 'AppData', 'Local', 'Programs', 'Camoufox', 'camoufox.exe'),
       'F:\\UserData\\Downloads\\ai-power-tools\\camoufox\\browser\\camoufox.exe',
@@ -208,6 +212,7 @@ export function getCamoufoxExecutablePath(): string | null {
     const candidates = [
       '/Applications/Camoufox.app/Contents/MacOS/camoufox',
       path.join(home, 'Applications', 'Camoufox.app', 'Contents', 'MacOS', 'camoufox'),
+      path.join(getEnginesBaseDir(), 'camoufox', 'camoufox'),
     ];
     for (const c of candidates) {
       if (fs.existsSync(c)) return c;
@@ -215,6 +220,7 @@ export function getCamoufoxExecutablePath(): string | null {
   } else {
     // Linux
     const candidates = [
+      path.join(getEnginesBaseDir(), 'camoufox', 'camoufox'),
       '/usr/bin/camoufox',
       '/usr/local/bin/camoufox',
       '/opt/camoufox/camoufox',
@@ -264,13 +270,19 @@ export function resolveExecutablePath(engine: BrowserEngine, customPath?: string
     );
   }
 
-  // 1. Authoritative Bundled Production Chromium Engine (Packaged with MAHI Browser)
+  // 1. User custom MAHI cores (~/.mahi/cores) or native stealth engine (Highest priority for stealth)
+  const mahiCustom = getMahiCustomCorePath();
+  if (mahiCustom && fs.existsSync(mahiCustom)) {
+    return mahiCustom;
+  }
+
+  // 2. Authoritative Bundled Production Chromium Engine (Packaged with MAHI Browser)
   const bundled = getBundledEngineExecutablePath();
   if (bundled && fs.existsSync(bundled)) {
     return bundled;
   }
 
-  // 2. Authoritative Managed Engine (Provisioned in user data)
+  // 3. Authoritative Managed Engine (Provisioned in user data)
   if (isProductionChromiumInstalled()) {
     const prod = getProductionChromiumExecutablePath();
     if (fs.existsSync(prod)) return prod;
@@ -278,12 +290,6 @@ export function resolveExecutablePath(engine: BrowserEngine, customPath?: string
   if (isManagedEngineInstalled()) {
     const managed = getManagedEngineExecutablePath();
     if (fs.existsSync(managed)) return managed;
-  }
-
-  // 3. User custom MAHI cores (~/.mahi/cores)
-  const mahiCustom = getMahiCustomCorePath();
-  if (mahiCustom && fs.existsSync(mahiCustom)) {
-    return mahiCustom;
   }
 
   // 4. Detected System Browsers (Chrome, Edge, Chromium)

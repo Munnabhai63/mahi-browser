@@ -11,6 +11,16 @@ import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defa
 
 describe('P1 Production Bug Fix: Preload Integrity, Quick Profile Creation & Session Persistence', () => {
   beforeAll(async () => {
+    const distPreload = path.resolve('dist-electron', 'preload', 'index.cjs');
+    if (!fs.existsSync(distPreload)) {
+      const src = path.resolve('10_CONFIG', 'preload', 'preload.cjs');
+      const dir = path.dirname(distPreload);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      if (fs.existsSync(src)) {
+        fs.copyFileSync(src, distPreload);
+        fs.copyFileSync(src, path.join(dir, 'index.js'));
+      }
+    }
     await initializeDatabase();
   });
 

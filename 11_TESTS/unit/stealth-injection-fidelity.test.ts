@@ -29,6 +29,18 @@ describe('Task 6: Stealth Script Injection & Anti-Detect Fidelity Suite', () => 
     function NavigatorUAData() {}
     NavigatorUAData.prototype = {};
 
+    function HTMLIFrameElement() {}
+    Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', {
+      get: function() { return (this as any)._contentWindow; },
+      configurable: true,
+      enumerable: true
+    });
+    Object.defineProperty(HTMLIFrameElement.prototype, 'contentDocument', {
+      get: function() { return (this as any)._contentDocument; },
+      configurable: true,
+      enumerable: true
+    });
+
     function HTMLCanvasElement() {}
     HTMLCanvasElement.prototype = {
       toDataURL: function() {
@@ -190,6 +202,7 @@ describe('Task 6: Stealth Script Injection & Anti-Detect Fidelity Suite', () => 
       },
       Navigator,
       NavigatorUAData,
+      HTMLIFrameElement,
       HTMLCanvasElement,
       CanvasRenderingContext2D,
       OffscreenCanvas,
@@ -290,7 +303,7 @@ describe('Task 6: Stealth Script Injection & Anti-Detect Fidelity Suite', () => 
     }
   });
 
-  it('generates dynamic userAgentData matching profile User-Agent version', () => {
+  it('generates dynamic userAgentData matching profile User-Agent version with major-only brands and Symbol.toStringTag', async () => {
     const sandbox = createMockBrowserContext();
     const context = vm.createContext(sandbox);
     vm.runInContext(stealthScriptCode, context);
@@ -302,6 +315,21 @@ describe('Task 6: Stealth Script Injection & Anti-Detect Fidelity Suite', () => 
     const chromeBrand = uaData.brands.find((b: any) => b.brand === 'Google Chrome');
     expect(chromeBrand).toBeDefined();
     expect(chromeBrand.version).toBe('133');
+
+    // FIX 2: Brand version must be major-only string (no dot notation in brands array)
+    for (const b of uaData.brands) {
+      expect(b.version).not.toContain('.');
+    }
+
+    // FIX 2: Symbol.toStringTag returns '[object NavigatorUAData]'
+    expect(sandbox.Object.prototype.toString.call(uaData)).toBe('[object NavigatorUAData]');
+
+    // Full version is available in getHighEntropyValues
+    const entropy = await uaData.getHighEntropyValues(['fullVersionList']);
+    expect(entropy.fullVersionList).toBeDefined();
+    const chromeFull = entropy.fullVersionList.find((b: any) => b.brand === 'Google Chrome');
+    expect(chromeFull).toBeDefined();
+    expect(chromeFull.version).toBe('133.0.6943.53');
   });
 
   it('ensures navigator.webdriver getter name is "get webdriver" with native toString and throws Illegal invocation on foreign thisArg', () => {
@@ -612,5 +640,24 @@ describe('Task 6: Stealth Script Injection & Anti-Detect Fidelity Suite', () => 
     const rects = zeroElem.getClientRects();
     expect(rects[0].x).toBe(0);
     expect(rects[0].y).toBe(0);
+  });
+
+  it('synchronously propagates stealth spoofing into cross-realm iframe windows (FIX 3 Regression)', () => {
+    const parentSb = createMockBrowserContext();
+    const parentCtx = vm.createContext(parentSb);
+    vm.runInContext(stealthScriptCode, parentCtx);
+
+    const childSb = createMockBrowserContext();
+    const iframeElem: any = Object.create(parentSb.HTMLIFrameElement.prototype);
+    iframeElem._contentWindow = childSb;
+    iframeElem._contentDocument = childSb.document;
+
+    // Accessing contentWindow should trigger synchronous realm patching
+    const childWin = iframeElem.contentWindow;
+    expect(childWin).toBe(childSb);
+    expect(childWin.navigator.webdriver).toBe(false);
+    expect(childWin.Function.prototype.toString.call(childWin.HTMLCanvasElement.prototype.toDataURL)).toBe('function toDataURL() { [native code] }');
+    expect(childWin.Object.prototype.toString.call(childWin.navigator.userAgentData)).toBe('[object NavigatorUAData]');
+    expect(childWin.WebGLRenderingContext.prototype.getParameter(37445)).toContain('Google Inc.');
   });
 });

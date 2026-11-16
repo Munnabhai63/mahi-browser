@@ -24,6 +24,7 @@ import { getApiAuthToken } from '../08_SECURITY/install-secrets.js';
 import { injectNativeStealthPreferences } from './stealth-native-preferences.js';
 import { resolveMultiCoreExecutablePath } from './services/multi-core-resolver.js';
 import { buildVideoCaptureFlags } from './services/video-capture-service.js';
+import { ensureCamoufoxInstalled } from './services/engine-download-service.js';
 
 
 function debugLog(msg: string) {
@@ -420,13 +421,83 @@ export function ensureProfileStealthExtension(
     registerNative(origToString, 'toString');
   } catch(e) {}
 
-  // Synchronous Cross-Realm <iframe> Hooking & Function.prototype.toString Propagation
+  // Shared Stealth Configuration & Perturbation Primitives
+  var seedOffset = (pSeed % 15) + 1;
+  function applyNoiseToImageData(imgData, sx, sy, canvasWidth, canvasHeight) {
+    if (!imgData || !imgData.data) return imgData;
+    var sw = imgData.width;
+    var sh = imgData.height;
+    var cw = canvasWidth || sw;
+    var ch = canvasHeight || sh;
+    if (cw <= 8 || ch <= 8 || sw <= 8 || sh <= 8) return imgData;
+    var data = imgData.data;
+    var startX = sx || 0;
+    var startY = sy || 0;
+
+    for (var y = 0; y < sh; y++) {
+      var gy = startY + y;
+      for (var x = 0; x < sw; x++) {
+        var gx = startX + x;
+        if (((gx * 7 + gy * 13 + seedOffset) % 16) === 0) {
+          var dataIdx = (y * sw + x) * 4;
+          if (data[dataIdx + 3] === 0) continue;
+          var chIdx = (pSeed + gx + gy) % 3;
+          data[dataIdx + chIdx] ^= 1;
+        }
+      }
+    }
+    return imgData;
+  }
+
+  function getTzOffset(date, tz) {
+    try {
+      var formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: 'numeric', minute: 'numeric', second: 'numeric',
+        hour12: false, hourCycle: 'h23'
+      });
+      var parts = formatter.formatToParts(date);
+      var map = {};
+      for (var pIdx = 0; pIdx < parts.length; pIdx++) map[parts[pIdx].type] = parseInt(parts[pIdx].value, 10);
+      var tzHour = map.hour === 24 ? 0 : map.hour;
+      var tzDate = Date.UTC(map.year, map.month - 1, map.day, tzHour, map.minute, map.second);
+      var utcDate = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds());
+      return Math.round((utcDate - tzDate) / 60000);
+    } catch(e) {
+      return 0;
+    }
+  }
+
+  var brandVersion = ${JSON.stringify(chromeMajorVer)};
+  var chromeFullVer = ${JSON.stringify(chromeFullVer)};
+  var defaultBrands = [
+    { brand: "Not/A)Brand", version: "8" },
+    { brand: "Chromium", version: brandVersion },
+    { brand: "Google Chrome", version: brandVersion }
+  ];
+  var defaultFullVersionList = [
+    { brand: "Not/A)Brand", version: "8.0.0.0" },
+    { brand: "Chromium", version: chromeFullVer },
+    { brand: "Google Chrome", version: chromeFullVer }
+  ];
+  var chPlatform = ${JSON.stringify(clientHintsPlatform)};
+  var chMobile = ${isMobile ? 'true' : 'false'};
+  var chModel = ${JSON.stringify(clientHintsModel)};
+  var chPlatformVersion = ${JSON.stringify(clientHintsPlatformVersion)};
+  var chArch = ${JSON.stringify(clientHintsArch)};
+  var chBitness = "64";
+  var targetTz = ${JSON.stringify(targetTimezone)};
+
+  // Synchronous Cross-Realm <iframe> Hooking & Comprehensive Stealth Propagation
   try {
     var patchedWindows = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
     var patchRealm = function(targetWin) {
       if (!targetWin || (patchedWindows && patchedWindows.has(targetWin))) return;
       try {
         if (patchedWindows) patchedWindows.add(targetWin);
+
+        // 1. Function.prototype.toString native masking for targetWin
         if (targetWin.Function && targetWin.Function.prototype) {
           var frameOrigToString = targetWin.Function.prototype.toString;
           var frameProxyToString = new Proxy(frameOrigToString, {
@@ -445,6 +516,282 @@ export function ensureProfileStealthExtension(
           targetWin.Function.prototype.toString = frameProxyToString;
           registerNative(frameProxyToString, 'toString');
           registerNative(frameOrigToString, 'toString');
+        }
+
+        // 2. Navigator.prototype spoofing in targetWin
+        if (targetWin.Navigator && targetWin.Navigator.prototype) {
+          var tNavProto = targetWin.Navigator.prototype;
+          function spoofTargetNav(prop, val) {
+            try {
+              if (targetWin.navigator) {
+                try { delete targetWin.navigator[prop]; } catch(e) {}
+              }
+              var desc = Object.getOwnPropertyDescriptor(tNavProto, prop);
+              var dummy = { get [prop]() { return val; } };
+              var fallback = Object.getOwnPropertyDescriptor(dummy, prop).get;
+              var targetGetter = (desc && desc.get && desc.get.name === 'get ' + prop) ? desc.get : fallback;
+              var proxy = new Proxy(targetGetter, {
+                apply: function(target, thisArg, args) {
+                  if (!thisArg || !(thisArg instanceof targetWin.Navigator)) {
+                    if (desc && typeof desc.get === 'function') {
+                      try { return desc.get.apply(thisArg, args); } catch(e) { throw e; }
+                    }
+                    throw new TypeError("Failed to execute '" + prop + "' on 'Navigator': Illegal invocation");
+                  }
+                  return val;
+                }
+              });
+              Object.defineProperty(tNavProto, prop, {
+                get: proxy,
+                enumerable: desc ? desc.enumerable : true,
+                configurable: desc ? desc.configurable : true
+              });
+              registerNative(proxy, 'get ' + prop);
+              if (desc && typeof desc.get === 'function') registerNative(desc.get, 'get ' + prop);
+            } catch(e) {}
+          }
+          spoofTargetNav('webdriver', false);
+          spoofTargetNav('hardwareConcurrency', ${hardwareConcurrency});
+          spoofTargetNav('deviceMemory', ${deviceMemory});
+          spoofTargetNav('platform', ${JSON.stringify(platformStr)});
+          spoofTargetNav('maxTouchPoints', ${maxTouchPoints});
+          spoofTargetNav('language', ${JSON.stringify(languagesList[0] || 'en-US')});
+          spoofTargetNav('languages', Object.freeze(${JSON.stringify(languagesList)}));
+
+          // userAgentData in targetWin
+          if (!${isCamoufox}) {
+            try {
+              var tUaProto = (typeof targetWin.NavigatorUAData !== 'undefined' && targetWin.NavigatorUAData.prototype)
+                ? targetWin.NavigatorUAData.prototype
+                : null;
+              var tUaDataObj;
+              var dummyT = {
+                get brands() {
+                  if (typeof targetWin.NavigatorUAData !== 'undefined' && (!this || !(this instanceof targetWin.NavigatorUAData))) {
+                    throw new TypeError("Failed to read the 'brands' property from 'NavigatorUAData': Illegal invocation");
+                  }
+                  return defaultBrands;
+                },
+                get mobile() {
+                  if (typeof targetWin.NavigatorUAData !== 'undefined' && (!this || !(this instanceof targetWin.NavigatorUAData))) {
+                    throw new TypeError("Failed to read the 'mobile' property from 'NavigatorUAData': Illegal invocation");
+                  }
+                  return chMobile;
+                },
+                get platform() {
+                  if (typeof targetWin.NavigatorUAData !== 'undefined' && (!this || !(this instanceof targetWin.NavigatorUAData))) {
+                    throw new TypeError("Failed to read the 'platform' property from 'NavigatorUAData': Illegal invocation");
+                  }
+                  return chPlatform;
+                }
+              };
+              var getTBrands = Object.getOwnPropertyDescriptor(dummyT, 'brands').get;
+              var getTMobile = Object.getOwnPropertyDescriptor(dummyT, 'mobile').get;
+              var getTPlatform = Object.getOwnPropertyDescriptor(dummyT, 'platform').get;
+              var getTHighEntropy = function getHighEntropyValues(hints) {
+                if (typeof targetWin.NavigatorUAData !== 'undefined' && (!this || !(this instanceof targetWin.NavigatorUAData))) {
+                  return Promise.reject(new TypeError("Failed to execute 'getHighEntropyValues' on 'NavigatorUAData': Illegal invocation"));
+                }
+                var res = { brands: defaultBrands, mobile: chMobile, platform: chPlatform };
+                if (!Array.isArray(hints)) return Promise.resolve(res);
+                for (var hi = 0; hi < hints.length; hi++) {
+                  if (hints[hi] === 'architecture') res.architecture = chArch;
+                  if (hints[hi] === 'bitness') res.bitness = chBitness;
+                  if (hints[hi] === 'model') res.model = chModel;
+                  if (hints[hi] === 'platformVersion') res.platformVersion = chPlatformVersion;
+                  if (hints[hi] === 'uaFullVersion') res.uaFullVersion = chromeFullVer;
+                  if (hints[hi] === 'fullVersionList') res.fullVersionList = defaultFullVersionList;
+                }
+                return Promise.resolve(res);
+              };
+              var tToJSON = function toJSON() {
+                if (typeof targetWin.NavigatorUAData !== 'undefined' && (!this || !(this instanceof targetWin.NavigatorUAData))) {
+                  throw new TypeError("Failed to execute 'toJSON' on 'NavigatorUAData': Illegal invocation");
+                }
+                return { brands: defaultBrands, mobile: chMobile, platform: chPlatform };
+              };
+              if (tUaProto) {
+                Object.defineProperties(tUaProto, {
+                  brands: { get: getTBrands, enumerable: true, configurable: true },
+                  mobile: { get: getTMobile, enumerable: true, configurable: true },
+                  platform: { get: getTPlatform, enumerable: true, configurable: true },
+                  getHighEntropyValues: { value: getTHighEntropy, enumerable: true, configurable: true, writable: true },
+                  toJSON: { value: tToJSON, enumerable: true, configurable: true, writable: true },
+                });
+                if (typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+                  try { Object.defineProperty(tUaProto, Symbol.toStringTag, { value: 'NavigatorUAData', configurable: true }); } catch(e) {}
+                }
+                tUaDataObj = Object.create(tUaProto);
+              } else {
+                tUaDataObj = {};
+                Object.defineProperties(tUaDataObj, {
+                  brands: { get: getTBrands, enumerable: true, configurable: true },
+                  mobile: { get: getTMobile, enumerable: true, configurable: true },
+                  platform: { get: getTPlatform, enumerable: true, configurable: true },
+                  getHighEntropyValues: { value: getTHighEntropy, enumerable: true, configurable: true, writable: true },
+                  toJSON: { value: tToJSON, enumerable: true, configurable: true, writable: true },
+                });
+                if (typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+                  try { Object.defineProperty(tUaDataObj, Symbol.toStringTag, { value: 'NavigatorUAData', configurable: true }); } catch(e) {}
+                }
+              }
+              registerNative(getTBrands, 'get brands');
+              registerNative(getTMobile, 'get mobile');
+              registerNative(getTPlatform, 'get platform');
+              registerNative(getTHighEntropy, 'getHighEntropyValues');
+              registerNative(tToJSON, 'toJSON');
+              var tUaDesc = Object.getOwnPropertyDescriptor(tNavProto, 'userAgentData');
+              var dummyNavUa = { get userAgentData() { return tUaDataObj; } };
+              var fallbackNavUa = Object.getOwnPropertyDescriptor(dummyNavUa, 'userAgentData').get;
+              var targetNavUa = (tUaDesc && tUaDesc.get && tUaDesc.get.name === 'get userAgentData') ? tUaDesc.get : fallbackNavUa;
+              var proxyNavUa = new Proxy(targetNavUa, {
+                apply: function(target, thisArg, args) {
+                  if (!thisArg || !(thisArg instanceof targetWin.Navigator)) {
+                    if (tUaDesc && typeof tUaDesc.get === 'function') {
+                      try { return tUaDesc.get.apply(thisArg, args); } catch(e) { throw e; }
+                    }
+                    throw new TypeError("Failed to execute 'userAgentData' on 'Navigator': Illegal invocation");
+                  }
+                  return tUaDataObj;
+                }
+              });
+              Object.defineProperty(tNavProto, 'userAgentData', {
+                get: proxyNavUa,
+                enumerable: tUaDesc ? tUaDesc.enumerable : true,
+                configurable: tUaDesc ? tUaDesc.configurable : true
+              });
+              registerNative(proxyNavUa, 'get userAgentData');
+              if (tUaDesc && typeof tUaDesc.get === 'function') registerNative(tUaDesc.get, 'get userAgentData');
+            } catch(e) {}
+          }
+        }
+
+        // 3. Canvas Noise in targetWin
+        if (${canvasMode !== 'off'}) {
+          try {
+            if (targetWin.HTMLCanvasElement && targetWin.HTMLCanvasElement.prototype) {
+              var tOrigToDataURL = targetWin.HTMLCanvasElement.prototype.toDataURL;
+              var tOrigToBlob = targetWin.HTMLCanvasElement.prototype.toBlob;
+              var tOrigGetImageData = targetWin.CanvasRenderingContext2D ? targetWin.CanvasRenderingContext2D.prototype.getImageData : null;
+              var tOrigPutImageData = targetWin.CanvasRenderingContext2D ? targetWin.CanvasRenderingContext2D.prototype.putImageData : null;
+
+              if (tOrigToDataURL && tOrigGetImageData && tOrigPutImageData) {
+                var tProxyToDataURL = new Proxy(tOrigToDataURL, {
+                  apply: function(target, thisArg, args) {
+                    try {
+                      if (thisArg.width > 8 && thisArg.height > 8) {
+                        var clone = targetWin.document.createElement('canvas');
+                        clone.width = thisArg.width;
+                        clone.height = thisArg.height;
+                        var ctx = clone.getContext('2d');
+                        if (ctx) {
+                          ctx.drawImage(thisArg, 0, 0);
+                          var imgData = tOrigGetImageData.call(ctx, 0, 0, clone.width, clone.height);
+                          applyNoiseToImageData(imgData, 0, 0, clone.width, clone.height);
+                          tOrigPutImageData.call(ctx, imgData, 0, 0);
+                          return target.apply(clone, args);
+                        }
+                      }
+                    } catch(e) {}
+                    return target.apply(thisArg, args);
+                  }
+                });
+                targetWin.HTMLCanvasElement.prototype.toDataURL = tProxyToDataURL;
+                registerNative(tProxyToDataURL, 'toDataURL');
+                registerNative(tOrigToDataURL, 'toDataURL');
+              }
+
+              if (tOrigToBlob && tOrigGetImageData && tOrigPutImageData) {
+                var tProxyToBlob = new Proxy(tOrigToBlob, {
+                  apply: function(target, thisArg, args) {
+                    try {
+                      if (thisArg.width > 8 && thisArg.height > 8) {
+                        var clone = targetWin.document.createElement('canvas');
+                        clone.width = thisArg.width;
+                        clone.height = thisArg.height;
+                        var ctx = clone.getContext('2d');
+                        if (ctx) {
+                          ctx.drawImage(thisArg, 0, 0);
+                          var imgData = tOrigGetImageData.call(ctx, 0, 0, clone.width, clone.height);
+                          applyNoiseToImageData(imgData, 0, 0, clone.width, clone.height);
+                          tOrigPutImageData.call(ctx, imgData, 0, 0);
+                          return target.apply(clone, args);
+                        }
+                      }
+                    } catch(e) {}
+                    return target.apply(thisArg, args);
+                  }
+                });
+                targetWin.HTMLCanvasElement.prototype.toBlob = tProxyToBlob;
+                registerNative(tProxyToBlob, 'toBlob');
+                registerNative(tOrigToBlob, 'toBlob');
+              }
+            }
+            if (targetWin.CanvasRenderingContext2D && targetWin.CanvasRenderingContext2D.prototype) {
+              var tOrigGetID = targetWin.CanvasRenderingContext2D.prototype.getImageData;
+              if (tOrigGetID) {
+                var tProxyGetID = new Proxy(tOrigGetID, {
+                  apply: function(target, thisArg, args) {
+                    var imgData = target.apply(thisArg, args);
+                    try {
+                      var sx = Number(args[0]) || 0;
+                      var sy = Number(args[1]) || 0;
+                      var cw = (thisArg && thisArg.canvas) ? thisArg.canvas.width : imgData.width;
+                      var ch = (thisArg && thisArg.canvas) ? thisArg.canvas.height : imgData.height;
+                      applyNoiseToImageData(imgData, sx, sy, cw, ch);
+                    } catch(e) {}
+                    return imgData;
+                  }
+                });
+                targetWin.CanvasRenderingContext2D.prototype.getImageData = tProxyGetID;
+                registerNative(tProxyGetID, 'getImageData');
+                registerNative(tOrigGetID, 'getImageData');
+              }
+            }
+          } catch(e) {}
+        }
+
+        // 4. WebGL in targetWin
+        if (${webglMode !== 'off'}) {
+          try {
+            function spoofTargetWebGL(glProto) {
+              if (!glProto || !glProto.getParameter) return;
+              var origGP = glProto.getParameter;
+              var proxyGP = new Proxy(origGP, {
+                apply: function(target, thisArg, args) {
+                  var param = args[0];
+                  if (param === 37445) return ${JSON.stringify(gpuVendor)};
+                  if (param === 37446) return ${JSON.stringify(gpuRenderer)};
+                  if (param === 7936) return 'WebKit';
+                  if (param === 7937) return 'WebKit WebGL';
+                  return target.apply(thisArg, args);
+                }
+              });
+              glProto.getParameter = proxyGP;
+              registerNative(proxyGP, 'getParameter');
+              registerNative(origGP, 'getParameter');
+            }
+            if (targetWin.WebGLRenderingContext) spoofTargetWebGL(targetWin.WebGLRenderingContext.prototype);
+            if (targetWin.WebGL2RenderingContext) spoofTargetWebGL(targetWin.WebGL2RenderingContext.prototype);
+          } catch(e) {}
+        }
+
+        // 5. Date & Timezone in targetWin
+        if (targetTz && targetWin.Date && targetWin.Date.prototype) {
+          try {
+            var origDateTz = targetWin.Date.prototype.getTimezoneOffset;
+            var proxyDateTz = new Proxy(origDateTz, {
+              apply: function(target, thisArg, args) {
+                if (thisArg instanceof targetWin.Date && !isNaN(thisArg.getTime())) {
+                  return getTzOffset(thisArg, targetTz);
+                }
+                return target.apply(thisArg, args);
+              }
+            });
+            targetWin.Date.prototype.getTimezoneOffset = proxyDateTz;
+            registerNative(proxyDateTz, 'getTimezoneOffset');
+            registerNative(origDateTz, 'getTimezoneOffset');
+          } catch(e) {}
         }
       } catch(e) {}
     };
@@ -486,6 +833,33 @@ export function ensureProfileStealthExtension(
         });
         registerNative(proxyGetCD, 'get contentDocument');
         registerNative(origGetCD, 'get contentDocument');
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      var origFramesDesc = Object.getOwnPropertyDescriptor(window, 'frames');
+      if (origFramesDesc && origFramesDesc.get) {
+        var origGetFrames = origFramesDesc.get;
+        var proxyGetFrames = new Proxy(origGetFrames, {
+          apply: function(target, thisArg, args) {
+            var framesObj = target.apply(thisArg, args);
+            try {
+              if (framesObj && framesObj.length) {
+                for (var fi = 0; fi < framesObj.length; fi++) {
+                  try { patchRealm(framesObj[fi]); } catch(e) {}
+                }
+              }
+            } catch(e) {}
+            return framesObj;
+          }
+        });
+        Object.defineProperty(window, 'frames', {
+          get: proxyGetFrames,
+          enumerable: origFramesDesc.enumerable,
+          configurable: origFramesDesc.configurable
+        });
+        registerNative(proxyGetFrames, 'get frames');
+        registerNative(origGetFrames, 'get frames');
       }
     }
   } catch(e) {}
@@ -806,10 +1180,16 @@ export function ensureProfileStealthExtension(
         '(function() {',
         '  try {',
         '    var pHwc = ' + ${hardwareConcurrency} + ';',
+        '    var pDevMem = ' + ${deviceMemory} + ';',
         '    var pPlat = ' + ${JSON.stringify(platformStr)} + ';',
         '    var pTz = ' + ${JSON.stringify(targetTimezone)} + ';',
         '    var pLang = ' + ${JSON.stringify(languagesList[0] || 'en-US')} + ';',
         '    var pLangs = Object.freeze(' + ${JSON.stringify(languagesList)} + ');',
+        '    var pUa = ' + ${JSON.stringify(settings?.browser?.userAgent || '')} + ';',
+        '    var pGpuVendor = ' + ${JSON.stringify(gpuVendor)} + ';',
+        '    var pGpuRenderer = ' + ${JSON.stringify(gpuRenderer)} + ';',
+        '    var pSeed = ' + pSeed + ';',
+        '    var seedOffset = ((pSeed % 15) + 1);',
         '    var wHooked = [];',
         '    function wReg(fn, name) {',
         '      if (typeof fn === "function") wHooked.push({ fn: fn, name: name || fn.name || "" });',
@@ -851,10 +1231,137 @@ export function ensureProfileStealthExtension(
         '      }',
         '      spoofWorkerNav("webdriver", false);',
         '      spoofWorkerNav("hardwareConcurrency", pHwc);',
+        '      spoofWorkerNav("deviceMemory", pDevMem);',
         '      spoofWorkerNav("platform", pPlat);',
         '      spoofWorkerNav("language", pLang);',
         '      spoofWorkerNav("languages", pLangs);',
+        '      if (pUa) spoofWorkerNav("userAgent", pUa);',
+        '      if (!' + ${isCamoufox} + ') {',
+        '        try {',
+        '          var wBrands = [',
+        '            { brand: "Not/A)Brand", version: "8" },',
+        '            { brand: "Chromium", version: ' + ${JSON.stringify(chromeMajorVer)} + ' },',
+        '            { brand: "Google Chrome", version: ' + ${JSON.stringify(chromeMajorVer)} + ' }',
+        '          ];',
+        '          var wFullList = [',
+        '            { brand: "Not/A)Brand", version: "8.0.0.0" },',
+        '            { brand: "Chromium", version: ' + ${JSON.stringify(chromeFullVer)} + ' },',
+        '            { brand: "Google Chrome", version: ' + ${JSON.stringify(chromeFullVer)} + ' }',
+        '          ];',
+        '          var wUaObj = {',
+        '            brands: wBrands,',
+        '            mobile: ' + (${isMobile ? 'true' : 'false'}) + ',',
+        '            platform: ' + ${JSON.stringify(clientHintsPlatform)} + ',',
+        '            getHighEntropyValues: function(hints) {',
+        '              var res = { brands: wBrands, mobile: ' + (${isMobile ? 'true' : 'false'}) + ', platform: ' + ${JSON.stringify(clientHintsPlatform)} + ' };',
+        '              if (Array.isArray(hints)) {',
+        '                for (var wi = 0; wi < hints.length; wi++) {',
+        '                  if (hints[wi] === "fullVersionList") res.fullVersionList = wFullList;',
+        '                }',
+        '              }',
+        '              return Promise.resolve(res);',
+        '            },',
+        '            toJSON: function() { return { brands: wBrands, mobile: ' + (${isMobile ? 'true' : 'false'}) + ', platform: ' + ${JSON.stringify(clientHintsPlatform)} + ' }; }',
+        '          };',
+        '          if (typeof Symbol !== "undefined" && Symbol.toStringTag) {',
+        '            try { Object.defineProperty(wUaObj, Symbol.toStringTag, { value: "NavigatorUAData", configurable: true }); } catch(e) {}',
+        '          }',
+        '          spoofWorkerNav("userAgentData", wUaObj);',
+        '        } catch(e) {}',
+        '      }',
         '    }',
+        '    if (typeof OffscreenCanvas !== "undefined") {',
+        '      if (typeof OffscreenCanvasRenderingContext2D !== "undefined") {',
+        '        var origOffGetID = OffscreenCanvasRenderingContext2D.prototype.getImageData;',
+        '        if (origOffGetID) {',
+        '          var proxyOffGetID = new Proxy(origOffGetID, {',
+        '            apply: function(target, thisArg, args) {',
+        '              var imgData = target.apply(thisArg, args);',
+        '              try {',
+        '                var sx = Number(args[0]) || 0;',
+        '                var sy = Number(args[1]) || 0;',
+        '                var cw = (thisArg && thisArg.canvas) ? thisArg.canvas.width : imgData.width;',
+        '                var ch = (thisArg && thisArg.canvas) ? thisArg.canvas.height : imgData.height;',
+        '                if (cw > 8 && ch > 8 && imgData.width > 8 && imgData.height > 8) {',
+        '                  var data = imgData.data;',
+        '                  for (var y = 0; y < imgData.height; y++) {',
+        '                    var gy = sy + y;',
+        '                    for (var x = 0; x < imgData.width; x++) {',
+        '                      var gx = sx + x;',
+        '                      if (((gx * 7 + gy * 13 + seedOffset) % 16) === 0) {',
+        '                        var dataIdx = (y * imgData.width + x) * 4;',
+        '                        if (data[dataIdx + 3] === 0) continue;',
+        '                        var chIdx = (pSeed + gx + gy) % 3;',
+        '                        data[dataIdx + chIdx] ^= 1;',
+        '                      }',
+        '                    }',
+        '                  }',
+        '                }',
+        '              } catch(e) {}',
+        '              return imgData;',
+        '            }',
+        '          });',
+        '          OffscreenCanvasRenderingContext2D.prototype.getImageData = proxyOffGetID;',
+        '          wReg(proxyOffGetID, "getImageData");',
+        '          wReg(origOffGetID, "getImageData");',
+        '        }',
+        '      }',
+        '      if (OffscreenCanvas.prototype.convertToBlob) {',
+        '        var origOffBlob = OffscreenCanvas.prototype.convertToBlob;',
+        '        var proxyOffBlob = new Proxy(origOffBlob, {',
+        '          apply: function(target, thisArg, args) {',
+        '            try {',
+        '              if (thisArg.width > 8 && thisArg.height > 8) {',
+        '                var clone = new OffscreenCanvas(thisArg.width, thisArg.height);',
+        '                var cloneCtx = clone.getContext("2d");',
+        '                if (cloneCtx) {',
+        '                  cloneCtx.drawImage(thisArg, 0, 0);',
+        '                  var imgData = cloneCtx.getImageData(0, 0, clone.width, clone.height);',
+        '                  var data = imgData.data;',
+        '                  for (var y = 0; y < imgData.height; y++) {',
+        '                    var gy = y;',
+        '                    for (var x = 0; x < imgData.width; x++) {',
+        '                      var gx = x;',
+        '                      if (((gx * 7 + gy * 13 + seedOffset) % 16) === 0) {',
+        '                        var dataIdx = (y * imgData.width + x) * 4;',
+        '                        if (data[dataIdx + 3] === 0) continue;',
+        '                        var chIdx = (pSeed + gx + gy) % 3;',
+        '                        data[dataIdx + chIdx] ^= 1;',
+        '                      }',
+        '                    }',
+        '                  }',
+        '                  if (cloneCtx.putImageData) cloneCtx.putImageData(imgData, 0, 0);',
+        '                  return target.apply(clone, args);',
+        '                }',
+        '              }',
+        '            } catch(e) {}',
+        '            return target.apply(thisArg, args);',
+        '          }',
+        '        });',
+        '        OffscreenCanvas.prototype.convertToBlob = proxyOffBlob;',
+        '        wReg(proxyOffBlob, "convertToBlob");',
+        '        wReg(origOffBlob, "convertToBlob");',
+        '      }',
+        '    }',
+        '    function spoofWorkerGL(glProto) {',
+        '      if (!glProto || !glProto.getParameter) return;',
+        '      var origGP = glProto.getParameter;',
+        '      var proxyGP = new Proxy(origGP, {',
+        '        apply: function(target, thisArg, args) {',
+        '          var param = args[0];',
+        '          if (param === 37445) return pGpuVendor;',
+        '          if (param === 37446) return pGpuRenderer;',
+        '          if (param === 7936) return "WebKit";',
+        '          if (param === 7937) return "WebKit WebGL";',
+        '          return target.apply(thisArg, args);',
+        '        }',
+        '      });',
+        '      glProto.getParameter = proxyGP;',
+        '      wReg(proxyGP, "getParameter");',
+        '      wReg(origGP, "getParameter");',
+        '    }',
+        '    if (typeof WebGLRenderingContext !== "undefined") spoofWorkerGL(WebGLRenderingContext.prototype);',
+        '    if (typeof WebGL2RenderingContext !== "undefined") spoofWorkerGL(WebGL2RenderingContext.prototype);',
         '    if (pTz) {',
         '      var getTzOffset = function(date, tz) {',
         '        try {',
@@ -867,7 +1374,7 @@ export function ensureProfileStealthExtension(
         '          var map = {};',
         '          for (var pIdx = 0; pIdx < parts.length; pIdx++) map[parts[pIdx].type] = parseInt(parts[pIdx].value, 10);',
         '          var tzHour = map.hour === 24 ? 0 : map.hour;',
-        '          var tzDate = Date.UTC(map.year, map.month - 1, map.day, tzHour, map.minute, map.second);',
+        '          var tzDate = Date.UTC(map.year, map.month - 1, day, tzHour, map.minute, map.second);',
         '          var utcDate = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds());',
         '          return Math.round((utcDate - tzDate) / 60000);',
         '        } catch(e) { return 0; }',
@@ -1001,7 +1508,7 @@ export function ensureProfileStealthExtension(
         '})();'
       ].join('\\n');
 
-      function wrapWorkerUrl(url) {
+      function wrapWorkerUrl(url, options) {
         if (!url) return url;
         try {
           var rawUrl = (typeof URL !== 'undefined' && url instanceof URL) ? url.href : String(url);
@@ -1013,6 +1520,14 @@ export function ensureProfileStealthExtension(
           }
           var isBlob = rawUrl.startsWith('blob:');
           var isSameOrigin = resolvedUrl && (typeof location !== 'undefined') && (resolvedUrl.origin === location.origin);
+
+          if (options && options.type === 'module') {
+            if (resolvedUrl) {
+              var moduleWrapper = workerBootstrapJs + '\\n;import ' + JSON.stringify(resolvedUrl.href) + ';';
+              return URL.createObjectURL(new Blob([moduleWrapper], { type: 'application/javascript' }));
+            }
+            return url;
+          }
 
           if (isBlob || isSameOrigin) {
             var fetchUrl = isBlob ? rawUrl : resolvedUrl.href;
@@ -1032,7 +1547,7 @@ export function ensureProfileStealthExtension(
         var origWorker = window.Worker;
         var ProxyWorker = new Proxy(origWorker, {
           construct: function(target, args, newTarget) {
-            var targetUrl = wrapWorkerUrl(args[0]);
+            var targetUrl = wrapWorkerUrl(args[0], args[1]);
             var newArgs = [targetUrl].concat(args.slice(1));
             return Reflect.construct(target, newArgs, newTarget);
           }
@@ -1047,7 +1562,7 @@ export function ensureProfileStealthExtension(
         var origSharedWorker = window.SharedWorker;
         var ProxySharedWorker = new Proxy(origSharedWorker, {
           construct: function(target, args, newTarget) {
-            var targetUrl = wrapWorkerUrl(args[0]);
+            var targetUrl = wrapWorkerUrl(args[0], args[1]);
             var newArgs = [targetUrl].concat(args.slice(1));
             return Reflect.construct(target, newArgs, newTarget);
           }
@@ -1152,6 +1667,9 @@ export function ensureProfileStealthExtension(
             getHighEntropyValues: { value: getHighEntropyValues, enumerable: true, configurable: true, writable: true },
             toJSON: { value: toJSON, enumerable: true, configurable: true, writable: true },
           });
+          if (typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+            try { Object.defineProperty(uaTargetProto, Symbol.toStringTag, { value: 'NavigatorUAData', configurable: true }); } catch(e) {}
+          }
           uaDataObj = Object.create(uaTargetProto);
         } else {
           uaDataObj = {};
@@ -1162,6 +1680,9 @@ export function ensureProfileStealthExtension(
             getHighEntropyValues: { value: getHighEntropyValues, enumerable: true, configurable: true, writable: true },
             toJSON: { value: toJSON, enumerable: true, configurable: true, writable: true },
           });
+        }
+        if (typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+          try { Object.defineProperty(uaDataObj, Symbol.toStringTag, { value: 'NavigatorUAData', configurable: true }); } catch(e) {}
         }
 
         registerNative(getBrands, 'get brands');
@@ -2236,22 +2757,9 @@ export function ensureProfileStealthExtension(
   // 4. Multi-Window Real-Time Action Synchronizer Engine
   // -------------------------------------------------------------
   var isHandlingRemoteAction = false;
-  var API_BASE = 'http://127.0.0.1:32123';
-  var AUTH_TOKEN = ${JSON.stringify(getApiAuthToken())};
 
   function showClickRipple(x, y) {
-    try {
-      var ripple = document.createElement('div');
-      ripple.style.cssText = 'position:fixed;left:' + (x - 14) + 'px;top:' + (y - 14) + 'px;' +
-        'width:28px;height:28px;border-radius:50%;border:2.5px solid #ef4444;background:rgba(239,68,68,0.35);' +
-        'box-shadow:0 0 12px #ef4444;pointer-events:none;z-index:2147483647;transition:all 0.4s ease-out;';
-      (document.body || document.documentElement).appendChild(ripple);
-      setTimeout(function() {
-        ripple.style.transform = 'scale(2.2)';
-        ripple.style.opacity = '0';
-      }, 20);
-      setTimeout(function() { ripple.remove(); }, 450);
-    } catch(e) {}
+    // Zero DOM footprint to prevent anti-bot MutationObserver detection on external target pages
   }
 
   function handleReplicatedAction(action) {
@@ -2734,6 +3242,7 @@ export interface SanitizedLaunchArgsOptions {
   loadExtensionsArg?: string;
   settings?: any;
   mode?: 'normal' | 'automation';
+  isNativeStealth?: boolean;
 }
 
 /**
@@ -2745,7 +3254,7 @@ export interface SanitizedLaunchArgsOptions {
  * - Ensures normal user browsing NEVER carries test automation switches (--enable-automation)
  */
 export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): string[] {
-  const { storageDir, debugPort, loadExtensionsArg, settings, mode = 'normal' } = options;
+  const { storageDir, debugPort, loadExtensionsArg, settings, mode = 'normal', isNativeStealth = false } = options;
 
   const args: string[] = [
     `--user-data-dir=${storageDir}`,
@@ -2790,8 +3299,8 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
   );
 
   // In Normal User Mode, NEVER add test automation switches.
-  // In Automation Mode, inject rebrowser-patches CDP isolation switch.
-  if (mode === 'automation') {
+  // In Automation Mode, inject rebrowser-patches CDP isolation switch ONLY when running native stealth engine.
+  if (mode === 'automation' && isNativeStealth) {
     args.push('--mahi-cdp-isolated');
   }
 
@@ -2869,7 +3378,13 @@ export async function launchCamoufoxProfile(
   let proxyTunnel: ProxyTunnelHandle | undefined;
 
   try {
-    const executablePath = resolveExecutablePath('camoufox', profile.customExecutablePath);
+    let executablePath: string;
+    try {
+      executablePath = resolveExecutablePath('camoufox', profile.customExecutablePath);
+    } catch {
+      debugLog(`[Camoufox Launcher] Camoufox not found locally, provisioning on-demand...`);
+      executablePath = await ensureCamoufoxInstalled();
+    }
     debugLog(`[Camoufox Launcher] Executable resolved: "${executablePath}"`);
 
     const storageDir = path.resolve(profile.storagePath);
@@ -3216,6 +3731,7 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
       loadExtensionsArg,
       settings,
       mode: launchOptions?.mode || 'normal',
+      isNativeStealth,
     });
 
     // Virtual Video Capture Injection (KYC Facial Verification Bypass)
@@ -3232,8 +3748,8 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
       debugLog(`[Launcher Step 4/7] Configured font masking list (${settings.fingerprint.fonts.length} fonts).`);
     }
 
-    // Native C++ CDP Execution Isolation (rebrowser-patches parity)
-    if (isNativeStealth || launchOptions?.mode === 'automation') {
+    // Native C++ CDP Execution Isolation (rebrowser-patches parity - strictly for native stealth cores)
+    if (isNativeStealth) {
       if (!args.includes('--mahi-cdp-isolated')) {
         args.push('--mahi-cdp-isolated');
       }

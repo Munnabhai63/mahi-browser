@@ -11,7 +11,10 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
+import path from 'node:path';
+import fs from 'node:fs';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
+import { setCustomDatabasePath, closeDatabase } from '../../06_DATABASE/connection.js';
 import { handleCommercialAPIRequest } from '../../07_BACKEND/commercial/commercial-api-router.js';
 import { getAdminWebSecret } from '../../08_SECURITY/install-secrets.js';
 import { initializePricingTables } from '../../07_BACKEND/commercial/pricing-admin-service.js';
@@ -20,9 +23,14 @@ describe('Phase 17: Pricing & Business Model HTTP Integration Pipeline', () => {
   let server: http.Server;
   let port: number;
   let baseUrl: string;
+  let customTestDbPath: string;
   const adminSecret = getAdminWebSecret();
 
   beforeAll(async () => {
+    const testDir = path.join(process.cwd(), '.mahi_data', 'test-auto-isolated');
+    if (!fs.existsSync(testDir)) fs.mkdirSync(testDir, { recursive: true });
+    customTestDbPath = path.join(testDir, `pricing_api_test_${Date.now()}_${process.pid}.sqlite`);
+    setCustomDatabasePath(customTestDbPath);
     await initializeDatabase();
     initializePricingTables();
 
@@ -46,6 +54,12 @@ describe('Phase 17: Pricing & Business Model HTTP Integration Pipeline', () => {
 
   afterAll(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    closeDatabase();
+    try {
+      if (customTestDbPath && fs.existsSync(customTestDbPath)) {
+        fs.unlinkSync(customTestDbPath);
+      }
+    } catch {}
   });
 
   // 1. Public Pricing Catalog

@@ -397,16 +397,29 @@ describe('Phase 4: Anti-Detect Engine Hardening', () => {
       // Must NEVER pass --enable-automation
       expect(argsNormal).not.toContain('--enable-automation');
 
-      const argsAutomation = buildSanitizedLaunchArgs({
+      const argsAutomationNative = buildSanitizedLaunchArgs({
         storageDir: tempDir,
         debugPort: 34123,
         mode: 'automation',
+        isNativeStealth: true,
       });
 
-      // Automation mode must inject --mahi-cdp-isolated
-      expect(argsAutomation).toContain('--mahi-cdp-isolated');
-      expect(argsAutomation).toContain('--disable-blink-features=AutomationControlled');
-      expect(argsAutomation).not.toContain('--enable-automation');
+      // Automation mode with native stealth core must inject --mahi-cdp-isolated
+      expect(argsAutomationNative).toContain('--mahi-cdp-isolated');
+      expect(argsAutomationNative).toContain('--disable-blink-features=AutomationControlled');
+      expect(argsAutomationNative).not.toContain('--enable-automation');
+
+      const argsAutomationStock = buildSanitizedLaunchArgs({
+        storageDir: tempDir,
+        debugPort: 34123,
+        mode: 'automation',
+        isNativeStealth: false,
+      });
+
+      // Automation mode on stock Chromium must NOT inject fake unknown switch
+      expect(argsAutomationStock).not.toContain('--mahi-cdp-isolated');
+      expect(argsAutomationStock).toContain('--disable-blink-features=AutomationControlled');
+      expect(argsAutomationStock).not.toContain('--enable-automation');
     });
 
     it('verifies automation engines import rebrowser-playwright-core and configure runtime fix mode', () => {
