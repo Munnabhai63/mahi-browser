@@ -1,10 +1,40 @@
 import crypto from 'node:crypto';
 import https from 'node:https';
 import { getDatabase } from '../../06_DATABASE/connection.js';
+import { isPostgresConfigured, getCentralRepository } from '../../06_DATABASE/central-repository.js';
 import { signToken, getUserById } from './commercial-auth-service.js';
 import { CANONICAL_PLAN_CATALOG } from './canonical-plan-catalog.js';
 import { recordFunnelEvent } from './funnel-service.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
+
+export interface GoogleAuthResult {
+  success: boolean;
+  token?: string;
+  user?: any;
+  isNewAccount: boolean;
+  isLinked: boolean;
+  trialActive: boolean;
+  trialExpiresAt?: string | null;
+  returnUrl: string;
+  error?: string;
+}
+
+export function deriveProfileQuota(planId?: string | null): number {
+  if (!planId) return 10;
+  const canonical = (CANONICAL_PLAN_CATALOG as Record<string, any>)[planId];
+  if (canonical?.profileLimit && typeof canonical.profileLimit === 'number') {
+    return canonical.profileLimit;
+  }
+  if (planId.includes('500')) return 500;
+  if (planId.includes('300')) return 300;
+  if (planId.includes('200')) return 200;
+  if (planId.includes('100')) return 100;
+  if (planId.includes('50')) return 50;
+  if (planId.includes('25')) return 25;
+  if (planId.includes('10')) return 10;
+  if (planId.includes('free')) return 1;
+  return 10;
+}
 
 export interface GoogleOAuthConfig {
   clientId: string;
@@ -408,22 +438,13 @@ export async function fetchGoogleProfile(accessToken: string): Promise<GoogleCla
 
 /**
  * Unifies Google OAuth identity with Central Auth, preserving plan/trial intent
+ * Asynchronous version that synchronizes to Supabase PostgreSQL (auth_users) and local SQLite.
  */
-export function authenticateWithGoogleClaims(
+export async function authenticateWithGoogleClaimsAsync(
   claims: GoogleClaims,
   stateRecord?: OAuthStateRecord | null,
   clientIp: string = '127.0.0.1'
-): {
-  success: boolean;
-  token?: string;
-  user?: any;
-  isNewAccount: boolean;
-  isLinked: boolean;
-  trialActive: boolean;
-  trialExpiresAt?: string | null;
-  returnUrl: string;
-  error?: string;
-} {
+): Promise<GoogleAuthResult> {
   const db = getDatabase();
 
   if (!claims.email_verified) {
@@ -442,6 +463,370 @@ export function authenticateWithGoogleClaims(
   const intent = stateRecord?.intent || 'trial';
   const planId = normalizePlanId(stateRecord?.planId);
   const billingCycle = stateRecord?.billingCycle || 'annual';
+  const profileQuota = deriveProfileQuota(planId);
+  const returnUrl = resolvePostAuthRedirect({
+    intent,
+    planId,
+    billingCycle,
+    returnUrl: stateRecord?.returnUrl,
+  });
+
+  const isPg = isPostgresConfigured();
+  const repo = isPg ? getCentralRepository() : null;
+
+  // Step 1: Check PostgreSQL auth_users first if PostgreSQL is active
+  let pgUser: any = null;
+  if (repo) {
+    try {
+      pgUser = await repo.findAuthUserByEmail(cleanEmail);
+    } catch (e: any) {
+      console.error('[GoogleOAuth] Failed to query PostgreSQL by email:', e?.message);
+    }
+  }
+
+  // Step 2: Check local SQLite commercial_users
+  let existingUser = db.prepare('SELECT * FROM commercial_users WHERE google_sub = ?').get(claims.sub) as any;
+  if (!existingUser) {
+    existingUser = db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(cleanEmail) as any;
+  }
+
+  let userId: string;
+  let isNewAccount = false;
+  let isLinked = false;
+
+  if (pgUser) {
+    // Existing user in Supabase PostgreSQL (e.g., registered via email/password or previous OAuth)
+    // Reuse/align the ID so existing email-registered Supabase users never get duplicate/mismatched IDs!
+    userId = pgUser.id;
+    isLinked = !pgUser.google_sub || pgUser.auth_provider !== 'GOOGLE';
+
+    // Update PostgreSQL auth_users
+    try {
+      await repo!.updateAuthUser(userId, {
+        google_sub: claims.sub,
+        avatar_url: claims.picture || pgUser.avatar_url || null,
+        email_verified: 1,
+        last_login_at: now,
+        status: 'ACTIVE',
+      });
+    } catch (e: any) {
+      console.error('[GoogleOAuth] Failed to update PostgreSQL user:', e?.message);
+    }
+
+    // Ensure SQLite commercial_users and auth_users match the exact same userId
+    if (existingUser) {
+      if (existingUser.id !== userId) {
+        db.prepare(`
+          UPDATE commercial_users
+          SET id = ?, google_sub = ?, avatar_url = COALESCE(avatar_url, ?), last_login_at = ?, updated_at = ?
+          WHERE email = ?
+        `).run(userId, claims.sub, claims.picture || null, now, now, cleanEmail);
+        try {
+          db.prepare(`
+            UPDATE auth_users
+            SET id = ?, google_sub = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1, last_login_at = ?, updated_at = ?
+            WHERE email = ? OR normalized_email = ?
+          `).run(userId, claims.sub, claims.picture || null, now, now, cleanEmail, cleanEmail);
+        } catch {}
+      } else {
+        db.prepare(`
+          UPDATE commercial_users
+          SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?), last_login_at = ?, updated_at = ?
+          WHERE id = ?
+        `).run(claims.sub, claims.picture || null, now, now, userId);
+        try {
+          db.prepare(`
+            UPDATE auth_users
+            SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1, last_login_at = ?, updated_at = ?
+            WHERE id = ?
+          `).run(claims.sub, claims.picture || null, now, now, userId);
+        } catch {}
+      }
+    } else {
+      // Create user in SQLite commercial_users + auth_users with matching pgUser.id
+      const displayName = (claims.name || pgUser.name || cleanEmail.split('@')[0] || 'Google User').trim();
+      const avatarUrl = claims.picture || pgUser.avatar_url || null;
+      db.prepare(`
+        INSERT INTO commercial_users (
+          id, email, password_hash, salt, name, role, status, plan_id,
+          trial_started_at, trial_expires_at, trial_used, signup_intent,
+          google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at
+        ) VALUES (?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
+      `).run(
+        userId, cleanEmail, displayName, pgUser.plan_id || planId,
+        pgUser.trial_started_at || null, pgUser.trial_expires_at || null, pgUser.trial_used ? 1 : 0, intent,
+        claims.sub, avatarUrl, pgUser.created_at || now, now, now
+      );
+
+      try {
+        db.prepare(`
+          INSERT INTO auth_users (
+            id, email, normalized_email, password_hash, salt, name, role, status,
+            email_verified, email_verified_at, plan_id, profile_quota,
+            trial_started_at, trial_expires_at, trial_used, signup_intent,
+            google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at
+          ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
+        `).run(
+          userId, cleanEmail, cleanEmail, displayName, now, pgUser.plan_id || planId, pgUser.profile_quota || profileQuota,
+          pgUser.trial_started_at || null, pgUser.trial_expires_at || null, pgUser.trial_used ? 1 : 0, intent,
+          claims.sub, avatarUrl, pgUser.created_at || now, now, now
+        );
+      } catch {}
+    }
+
+    logCommercialAudit({
+      actorId: userId,
+      actorName: pgUser.name || claims.name || cleanEmail,
+      actorRole: pgUser.role || 'USER',
+      action: isLinked ? 'OAUTH_LINK_GOOGLE' : 'OAUTH_LOGIN_GOOGLE',
+      targetType: 'USER',
+      targetId: userId,
+      details: `Google identity (${claims.sub}) linked/authenticated to Supabase user: ${cleanEmail}`,
+      ipAddress: clientIp,
+      result: 'SUCCESS',
+    });
+
+  } else if (existingUser) {
+    // Existing user in SQLite, but not found in PostgreSQL (heal-create in PostgreSQL)
+    userId = existingUser.id;
+    isLinked = !existingUser.google_sub || existingUser.auth_provider !== 'GOOGLE';
+
+    // Update SQLite commercial_users and auth_users
+    db.prepare(`
+      UPDATE commercial_users
+      SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?), last_login_at = ?, updated_at = ?
+      WHERE id = ?
+    `).run(claims.sub, claims.picture || null, now, now, userId);
+
+    try {
+      db.prepare(`
+        UPDATE auth_users
+        SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1, last_login_at = ?, updated_at = ?
+        WHERE id = ?
+      `).run(claims.sub, claims.picture || null, now, now, userId);
+    } catch {}
+
+    // Heal-create in PostgreSQL auth_users
+    if (repo) {
+      const displayName = (claims.name || existingUser.name || cleanEmail.split('@')[0] || 'Google User').trim();
+      const userPlan = existingUser.plan_id || planId;
+      const userQuota = deriveProfileQuota(userPlan);
+      try {
+        await repo.createAuthUser({
+          id: userId,
+          email: cleanEmail,
+          normalized_email: cleanEmail,
+          password_hash: existingUser.password_hash || 'OAUTH_GOOGLE',
+          salt: existingUser.salt || 'OAUTH_GOOGLE',
+          name: displayName,
+          role: existingUser.role || 'USER',
+          status: 'ACTIVE',
+          email_verified: 1,
+          email_verified_at: now,
+          plan_id: userPlan,
+          profile_quota: userQuota,
+          trial_started_at: existingUser.trial_started_at || null,
+          trial_expires_at: existingUser.trial_expires_at || null,
+          trial_used: existingUser.trial_used ? 1 : 0,
+          signup_intent: existingUser.signup_intent || intent,
+          google_sub: claims.sub,
+          avatar_url: claims.picture || existingUser.avatar_url || null,
+          auth_provider: 'GOOGLE',
+          created_at: existingUser.created_at || now,
+          updated_at: now,
+          last_login_at: now,
+        });
+      } catch (e: any) {
+        console.error('[GoogleOAuth] Failed to heal-create user in PostgreSQL:', e?.message);
+      }
+    }
+
+    logCommercialAudit({
+      actorId: userId,
+      actorName: existingUser.name,
+      actorRole: existingUser.role || 'USER',
+      action: isLinked ? 'OAUTH_LINK_GOOGLE' : 'OAUTH_LOGIN_GOOGLE',
+      targetType: 'USER',
+      targetId: userId,
+      details: `User logged in via Google OAuth: ${cleanEmail}`,
+      ipAddress: clientIp,
+      result: 'SUCCESS',
+    });
+
+  } else {
+    // Brand new user account creation in both SQLite and Supabase PostgreSQL
+    isNewAccount = true;
+    userId = `usr_${crypto.randomUUID()}`;
+    const displayName = (claims.name || cleanEmail.split('@')[0] || 'Google User').trim();
+    const avatarUrl = claims.picture || null;
+    const isTrial = intent === 'trial';
+    const trialStartedAt = isTrial ? now : null;
+    const trialExpiresAt = isTrial ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
+    const trialUsed = isTrial ? 1 : 0;
+    const pendingPlanId = intent === 'paid' ? planId : null;
+    const pendingBillingCycle = intent === 'paid' ? billingCycle : null;
+
+    // Insert into SQLite commercial_users
+    db.prepare(`
+      INSERT INTO commercial_users (
+        id, email, password_hash, salt, name, role, status, plan_id,
+        trial_started_at, trial_expires_at, trial_used, signup_intent,
+        pending_plan_id, pending_billing_cycle, google_sub, avatar_url, auth_provider,
+        created_at, updated_at, last_login_at
+      ) VALUES (?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
+    `).run(
+      userId, cleanEmail, displayName, planId,
+      trialStartedAt, trialExpiresAt, trialUsed, intent,
+      pendingPlanId, pendingBillingCycle, claims.sub, avatarUrl,
+      now, now, now
+    );
+
+    // Insert into SQLite auth_users
+    try {
+      db.prepare(`
+        INSERT INTO auth_users (
+          id, email, normalized_email, password_hash, salt, name, role, status,
+          email_verified, email_verified_at, plan_id, profile_quota,
+          trial_started_at, trial_expires_at, trial_used, signup_intent,
+          google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at
+        ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
+      `).run(
+        userId, cleanEmail, cleanEmail, displayName, now, planId, profileQuota,
+        trialStartedAt, trialExpiresAt, trialUsed, intent,
+        claims.sub, avatarUrl, now, now, now
+      );
+    } catch {}
+
+    // Insert into Supabase PostgreSQL auth_users via repo
+    if (repo) {
+      try {
+        await repo.createAuthUser({
+          id: userId,
+          email: cleanEmail,
+          normalized_email: cleanEmail,
+          password_hash: 'OAUTH_GOOGLE',
+          salt: 'OAUTH_GOOGLE',
+          name: displayName,
+          role: 'USER',
+          status: 'ACTIVE',
+          email_verified: 1,
+          email_verified_at: now,
+          plan_id: planId,
+          profile_quota: profileQuota,
+          trial_started_at: trialStartedAt,
+          trial_expires_at: trialExpiresAt,
+          trial_used: trialUsed,
+          signup_intent: intent,
+          google_sub: claims.sub,
+          avatar_url: avatarUrl,
+          auth_provider: 'GOOGLE',
+          created_at: now,
+          updated_at: now,
+          last_login_at: now,
+        });
+      } catch (e: any) {
+        console.error('[GoogleOAuth] Failed to create user in PostgreSQL:', e?.message);
+      }
+    }
+
+    if (isTrial) {
+      const subId = `sub_${crypto.randomUUID()}`;
+      db.prepare(`
+        INSERT INTO commercial_subscriptions (
+          id, user_id, plan_id, status, billing_cycle, starts_at, expires_at, payment_provider, created_at
+        ) VALUES (?, ?, ?, 'ACTIVE', 'TRIAL', ?, ?, 'GOOGLE_OAUTH_TRIAL', ?)
+      `).run(subId, userId, planId, now, trialExpiresAt, now);
+    }
+
+    logCommercialAudit({
+      actorId: userId,
+      actorName: displayName,
+      actorRole: 'USER',
+      action: 'OAUTH_REGISTER_GOOGLE',
+      targetType: 'USER',
+      targetId: userId,
+      details: `New user account created via Google OAuth: ${cleanEmail} (Plan: ${planId})`,
+      ipAddress: clientIp,
+      result: 'SUCCESS',
+    });
+
+    try {
+      recordFunnelEvent({
+        eventName: 'signup_completed',
+        userId,
+        planId,
+        ipAddress: clientIp,
+        metadata: { provider: 'google', intent, planId },
+      });
+      if (isTrial) {
+        recordFunnelEvent({
+          eventName: 'trial_activated',
+          userId,
+          planId,
+          ipAddress: clientIp,
+        });
+      }
+    } catch {}
+  }
+
+  // Retrieve unified user record
+  const user = getUserById(userId)!;
+  const token = signToken({ userId: user.id, email: user.email, role: user.role });
+  const isTrialActive = Boolean(
+    user.trialExpiresAt && new Date(user.trialExpiresAt) > new Date()
+  );
+
+  return {
+    success: true,
+    token,
+    user: {
+      ...user,
+      googleSub: claims.sub,
+      avatarUrl: claims.picture || user.avatarUrl,
+    },
+    isNewAccount,
+    isLinked,
+    trialActive: isTrialActive,
+    trialExpiresAt: user.trialExpiresAt,
+    returnUrl,
+  };
+}
+
+/**
+ * Synchronous backward-compatible wrapper for authenticateWithGoogleClaims.
+ * Performs synchronous SQLite operations and triggers background PostgreSQL sync when PostgreSQL is active.
+ */
+export function authenticateWithGoogleClaims(
+  claims: GoogleClaims,
+  stateRecord?: OAuthStateRecord | null,
+  clientIp: string = '127.0.0.1'
+): GoogleAuthResult {
+  const db = getDatabase();
+
+  if (!claims.email_verified) {
+    return {
+      success: false,
+      isNewAccount: false,
+      isLinked: false,
+      trialActive: false,
+      returnUrl: '/signup',
+      error: 'GOOGLE_EMAIL_NOT_VERIFIED: Your Google account email is not verified.',
+    };
+  }
+
+  // Trigger background PostgreSQL sync if active
+  if (isPostgresConfigured()) {
+    authenticateWithGoogleClaimsAsync(claims, stateRecord, clientIp).catch(err => {
+      console.error('[GoogleOAuth] Background Postgres sync failed:', err?.message);
+    });
+  }
+
+  const cleanEmail = claims.email.trim().toLowerCase();
+  const now = new Date().toISOString();
+  const intent = stateRecord?.intent || 'trial';
+  const planId = normalizePlanId(stateRecord?.planId);
+  const billingCycle = stateRecord?.billingCycle || 'annual';
+  const profileQuota = deriveProfileQuota(planId);
   const returnUrl = resolvePostAuthRedirect({
     intent,
     planId,
@@ -461,7 +846,6 @@ export function authenticateWithGoogleClaims(
       existingUser = userByEmail;
       isLinked = true;
 
-      // Safely link Google identity to existing account
       db.prepare(`
         UPDATE commercial_users
         SET google_sub = ?,
@@ -524,7 +908,6 @@ export function authenticateWithGoogleClaims(
       now, now, now
     );
 
-    // Synchronize to Central Auth (auth_users)
     try {
       db.prepare(`
         INSERT INTO auth_users (
@@ -532,15 +915,14 @@ export function authenticateWithGoogleClaims(
           email_verified, email_verified_at, plan_id, profile_quota,
           trial_started_at, trial_expires_at, trial_used, signup_intent,
           google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at
-        ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', 1, ?, ?, 50, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
+        ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
       `).run(
-        userId, cleanEmail, cleanEmail, displayName, now, planId,
+        userId, cleanEmail, cleanEmail, displayName, now, planId, profileQuota,
         trialStartedAt, trialExpiresAt, trialUsed, intent,
         claims.sub, avatarUrl, now, now, now
       );
     } catch {}
 
-    // Initialize 7-day trial subscription record if trial intent
     if (isTrial) {
       const subId = `sub_${crypto.randomUUID()}`;
       db.prepare(`

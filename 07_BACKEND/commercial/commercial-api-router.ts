@@ -83,6 +83,7 @@ import {
   exchangeGoogleAuthorizationCode,
   fetchGoogleProfile,
   authenticateWithGoogleClaims,
+  authenticateWithGoogleClaimsAsync,
   getGoogleOAuthConfig,
   normalizePlanId,
   GoogleClaims,
@@ -1334,7 +1335,7 @@ export async function handleCommercialApiRoutes(
       const tokens = await exchangeGoogleAuthorizationCode(code, redirectUri);
       const profile = await fetchGoogleProfile(tokens.accessToken);
 
-      const authResult = authenticateWithGoogleClaims(profile, stateRecord, clientIp);
+      const authResult = await authenticateWithGoogleClaimsAsync(profile, stateRecord, clientIp);
       if (!authResult.success) {
         res.writeHead(302, {
           Location: `${websiteBase}/signup?error=${encodeURIComponent(authResult.error || 'auth_failed')}`,
@@ -1386,7 +1387,7 @@ export async function handleCommercialApiRoutes(
       return true;
     } catch (err: any) {
       res.writeHead(302, {
-        Location: `/signup?error=${encodeURIComponent(err.message || 'oauth_exchange_failed')}`,
+        Location: `${websiteBase}/signup?error=${encodeURIComponent(err.message || 'oauth_exchange_failed')}`,
       });
       res.end();
       return true;
@@ -1695,7 +1696,7 @@ export async function handleCommercialApiRoutes(
       createdAt: new Date().toISOString(),
     };
 
-    const authResult = authenticateWithGoogleClaims(claims, stateContext, clientIp);
+    const authResult = await authenticateWithGoogleClaimsAsync(claims, stateContext, clientIp);
     if (!authResult.success) {
       sendJSON(res, 400, { success: false, error: authResult.error });
       return true;
