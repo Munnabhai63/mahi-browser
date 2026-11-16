@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  mahibrowser_gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    container_name: mahibrowser_gateway
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8989:8989"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=8989
+      - HOST=0.0.0.0
+      - MAHI_USER_DATA_DIR=/var/lib/mahibrowser
+    volumes:
+      - mahibrowser_data:/var/lib/mahibrowser
+      - /var/www/mahibrowser/releases:/app/releases:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  mahibrowser_redis:
+    profiles: ["local-redis"]
+    image: redis:7-alpine
+    container_name: mahibrowser_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--port", "6379"]
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - mahibrowser_redis_data:/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "2"
+
+volumes:
+  mahibrowser_data:
+    name: mahibrowser_data
+  mahibrowser_redis_data:
+    name: mahibrowser_redis_data

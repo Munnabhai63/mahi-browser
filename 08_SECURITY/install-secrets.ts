@@ -113,6 +113,12 @@ export function getInstallSecrets(): InstallSecrets {
 }
 
 export function getJwtSecret(): string {
+  if (!process.versions?.electron) {
+    const envJwt = process.env.JWT_SECRET?.trim();
+    if (envJwt && envJwt.length >= 16) {
+      return envJwt;
+    }
+  }
   return getInstallSecrets().jwtSecret;
 }
 
@@ -125,6 +131,12 @@ export function getAdminSalt(): string {
 }
 
 export function getMasterAdminSecret(): string {
+  if (!process.versions?.electron) {
+    const envAdmin = (process.env.ADMIN_BOOTSTRAP_TOKEN || process.env.MAHI_MASTER_ADMIN_SECRET)?.trim();
+    if (envAdmin && envAdmin.length >= 16) {
+      return envAdmin;
+    }
+  }
   return getInstallSecrets().masterAdminSecret;
 }
 

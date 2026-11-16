@@ -28,7 +28,10 @@ export default function LoginPage() {
         localStorage.setItem('mahi_access_token', data.token);
         window.location.href = `${BRAND.appUrl}/overview?token=${data.token}`;
       } else {
-        setErrorMsg(data.message || data.error || 'Invalid credentials. Please verify your email and password.');
+        const errorText = typeof data.error === 'string'
+          ? data.error
+          : (data.error?.message || data.message || 'Invalid credentials. Please verify your email and password.');
+        setErrorMsg(errorText);
       }
     } catch {
       setErrorMsg('Network error connecting to MAHI Cloud Auth Gateway.');

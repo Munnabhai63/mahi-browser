@@ -26,14 +26,17 @@ COPY . .
 
 # Set default production environment
 ENV NODE_ENV=production
-ENV PORT=32123
+ENV PORT=8989
 ENV HOST=0.0.0.0
+ENV MAHI_USER_DATA_DIR=/var/lib/mahibrowser
 
-EXPOSE 32123
+EXPOSE 8989 32123
+
+VOLUME ["/var/lib/mahibrowser"]
 
 # Health check against Fastify /health endpoint
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:32123/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 8989) + '/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
 
 # Start the Fastify Cloud Gateway daemon
 CMD ["npm", "run", "start:gateway"]

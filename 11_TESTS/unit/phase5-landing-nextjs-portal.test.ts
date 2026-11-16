@@ -210,4 +210,44 @@ describe('Phase 5: Next.js 14 Landing, Docs & Blog Portal + Web Cloud Console Pr
       }
     });
   });
+
+  describe('7. Production Deployment & Cutover Hardening Invariants', () => {
+    it('verifies Nginx config has scoped rate-limit zones and safe proxy routing', () => {
+      const nginxConfPath = path.join(rootDir, '10_CONFIG', 'infrastructure', 'nginx-production.conf');
+      expect(fs.existsSync(nginxConfPath)).toBe(true);
+      const content = fs.readFileSync(nginxConfPath, 'utf8');
+
+      expect(content).toContain('zone=mahi_api_rate_limit:20m');
+      expect(content).toContain('zone=mahi_auth_rate_limit:10m');
+      expect(content).toContain('zone=mahi_conn_limit:10m');
+      expect(content).toContain('limit_conn mahi_conn_limit 30;');
+      expect(content).toContain('limit_req zone=mahi_api_rate_limit burst=100 nodelay;');
+      expect(content).toContain('limit_req zone=mahi_auth_rate_limit burst=10 nodelay;');
+
+      // admin.mahibrowser.com must proxy to mahi_api_backend and return 302 for root
+      expect(content).toContain('server_name admin.mahibrowser.com;');
+      expect(content).toContain('return 302 https://$host/admin;');
+      expect(content).not.toContain('proxy_pass http://127.0.0.1:3000;');
+
+      // stream upstream
+      expect(content).toContain('server 127.0.0.1:8989 max_fails=3 fail_timeout=10s;');
+      expect(content).toContain('server 127.0.0.1:32123 backup;');
+
+      // direct setup download
+      expect(content).toContain('location = /download/MAHI-Setup.exe');
+    });
+
+    it('verifies docker-compose.production.yml defines isolated mahibrowser_gateway and optional local-redis', () => {
+      const composePath = path.join(rootDir, 'docker-compose.production.yml');
+      expect(fs.existsSync(composePath)).toBe(true);
+      const content = fs.readFileSync(composePath, 'utf8');
+
+      expect(content).toContain('container_name: mahibrowser_gateway');
+      expect(content).toContain('127.0.0.1:8989:8989');
+      expect(content).toContain('mahibrowser_data:/var/lib/mahibrowser');
+      expect(content).toContain('/var/www/mahibrowser/releases:/app/releases:ro');
+      expect(content).toContain('container_name: mahibrowser_redis');
+      expect(content).toContain('127.0.0.1:6380:6379');
+    });
+  });
 });

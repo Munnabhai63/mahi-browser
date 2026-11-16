@@ -1296,6 +1296,8 @@ export async function handleCommercialApiRoutes(
     const state = parsedUrl.searchParams.get('state');
     const error = parsedUrl.searchParams.get('error');
 
+    const websiteBase = (process.env.MAHI_WEBSITE_URL || '').replace(/\/+$/, '');
+
     // Handle user cancellation or OAuth error
     if (error || !state) {
       const stateRecord = state ? validateAndConsumeOAuthState(state) : null;
@@ -1303,7 +1305,7 @@ export async function handleCommercialApiRoutes(
       const fallbackPlan = stateRecord?.planId || 'professional_50';
       const errorMsg = error === 'access_denied' ? 'cancelled' : (error || 'oauth_error');
       res.writeHead(302, {
-        Location: `/signup?error=${encodeURIComponent(errorMsg)}&intent=${encodeURIComponent(fallbackIntent)}&plan=${encodeURIComponent(fallbackPlan)}`,
+        Location: `${websiteBase}/signup?error=${encodeURIComponent(errorMsg)}&intent=${encodeURIComponent(fallbackIntent)}&plan=${encodeURIComponent(fallbackPlan)}`,
       });
       res.end();
       return true;
@@ -1313,7 +1315,7 @@ export async function handleCommercialApiRoutes(
     const stateRecord = validateAndConsumeOAuthState(state);
     if (!stateRecord) {
       res.writeHead(302, {
-        Location: '/signup?error=invalid_state',
+        Location: `${websiteBase}/signup?error=invalid_state`,
       });
       res.end();
       return true;
@@ -1321,7 +1323,7 @@ export async function handleCommercialApiRoutes(
 
     if (!code) {
       res.writeHead(302, {
-        Location: '/signup?error=missing_code',
+        Location: `${websiteBase}/signup?error=missing_code`,
       });
       res.end();
       return true;
@@ -1335,7 +1337,7 @@ export async function handleCommercialApiRoutes(
       const authResult = authenticateWithGoogleClaims(profile, stateRecord, clientIp);
       if (!authResult.success) {
         res.writeHead(302, {
-          Location: `/signup?error=${encodeURIComponent(authResult.error || 'auth_failed')}`,
+          Location: `${websiteBase}/signup?error=${encodeURIComponent(authResult.error || 'auth_failed')}`,
         });
         res.end();
         return true;
@@ -1357,11 +1359,13 @@ export async function handleCommercialApiRoutes(
       }
 
       // Establish session cookie and redirect to onboarding / desktop-success
-      let targetUrl = authResult.returnUrl.startsWith('http')
-        ? authResult.returnUrl
-        : `${authResult.returnUrl}${authResult.returnUrl.includes('?') ? '&' : '?'}token=${authResult.token}&login=success`;
+      let targetUrl = authResult.returnUrl;
+      const isDesktop = stateRecord.intent === 'desktop_login' || authResult.returnUrl.includes('/auth/desktop-success');
 
-      if (stateRecord.intent === 'desktop_login' || authResult.returnUrl.includes('/auth/desktop-success')) {
+      if (!isDesktop) {
+        const sep = targetUrl.includes('?') ? '&' : '?';
+        targetUrl = `${targetUrl}${sep}token=${encodeURIComponent(authResult.token || '')}&login=success`;
+      } else {
         const ticketRec = handoffTicket ? desktopAuthTickets.get(handoffTicket) : null;
         const codeParam = ticketRec?.authCode ? `&code=${encodeURIComponent(ticketRec.authCode)}` : '';
         targetUrl = `/auth/desktop-success?handoff=${encodeURIComponent(handoffTicket)}${codeParam}&email=${encodeURIComponent(authResult.user.email)}&plan=${encodeURIComponent(authResult.user.planId || 'trial')}`;

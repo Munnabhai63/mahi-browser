@@ -28,7 +28,14 @@ export default function SignupPage() {
       const resp = await fetch(`${BRAND.apiUrl}/api/v1/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, requestedPlan: planId }),
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          planId,
+          requestedPlan: planId,
+          intent: planId !== 'free' ? 'trial' : 'free',
+        }),
       });
 
       const data = await resp.json().catch(() => ({}));
@@ -42,7 +49,10 @@ export default function SignupPage() {
           window.location.href = `/download`;
         }
       } else {
-        setErrorMsg(data.message || data.error || 'Failed to create account. Please try another email.');
+        const errorText = typeof data.error === 'string'
+          ? data.error
+          : (data.error?.message || data.message || 'Failed to create account. Please try another email.');
+        setErrorMsg(errorText);
       }
     } catch {
       setErrorMsg('Network error connecting to MAHI Cloud Auth Gateway.');

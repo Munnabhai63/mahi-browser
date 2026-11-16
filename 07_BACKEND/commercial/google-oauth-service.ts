@@ -62,33 +62,64 @@ export function isGoogleOAuthConfigured(): boolean {
 export function isSafeInternalUrl(url?: string | null): boolean {
   if (!url || typeof url !== 'string') return false;
   const trimmed = url.trim();
-  // Must start with single '/' and not '//' or '/\'
-  if (!trimmed.startsWith('/') || trimmed.startsWith('//') || trimmed.startsWith('/\\')) {
-    return false;
-  }
-  // Disallow backslashes, double slashes, or path traversal '..' anywhere in the path
-  if (trimmed.includes('\\') || trimmed.includes('//') || trimmed.includes('..')) {
+
+  // Disallow backslashes or path traversal '..' anywhere
+  if (trimmed.includes('\\') || trimmed.includes('..')) {
     return false;
   }
   // Disallow control characters or newlines
   if (/[\x00-\x1F\x7F]/.test(trimmed)) {
     return false;
   }
+
+  const ALLOWED_EXACT_OR_PREFIXES = [
+    '/dashboard',
+    '/download',
+    '/pricing',
+    '/book-demo',
+    '/account',
+    '/checkout',
+    '/auth',
+    '/overview',
+  ];
+
+  const TRUSTED_ORIGINS = [
+    'https://mahibrowser.com',
+    'https://www.mahibrowser.com',
+    'https://app.mahibrowser.com',
+  ];
+
+  // Case A: Absolute HTTPS URL on a trusted MAHI origin
+  if (trimmed.startsWith('https://')) {
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol !== 'https:') return false;
+      if (!TRUSTED_ORIGINS.includes(parsed.origin.toLowerCase())) return false;
+      const pathname = parsed.pathname.toLowerCase();
+      if (pathname === '/') return true;
+      return ALLOWED_EXACT_OR_PREFIXES.some(prefix =>
+        pathname === prefix || pathname.startsWith(prefix + '/')
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  // Case B: Relative path (must start with single '/' and not '//' or '/\')
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//') || trimmed.startsWith('/\\')) {
+    return false;
+  }
+  // Disallow '//' in relative path
+  if (trimmed.includes('//')) {
+    return false;
+  }
+
   try {
     const parsed = new URL(trimmed, 'https://mahibrowser.com');
     if (parsed.origin !== 'https://mahibrowser.com') return false;
     const pathname = parsed.pathname.toLowerCase();
     if (pathname === '/') return true;
-    const ALLOWED_EXACT_OR_PREFIXES = [
-      '/dashboard',
-      '/download',
-      '/pricing',
-      '/book-demo',
-      '/account',
-      '/checkout',
-      '/auth',
-    ];
-    return ALLOWED_EXACT_OR_PREFIXES.some(prefix => 
+    return ALLOWED_EXACT_OR_PREFIXES.some(prefix =>
       pathname === prefix || pathname.startsWith(prefix + '/')
     );
   } catch {

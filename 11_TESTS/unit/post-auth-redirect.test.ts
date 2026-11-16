@@ -24,6 +24,20 @@ describe('Post-Auth Redirect Resolver & URL Safety', () => {
       expect(isSafeInternalUrl('ftp://example.com')).toBe(false);
     });
 
+    it('accepts trusted absolute HTTPS origins for allowlisted paths', () => {
+      expect(isSafeInternalUrl('https://app.mahibrowser.com/overview')).toBe(true);
+      expect(isSafeInternalUrl('https://mahibrowser.com/download')).toBe(true);
+      expect(isSafeInternalUrl('https://www.mahibrowser.com/pricing')).toBe(true);
+      expect(isSafeInternalUrl('https://app.mahibrowser.com/dashboard')).toBe(true);
+    });
+
+    it('rejects untrusted domains, insecure http, and unapproved absolute paths', () => {
+      expect(isSafeInternalUrl('https://evil.com/overview')).toBe(false);
+      expect(isSafeInternalUrl('http://app.mahibrowser.com/overview')).toBe(false);
+      expect(isSafeInternalUrl('https://app.mahibrowser.com/etc/passwd')).toBe(false);
+      expect(isSafeInternalUrl('https://app.mahibrowser.com/overview/../../../evil')).toBe(false);
+    });
+
     it('rejects protocol-relative and backslash bypass attempts', () => {
       expect(isSafeInternalUrl('//evil.com')).toBe(false);
       expect(isSafeInternalUrl('/\\evil.com')).toBe(false);
@@ -40,6 +54,22 @@ describe('Post-Auth Redirect Resolver & URL Safety', () => {
       expect(isSafeInternalUrl('/etc/passwd')).toBe(false);
       expect(isSafeInternalUrl('/admin-secret-dump')).toBe(false);
       expect(isSafeInternalUrl('/unknown-arbitrary-page')).toBe(false);
+    });
+    it('uses process.env.JWT_SECRET and ADMIN_BOOTSTRAP_TOKEN in non-electron environments', async () => {
+      const { getJwtSecret, getMasterAdminSecret } = await import('../../08_SECURITY/install-secrets.js');
+      const origJwt = process.env.JWT_SECRET;
+      const origAdmin = process.env.ADMIN_BOOTSTRAP_TOKEN;
+      try {
+        process.env.JWT_SECRET = 'custom_jwt_secret_for_production_gateway';
+        process.env.ADMIN_BOOTSTRAP_TOKEN = 'custom_admin_bootstrap_token_for_gateway';
+        expect(getJwtSecret()).toBe('custom_jwt_secret_for_production_gateway');
+        expect(getMasterAdminSecret()).toBe('custom_admin_bootstrap_token_for_gateway');
+      } finally {
+        if (origJwt !== undefined) process.env.JWT_SECRET = origJwt;
+        else delete process.env.JWT_SECRET;
+        if (origAdmin !== undefined) process.env.ADMIN_BOOTSTRAP_TOKEN = origAdmin;
+        else delete process.env.ADMIN_BOOTSTRAP_TOKEN;
+      }
     });
   });
 
