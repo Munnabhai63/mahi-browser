@@ -216,6 +216,7 @@ export function ensureProfileStealthExtension(
             run_at: 'document_start',
             all_frames: true,
             match_about_blank: true,
+            match_origin_as_fallback: true,
           },
         ]
       : [
@@ -226,6 +227,7 @@ export function ensureProfileStealthExtension(
             world: 'MAIN',
             all_frames: true,
             match_about_blank: true,
+            match_origin_as_fallback: true,
           },
           {
             matches: ['http://*/*', 'https://*/*', '<all_urls>'],
@@ -233,6 +235,7 @@ export function ensureProfileStealthExtension(
             run_at: 'document_start',
             all_frames: true,
             match_about_blank: true,
+            match_origin_as_fallback: true,
           },
         ],
   };
@@ -417,6 +420,76 @@ export function ensureProfileStealthExtension(
     registerNative(origToString, 'toString');
   } catch(e) {}
 
+  // Synchronous Cross-Realm <iframe> Hooking & Function.prototype.toString Propagation
+  try {
+    var patchedWindows = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+    var patchRealm = function(targetWin) {
+      if (!targetWin || (patchedWindows && patchedWindows.has(targetWin))) return;
+      try {
+        if (patchedWindows) patchedWindows.add(targetWin);
+        if (targetWin.Function && targetWin.Function.prototype) {
+          var frameOrigToString = targetWin.Function.prototype.toString;
+          var frameProxyToString = new Proxy(frameOrigToString, {
+            apply: function(target, thisArg, argumentsList) {
+              if (thisArg === frameOrigToString || thisArg === frameProxyToString) {
+                return 'function toString() { [native code] }';
+              }
+              for (var i = 0; i < hookedProxies.length; i++) {
+                if (thisArg === hookedProxies[i].fn) {
+                  return 'function ' + hookedProxies[i].name + '() { [native code] }';
+                }
+              }
+              return target.apply(thisArg, argumentsList);
+            }
+          });
+          targetWin.Function.prototype.toString = frameProxyToString;
+          registerNative(frameProxyToString, 'toString');
+          registerNative(frameOrigToString, 'toString');
+        }
+      } catch(e) {}
+    };
+
+    if (typeof HTMLIFrameElement !== 'undefined' && HTMLIFrameElement.prototype) {
+      var origContentWindowDesc = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'contentWindow');
+      if (origContentWindowDesc && origContentWindowDesc.get) {
+        var origGetCW = origContentWindowDesc.get;
+        var proxyGetCW = new Proxy(origGetCW, {
+          apply: function(target, thisArg, args) {
+            var win = target.apply(thisArg, args);
+            if (win) patchRealm(win);
+            return win;
+          }
+        });
+        Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', {
+          get: proxyGetCW,
+          enumerable: origContentWindowDesc.enumerable,
+          configurable: origContentWindowDesc.configurable
+        });
+        registerNative(proxyGetCW, 'get contentWindow');
+        registerNative(origGetCW, 'get contentWindow');
+      }
+
+      var origContentDocDesc = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'contentDocument');
+      if (origContentDocDesc && origContentDocDesc.get) {
+        var origGetCD = origContentDocDesc.get;
+        var proxyGetCD = new Proxy(origGetCD, {
+          apply: function(target, thisArg, args) {
+            var doc = target.apply(thisArg, args);
+            if (doc && doc.defaultView) patchRealm(doc.defaultView);
+            return doc;
+          }
+        });
+        Object.defineProperty(HTMLIFrameElement.prototype, 'contentDocument', {
+          get: proxyGetCD,
+          enumerable: origContentDocDesc.enumerable,
+          configurable: origContentDocDesc.configurable
+        });
+        registerNative(proxyGetCD, 'get contentDocument');
+        registerNative(origGetCD, 'get contentDocument');
+      }
+    }
+  } catch(e) {}
+
   // -------------------------------------------------------------
   // 1. Automation & WebDriver Masking
   // -------------------------------------------------------------
@@ -551,12 +624,13 @@ export function ensureProfileStealthExtension(
               timeZone: tz,
               year: 'numeric', month: 'numeric', day: 'numeric',
               hour: 'numeric', minute: 'numeric', second: 'numeric',
-              hour12: false
+              hour12: false, hourCycle: 'h23'
             });
             var parts = formatter.formatToParts(date);
             var map = {};
             for (var pIdx = 0; pIdx < parts.length; pIdx++) map[parts[pIdx].type] = parseInt(parts[pIdx].value, 10);
-            var tzDate = Date.UTC(map.year, map.month - 1, map.day, map.hour === 24 ? 0 : map.hour, map.minute, map.second);
+            var tzHour = map.hour === 24 ? 0 : map.hour;
+            var tzDate = Date.UTC(map.year, map.month - 1, map.day, tzHour, map.minute, map.second);
             var utcDate = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds());
             return Math.round((utcDate - tzDate) / 60000);
           } catch(e) {
@@ -579,7 +653,9 @@ export function ensureProfileStealthExtension(
 
         var explicitTzMap = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
         var origDTF = Intl.DateTimeFormat;
-        var ProxyDTF = function(locales, options) {
+        var ProxyDTF = function DateTimeFormat() {
+          var locales = arguments[0];
+          var options = arguments[1];
           var hasExplicitTz = options && options.timeZone;
           var opts = Object.assign({}, options);
           if (!opts.timeZone) {
@@ -596,7 +672,11 @@ export function ensureProfileStealthExtension(
           }
           return inst;
         };
+        try {
+          Object.defineProperty(ProxyDTF, 'length', { value: 0, configurable: true });
+        } catch(e) {}
         ProxyDTF.prototype = origDTF.prototype;
+        ProxyDTF.prototype.constructor = ProxyDTF;
         if (origDTF.supportedLocalesOf) {
           ProxyDTF.supportedLocalesOf = origDTF.supportedLocalesOf;
         }
@@ -624,11 +704,12 @@ export function ensureProfileStealthExtension(
               timeZone: targetTz,
               weekday: 'short', month: 'short', day: '2-digit', year: 'numeric',
               hour: '2-digit', minute: '2-digit', second: '2-digit',
-              hour12: false, timeZoneName: 'long'
+              hour12: false, hourCycle: 'h23', timeZoneName: 'long'
             });
             var parts = {};
             var pList = dtf.formatToParts(date);
             for (var pi = 0; pi < pList.length; pi++) parts[pList[pi].type] = pList[pi].value;
+            if (parts.hour === '24') parts.hour = '00';
 
             var offMin = getTzOffset(date, targetTz);
             var sign = offMin <= 0 ? '+' : '-';
@@ -690,6 +771,30 @@ export function ensureProfileStealthExtension(
         Date.prototype.toDateString = proxyDateToDateString;
         registerNative(proxyDateToDateString, 'toDateString');
         registerNative(origDateToDateString, 'toDateString');
+
+        var hookDateLocale = function(prop) {
+          var orig = Date.prototype[prop];
+          if (!orig) return;
+          var proxy = new Proxy(orig, {
+            apply: function(target, thisArg, args) {
+              if (thisArg instanceof Date && !isNaN(thisArg.getTime())) {
+                var locales = args[0];
+                var options = Object.assign({}, args[1]);
+                if (!options.timeZone) {
+                  options.timeZone = targetTz;
+                }
+                return target.call(thisArg, locales, options);
+              }
+              return target.apply(thisArg, args);
+            }
+          });
+          Date.prototype[prop] = proxy;
+          registerNative(proxy, prop);
+          registerNative(orig, prop);
+        };
+        hookDateLocale('toLocaleString');
+        hookDateLocale('toLocaleDateString');
+        hookDateLocale('toLocaleTimeString');
       } catch(e) {}
     }
 
@@ -705,22 +810,43 @@ export function ensureProfileStealthExtension(
         '    var pTz = ' + ${JSON.stringify(targetTimezone)} + ';',
         '    var pLang = ' + ${JSON.stringify(languagesList[0] || 'en-US')} + ';',
         '    var pLangs = Object.freeze(' + ${JSON.stringify(languagesList)} + ');',
+        '    var wHooked = [];',
+        '    function wReg(fn, name) {',
+        '      if (typeof fn === "function") wHooked.push({ fn: fn, name: name || fn.name || "" });',
+        '    }',
+        '    try {',
+        '      var wOrigToString = Function.prototype.toString;',
+        '      var wProxyToString = new Proxy(wOrigToString, {',
+        '        apply: function(target, thisArg, args) {',
+        '          if (thisArg === wOrigToString || thisArg === wProxyToString) return "function toString() { [native code] }";',
+        '          for (var wi = 0; wi < wHooked.length; wi++) {',
+        '            if (thisArg === wHooked[wi].fn) return "function " + wHooked[wi].name + "() { [native code] }";',
+        '          }',
+        '          return target.apply(thisArg, args);',
+        '        }',
+        '      });',
+        '      Function.prototype.toString = wProxyToString;',
+        '      wReg(wProxyToString, "toString");',
+        '      wReg(wOrigToString, "toString");',
+        '    } catch(e) {}',
         '    if (typeof WorkerNavigator !== "undefined" && WorkerNavigator.prototype) {',
         '      var wProto = WorkerNavigator.prototype;',
         '      function spoofWorkerNav(prop, val) {',
         '        try {',
         '          var desc = Object.getOwnPropertyDescriptor(wProto, prop);',
-        '          var getter = function() {',
+        '          var dummy = { get [prop]() {',
         '            if (!this || !(this instanceof WorkerNavigator)) {',
         '              throw new TypeError("Failed to execute on WorkerNavigator: Illegal invocation");',
         '            }',
         '            return val;',
-        '          };',
+        '          } };',
+        '          var getter = Object.getOwnPropertyDescriptor(dummy, prop).get;',
         '          Object.defineProperty(wProto, prop, {',
         '            get: getter,',
         '            enumerable: desc ? desc.enumerable : true,',
         '            configurable: desc ? desc.configurable : true',
         '          });',
+        '          wReg(getter, "get " + prop);',
         '        } catch(e) {}',
         '      }',
         '      spoofWorkerNav("webdriver", false);',
@@ -729,28 +855,147 @@ export function ensureProfileStealthExtension(
         '      spoofWorkerNav("language", pLang);',
         '      spoofWorkerNav("languages", pLangs);',
         '    }',
-        '    if (pTz && typeof Intl !== "undefined" && Intl.DateTimeFormat) {',
-        '      var origDTF = Intl.DateTimeFormat;',
-        '      var explicitTzMap = typeof WeakMap !== "undefined" ? new WeakMap() : null;',
-        '      var ProxyDTF = function(locales, options) {',
-        '        var hasExplicitTz = options && options.timeZone;',
-        '        var opts = Object.assign({}, options);',
-        '        if (!opts.timeZone) opts.timeZone = pTz;',
-        '        var inst = (this instanceof ProxyDTF) ? new origDTF(locales, opts) : origDTF(locales, opts);',
-        '        if (explicitTzMap && inst && typeof inst === "object") explicitTzMap.set(inst, !!hasExplicitTz);',
-        '        return inst;',
+        '    if (pTz) {',
+        '      var getTzOffset = function(date, tz) {',
+        '        try {',
+        '          var formatter = new Intl.DateTimeFormat("en-US", {',
+        '            timeZone: tz, year: "numeric", month: "numeric", day: "numeric",',
+        '            hour: "numeric", minute: "numeric", second: "numeric",',
+        '            hour12: false, hourCycle: "h23"',
+        '          });',
+        '          var parts = formatter.formatToParts(date);',
+        '          var map = {};',
+        '          for (var pIdx = 0; pIdx < parts.length; pIdx++) map[parts[pIdx].type] = parseInt(parts[pIdx].value, 10);',
+        '          var tzHour = map.hour === 24 ? 0 : map.hour;',
+        '          var tzDate = Date.UTC(map.year, map.month - 1, map.day, tzHour, map.minute, map.second);',
+        '          var utcDate = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds());',
+        '          return Math.round((utcDate - tzDate) / 60000);',
+        '        } catch(e) { return 0; }',
         '      };',
-        '      ProxyDTF.prototype = origDTF.prototype;',
-        '      if (origDTF.supportedLocalesOf) ProxyDTF.supportedLocalesOf = origDTF.supportedLocalesOf;',
-        '      Intl.DateTimeFormat = ProxyDTF;',
-        '      var origRes = origDTF.prototype.resolvedOptions;',
-        '      origDTF.prototype.resolvedOptions = function() {',
-        '        var res = origRes.apply(this, arguments);',
-        '        if (res && (!explicitTzMap || !explicitTzMap.get(this))) {',
-        '          res.timeZone = pTz;',
+        '      var origOff = Date.prototype.getTimezoneOffset;',
+        '      var proxyOff = new Proxy(origOff, {',
+        '        apply: function(target, thisArg, args) {',
+        '          if (thisArg instanceof Date && !isNaN(thisArg.getTime())) return getTzOffset(thisArg, pTz);',
+        '          return target.apply(thisArg, args);',
         '        }',
-        '        return res;',
+        '      });',
+        '      Date.prototype.getTimezoneOffset = proxyOff;',
+        '      wReg(proxyOff, "getTimezoneOffset");',
+        '      wReg(origOff, "getTimezoneOffset");',
+        '      if (typeof Intl !== "undefined" && Intl.DateTimeFormat) {',
+        '        var origDTF = Intl.DateTimeFormat;',
+        '        var explicitTzMap = typeof WeakMap !== "undefined" ? new WeakMap() : null;',
+        '        var ProxyDTF = function DateTimeFormat() {',
+        '          var locales = arguments[0];',
+        '          var options = arguments[1];',
+        '          var hasExplicitTz = options && options.timeZone;',
+        '          var opts = Object.assign({}, options);',
+        '          if (!opts.timeZone) opts.timeZone = pTz;',
+        '          var inst = (this instanceof ProxyDTF) ? new origDTF(locales, opts) : origDTF(locales, opts);',
+        '          if (explicitTzMap && inst && typeof inst === "object") explicitTzMap.set(inst, !!hasExplicitTz);',
+        '          return inst;',
+        '        };',
+        '        try { Object.defineProperty(ProxyDTF, "length", { value: 0, configurable: true }); } catch(e) {}',
+        '        ProxyDTF.prototype = origDTF.prototype;',
+        '        ProxyDTF.prototype.constructor = ProxyDTF;',
+        '        if (origDTF.supportedLocalesOf) ProxyDTF.supportedLocalesOf = origDTF.supportedLocalesOf;',
+        '        Intl.DateTimeFormat = ProxyDTF;',
+        '        wReg(ProxyDTF, "DateTimeFormat");',
+        '        wReg(origDTF, "DateTimeFormat");',
+        '        var origRes = origDTF.prototype.resolvedOptions;',
+        '        var proxyRes = new Proxy(origRes, {',
+        '          apply: function(target, thisArg, args) {',
+        '            var res = target.apply(thisArg, args);',
+        '            if (res && (!explicitTzMap || !explicitTzMap.get(thisArg))) res.timeZone = pTz;',
+        '            return res;',
+        '          }',
+        '        });',
+        '        origDTF.prototype.resolvedOptions = proxyRes;',
+        '        wReg(proxyRes, "resolvedOptions");',
+        '        wReg(origRes, "resolvedOptions");',
+        '      }',
+        '      var formatTzDate = function(date, mode) {',
+        '        try {',
+        '          var dtf = new Intl.DateTimeFormat("en-US", {',
+        '            timeZone: pTz, weekday: "short", month: "short", day: "2-digit", year: "numeric",',
+        '            hour: "2-digit", minute: "2-digit", second: "2-digit",',
+        '            hour12: false, hourCycle: "h23", timeZoneName: "long"',
+        '          });',
+        '          var parts = {};',
+        '          var pList = dtf.formatToParts(date);',
+        '          for (var pi = 0; pi < pList.length; pi++) parts[pList[pi].type] = pList[pi].value;',
+        '          if (parts.hour === "24") parts.hour = "00";',
+        '          var offMin = getTzOffset(date, pTz);',
+        '          var sign = offMin <= 0 ? "+" : "-";',
+        '          var absOff = Math.abs(offMin);',
+        '          var offH = ("0" + Math.floor(absOff / 60)).slice(-2);',
+        '          var offM = ("0" + (absOff % 60)).slice(-2);',
+        '          var offStr = "GMT" + sign + offH + offM;',
+        '          if (mode === "date") return parts.weekday + " " + parts.month + " " + parts.day + " " + parts.year;',
+        '          if (mode === "time") return parts.hour + ":" + parts.minute + ":" + parts.second + " " + offStr + " (" + (parts.timeZoneName || pTz) + ")";',
+        '          return parts.weekday + " " + parts.month + " " + parts.day + " " + parts.year + " " + parts.hour + ":" + parts.minute + ":" + parts.second + " " + offStr + " (" + (parts.timeZoneName || pTz) + ")";',
+        '        } catch(e) { return null; }',
         '      };',
+        '      var origDTS = Date.prototype.toString;',
+        '      var proxyDTS = new Proxy(origDTS, {',
+        '        apply: function(target, thisArg, args) {',
+        '          if (thisArg instanceof Date && !isNaN(thisArg.getTime())) {',
+        '            var f = formatTzDate(thisArg, "full");',
+        '            if (f) return f;',
+        '          }',
+        '          return target.apply(thisArg, args);',
+        '        }',
+        '      });',
+        '      Date.prototype.toString = proxyDTS;',
+        '      wReg(proxyDTS, "toString");',
+        '      wReg(origDTS, "toString");',
+        '      var origTTS = Date.prototype.toTimeString;',
+        '      var proxyTTS = new Proxy(origTTS, {',
+        '        apply: function(target, thisArg, args) {',
+        '          if (thisArg instanceof Date && !isNaN(thisArg.getTime())) {',
+        '            var f = formatTzDate(thisArg, "time");',
+        '            if (f) return f;',
+        '          }',
+        '          return target.apply(thisArg, args);',
+        '        }',
+        '      });',
+        '      Date.prototype.toTimeString = proxyTTS;',
+        '      wReg(proxyTTS, "toTimeString");',
+        '      wReg(origTTS, "toTimeString");',
+        '      var origDDS = Date.prototype.toDateString;',
+        '      var proxyDDS = new Proxy(origDDS, {',
+        '        apply: function(target, thisArg, args) {',
+        '          if (thisArg instanceof Date && !isNaN(thisArg.getTime())) {',
+        '            var f = formatTzDate(thisArg, "date");',
+        '            if (f) return f;',
+        '          }',
+        '          return target.apply(thisArg, args);',
+        '        }',
+        '      });',
+        '      Date.prototype.toDateString = proxyDDS;',
+        '      wReg(proxyDDS, "toDateString");',
+        '      wReg(origDDS, "toDateString");',
+        '      var hookLocale = function(prop) {',
+        '        var orig = Date.prototype[prop];',
+        '        if (!orig) return;',
+        '        var proxy = new Proxy(orig, {',
+        '          apply: function(target, thisArg, args) {',
+        '            if (thisArg instanceof Date && !isNaN(thisArg.getTime())) {',
+        '              var loc = args[0];',
+        '              var opt = Object.assign({}, args[1]);',
+        '              if (!opt.timeZone) opt.timeZone = pTz;',
+        '              return target.call(thisArg, loc, opt);',
+        '            }',
+        '            return target.apply(thisArg, args);',
+        '          }',
+        '        });',
+        '        Date.prototype[prop] = proxy;',
+        '        wReg(proxy, prop);',
+        '        wReg(orig, prop);',
+        '      };',
+        '      hookLocale("toLocaleString");',
+        '      hookLocale("toLocaleDateString");',
+        '      hookLocale("toLocaleTimeString");',
         '    }',
         '  } catch(e) {}',
         '})();'
@@ -759,15 +1004,24 @@ export function ensureProfileStealthExtension(
       function wrapWorkerUrl(url) {
         if (!url) return url;
         try {
-          if (typeof url === 'string') {
-            if (url.startsWith('blob:')) {
-              var xhr = new XMLHttpRequest();
-              xhr.open('GET', url, false);
-              xhr.send();
-              if (xhr.status === 200 || xhr.responseText) {
-                var combined = workerBootstrapJs + '\\n;' + xhr.responseText;
-                return URL.createObjectURL(new Blob([combined], { type: 'application/javascript' }));
-              }
+          var rawUrl = (typeof URL !== 'undefined' && url instanceof URL) ? url.href : String(url);
+          var resolvedUrl;
+          try {
+            resolvedUrl = (typeof location !== 'undefined') ? new URL(rawUrl, location.href) : null;
+          } catch(e) {
+            resolvedUrl = null;
+          }
+          var isBlob = rawUrl.startsWith('blob:');
+          var isSameOrigin = resolvedUrl && (typeof location !== 'undefined') && (resolvedUrl.origin === location.origin);
+
+          if (isBlob || isSameOrigin) {
+            var fetchUrl = isBlob ? rawUrl : resolvedUrl.href;
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', fetchUrl, false);
+            xhr.send();
+            if ((xhr.status >= 200 && xhr.status < 300) || (xhr.status === 0 && xhr.responseText)) {
+              var combined = workerBootstrapJs + '\\n;' + xhr.responseText;
+              return URL.createObjectURL(new Blob([combined], { type: 'application/javascript' }));
             }
           }
         } catch(e) {}
@@ -830,10 +1084,35 @@ export function ensureProfileStealthExtension(
         var chArch = ${JSON.stringify(clientHintsArch)};
         var chBitness = "64";
 
-        var getBrands = function() { return defaultBrands; };
-        var getMobile = function() { return chMobile; };
-        var getPlatform = function() { return chPlatform; };
-        var getHighEntropyValues = function(hints) {
+        var dummyUaProto = {
+          get brands() {
+            if (typeof NavigatorUAData !== 'undefined' && (!this || !(this instanceof NavigatorUAData))) {
+              throw new TypeError("Failed to read the 'brands' property from 'NavigatorUAData': Illegal invocation");
+            }
+            return defaultBrands;
+          },
+          get mobile() {
+            if (typeof NavigatorUAData !== 'undefined' && (!this || !(this instanceof NavigatorUAData))) {
+              throw new TypeError("Failed to read the 'mobile' property from 'NavigatorUAData': Illegal invocation");
+            }
+            return chMobile;
+          },
+          get platform() {
+            if (typeof NavigatorUAData !== 'undefined' && (!this || !(this instanceof NavigatorUAData))) {
+              throw new TypeError("Failed to read the 'platform' property from 'NavigatorUAData': Illegal invocation");
+            }
+            return chPlatform;
+          }
+        };
+
+        var getBrands = Object.getOwnPropertyDescriptor(dummyUaProto, 'brands').get;
+        var getMobile = Object.getOwnPropertyDescriptor(dummyUaProto, 'mobile').get;
+        var getPlatform = Object.getOwnPropertyDescriptor(dummyUaProto, 'platform').get;
+
+        var getHighEntropyValues = function getHighEntropyValues(hints) {
+          if (typeof NavigatorUAData !== 'undefined' && (!this || !(this instanceof NavigatorUAData))) {
+            return Promise.reject(new TypeError("Failed to execute 'getHighEntropyValues' on 'NavigatorUAData': Illegal invocation"));
+          }
           var res = {
             brands: defaultBrands,
             mobile: chMobile,
@@ -851,7 +1130,11 @@ export function ensureProfileStealthExtension(
           }
           return Promise.resolve(res);
         };
-        var toJSON = function() {
+
+        var toJSON = function toJSON() {
+          if (typeof NavigatorUAData !== 'undefined' && (!this || !(this instanceof NavigatorUAData))) {
+            throw new TypeError("Failed to execute 'toJSON' on 'NavigatorUAData': Illegal invocation");
+          }
           return {
             brands: defaultBrands,
             mobile: chMobile,
@@ -1007,14 +1290,30 @@ export function ensureProfileStealthExtension(
   // -------------------------------------------------------------
   if (${canvasMode !== 'off'}) {
     try {
-      var shiftVal = (pSeed % 3) - 1 || 1;
-      
-      function applyNoise(imgData) {
+      var seedOffset = (pSeed % 15) + 1;
+
+      function applyNoiseToImageData(imgData, sx, sy, canvasWidth, canvasHeight) {
+        if (!imgData || !imgData.data) return imgData;
+        var sw = imgData.width;
+        var sh = imgData.height;
+        var cw = canvasWidth || sw;
+        var ch = canvasHeight || sh;
+        if (cw <= 8 || ch <= 8 || sw <= 8 || sh <= 8) return imgData;
         var data = imgData.data;
-        var step = Math.max(16, (((imgData.width * imgData.height) >> 4) & ~3) || 16);
-        for (var i = 0; i < data.length; i += step) {
-          if (data[i + 3] === 0) continue;
-          data[i] = Math.min(255, Math.max(0, data[i] + shiftVal));
+        var startX = sx || 0;
+        var startY = sy || 0;
+
+        for (var y = 0; y < sh; y++) {
+          var gy = startY + y;
+          for (var x = 0; x < sw; x++) {
+            var gx = startX + x;
+            if (((gx * 7 + gy * 13 + seedOffset) % 16) === 0) {
+              var dataIdx = (y * sw + x) * 4;
+              if (data[dataIdx + 3] === 0) continue;
+              var chIdx = (pSeed + gx + gy) % 3;
+              data[dataIdx + chIdx] ^= 1;
+            }
+          }
         }
         return imgData;
       }
@@ -1027,7 +1326,7 @@ export function ensureProfileStealthExtension(
       var proxyToDataURL = new Proxy(origToDataURL, {
         apply: function(target, thisArg, argumentsList) {
           try {
-            if (thisArg.width > 0 && thisArg.height > 0) {
+            if (thisArg.width > 8 && thisArg.height > 8) {
               var clone = document.createElement('canvas');
               clone.width = thisArg.width;
               clone.height = thisArg.height;
@@ -1035,7 +1334,8 @@ export function ensureProfileStealthExtension(
               if (ctx) {
                 ctx.drawImage(thisArg, 0, 0);
                 var imgData = origGetImageData.call(ctx, 0, 0, clone.width, clone.height);
-                origPutImageData.call(ctx, applyNoise(imgData), 0, 0);
+                applyNoiseToImageData(imgData, 0, 0, clone.width, clone.height);
+                origPutImageData.call(ctx, imgData, 0, 0);
                 return target.apply(clone, argumentsList);
               }
             }
@@ -1051,7 +1351,7 @@ export function ensureProfileStealthExtension(
         var proxyToBlob = new Proxy(origToBlob, {
           apply: function(target, thisArg, argumentsList) {
             try {
-              if (thisArg.width > 0 && thisArg.height > 0) {
+              if (thisArg.width > 8 && thisArg.height > 8) {
                 var clone = document.createElement('canvas');
                 clone.width = thisArg.width;
                 clone.height = thisArg.height;
@@ -1059,7 +1359,8 @@ export function ensureProfileStealthExtension(
                 if (ctx) {
                   ctx.drawImage(thisArg, 0, 0);
                   var imgData = origGetImageData.call(ctx, 0, 0, clone.width, clone.height);
-                  origPutImageData.call(ctx, applyNoise(imgData), 0, 0);
+                  applyNoiseToImageData(imgData, 0, 0, clone.width, clone.height);
+                  origPutImageData.call(ctx, imgData, 0, 0);
                   return target.apply(clone, argumentsList);
                 }
               }
@@ -1071,14 +1372,16 @@ export function ensureProfileStealthExtension(
         registerNative(proxyToBlob, 'toBlob');
         registerNative(origToBlob, 'toBlob');
       }
-      
+
       var proxyGetImageData = new Proxy(origGetImageData, {
         apply: function(target, thisArg, argumentsList) {
           var imgData = target.apply(thisArg, argumentsList);
           try {
-            if (imgData.width > 8 && imgData.height > 8) {
-              imgData = applyNoise(imgData);
-            }
+            var sx = Number(argumentsList[0]) || 0;
+            var sy = Number(argumentsList[1]) || 0;
+            var cw = (thisArg && thisArg.canvas) ? thisArg.canvas.width : imgData.width;
+            var ch = (thisArg && thisArg.canvas) ? thisArg.canvas.height : imgData.height;
+            applyNoiseToImageData(imgData, sx, sy, cw, ch);
           } catch(e) {}
           return imgData;
         }
@@ -1088,24 +1391,26 @@ export function ensureProfileStealthExtension(
       registerNative(origGetImageData, 'getImageData');
 
       if (typeof OffscreenCanvas !== 'undefined' && OffscreenCanvas.prototype) {
-        if (typeof OffscreenCanvasRenderingContext2D !== 'undefined' && OffscreenCanvasRenderingContext2D.prototype) {
-          var origOffscreenGetImageData = OffscreenCanvasRenderingContext2D.prototype.getImageData;
-          if (origOffscreenGetImageData) {
-            var proxyOffscreenGetImageData = new Proxy(origOffscreenGetImageData, {
-              apply: function(target, thisArg, argumentsList) {
-                var imgData = target.apply(thisArg, argumentsList);
-                try {
-                  if (imgData.width > 8 && imgData.height > 8) {
-                    imgData = applyNoise(imgData);
-                  }
-                } catch(e) {}
-                return imgData;
-              }
-            });
-            OffscreenCanvasRenderingContext2D.prototype.getImageData = proxyOffscreenGetImageData;
-            registerNative(proxyOffscreenGetImageData, 'getImageData');
-            registerNative(origOffscreenGetImageData, 'getImageData');
-          }
+        var origOffscreenGetImageData = (typeof OffscreenCanvasRenderingContext2D !== 'undefined' && OffscreenCanvasRenderingContext2D.prototype)
+          ? OffscreenCanvasRenderingContext2D.prototype.getImageData
+          : null;
+        if (origOffscreenGetImageData) {
+          var proxyOffscreenGetImageData = new Proxy(origOffscreenGetImageData, {
+            apply: function(target, thisArg, argumentsList) {
+              var imgData = target.apply(thisArg, argumentsList);
+              try {
+                var sx = Number(argumentsList[0]) || 0;
+                var sy = Number(argumentsList[1]) || 0;
+                var cw = (thisArg && thisArg.canvas) ? thisArg.canvas.width : imgData.width;
+                var ch = (thisArg && thisArg.canvas) ? thisArg.canvas.height : imgData.height;
+                applyNoiseToImageData(imgData, sx, sy, cw, ch);
+              } catch(e) {}
+              return imgData;
+            }
+          });
+          OffscreenCanvasRenderingContext2D.prototype.getImageData = proxyOffscreenGetImageData;
+          registerNative(proxyOffscreenGetImageData, 'getImageData');
+          registerNative(origOffscreenGetImageData, 'getImageData');
         }
 
         if (OffscreenCanvas.prototype.convertToBlob) {
@@ -1113,10 +1418,18 @@ export function ensureProfileStealthExtension(
           var proxyConvertToBlob = new Proxy(origConvertToBlob, {
             apply: function(target, thisArg, argumentsList) {
               try {
-                var ctx = thisArg.getContext('2d');
-                if (ctx) {
-                  var imgData = ctx.getImageData(0, 0, thisArg.width, thisArg.height);
-                  ctx.putImageData(applyNoise(imgData), 0, 0);
+                if (thisArg.width > 8 && thisArg.height > 8) {
+                  var clone = new OffscreenCanvas(thisArg.width, thisArg.height);
+                  var cloneCtx = clone.getContext('2d');
+                  if (cloneCtx) {
+                    cloneCtx.drawImage(thisArg, 0, 0);
+                    var imgData = origOffscreenGetImageData
+                      ? origOffscreenGetImageData.call(cloneCtx, 0, 0, clone.width, clone.height)
+                      : cloneCtx.getImageData(0, 0, clone.width, clone.height);
+                    applyNoiseToImageData(imgData, 0, 0, clone.width, clone.height);
+                    if (cloneCtx.putImageData) cloneCtx.putImageData(imgData, 0, 0);
+                    return target.apply(clone, argumentsList);
+                  }
                 }
               } catch(e) {}
               return target.apply(thisArg, argumentsList);
@@ -1136,13 +1449,17 @@ export function ensureProfileStealthExtension(
   if (${clientRectsMode !== 'off'}) {
     try {
       function shiftDOMRectList(origList, shift) {
-        if (!origList || shift === 0) return origList;
+        if (!origList || origList.length === 0 || shift === 0) return origList;
         var count = origList.length || 0;
         var shifted = [];
         for (var i = 0; i < count; i++) {
           var r = origList[i] || (origList.item && origList.item(i));
           if (r) {
-            shifted.push(new DOMRect(r.x + shift, r.y + shift, r.width, r.height));
+            if (r.width === 0 && r.height === 0) {
+              shifted.push(r);
+            } else {
+              shifted.push(new DOMRect(r.x + shift, r.y + shift, r.width, r.height));
+            }
           }
         }
         return new Proxy(origList, {
@@ -1169,7 +1486,7 @@ export function ensureProfileStealthExtension(
         var proxyGetBoundingClientRect = new Proxy(origGetBoundingClientRect, {
           apply: function(target, thisArg, argumentsList) {
             var rect = target.apply(thisArg, argumentsList);
-            if (!rect) return rect;
+            if (!rect || (rect.width === 0 && rect.height === 0)) return rect;
             return new DOMRect(
               rect.x + crShift,
               rect.y + crShift,
@@ -1195,12 +1512,12 @@ export function ensureProfileStealthExtension(
           registerNative(origGetClientRects, 'getClientRects');
         }
 
-        if (window.Range && Range.prototype.getBoundingClientRect) {
+        if (typeof window !== 'undefined' && window.Range && Range.prototype.getBoundingClientRect) {
           var origRangeGetBoundingClientRect = Range.prototype.getBoundingClientRect;
           var proxyRangeGetBoundingClientRect = new Proxy(origRangeGetBoundingClientRect, {
             apply: function(target, thisArg, argumentsList) {
               var rect = target.apply(thisArg, argumentsList);
-              if (!rect) return rect;
+              if (!rect || (rect.width === 0 && rect.height === 0)) return rect;
               return new DOMRect(
                 rect.x + crShift,
                 rect.y + crShift,
@@ -1214,7 +1531,7 @@ export function ensureProfileStealthExtension(
           registerNative(origRangeGetBoundingClientRect, 'getBoundingClientRect');
         }
 
-        if (window.Range && Range.prototype.getClientRects) {
+        if (typeof window !== 'undefined' && window.Range && Range.prototype.getClientRects) {
           var origRangeGetClientRects = Range.prototype.getClientRects;
           var proxyRangeGetClientRects = new Proxy(origRangeGetClientRects, {
             apply: function(target, thisArg, argumentsList) {
@@ -1268,16 +1585,25 @@ export function ensureProfileStealthExtension(
         registerNative(proxyGetParam, 'getParameter');
         registerNative(origGetParam, 'getParameter');
 
+        var cachedExtMap = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
         var origGetExtension = proto.getExtension;
         var proxyGetExtension = new Proxy(origGetExtension, {
           apply: function(target, thisArg, argumentsList) {
             var name = argumentsList[0];
             var ext = target.apply(thisArg, argumentsList);
-            if (name === 'WEBGL_debug_renderer_info' && ext) {
-              return {
-                UNMASKED_VENDOR_WEBGL: 37445,
-                UNMASKED_RENDERER_WEBGL: 37446
-              };
+            if (name === 'WEBGL_debug_renderer_info') {
+              if (!ext) return null;
+              if (cachedExtMap) {
+                var cached = cachedExtMap.get(thisArg);
+                if (cached) return cached;
+                try {
+                  if (ext.UNMASKED_VENDOR_WEBGL === undefined) ext.UNMASKED_VENDOR_WEBGL = 37445;
+                  if (ext.UNMASKED_RENDERER_WEBGL === undefined) ext.UNMASKED_RENDERER_WEBGL = 37446;
+                } catch(e) {}
+                cachedExtMap.set(thisArg, ext);
+                return ext;
+              }
+              return ext;
             }
             return ext;
           }
@@ -1293,11 +1619,11 @@ export function ensureProfileStealthExtension(
             apply: function(target, thisArg, args) {
               var res = target.apply(thisArg, args);
               var pixels = args[6];
-              if (pixels && pixels.length > 0) {
-                var step = Math.max(16, (pixels.length >> 4));
-                var jitter = ((pSeed % 3) - 1) || 1;
+              if (pixels && (pixels instanceof Uint8Array || (typeof Uint8ClampedArray !== 'undefined' && pixels instanceof Uint8ClampedArray)) && pixels.length >= 16) {
+                var step = Math.max(16, (pixels.length >> 4) & ~3);
                 for (var i = 0; i < pixels.length; i += step) {
-                  pixels[i] = (pixels[i] + jitter) & 0xFF;
+                  if ((i + 3) < pixels.length && pixels[i + 3] === 0) continue;
+                  pixels[i] ^= 1;
                 }
               }
               return res;
@@ -1319,33 +1645,67 @@ export function ensureProfileStealthExtension(
   // -------------------------------------------------------------
   try {
     if (navigator.gpu && navigator.gpu.requestAdapter) {
+      var gpuInfo = {
+        architecture: ${JSON.stringify(isMobile ? 'valhall' : (isMacArm ? 'apple-m1' : 'ampere'))},
+        vendor: ${JSON.stringify(isMobile ? 'arm' : (isMacArm ? 'apple' : (isLinux ? 'mesa' : 'nvidia')))},
+        device: ${JSON.stringify(isMobile ? 'Mali-G710' : (isMacArm ? 'Apple M1' : (isLinux ? 'Intel UHD 620' : 'NVIDIA GeForce RTX 4070')))},
+        description: ${JSON.stringify(gpuRenderer)},
+      };
+
+      if (typeof GPUAdapter !== 'undefined' && GPUAdapter.prototype) {
+        var dummyAdapter = {
+          get info() {
+            if (!this || !(this instanceof GPUAdapter)) {
+              throw new TypeError("Failed to read the 'info' property from 'GPUAdapter': Illegal invocation");
+            }
+            return gpuInfo;
+          }
+        };
+        var infoGetter = Object.getOwnPropertyDescriptor(dummyAdapter, 'info').get;
+        Object.defineProperty(GPUAdapter.prototype, 'info', {
+          get: infoGetter,
+          configurable: true,
+          enumerable: true
+        });
+        registerNative(infoGetter, 'get info');
+
+        if (GPUAdapter.prototype.requestAdapterInfo) {
+          var origReqInfo = GPUAdapter.prototype.requestAdapterInfo;
+          var proxyReqInfo = new Proxy(origReqInfo, {
+            apply: function(target, thisArg) {
+              if (!thisArg || !(thisArg instanceof GPUAdapter)) {
+                return Promise.reject(new TypeError("Failed to execute 'requestAdapterInfo' on 'GPUAdapter': Illegal invocation"));
+              }
+              return Promise.resolve(gpuInfo);
+            }
+          });
+          GPUAdapter.prototype.requestAdapterInfo = proxyReqInfo;
+          registerNative(proxyReqInfo, 'requestAdapterInfo');
+          registerNative(origReqInfo, 'requestAdapterInfo');
+        }
+      }
+
       var origRequestAdapter = navigator.gpu.requestAdapter;
       var proxyRequestAdapter = new Proxy(origRequestAdapter, {
         apply: function(target, thisArg, args) {
           return target.apply(thisArg, args).then(function(adapter) {
             if (!adapter) return adapter;
-            var gpuInfo = {
-              architecture: ${JSON.stringify(isMobile ? 'valhall' : (isMacArm ? 'apple-m1' : 'ampere'))},
-              vendor: ${JSON.stringify(isMobile ? 'arm' : (isMacArm ? 'apple' : (isLinux ? 'mesa' : 'nvidia')))},
-              device: ${JSON.stringify(isMobile ? 'Mali-G710' : (isMacArm ? 'Apple M1' : (isLinux ? 'Intel UHD 620' : 'NVIDIA GeForce RTX 4070')))},
-              description: ${JSON.stringify(gpuRenderer)},
-            };
             try {
-              var infoGetter = function() { return gpuInfo; };
-              registerNative(infoGetter, 'get info');
-              Object.defineProperty(adapter, 'info', {
-                get: infoGetter,
-                configurable: true,
-                enumerable: true
-              });
-              if (adapter.requestAdapterInfo) {
-                var origReqInfo = adapter.requestAdapterInfo;
-                var proxyReqInfo = new Proxy(origReqInfo, {
-                  apply: function() { return Promise.resolve(gpuInfo); }
+              if (typeof GPUAdapter === 'undefined') {
+                Object.defineProperty(adapter, 'info', {
+                  get: function() { return gpuInfo; },
+                  configurable: true,
+                  enumerable: true
                 });
-                adapter.requestAdapterInfo = proxyReqInfo;
-                registerNative(proxyReqInfo, 'requestAdapterInfo');
-                registerNative(origReqInfo, 'requestAdapterInfo');
+                if (adapter.requestAdapterInfo) {
+                  var origReqInfo = adapter.requestAdapterInfo;
+                  var proxyReqInfo = new Proxy(origReqInfo, {
+                    apply: function() { return Promise.resolve(gpuInfo); }
+                  });
+                  adapter.requestAdapterInfo = proxyReqInfo;
+                  registerNative(proxyReqInfo, 'requestAdapterInfo');
+                  registerNative(origReqInfo, 'requestAdapterInfo');
+                }
               }
             } catch(e) {}
             return adapter;
@@ -1363,17 +1723,26 @@ export function ensureProfileStealthExtension(
   // -------------------------------------------------------------
   if (${audioMode !== 'off'}) {
     try {
-      if (window.AudioBuffer) {
-        var perturbedBuffers = new WeakSet();
+      if (typeof window !== 'undefined' && window.AudioBuffer) {
+        var perturbedBuffers = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+        var isBufferSilent = function(buf) {
+          for (var si = 0; si < buf.length; si++) {
+            if (buf[si] !== 0) return false;
+          }
+          return true;
+        };
+
         var origGetChannelData = AudioBuffer.prototype.getChannelData;
         var proxyGetChannelData = new Proxy(origGetChannelData, {
           apply: function(target, thisArg, argumentsList) {
             var buffer = target.apply(thisArg, argumentsList);
-            if (!perturbedBuffers.has(buffer)) {
+            if (perturbedBuffers && !perturbedBuffers.has(buffer)) {
               perturbedBuffers.add(buffer);
-              var offset = ((pSeed % 7) + 1) * 0.0000001;
-              for (var i = 0; i < buffer.length; i += 100) {
-                buffer[i] += offset;
+              if (!isBufferSilent(buffer)) {
+                var offset = ((pSeed % 7) + 1) * 0.0000001;
+                for (var i = 0; i < buffer.length; i += 100) {
+                  buffer[i] += offset;
+                }
               }
             }
             return buffer;
@@ -1382,6 +1751,28 @@ export function ensureProfileStealthExtension(
         AudioBuffer.prototype.getChannelData = proxyGetChannelData;
         registerNative(proxyGetChannelData, 'getChannelData');
         registerNative(origGetChannelData, 'getChannelData');
+
+        if (AudioBuffer.prototype.copyFromChannel) {
+          var origCopyFromChannel = AudioBuffer.prototype.copyFromChannel;
+          var proxyCopyFromChannel = new Proxy(origCopyFromChannel, {
+            apply: function(target, thisArg, args) {
+              var destination = args[0];
+              var channelNumber = args[1] || 0;
+              var bufferOffset = args[2] || 0;
+              var chData = proxyGetChannelData.call(thisArg, channelNumber);
+              if (destination && chData) {
+                for (var ci = 0; ci < destination.length && (ci + bufferOffset) < chData.length; ci++) {
+                  destination[ci] = chData[ci + bufferOffset];
+                }
+                return;
+              }
+              return target.apply(thisArg, args);
+            }
+          });
+          AudioBuffer.prototype.copyFromChannel = proxyCopyFromChannel;
+          registerNative(proxyCopyFromChannel, 'copyFromChannel');
+          registerNative(origCopyFromChannel, 'copyFromChannel');
+        }
       }
     } catch(e) {}
   }
