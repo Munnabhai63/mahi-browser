@@ -492,5 +492,27 @@ describe('Step 1: Google OAuth -> Supabase PostgreSQL Sync & Error Redirect', ()
     });
     const freeUsage = await getUserSyncUsageAsync(freeUserId);
     expect(freeUsage.max_profiles).toBe(1);
+
+    // 8. Verify a user with local active paid subscription is NOT suppressed to free quota even if centralUser.plan_id === 'free'
+    const paidUserId = `usr_local_paid_${Date.now()}`;
+    db.prepare(`
+      INSERT INTO commercial_users (id, email, password_hash, salt, name, role, status, plan_id, created_at, updated_at)
+      VALUES (?, ?, 'hash', 'salt', 'Paid User', 'USER', 'ACTIVE', 'professional_50', datetime('now'), datetime('now'))
+    `).run(paidUserId, `paid-${Date.now()}@example.com`);
+    db.prepare(`
+      INSERT INTO commercial_subscriptions (
+        id, user_id, plan_id, status, billing_cycle, starts_at, expires_at, payment_provider, created_at
+      ) VALUES (?, ?, 'professional_50', 'ACTIVE', 'monthly', datetime('now'), datetime('now', '+30 days'), 'razorpay', datetime('now'))
+    `).run(`sub_${Date.now()}`, paidUserId);
+
+    authUsersMap.set(paidUserId, {
+      id: paidUserId,
+      email: `paid-${Date.now()}@example.com`,
+      plan_id: 'free',
+      profile_quota: 1,
+    });
+
+    const paidUsage = await getUserSyncUsageAsync(paidUserId);
+    expect(paidUsage.max_profiles).toBe(50);
   });
 });

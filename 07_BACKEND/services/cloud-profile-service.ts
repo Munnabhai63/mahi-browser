@@ -244,10 +244,19 @@ export async function getUserSyncUsageAsync(userId: string) {
 
     const entitlements = evaluateUserEntitlements(userId);
     const planLimits = entitlements?.plan?.limits;
-    const isFreePlan = entitlements?.plan?.tier === 'FREE' || centralUser?.plan_id === 'free' || centralUser?.profile_quota === 1;
+    const hasLocalPaid = Boolean(entitlements?.plan?.tier && entitlements.plan.tier !== 'FREE');
+    const hasPgPaid = Boolean(centralUser && centralUser.plan_id && centralUser.plan_id !== 'free' && (centralUser.profile_quota || 0) > 1);
+    const hasPaidUpgrade = hasLocalPaid || hasPgPaid;
+
+    const isFreePlan = !hasPaidUpgrade && (
+      entitlements?.plan?.tier === 'FREE' ||
+      centralUser?.plan_id === 'free' ||
+      centralUser?.profile_quota === 1
+    );
+
     const localMax = (!isFreePlan && planLimits && typeof planLimits.maxProfiles === 'number') ? planLimits.maxProfiles : 0;
     const pgQuota = (centralUser && typeof centralUser.profile_quota === 'number') ? centralUser.profile_quota : 0;
-    const maxProfiles = Math.max(localMax, pgQuota) || 10;
+    const maxProfiles = isFreePlan ? (pgQuota || 1) : (Math.max(localMax, pgQuota) || 10);
     const totalBytes = DEFAULT_MAX_STORAGE_BYTES;
     return {
       profile_count: profileCount,
