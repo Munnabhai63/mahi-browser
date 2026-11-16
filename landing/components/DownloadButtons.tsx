@@ -13,6 +13,7 @@ interface DownloadOption {
   fileExt: string;
   downloadUrl: string;
   isPrimary?: boolean;
+  comingSoon?: boolean;
   notes: string;
 }
 
@@ -43,6 +44,7 @@ const DOWNLOAD_OPTIONS: DownloadOption[] = [
     arch: 'arm64',
     fileExt: '.dmg',
     downloadUrl: BRAND.downloads.macDmg,
+    comingSoon: true,
     notes: 'Native arm64 binary with Apple Notarization & Gatekeeper signing',
   },
   {
@@ -52,6 +54,7 @@ const DOWNLOAD_OPTIONS: DownloadOption[] = [
     arch: 'x64',
     fileExt: '.dmg',
     downloadUrl: '/releases/MAHI-Browser-1.1.9-macOS-x64.dmg',
+    comingSoon: true,
     notes: 'Legacy Intel Mac build with full dual-engine hardware emulation',
   },
   {
@@ -192,7 +195,10 @@ export default function DownloadButtons() {
     }
   };
 
-  const primaryOption = DOWNLOAD_OPTIONS.find((o) => o.os === detectedOs && o.isPrimary) || DOWNLOAD_OPTIONS[0];
+  const primaryOption =
+    (detectedOs !== 'mac' && DOWNLOAD_OPTIONS.find((o) => o.os === detectedOs && o.isPrimary && !o.comingSoon)) ||
+    DOWNLOAD_OPTIONS.find((o) => o.id === 'win-installer') ||
+    DOWNLOAD_OPTIONS[0];
 
   return (
     <div className="w-full space-y-8">
@@ -245,7 +251,7 @@ export default function DownloadButtons() {
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-950/40 px-3 py-1 text-xs font-semibold text-red-300">
               <span className="h-2 w-2 rounded-full bg-red-500" />
-              Detected OS: {detectedOs === 'windows' ? 'Windows x64' : detectedOs === 'mac' ? 'macOS' : 'Linux'}
+              Detected OS: {detectedOs === 'windows' ? 'Windows x64' : detectedOs === 'mac' ? 'macOS (Windows & Linux Available)' : 'Linux x64'}
             </div>
             <h3 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
               {primaryOption.label}
@@ -271,7 +277,7 @@ export default function DownloadButtons() {
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
-              Download for {detectedOs === 'windows' ? 'Windows' : detectedOs === 'mac' ? 'macOS' : 'Linux'}
+              Download for {detectedOs === 'windows' ? 'Windows' : detectedOs === 'mac' ? 'Windows (macOS Coming Soon)' : 'Linux'}
             </a>
           </div>
         </div>
@@ -293,9 +299,15 @@ export default function DownloadButtons() {
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                     {opt.os} ({opt.arch})
                   </span>
-                  <span className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-mono text-slate-300">
-                    {opt.fileExt}
-                  </span>
+                  {opt.comingSoon ? (
+                    <span className="rounded bg-amber-900/60 border border-amber-700/60 px-2 py-0.5 text-[11px] font-mono text-amber-300">
+                      Coming Soon
+                    </span>
+                  ) : (
+                    <span className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-mono text-slate-300">
+                      {opt.fileExt}
+                    </span>
+                  )}
                 </div>
                 <h5 className="font-semibold text-sm text-white">{opt.label}</h5>
                 <p className="text-xs text-slate-400 leading-relaxed">{opt.notes}</p>
@@ -303,16 +315,22 @@ export default function DownloadButtons() {
 
               <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
                 <span className="text-[11px] text-slate-500 font-mono">v{BRAND.version}</span>
-                <a
-                  href={opt.downloadUrl}
-                  onClick={() => trackDownload(opt)}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-400 hover:text-red-300 transition"
-                >
-                  Download {opt.fileExt}
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                  </svg>
-                </a>
+                {opt.comingSoon ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-950/40 border border-amber-800/50 px-3 py-1.5 text-xs font-semibold text-amber-300 cursor-not-allowed select-none">
+                    Coming Soon — Windows & Linux Available
+                  </span>
+                ) : (
+                  <a
+                    href={opt.downloadUrl}
+                    onClick={() => trackDownload(opt)}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-400 hover:text-red-300 transition"
+                  >
+                    Download {opt.fileExt}
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
+                  </a>
+                )}
               </div>
             </div>
           ))}
