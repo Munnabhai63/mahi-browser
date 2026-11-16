@@ -272,9 +272,17 @@ describe('Phase 4: Anti-Detect Engine Hardening', () => {
       const stealthJs = fs.readFileSync(stealthPath, 'utf8');
 
       // Construct Mock DOM and Browser Prototype Environment
-      class MockNavigator {
-        webdriver = true; // Initially simulate automation controlled
-      }
+      class MockNavigator {}
+      Object.defineProperty(MockNavigator.prototype, 'webdriver', {
+        get: function webdriver() {
+          if (!this || !(this instanceof MockNavigator)) {
+            throw new TypeError("Failed to execute 'webdriver' on 'Navigator': Illegal invocation");
+          }
+          return true; // Initially simulate automation controlled
+        },
+        configurable: true,
+        enumerable: true,
+      });
       const mockNavigatorProto = MockNavigator.prototype;
       const mockNavigator = new MockNavigator();
 
@@ -342,6 +350,9 @@ describe('Phase 4: Anti-Detect Engine Hardening', () => {
       const getterStr = Function.prototype.toString.call(desc!.get);
       expect(getterStr).toContain('[native code]');
       expect(getterStr).toContain('get webdriver');
+      // Native illegal invocation check: Calling on {} must throw TypeError
+      expect(() => desc!.get!.call({})).toThrow(TypeError);
+      expect(desc!.get!.call(mockNavigator)).toBe(false);
 
       // --- TRAP 3: Zero MAHI global namespace leaks ---
       const globalKeys = Object.keys(mockWindow);

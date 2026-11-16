@@ -11,12 +11,20 @@ describe('Task 6: Stealth Script Injection & Anti-Detect Fidelity Suite', () => 
 
   function createMockBrowserContext() {
     function Navigator() {}
-    Navigator.prototype = {
-      hardwareConcurrency: 4,
-      deviceMemory: 4,
-      platform: 'Win32',
-      maxTouchPoints: 0,
-    };
+    Object.defineProperty(Navigator.prototype, 'webdriver', {
+      get: function webdriver() {
+        if (!this || !(this instanceof Navigator)) {
+          throw new TypeError("Failed to execute 'webdriver' on 'Navigator': Illegal invocation");
+        }
+        return true;
+      },
+      configurable: true,
+      enumerable: true,
+    });
+    Navigator.prototype.hardwareConcurrency = 4;
+    Navigator.prototype.deviceMemory = 4;
+    Navigator.prototype.platform = 'Win32';
+    Navigator.prototype.maxTouchPoints = 0;
 
     function NavigatorUAData() {}
     NavigatorUAData.prototype = {};
@@ -122,6 +130,7 @@ describe('Task 6: Stealth Script Injection & Anti-Detect Fidelity Suite', () => 
         return { x, y, width: w, height: h };
       },
       WeakSet,
+      WeakMap,
       Proxy,
       Object,
       Function,
@@ -133,6 +142,9 @@ describe('Task 6: Stealth Script Injection & Anti-Detect Fidelity Suite', () => 
       Boolean,
       Uint8ClampedArray,
       Float32Array,
+      Intl,
+      Date,
+      Reflect,
     };
     sandbox.window = sandbox;
 
@@ -219,7 +231,7 @@ describe('Task 6: Stealth Script Injection & Anti-Detect Fidelity Suite', () => 
     expect(chromeBrand.version).toBe('133');
   });
 
-  it('ensures navigator.webdriver getter name is "get webdriver" with native toString', () => {
+  it('ensures navigator.webdriver getter name is "get webdriver" with native toString and throws Illegal invocation on foreign thisArg', () => {
     const sandbox = createMockBrowserContext();
     const context = vm.createContext(sandbox);
     vm.runInContext(stealthScriptCode, context);
@@ -230,6 +242,71 @@ describe('Task 6: Stealth Script Injection & Anti-Detect Fidelity Suite', () => 
     expect(desc.get.name).toBe('get webdriver');
     expect(sandbox.Function.prototype.toString.call(desc.get)).toBe('function get webdriver() { [native code] }');
     expect(sandbox.navigator.webdriver).toBe(false);
+
+    // Native illegal invocation parity: Calling getter with {} must throw TypeError (Illegal invocation)
+    expect(() => desc.get.call({})).toThrow(/Illegal invocation/);
+    expect(desc.get.call(sandbox.navigator)).toBe(false);
+  });
+
+  it('ensures spoofNavigator and userAgentData getters enforce native Illegal invocation checks', () => {
+    const sandbox = createMockBrowserContext();
+    const context = vm.createContext(sandbox);
+    vm.runInContext(stealthScriptCode, context);
+
+    const hwDesc = sandbox.Object.getOwnPropertyDescriptor(sandbox.Navigator.prototype, 'hardwareConcurrency');
+    expect(hwDesc).toBeDefined();
+    expect(() => hwDesc.get.call({})).toThrow(/Illegal invocation/);
+    expect(typeof hwDesc.get.call(sandbox.navigator)).toBe('number');
+
+    const uaDesc = sandbox.Object.getOwnPropertyDescriptor(sandbox.Navigator.prototype, 'userAgentData');
+    expect(uaDesc).toBeDefined();
+    expect(() => uaDesc.get.call({})).toThrow(/Illegal invocation/);
+    expect(uaDesc.get.call(sandbox.navigator)).toBeDefined();
+  });
+
+  it('spoofs WebGL vendor and renderer without leaking host GPU', () => {
+    const sandbox = createMockBrowserContext();
+    const context = vm.createContext(sandbox);
+    vm.runInContext(stealthScriptCode, context);
+
+    const glProto = sandbox.WebGLRenderingContext.prototype;
+    const vendor = glProto.getParameter(37445); // UNMASKED_VENDOR_WEBGL
+    const renderer = glProto.getParameter(37446); // UNMASKED_RENDERER_WEBGL
+
+    expect(typeof vendor).toBe('string');
+    expect(typeof renderer).toBe('string');
+    expect(renderer).not.toContain('Intel Arc');
+    expect(vendor).toContain('Google Inc.');
+  });
+
+  it('spoofs timezone and Intl.DateTimeFormat while respecting explicit timezone overrides', () => {
+    const tzDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-tz-test-'));
+    try {
+      const extDir = ensureProfileStealthExtension(tzDir, 'prof-tz-1', 'Stealth-Tz-Profile', {
+        locale: { timezone: 'America/New_York' },
+      });
+      const tzStealthJs = fs.readFileSync(path.join(extDir, 'stealth-core.js'), 'utf8');
+
+      const sandbox = createMockBrowserContext();
+      const context = vm.createContext(sandbox);
+      vm.runInContext(tzStealthJs, context);
+
+      // Default Intl.DateTimeFormat must resolve to America/New_York
+      const defaultDtf = new sandbox.Intl.DateTimeFormat();
+      expect(defaultDtf.resolvedOptions().timeZone).toBe('America/New_York');
+
+      // Explicit options.timeZone (e.g. UTC) must NOT be clobbered
+      const explicitUtcDtf = new sandbox.Intl.DateTimeFormat('en-US', { timeZone: 'UTC' });
+      expect(explicitUtcDtf.resolvedOptions().timeZone).toBe('UTC');
+
+      // Date.prototype.getTimezoneOffset must reflect America/New_York
+      const offset = sandbox.Date.prototype.getTimezoneOffset.call(new Date());
+      expect(typeof offset).toBe('number');
+      // EDT is 240, EST is 300
+      expect([240, 300]).toContain(offset);
+    } finally {
+      try { fs.rmSync(tzDir, { recursive: true, force: true }); } catch {}
+    }
   });
 
   it('ensures navigator.userAgentData has zero own properties and inherits prototype getters', () => {

@@ -19,11 +19,13 @@ function stagePackagingResources() {
     console.log(`[STAGE_PACKAGING] Created missing engine directory: ${engineDir}`);
   }
 
-  const engineManifestSource = path.join(rootDir, '14_ENGINE_PATCHES', 'chromium-138', 'mahi-engine.json');
+  // Ensure stock Chromium snapshots do NOT inherit custom C++ engine manifest
   const engineManifestDest = path.join(engineDir, 'mahi-engine.json');
-  if (fs.existsSync(engineManifestSource) && !fs.existsSync(engineManifestDest)) {
-    fs.copyFileSync(engineManifestSource, engineManifestDest);
-    console.log(`[STAGE_PACKAGING] Embedded mahi-engine.json manifest into ${engineManifestDest}`);
+  if (fs.existsSync(engineManifestDest)) {
+    try {
+      fs.unlinkSync(engineManifestDest);
+      console.log(`[STAGE_PACKAGING] Removed spurious mahi-engine.json from stock engine folder: ${engineManifestDest}`);
+    } catch {}
   }
 
   // 2. Verify landing directory exists

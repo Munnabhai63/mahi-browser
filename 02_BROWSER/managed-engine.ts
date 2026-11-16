@@ -832,12 +832,15 @@ export function resolveEngineManifest(executablePath: string): MahiEngineManifes
     candidateDirs.push(directDir);
 
     // macOS .app structure: /Applications/MAHI.app/Contents/MacOS/chrome -> check Contents/ and .app root
-    let cur = directDir;
-    for (let i = 0; i < 3; i++) {
-      const parent = path.dirname(cur);
-      if (parent && parent !== cur) {
-        candidateDirs.push(parent);
-        cur = parent;
+    const norm = executablePath.replace(/\\/g, '/').toLowerCase();
+    if (norm.includes('.app/')) {
+      let cur = directDir;
+      for (let i = 0; i < 3; i++) {
+        const parent = path.dirname(cur);
+        if (parent && parent !== cur) {
+          candidateDirs.push(parent);
+          cur = parent;
+        }
       }
     }
 
@@ -862,6 +865,14 @@ export function resolveEngineManifest(executablePath: string): MahiEngineManifes
  * Checks if the given Chromium executable has native C++ stealth capabilities enabled via `mahi-engine.json`.
  */
 export function hasNativeStealthEngine(executablePath: string): boolean {
+  if (!executablePath || typeof executablePath !== 'string') return false;
+
+  // Stock googleapis snapshot builds (chrome-win, chrome-linux, chrome-mac) never have native C++ stealth
+  const norm = executablePath.replace(/\\/g, '/').toLowerCase();
+  if (norm.includes('/chrome-win/') || norm.includes('/chrome-linux/') || norm.includes('/chrome-mac/')) {
+    return false;
+  }
+
   const manifest = resolveEngineManifest(executablePath);
   return Boolean(manifest && manifest.nativeStealth === true);
 }
