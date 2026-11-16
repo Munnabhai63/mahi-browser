@@ -1,5 +1,24 @@
 # MAHI Browser — Development Progress
 
+## Step 8: Multi-Tenant VPS Isolated Production Cutover (VPS 200.97.164.97)
+- **Branch:** `feature/v2-enterprise-anti-detect` (synced to `main` at `b5bca1f`)
+- **Status:** COMPLETED & 100% VERIFIED LIVE IN PRODUCTION
+- **Live Infrastructure:**
+  * **Marketing Portal & Blog:** `https://mahibrowser.com/` (Next.js 14 SSR/SSG, dark theme, semantic SEO/GEO, Schema.org JSON-LD, sitemap, robots)
+  * **Web Cloud Dashboard:** `https://app.mahibrowser.com/` (Vite SPA Cloud Dashboard)
+  * **Cloud Gateway API:** `https://api.mahibrowser.com/health` (Fastify Node 22, Supabase PostgreSQL, Redis Mutex, Cloudflare R2, Google OAuth)
+  * **Web Admin Portal:** `https://admin.mahibrowser.com/` (Admin Panel reverse proxy)
+  * **Direct Windows Downloads:** `https://mahibrowser.com/download/setup`, `/download/MAHI-Setup.exe`, `/download/portable` (~282 MB signed installers)
+- **Verified Zero-Downtime Multi-Tenant VPS Coexistence:**
+  * Zero interference with pre-existing services on VPS `200.97.164.97` (`desisexy.in`, `falcon-smm`, `m4k-cobalt-api`, `rumbletraffic.com`, `trafik-admin`, `trafik-user`, `ytcpm.com`, `ytcpm.tech`).
+  * All 11 pre-existing PM2 apps maintained 47h+ continuous online uptime with 0 restarts.
+  * System CPU: 4.2%, RAM usage: 31%.
+  * MAHI Browser gateway bound strictly to `127.0.0.1:8989`, isolated Redis on `127.0.0.1:6380`.
+  * Let's Encrypt SAN SSL certificate issued and auto-renewing for all 5 domains.
+  * Supabase PostgreSQL (`aws-0-ap-south-1.pooler.supabase.com:5432`) connected with 6ms latency.
+  * Cloudflare R2 storage bucket (`mahibrowser-profiles`) ready.
+  * Google OAuth start route (`/api/v1/auth/google/start`) returns 302 redirect to Google OAuth consent.
+
 ## Step 7: Packaged Desktop App Hardening, Writable Paths & Backend Caveats Closure
 - **Branch:** `antigravity-fixes`
 - **Latest Commit:** `4e84374`
