@@ -64,6 +64,7 @@ const DOWNLOAD_OPTIONS: DownloadOption[] = [
     arch: 'x64',
     fileExt: '.AppImage',
     downloadUrl: BRAND.downloads.linuxAppImage,
+    isPrimary: true,
     notes: 'Runs on Ubuntu 20.04+, Debian 11+, Fedora, Arch, and Red Hat Linux',
   },
   {
@@ -196,7 +197,8 @@ export default function DownloadButtons() {
   };
 
   const primaryOption =
-    (detectedOs !== 'mac' && DOWNLOAD_OPTIONS.find((o) => o.os === detectedOs && o.isPrimary && !o.comingSoon)) ||
+    DOWNLOAD_OPTIONS.find((o) => o.os === detectedOs && o.isPrimary && !o.comingSoon) ||
+    DOWNLOAD_OPTIONS.find((o) => o.os === detectedOs && !o.comingSoon) ||
     DOWNLOAD_OPTIONS.find((o) => o.id === 'win-installer') ||
     DOWNLOAD_OPTIONS[0];
 
