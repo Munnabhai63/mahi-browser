@@ -1297,7 +1297,7 @@ export async function handleCommercialApiRoutes(
     const state = parsedUrl.searchParams.get('state');
     const error = parsedUrl.searchParams.get('error');
 
-    const websiteBase = (process.env.MAHI_WEBSITE_URL || '').replace(/\/+$/, '');
+    const websiteBase = (process.env.MAHI_WEBSITE_URL || (process.env.NODE_ENV === 'production' ? 'https://mahibrowser.com' : '')).replace(/\/+$/, '');
 
     // Handle user cancellation or OAuth error
     if (error || !state) {

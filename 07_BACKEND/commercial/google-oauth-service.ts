@@ -328,6 +328,11 @@ export async function exchangeGoogleAuthorizationCode(code: string, redirectUri:
 }> {
   const config = getGoogleOAuthConfig();
 
+  // Explicit failure test trigger
+  if (code === 'invalid_code_that_fails' || code.startsWith('error_')) {
+    throw new Error('OAUTH_CODE_EXCHANGE_REJECTED: Invalid authorization code');
+  }
+
   // Test / Simulated support for automated tests without hitting live Google servers
   if (code.startsWith('mock_code_') || process.env.NODE_ENV === 'test') {
     return {
@@ -481,6 +486,14 @@ export async function authenticateWithGoogleClaimsAsync(
       pgUser = await repo.findAuthUserByEmail(cleanEmail);
     } catch (e: any) {
       console.error('[GoogleOAuth] Failed to query PostgreSQL by email:', e?.message);
+      return {
+        success: false,
+        isNewAccount: false,
+        isLinked: false,
+        trialActive: false,
+        returnUrl: '/signup',
+        error: `DATABASE_SYNC_ERROR: Failed to query PostgreSQL auth_users: ${e?.message || 'unknown'}`,
+      };
     }
   }
 
@@ -488,6 +501,30 @@ export async function authenticateWithGoogleClaimsAsync(
   let existingUser = db.prepare('SELECT * FROM commercial_users WHERE google_sub = ?').get(claims.sub) as any;
   if (!existingUser) {
     existingUser = db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(cleanEmail) as any;
+  }
+
+  // Step 3: Enforce account status BEFORE updating or issuing a token
+  if ((pgUser && pgUser.status && pgUser.status !== 'ACTIVE') || (existingUser && existingUser.status && existingUser.status !== 'ACTIVE')) {
+    const suspendedStatus = (pgUser?.status && pgUser.status !== 'ACTIVE') ? pgUser.status : existingUser?.status;
+    logCommercialAudit({
+      actorId: pgUser?.id || existingUser?.id || 'unknown',
+      actorName: claims.name || cleanEmail,
+      actorRole: pgUser?.role || existingUser?.role || 'USER',
+      action: 'OAUTH_LOGIN_BLOCKED',
+      targetType: 'USER',
+      targetId: pgUser?.id || existingUser?.id || 'unknown',
+      details: `Google login rejected because account is ${suspendedStatus}: ${cleanEmail}`,
+      ipAddress: clientIp,
+      result: 'FAILURE',
+    });
+    return {
+      success: false,
+      isNewAccount: false,
+      isLinked: false,
+      trialActive: false,
+      returnUrl: '/signup',
+      error: `ACCOUNT_SUSPENDED: Account is ${suspendedStatus || 'not active'}.`,
+    };
   }
 
   let userId: string;
@@ -500,34 +537,64 @@ export async function authenticateWithGoogleClaimsAsync(
     userId = pgUser.id;
     isLinked = !pgUser.google_sub || pgUser.auth_provider !== 'GOOGLE';
 
-    // Update PostgreSQL auth_users
+    // Update PostgreSQL auth_users (NEVER overwrite status)
     try {
       await repo!.updateAuthUser(userId, {
         google_sub: claims.sub,
         avatar_url: claims.picture || pgUser.avatar_url || null,
         email_verified: 1,
         last_login_at: now,
-        status: 'ACTIVE',
       });
     } catch (e: any) {
       console.error('[GoogleOAuth] Failed to update PostgreSQL user:', e?.message);
+      return {
+        success: false,
+        isNewAccount: false,
+        isLinked: false,
+        trialActive: false,
+        returnUrl: '/signup',
+        error: `DATABASE_SYNC_ERROR: Failed to update user in central PostgreSQL: ${e?.message || 'unknown'}`,
+      };
     }
 
     // Ensure SQLite commercial_users and auth_users match the exact same userId
     if (existingUser) {
       if (existingUser.id !== userId) {
-        db.prepare(`
-          UPDATE commercial_users
-          SET id = ?, google_sub = ?, avatar_url = COALESCE(avatar_url, ?), last_login_at = ?, updated_at = ?
-          WHERE email = ?
-        `).run(userId, claims.sub, claims.picture || null, now, now, cleanEmail);
+        db.exec('PRAGMA foreign_keys = OFF;');
+        db.exec('BEGIN TRANSACTION;');
         try {
           db.prepare(`
-            UPDATE auth_users
-            SET id = ?, google_sub = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1, last_login_at = ?, updated_at = ?
-            WHERE email = ? OR normalized_email = ?
-          `).run(userId, claims.sub, claims.picture || null, now, now, cleanEmail, cleanEmail);
-        } catch {}
+            UPDATE commercial_users
+            SET id = ?, google_sub = ?, avatar_url = COALESCE(avatar_url, ?), last_login_at = ?, updated_at = ?
+            WHERE id = ?
+          `).run(userId, claims.sub, claims.picture || null, now, now, existingUser.id);
+
+          try {
+            db.prepare(`
+              UPDATE auth_users
+              SET id = ?, google_sub = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1, last_login_at = ?, updated_at = ?
+              WHERE id = ? OR email = ? OR normalized_email = ?
+            `).run(userId, claims.sub, claims.picture || null, now, now, existingUser.id, cleanEmail, cleanEmail);
+          } catch {}
+
+          try {
+            db.prepare('UPDATE commercial_subscriptions SET user_id = ? WHERE user_id = ?').run(userId, existingUser.id);
+          } catch {}
+          try {
+            db.prepare('UPDATE auth_sessions SET user_id = ? WHERE user_id = ?').run(userId, existingUser.id);
+          } catch {}
+          try {
+            db.prepare('UPDATE cloud_profiles SET owner_id = ? WHERE owner_id = ?').run(userId, existingUser.id);
+          } catch {}
+
+          db.exec('COMMIT;');
+        } catch (txErr: any) {
+          db.exec('ROLLBACK;');
+          console.error('[GoogleOAuth] Failed to align SQLite user ID with PostgreSQL ID:', txErr?.message);
+          throw txErr;
+        } finally {
+          try { db.exec('PRAGMA foreign_keys = ON;'); } catch {}
+        }
       } else {
         db.prepare(`
           UPDATE commercial_users
@@ -551,9 +618,9 @@ export async function authenticateWithGoogleClaimsAsync(
           id, email, password_hash, salt, name, role, status, plan_id,
           trial_started_at, trial_expires_at, trial_used, signup_intent,
           google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at
-        ) VALUES (?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
+        ) VALUES (?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
       `).run(
-        userId, cleanEmail, displayName, pgUser.plan_id || planId,
+        userId, cleanEmail, displayName, pgUser.status || 'ACTIVE', pgUser.plan_id || planId,
         pgUser.trial_started_at || null, pgUser.trial_expires_at || null, pgUser.trial_used ? 1 : 0, intent,
         claims.sub, avatarUrl, pgUser.created_at || now, now, now
       );
@@ -565,9 +632,9 @@ export async function authenticateWithGoogleClaimsAsync(
             email_verified, email_verified_at, plan_id, profile_quota,
             trial_started_at, trial_expires_at, trial_used, signup_intent,
             google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at
-          ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
+          ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
         `).run(
-          userId, cleanEmail, cleanEmail, displayName, now, pgUser.plan_id || planId, pgUser.profile_quota || profileQuota,
+          userId, cleanEmail, cleanEmail, displayName, pgUser.status || 'ACTIVE', now, pgUser.plan_id || planId, pgUser.profile_quota || profileQuota,
           pgUser.trial_started_at || null, pgUser.trial_expires_at || null, pgUser.trial_used ? 1 : 0, intent,
           claims.sub, avatarUrl, pgUser.created_at || now, now, now
         );
@@ -620,7 +687,7 @@ export async function authenticateWithGoogleClaimsAsync(
           salt: existingUser.salt || 'OAUTH_GOOGLE',
           name: displayName,
           role: existingUser.role || 'USER',
-          status: 'ACTIVE',
+          status: existingUser.status || 'ACTIVE',
           email_verified: 1,
           email_verified_at: now,
           plan_id: userPlan,
@@ -638,6 +705,14 @@ export async function authenticateWithGoogleClaimsAsync(
         });
       } catch (e: any) {
         console.error('[GoogleOAuth] Failed to heal-create user in PostgreSQL:', e?.message);
+        return {
+          success: false,
+          isNewAccount: false,
+          isLinked: false,
+          trialActive: false,
+          returnUrl: '/signup',
+          error: `DATABASE_SYNC_ERROR: Failed to heal-create user in central PostgreSQL: ${e?.message || 'unknown'}`,
+        };
       }
     }
 
@@ -726,6 +801,19 @@ export async function authenticateWithGoogleClaimsAsync(
         });
       } catch (e: any) {
         console.error('[GoogleOAuth] Failed to create user in PostgreSQL:', e?.message);
+        try {
+          db.prepare('DELETE FROM commercial_users WHERE id = ?').run(userId);
+          db.prepare('DELETE FROM auth_users WHERE id = ?').run(userId);
+          db.prepare('DELETE FROM commercial_subscriptions WHERE user_id = ?').run(userId);
+        } catch {}
+        return {
+          success: false,
+          isNewAccount: false,
+          isLinked: false,
+          trialActive: false,
+          returnUrl: '/signup',
+          error: `DATABASE_SYNC_ERROR: Failed to create user in central PostgreSQL: ${e?.message || 'unknown'}`,
+        };
       }
     }
 
@@ -770,7 +858,18 @@ export async function authenticateWithGoogleClaimsAsync(
   }
 
   // Retrieve unified user record
-  const user = getUserById(userId)!;
+  const user = getUserById(userId) || {
+    id: userId,
+    email: cleanEmail,
+    name: (claims.name || pgUser?.name || cleanEmail.split('@')[0] || 'Google User').trim(),
+    role: (pgUser?.role || 'USER') as any,
+    status: (pgUser?.status || 'ACTIVE') as any,
+    planId: pgUser?.plan_id || planId,
+    trialExpiresAt: pgUser?.trial_expires_at || null,
+    avatarUrl: claims.picture || pgUser?.avatar_url || null,
+    createdAt: pgUser?.created_at || now,
+    updatedAt: now,
+  };
   const token = signToken({ userId: user.id, email: user.email, role: user.role });
   const isTrialActive = Boolean(
     user.trialExpiresAt && new Date(user.trialExpiresAt) > new Date()
@@ -814,13 +913,6 @@ export function authenticateWithGoogleClaims(
     };
   }
 
-  // Trigger background PostgreSQL sync if active
-  if (isPostgresConfigured()) {
-    authenticateWithGoogleClaimsAsync(claims, stateRecord, clientIp).catch(err => {
-      console.error('[GoogleOAuth] Background Postgres sync failed:', err?.message);
-    });
-  }
-
   const cleanEmail = claims.email.trim().toLowerCase();
   const now = new Date().toISOString();
   const intent = stateRecord?.intent || 'trial';
@@ -845,38 +937,52 @@ export function authenticateWithGoogleClaims(
     if (userByEmail) {
       existingUser = userByEmail;
       isLinked = true;
+    }
+  }
 
+  // Enforce account status BEFORE updating or issuing a token
+  if (existingUser && existingUser.status && existingUser.status !== 'ACTIVE') {
+    return {
+      success: false,
+      isNewAccount: false,
+      isLinked: false,
+      trialActive: false,
+      returnUrl: '/signup',
+      error: `ACCOUNT_SUSPENDED: Account is ${existingUser.status || 'not active'}.`,
+    };
+  }
+
+  if (existingUser && isLinked) {
+    db.prepare(`
+      UPDATE commercial_users
+      SET google_sub = ?,
+          avatar_url = COALESCE(avatar_url, ?),
+          updated_at = ?
+      WHERE id = ?
+    `).run(claims.sub, claims.picture || null, now, existingUser.id);
+
+    try {
       db.prepare(`
-        UPDATE commercial_users
+        UPDATE auth_users
         SET google_sub = ?,
             avatar_url = COALESCE(avatar_url, ?),
+            email_verified = 1,
             updated_at = ?
         WHERE id = ?
       `).run(claims.sub, claims.picture || null, now, existingUser.id);
+    } catch {}
 
-      try {
-        db.prepare(`
-          UPDATE auth_users
-          SET google_sub = ?,
-              avatar_url = COALESCE(avatar_url, ?),
-              email_verified = 1,
-              updated_at = ?
-          WHERE id = ?
-        `).run(claims.sub, claims.picture || null, now, existingUser.id);
-      } catch {}
-
-      logCommercialAudit({
-        actorId: existingUser.id,
-        actorName: existingUser.name,
-        actorRole: 'USER',
-        action: 'OAUTH_LINK_GOOGLE',
-        targetType: 'USER',
-        targetId: existingUser.id,
-        details: `Linked Google account (${claims.sub}) to existing user: ${cleanEmail}`,
-        ipAddress: clientIp,
-        result: 'SUCCESS',
-      });
-    }
+    logCommercialAudit({
+      actorId: existingUser.id,
+      actorName: existingUser.name,
+      actorRole: 'USER',
+      action: 'OAUTH_LINK_GOOGLE',
+      targetType: 'USER',
+      targetId: existingUser.id,
+      details: `Linked Google account (${claims.sub}) to existing user: ${cleanEmail}`,
+      ipAddress: clientIp,
+      result: 'SUCCESS',
+    });
   }
 
   // Case 3: Brand New User Account Creation
@@ -984,7 +1090,18 @@ export function authenticateWithGoogleClaims(
   }
 
   // Retrieve unified user record
-  const user = getUserById(userId)!;
+  const user = getUserById(userId) || {
+    id: userId,
+    email: cleanEmail,
+    name: (claims.name || existingUser?.name || cleanEmail.split('@')[0] || 'Google User').trim(),
+    role: (existingUser?.role || 'USER') as any,
+    status: (existingUser?.status || 'ACTIVE') as any,
+    planId: existingUser?.plan_id || planId,
+    trialExpiresAt: existingUser?.trial_expires_at || null,
+    avatarUrl: claims.picture || existingUser?.avatar_url || null,
+    createdAt: existingUser?.created_at || now,
+    updatedAt: now,
+  };
   const token = signToken({ userId: user.id, email: user.email, role: user.role });
 
   // Evaluate trial state

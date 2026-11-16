@@ -234,9 +234,19 @@ export async function getUserSyncUsageAsync(userId: string) {
     const active = profiles.filter((p: any) => p.status !== 'DELETED');
     const profileCount = active.length;
     const usedBytes = active.reduce((acc: number, p: any) => acc + Number(p.storage_bytes || 0), 0);
+
+    let centralUser: any = null;
+    try {
+      centralUser = await repo.findAuthUserById(userId);
+    } catch (e: any) {
+      console.error('[CloudProfileService] Failed to load central user for quota:', e?.message);
+    }
+
     const entitlements = evaluateUserEntitlements(userId);
-    const planLimits = entitlements.plan.limits;
-    const maxProfiles = planLimits.maxProfiles || 10;
+    const planLimits = entitlements?.plan?.limits;
+    const localMax = (planLimits && typeof planLimits.maxProfiles === 'number') ? planLimits.maxProfiles : 0;
+    const pgQuota = (centralUser && typeof centralUser.profile_quota === 'number') ? centralUser.profile_quota : 0;
+    const maxProfiles = Math.max(localMax, pgQuota, 10);
     const totalBytes = DEFAULT_MAX_STORAGE_BYTES;
     return {
       profile_count: profileCount,

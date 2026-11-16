@@ -7,10 +7,12 @@ import { setPrismaClientForTest } from '../../06_DATABASE/prisma-client.js';
 import { isPostgresConfigured, getCentralRepository } from '../../06_DATABASE/central-repository.js';
 import { getCentralUserByIdAsync } from '../../05_AUTH/central-auth-service.js';
 import {
+  authenticateWithGoogleClaims,
   authenticateWithGoogleClaimsAsync,
   GoogleClaims,
   deriveProfileQuota,
 } from '../../07_BACKEND/commercial/google-oauth-service.js';
+import { getUserSyncUsageAsync } from '../../07_BACKEND/services/cloud-profile-service.js';
 import { handleCommercialApiRoutes } from '../../07_BACKEND/commercial/commercial-api-router.js';
 import {
   getDatabase,
@@ -77,6 +79,11 @@ describe('Step 1: Google OAuth -> Supabase PostgreSQL Sync & Error Redirect', ()
           const updated = { ...existing, ...data, updated_at: new Date().toISOString() };
           authUsersMap.set(where.id, updated);
           return updated;
+        },
+      },
+      cloud_profiles: {
+        findMany: async ({ where }: any) => {
+          return [];
         },
       },
       $queryRaw: async () => [{ '?column?': 1 }],
@@ -318,5 +325,161 @@ describe('Step 1: Google OAuth -> Supabase PostgreSQL Sync & Error Redirect', ()
       expect(written.headers.Location).toBeDefined();
       expect(written.headers.Location.startsWith('https://mahibrowser.com/signup?error=')).toBe(true);
     }
+  });
+
+  it('d) blocks suspended user from OAuth login in PostgreSQL and SQLite, never overwriting status to ACTIVE', async () => {
+    expect(isPostgresConfigured()).toBe(true);
+    const db = getDatabase();
+
+    // 1. PostgreSQL suspended user
+    const pgSuspendedId = `usr_pg_suspended_${Date.now()}`;
+    const pgSuspendedEmail = `suspended-pg-${Date.now()}@example.com`;
+    authUsersMap.set(pgSuspendedId, {
+      id: pgSuspendedId,
+      email: pgSuspendedEmail,
+      normalized_email: pgSuspendedEmail,
+      password_hash: 'argon2_hash',
+      salt: 'salt123',
+      name: 'Suspended PG User',
+      role: 'USER',
+      status: 'SUSPENDED',
+      email_verified: 1,
+      email_verified_at: new Date().toISOString(),
+      plan_id: 'solo_10',
+      profile_quota: 10,
+      auth_provider: 'LOCAL',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      last_login_at: null,
+    });
+
+    const resPg = await authenticateWithGoogleClaimsAsync({
+      sub: `google_sub_suspended_pg_${Date.now()}`,
+      email: pgSuspendedEmail,
+      email_verified: true,
+      name: 'Suspended PG User',
+    }, null);
+
+    expect(resPg.success).toBe(false);
+    expect(resPg.error).toContain('ACCOUNT_SUSPENDED');
+
+    // Ensure status was NEVER overwritten to ACTIVE
+    const pgUserAfter = authUsersMap.get(pgSuspendedId);
+    expect(pgUserAfter.status).toBe('SUSPENDED');
+
+    // 2. SQLite suspended user
+    const sqliteSuspendedId = `usr_sqlite_suspended_${Date.now()}`;
+    const sqliteSuspendedEmail = `suspended-sqlite-${Date.now()}@example.com`;
+    db.prepare(`
+      INSERT INTO commercial_users (
+        id, email, password_hash, salt, name, role, status, plan_id,
+        trial_used, auth_provider, created_at, updated_at
+      ) VALUES (?, ?, 'hash', 'salt', 'Suspended SQLite User', 'USER', 'SUSPENDED', 'free', 0, 'LOCAL', datetime('now'), datetime('now'))
+    `).run(sqliteSuspendedId, sqliteSuspendedEmail);
+
+    const resSqlite = await authenticateWithGoogleClaimsAsync({
+      sub: `google_sub_suspended_sqlite_${Date.now()}`,
+      email: sqliteSuspendedEmail,
+      email_verified: true,
+      name: 'Suspended SQLite User',
+    }, null);
+
+    expect(resSqlite.success).toBe(false);
+    expect(resSqlite.error).toContain('ACCOUNT_SUSPENDED');
+
+    const sqliteRow = db.prepare('SELECT status FROM commercial_users WHERE id = ?').get(sqliteSuspendedId) as any;
+    expect(sqliteRow.status).toBe('SUSPENDED');
+  });
+
+  it('e) handles pgUser ID mismatch, migrates SQLite child rows in transaction, and preserves PostgreSQL profile quota in getUserSyncUsageAsync', async () => {
+    expect(isPostgresConfigured()).toBe(true);
+    const db = getDatabase();
+
+    const sqliteOldId = `usr_sqlite_mismatch_old_${Date.now()}`;
+    const pgNewId = `usr_pg_mismatch_new_${Date.now()}`;
+    const email = `mismatch-quota-${Date.now()}@company.com`;
+    const googleSub = `sub_mismatch_${Date.now()}`;
+
+    // 1. Seed existing user in local SQLite with old ID
+    db.prepare(`
+      INSERT INTO commercial_users (
+        id, email, password_hash, salt, name, role, status, plan_id,
+        trial_used, auth_provider, created_at, updated_at
+      ) VALUES (?, ?, 'old_hash', 'old_salt', 'Old SQLite Member', 'USER', 'ACTIVE', 'free', 0, 'LOCAL', datetime('now'), datetime('now'))
+    `).run(sqliteOldId, email);
+
+    db.prepare(`
+      INSERT INTO auth_users (
+        id, email, normalized_email, password_hash, salt, name, role, status,
+        email_verified, plan_id, profile_quota, created_at, updated_at
+      ) VALUES (?, ?, ?, 'old_hash', 'old_salt', 'Old SQLite Member', 'USER', 'ACTIVE', 1, 'free', 1, datetime('now'), datetime('now'))
+    `).run(sqliteOldId, email, email);
+
+    // Seed child referencing rows in commercial_subscriptions and auth_sessions
+    const subId = `sub_mismatch_child_${Date.now()}`;
+    db.prepare(`
+      INSERT INTO commercial_subscriptions (
+        id, user_id, plan_id, status, billing_cycle, starts_at, expires_at, payment_provider, created_at
+      ) VALUES (?, ?, 'free', 'ACTIVE', 'monthly', datetime('now'), datetime('now', '+30 days'), 'free', datetime('now'))
+    `).run(subId, sqliteOldId);
+
+    const sessionId = `sess_mismatch_child_${Date.now()}`;
+    db.prepare(`
+      INSERT INTO auth_sessions (
+        id, user_id, refresh_token_hash, device_id, device_name, platform, ip_address, is_revoked, created_at, last_used_at, expires_at
+      ) VALUES (?, ?, 'hash_tok_12345', 'dev_1', 'Desktop', 'win32', '127.0.0.1', 0, datetime('now'), datetime('now'), datetime('now', '+7 days'))
+    `).run(sessionId, sqliteOldId);
+
+    // 2. Seed existing user in Supabase PostgreSQL with NEW ID and professional_50 (profile_quota = 50)
+    authUsersMap.set(pgNewId, {
+      id: pgNewId,
+      email,
+      normalized_email: email,
+      password_hash: 'pg_hash',
+      salt: 'pg_salt',
+      name: 'New PG Aligned Member',
+      role: 'USER',
+      status: 'ACTIVE',
+      email_verified: 1,
+      email_verified_at: new Date().toISOString(),
+      plan_id: 'professional_50',
+      profile_quota: 50,
+      auth_provider: 'LOCAL',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      last_login_at: null,
+    });
+
+    // 3. User logs in with Google OAuth
+    const res = await authenticateWithGoogleClaimsAsync({
+      sub: googleSub,
+      email,
+      email_verified: true,
+      name: 'Google Logged In User',
+    }, null);
+
+    expect(res.success).toBe(true);
+    // Verified: Res returns the PostgreSQL ID, aligning SQLite with Supabase!
+    expect(res.user.id).toBe(pgNewId);
+
+    // 4. Verify SQLite commercial_users was migrated to pgNewId
+    const oldRow = db.prepare('SELECT * FROM commercial_users WHERE id = ?').get(sqliteOldId);
+    expect(oldRow).toBeUndefined();
+
+    const migratedRow = db.prepare('SELECT * FROM commercial_users WHERE id = ?').get(pgNewId) as any;
+    expect(migratedRow).toBeDefined();
+    expect(migratedRow.email).toBe(email);
+    expect(migratedRow.google_sub).toBe(googleSub);
+
+    // 5. Verify child referencing rows were cleanly migrated to pgNewId
+    const migratedSub = db.prepare('SELECT user_id FROM commercial_subscriptions WHERE id = ?').get(subId) as any;
+    expect(migratedSub?.user_id).toBe(pgNewId);
+
+    const migratedSession = db.prepare('SELECT user_id FROM auth_sessions WHERE id = ?').get(sessionId) as any;
+    expect(migratedSession?.user_id).toBe(pgNewId);
+
+    // 6. Verify getUserSyncUsageAsync respects PostgreSQL profile_quota (50) and is not downgraded to free tier (1)
+    const usage = await getUserSyncUsageAsync(pgNewId);
+    expect(usage.max_profiles).toBe(50);
   });
 });
