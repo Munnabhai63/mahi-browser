@@ -482,7 +482,7 @@ describe('Step 4: Pre-C++ Browser Stealth Hardening, 02_BROWSER Cleanup & Commer
 
     // Start a temporary mock server that returns tampered amount ₹100 instead of ₹599
     let mockServer: http.Server;
-    const mockPort = 36980;
+    let mockPort = 0;
     await new Promise<void>((resolve) => {
       mockServer = http.createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -493,7 +493,10 @@ describe('Step 4: Pre-C++ Browser Stealth Hardening, 02_BROWSER Cleanup & Commer
           amount: 100, // Tampered amount: ₹100 instead of ₹599
         }));
       });
-      mockServer.listen(mockPort, () => resolve());
+      mockServer.listen(0, '127.0.0.1', () => {
+        mockPort = (mockServer.address() as any).port;
+        resolve();
+      });
     });
 
     const originalBaseUrl = process.env.YOUPI_PG_BASE_URL;
