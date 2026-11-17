@@ -393,6 +393,8 @@ export function ensureProfileStealthExtension(
   function registerNative(fn, name) {
     if (typeof fn === 'function') {
       var n = name || fn.name || '';
+      try { Object.defineProperty(fn, 'name', { value: n, configurable: true }); } catch (e) {}
+      try { Object.defineProperty(fn, 'length', { value: fn.length, configurable: true }); } catch (e) {}
       if (hookedProxies) {
         hookedProxies.set(fn, n);
       } else if (hookedProxiesList) {
@@ -502,6 +504,15 @@ export function ensureProfileStealthExtension(
   var chArch = ${JSON.stringify(clientHintsArch)};
   var chBitness = "64";
   var targetTz = ${JSON.stringify(targetTimezone)};
+  var useCdpTz = (function() {
+    try {
+      if (typeof window !== 'undefined' && window.__MAHI_CDP_TZ_OK__) return true;
+      if (typeof self !== 'undefined' && self.__MAHI_CDP_TZ_OK__) return true;
+      var currentTz = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (currentTz && targetTz && currentTz.toLowerCase() === targetTz.toLowerCase()) return true;
+    } catch(e) {}
+    return ${Boolean(process.env.MAHI_CDP_TZ_OK)};
+  })();
 
   // Synchronous Cross-Realm <iframe> Hooking & Comprehensive Stealth Propagation
   try {
@@ -793,7 +804,7 @@ export function ensureProfileStealthExtension(
         }
 
         // 5. Date & Timezone in targetWin
-        if (targetTz && targetWin.Date && targetWin.Date.prototype) {
+        if (!useCdpTz && targetTz && targetWin.Date && targetWin.Date.prototype) {
           try {
             var origDateTz = targetWin.Date.prototype.getTimezoneOffset;
             var proxyDateTz = new Proxy(origDateTz, {
@@ -1032,8 +1043,7 @@ export function ensureProfileStealthExtension(
     // -------------------------------------------------------------
     // Timezone Spoofing (Intl.DateTimeFormat & Date.prototype.getTimezoneOffset)
     // -------------------------------------------------------------
-    var targetTz = ${JSON.stringify(targetTimezone)};
-    if (targetTz) {
+    if (targetTz && !useCdpTz) {
       try {
         var getTzOffset = function(date, tz) {
           try {
@@ -1226,6 +1236,14 @@ export function ensureProfileStealthExtension(
         '    var pDevMem = ' + ${deviceMemory} + ';',
         '    var pPlat = ' + ${JSON.stringify(platformStr)} + ';',
         '    var pTz = ' + ${JSON.stringify(targetTimezone)} + ';',
+        '    var useCdpTz = (function() {',
+        '      try {',
+        '        if (typeof self !== "undefined" && self.__MAHI_CDP_TZ_OK__) return true;',
+        '        var currentTz = new Intl.DateTimeFormat().resolvedOptions().timeZone;',
+        '        if (currentTz && pTz && currentTz.toLowerCase() === pTz.toLowerCase()) return true;',
+        '      } catch(e) {}',
+        '      return ' + ${Boolean(process.env.MAHI_CDP_TZ_OK)} + ';',
+        '    })();',
         '    var pLang = ' + ${JSON.stringify(languagesList[0] || 'en-US')} + ';',
         '    var pLangs = Object.freeze(' + ${JSON.stringify(languagesList)} + ');',
         '    var pUa = ' + ${JSON.stringify(settings?.browser?.userAgent || '')} + ';',
@@ -1235,7 +1253,12 @@ export function ensureProfileStealthExtension(
         '    var seedOffset = ((pSeed % 15) + 1);',
         '    var wHooked = [];',
         '    function wReg(fn, name) {',
-        '      if (typeof fn === "function") wHooked.push({ fn: fn, name: name || fn.name || "" });',
+        '      if (typeof fn === "function") {',
+        '        var n = name || fn.name || "";',
+        '        try { Object.defineProperty(fn, "name", { value: n, configurable: true }); } catch(e) {}',
+        '        try { Object.defineProperty(fn, "length", { value: fn.length, configurable: true }); } catch(e) {}',
+        '        wHooked.push({ fn: fn, name: n });',
+        '      }',
         '    }',
         '    try {',
         '      var wOrigToString = Function.prototype.toString;',
@@ -1426,7 +1449,7 @@ export function ensureProfileStealthExtension(
         '    }',
         '    if (typeof WebGLRenderingContext !== "undefined") spoofWorkerGL(WebGLRenderingContext.prototype);',
         '    if (typeof WebGL2RenderingContext !== "undefined") spoofWorkerGL(WebGL2RenderingContext.prototype);',
-        '    if (pTz) {',
+        '    if (!useCdpTz && pTz) {',
         '      var getTzOffset = function(date, tz) {',
         '        try {',
         '          var formatter = new Intl.DateTimeFormat("en-US", {',
@@ -3682,6 +3705,99 @@ export async function launchCamoufoxProfile(
 }
 
 /**
+ * Engine-level CDP timezone & locale override.
+ * Issues Emulation.setTimezoneOverride and Emulation.setLocaleOverride via CDP
+ * with Target.setAutoAttach to ensure all targets (pages, workers, iframes)
+ * inherit native V8 timezone without JS proxy traps.
+ */
+async function applyCdpOverrides(debugPort: number, tz: string, locale: string): Promise<void> {
+  if (!tz && !locale) return;
+  const WS = typeof WebSocket !== 'undefined' ? WebSocket : (globalThis as any).WebSocket;
+  if (!WS) return;
+
+  // Poll for /json/version until browser CDP server is up (up to 20 attempts, 100ms apart)
+  let versionData: { webSocketDebuggerUrl?: string } | null = null;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${debugPort}/json/version`);
+      if (res.ok) {
+        versionData = (await res.json()) as { webSocketDebuggerUrl?: string };
+        if (versionData?.webSocketDebuggerUrl) break;
+      }
+    } catch {
+      // Browser still booting up
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  if (!versionData?.webSocketDebuggerUrl) {
+    return;
+  }
+
+  return new Promise<void>((resolve) => {
+    try {
+      const ws = new WS(versionData!.webSocketDebuggerUrl!);
+      let id = 0;
+      const send = (method: string, params?: any, sessionId?: string) => {
+        try {
+          if (ws.readyState === WS.OPEN) {
+            const payload: any = { id: ++id, method };
+            if (params) payload.params = params;
+            if (sessionId) payload.sessionId = sessionId;
+            ws.send(JSON.stringify(payload));
+          }
+        } catch {}
+      };
+
+      const cleanupTimer = setTimeout(() => {
+        resolve();
+      }, 5000);
+
+      ws.addEventListener('open', () => {
+        if (tz) send('Emulation.setTimezoneOverride', { timezoneId: tz });
+        if (locale) send('Emulation.setLocaleOverride', { locale });
+        send('Target.setAutoAttach', {
+          autoAttach: true,
+          waitForDebuggerOnStart: true,
+          flatten: true,
+        });
+      });
+
+      ws.addEventListener('message', (ev: any) => {
+        try {
+          const raw = typeof ev.data === 'string' ? ev.data : (ev.data?.toString ? ev.data.toString() : '');
+          const m = JSON.parse(raw);
+          if (m.method === 'Target.attachedToTarget') {
+            const sid = m.params?.sessionId;
+            if (sid) {
+              if (tz) {
+                send('Emulation.setTimezoneOverride', { timezoneId: tz }, sid);
+              }
+              if (locale) {
+                send('Emulation.setLocaleOverride', { locale }, sid);
+              }
+              send('Runtime.runIfWaitingForDebugger', {}, sid);
+            }
+          }
+        } catch {}
+      });
+
+      ws.addEventListener('error', () => {
+        clearTimeout(cleanupTimer);
+        resolve();
+      });
+
+      ws.addEventListener('close', () => {
+        clearTimeout(cleanupTimer);
+        resolve();
+      });
+    } catch {
+      resolve();
+    }
+  });
+}
+
+/**
  * Launches an isolated browser instance with full error handling and step-by-step logging.
  */
 export async function launchBrowser(profile: Profile, launchOptions?: { mode?: 'normal' | 'automation' }): Promise<LaunchedProcessInfo> {
@@ -3941,6 +4057,11 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
     }
 
     debugLog(`[Launcher Step 6/7] Process spawned successfully with PID: ${child.pid}`);
+
+    if (settings?.locale?.timezone) {
+      const targetLocale = (Array.isArray(settings?.locale?.languagesList) ? settings.locale.languagesList[0] : settings?.locale?.language) || 'en-US';
+      applyCdpOverrides(debugPort, settings.locale.timezone, targetLocale).catch(() => {});
+    }
 
     // -------------------------------------------------------------
     // Step 7: Unref & Return Process Information
