@@ -1,8 +1,8 @@
 # MAHI Browser — Development Progress
 
-## Step 10: Anti-Detect Round 5 — Consistency & Lie Reduction (Commits fffb2c7 → 66b260f → d488898)
+## Step 10: Anti-Detect Round 5 & 5.1 Remediation — Consistency, Lie Reduction & Hardening
 - **Branch:** `feature/v2-enterprise-anti-detect` and `main` (synchronized)
-- **Status:** COMPLETED & 100% VERIFIED
+- **Status:** PHASES 1-2 VERIFIED; PHASE 3 REWRITTEN IN R5.1
 - **Phases Implemented & Commits:**
   1. **Phase 1 (`fffb2c7`): Stop Fabricating GPU Fallbacks & OffscreenCanvas Worker Hook:**
      - Removed hardcoded GPU fallbacks (`RTX 4070`, `Apple M3 Pro`, `Mali-G710`) in `02_BROWSER/launcher.ts`.
@@ -20,15 +20,19 @@
        if ((_h & 127) === 0) { ... }
        ```
      - Eliminates 2D frequency lattice detection in CreepJS / PixelScan canvas analysis.
-  3. **Phase 3 (`d488898`): Engine-Level CDP Timezone Override & Function Descriptor Hardening:**
-     - Implemented `applyCdpOverrides(debugPort, tz, locale)` via CDP using `Target.setAutoAttach` (`autoAttach: true, waitForDebuggerOnStart: true, flatten: true`).
-     - On target attach, sends `Emulation.setTimezoneOverride` and `Emulation.setLocaleOverride` before running `Runtime.runIfWaitingForDebugger`, updating V8's native timezone cache with zero JS proxy footprint.
-     - Guarded `Date.prototype.getTimezoneOffset` and `Intl.DateTimeFormat` proxy spoofing with `useCdpTz` fallback check across main, <iframe>, and worker scopes.
-     - Hardened `registerNative` and worker `wReg` descriptors with `Object.defineProperty(fn, 'name', { value: n, configurable: true })` and `Object.defineProperty(fn, 'length', { value: fn.length, configurable: true })`.
+  3. **Phase 3 Audit & Round 5.1 Remediation (`c3cccc0` → `903b366`):**
+     - Independent audit revealed Phase 3 CDP override was non-functional at runtime (spawn without debugging port, disconnect killed browser, workerBootstrapJs syntax errors). Round 5.1 comprehensively rewrote and hardened Phase 3:
+     - **D1/D2 (Timezone Mechanism Verified):** Proved via `12_SCRIPTS/tz-probe.ts` that Windows Chromium completely ignores both `--tz=` and `env TZ`. Timezone emulation requires CDP `Emulation.setTimezoneOverride` via `rebrowser-playwright-core` `chromium.connectOverCDP` without closing user browser on disconnect, alongside JS proxy fallback for Web Worker scopes that do not inherit page CDP sessions.
+     - **D3 (Guard Normalization):** Removed dead `useCdpTz` IIFE and replaced with `var mahiTzApplied = false;` across main, <iframe>, and worker scopes.
+     - **D4 (WebGPU Descriptor Sanitization):** Removed hardcoded WebGPU device descriptors (`RTX 4070`, etc.) in `02_BROWSER/launcher.ts`.
+     - **D5 (Worker Bootstrap Syntax):** Fixed unquoted string interpolation bugs (`var pUa = ;`, brand versions, `map.day` reference).
+     - **D6 (Service Worker Injection):** Wrapped `ServiceWorkerContainer.prototype.register` with same-origin script fetching and bootstrap prepending, with graceful fallback to original script on blob rejection.
+     - **D7 (Known Limitations Documented):** CreepJS lies = 0 is mathematically impossible with pure user-space JavaScript monkey-patching; descriptor spoofing reduces confidence penalties, but CreepJS's function-decompilation and prototype-walking checks still detect Proxy presence. Native engine patches (Camoufox / ungoogled-chromium C++ layer) are required for true 0-detection.
+     - **D8 (Test Metric Accuracy):** Test claims corrected to exact test runner output: `125 passed | 2 skipped (127 files), 1,187 passed | 22 skipped (1,209 tests)`.
 - **Verification Evidence:**
   * `npx tsc --noEmit` -> 0 errors.
-  * `npm run test:ci` -> 125 passed / 0 failed (1,187 passed, 22 skipped across 127 suites).
-  * Dual-branch parity: `main` and `feature/v2-enterprise-anti-detect` pushed and aligned at commit `d488898`.
+  * `npm run test:ci` -> 125 passed | 2 skipped (127 files), 1,187 passed | 22 skipped (1,209 tests).
+  * Dual-branch parity: `main` and `feature/v2-enterprise-anti-detect` synchronized.
 
 ## Step 9: Round 3 Remediation, Green CI & VPS Non-Regression Deployment (70e3eec)
 - **Branch:** `feature/v2-enterprise-anti-detect` (synced to `main` at `70e3eec1a3f408f361db39e4a964857825741697`)
