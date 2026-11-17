@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
+import { chromium } from 'rebrowser-playwright-core';
 import { Profile } from '../10_CONFIG/shared/types/profile.js';
 import { resolveExecutablePath } from './detector.js';
 import {
@@ -1226,14 +1227,14 @@ export function ensureProfileStealthExtension(
         '  try {',
         '    var pHwc = ' + ${hardwareConcurrency} + ';',
         '    var pDevMem = ' + ${deviceMemory} + ';',
-        '    var pPlat = ' + ${JSON.stringify(platformStr)} + ';',
-        '    var pTz = ' + ${JSON.stringify(targetTimezone)} + ';',
+        '    var pPlat = ' + JSON.stringify(${JSON.stringify(platformStr)}) + ';',
+        '    var pTz = ' + JSON.stringify(${JSON.stringify(targetTimezone)}) + ';',
         '    var mahiTzApplied = false;',
-        '    var pLang = ' + ${JSON.stringify(languagesList[0] || 'en-US')} + ';',
-        '    var pLangs = Object.freeze(' + ${JSON.stringify(languagesList)} + ');',
-        '    var pUa = ' + ${JSON.stringify(settings?.browser?.userAgent || '')} + ';',
-        '    var pGpuVendor = ' + ${JSON.stringify(gpuVendor)} + ';',
-        '    var pGpuRenderer = ' + ${JSON.stringify(gpuRenderer)} + ';',
+        '    var pLang = ' + JSON.stringify(${JSON.stringify(languagesList[0] || 'en-US')}) + ';',
+        '    var pLangs = Object.freeze(' + JSON.stringify(${JSON.stringify(languagesList)}) + ');',
+        '    var pUa = ' + JSON.stringify(${JSON.stringify(settings?.browser?.userAgent || '')}) + ';',
+        '    var pGpuVendor = ' + JSON.stringify(${JSON.stringify(gpuVendor)}) + ';',
+        '    var pGpuRenderer = ' + JSON.stringify(${JSON.stringify(gpuRenderer)}) + ';',
         '    var pSeed = ' + pSeed + ';',
         '    var seedOffset = ((pSeed % 15) + 1);',
         '    var wHooked = [];',
@@ -1291,20 +1292,20 @@ export function ensureProfileStealthExtension(
         '        try {',
         '          var wBrands = [',
         '            { brand: "Not/A)Brand", version: "8" },',
-        '            { brand: "Chromium", version: ' + ${JSON.stringify(chromeMajorVer)} + ' },',
-        '            { brand: "Google Chrome", version: ' + ${JSON.stringify(chromeMajorVer)} + ' }',
+        '            { brand: "Chromium", version: ' + JSON.stringify(${JSON.stringify(chromeMajorVer)}) + ' },',
+        '            { brand: "Google Chrome", version: ' + JSON.stringify(${JSON.stringify(chromeMajorVer)}) + ' }',
         '          ];',
         '          var wFullList = [',
         '            { brand: "Not/A)Brand", version: "8.0.0.0" },',
-        '            { brand: "Chromium", version: ' + ${JSON.stringify(chromeFullVer)} + ' },',
-        '            { brand: "Google Chrome", version: ' + ${JSON.stringify(chromeFullVer)} + ' }',
+        '            { brand: "Chromium", version: ' + JSON.stringify(${JSON.stringify(chromeFullVer)}) + ' },',
+        '            { brand: "Google Chrome", version: ' + JSON.stringify(${JSON.stringify(chromeFullVer)}) + ' }',
         '          ];',
         '          var wUaObj = {',
         '            brands: wBrands,',
         '            mobile: ' + (${isMobile ? 'true' : 'false'}) + ',',
-        '            platform: ' + ${JSON.stringify(clientHintsPlatform)} + ',',
+        '            platform: ' + JSON.stringify(${JSON.stringify(clientHintsPlatform)}) + ',',
         '            getHighEntropyValues: function(hints) {',
-        '              var res = { brands: wBrands, mobile: ' + (${isMobile ? 'true' : 'false'}) + ', platform: ' + ${JSON.stringify(clientHintsPlatform)} + ' };',
+        '              var res = { brands: wBrands, mobile: ' + (${isMobile ? 'true' : 'false'}) + ', platform: ' + JSON.stringify(${JSON.stringify(clientHintsPlatform)}) + ' };',
         '              if (Array.isArray(hints)) {',
         '                for (var wi = 0; wi < hints.length; wi++) {',
         '                  if (hints[wi] === "fullVersionList") res.fullVersionList = wFullList;',
@@ -1312,7 +1313,7 @@ export function ensureProfileStealthExtension(
         '              }',
         '              return Promise.resolve(res);',
         '            },',
-        '            toJSON: function() { return { brands: wBrands, mobile: ' + (${isMobile ? 'true' : 'false'}) + ', platform: ' + ${JSON.stringify(clientHintsPlatform)} + ' }; }',
+        '            toJSON: function() { return { brands: wBrands, mobile: ' + (${isMobile ? 'true' : 'false'}) + ', platform: ' + JSON.stringify(${JSON.stringify(clientHintsPlatform)}) + ' }; }',
         '          };',
         '          if (typeof Symbol !== "undefined" && Symbol.toStringTag) {',
         '            try { Object.defineProperty(wUaObj, Symbol.toStringTag, { value: "NavigatorUAData", configurable: true }); } catch(e) {}',
@@ -1446,7 +1447,7 @@ export function ensureProfileStealthExtension(
         '          var map = {};',
         '          for (var pIdx = 0; pIdx < parts.length; pIdx++) map[parts[pIdx].type] = parseInt(parts[pIdx].value, 10);',
         '          var tzHour = map.hour === 24 ? 0 : map.hour;',
-        '          var tzDate = Date.UTC(map.year, map.month - 1, day, tzHour, map.minute, map.second);',
+        '          var tzDate = Date.UTC(map.year, map.month - 1, map.day, tzHour, map.minute, map.second);',
         '          var utcDate = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds());',
         '          return Math.round((utcDate - tzDate) / 60000);',
         '        } catch(e) { return 0; }',
@@ -1624,7 +1625,7 @@ export function ensureProfileStealthExtension(
             return Reflect.construct(target, newArgs, newTarget);
           }
         });
-        ProxyWorker.prototype = origWorker.prototype;
+        try { ProxyWorker.prototype = origWorker.prototype; } catch(e) {}
         window.Worker = ProxyWorker;
         registerNative(ProxyWorker, 'Worker');
         registerNative(origWorker, 'Worker');
@@ -1639,7 +1640,7 @@ export function ensureProfileStealthExtension(
             return Reflect.construct(target, newArgs, newTarget);
           }
         });
-        ProxySharedWorker.prototype = origSharedWorker.prototype;
+        try { ProxySharedWorker.prototype = origSharedWorker.prototype; } catch(e) {}
         window.SharedWorker = ProxySharedWorker;
         registerNative(ProxySharedWorker, 'SharedWorker');
         registerNative(origSharedWorker, 'SharedWorker');
@@ -3695,91 +3696,53 @@ export async function launchCamoufoxProfile(
  * with Target.setAutoAttach to ensure all targets (pages, workers, iframes)
  * inherit native V8 timezone without JS proxy traps.
  */
-async function applyCdpOverrides(debugPort: number, tz: string, locale: string): Promise<void> {
-  if (!tz && !locale) return;
-  const WS = typeof WebSocket !== 'undefined' ? WebSocket : (globalThis as any).WebSocket;
-  if (!WS) return;
-
-  // Poll for /json/version until browser CDP server is up (up to 20 attempts, 100ms apart)
-  let versionData: { webSocketDebuggerUrl?: string } | null = null;
-  for (let attempt = 0; attempt < 20; attempt++) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${debugPort}/json/version`);
-      if (res.ok) {
-        versionData = (await res.json()) as { webSocketDebuggerUrl?: string };
-        if (versionData?.webSocketDebuggerUrl) break;
-      }
-    } catch {
-      // Browser still booting up
+async function applyCdpOverrides(debugPort: number, tz: string, locale: string): Promise<boolean> {
+  if (!tz && !locale) return false;
+  const endpoint = `http://127.0.0.1:${debugPort}`;
+  let browser: any = null;
+  try {
+    // poll /json/version until CDP answers (browser is still booting)
+    for (let i = 0; i < 25; i++) {
+      try {
+        const r = await fetch(`${endpoint}/json/version`);
+        if (r.ok) break;
+      } catch {}
+      if (i === 24) return false;
+      await new Promise((r) => setTimeout(r, 120));
     }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+    browser = await chromium.connectOverCDP(endpoint, { timeout: 8000 });
+    const ctx = browser.contexts()[0];
+    if (!ctx) return false;
 
-  if (!versionData?.webSocketDebuggerUrl) {
-    return;
-  }
-
-  return new Promise<void>((resolve) => {
-    try {
-      const ws = new WS(versionData!.webSocketDebuggerUrl!);
-      let id = 0;
-      const send = (method: string, params?: any, sessionId?: string) => {
-        try {
-          if (ws.readyState === WS.OPEN) {
-            const payload: any = { id: ++id, method };
-            if (params) payload.params = params;
-            if (sessionId) payload.sessionId = sessionId;
-            ws.send(JSON.stringify(payload));
-          }
-        } catch {}
-      };
-
-      const cleanupTimer = setTimeout(() => {
-        resolve();
-      }, 5000);
-
-      ws.addEventListener('open', () => {
-        if (tz) send('Emulation.setTimezoneOverride', { timezoneId: tz });
-        if (locale) send('Emulation.setLocaleOverride', { locale });
-        send('Target.setAutoAttach', {
-          autoAttach: true,
-          waitForDebuggerOnStart: true,
-          flatten: true,
-        });
-      });
-
-      ws.addEventListener('message', (ev: any) => {
-        try {
-          const raw = typeof ev.data === 'string' ? ev.data : (ev.data?.toString ? ev.data.toString() : '');
-          const m = JSON.parse(raw);
-          if (m.method === 'Target.attachedToTarget') {
-            const sid = m.params?.sessionId;
-            if (sid) {
-              if (tz) {
-                send('Emulation.setTimezoneOverride', { timezoneId: tz }, sid);
-              }
-              if (locale) {
-                send('Emulation.setLocaleOverride', { locale }, sid);
-              }
-              send('Runtime.runIfWaitingForDebugger', {}, sid);
-            }
-          }
-        } catch {}
-      });
-
-      ws.addEventListener('error', () => {
-        clearTimeout(cleanupTimer);
-        resolve();
-      });
-
-      ws.addEventListener('close', () => {
-        clearTimeout(cleanupTimer);
-        resolve();
-      });
-    } catch {
-      resolve();
+    // apply to every current page
+    const applyTo = async (page: any) => {
+      const cdp = await ctx.newCDPSession(page);
+      if (tz) await cdp.send('Emulation.setTimezoneOverride', { timezoneId: tz });
+      if (locale) await cdp.send('Emulation.setLocaleOverride', { locale });
+      await cdp.detach().catch(() => {});
+    };
+    const pages = ctx.pages();
+    if (pages.length === 0) {
+      const p = await ctx.newPage();
+      await applyTo(p);
+    } else {
+      for (const p of pages) await applyTo(p);
     }
-  });
+
+    // apply to pages created later (user opens new tab)
+    ctx.on('page', (p: any) => {
+      applyTo(p).catch(() => {});
+    });
+
+    return true;
+  } catch {
+    return false;
+  } finally {
+    // DISCONNECT only — never call browser.close() in a way that kills the browser
+    try {
+      await browser?.close({ reason: 'cdp-override-done' });
+    } catch {}
+  }
 }
 
 /**
@@ -4050,8 +4013,12 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
     }
 
     if (settings?.locale?.timezone) {
-      const targetLocale = (Array.isArray(settings?.locale?.languagesList) ? settings.locale.languagesList[0] : settings?.locale?.language) || 'en-US';
-      applyCdpOverrides(debugPort, settings.locale.timezone, targetLocale).catch(() => {});
+      const targetLocale =
+        (Array.isArray(settings?.locale?.languagesList)
+          ? settings.locale.languagesList[0]
+          : settings?.locale?.language) || 'en-US';
+      const ok = await applyCdpOverrides(debugPort, settings.locale.timezone, targetLocale);
+      if (!ok) debugLog('[Launcher] CDP timezone override FAILED — JS fallback stays active');
     }
 
     // -------------------------------------------------------------

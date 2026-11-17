@@ -46,16 +46,22 @@ async function runProbe() {
       context: 'Main Thread',
       offset: new Date().getTimezoneOffset(),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      dateString: new Date().toString()
+      dateString: new Date().toString(),
+      workerIsProxy: window.Worker.name === 'Worker' && String(window.Worker) === 'function Worker() { [native code] }'
     };
     fetch('/report', { method: 'POST', body: JSON.stringify(mainResult) });
 
     // Web Worker
     try {
-      const w = new Worker('/worker.js');
-      w.onmessage = (e) => {
-        fetch('/report', { method: 'POST', body: JSON.stringify(e.data) });
-      };
+      setTimeout(() => {
+        const w = new Worker('/worker.js');
+        w.onmessage = (e) => {
+          fetch('/report', { method: 'POST', body: JSON.stringify(e.data) });
+        };
+        w.onerror = (err) => {
+          fetch('/report', { method: 'POST', body: JSON.stringify({ context: 'Web Worker', offset: NaN, timeZone: 'WORKER_ERR: ' + err.message + ' lineno: ' + err.lineno + ' col: ' + err.colno, dateString: '' }) });
+        };
+      }, 500);
     } catch(err) {
       fetch('/report', { method: 'POST', body: JSON.stringify({ context: 'Web Worker', offset: NaN, timeZone: 'ERROR: ' + err.message, dateString: '' }) });
     }
@@ -89,7 +95,8 @@ async function runProbe() {
           context: 'Web Worker',
           offset: new Date().getTimezoneOffset(),
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          dateString: new Date().toString()
+          dateString: new Date().toString(),
+          hwc: navigator.hardwareConcurrency
         });
       `);
     } else if (req.url === '/sw.js') {
@@ -156,6 +163,20 @@ async function runProbe() {
   console.log(`[TZ Probe] Launching test profile with timezone: ${targetTz} on debug port ${debugPort}...`);
   const launched = await launchBrowser(profile);
 
+  const coreJsPath = path.join(testDir, 'mahi_title_extension', 'stealth-core.js');
+  if (fs.existsSync(coreJsPath)) {
+    const code = fs.readFileSync(coreJsPath, 'utf8');
+    try {
+      new Function(code);
+      console.log('[TZ Probe] stealth-core.js syntax is VALID!');
+    } catch (err: any) {
+      console.error('[TZ Probe] stealth-core.js SYNTAX ERROR:', err.message);
+      fs.writeFileSync('C:/Users/munaf/.gemini/antigravity/brain/9095e766-f32f-4560-92f4-94cf01606a71/scratch/bad_stealth.js', code);
+    }
+  } else {
+    console.log('[TZ Probe] stealth-core.js DOES NOT EXIST at', coreJsPath);
+  }
+
   let cdpBrowser: any = null;
   try {
     const cdpEndpoint = `http://127.0.0.1:${debugPort}`;
@@ -175,6 +196,13 @@ async function runProbe() {
     const page = ctx.pages()[0] || await ctx.newPage();
 
     console.log(`[TZ Probe] Navigating to ${probeUrl}...`);
+    try {
+      const listRes = await fetch(`http://127.0.0.1:${debugPort}/json/list`);
+      const listData = await listRes.json();
+      console.log(`[TZ Probe] CDP Targets on debug port:`, listData.map((t: any) => ({ type: t.type, title: t.title, url: t.url })));
+    } catch (e: any) {
+      console.log('[TZ Probe] Failed to fetch /json/list:', e.message);
+    }
     await page.goto(probeUrl, { waitUntil: 'domcontentloaded' });
 
     // Wait up to 6 seconds for results
@@ -189,17 +217,42 @@ async function runProbe() {
     console.table(Object.values(results));
 
     // Inspect JS Proxy vs Native descriptor
+    const stealthRan = await page.evaluate(() => (window as any).__MAHI_STEALTH_CORE_RAN);
+    console.log(`\n[Stealth Script Active?] stealthRan = ${stealthRan}`);
     const tzOffsetToString = await page.evaluate(() => Date.prototype.getTimezoneOffset.toString());
     const dtfResolvedToString = await page.evaluate(() => Intl.DateTimeFormat.prototype.resolvedOptions.toString());
+    const workerToString = await page.evaluate(() => window.Worker.toString());
+    const isProxyWorker = await page.evaluate(() => (window.Worker as any).name);
+    const workerCreation = await page.evaluate(() => {
+      try {
+        const w = new Worker('/worker.js');
+        return 'success';
+      } catch (e: any) {
+        return 'threw: ' + e.message;
+      }
+    });
+    const xhrCheck = await page.evaluate(() => {
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', '/worker.js', false);
+        xhr.send();
+        return { status: xhr.status, textLen: (xhr.responseText || '').length };
+      } catch (e: any) {
+        return { error: e.message };
+      }
+    });
     console.log(`\n[Native / Proxy Checks]`);
     console.log(`Date.prototype.getTimezoneOffset.toString() = "${tzOffsetToString}"`);
     console.log(`Intl.DateTimeFormat.prototype.resolvedOptions.toString() = "${dtfResolvedToString}"`);
+    console.log(`window.Worker.toString() = "${workerToString}", name = "${isProxyWorker}"`);
+    console.log(`Worker creation result: ${workerCreation}`);
 
     // Verify consistency
     const contextsList = Object.keys(results);
     let allAgree = true;
     for (const c of contextsList) {
       const res = results[c];
+      console.log(`[${c}] raw result:`, JSON.stringify(res));
       const validOffset = res.offset === 240 || res.offset === 300; // EDT 240, EST 300
       const validTz = res.timeZone === targetTz;
       console.log(`[${c}] offset=${res.offset} (valid: ${validOffset}), timeZone=${res.timeZone} (valid: ${validTz}), date=${res.dateString}`);
