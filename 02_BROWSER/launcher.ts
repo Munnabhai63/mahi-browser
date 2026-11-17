@@ -1648,6 +1648,41 @@ export function ensureProfileStealthExtension(
         registerNative(ProxySharedWorker, 'SharedWorker');
         registerNative(origSharedWorker, 'SharedWorker');
       }
+
+      if (typeof navigator !== 'undefined' && navigator.serviceWorker && typeof ServiceWorkerContainer !== 'undefined' && ServiceWorkerContainer.prototype) {
+        var origSWRegister = ServiceWorkerContainer.prototype.register;
+        var proxySWRegister = new Proxy(origSWRegister, {
+          apply: function(target, thisArg, args) {
+            var url = args[0];
+            var opts = args[1] || {};
+            try {
+              var abs = new URL(String(url), location.href);
+              if (abs.origin === location.origin) {
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', abs.href, false);
+                xhr.send();
+                if (xhr.status >= 200 && xhr.status < 300 && xhr.responseText) {
+                  var combined = workerBootstrapJs + '\\n;' + xhr.responseText;
+                  var blobUrl = URL.createObjectURL(
+                    new Blob([combined], { type: 'application/javascript' }));
+                  var newArgs = [blobUrl].concat(args.slice(1));
+                  try {
+                    return target.apply(thisArg, newArgs).catch(function() {
+                      return target.apply(thisArg, args);
+                    });
+                  } catch(regErr) {
+                    return target.apply(thisArg, args);
+                  }
+                }
+              }
+            } catch (e) {}
+            return target.apply(thisArg, args);
+          }
+        });
+        ServiceWorkerContainer.prototype.register = proxySWRegister;
+        registerNative(proxySWRegister, 'register');
+        registerNative(origSWRegister, 'register');
+      }
     } catch(e) {}
 
     // -------------------------------------------------------------
@@ -2248,7 +2283,7 @@ export function ensureProfileStealthExtension(
     if (${gpuSpoofOn} && navigator.gpu && navigator.gpu.requestAdapter) {
       var gpuInfo = {
         architecture: ${JSON.stringify(isMobile ? 'valhall' : (isMacArm ? 'apple-m1' : 'ampere'))},
-        vendor: ${JSON.stringify(isMobile ? 'arm' : (isMacArm ? 'apple' : (isLinux ? 'mesa' : 'nvidia')))},
+        vendor: ${JSON.stringify(isMobile ? 'arm' : (isMacArm ? 'apple' : (isLinux ? 'mesa' : 'NVIDIA')))},
         device: ${JSON.stringify(gpuRenderer)},
         description: ${JSON.stringify(gpuRenderer)},
       };
