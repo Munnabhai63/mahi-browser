@@ -4058,6 +4058,12 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
 
     debugLog(`[Launcher Step 6/7] Process spawned successfully with PID: ${child.pid}`);
 
+    if (process.env.MAHI_TZ_DEBUG === '1') {
+      debugLog(`[TZ DEBUG] env TZ = ${browserEnv.TZ}`);
+      debugLog(`[TZ DEBUG] --tz arg present = ${args.some(a => a.startsWith('--tz='))}`);
+      debugLog(`[TZ DEBUG] args = ${args.filter(a => a.startsWith('--tz=') || a.startsWith('--lang=') || a.startsWith('--user-agent=')).join(' | ')}`);
+    }
+
     if (settings?.locale?.timezone) {
       const targetLocale = (Array.isArray(settings?.locale?.languagesList) ? settings.locale.languagesList[0] : settings?.locale?.language) || 'en-US';
       applyCdpOverrides(debugPort, settings.locale.timezone, targetLocale).catch(() => {});
