@@ -357,14 +357,9 @@ export function ensureProfileStealthExtension(
     },
   ];
 
-  const gpuVendor = fp.webglVendor || (isMobile ? 'ARM' : (isMac ? 'Google Inc. (Apple)' : (isLinux ? 'Google Inc. (Mesa)' : 'Google Inc. (NVIDIA)')));
-  const gpuRenderer = fp.webglRenderer || (isMobile
-    ? 'Mali-G710 MC10'
-    : (isMac
-      ? (isMacArm ? 'ANGLE (Apple, Apple M3 Pro, OpenGL 4.1 Metal - 88.1)' : 'ANGLE (Intel, Intel(R) Iris(TM) Plus Graphics OpenGL Engine, OpenGL 4.1)')
-      : (isLinux
-        ? 'Mesa Intel(R) UHD Graphics 620 (KBL GT2)'
-        : 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Direct3D11 vs_5_0 ps_5_0, D3D11)')));
+  const gpuSpoofOn = Boolean(fp?.webglVendor && fp?.webglRenderer);
+  const gpuVendor   = gpuSpoofOn ? fp.webglVendor   : '';
+  const gpuRenderer = gpuSpoofOn ? fp.webglRenderer : '';
 
   const hardwareConcurrency = fp.hardwareConcurrency || (isMobile ? 8 : (isMac ? (isMacArm ? 12 : 8) : (isLinux ? 8 : 16)));
   const deviceMemory = fp.deviceMemory || (isMobile ? 8 : (isLinux ? 8 : 16));
@@ -775,8 +770,10 @@ export function ensureProfileStealthExtension(
               var proxyGP = new Proxy(origGP, {
                 apply: function(target, thisArg, args) {
                   var param = args[0];
-                  if (param === 37445) return ${JSON.stringify(gpuVendor)};
-                  if (param === 37446) return ${JSON.stringify(gpuRenderer)};
+                  var pGpuVendor = ${JSON.stringify(gpuVendor)};
+                  var pGpuRenderer = ${JSON.stringify(gpuRenderer)};
+                  if (pGpuVendor && param === 37445) return pGpuVendor;
+                  if (pGpuRenderer && param === 37446) return pGpuRenderer;
                   if (param === 7936) return 'WebKit';
                   if (param === 7937) return 'WebKit WebGL';
                   return target.apply(thisArg, args);
@@ -1391,8 +1388,8 @@ export function ensureProfileStealthExtension(
         '      var proxyGP = new Proxy(origGP, {',
         '        apply: function(target, thisArg, args) {',
         '          var param = args[0];',
-        '          if (param === 37445) return pGpuVendor;',
-        '          if (param === 37446) return pGpuRenderer;',
+        '          if (pGpuVendor && param === 37445) return pGpuVendor;',
+        '          if (pGpuRenderer && param === 37446) return pGpuRenderer;',
         '          if (param === 7936) return "WebKit";',
         '          if (param === 7937) return "WebKit WebGL";',
         '          return target.apply(thisArg, args);',
@@ -1401,6 +1398,21 @@ export function ensureProfileStealthExtension(
         '      glProto.getParameter = proxyGP;',
         '      wReg(proxyGP, "getParameter");',
         '      wReg(origGP, "getParameter");',
+        '    }',
+        '    if (typeof OffscreenCanvas !== "undefined" && OffscreenCanvas.prototype.getContext) {',
+        '      var origOffCtx = OffscreenCanvas.prototype.getContext;',
+        '      var proxyOffCtx = new Proxy(origOffCtx, {',
+        '        apply: function(t, thisArg, a) {',
+        '          var ctx = t.apply(thisArg, a);',
+        '          if (ctx && ctx.getParameter && (pGpuVendor || pGpuRenderer)) {',
+        '            spoofWorkerGL(Object.getPrototypeOf(ctx));',
+        '          }',
+        '          return ctx;',
+        '        }',
+        '      });',
+        '      OffscreenCanvas.prototype.getContext = proxyOffCtx;',
+        '      wReg(proxyOffCtx, "getContext");',
+        '      wReg(origOffCtx, "getContext");',
         '    }',
         '    if (typeof WebGLRenderingContext !== "undefined") spoofWorkerGL(WebGLRenderingContext.prototype);',
         '    if (typeof WebGL2RenderingContext !== "undefined") spoofWorkerGL(WebGL2RenderingContext.prototype);',
@@ -2124,9 +2136,9 @@ export function ensureProfileStealthExtension(
           apply: function(target, thisArg, argumentsList) {
             var param = argumentsList[0];
             // UNMASKED_VENDOR_WEBGL
-            if (param === 37445) return spoofVendor;
+            if (spoofVendor && param === 37445) return spoofVendor;
             // UNMASKED_RENDERER_WEBGL
-            if (param === 37446) return spoofRenderer;
+            if (spoofRenderer && param === 37446) return spoofRenderer;
             // VENDOR
             if (param === 7936) return 'WebKit';
             // RENDERER
@@ -2207,7 +2219,7 @@ export function ensureProfileStealthExtension(
   // 4.5 WebGPU Hardware Descriptors (Dawn Engine)
   // -------------------------------------------------------------
   try {
-    if (navigator.gpu && navigator.gpu.requestAdapter) {
+    if (${gpuSpoofOn} && navigator.gpu && navigator.gpu.requestAdapter) {
       var gpuInfo = {
         architecture: ${JSON.stringify(isMobile ? 'valhall' : (isMacArm ? 'apple-m1' : 'ampere'))},
         vendor: ${JSON.stringify(isMobile ? 'arm' : (isMacArm ? 'apple' : (isLinux ? 'mesa' : 'nvidia')))},

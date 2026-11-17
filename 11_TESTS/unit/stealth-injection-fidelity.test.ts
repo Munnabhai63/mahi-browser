@@ -241,6 +241,10 @@ describe('Task 6: Stealth Script Injection & Anti-Detect Fidelity Suite', () => 
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-stealth-fidelity-'));
     const extDir = ensureProfileStealthExtension(tempDir, 'prof-fid-1', 'Stealth-Fidelity-Profile', {
       browser: { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.6943.53 Safari/537.36' },
+      fingerprint: {
+        webglVendor: 'Google Inc. (NVIDIA)',
+        webglRenderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3080 Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      },
     });
     stealthScriptCode = fs.readFileSync(path.join(extDir, 'stealth-core.js'), 'utf8');
   });
