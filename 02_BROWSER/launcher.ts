@@ -504,15 +504,7 @@ export function ensureProfileStealthExtension(
   var chArch = ${JSON.stringify(clientHintsArch)};
   var chBitness = "64";
   var targetTz = ${JSON.stringify(targetTimezone)};
-  var useCdpTz = (function() {
-    try {
-      if (typeof window !== 'undefined' && window.__MAHI_CDP_TZ_OK__) return true;
-      if (typeof self !== 'undefined' && self.__MAHI_CDP_TZ_OK__) return true;
-      var currentTz = new Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (currentTz && targetTz && currentTz.toLowerCase() === targetTz.toLowerCase()) return true;
-    } catch(e) {}
-    return ${Boolean(process.env.MAHI_CDP_TZ_OK)};
-  })();
+  var mahiTzApplied = false;
 
   // Synchronous Cross-Realm <iframe> Hooking & Comprehensive Stealth Propagation
   try {
@@ -804,7 +796,7 @@ export function ensureProfileStealthExtension(
         }
 
         // 5. Date & Timezone in targetWin
-        if (!useCdpTz && targetTz && targetWin.Date && targetWin.Date.prototype) {
+        if (!mahiTzApplied && targetTz && targetWin.Date && targetWin.Date.prototype) {
           try {
             var origDateTz = targetWin.Date.prototype.getTimezoneOffset;
             var proxyDateTz = new Proxy(origDateTz, {
@@ -1043,7 +1035,7 @@ export function ensureProfileStealthExtension(
     // -------------------------------------------------------------
     // Timezone Spoofing (Intl.DateTimeFormat & Date.prototype.getTimezoneOffset)
     // -------------------------------------------------------------
-    if (targetTz && !useCdpTz) {
+    if (targetTz && !mahiTzApplied) {
       try {
         var getTzOffset = function(date, tz) {
           try {
@@ -1236,14 +1228,7 @@ export function ensureProfileStealthExtension(
         '    var pDevMem = ' + ${deviceMemory} + ';',
         '    var pPlat = ' + ${JSON.stringify(platformStr)} + ';',
         '    var pTz = ' + ${JSON.stringify(targetTimezone)} + ';',
-        '    var useCdpTz = (function() {',
-        '      try {',
-        '        if (typeof self !== "undefined" && self.__MAHI_CDP_TZ_OK__) return true;',
-        '        var currentTz = new Intl.DateTimeFormat().resolvedOptions().timeZone;',
-        '        if (currentTz && pTz && currentTz.toLowerCase() === pTz.toLowerCase()) return true;',
-        '      } catch(e) {}',
-        '      return ' + ${Boolean(process.env.MAHI_CDP_TZ_OK)} + ';',
-        '    })();',
+        '    var mahiTzApplied = false;',
         '    var pLang = ' + ${JSON.stringify(languagesList[0] || 'en-US')} + ';',
         '    var pLangs = Object.freeze(' + ${JSON.stringify(languagesList)} + ');',
         '    var pUa = ' + ${JSON.stringify(settings?.browser?.userAgent || '')} + ';',
@@ -1449,7 +1434,7 @@ export function ensureProfileStealthExtension(
         '    }',
         '    if (typeof WebGLRenderingContext !== "undefined") spoofWorkerGL(WebGLRenderingContext.prototype);',
         '    if (typeof WebGL2RenderingContext !== "undefined") spoofWorkerGL(WebGL2RenderingContext.prototype);',
-        '    if (!useCdpTz && pTz) {',
+        '    if (!mahiTzApplied && pTz) {',
         '      var getTzOffset = function(date, tz) {',
         '        try {',
         '          var formatter = new Intl.DateTimeFormat("en-US", {',
