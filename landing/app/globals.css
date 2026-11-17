@@ -3,15 +3,15 @@
 @tailwind utilities;
 
 :root {
-  --background: #020617;
-  --foreground: #f8fafc;
+  --background: #050505;
+  --foreground: #ededed;
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  overflow-x: hidden;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow-x: clip;
 }
 
 /* Strict Non-Draggable Brand Asset Invariant */
@@ -28,28 +28,43 @@ img[alt*="MAHI"] {
   pointer-events: auto;
 }
 
-/* Custom Scrollbar for Sleek Dark Experience */
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #020617;
+  background: #050505;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 4px;
+  background: #222;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: #333;
 }
 
-/* Glassmorphism helpers */
-.glass-panel {
-  background: rgba(15, 23, 42, 0.7);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(51, 65, 85, 0.6);
+/* Glassmorphism Styles */
+.glass-pill {
+  background: rgba(45, 45, 45, 0.45);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+}
+
+/* Hero Gradient & Vignette Overlays */
+.hero-gradient-overlay {
+  background: linear-gradient(90deg, #050505 0%, #050505 32%, rgba(5, 5, 5, 0.85) 48%, rgba(5, 5, 5, 0.25) 75%, rgba(5, 5, 5, 0.1) 100%);
+}
+
+.bottom-fade {
+  background: linear-gradient(180deg, rgba(5, 5, 5, 0) 0%, rgba(5, 5, 5, 0.85) 60%, #050505 100%);
+}
+
+.top-fade {
+  background: linear-gradient(180deg, rgba(5, 5, 5, 0.9) 0%, rgba(5, 5, 5, 0.3) 60%, rgba(5, 5, 5, 0) 100%);
 }

@@ -101,14 +101,21 @@ export default function RootLayout({
   };
 
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark scroll-smooth">
       <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Spectral:ital,wght@1,200;1,300;1,400;1,500;1,600&display=swap"
+          rel="stylesheet"
+        />
+        <link rel="stylesheet" href="/assets/css/framer-theme.css" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
         />
       </head>
-      <body className="min-h-screen flex flex-col bg-slate-950 text-slate-100 antialiased selection:bg-red-500 selection:text-white">
+      <body className="min-h-screen flex flex-col bg-[#050505] text-[#ededed] antialiased selection:bg-white selection:text-black">
         <Navbar />
         <main className="flex-1 w-full">{children}</main>
         <Footer />

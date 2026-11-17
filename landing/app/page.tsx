@@ -1,88 +1,19 @@
 import React from 'react';
 import Link from 'next/link';
 import { BRAND } from '../lib/brand';
+import FramerHeroAndIntro from '../components/FramerHeroAndIntro';
 import FingerprintPreview from '../components/FingerprintPreview';
 import FaqAccordion from '../components/FaqAccordion';
 import PricingTable from '../components/PricingTable';
 
 export default function HomePage() {
   return (
-    <div className="w-full space-y-20 pb-20">
-      {/* Hero Section */}
-      <section className="relative overflow-hidden pt-12 sm:pt-20 lg:pt-28 pb-12">
-        {/* Subtle background glow */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-red-600/10 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute top-1/3 right-10 w-[400px] h-[300px] bg-blue-600/5 rounded-full blur-[100px] pointer-events-none" />
+    <div className="w-full pb-20">
+      {/* 100% Pixel-Perfect Framer Section 1 (Nav + Hero + Ticker) & Section 2 (Intro + Stats) */}
+      <FramerHeroAndIntro />
 
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 relative z-10 text-center space-y-8">
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-950/40 px-4 py-1.5 text-xs font-semibold text-red-300">
-            <span className="flex h-2 w-2 rounded-full bg-red-500 animate-ping" />
-            <span>MAHI Browser v{BRAND.version} Released</span>
-            <span className="text-slate-400">•</span>
-            <span className="text-slate-300">Chromium 138 + Camoufox Dual-Engine</span>
-          </div>
-
-          {/* Heading */}
-          <h1 className="mx-auto max-w-5xl text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.1]">
-            The Undetectable <br className="hidden sm:inline" />
-            <span className="bg-gradient-to-r from-red-500 via-red-400 to-amber-300 bg-clip-text text-transparent">
-              Dual-Engine Anti-Detect
-            </span>{' '}
-            Browser
-          </h1>
-
-          {/* Subtitle */}
-          <p className="mx-auto max-w-3xl text-base sm:text-xl text-slate-300 leading-relaxed font-normal">
-            Bypass Cloudflare Turnstile, DataDome, and CreepJS with zero leaks. Built with JavaScript MV3 main-world stealth injection,{' '}
-            <strong className="text-white font-semibold">rebrowser-patches</strong> CDP isolation, offline SQLite architecture, and Redis-locked team profile synchronization.
-          </p>
-
-          {/* CTAs */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-            <Link
-              href="/download"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-red-600 to-red-700 px-8 py-4 text-base font-bold text-white shadow-xl shadow-red-900/40 transition hover:from-red-500 hover:to-red-600 active:scale-[0.99]"
-            >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Download Free (15 Profiles)
-            </Link>
-            <Link
-              href="/compare/gologin-alternative"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900/90 px-6 py-4 text-base font-semibold text-slate-200 transition hover:bg-slate-800 hover:text-white"
-            >
-              Compare vs GoLogin
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-              </svg>
-            </Link>
-          </div>
-
-          {/* Trust Stats Bar */}
-          <div className="pt-10 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
-            <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-4">
-              <div className="text-2xl sm:text-3xl font-extrabold text-emerald-400">0.0%</div>
-              <div className="text-xs text-slate-400 mt-1">CreepJS Detection Score</div>
-            </div>
-            <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-4">
-              <div className="text-2xl sm:text-3xl font-extrabold text-white">Dual Engine</div>
-              <div className="text-xs text-slate-400 mt-1">Chromium 138 + Camoufox</div>
-            </div>
-            <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-4">
-              <div className="text-2xl sm:text-3xl font-extrabold text-white">Zero CDP Leak</div>
-              <div className="text-xs text-slate-400 mt-1">Rebrowser Patches Core</div>
-            </div>
-            <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-4">
-              <div className="text-2xl sm:text-3xl font-extrabold text-red-400">0% UPI Fee</div>
-              <div className="text-xs text-slate-400 mt-1">Direct Bank QR Activation</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Interactive Fingerprint Preview */}
+      <div className="space-y-20 mt-20">
+        {/* Interactive Fingerprint Preview */}
       <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <FingerprintPreview />
       </section>
@@ -326,6 +257,7 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+      </div>
     </div>
   );
 }
