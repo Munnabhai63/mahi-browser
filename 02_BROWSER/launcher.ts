@@ -1035,6 +1035,9 @@ export function ensureProfileStealthExtension(
 
     // -------------------------------------------------------------
     // Timezone Spoofing (Intl.DateTimeFormat & Date.prototype.getTimezoneOffset)
+    // FIX-3: Retained JS timezone proxies because FIX-0 proved native --tz and env TZ
+    // are no-ops on Windows Chromium and CDP Emulation does not cover Web Workers/Service Workers.
+    // Guarded with !mahiTzApplied and registerNative for descriptor integrity.
     // -------------------------------------------------------------
     if (targetTz && !mahiTzApplied) {
       try {
