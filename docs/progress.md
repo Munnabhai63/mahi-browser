@@ -1,5 +1,35 @@
 # MAHI Browser — Development Progress
 
+## Step 10: Anti-Detect Round 5 — Consistency & Lie Reduction (Commits fffb2c7 → 66b260f → d488898)
+- **Branch:** `feature/v2-enterprise-anti-detect` and `main` (synchronized)
+- **Status:** COMPLETED & 100% VERIFIED
+- **Phases Implemented & Commits:**
+  1. **Phase 1 (`fffb2c7`): Stop Fabricating GPU Fallbacks & OffscreenCanvas Worker Hook:**
+     - Removed hardcoded GPU fallbacks (`RTX 4070`, `Apple M3 Pro`, `Mali-G710`) in `02_BROWSER/launcher.ts`.
+     - When profile lacks WebGL vendor/renderer spoofing, values fall back cleanly to native hardware via `target.apply(thisArg, args)`.
+     - Guarded `UNMASKED_VENDOR_WEBGL` (37445) and `UNMASKED_RENDERER_WEBGL` (37446) in main window, <iframe> realms, and worker contexts.
+     - Added `OffscreenCanvas.prototype.getContext` hook in Web Workers to ensure `spoofWorkerGL` intercepts worker WebGL contexts.
+     - Fixed `11_TESTS/unit/stealth-injection-fidelity.test.ts` to provide explicit mock fingerprint for WebGL tests.
+  2. **Phase 2 (`66b260f`): Non-Linear Hash Canvas Noise (Lattice Killer):**
+     - Eliminated linear modulo lattice `((gx * 7 + gy * 13 + seedOffset) % 16) === 0` across all 4 noise paths (main canvas, <iframe> canvas, worker `getImageData`, and worker `convertToBlob`).
+     - Replaced with Murmur3/SplitMix32-style non-linear integer hash with bit avalanching:
+       ```javascript
+       var _h = Math.imul(gx + 0x9E3779B9, 0x85EBCA6B) ^ Math.imul(gy + pSeed, 0xC2B2AE35) ^ seedOffset;
+       _h ^= _h >>> 15; _h = Math.imul(_h, 0x2545F491);
+       _h ^= _h >>> 13;
+       if ((_h & 127) === 0) { ... }
+       ```
+     - Eliminates 2D frequency lattice detection in CreepJS / PixelScan canvas analysis.
+  3. **Phase 3 (`d488898`): Engine-Level CDP Timezone Override & Function Descriptor Hardening:**
+     - Implemented `applyCdpOverrides(debugPort, tz, locale)` via CDP using `Target.setAutoAttach` (`autoAttach: true, waitForDebuggerOnStart: true, flatten: true`).
+     - On target attach, sends `Emulation.setTimezoneOverride` and `Emulation.setLocaleOverride` before running `Runtime.runIfWaitingForDebugger`, updating V8's native timezone cache with zero JS proxy footprint.
+     - Guarded `Date.prototype.getTimezoneOffset` and `Intl.DateTimeFormat` proxy spoofing with `useCdpTz` fallback check across main, <iframe>, and worker scopes.
+     - Hardened `registerNative` and worker `wReg` descriptors with `Object.defineProperty(fn, 'name', { value: n, configurable: true })` and `Object.defineProperty(fn, 'length', { value: fn.length, configurable: true })`.
+- **Verification Evidence:**
+  * `npx tsc --noEmit` -> 0 errors.
+  * `npm run test:ci` -> 125 passed / 0 failed (1,187 passed, 22 skipped across 127 suites).
+  * Dual-branch parity: `main` and `feature/v2-enterprise-anti-detect` pushed and aligned at commit `d488898`.
+
 ## Step 9: Round 3 Remediation, Green CI & VPS Non-Regression Deployment (70e3eec)
 - **Branch:** `feature/v2-enterprise-anti-detect` (synced to `main` at `70e3eec1a3f408f361db39e4a964857825741697`)
 - **Status:** COMPLETED & 100% VERIFIED LIVE IN PRODUCTION
