@@ -2249,7 +2249,7 @@ export function ensureProfileStealthExtension(
       var gpuInfo = {
         architecture: ${JSON.stringify(isMobile ? 'valhall' : (isMacArm ? 'apple-m1' : 'ampere'))},
         vendor: ${JSON.stringify(isMobile ? 'arm' : (isMacArm ? 'apple' : (isLinux ? 'mesa' : 'nvidia')))},
-        device: ${JSON.stringify(isMobile ? 'Mali-G710' : (isMacArm ? 'Apple M1' : (isLinux ? 'Intel UHD 620' : 'NVIDIA GeForce RTX 4070')))},
+        device: ${JSON.stringify(gpuRenderer)},
         description: ${JSON.stringify(gpuRenderer)},
       };
 
