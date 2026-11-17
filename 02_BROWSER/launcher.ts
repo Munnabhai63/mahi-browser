@@ -448,7 +448,11 @@ export function ensureProfileStealthExtension(
       var gy = startY + y;
       for (var x = 0; x < sw; x++) {
         var gx = startX + x;
-        if (((gx * 7 + gy * 13 + seedOffset) % 16) === 0) {
+        var _h = Math.imul(gx + 0x9E3779B9, 0x85EBCA6B) ^
+                 Math.imul(gy + pSeed, 0xC2B2AE35) ^ seedOffset;
+        _h ^= _h >>> 15; _h = Math.imul(_h, 0x2545F491);
+        _h ^= _h >>> 13;
+        if ((_h & 127) === 0) {
           var dataIdx = (y * sw + x) * 4;
           if (data[dataIdx + 3] === 0) continue;
           var chIdx = (pSeed + gx + gy) % 3;
@@ -1327,7 +1331,10 @@ export function ensureProfileStealthExtension(
         '                    var gy = sy + y;',
         '                    for (var x = 0; x < imgData.width; x++) {',
         '                      var gx = sx + x;',
-        '                      if (((gx * 7 + gy * 13 + seedOffset) % 16) === 0) {',
+        '                      var _h = Math.imul(gx + 0x9E3779B9, 0x85EBCA6B) ^ Math.imul(gy + pSeed, 0xC2B2AE35) ^ seedOffset;',
+        '                      _h ^= _h >>> 15; _h = Math.imul(_h, 0x2545F491);',
+        '                      _h ^= _h >>> 13;',
+        '                      if ((_h & 127) === 0) {',
         '                        var dataIdx = (y * imgData.width + x) * 4;',
         '                        if (data[dataIdx + 3] === 0) continue;',
         '                        var chIdx = (pSeed + gx + gy) % 3;',
@@ -1361,7 +1368,10 @@ export function ensureProfileStealthExtension(
         '                    var gy = y;',
         '                    for (var x = 0; x < imgData.width; x++) {',
         '                      var gx = x;',
-        '                      if (((gx * 7 + gy * 13 + seedOffset) % 16) === 0) {',
+        '                      var _h = Math.imul(gx + 0x9E3779B9, 0x85EBCA6B) ^ Math.imul(gy + pSeed, 0xC2B2AE35) ^ seedOffset;',
+        '                      _h ^= _h >>> 15; _h = Math.imul(_h, 0x2545F491);',
+        '                      _h ^= _h >>> 13;',
+        '                      if ((_h & 127) === 0) {',
         '                        var dataIdx = (y * imgData.width + x) * 4;',
         '                        if (data[dataIdx + 3] === 0) continue;',
         '                        var chIdx = (pSeed + gx + gy) % 3;',
@@ -1882,7 +1892,11 @@ export function ensureProfileStealthExtension(
           var gy = startY + y;
           for (var x = 0; x < sw; x++) {
             var gx = startX + x;
-            if (((gx * 7 + gy * 13 + seedOffset) % 16) === 0) {
+            var _h = Math.imul(gx + 0x9E3779B9, 0x85EBCA6B) ^
+                 Math.imul(gy + pSeed, 0xC2B2AE35) ^ seedOffset;
+        _h ^= _h >>> 15; _h = Math.imul(_h, 0x2545F491);
+        _h ^= _h >>> 13;
+        if ((_h & 127) === 0) {
               var dataIdx = (y * sw + x) * 4;
               if (data[dataIdx + 3] === 0) continue;
               var chIdx = (pSeed + gx + gy) % 3;
