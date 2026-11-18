@@ -62,6 +62,17 @@ export default function CustomersCompareView() {
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
 
+  // Track download event telemetry
+  const trackDownload = () => {
+    try {
+      fetch('/api/v1/funnel/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventName: 'download_started', source: 'customers_page' }),
+      }).catch(() => {});
+    } catch (_) {}
+  };
+
   // Auto-advancing slide animation (silky 33fps progress bar, 6s per slide)
   useEffect(() => {
     if (isPaused) return;
@@ -116,14 +127,24 @@ export default function CustomersCompareView() {
               From high-growth affiliate media buyers to enterprise web scraping operations, elite operators choose MAHI Browser to scale multi-account fleets, reduce ban rates, and replace legacy anti-detect tools.
             </p>
 
-            {/* Exact Single Black Pill Button (1:1 with Reference) */}
-            <div className="flex items-center">
+            {/* Dual Action Buttons Group */}
+            <div className="flex flex-wrap items-center gap-3">
               <Link
-                href="/download"
-                className="inline-flex items-center justify-center rounded-full bg-[#080808] text-white px-6 py-2.5 text-xs sm:text-[14px] font-medium transition-all duration-200 hover:bg-zinc-800 active:scale-[0.98] shadow-sm"
+                href="/download?auto=true"
+                onClick={trackDownload}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-[#080808] text-white px-6 py-2.5 text-xs sm:text-[14px] font-medium transition-all duration-200 hover:bg-zinc-800 active:scale-[0.98] shadow-sm"
               >
-                Request Demo
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download Free (15 Profiles)
               </Link>
+              <a
+                href="#matrix"
+                className="inline-flex items-center justify-center gap-1.5 rounded-full border border-zinc-300 bg-white/60 text-zinc-800 px-5 py-2.5 text-xs sm:text-[14px] font-medium transition-all duration-200 hover:bg-zinc-100 hover:border-zinc-400"
+              >
+                Compare vs GoLogin &darr;
+              </a>
             </div>
 
           </div>
@@ -379,16 +400,26 @@ export default function CustomersCompareView() {
 
               <div className="pt-4 flex flex-wrap items-center justify-center gap-3">
                 <Link
-                  href="/download"
-                  className="inline-flex items-center justify-center rounded-full bg-white text-black px-7 py-3 text-xs sm:text-[13px] font-medium transition-all duration-200 hover:bg-zinc-200 active:scale-[0.98] shadow-lg shadow-white/5"
+                  href="/download?auto=true"
+                  onClick={trackDownload}
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-white text-black px-7 py-3 text-xs sm:text-[13px] font-medium transition-all duration-200 hover:bg-zinc-200 active:scale-[0.98] shadow-lg shadow-white/5"
                 >
-                  Download for Windows
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Download Free (15 Profiles)
+                </Link>
+                <Link
+                  href="/compare"
+                  className="inline-flex items-center justify-center rounded-full border border-white/20 bg-white/5 px-6 py-3 text-xs sm:text-[13px] font-medium text-zinc-300 transition-all duration-200 hover:bg-white/10 hover:text-white"
+                >
+                  Compare vs GoLogin &rarr;
                 </Link>
                 <Link
                   href="/pricing"
                   className="inline-flex items-center justify-center rounded-full border border-white/20 bg-white/5 px-6 py-3 text-xs sm:text-[13px] font-medium text-zinc-300 transition-all duration-200 hover:bg-white/10 hover:text-white"
                 >
-                  View All Plans
+                  View All Plans &rarr;
                 </Link>
               </div>
             </div>

@@ -243,16 +243,19 @@ export default function GoLoginComparisonTable() {
         </div>
         <div className="flex flex-wrap items-center gap-3 shrink-0">
           <Link
-            href="/download"
-            className="inline-flex items-center justify-center rounded-full bg-white text-black px-6 py-2.5 text-xs sm:text-[13px] font-medium transition-all duration-200 hover:bg-zinc-200 active:scale-[0.98] shadow-sm"
+            href="/download?auto=true"
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-white text-black px-6 py-2.5 text-xs sm:text-[13px] font-medium transition-all duration-200 hover:bg-zinc-200 active:scale-[0.98] shadow-sm"
           >
-            Download MAHI Free
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download Free (15 Profiles)
           </Link>
           <Link
             href="/pricing"
             className="inline-flex items-center justify-center rounded-full border border-white/20 bg-white/5 px-5 py-2.5 text-xs sm:text-[13px] font-medium text-zinc-200 transition-all duration-200 hover:bg-white/10 hover:text-white"
           >
-            Compare Plans
+            Compare Plans &rarr;
           </Link>
         </div>
       </div>
