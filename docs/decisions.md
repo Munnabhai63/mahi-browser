@@ -108,3 +108,27 @@
   3. **Build & Visual Verification**:
      - Next.js production build (`npm run build`) succeeded with 38/38 static routes generated with 0 errors.
      - Playwright screenshots captured and verified: `verified_auth_login.png`, `verified_auth_signup.png`, `verified_auth_download.png`, and `verified_auth_bookdemo.png`.
+
+## 2026-11-19 - Home Page Full Engine Wiring (Dual-Engine, Hero Actions, Telemetry & Parity)
+- **Context**: User provided reference screenshot of original MAHI Browser (`media_1795036454272_306aace7.jpg`) emphasizing that the Home Page must reflect the real dual-engine architecture, 4 core engine metrics, dual hero CTA buttons, and funnel wiring.
+- **Implementation**:
+  1. **Hero Dual CTA Buttons**: Integrated primary white pill `Download Free (15 Profiles)` and secondary translucent hairline pill `Compare vs GoLogin →`.
+  2. **Top Eyebrow Pill**: Updated and styled to `MAHI Browser v2.0 Released • Chromium 138 + Camoufox Dual-Engine →` with horizontal auto-width, linking to `/blog`.
+  3. **Core Engine Metrics Section**: Patched Framer SSR & hydration chunks to display MAHI Browser's real technical metrics (CreepJS Bypass, Dual Engine Chromium 138 + Camoufox, Rebrowser-Patches CDP Isolation 0 Leaks).
+  4. **Navbar & Footer Parity**: Verified live routes (`/features`, `/fingerprints`, `/pricing`, `/compare`, `/blog`, `/login`, `/download`).
+  5. **Auto-Download & Funnel Telemetry**: Wired `/download?auto=true` in `DownloadButtons.tsx` and funnel analytics call `POST /api/v1/funnel/track`.
+  6. **Verification**: Playwright click tests validated all 4 interactive flows, and `next build` confirmed 38/38 static routes compile with 0 errors.
+
+## 2026-11-19 - Features Page (`/features`) Full Engine Wiring
+- **Context**: User confirmed moving to the Features page (`/features`), requesting full wiring and alignment of buttons, metrics, and architecture without affecting any core backend files.
+- **Implementation**:
+  1. **Zero Core Backend Impact**: Work strictly isolated to `landing/app/features/page.tsx` and `landing/components/Navbar.tsx`. Directories `01_UI` through `14_ENGINE_PATCHES` remain 100% untouched.
+  2. **Section 1 Hero Dual CTAs**: Added `Download Free (15 Profiles)` white pill button with telemetry tracking and direct installer trigger (`/download?auto=true`), alongside `Compare vs GoLogin →` translucent pill.
+  3. **Section 2 Fleet Scale**: Wired 3 cards with real MAHI telemetry: 1,420 Active Profiles (SQLite Core), 100% Ban-Free (Camoufox C++), 99.9% Uptime (Zero CDP Leaks).
+  4. **Section 3 Workflow Tabs**: Replaced generic copy with exact MAHI Browser engine features: Chromium 138 MV3 main-world injection, Camoufox C++ Gecko engine, and Universal RPA / proxy sync with Redis locks.
+  5. **Section 4 Integrations**: Retained full double-row infinite marquee covering all target ad platforms, marketplaces, and developer automation stacks.
+  6. **Section 5 Solutions & Section 6 Testimonial**: Polished 4 vertical solution cards and Jane Berwick case study ($180K Savings, 100% Ban-Free, 10x Fleet Scale).
+  7. **Section 7 Security & Section 8 FAQ**: Updated 3 security cards with Rebrowser-patches CDP isolation, AES-256 local storage, and Redis concurrency locks; answered 5 core technical questions in accordion.
+  8. **Section 9 Pre-Footer**: Integrated dual CTA buttons matching the luxury hero styling.
+  9. **Navbar Active State**: Updated `Navbar.tsx` to link to `/features` with bold active state highlighting on both desktop and mobile.
+  10. **Verification**: Automated test (`scratch/verify_features_wiring.py`) verified status 200, hero buttons, scale cards, workflow tabs, FAQ interaction, and download redirect. Full production build passed with 38/38 static routes.

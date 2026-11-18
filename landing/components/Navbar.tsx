@@ -87,8 +87,12 @@ export default function Navbar() {
           }`}
         >
           <Link
-            href="/#features"
-            className={`${isLight ? 'hover:text-black' : 'hover:text-white'} transition-colors`}
+            href="/features"
+            className={`transition-colors ${
+              pathname === '/features' || pathname === '/product'
+                ? isLight ? 'text-black font-semibold' : 'text-white font-semibold'
+                : isLight ? 'hover:text-black' : 'hover:text-white'
+            }`}
           >
             Features
           </Link>
@@ -204,9 +208,13 @@ export default function Navbar() {
           }`}
         >
           <Link
-            href="/#features"
+            href="/features"
             onClick={() => setMobileMenuOpen(false)}
-            className="block text-sm py-2 hover:opacity-75"
+            className={`block text-sm py-2 ${
+              pathname === '/features' || pathname === '/product'
+                ? 'font-semibold text-white'
+                : 'hover:opacity-75'
+            }`}
           >
             Features
           </Link>

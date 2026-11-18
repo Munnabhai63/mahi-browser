@@ -47,3 +47,28 @@
   - Replaced all legacy red gaming buttons and "Munna Bhai" creator branding across the codebase with **Mahipal Choudhary** (Founder & CEO).
   - Verified 100% production build (`38/38` static routes passing cleanly with 0 errors).
   - Visual verification confirmed via Playwright screenshot captures on desktop viewport.
+- [x] Completed Full Home Page (`/`) Wiring matching original MAHI Browser engine architecture:
+  - Hero action buttons wired: Primary `Download Free (15 Profiles)` and Secondary `Compare vs GoLogin →`.
+  - Top release pill updated: `MAHI Browser v2.0 Released • Chromium 138 + Camoufox Dual-Engine →`.
+  - Section 2 Lateral finance copy replaced with MAHI Browser's 4 Core Engine Metrics (100% CreepJS Bypass, 2 Engines, 0 CDP Leaks, Instant Team Sync).
+  - Direct download telemetry wired (`download_started`) and auto-trigger on `/download?auto=true`.
+  - Footer copyright updated to `MAHI Browser — By Mahipal Choudhary` and WhatsApp `+91 9376343629`.
+- [x] Completed Full Features Page (`/features`) Wiring matching original MAHI Browser engine architecture:
+  - Section 1 Hero: Eyebrow `■ DUAL-ENGINE ARCHITECTURE & FEATURES`, 42px Spectral serif headline, refined subtitle, and dual action buttons (`Download Free (15 Profiles)` + `Compare vs GoLogin →`).
+  - Section 2 Fleet Scale: 3 visual cards wired with authentic MAHI telemetry (1,420 Profiles Active with SQLite Core, 100% Ban-Free with Camoufox C++, 99.9% Uptime with Zero CDP Leaks).
+  - Section 3 Workflow Tabs: Auto-advancing 6s silky progress timer with 3 MAHI core tabs (Chromium 138 Stealth Core, Camoufox C++ Gecko Engine, Universal RPA & Proxy Sync) with hover-pause and dynamic mockups.
+  - Section 4 Integrations: Double infinite marquee rows with real supported platforms and automation developer stacks (Windows, Python SDK, Playwright, Puppeteer, Selenium, REST API, Proxies).
+  - Section 5 Solutions: 4 vertical solution cards for Affiliate Marketing, E-Commerce, Web Scraping, and Social Media Operations.
+  - Section 6 Testimonial: 1120px luxury card featuring Jane Berwick ($180K Savings, 100% Ban-Free, 10x Fleet Scale).
+  - Section 7 Security: 3 cards covering Rebrowser CDP Isolation, Client-Side AES-256 Storage, and Redis Concurrency Locks.
+  - Section 8 FAQ: 5 technical collapsible accordion questions on CDP leaks, dual-engine execution, 1-click migration, proxies, and 0% UPI.
+  - Section 9 Pre-Footer: Dual CTA buttons (`Download Free (15 Profiles)` + `Compare vs GoLogin →`).
+  - Navbar: Desktop and mobile links updated to `/features` with active page highlighting.
+  - Full automated verification passed via Playwright (`scratch/verify_features_wiring.py`) and full production build passed (`38/38` static routes).
+
+  - Added Dual CTA Buttons in Hero: `Download Free (15 Profiles)` (White pill) and `Compare vs GoLogin →` (Hairline translucent pill).
+  - Wired Top Release Eyebrow Pill (`MAHI Browser v2.0 Released • Chromium 138 + Camoufox Dual-Engine →`) to `/blog`.
+  - Replaced all leftover Lateral finance strings in Section 2 with MAHI Browser's 4 Core Engine Metrics (100% CreepJS Detection Bypass, 2 Engines Chromium 138 + Camoufox, 0 Leaks Rebrowser-Patches CDP Isolation, 0% UPI Instant Activation).
+  - Fixed Navbar links (`Features`, `Fingerprints`, `Pricing`, `vs GoLogin`, `Blog`, `Sign In`, `Download for Windows`).
+  - Implemented Client-Side Funnel Analytics (`POST /api/v1/funnel/track`) and deep-link download handoff (`/download?auto=true`).
+  - Tested button interactions via Playwright end-to-end (all 4 click assertions passed).

@@ -109,6 +109,19 @@ export default function DownloadButtons() {
           if (stored) setAuthToken(stored);
         } catch {}
       }
+
+      // Auto-trigger download if navigated from Home CTA
+      if (urlParams.get('auto') === 'true') {
+        setTimeout(() => {
+          const downloadTarget = BRAND.downloads.windowsSetup;
+          const a = document.createElement('a');
+          a.href = downloadTarget;
+          a.download = '';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }, 600);
+      }
     }
   }, []);
 
