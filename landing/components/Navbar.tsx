@@ -97,8 +97,12 @@ export default function Navbar() {
             Features
           </Link>
           <Link
-            href="/#fingerprints"
-            className={`${isLight ? 'hover:text-black' : 'hover:text-white'} transition-colors`}
+            href="/fingerprints"
+            className={`transition-colors ${
+              pathname === '/fingerprints' || pathname === '/fingerprint'
+                ? isLight ? 'text-black font-semibold' : 'text-white font-semibold'
+                : isLight ? 'hover:text-black' : 'hover:text-white'
+            }`}
           >
             Fingerprints
           </Link>
@@ -219,9 +223,13 @@ export default function Navbar() {
             Features
           </Link>
           <Link
-            href="/#fingerprints"
+            href="/fingerprints"
             onClick={() => setMobileMenuOpen(false)}
-            className="block text-sm py-2 hover:opacity-75"
+            className={`block text-sm py-2 ${
+              pathname === '/fingerprints' || pathname === '/fingerprint'
+                ? 'font-semibold text-white'
+                : 'hover:opacity-75'
+            }`}
           >
             Fingerprints
           </Link>

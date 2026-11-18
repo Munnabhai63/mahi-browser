@@ -132,3 +132,17 @@
   8. **Section 9 Pre-Footer**: Integrated dual CTA buttons matching the luxury hero styling.
   9. **Navbar Active State**: Updated `Navbar.tsx` to link to `/features` with bold active state highlighting on both desktop and mobile.
   10. **Verification**: Automated test (`scratch/verify_features_wiring.py`) verified status 200, hero buttons, scale cards, workflow tabs, FAQ interaction, and download redirect. Full production build passed with 38/38 static routes.
+
+## 2026-11-19 - Fingerprints Page (`/fingerprints`) Dedicated Route & Full Hardware Lab Wiring
+- **Context**: User selected Fingerprints as the next page in the page-by-page wiring process.
+- **Implementation**:
+  1. **Zero Core Backend Impact**: Work strictly restricted to `landing/app/fingerprints/page.tsx`, `landing/app/fingerprint/page.tsx`, and `landing/components/Navbar.tsx`. Core directories `01_` through `14_` remain untouched.
+  2. **Dedicated Route**: Built `/fingerprints` with an alias `/fingerprint` to support all inbound link variations.
+  3. **Section 1 Hero**: Styled in Lateral monochrome luxury with 42px Spectral serif headline ("Mathematical Precision. Zero Pixel Drift."), subtitle, and dual action buttons (`Download Free` + `Compare vs GoLogin →`).
+  4. **Section 2 Live Interactive Lab**: Upgraded `FingerprintPreview` logic to luxury styling with real-time OS preset switching (Windows / Chrome 138, macOS / Camoufox, Linux / Vulkan), live "Scramble Noise" button, and 6 inspection tiles (Canvas, WebGL GPU, AudioContext, Client Hints, Hardware Cores/RAM, CreepJS 0.0%).
+  5. **Section 3 Attack Vectors (4x2 Grid)**: Documented protection across Canvas, WebGL, AudioContext, Client Hints, WebRTC IP, Fonts/DPR, Memory/Cores, and CDP Rebrowser-patches.
+  6. **Section 4 Third-Party Verification Scorecard**: Added live matrix for CreepJS, Pixelscan, IPHEY, and BrowserLeaks.
+  7. **Section 5 Technical Deep Dive**: Comparative breakdown of C++ kernel spoofing versus standard JavaScript prototype overrides.
+  8. **Section 6 FAQ & Section 7 Pre-Footer**: Collapsible accordion answering 4 deep technical questions; pre-footer CTA card with dual action buttons.
+  9. **Navbar Active State**: Updated `Navbar.tsx` so `Fingerprints` links to `/fingerprints` with active page highlighting.
+  10. **Verification**: Playwright test (`scratch/verify_fingerprints_wiring.py`) verified 200 status, hero buttons, live preset switching (macOS Apple M3 Pro, Linux AMD Vulkan), scramble noise recalculation, and download redirect. Full production build succeeded with 40/40 static routes.
