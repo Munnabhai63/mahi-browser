@@ -158,3 +158,15 @@
   4. Updated routes `landing/app/customers/page.tsx` -> `CustomersView` and `landing/app/compare/page.tsx` & `landing/app/compare/gologin-alternative/page.tsx` -> `CompareView`.
   5. Deleted deprecated combined component `CustomersCompareView.tsx`.
   6. Automated verification via Playwright (`scratch/verify_separation.py`) confirmed clean separation and 0 unwanted elements on either page. Full production build passed with 40/40 static routes.
+
+## 2026-11-19 - Pricing Page (`/pricing`) Full Engine Wiring & Indian UPI 0% Gateway Integration
+- **Context**: User approved proceeding with the Pricing page (`/pricing`) as the next milestone in the page-by-page wiring process.
+- **Implementation**:
+  1. **Zero Core Backend Impact**: Strictly restricted all changes to `landing/components/PricingView.tsx`, `landing/components/CustomersView.tsx`, and `landing/components/CompareView.tsx`. Core directories `01_` through `14_` were not touched.
+  2. **Billing Cycle & Currency Switcher**: Wired interactive Monthly/Yearly toggle (with Save 20% discount badge) and USD ($) / INR (₹ UPI 0% Fee) currency switcher.
+  3. **3 Core Plan Cards**: Core (15 air-gapped profiles, offline SQLite), Growth (100 cloud profiles, Redis concurrency mutex), and Pro (unlimited profiles, dedicated C++ builds).
+  4. **Interactive 0% Indian UPI Modal**: When INR is active, clicking any plan action button pops up an obsidian modal featuring the official Slice QR code (`/assets/img/payments/mahi-upi-qr.png`), Account Holder ("Mahipal Choudhary"), Merchant VPA (`6375823589@slc`) with 1-click clipboard copy, 12-digit UTR submission with success confirmation, and direct WhatsApp founder link (`+91 9376343629`).
+  5. **Compare Plans Table Wiring**: Sticky headers dynamically render appropriate action buttons based on currency.
+  6. **Copy & Link Clean-Up**: Fixed leftover Lateral finance strings ("Top Finance Teams" -> "Top Growth Fleets") and wired all pre-footer & FAQ CTAs to `/download?auto=true` and `/compare`.
+  7. **Silent Telemetry**: Used production-safe `sendBeacon` telemetry to eliminate dev-mode 404 overlay toasts.
+  8. **Verification**: Playwright automated suite (`scratch/verify_pricing_wiring.py`) validated monthly/yearly pricing recalculation, INR currency switch, UPI modal open/copy/submit flow, FAQ accordion expansion, and download redirection. Production static build passed with 40/40 routes.

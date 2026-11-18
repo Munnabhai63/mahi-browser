@@ -18,11 +18,11 @@ const PLATFORM_LOGOS = [
 export default function CompareView() {
   const trackDownload = () => {
     try {
-      fetch('/api/v1/funnel/track', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventName: 'download_started', source: 'compare_page' }),
-      }).catch(() => {});
+      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production' && navigator.sendBeacon) {
+        const payload = JSON.stringify({ eventName: 'download_started', source: 'compare_page' });
+        const blob = new Blob([payload], { type: 'application/json' });
+        navigator.sendBeacon('/api/v1/funnel/track', blob);
+      }
     } catch (_) {}
   };
 

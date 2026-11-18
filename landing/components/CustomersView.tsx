@@ -61,14 +61,14 @@ export default function CustomersView() {
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
 
-  // Track download event telemetry
+  // Track download event telemetry (production only)
   const trackDownload = () => {
     try {
-      fetch('/api/v1/funnel/track', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventName: 'download_started', source: 'customers_page' }),
-      }).catch(() => {});
+      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production' && navigator.sendBeacon) {
+        const payload = JSON.stringify({ eventName: 'download_started', source: 'customers_page' });
+        const blob = new Blob([payload], { type: 'application/json' });
+        navigator.sendBeacon('/api/v1/funnel/track', blob);
+      }
     } catch (_) {}
   };
 

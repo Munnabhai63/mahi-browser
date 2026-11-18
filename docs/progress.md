@@ -88,5 +88,14 @@
   - vs GoLogin Page (`/compare` & `/compare/gologin-alternative`): Created dedicated pure comparison view (`CompareView.tsx`) with Head-to-Head Hero, Platform Ticker, 4-Way Technical Benchmark Matrix (`GoLoginComparisonTable`), and Pre-Footer CTA.
   - Removed 3 clutter sections from vs GoLogin page per user request: "4 Critical Flaws in Legacy Anti-Detect Browsers", "Migrate from GoLogin in 3 Simple Steps", and "GoLogin Migration FAQ".
   - Automated Playwright verification (`scratch/verify_separation.py`) passed 100%, and full production build passed with 40/40 static routes.
+- [x] Completed Full Pricing Page (`/pricing`) Wiring matching original MAHI Browser engine & UPI architecture:
+  - Hero Section: Dark obsidian `#050505` with Spectral serif headline ("Simple Pricing Built for Scale"), Monthly / Yearly billing cycle toggle with 20% discount badge, and currency switcher (USD $ / INR ₹ UPI 0% Fee).
+  - 3 Core Pricing Cards: Core ($4 / ₹299), Growth ($20 / ₹1,499 with "Popular" pill), and Pro ($65 / ₹4,999) with dynamic pricing calculation and feature groups.
+  - Interactive 0% Indian UPI Modal: Direct bank-to-bank settlement modal for INR payments featuring official Slice QR code image, Account Holder ("Mahipal Choudhary"), Merchant VPA (`6375823589@slc`) with 1-click copy, 12-digit UTR submission form, and direct WhatsApp confirmation line (`+91 9376343629`).
+  - Compare Plans Table: Sticky plan headers with action buttons dynamically triggering either download or UPI checkout based on currency.
+  - Testimonial Bento: Natural color executive photo card with Westbridge Media Fleets case study ($180K Savings, 99.8% Survival, 10x ROI).
+  - FAQ & Pre-Footer: Replaced leftover Lateral copy ("Top Finance Teams" -> "Top Growth Fleets") and wired action buttons to `/download?auto=true` and `/compare`.
+  - Silent Telemetry: Clean sendBeacon funnel analytics on plan clicks, downloads, and UTR submissions without dev-mode 404 interruptions.
+  - Full automated Playwright verification (`scratch/verify_pricing_wiring.py`) passed 100%, and production build passed with 40/40 static routes.
 
 
