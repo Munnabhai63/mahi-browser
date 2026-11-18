@@ -3,13 +3,13 @@ import type { Metadata } from 'next';
 import BlogView from '../../components/BlogView';
 
 export const metadata: Metadata = {
-  title: 'Blog — News & Insights | Lateral',
+  title: 'Blog — Engineering News & Anti-Detect Insights | MAHI Browser',
   description:
-    'Articles, insights and updates from the Lateral team on autonomous AI agents, finance operations, and enterprise scale.',
+    'Articles, kernel architecture teardowns, and stealth updates from the MAHI Browser engineering team by Mahipal Choudhary.',
   openGraph: {
-    title: 'Blog — News & Insights | Lateral',
+    title: 'Blog — Engineering News & Anti-Detect Insights | MAHI Browser',
     description:
-      'Articles, insights and updates from the Lateral team on autonomous AI agents, finance operations, and enterprise scale.',
+      'Articles, kernel architecture teardowns, and stealth updates from the MAHI Browser engineering team by Mahipal Choudhary.',
     type: 'website',
     images: ['/assets/blog/featured_phone.jpg'],
   },

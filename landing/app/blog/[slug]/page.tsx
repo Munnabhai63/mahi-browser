@@ -27,7 +27,7 @@ export function generateMetadata({ params }: BlogPostPageProps): Metadata {
   const lateralPost = getPostBySlug(params.slug);
   if (lateralPost) {
     return {
-      title: `${lateralPost.title} — Lateral Blog`,
+      title: `${lateralPost.title} — MAHI Browser Blog`,
       description: lateralPost.description,
       openGraph: {
         title: lateralPost.title,
@@ -47,7 +47,7 @@ export function generateMetadata({ params }: BlogPostPageProps): Metadata {
     };
   }
 
-  return { title: 'Blog Post — Lateral' };
+  return { title: 'Blog Post — MAHI Browser' };
 }
 
 export default function SingleBlogPostPage({ params }: BlogPostPageProps) {
@@ -152,16 +152,16 @@ export default function SingleBlogPostPage({ params }: BlogPostPageProps) {
                   </div>
                   <div className="flex items-center gap-3">
                     <img
-                      src={post.authorImage || '/assets/company/lateral_john.jpg'}
-                      alt={post.authorName || 'Author'}
+                      src={post.authorImage || '/assets/company/mahipal_founder.jpg'}
+                      alt={post.authorName || 'Mahipal Choudhary'}
                       className="w-10 h-10 rounded-full object-cover bg-zinc-200"
                     />
                     <div>
                       <div className="text-[14px] font-medium text-[#080808]">
-                        {post.authorName || 'John Carver'}
+                        {post.authorName || 'Mahipal Choudhary'}
                       </div>
                       <div className="text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290]">
-                        {post.authorRole || 'Co-Founder'}
+                        {post.authorRole || 'Founder & CEO'}
                       </div>
                     </div>
                   </div>
@@ -170,10 +170,10 @@ export default function SingleBlogPostPage({ params }: BlogPostPageProps) {
                 {/* Pill Action Button */}
                 <div className="pt-2">
                   <Link
-                    href="/book-demo"
+                    href="/download"
                     className="inline-flex items-center justify-center rounded-full bg-[#080808] text-white px-5 py-2.5 text-[14px] font-normal hover:bg-zinc-800 transition-colors shadow-sm"
                   >
-                    Request Demo
+                    Download Free (15 Profiles)
                   </Link>
                 </div>
               </div>

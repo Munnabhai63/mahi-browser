@@ -19,11 +19,11 @@ export interface LateralPost {
   sections: BlogSection[];
 }
 
-export const LATERAL_BLOG_POSTS: LateralPost[] = lateralData.map((p) => ({
+export const LATERAL_BLOG_POSTS: LateralPost[] = (lateralData as LateralPost[]).map((p) => ({
   ...p,
-  authorName: 'John Carver',
-  authorRole: 'Co-Founder',
-  authorImage: '/assets/company/lateral_john.jpg',
+  authorName: p.authorName || 'Mahipal Choudhary',
+  authorRole: p.authorRole || 'Founder & CEO',
+  authorImage: p.authorImage || '/assets/company/mahipal_founder.jpg',
 }));
 
 export function getAllLateralPosts(): LateralPost[] {

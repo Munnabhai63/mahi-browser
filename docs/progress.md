@@ -106,5 +106,19 @@
   - Section 5 Careers & Open Roles: Headline "Help Build the Future of Anti-Detect", 16:9 wide keynote conference banner, and 5 open roles with direct mailto links to `mahiverse.official@gmail.com`.
   - Section 6 Quote Bento: James Hunter, BROWSER CORE ENGINEER quote in dark `#131517` bento block.
   - Full automated Playwright verification (`scratch/verify_company_wiring.py`) passed 100% (HTTP 200, zero console errors), and static export build passed with 40/40 routes.
+- [x] Completed Full Blog Page (`/blog` and `/blog/[slug]`) Wiring matching authentic MAHI Browser anti-detect engineering:
+  - Populated 7 comprehensive anti-detect engineering articles into `lateralBlogData.json`:
+    1. *MAHI Browser v2.0 Released: Chromium 138 + Camoufox C++ Dual-Engine Stealth* (Featured flagship post)
+    2. *Why Single-Engine Anti-Detect Browsers Fail on Modern Detection Engines*
+    3. *Undetectable Automation: Eliminating CDP Runtime.enable Leaks in Playwright & Puppeteer*
+    4. *The Hidden Cost of Legacy Anti-Detect Browsers: Account Bans & Detection Spikes*
+    5. *Zero-Cost Distributed Anti-Detect Locks: Scaling 500+ Accounts Without Cloud Lock-In*
+    6. *Mathematical Precision: Why Random Sub-Pixel Noise Triggers Pixelscan & CreepJS Bans*
+    7. *Scaling Multi-Account Fleets: The 2026 Blueprint for Affiliate Media Buyers & Scraping Labs*
+  - Clean Metadata: `title: 'Blog — Engineering News & Anti-Detect Insights | MAHI Browser'` on `/blog` and dynamic per-post metadata (`<Title> — MAHI Browser Blog`) on `/blog/[slug]`.
+  - Author Card: Mahipal Choudhary (Founder & CEO) with studio B&W portrait (`/assets/company/mahipal_founder.jpg`) wired across all articles.
+  - Pre-Footer CTA: Updated to `See Why Top Growth Fleets Choose MAHI` with button `Download Free (15 Profiles)`.
+  - Zero leftover Lateral finance/invoice/accounting copy across all blog views.
+  - Full automated Playwright verification (`scratch/verify_blog_wiring.py`) passed 100% (HTTP 200, zero console errors), and static export build passed with 38/38 routes generated.
 
 

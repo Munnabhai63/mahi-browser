@@ -35,16 +35,16 @@ export default function BlogView() {
 
             {/* Subtitle */}
             <p className="text-[#636363] text-base leading-[1.4] tracking-[-0.01em] max-w-xl mb-8">
-              Articles, insights and updates from the Lateral team.
+              Articles, kernel architecture teardowns, and stealth updates from the MAHI Browser team.
             </p>
 
             {/* Black Pill Action Button */}
             <div>
               <Link
-                href="/book-demo"
+                href="/download"
                 className="inline-flex items-center justify-center rounded-full bg-[#080808] text-white px-5 py-2.5 text-[14px] font-normal transition-colors hover:bg-zinc-800 shadow-sm"
               >
-                Request Demo
+                Download Free (15 Profiles)
               </Link>
             </div>
           </div>
@@ -155,7 +155,7 @@ export default function BlogView() {
           </div>
 
           {/* ========================================================================= */}
-          {/* 4. FINAL CTA BENTO CARD: EXACT LATERAL "See Why Top Finance Teams Use..." */}
+          {/* 4. FINAL CTA BENTO CARD: EXACT LATERAL "See Why Top Growth Fleets..."      */}
           {/* ========================================================================= */}
           <div className="pt-8 pb-4">
             <div className="w-full rounded-[4px] bg-[#191919] p-3 flex flex-col lg:flex-row items-stretch gap-2.5 max-w-[1380px] shadow-sm overflow-hidden">
@@ -172,22 +172,22 @@ export default function BlogView() {
 
                   {/* Title */}
                   <h3 className="font-['Spectral',serif] text-3xl sm:text-4xl lg:text-[42px] font-light leading-[1.15] tracking-[-0.03em] text-white mb-4">
-                    See Why Top Finance<br />Teams Use Lateral
+                    See Why Top Growth<br />Fleets Choose MAHI
                   </h3>
 
                   {/* Subtitle */}
                   <p className="text-white/60 text-base leading-[1.4] tracking-[-0.01em] max-w-sm">
-                    Book a demo to see Lateral in action.
+                    Deploy undetectable dual-engine automation in under 60 seconds.
                   </p>
                 </div>
 
                 {/* White Pill Action Button */}
                 <div className="pt-4">
                   <Link
-                    href="/book-demo"
+                    href="/download?auto=true"
                     className="inline-flex items-center justify-center rounded-full bg-white text-black px-6 py-3 text-[14px] font-medium transition-colors hover:bg-zinc-200 active:scale-[0.98] shadow-md"
                   >
-                    Request Demo
+                    Download Free (15 Profiles)
                   </Link>
                 </div>
               </div>
@@ -196,7 +196,7 @@ export default function BlogView() {
               <div className="lg:w-[58%] rounded-[4px] overflow-hidden flex items-center justify-center bg-[#1e2022]">
                 <img
                   src="/assets/blog/cta_dashboard.png"
-                  alt="See Why Top Finance Teams Use Lateral"
+                  alt="See Why Top Growth Fleets Choose MAHI Browser"
                   className="w-full h-full object-cover object-center"
                 />
               </div>

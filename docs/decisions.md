@@ -1,5 +1,16 @@
 # Decisions Log
 
+## 2026-11-19 - Blog Page (`/blog` & `/blog/[slug]`) Full Anti-Detect Wiring
+- **Context**: Replaced all placeholder Lateral finance/accounting articles with 7 authentic, comprehensive MAHI Browser anti-detect engineering and kernel architecture articles. Wired Mahipal Choudhary (Founder & CEO) as the primary author with studio B&W portrait across all posts.
+- **Implementation**:
+  1. **Article Content Overhaul (`lateralBlogData.json`)**:
+     - Flagship Post: *MAHI Browser v2.0 Released: Chromium 138 + Camoufox C++ Dual-Engine Stealth* (`/blog/mahi-browser-v2-released-dual-engine-architecture`).
+     - 6 Deep-Dive Grid Posts covering single-engine limitations, CDP Runtime.enable leak elimination, outdated Chromium risk analysis, Redis distributed session locks, mathematical PRNG Canvas noise, and multi-account scaling blueprints.
+  2. **Metadata & OpenGraph**: Configured dynamic article titles (`<Title> — MAHI Browser Blog`) and descriptions across all posts, with fallback for custom MDX files.
+  3. **Author Card & Actions**: Mahipal Choudhary (`Founder & CEO`, photo `/assets/company/mahipal_founder.jpg`) displayed on all posts. Sidebar button links to `/download` with `Download Free (15 Profiles)`.
+  4. **Pre-Footer CTA**: Updated to `See Why Top Growth Fleets Choose MAHI` linking to `/download?auto=true`.
+  5. **Verification**: Playwright automated suite passed 100% on `/blog` and single post routes with 0 console errors; Next.js static export build passed with 38/38 routes generated.
+
 ## 2026-11-19 - Company & About Page (`/company` & `/about`) Full Anti-Detect Wiring
 - **Context**: Replaced all leftover Lateral finance copy across the Company page with authentic MAHI Browser dual-engine anti-detect, browser kernel engineering, and growth fleet copy while strictly maintaining Mahipal Choudhary as Founder & CEO and 100% fidelity to the Lateral monochrome luxury agency design system.
 - **Implementation**:
