@@ -2,13 +2,13 @@ import { Metadata } from 'next';
 import CompanyView from '../../components/CompanyView';
 
 export const metadata: Metadata = {
-  title: 'Company & Team — Lateral AI Workforce',
+  title: 'About MAHI Browser & Leadership Team — Anti-Detect Browser by Mahipal Choudhary',
   description:
-    'Powering the Future of Finance. We are building the autonomous AI workforce for modern finance teams.',
+    'Powering the Future of Anti-Detect & Growth Fleets. Meet Founder Mahipal Choudhary and our engineering team building undetectable browser automation.',
   openGraph: {
-    title: 'Company & Team — Lateral AI Workforce',
+    title: 'About MAHI Browser & Leadership Team — Anti-Detect Browser by Mahipal Choudhary',
     description:
-      'Powering the Future of Finance. We are building the autonomous AI workforce for modern finance teams.',
+      'Powering the Future of Anti-Detect & Growth Fleets. Meet Founder Mahipal Choudhary and our engineering team building undetectable browser automation.',
   },
 };
 

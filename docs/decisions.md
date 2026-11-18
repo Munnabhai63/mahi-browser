@@ -1,5 +1,15 @@
 # Decisions Log
 
+## 2026-11-19 - Company & About Page (`/company` & `/about`) Full Anti-Detect Wiring
+- **Context**: Replaced all leftover Lateral finance copy across the Company page with authentic MAHI Browser dual-engine anti-detect, browser kernel engineering, and growth fleet copy while strictly maintaining Mahipal Choudhary as Founder & CEO and 100% fidelity to the Lateral monochrome luxury agency design system.
+- **Implementation**:
+  1. **SEO Metadata**: Configured identical title `"About MAHI Browser & Leadership Team — Anti-Detect Browser by Mahipal Choudhary"` and description on both `/company` and `/about`.
+  2. **Hero Section**: Eyebrow pill announcement linking to `/blog` (`MAHI Browser v2.0 Released • Dual-Engine Architecture →`), 76px Spectral serif headline (*Powering the Future of Anti-Detect*), and subtitle (*We're building the undetectable dual-engine browser for multi-account operators and enterprise fleets.*).
+  3. **Mission & Live Stats**: Replaced invoice/finance statements with MAHI Browser's dual-engine architecture, mathematical fingerprint entropy, 100% C++ stealth, and zero CDP leaks. Stats count-up smoothly animates to 500+ FLEET CUSTOMERS, 52 CORE CONTRIBUTORS, and 25 COUNTRIES REACHED.
+  4. **Investors & Leadership**: Backed by leading venture partners, anti-detect engineering advisors, and web security specialists. Mahipal Choudhary (Founder & CEO) in position 1 with studio B&W portrait, supported by John Carver, Sophie Green, and Jo West.
+  5. **Careers & Vacancies**: Headline "Help Build the Future of Anti-Detect", 16:9 keynote conference banner, and 5 open engineering roles wired with direct `mailto:mahiverse.official@gmail.com` links.
+  6. **Build & Automated Verification**: Playwright test passed with HTTP 200 on both `/company` and `/about` with 0 console errors; Next.js static export build passed cleanly with 40/40 routes generated.
+
 ## 2026-11-19 - Blog Page & Navbar "Documentation -> Blog" 1:1 Lateral Framer Template Implementation
 - **Context**: User uploaded 2 screenshots: (1) circled "Documentation" in the navbar, requesting to rename it to "Blog", and (2) uploaded Lateral's Blog template (`https://lateral.framer.media/blog`) requesting to port the entire Blog structure 1:1 into the theme.
 - **Implementation**:

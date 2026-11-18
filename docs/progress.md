@@ -97,5 +97,14 @@
   - FAQ & Pre-Footer: Replaced leftover Lateral copy ("Top Finance Teams" -> "Top Growth Fleets") and wired action buttons to `/download?auto=true` and `/compare`.
   - Silent Telemetry: Clean sendBeacon funnel analytics on plan clicks, downloads, and UTR submissions without dev-mode 404 interruptions.
   - Full automated Playwright verification (`scratch/verify_pricing_wiring.py`) passed 100%, and production build passed with 40/40 static routes.
+- [x] Completed Full Company & About Page (`/company` and `/about`) Wiring matching original MAHI Browser engine architecture:
+  - Clean Metadata: Set authoritative title "About MAHI Browser & Leadership Team — Anti-Detect Browser by Mahipal Choudhary" and description for both `/company` and `/about`.
+  - Section 1 Hero: Exact Lateral overhead walking photo with dark obsidian gradient overlay, release eyebrow pill (`MAHI Browser v2.0 Released • Dual-Engine Architecture →` linking to `/blog`), Spectral headline ("Powering the Future of Anti-Detect"), and subtitle ("We're building the undetectable dual-engine browser for multi-account operators and enterprise fleets.").
+  - Section 2 Mission & Stats: Light `#f9f9f9` layout with left border gutter line, eyebrow `■ OUR MISSION`, anti-detect mission statement (dual-engine architecture, mathematical fingerprint entropy, 100% C++ stealth, zero CDP leaks), and 3 animated live count-up stats (500+ FLEET CUSTOMERS, 52 CORE CONTRIBUTORS, 25 COUNTRIES REACHED).
+  - Section 3 Investors: Backed by leading venture partners, anti-detect engineering advisors, and web security specialists across 3 tall obsidian cards with Summit Capital, Northpoint, and Monument Partners SVG logos.
+  - Section 4 Leadership Team: Mahipal Choudhary (Founder & CEO) in position 1 with studio B&W portrait, alongside John Carver (Co-Founder), Sophie Green (CTO), and Jo West (VP Product). Replaced finance copy with Chromium kernel engineering and C++ Camoufox modifications.
+  - Section 5 Careers & Open Roles: Headline "Help Build the Future of Anti-Detect", 16:9 wide keynote conference banner, and 5 open roles with direct mailto links to `mahiverse.official@gmail.com`.
+  - Section 6 Quote Bento: James Hunter, BROWSER CORE ENGINEER quote in dark `#131517` bento block.
+  - Full automated Playwright verification (`scratch/verify_company_wiring.py`) passed 100% (HTTP 200, zero console errors), and static export build passed with 40/40 routes.
 
 

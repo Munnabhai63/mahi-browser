@@ -4,9 +4,9 @@ import React from 'react';
 import Link from 'next/link';
 
 const STATS = [
-  { target: 500, suffix: '+', label: 'CUSTOMERS' },
-  { target: 52, suffix: '', label: 'CO-WORKERS' },
-  { target: 25, suffix: '', label: 'MARKETS WORLDWIDE' },
+  { target: 500, suffix: '+', label: 'FLEET CUSTOMERS' },
+  { target: 52, suffix: '', label: 'CORE CONTRIBUTORS' },
+  { target: 25, suffix: '', label: 'COUNTRIES REACHED' },
 ];
 
 function StatCounter({
@@ -133,31 +133,31 @@ const OPEN_ROLES = [
     title: 'Lead Chromium & C++ Engine Engineer',
     type: 'FULL TIME',
     location: 'Remote / London, UK',
-    href: '/book-demo',
+    href: 'mailto:mahiverse.official@gmail.com?subject=Job%20Application:%20Lead%20Chromium%20%26%20C%2B%2B%20Engine%20Engineer',
   },
   {
     title: 'Lead Anti-Detect & Fingerprint Researcher',
     type: 'FULL TIME',
     location: 'Remote / San Francisco, CA',
-    href: '/book-demo',
+    href: 'mailto:mahiverse.official@gmail.com?subject=Job%20Application:%20Lead%20Anti-Detect%20%26%20Fingerprint%20Researcher',
   },
   {
     title: 'Full Stack Engineer (TypeScript, Next.js, Rust)',
     type: 'FULL TIME',
     location: 'Remote',
-    href: '/book-demo',
+    href: 'mailto:mahiverse.official@gmail.com?subject=Job%20Application:%20Full%20Stack%20Engineer',
   },
   {
     title: 'Head of Enterprise Sales & Agency Fleets',
     type: 'FULL TIME',
     location: 'San Francisco, CA',
-    href: '/book-demo',
+    href: 'mailto:mahiverse.official@gmail.com?subject=Job%20Application:%20Head%20of%20Enterprise%20Sales',
   },
   {
     title: 'Media Operations & Growth Fleet Specialist',
     type: 'FULL TIME',
     location: 'London, UK',
-    href: '/book-demo',
+    href: 'mailto:mahiverse.official@gmail.com?subject=Job%20Application:%20Media%20Operations%20Specialist',
   },
 ];
 
@@ -174,7 +174,7 @@ export default function CompanyView() {
         <div className="absolute inset-0 z-0">
           <img
             src="/assets/company/hero_walking.jpg"
-            alt="Lateral Team & Vision"
+            alt="MAHI Browser Engineering Team & Vision"
             className="w-full h-full object-cover object-center opacity-40 filter contrast-125"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[#030303] via-[#030303]/40 to-[#030303]/80" />
@@ -188,19 +188,19 @@ export default function CompanyView() {
             href="/blog"
             className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-1.5 text-xs sm:text-[13px] font-medium text-white backdrop-blur-md transition-all hover:bg-white/20 mb-8"
           >
-            <span>Lateral raises $45m Series A</span>
+            <span>MAHI Browser v2.0 Released • Dual-Engine Architecture</span>
             <span className="text-zinc-400">→</span>
           </Link>
 
           {/* Headline in Spectral Serif */}
           <h1 className="font-['Spectral',serif] text-4xl sm:text-6xl lg:text-[76px] font-light tracking-[-0.04em] leading-[1.06] text-white max-w-4xl mb-6">
             Powering the<br />
-            <span className="italic text-zinc-300 font-light">Future of Finance</span>
+            <span className="italic text-zinc-300 font-light">Future of Anti-Detect</span>
           </h1>
 
           {/* Subtitle */}
           <p className="text-white/70 text-base sm:text-lg lg:text-[19px] max-w-xl font-normal leading-relaxed mb-10 text-center">
-            We're building the AI workforce for finance teams.
+            We're building the undetectable dual-engine browser for multi-account operators and enterprise fleets.
           </p>
 
           {/* White Pill Action Button */}
@@ -239,10 +239,10 @@ export default function CompanyView() {
               {/* Mission Sentences in Exact Sentient/Spectral Serif */}
               <div className="space-y-6">
                 <h2 className="font-['Spectral',serif] text-2xl sm:text-[28px] font-light leading-[1.2] tracking-[-0.03em] text-[#030303]">
-                  We're building Lateral to transform how finance teams operate. Our AI agents handle the full spectrum of finance workflows — from invoice processing to month-end close—so finance professionals can focus on what they do best: driving strategic decisions.
+                  We're building MAHI Browser to transform how multi-account operators and growth fleets scale. Our dual-engine architecture delivers authentic mathematical fingerprint entropy and 100% C++ stealth—so growth teams can run hundreds of accounts without fear of bans or detection.
                 </h2>
                 <p className="font-['Spectral',serif] text-2xl sm:text-[28px] font-light leading-[1.2] tracking-[-0.03em] text-[#969290]">
-                  Lateral's mission is to empower exceptional finance teams. We make this a reality by building truly autonomous AI agents that work alongside humans, not just assist them.
+                  MAHI Browser's mission is to empower exceptional digital operators worldwide. We make this a reality by eliminating browser fingerprint anomalies, blocking CDP automation leaks, and putting enterprise privacy back in your hands.
                 </p>
               </div>
 
@@ -287,7 +287,7 @@ export default function CompanyView() {
                 Backed by World-<br className="hidden sm:inline" />Class Investors
               </h2>
               <p className="text-white/60 text-base leading-[1.4] tracking-[-0.01em] max-w-[480px]">
-                Lateral is supported by leading venture capital firms and angel investors.
+                MAHI Browser is supported by leading venture partners, anti-detect engineering advisors, and web security specialists.
               </p>
             </div>
 
@@ -333,7 +333,7 @@ export default function CompanyView() {
                 Built by Operators<br className="hidden sm:inline" />and AI Experts
               </h2>
               <p className="text-white/60 text-base leading-[1.4] tracking-[-0.01em] max-w-[480px]">
-                The Lateral team combines expertise from top financial institutions, tech, and AI research to create next-gen financial technology.
+                The MAHI Browser team combines expertise from Chromium kernel engineering, C++ Camoufox modifications, and advanced browser fingerprint synthesis to create an undetectable browsing fleet.
               </p>
             </div>
 
@@ -381,7 +381,7 @@ export default function CompanyView() {
                 </span>
               </div>
               <h2 className="font-['Spectral',serif] text-3xl sm:text-4xl lg:text-[52px] font-light text-[#030303] leading-[1.2] tracking-[-0.04em] max-w-[680px] mb-4">
-                Help Build the Future<br className="hidden sm:inline" />of Finance
+                Help Build the Future<br className="hidden sm:inline" />of Anti-Detect
               </h2>
               <p className="text-[#555555] text-base leading-[1.4] tracking-[-0.01em] max-w-[480px]">
                 We’re seeking talented individuals who want to build a category-defining company. If that’s you, come join us.
@@ -464,7 +464,7 @@ export default function CompanyView() {
               <div className="relative aspect-[4/3] w-full rounded-[4px] overflow-hidden">
                 <img
                   src="/assets/company/quote_team.jpg"
-                  alt="James Hunter at Lateral"
+                  alt="James Hunter at MAHI Browser"
                   className="w-full h-full object-cover object-center"
                 />
               </div>
@@ -477,7 +477,7 @@ export default function CompanyView() {
                     James Hunter
                   </div>
                   <div className="text-[11px] font-mono font-normal uppercase tracking-[0.05em] text-[#969290] mt-1">
-                    SOFTWARE ENGINEER
+                    BROWSER CORE ENGINEER
                   </div>
                 </div>
               </div>
