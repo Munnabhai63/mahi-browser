@@ -1,17 +1,17 @@
 import { Metadata } from 'next';
-import CustomersCompareView from '../../../components/CustomersCompareView';
+import CompareView from '../../../components/CompareView';
 
 export const metadata: Metadata = {
-  title: 'MAHI Browser vs GoLogin (2026 Comparison) | #1 Anti-Detect Alternative',
+  title: 'Best GoLogin Alternative 2026 — MAHI Browser vs Orbita',
   description:
-    'Detailed head-to-head technical capability comparison between MAHI Browser and GoLogin Orbita. Discover why top fleets migrate for Chromium 138, zero CDP leaks, and 0% UPI fees.',
+    'Detailed technical comparison: Why elite growth hackers and affiliates are switching from GoLogin (Orbita) to MAHI Browser. Chromium 138 + Camoufox dual-engine with 0.0% CreepJS score.',
   openGraph: {
-    title: 'MAHI Browser vs GoLogin (2026 Comparison) | #1 Anti-Detect Alternative',
+    title: 'Best GoLogin Alternative 2026 — MAHI Browser vs Orbita',
     description:
-      'Detailed head-to-head technical capability comparison between MAHI Browser and GoLogin Orbita.',
+      'Detailed technical comparison: Why elite growth hackers and affiliates are switching from GoLogin (Orbita) to MAHI Browser.',
   },
 };
 
 export default function GoLoginAlternativePage() {
-  return <CustomersCompareView />;
+  return <CompareView />;
 }

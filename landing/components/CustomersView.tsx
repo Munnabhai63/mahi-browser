@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import GoLoginComparisonTable from './GoLoginComparisonTable';
 
 const FEATURED_SLIDES = [
   {
@@ -57,7 +56,7 @@ const PLATFORM_LOGOS = [
   { name: 'LinkedIn', src: '/assets/img/platforms/linkedin-logo-1.svg', h: 'h-5 sm:h-5.5' },
 ];
 
-export default function CustomersCompareView() {
+export default function CustomersView() {
   const [activeSlide, setActiveSlide] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
@@ -100,7 +99,7 @@ export default function CustomersCompareView() {
     <div className="min-h-screen bg-[#f9f9f9] text-[#080808] selection:bg-black selection:text-white">
       
       {/* ========================================================================= */}
-      {/* 1. HERO SECTION: EXACT LATERAL SCALE & TYPOGRAPHY                         */}
+      {/* 1. HERO SECTION: 1:1 LATERAL DIMENSIONS & TYPOGRAPHY                      */}
       {/* ========================================================================= */}
       <section className="relative w-full pt-32 sm:pt-40 lg:pt-44 pb-16 overflow-hidden bg-[#f9f9f9]">
         <div className="w-full max-w-[1440px] mx-auto px-6 sm:px-10 lg:px-16">
@@ -108,11 +107,11 @@ export default function CustomersCompareView() {
           {/* Left-Aligned Header Block with 1px Vertical Guide Line */}
           <div className="relative border-l border-[#e6e3e3] pl-6 sm:pl-8 max-w-[640px] flex flex-col items-start text-left">
             
-            {/* Eyebrow Tag: ■ CUSTOMERS & BENCHMARK */}
+            {/* Eyebrow Tag: ■ CUSTOMERS */}
             <div className="inline-flex items-center gap-2 mb-4">
               <span className="w-1.5 h-1.5 rounded-[1px] bg-[#080808] inline-block"></span>
               <span className="text-[11px] font-mono font-medium uppercase tracking-[0.2em] text-[#080808]">
-                CUSTOMERS & BENCHMARK
+                CUSTOMERS
               </span>
             </div>
 
@@ -127,7 +126,7 @@ export default function CustomersCompareView() {
               From high-growth affiliate media buyers to enterprise web scraping operations, elite operators choose MAHI Browser to scale multi-account fleets, reduce ban rates, and replace legacy anti-detect tools.
             </p>
 
-            {/* Dual Action Buttons Group */}
+            {/* Action Buttons Group */}
             <div className="flex flex-wrap items-center gap-3">
               <Link
                 href="/download?auto=true"
@@ -139,18 +138,18 @@ export default function CustomersCompareView() {
                 </svg>
                 Download Free (15 Profiles)
               </Link>
-              <a
-                href="#matrix"
+              <Link
+                href="/compare"
                 className="inline-flex items-center justify-center gap-1.5 rounded-full border border-zinc-300 bg-white/60 text-zinc-800 px-5 py-2.5 text-xs sm:text-[14px] font-medium transition-all duration-200 hover:bg-zinc-100 hover:border-zinc-400"
               >
-                Compare vs GoLogin &darr;
-              </a>
+                Compare vs GoLogin &rarr;
+              </Link>
             </div>
 
           </div>
 
           {/* ========================================================================= */}
-          {/* PLATFORM LOGOS TICKER: OUR ACTUAL MULTI-ACCOUNT ECOSYSTEM                 */}
+          {/* PLATFORM LOGOS TICKER: AUTHENTIC TARGET ECOSYSTEM                        */}
           {/* ========================================================================= */}
           <div className="w-full mt-14 sm:mt-18 pt-8 border-t border-[#e6e3e3]">
             <div className="flex items-center justify-between gap-6 sm:gap-8 md:gap-10 overflow-x-auto no-scrollbar py-2">
@@ -269,7 +268,7 @@ export default function CustomersCompareView() {
       </section>
 
       {/* ========================================================================= */}
-      {/* 3. 3-COLUMN CASE STUDIES GRID: EXACT MATCH TO USER'S REFERENCE PHOTO      */}
+      {/* 3. 3-COLUMN CASE STUDIES GRID: 1:1 WITH LATERAL REFERENCE                */}
       {/* ========================================================================= */}
       <section className="w-full py-12 lg:py-16 bg-[#f9f9f9]">
         <div className="w-full max-w-[1440px] mx-auto px-6 sm:px-10 lg:px-16">
@@ -278,13 +277,11 @@ export default function CustomersCompareView() {
             
             {/* Card 1: Affiliate & Media Fleets */}
             <div className="flex flex-col group cursor-pointer">
-              {/* Top 1px Line & Category Tag */}
               <div className="border-t border-[#d8d8d6] pt-3.5 mb-3.5 flex items-center justify-between">
                 <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#666666] font-medium">
                   AFFILIATE & MEDIA BUYING
                 </span>
               </div>
-              {/* Full Natural Color Photo */}
               <div className="w-full aspect-[16/10] rounded-[6px] overflow-hidden mb-3.5 bg-zinc-200">
                 <img
                   src="/assets/customers/lattice_case.jpg"
@@ -292,7 +289,6 @@ export default function CustomersCompareView() {
                   className="w-full h-full object-cover block group-hover:scale-[1.02] transition-transform duration-500 ease-out"
                 />
               </div>
-              {/* Date, Title, Text */}
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#8c8c8c] mb-1.5">
                 JUN 5, 2026
               </div>
@@ -306,13 +302,11 @@ export default function CustomersCompareView() {
 
             {/* Card 2: E-Commerce Multi-Store Fleet */}
             <div className="flex flex-col group cursor-pointer">
-              {/* Top 1px Line & Category Tag */}
               <div className="border-t border-[#d8d8d6] pt-3.5 mb-3.5 flex items-center justify-between">
                 <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#666666] font-medium">
                   E-COMMERCE MULTI-STORE
                 </span>
               </div>
-              {/* Full Natural Color Photo */}
               <div className="w-full aspect-[16/10] rounded-[6px] overflow-hidden mb-3.5 bg-zinc-200">
                 <img
                   src="/assets/customers/westbridge_exec.jpg"
@@ -320,7 +314,6 @@ export default function CustomersCompareView() {
                   className="w-full h-full object-cover block group-hover:scale-[1.02] transition-transform duration-500 ease-out"
                 />
               </div>
-              {/* Date, Title, Text */}
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#8c8c8c] mb-1.5">
                 JUN 5, 2026
               </div>
@@ -334,13 +327,11 @@ export default function CustomersCompareView() {
 
             {/* Card 3: Enterprise Web Scraping */}
             <div className="flex flex-col group cursor-pointer">
-              {/* Top 1px Line & Category Tag */}
               <div className="border-t border-[#d8d8d6] pt-3.5 mb-3.5 flex items-center justify-between">
                 <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#666666] font-medium">
                   DATA EXTRACTION & SCRAPING
                 </span>
               </div>
-              {/* Full Natural Color Photo */}
               <div className="w-full aspect-[16/10] rounded-[6px] overflow-hidden mb-3.5 bg-zinc-200">
                 <img
                   src="/assets/customers/greythorne_case.jpg"
@@ -348,7 +339,6 @@ export default function CustomersCompareView() {
                   className="w-full h-full object-cover block group-hover:scale-[1.02] transition-transform duration-500 ease-out"
                 />
               </div>
-              {/* Date, Title, Text */}
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#8c8c8c] mb-1.5">
                 JUN 5, 2026
               </div>
@@ -366,16 +356,7 @@ export default function CustomersCompareView() {
       </section>
 
       {/* ========================================================================= */}
-      {/* 4. THE 4-WAY COMPETITIVE BENCHMARK MATRIX (ANCHOR: #matrix)               */}
-      {/* ========================================================================= */}
-      <section id="matrix" className="w-full py-16 scroll-mt-24 bg-[#f9f9f9]">
-        <div className="w-full max-w-[1440px] mx-auto px-6 sm:px-10 lg:px-16">
-          <GoLoginComparisonTable />
-        </div>
-      </section>
-
-      {/* ========================================================================= */}
-      {/* 5. PRE-FOOTER CTA CARD (EXACT REFERENCE SCALE)                            */}
+      {/* 4. PRE-FOOTER CTA CARD (EXACT LATERAL REFERENCE)                          */}
       {/* ========================================================================= */}
       <section className="w-full py-16 bg-[#f9f9f9]">
         <div className="w-full max-w-[1440px] mx-auto px-6 sm:px-10 lg:px-16">

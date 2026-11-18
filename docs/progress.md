@@ -82,14 +82,11 @@
   - Section 7 Pre-Footer: Conversion card with dual CTA buttons.
   - Navbar: Desktop and mobile nav updated to `/fingerprints` with active page highlighting.
   - Automated Playwright verification (`scratch/verify_fingerprints_wiring.py`) passed 100%, and production build passed with `40/40` static routes.
-- [x] Completed Full Customers Page (`/customers`) Wiring matching original MAHI Browser engine architecture:
-  - Hero Section: Replaced single "Request Demo" CTA with Dual Action CTAs: Primary "Download Free (15 Profiles)" (`/download?auto=true` with telemetry `source: customers_page`) and Secondary "Compare vs GoLogin ↓" (`#matrix` scroll anchor).
-  - Platform Ticker: Single-row monochrome ticker featuring authentic multi-account targets (Meta, Google Ads, TikTok, Amazon, eBay, YouTube, Reddit, LinkedIn).
-  - Featured Case Study Card: Lateral `#e5e5e3` card with silky 6s top progress animation, hover-pause, active slide navigation dots, and natural color photography (Apex Media Fleet 450+ profiles, Nexus Scraping Labs 40M+ pages/mo, OmniScale Brands 120+ storefronts).
-  - 3-Column Case Studies Grid: High-converting case study cards with real enterprise metrics ($180K/year saved, 99.8% survival rate, 99.94% crawl success rate, 0 bans in 14 months).
-  - Technical Benchmark Matrix (`#matrix`): GoLoginComparisonTable covering Chromium 138 MV3 main-world stealth, Camoufox C++ Gecko engine, rebrowser-patches CDP isolation, CreepJS 0.0% benchmark, Bézier human curves, local SQLite offline storage, Redis concurrency mutex, 15 free starter profiles, and 0% UPI instant activation (`6375823589@slc`).
-  - Dark Migration Callout Bar: Direct link to download and `/pricing`.
-  - Pre-Footer CTA: "See Why Top Growth Fleets Use MAHI Browser" with 3 action buttons: "Download Free (15 Profiles)", "Compare vs GoLogin →", and "View All Plans →".
-  - Navbar: Desktop and mobile navigation updated with active link state for `/customers`.
-  - Automated Playwright verification (`scratch/verify_customers_wiring.py`) passed 100%, and production build passed with `40/40` static routes.
+- [x] Completed Clean Separation of Customers (`/customers`) and vs GoLogin (`/compare`):
+  - Fixed merged component issue where both routes pointed to identical content.
+  - Customers Page (`/customers`): Restored to pure Lateral fleet case studies page with Featured Case Study Slider (Apex Media, Nexus Scraping, OmniScale Brands), 3-Column Fleet Stories Grid, and pre-footer CTA. Removed Technical Capability Benchmark table from Customers.
+  - vs GoLogin Page (`/compare` & `/compare/gologin-alternative`): Created dedicated pure comparison view (`CompareView.tsx`) with Head-to-Head Hero, Platform Ticker, 4-Way Technical Benchmark Matrix (`GoLoginComparisonTable`), and Pre-Footer CTA.
+  - Removed 3 clutter sections from vs GoLogin page per user request: "4 Critical Flaws in Legacy Anti-Detect Browsers", "Migrate from GoLogin in 3 Simple Steps", and "GoLogin Migration FAQ".
+  - Automated Playwright verification (`scratch/verify_separation.py`) passed 100%, and full production build passed with 40/40 static routes.
+
 

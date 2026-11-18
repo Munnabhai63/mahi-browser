@@ -147,17 +147,14 @@
   9. **Navbar Active State**: Updated `Navbar.tsx` so `Fingerprints` links to `/fingerprints` with active page highlighting.
   10. **Verification**: Playwright test (`scratch/verify_fingerprints_wiring.py`) verified 200 status, hero buttons, live preset switching (macOS Apple M3 Pro, Linux AMD Vulkan), scramble noise recalculation, and download redirect. Full production build succeeded with 40/40 static routes.
 
-## 2026-11-19 - Customers Page (`/customers`) Full Engine Wiring
-- **Context**: User confirmed moving to the Customers page (`/customers`) in the page-by-page migration sequence, pointing to the Customers page screenshot with the "Request Demo" CTA and asking to wire the entire page cleanly without touching backend engine code.
+## 2026-11-19 - Clean Separation of Customers (`/customers`) & vs GoLogin (`/compare`) Pages
+- **Context**: User caught that `/customers` and `/compare` (vs GoLogin) had been conflated into an identical component, and instructed to cleanly separate them:
+  1. Customers page must be pure fleet case studies without any Technical Benchmark matrix.
+  2. vs GoLogin page must be a dedicated comparison page with the Head-to-Head Benchmark matrix, but without the extra 3 clutter sections ("4 Critical Flaws", "Migrate in 3 Steps", and "Migration FAQ").
 - **Implementation**:
-  1. **Zero Core Backend Impact**: Strictly restricted all changes to `landing/components/CustomersCompareView.tsx` and `landing/components/GoLoginComparisonTable.tsx`. Core directories `01_` through `14_` were not touched.
-  2. **Hero Section Dual CTAs**: Replaced the placeholder "Request Demo" button with dual action buttons:
-     - Primary: `Download Free (15 Profiles)` linking to `/download?auto=true` with telemetry tracking (`POST /api/v1/funnel/track` with event `download_started` and `source: customers_page`).
-     - Secondary: `Compare vs GoLogin ↓` linking directly to `#matrix` for smooth anchor scrolling.
-  3. **Platform Ecosystem Ticker**: Validated single-row monochrome ticker featuring Meta, Google Ads, TikTok, Amazon, eBay, YouTube, Reddit, and LinkedIn.
-  4. **Featured Case Study Slider**: Preserved Lateral `#e5e5e3` card with silky 6s top progress animation, hover-pause, active slide navigation dots, and natural color photography (Apex Media Fleet 450+ profiles, Nexus Scraping Labs 40M+ pages/mo, OmniScale Brands 120+ storefronts).
-  5. **3-Column Case Studies Grid**: Documented real performance marketing, e-commerce, and data extraction metrics ($180K/year saved, 99.8% survival rate, 99.94% crawl success rate, 0 bans in 14 months).
-  6. **Technical Benchmark Matrix (`#matrix`)**: Maintained 4-way comparison table detailing MAHI Browser v1.1.9 vs GoLogin vs AdsPower vs Multilogin (Chromium 138, Camoufox C++, rebrowser-patches, CreepJS 0.0%, local SQLite, Redis locks, 0% UPI QR `6375823589@slc`, and WhatsApp support `+91 9376343629`).
-  7. **Pre-Footer CTA Card**: Added 3 distinct action buttons: Primary `Download Free (15 Profiles)`, Secondary `Compare vs GoLogin →` (`/compare`), and Tertiary `View All Plans →` (`/pricing`).
-  8. **Navbar Active State**: Confirmed `Navbar.tsx` has `/customers` linked with active bold state.
-  9. **Verification**: Playwright automated suite (`scratch/verify_customers_wiring.py`) verified 200 status, hero H1, dual hero buttons, slide advancement, 3-column grid visibility, matrix anchor, pre-footer CTAs, and download redirect. Full static build passed with 40/40 routes generated cleanly.
+  1. Built pure `CustomersView.tsx` containing exclusively: Hero ("Trusted by Growth Fleets Everywhere"), Platform Logos Ticker, Featured Case Study Slider (6s progress bar, ROI metrics), 3-Column Fleet Stories Grid, and Pre-Footer CTA.
+  2. Built pure `CompareView.tsx` containing exclusively: Head-to-Head Hero ("The Modern, Undetectable GoLogin Alternative"), Platform Logos Ticker, 4-Way Technical Capability Benchmark Table (`GoLoginComparisonTable.tsx`), and Pre-Footer CTA.
+  3. Removed the 3 extra sections from `/compare`: "4 Critical Flaws in Legacy Anti-Detect Browsers", "Migrate from GoLogin in 3 Simple Steps", and "GoLogin Migration FAQ".
+  4. Updated routes `landing/app/customers/page.tsx` -> `CustomersView` and `landing/app/compare/page.tsx` & `landing/app/compare/gologin-alternative/page.tsx` -> `CompareView`.
+  5. Deleted deprecated combined component `CustomersCompareView.tsx`.
+  6. Automated verification via Playwright (`scratch/verify_separation.py`) confirmed clean separation and 0 unwanted elements on either page. Full production build passed with 40/40 static routes.
