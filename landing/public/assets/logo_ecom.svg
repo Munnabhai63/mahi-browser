@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 34" width="180" height="34">
+  <!-- Minimal geometric commerce mark -->
+  <path d="M5 17L12 9H20L13 17L20 25H12L5 17Z" fill="#ffffff" />
+  <!-- Prominent bold readable typography -->
+  <text x="31" y="21.5" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="700" font-size="13.5" fill="#ffffff" letter-spacing="1">SCALE COMMERCE</text>
+</svg>

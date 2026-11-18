@@ -13,42 +13,160 @@ export default function Navbar() {
     return null;
   }
 
+  // Detect whether current page uses the Lateral Light theme (Customers, Compare & Blog pages)
+  const isLight =
+    pathname === '/customers' ||
+    pathname === '/compare' ||
+    pathname === '/blog' ||
+    (pathname ? pathname.startsWith('/compare') : false) ||
+    (pathname ? pathname.startsWith('/blog') : false);
+
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 transition-all duration-300 bg-transparent">
+    <header
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+        isLight
+          ? 'bg-[#f9f9f9]/90 backdrop-blur-md border-b border-black/5 text-[#111111]'
+          : 'bg-[#050505]/80 backdrop-blur-md border-b border-white/5 text-[#ededed]'
+      }`}
+    >
       <div className="w-full max-w-[1920px] mx-auto px-6 sm:px-10 lg:px-12 py-5 flex items-center justify-between">
         
         {/* BRAND LOGO (LEFT: MAX 25%) */}
         <div className="w-1/4 flex items-center justify-start">
           <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-700/60 flex items-center justify-center p-1.5 shadow-sm group-hover:border-zinc-500 transition-colors">
-              <svg className="w-full h-full text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center p-1.5 shadow-sm transition-colors ${
+                isLight
+                  ? 'bg-white border border-zinc-300 group-hover:border-black'
+                  : 'bg-zinc-900 border border-zinc-700/60 group-hover:border-zinc-500'
+              }`}
+            >
+              <svg
+                className={`w-full h-full ${isLight ? 'text-black' : 'text-white'}`}
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <rect x="3" y="3" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="2" fill="none" />
+                <rect
+                  x="9"
+                  y="9"
+                  width="12"
+                  height="12"
+                  rx="3"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  fill={isLight ? '#f4f4f5' : '#18181b'}
+                />
               </svg>
             </div>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-white text-[17px] font-semibold tracking-tight">Mahi Browser</span>
-              <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-zinc-800/80 text-zinc-400 border border-zinc-700/50">v2.0</span>
+              <span
+                className={`text-[17px] font-semibold tracking-tight ${
+                  isLight ? 'text-black' : 'text-white'
+                }`}
+              >
+                Mahi Browser
+              </span>
+              <span
+                className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border ${
+                  isLight
+                    ? 'bg-zinc-200/70 text-zinc-700 border-zinc-300'
+                    : 'bg-zinc-800/80 text-zinc-400 border-zinc-700/50'
+                }`}
+              >
+                v2.0
+              </span>
             </div>
           </Link>
         </div>
 
         {/* NAVIGATION LINKS (CENTER: DEAD-CENTERED) */}
-        <nav className="hidden md:flex items-center gap-8 lg:gap-10 text-[14px] text-zinc-300 font-normal">
-          <Link href="/#features" className="hover:text-white transition-colors">Features</Link>
-          <Link href="/#fingerprints" className="hover:text-white transition-colors">Fingerprints</Link>
-          <Link href="/#proxy" className="hover:text-white transition-colors">Proxy Engine</Link>
-          <Link href="/pricing" className="hover:text-white transition-colors">Pricing</Link>
-          <Link href="/docs" className="hover:text-white transition-colors">Documentation</Link>
+        <nav
+          className={`hidden md:flex items-center gap-7 lg:gap-9 text-[14px] font-normal ${
+            isLight ? 'text-zinc-600' : 'text-zinc-300'
+          }`}
+        >
+          <Link
+            href="/#features"
+            className={`${isLight ? 'hover:text-black' : 'hover:text-white'} transition-colors`}
+          >
+            Features
+          </Link>
+          <Link
+            href="/#fingerprints"
+            className={`${isLight ? 'hover:text-black' : 'hover:text-white'} transition-colors`}
+          >
+            Fingerprints
+          </Link>
+          <Link
+            href="/customers"
+            className={`transition-colors ${
+              pathname === '/customers'
+                ? isLight ? 'text-black font-semibold' : 'text-white font-semibold'
+                : isLight ? 'hover:text-black' : 'hover:text-white'
+            }`}
+          >
+            Customers
+          </Link>
+          <Link
+            href="/compare"
+            className={`transition-colors ${
+              pathname === '/compare' || (pathname ? pathname.startsWith('/compare') : false)
+                ? isLight ? 'text-black font-semibold' : 'text-white font-semibold'
+                : isLight ? 'hover:text-black' : 'hover:text-white'
+            }`}
+          >
+            vs GoLogin
+          </Link>
+          <Link
+            href="/pricing"
+            className={`transition-colors ${
+              pathname === '/pricing'
+                ? isLight ? 'text-black font-semibold' : 'text-white font-semibold'
+                : isLight ? 'hover:text-black' : 'hover:text-white'
+            }`}
+          >
+            Pricing
+          </Link>
+          <Link
+            href="/company"
+            className={`transition-colors ${
+              pathname === '/company' || pathname === '/about'
+                ? isLight ? 'text-black font-semibold' : 'text-white font-semibold'
+                : isLight ? 'hover:text-black' : 'hover:text-white'
+            }`}
+          >
+            Company
+          </Link>
+          <Link
+            href="/blog"
+            className={`transition-colors ${
+              pathname === '/blog' || (pathname ? pathname.startsWith('/blog') : false)
+                ? isLight ? 'text-black font-semibold' : 'text-white font-semibold'
+                : isLight ? 'hover:text-black' : 'hover:text-white'
+            }`}
+          >
+            Blog
+          </Link>
         </nav>
 
         {/* RIGHT CTA BUTTONS (RIGHT: MAX 25%) */}
         <div className="w-1/4 flex items-center justify-end gap-5">
-          <Link href="/login" className="hidden sm:inline-block text-[14px] text-zinc-300 hover:text-white transition-colors font-medium">
+          <Link
+            href="/login"
+            className={`hidden sm:inline-block text-[14px] font-medium transition-colors ${
+              isLight ? 'text-zinc-700 hover:text-black' : 'text-zinc-300 hover:text-white'
+            }`}
+          >
             Sign In
           </Link>
           <Link
             href="/download"
-            className="hidden sm:inline-flex items-center justify-center px-5 py-2.5 rounded-full bg-white text-black text-[13px] font-medium tracking-tight hover:bg-zinc-200 transition-all transform hover:scale-[1.02] shadow-[0_0_20px_rgba(255,255,255,0.12)]"
+            className={`hidden sm:inline-flex items-center justify-center px-5 py-2.5 rounded-full text-[13px] font-medium tracking-tight transition-all transform hover:scale-[1.02] ${
+              isLight
+                ? 'bg-black text-white hover:bg-zinc-800 shadow-sm'
+                : 'bg-white text-black hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.12)]'
+            }`}
           >
             Download for Windows
           </Link>
@@ -57,7 +175,11 @@ export default function Navbar() {
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden rounded-lg p-2 text-zinc-400 hover:bg-zinc-900 hover:text-white"
+            className={`md:hidden rounded-lg p-2 ${
+              isLight
+                ? 'text-zinc-700 hover:bg-zinc-200 hover:text-black'
+                : 'text-zinc-400 hover:bg-zinc-900 hover:text-white'
+            }`}
             aria-label="Toggle navigation"
           >
             <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -72,17 +194,79 @@ export default function Navbar() {
 
       </div>
 
-      {/* Mobile Drawer */}
+      {/* Mobile Menu Dropdown */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-b border-zinc-800 bg-[#050505]/95 backdrop-blur-2xl px-6 pt-2 pb-6 space-y-3">
-          <Link href="/#features" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-sm font-medium text-zinc-300 hover:text-white">Features</Link>
-          <Link href="/#fingerprints" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-sm font-medium text-zinc-300 hover:text-white">Fingerprints</Link>
-          <Link href="/#proxy" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-sm font-medium text-zinc-300 hover:text-white">Proxy Engine</Link>
-          <Link href="/pricing" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-sm font-medium text-zinc-300 hover:text-white">Pricing</Link>
-          <Link href="/docs" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-sm font-medium text-zinc-300 hover:text-white">Documentation</Link>
-          <div className="pt-2 flex flex-col gap-2">
-            <Link href="/login" onClick={() => setMobileMenuOpen(false)} className="w-full text-center rounded-lg border border-zinc-800 py-2.5 text-sm font-medium text-zinc-300">Sign In</Link>
-            <Link href="/download" onClick={() => setMobileMenuOpen(false)} className="w-full text-center rounded-lg bg-white text-black py-2.5 text-sm font-semibold">Download for Windows</Link>
+        <div
+          className={`md:hidden px-6 pt-2 pb-6 border-b space-y-4 ${
+            isLight
+              ? 'bg-[#f9f9f9] border-black/10 text-black'
+              : 'bg-[#050505] border-white/10 text-white'
+          }`}
+        >
+          <Link
+            href="/#features"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block text-sm py-2 hover:opacity-75"
+          >
+            Features
+          </Link>
+          <Link
+            href="/#fingerprints"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block text-sm py-2 hover:opacity-75"
+          >
+            Fingerprints
+          </Link>
+          <Link
+            href="/customers"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block text-sm py-2 font-medium"
+          >
+            Customers
+          </Link>
+          <Link
+            href="/compare"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block text-sm py-2 font-medium"
+          >
+            vs GoLogin
+          </Link>
+          <Link
+            href="/pricing"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block text-sm py-2 hover:opacity-75"
+          >
+            Pricing
+          </Link>
+          <Link
+            href="/company"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block text-sm py-2 hover:opacity-75"
+          >
+            Company
+          </Link>
+          <Link
+            href="/blog"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block text-sm py-2 hover:opacity-75"
+          >
+            Blog
+          </Link>
+          <div className="pt-4 border-t border-black/10 flex flex-col gap-3">
+            <Link
+              href="/login"
+              onClick={() => setMobileMenuOpen(false)}
+              className="text-center py-2 text-sm"
+            >
+              Sign In
+            </Link>
+            <Link
+              href="/download"
+              onClick={() => setMobileMenuOpen(false)}
+              className="text-center py-2.5 rounded-full bg-black text-white text-xs font-medium"
+            >
+              Download for Windows
+            </Link>
           </div>
         </div>
       )}

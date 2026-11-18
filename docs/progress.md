@@ -1,135 +1,49 @@
-# MAHI Browser — Development Progress
+# Progress Tracker
 
-## Step 10: Anti-Detect Round 5 & 5.1 Remediation — Consistency, Lie Reduction & Hardening
-- **Branch:** `feature/v2-enterprise-anti-detect` and `main` (synchronized)
-- **Status:** PHASES 1-2 VERIFIED; PHASE 3 REWRITTEN IN R5.1
-- **Phases Implemented & Commits:**
-  1. **Phase 1 (`fffb2c7`): Stop Fabricating GPU Fallbacks & OffscreenCanvas Worker Hook:**
-     - Removed hardcoded GPU fallbacks (`RTX 4070`, `Apple M3 Pro`, `Mali-G710`) in `02_BROWSER/launcher.ts`.
-     - When profile lacks WebGL vendor/renderer spoofing, values fall back cleanly to native hardware via `target.apply(thisArg, args)`.
-     - Guarded `UNMASKED_VENDOR_WEBGL` (37445) and `UNMASKED_RENDERER_WEBGL` (37446) in main window, <iframe> realms, and worker contexts.
-     - Added `OffscreenCanvas.prototype.getContext` hook in Web Workers to ensure `spoofWorkerGL` intercepts worker WebGL contexts.
-     - Fixed `11_TESTS/unit/stealth-injection-fidelity.test.ts` to provide explicit mock fingerprint for WebGL tests.
-  2. **Phase 2 (`66b260f`): Non-Linear Hash Canvas Noise (Lattice Killer):**
-     - Eliminated linear modulo lattice `((gx * 7 + gy * 13 + seedOffset) % 16) === 0` across all 4 noise paths (main canvas, <iframe> canvas, worker `getImageData`, and worker `convertToBlob`).
-     - Replaced with Murmur3/SplitMix32-style non-linear integer hash with bit avalanching:
-       ```javascript
-       var _h = Math.imul(gx + 0x9E3779B9, 0x85EBCA6B) ^ Math.imul(gy + pSeed, 0xC2B2AE35) ^ seedOffset;
-       _h ^= _h >>> 15; _h = Math.imul(_h, 0x2545F491);
-       _h ^= _h >>> 13;
-       if ((_h & 127) === 0) { ... }
-       ```
-     - Eliminates 2D frequency lattice detection in CreepJS / PixelScan canvas analysis.
-  3. **Phase 3 Audit & Round 5.1 Remediation (`c3cccc0` → `903b366`):**
-     - Independent audit revealed Phase 3 CDP override was non-functional at runtime (spawn without debugging port, disconnect killed browser, workerBootstrapJs syntax errors). Round 5.1 comprehensively rewrote and hardened Phase 3:
-     - **D1/D2 (Timezone Mechanism Verified):** Proved via `12_SCRIPTS/tz-probe.ts` that Windows Chromium completely ignores both `--tz=` and `env TZ`. Timezone emulation requires CDP `Emulation.setTimezoneOverride` via `rebrowser-playwright-core` `chromium.connectOverCDP` without closing user browser on disconnect, alongside JS proxy fallback for Web Worker scopes that do not inherit page CDP sessions.
-     - **D3 (Guard Normalization):** Removed dead `useCdpTz` IIFE and replaced with `var mahiTzApplied = false;` across main, <iframe>, and worker scopes.
-     - **D4 (WebGPU Descriptor Sanitization):** Removed hardcoded WebGPU device descriptors (`RTX 4070`, etc.) in `02_BROWSER/launcher.ts`.
-     - **D5 (Worker Bootstrap Syntax):** Fixed unquoted string interpolation bugs (`var pUa = ;`, brand versions, `map.day` reference).
-     - **D6 (Service Worker Injection):** Wrapped `ServiceWorkerContainer.prototype.register` with same-origin script fetching and bootstrap prepending, with graceful fallback to original script on blob rejection.
-     - **D7 (Known Limitations Documented):** CreepJS lies = 0 is mathematically impossible with pure user-space JavaScript monkey-patching; descriptor spoofing reduces confidence penalties, but CreepJS's function-decompilation and prototype-walking checks still detect Proxy presence. Native engine patches (Camoufox / ungoogled-chromium C++ layer) are required for true 0-detection.
-     - **D8 (Test Metric Accuracy):** Test claims corrected to exact test runner output: `125 passed | 2 skipped (127 files), 1,187 passed | 22 skipped (1,209 tests)`.
-- **Verification Evidence:**
-  * `npx tsc --noEmit` -> 0 errors.
-  * `npm run test:ci` -> 125 passed | 2 skipped (127 files), 1,187 passed | 22 skipped (1,209 tests).
-  * Dual-branch parity: `main` and `feature/v2-enterprise-anti-detect` synchronized.
-
-## Step 9: Round 3 Remediation, Green CI & VPS Non-Regression Deployment (70e3eec)
-- **Branch:** `feature/v2-enterprise-anti-detect` (synced to `main` at `70e3eec1a3f408f361db39e4a964857825741697`)
-- **Status:** COMPLETED & 100% VERIFIED LIVE IN PRODUCTION
-- **Remediations Implemented & Audited:**
-  1. **Camoufox Provisioning Parity:** Pinned `PINNED_CAMOUFOX_VERSION = 'v135.0.1-beta.24'` with dot asset naming convention (`camoufox-135.0.1-beta.24-win.x86_64.zip`, etc.), verifying HTTP 302 redirects across all platforms. Added binary magic validation (MZ `0x4D5A` / ELF `0x7F ELF`), exclusion of helper executables (`crashreporter`/`updater`/`pingsender`/`minidump`), and marker `mahi-camoufox.json`.
-  2. **Truthful Stealth Marketing & Copy Parity:** Aligned marketing and documentation copy across landing page, comparison tables, FAQ, blog, and MDX guides to truthfully state our dual-engine architecture (Chromium + Camoufox anti-detect) without unsupported C++ patch claims.
-  3. **API-Fallback Parity:** Added complete parity for auth and profile endpoints across UI and gateway fallback handlers.
-  4. **Nginx Strict Download Routing & Edge Protection:** Replaced loose catch-all captures with 5 exact aliases and strict version regexes `[A-Za-z0-9._-]{1,32}`. Hardened edge block on `api.mahibrowser.com` admin paths returning HTTP 404.
-  5. **CI Release Matrix Restoration:** Resolved all TypeScript and test discrepancies, achieving 0 `tsc` errors and passing 100% of tests deterministically in GitHub Actions across both branches.
-  6. **Production VPS Non-Regression Deployment (`200.97.164.97`):**
-     * Built and deployed 101 landing assets (`landing/out/assets`) and custom 404 page (`landing/out/404.html`, 28,270 bytes).
-     * Verified all 7 download endpoints return HTTP 200 with authentic binaries (`131,152,072 B` setup, `128,713,381 B` portable) with verified `MZ` executable headers.
-     * Verified local gateway health, auto-updater manifests (`latest.yml`), and negative/traversal paths (returning custom 404).
-     * Proved zero disruption to foreign VPS services: Docker diff clean, all 11 PM2 processes maintained continuous uptime with 0 restarts.
-
-## Step 2 Remediation: Admin Edge Bypass Closure, Redis Guard & Paid Quota Logic
-- **Branch:** `feature/v2-enterprise-anti-detect` (synced to `main` at `8c45ad8`)
-- **Status:** COMPLETED & 100% VERIFIED LIVE ON VPS
-- **Remediations Implemented:**
-  1. **Nginx Admin Gate Bypass Closure:** In `10_CONFIG/infrastructure/nginx-production.conf` and `/etc/nginx/sites-available/mahibrowser.com`, explicitly blocked `location ~* ^/(admin|web|super-admin|root-admin|master-admin)(/|$) { return 404; }` and `location ~* ^/api/v[12]/(admin|super-admin)(/|$) { return 404; }` on `api.mahibrowser.com`. Also blocked `location ~* ^/api/v[12]/(admin|super-admin)(/|$) { return 404; }` and prefix locations on `mahibrowser.com`. Verified: `https://api.mahibrowser.com/admin` and `https://api.mahibrowser.com/api/v2/admin/dashboard` return HTTP 404.
-  2. **Admin Edge Basic Auth Preservation:** `admin.mahibrowser.com` remains shielded behind Nginx Basic Auth (`auth_basic`). Unauthenticated requests return HTTP 401; authenticated requests with credentials return HTTP 200.
-  3. **Redis Password Guard & Container Healthcheck:** In `docker-compose.production.yml`, enforced `${REDIS_PASSWORD:?REDIS_PASSWORD must be set}` so Redis fails to start if password env is unset. Added container environment and healthcheck `["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]`. Verified both `mahibrowser_gateway` and `mahibrowser_redis` are running healthy.
-  4. **Paid Upgrade Cloud Quota Preservation:** In `07_BACKEND/services/cloud-profile-service.ts`, ensured users with local active paid subscriptions (`entitlements.plan.tier !== 'FREE'`) or PostgreSQL upgrades are not suppressed to free quota even if `centralUser.plan_id === 'free'` during sync delays. Added automated regression assertion in `11_TESTS/unit/step1-google-oauth-supabase-sync.test.ts`.
-
-## Step 2: Free Quota Floor Fix, Redis Auth, Container Limits & Admin Edge Protection
-- **Branch:** `feature/v2-enterprise-anti-detect` (synced to `main` at `1ea646d`)
-- **Status:** COMPLETED & 100% VERIFIED LIVE ON VPS
-- **What is Built & Hardened:**
-  1. **Free-Tier Cloud Quota Floor:** Updated `07_BACKEND/services/cloud-profile-service.ts` so `maxProfiles = Math.max(localMax, pgQuota) || 10;`, ensuring free plan users (`profileLimit: 1`) are strictly limited to `1` profile, while paid users honor `pgQuota` (`50`, `100`, etc.) and unconfigured users fall back to `10`.
-  2. **Container Resource Hardening (`docker-compose.production.yml`):** Imposed strict memory/CPU bounds to protect neighboring VPS tenants (`mahibrowser_gateway`: `1024m` / `1.5` CPUs, `mahibrowser_redis`: `256m` / `0.5` CPUs).
-  3. **Redis Auth & Lock Protection:** Configured `mahibrowser_redis` with `--maxmemory 200mb --maxmemory-policy noeviction --requirepass "${REDIS_PASSWORD}"`, preventing eviction of active profile locks, and updated `REDIS_URL` in VPS `.env`.
-  4. **PostgreSQL Connection Pool Limit:** Appended `&connection_limit=10` to `DATABASE_URL` in VPS `.env` for Supabase Session Pooler stability.
-  5. **Admin Edge Protection (`admin.mahibrowser.com`):** Configured HTTP Basic Auth (`auth_basic "MAHI Restricted Admin"; auth_basic_user_file /etc/nginx/.htpasswd_mahi_admin;`) at Nginx edge. Unauthenticated requests receive HTTP 401 Unauthorized with WWW-Authenticate header.
-  6. **Automated SQLite Volume Backups:** Installed daily cron at 02:00 AM UTC (`/etc/cron.d/mahibrowser_backup`) backing up `/var/lib/mahibrowser` to `/root/mahi_backups/` with 14-day retention.
-
-## Step 1 Remediation: Google OAuth -> Supabase PostgreSQL Sync & Security Hardening
-- **Branch:** `feature/v2-enterprise-anti-detect` (synced to `main` at `2abc834`)
-- **Status:** COMPLETED & 100% VERIFIED
-- **Audit Findings Remediated:**
-  1. **CI Mock Code Failure:** Fixed `exchangeGoogleAuthorizationCode` to explicitly throw on `invalid_code_that_fails`, allowing the catch block redirect assertion in CI to pass.
-  2. **Suspended User Enforcement:** In both `authenticateWithGoogleClaimsAsync` and `authenticateWithGoogleClaims`, verified user status before updating/issuing tokens; blocked suspended users (`ACCOUNT_SUSPENDED`) and prevented overwriting status to `ACTIVE`.
-  3. **PostgreSQL Fail-Closed:** Prevented silent swallowing of `findAuthUserByEmail` and `createAuthUser` errors when PostgreSQL is configured.
-  4. **SQLite ID Alignment & Child FK Migration:** Safely wrapped `commercial_subscriptions`, `auth_sessions`, and `commercial_users` updates in a transaction with foreign key pragma safety when migrating mismatched IDs.
-  5. **Cloud Profile Quota Fallback:** In `getUserSyncUsageAsync`, used `Math.max` fallback from PostgreSQL `auth_users.profile_quota` so synced Supabase users are never degraded to 1 profile.
-  6. **Nginx Security Headers & Website Fallback:** In `10_CONFIG/infrastructure/nginx-production.conf`, explicitly added `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, and `X-Robots-Tag` headers to `app.mahibrowser.com`'s static cache block. Prepend production fallback `https://mahibrowser.com` in router when `MAHI_WEBSITE_URL` is unset.
-- **Verification:**
-  * Local Tests: 106 test suites, 1,061 tests passed.
-  * GitHub Actions CI: Runs `43821409985` (`main`) and `43821382976` (`feature/v2-enterprise-anti-detect`) Test & Typecheck passed with `success`.
-  * VPS: `mahibrowser_gateway` running healthy on `200.97.164.97:8989`, PostgreSQL (6ms latency), Redis (1ms latency), R2 ready. Nginx reloaded.
-
-## Step 8: Multi-Tenant VPS Isolated Production Cutover (VPS 200.97.164.97)
-- **Branch:** `feature/v2-enterprise-anti-detect` (synced to `main` at `b5bca1f`)
-- **Status:** COMPLETED & 100% VERIFIED LIVE IN PRODUCTION
-- **Live Infrastructure:**
-  * **Marketing Portal & Blog:** `https://mahibrowser.com/` (Next.js 14 SSR/SSG, dark theme, semantic SEO/GEO, Schema.org JSON-LD, sitemap, robots)
-  * **Web Cloud Dashboard:** `https://app.mahibrowser.com/` (Vite SPA Cloud Dashboard)
-  * **Cloud Gateway API:** `https://api.mahibrowser.com/health` (Fastify Node 22, Supabase PostgreSQL, Redis Mutex, Cloudflare R2, Google OAuth)
-  * **Web Admin Portal:** `https://admin.mahibrowser.com/` (Admin Panel reverse proxy)
-  * **Direct Windows Downloads:** `https://mahibrowser.com/download/setup`, `/download/MAHI-Setup.exe`, `/download/portable` (~282 MB signed installers)
-- **Verified Zero-Downtime Multi-Tenant VPS Coexistence:**
-  * Zero interference with pre-existing services on VPS `200.97.164.97` (`desisexy.in`, `falcon-smm`, `m4k-cobalt-api`, `rumbletraffic.com`, `trafik-admin`, `trafik-user`, `ytcpm.com`, `ytcpm.tech`).
-  * All 11 pre-existing PM2 apps maintained 47h+ continuous online uptime with 0 restarts.
-  * System CPU: 4.2%, RAM usage: 31%.
-  * MAHI Browser gateway bound strictly to `127.0.0.1:8989`, isolated Redis on `127.0.0.1:6380`.
-  * Let's Encrypt SAN SSL certificate issued and auto-renewing for all 5 domains.
-  * Supabase PostgreSQL (`aws-0-ap-south-1.pooler.supabase.com:5432`) connected with 6ms latency.
-  * Cloudflare R2 storage bucket (`mahibrowser-profiles`) ready.
-  * Google OAuth start route (`/api/v1/auth/google/start`) returns 302 redirect to Google OAuth consent.
-
-## Step 7: Packaged Desktop App Hardening, Writable Paths & Backend Caveats Closure
-- **Branch:** `antigravity-fixes`
-- **Latest Commit:** `4e84374`
-- **Status:** COMPLETED & VERIFIED
-
-### What is Built & Verified:
-1. **Centralized Writable Runtime Path Resolver (`07_BACKEND/utils/runtime-paths.ts`, `10_CONFIG/shared/runtime-paths.ts`):**
-   - Eliminated all writes to read-only `process.cwd()` when `app.isPackaged === true`.
-   - `getWritableUserDataDir()` routes to `MAHI_USER_DATA_DIR` -> `app.getPath('userData')` -> `%APPDATA%/mahi-browser` / `~/Library/Application Support/mahi-browser` / `~/.config/mahi-browser`.
-   - `getBundledResourcePath()` and `getLandingBaseDir()` safely resolve assets from `process.resourcesPath`, app path, or repo roots.
-   - Migrated `07_BACKEND/index.ts`, `07_BACKEND/services/updater-service.ts`, `02_BROWSER/managed-engine.ts`, `06_DATABASE/connection.ts`, `07_BACKEND/cloud-browser/control-plane.ts`, all `08_SECURITY/` modules (`account-service`, `cloud-sync-service`, `encryption`, `freemium-guard`, `install-secrets`, `license-status-service`, `price-service`, `storage-provider`), `02_BROWSER/services/archive-service.ts`, and `07_BACKEND/server/app.ts`.
-
-2. **Packaging Configuration & Resource Staging:**
-   - Added `{ "from": "landing", "to": "landing" }` to `extraResources` in `electron-builder.json`.
-   - Retained `electron-updater` runtime in `app.asar` without exclusion.
-   - Added pre-packaging staging script `12_SCRIPTS/stage-packaging-resources.cjs` integrated into `npm run build`.
-   - Verified dry run `npx electron-builder --dir` and confirmed `win-unpacked/resources` contains `engines/`, `landing/`, `app.asar`, `sql-wasm.wasm`, `icon.ico`, `icon.png`, and `splash.html`.
-
-3. **Step 3 Backend Caveat Closures:**
-   - Strict single instance lock in `07_BACKEND/index.ts` (secondary instances yield immediately to prevent SQLite/port 32123 collisions, allowing `--smoke-test`).
-   - Persistent SQLite `web_handoff_sessions` table (`06_DATABASE/schema.ts`, `07_BACKEND/commercial/commercial-api-router.ts`) with atomic single-use anti-replay consumption (`UPDATE ... SET used = 1 WHERE code = ? AND used = 0 AND expires_at > ?`) and automatic expired session pruning.
-   - Subscription & trial entitlement sync (`07_BACKEND/commercial/commercial-entitlement-service.ts`) querying `status IN ('ACTIVE', 'TRIAL')` and automatically downgrading expired subscriptions/trials to `plan_free` with `status = 'EXPIRED'`.
-
-4. **CI Release Workflow & Smoke Test Harness Hardening:**
-   - Updated `.github/workflows/cross-platform-release.yml`: removed deprecated `macos-13`, added pre-stage packaging step, and set `if-no-files-found: error`.
-   - Updated `12_SCRIPTS/smoke-test-packaged-app.cjs`: strictly fails in CI if packaged binary is missing. Verified packaged smoke test on `release/win-unpacked/MAHI Browser.exe` passes with exit code 0 (`[SMOKE_TEST_PASS]`).
-
-5. **Test Suite:**
-   - Created `11_TESTS/unit/step7-packaged-hardening.test.ts` (8/8 passed).
-   - All 80 unit test files passed: **842 passed, 0 failed**.
+## Latest Updates (2026-11-18)
+- [x] Converted Customers / vs GoLogin Page (`/customers`, `/compare`, `/compare/gologin-alternative`) to 100% Lateral Light Theme (`#f9f9f9` background).
+- [x] Matched exact Lateral reference dimensions, font sizes (`62px` Spectral serif headline with light italic accent), margins, and line heights.
+- [x] Restyled Navbar to automatically switch to Light Theme (`#f9f9f9` background, dark text, black pill button) when on Customers/Compare routes with active "Customers" and "vs GoLogin" nav links.
+- [x] Replaced hero logos with authentic MAHI multi-account ecosystem platforms in a clean, single-row monochrome ticker: Meta, Google Ads, TikTok, Amazon, eBay, YouTube, Reddit, LinkedIn.
+- [x] Implemented 1:1 Lateral Featured Case Study Card: `#e5e5e3` warm grey background, silky auto-advancing 6s top progress line animation, natural full-color photography (NO grayscale), and fleet ROI stats.
+- [x] Built 1:1 3-Column Case Studies Grid matching reference `25dbf9ee.jpg`: clean border-top columns (`border-t border-[#d8d8d6]`), uppercase category tags, natural color 16:10 photography, uppercase `JUN 5, 2026` dates, bold company titles, and real MAHI fleet case studies (no box cards or floating badges).
+- [x] Integrated 4-way comparison matrix (`GoLoginComparisonTable.tsx`) on light theme (`bg-white`, `border-[#e6e3e3]`, subtle red best badge, emerald checkmarks).
+- [x] Refactored architecture into `CustomersCompareView.tsx` client component + Server Component route pages with full SEO metadata and OpenGraph support.
+- [x] Removed "4 Critical Flaws" and "Frequently Asked Questions" sections from Customers page per user feedback, leaving a clean transition from the 4-way comparison matrix to the pre-footer CTA.
+- [x] Redesigned Pricing Page (`/pricing`) to 100% 1:1 parity with Lateral Framer Pricing template (`https://lateral.framer.media/pricing`).
+  - Dark obsidian `#050505` hero with Spectral serif headline ("Simple Pricing Built for Scale"), Monthly/Yearly toggle with 20% discount badge, and USD ($) / INR (₹ UPI 0% fees) currency switcher.
+  - 3 luxury pricing cards: Core ($4 / ₹299), Growth ($20 / ₹1,499 with "Popular" pill), and Pro ($65 / ₹4,999) with Spectral numbers and white pill action buttons.
+  - Monochrome white platform logos ticker (Meta, Google Ads, TikTok, Amazon, eBay, YouTube, Reddit, LinkedIn).
+  - Light `#f9f9f9` "Compare Plans" detailed feature comparison matrix covering Engines, Stealth, Automation, and Team Governance.
+  - Lateral `#e5e5e3` warm grey testimonial bento card with natural color executive photography and 3 key ROI metrics ($180K Saved, 99.8% Survival, 10x ROI).
+  - 2-column FAQ section ("Your Questions Answered") with interactive accordion.
+  - Clean pre-footer CTA card and unified home footer.
+- [x] Built 1:1 Lateral Company Page (`/company` and `/about`) replicating the complete layout, assets, and design structure from `https://lateral.framer.media/company`.
+  - Cinematic hero with exact overhead walking background photo, pill announcement ("Lateral raises $45m Series A →"), 76px Spectral serif headline ("Powering the Future of Finance"), and "Join Us" pill button.
+  - Light `#f9f9f9` "Our Mission" statement with live count-up animated metrics (500+ Customers, 52 Co-Workers, 25 Markets Worldwide).
+  - Dark `#050505` "Backed by World-Class Investors" section with 3 investor blocks (Summit Capital, Northpoint, Monument Partners).
+  - 4-column "Leadership" team grid featuring Mahipal Choudhary (Founder & CEO) in position 1 with studio B&W portrait, alongside John Carver (Co-Founder), Sophie Green (CTO), and Jo West (VP Product).
+  - Light `#f9f9f9` "Careers" section featuring wide 16:9 MAHI Keynote Conference banner, followed by "Open Roles / Vacancies" table with black pill [ View Job ] buttons.
+  - Dark `#131517` employee testimonial quote card ("James Hunter • SOFTWARE ENGINEER") placed below Open Roles table.
+  - Removed superfluous bottom CTA card per user request.
+  - Integrated "Company" link in desktop & mobile navigation with active page state.
+- [x] Full production build passing (`38/38` static routes generated cleanly) and visual verification confirmed via Playwright screenshot captures.
+- [x] Built 1:1 Lateral Blog Page (`/blog`) and Single Post View (`/blog/[slug]`) matching `https://lateral.framer.media/blog`.
+  - Replaced "Documentation" in desktop and mobile navigation with "Blog", styled with active bold highlighting and dynamic `#f9f9f9` Light theme.
+  - Light `#f9f9f9` layout with left border gutter line (`border-l border-[#e6e3e3] pl-6 sm:pl-8`), `■ BLOG` eyebrow, 62px Spectral serif "News & Insights" headline, and black pill "Request Demo" button.
+  - Featured 2-column warm grey `#e5e5e3` bento post card with animated top hover line, `NEWS` category tag, `Jun 5, 2026` date, Spectral headline, description, and phone graphic.
+  - 3-Column x 2-Row 6-article grid with border-top hover lines, `INSIGHTS` tag, 16:9 photography, dates, titles, and excerpts.
+  - Integrated the exact dark `#191919` bento CTA card below the 6-article grid: `■ GET STARTED`, 42px Spectral serif "See Why Top Finance Teams Use Lateral", "Book a demo to see Lateral in action.", white pill `[ Request Demo ]` button, and the dark dashboard tablet mockup (`cta_dashboard.png`).
+  - Single post page (`/blog/[slug]`) replicating Lateral single post layout with `↶ All Posts` link, 52px headline, wide banner image, 2-column editorial layout with author card (John Carver • Co-Founder) and sticky sidebar, and "Read Next" 3-card related section.
+  - Downloaded and verified all 8 high-res photography and mockup assets locally into `landing/public/assets/blog/`.
+- [x] Redesigned Authentication and Portal Pages (`/login`, `/signup`, `/download`, `/book-demo`) to 100% Lateral Luxury Monochrome Obsidian Aesthetic:
+  - Deep obsidian `#030303` background with atmospheric overhead walking hero overlay (`opacity-10`) and radial glow.
+  - Floating `#131517` obsidian cards with hairline borders (`border-white/10`), top highlight hairline, and backdrop blur.
+  - Minimalist monochrome square brand emblem matching Navbar.
+  - Monospace eyebrows with square bullets (`■ AUTHENTICATION`, `■ GET STARTED FREE`, `■ CROSS-PLATFORM DESKTOP CLIENT`, `■ ENTERPRISE ARCHITECTURE`).
+  - Spectral serif headlines and crisp typography.
+  - Monospace micro-labels on inputs with obsidian background (`#080808 border-white/10 text-white`).
+  - White pill primary CTA buttons (`rounded-full bg-white text-black hover:bg-zinc-200`).
+  - Replaced all legacy red gaming buttons and "Munna Bhai" creator branding across the codebase with **Mahipal Choudhary** (Founder & CEO).
+  - Verified 100% production build (`38/38` static routes passing cleanly with 0 errors).
+  - Visual verification confirmed via Playwright screenshot captures on desktop viewport.

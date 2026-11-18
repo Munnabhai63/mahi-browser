@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg_scr" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#111215"/>
+      <stop offset="100%" stop-color="#07080a"/>
+    </linearGradient>
+    <linearGradient id="terminalBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#14151b"/>
+      <stop offset="100%" stop-color="#0b0c10"/>
+    </linearGradient>
+    <linearGradient id="card_scr" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#181920"/>
+      <stop offset="100%" stop-color="#101116"/>
+    </linearGradient>
+    <linearGradient id="glow_white" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#9a9ba6"/>
+    </linearGradient>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif; }
+      .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; }
+      .serif { font-family: Georgia, 'Times New Roman', serif; }
+      .text-w { fill: #ffffff; }
+      .text-s { fill: #d8d8e0; }
+      .text-m { fill: #9da0aa; }
+      .text-dim { fill: #555763; }
+      .border { stroke: #2a2b34; stroke-width: 1.2; }
+    </style>
+  </defs>
+
+  <!-- Frame -->
+  <rect width="800" height="600" fill="url(#bg_scr)"/>
+  <rect x="0.5" y="0.5" width="799" height="599" rx="14" fill="none" class="border"/>
+
+  <!-- Window Header -->
+  <rect x="0" y="0" width="800" height="50" fill="#14151a"/>
+  <line x1="0" y1="50" x2="800" y2="50" stroke="#262732" stroke-width="1.2"/>
+  <circle cx="28" cy="25" r="5.5" fill="#4a4b55"/>
+  <circle cx="48" cy="25" r="5.5" fill="#363740"/>
+  <circle cx="68" cy="25" r="5.5" fill="#282930"/>
+  <text x="100" y="30" class="mono text-m" font-size="13" font-weight="500" letter-spacing="0.5">MAHI // PLAYWRIGHT_SCRAPER_CLUSTER</text>
+  <rect x="595" y="13" width="178" height="25" rx="12.5" fill="#1e2028" stroke="#363744" stroke-width="1.2"/>
+  <circle cx="612" cy="25.5" r="4" fill="#ffffff"/>
+  <text x="626" y="30" class="mono text-w" font-size="12" font-weight="600">64 Headless Nodes</text>
+
+  <!-- Top Metrics -->
+  <rect x="28" y="68" width="232" height="92" rx="8" fill="url(#card_scr)" class="border"/>
+  <text x="46" y="94" class="sans text-m" font-size="12" font-weight="600">TURNSTILE BYPASS</text>
+  <text x="46" y="134" class="serif text-w" font-size="32" font-weight="700">99.9%</text>
+  <rect x="180" y="80" width="65" height="22" rx="4" fill="#252733"/>
+  <text x="188" y="95" class="mono text-w" font-size="11" font-weight="600">184ms</text>
+
+  <rect x="284" y="68" width="232" height="92" rx="8" fill="url(#card_scr)" class="border"/>
+  <text x="302" y="94" class="sans text-m" font-size="12" font-weight="600">HARVEST VELOCITY</text>
+  <text x="302" y="134" class="serif text-w" font-size="32" font-weight="700">18.4K/m</text>
+  <rect x="432" y="80" width="70" height="22" rx="4" fill="#252733"/>
+  <text x="442" y="95" class="mono text-w" font-size="11" font-weight="600">Parsed</text>
+
+  <rect x="540" y="68" width="232" height="92" rx="8" fill="url(#card_scr)" class="border"/>
+  <text x="558" y="94" class="sans text-m" font-size="12" font-weight="600">PROXY ROTATION</text>
+  <text x="558" y="134" class="serif text-w" font-size="32" font-weight="700">Auto 45s</text>
+  <rect x="684" y="80" width="74" height="22" rx="4" fill="#252733"/>
+  <text x="694" y="95" class="mono text-w" font-size="11" font-weight="600">Sticky IP</text>
+
+  <!-- Interactive Terminal & Extraction Pipeline -->
+  <rect x="28" y="176" width="744" height="398" rx="10" fill="url(#terminalBg)" class="border"/>
+
+  <!-- Terminal Header Tab -->
+  <rect x="28" y="176" width="744" height="40" rx="10" fill="#181920"/>
+  <rect x="44" y="184" width="140" height="26" rx="4" fill="#0d0e12" stroke="#2a2b34" stroke-width="1.2"/>
+  <text x="58" y="202" class="mono text-w" font-size="12" font-weight="600">scrape_stealth.ts</text>
+  <rect x="194" y="184" width="120" height="26" rx="4" fill="#181920"/>
+  <text x="206" y="202" class="mono text-m" font-size="12">pipeline.json</text>
+  <rect x="324" y="184" width="110" height="26" rx="4" fill="#181920"/>
+  <text x="336" y="202" class="mono text-m" font-size="12">proxies.yaml</text>
+
+  <!-- Code Editor Block -->
+  <text x="48" y="244" class="mono text-dim" font-size="13">01</text>
+  <text x="82" y="244" class="mono text-s" font-size="13"><tspan fill="#ffffff" font-weight="600">import</tspan> { chromium } <tspan fill="#ffffff" font-weight="600">from</tspan> 'playwright-core';</text>
+
+  <text x="48" y="268" class="mono text-dim" font-size="13">02</text>
+  <text x="82" y="268" class="mono text-s" font-size="13"><tspan fill="#ffffff" font-weight="600">import</tspan> { mahiStealthEngine } <tspan fill="#ffffff" font-weight="600">from</tspan> '@mahi/stealth-sdk';</text>
+
+  <text x="48" y="292" class="mono text-dim" font-size="13">03</text>
+
+  <text x="48" y="316" class="mono text-dim" font-size="13">04</text>
+  <text x="82" y="316" class="mono text-m" font-size="13"><tspan fill="#9da0aa">// Launch 64 concurrent isolated browser contexts with residential binding</tspan></text>
+
+  <text x="48" y="340" class="mono text-dim" font-size="13">05</text>
+  <text x="82" y="340" class="mono text-s" font-size="13"><tspan fill="#ffffff" font-weight="600">const</tspan> browser = <tspan fill="#ffffff" font-weight="600">await</tspan> mahiStealthEngine.connect({ <tspan fill="#ffffff">cluster: 'us-east'</tspan> });</text>
+
+  <!-- Live Terminal Console Output -->
+  <rect x="44" y="362" width="712" height="194" rx="6" fill="#08080c" stroke="#22232c" stroke-width="1"/>
+  
+  <text x="64" y="392" class="mono text-m" font-size="12">> [CLUSTER] Spawning 64 isolated worker processes...</text>
+  <text x="64" y="416" class="mono text-w" font-size="12" font-weight="600">> [PROXY_ROUTER] Bound 64 residential IPs (AT&amp;T / Comcast / Vodafone)</text>
+  <text x="64" y="440" class="mono text-w" font-size="12" font-weight="600">> [CLOUDFLARE_CHALLENGE] Turnstile token intercepted in 184ms [BYPASS: OK]</text>
+  <text x="64" y="464" class="mono text-s" font-size="12">> [EXTRACTOR] Harvested 18,400 schema records -> streaming to s3://lake</text>
+  <text x="64" y="488" class="mono text-s" font-size="12">> [DATADOME_EVASION] TLS Fingerprint JA4: t13d1516h2_8daaf6150148... [PASS]</text>
+  <text x="64" y="512" class="mono text-w" font-size="12" font-weight="700">> [SUCCESS] 0 Captchas triggered • 0 IP bans • 100% throughput achieved</text>
+
+  <rect x="64" y="530" width="672" height="7" rx="3.5" fill="#1c1d25"/>
+  <rect x="64" y="530" width="630" height="7" rx="3.5" fill="url(#glow_white)"/>
+  <text x="64" y="550" class="mono text-m" font-size="11">Active Worker Stream: 64/64 Active • 142.8 MB/s • 0 Errors</text>
+</svg>

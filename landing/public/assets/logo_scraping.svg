@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 34" width="180" height="34">
+  <!-- Minimal data stream / radar mark -->
+  <path d="M4 11H13M4 17H21M4 23H15" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" />
+  <circle cx="23" cy="11" r="2.5" fill="#ffffff" />
+  <!-- Prominent bold readable typography -->
+  <text x="36" y="21.5" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="700" font-size="14.5" fill="#ffffff" letter-spacing="1.2">DATA FLEET</text>
+</svg>

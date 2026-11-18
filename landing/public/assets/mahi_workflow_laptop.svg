@@ -1,0 +1,263 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1648" height="928"
+     viewBox="0 0 1648 928">
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#777"/>
+      <stop offset=".5" stop-color="#292929"/>
+      <stop offset="1" stop-color="#050505"/>
+    </linearGradient>
+
+    <linearGradient id="screen" x1="0" y1="0" x2="0.8" y2="1">
+      <stop stop-color="#050505"/>
+      <stop offset=".55" stop-color="#090909"/>
+      <stop offset="1" stop-color="#171719"/>
+    </linearGradient>
+
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#333"/>
+      <stop offset=".25" stop-color="#d0d0d0"/>
+      <stop offset=".5" stop-color="#555"/>
+      <stop offset=".8" stop-color="#ddd"/>
+      <stop offset="1" stop-color="#333"/>
+    </linearGradient>
+
+    <linearGradient id="silver" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#555"/>
+      <stop offset=".45" stop-color="#f2f2f2"/>
+      <stop offset="1" stop-color="#777"/>
+    </linearGradient>
+
+    <linearGradient id="wave" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#050505"/>
+      <stop offset=".5" stop-color="#202024"/>
+      <stop offset="1" stop-color="#050505"/>
+    </linearGradient>
+
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+
+    <filter id="shadow">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+
+    <style>
+      .serif {
+        font-family: Georgia, 'Times New Roman', serif;
+        fill: #fff;
+      }
+      .sans {
+        font-family: Arial, Helvetica, sans-serif;
+        fill: #ddd;
+      }
+    </style>
+  </defs>
+
+  <!-- BACKGROUND -->
+  <rect width="1648" height="928" fill="#050505"/>
+
+  <rect x="22" y="0" width="1626" height="928"
+        fill="url(#bg)" opacity=".4"/>
+
+  <rect x="37" y="31" width="1574" height="555"
+        rx="5" fill="#d0d0d0"/>
+
+  <!-- LAPTOP SHADOW -->
+  <path d="M350 180 L1510 -30 L1710 700
+           L650 920 Z"
+        fill="#000" opacity=".7" filter="url(#shadow)"/>
+
+  <!-- LAPTOP SCREEN OUTER BODY -->
+  <path d="M740 -15
+           L1540 -5
+           Q1600 -2 1648 0
+           L1648 710
+           L690 920
+           L350 250
+           Q310 100 470 65
+           Z"
+        fill="#030303"
+        stroke="url(#metal)" stroke-width="5"/>
+
+  <!-- SCREEN BEZEL -->
+  <path d="M740 5
+           L1540 5
+           L1648 0
+           L1648 690
+           L705 875
+           L370 250
+           Q335 115 480 85 Z"
+        fill="#050505"/>
+
+  <!-- DISPLAY -->
+  <path d="M760 25
+           L1530 25
+           L1648 0
+           L1648 660
+           L725 835
+           L395 250
+           Q365 125 495 100 Z"
+        fill="url(#screen)"/>
+
+  <!-- SCREEN DECORATIVE WAVES -->
+  <path d="M395 560
+           Q590 500 780 620
+           Q1040 800 1300 620
+           Q1490 500 1648 390
+           L1648 660
+           L725 835 Z"
+        fill="url(#wave)"/>
+
+  <path d="M395 560
+           Q590 500 780 620
+           Q1040 800 1300 620
+           Q1490 500 1648 390"
+        fill="none" stroke="url(#silver)"
+        stroke-width="2" opacity=".8"/>
+
+  <path d="M410 710
+           Q720 610 940 750
+           Q1210 900 1648 650"
+        fill="none" stroke="#555"
+        stroke-width="2" opacity=".7"/>
+
+  <path d="M770 25
+           Q1130 100 1400 40
+           Q1540 20 1648 0"
+        fill="none" stroke="#333"
+        stroke-width="2"/>
+
+  <!-- WEBCAM -->
+  <circle cx="1085" cy="45" r="7" fill="#151515"/>
+  <circle cx="1085" cy="45" r="3" fill="#303038"/>
+
+  <!-- M LOGO -->
+  <circle cx="642" cy="260" r="59"
+          fill="#050505"
+          stroke="#f5f5f5" stroke-width="4"/>
+
+  <path d="M604 282 L604 232
+           L642 270
+           L680 232
+           L680 282"
+        fill="none" stroke="#fff"
+        stroke-width="9"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- TOP BRAND LABEL -->
+  <path d="M770 198 L770 280"
+        stroke="#555" stroke-width="1.5"/>
+
+  <text x="820" y="235"
+        class="sans"
+        font-size="22"
+        letter-spacing="3">
+    Anti-Detect Browser
+  </text>
+
+  <!-- MAIN BRAND NAME -->
+  <text x="1135" y="470"
+        class="serif"
+        font-size="106"
+        text-anchor="middle"
+        transform="rotate(-7 1135 470)">
+    Mahi Browser
+  </text>
+
+  <!-- TAGLINE -->
+  <path d="M850 535 L955 520"
+        stroke="#888" stroke-width="1.5"/>
+
+  <text x="1160" y="510"
+        class="sans"
+        font-size="24"
+        text-anchor="middle"
+        letter-spacing="5"
+        transform="rotate(-7 1160 510)">
+    Browse Without Limits
+  </text>
+
+  <path d="M1385 475 L1460 460"
+        stroke="#888" stroke-width="1.5"/>
+
+  <!-- SECURITY PILL -->
+  <g transform="rotate(-7 1200 600)">
+    <rect x="980" y="565" width="440" height="75"
+          rx="38"
+          fill="#111"
+          fill-opacity=".7"
+          stroke="#777" stroke-width="1.3"/>
+
+    <!-- Shield -->
+    <path d="M1030 585 L1045 580
+             L1060 585 L1058 603
+             Q1050 620 1045 622
+             Q1033 614 1030 603 Z"
+          fill="none" stroke="#fff"
+          stroke-width="2.5"/>
+
+    <path d="M1037 600 L1043 606 L1053 593"
+          fill="none" stroke="#fff"
+          stroke-width="2.5"/>
+
+    <text x="1080" y="610"
+          class="sans"
+          font-size="18"
+          letter-spacing="2">
+      Stealth  •  Secure  •  Undetectable
+    </text>
+  </g>
+
+  <!-- LAPTOP LOWER EDGE -->
+  <path d="M705 875 L1648 690"
+        fill="none" stroke="url(#metal)"
+        stroke-width="5"/>
+
+  <!-- KEYBOARD DECK -->
+  <path d="M705 875
+           L1648 690
+           L1648 928
+           L680 928 Z"
+        fill="#18191b"
+        stroke="#777" stroke-width="2"/>
+
+  <!-- KEYBOARD ROWS -->
+  <g fill="#050506" stroke="#555" stroke-width="1">
+
+    <path d="M850 872 l55 -11 18 16 -56 12 Z"/>
+    <path d="M930 856 l55 -11 18 16 -56 12 Z"/>
+    <path d="M1010 840 l55 -11 18 16 -56 12 Z"/>
+    <path d="M1090 824 l55 -11 18 16 -56 12 Z"/>
+    <path d="M1170 808 l55 -11 18 16 -56 12 Z"/>
+    <path d="M1250 792 l55 -11 18 16 -56 12 Z"/>
+    <path d="M1330 776 l55 -11 18 16 -56 12 Z"/>
+    <path d="M1410 760 l55 -11 18 16 -56 12 Z"/>
+    <path d="M1490 744 l55 -11 18 16 -56 12 Z"/>
+
+    <path d="M875 908 l55 -11 18 16 -56 12 Z"/>
+    <path d="M955 892 l55 -11 18 16 -56 12 Z"/>
+    <path d="M1035 876 l55 -11 18 16 -56 12 Z"/>
+    <path d="M1115 860 l55 -11 18 16 -56 12 Z"/>
+    <path d="M1195 844 l55 -11 18 16 -56 12 Z"/>
+    <path d="M1275 828 l55 -11 18 16 -56 12 Z"/>
+    <path d="M1355 812 l55 -11 18 16 -56 12 Z"/>
+    <path d="M1435 796 l55 -11 18 16 -56 12 Z"/>
+    <path d="M1515 780 l55 -11 18 16 -56 12 Z"/>
+  </g>
+
+  <!-- KEY LEGENDS -->
+  <g class="sans" font-size="10" fill="#999">
+    <text x="870" y="885">ESC</text>
+    <text x="950" y="869">1</text>
+    <text x="1030" y="853">2</text>
+    <text x="1110" y="837">3</text>
+    <text x="1190" y="821">4</text>
+    <text x="1270" y="805">5</text>
+    <text x="1350" y="789">6</text>
+    <text x="1430" y="773">7</text>
+  </g>
+
+</svg>

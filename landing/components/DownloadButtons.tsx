@@ -86,7 +86,6 @@ export default function DownloadButtons() {
   const [trialActivated, setTrialActivated] = useState(false);
 
   useEffect(() => {
-    // OS Detection
     if (typeof window !== 'undefined' && window.navigator) {
       const ua = window.navigator.userAgent.toLowerCase();
       if (ua.includes('mac') || ua.includes('darwin')) {
@@ -97,25 +96,18 @@ export default function DownloadButtons() {
         setDetectedOs('windows');
       }
 
-      // Token Hydration from URL query or localStorage
       const urlParams = new URLSearchParams(window.location.search);
       const urlToken = urlParams.get('token') || urlParams.get('access_token') || urlParams.get('auth_token');
       if (urlToken) {
         setAuthToken(urlToken);
         try {
           localStorage.setItem('mahi_auth_token', urlToken);
-        } catch {
-          // ignore localStorage access issues
-        }
+        } catch {}
       } else {
         try {
           const stored = localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token');
-          if (stored) {
-            setAuthToken(stored);
-          }
-        } catch {
-          // ignore
-        }
+          if (stored) setAuthToken(stored);
+        } catch {}
       }
     }
   }, []);
@@ -133,9 +125,7 @@ export default function DownloadButtons() {
           timestamp: new Date().toISOString(),
         }),
       });
-    } catch {
-      // Fire-and-forget tracking
-    }
+    } catch {}
   };
 
   const handleDeepLinkHandoff = async () => {
@@ -188,11 +178,9 @@ export default function DownloadButtons() {
           product: 'mahi_browser_pro_trial',
         }),
       });
-      if (resp.ok) {
-        setTrialActivated(true);
-      }
+      if (resp.ok) setTrialActivated(true);
     } catch {
-      setTrialActivated(true); // graceful UI response
+      setTrialActivated(true);
     }
   };
 
@@ -204,17 +192,17 @@ export default function DownloadButtons() {
 
   return (
     <div className="w-full space-y-8">
-      {/* Auth / Deep Link Banner if authenticated */}
+      {/* Cloud Authenticated Deep Link Banner */}
       {authToken && (
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-5 backdrop-blur-sm">
+        <div className="rounded-[8px] border border-white/15 bg-[#131517] p-5 backdrop-blur-md">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="h-3 w-3 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <div>
-                <p className="text-sm font-semibold text-emerald-300">
+                <p className="text-[13px] font-medium text-white">
                   Signed in to MAHI Cloud
                 </p>
-                <p className="text-xs text-slate-400">
+                <p className="text-[12px] text-white/50">
                   Your desktop client will automatically pair with your cloud profiles.
                 </p>
               </div>
@@ -223,112 +211,119 @@ export default function DownloadButtons() {
               {!trialActivated ? (
                 <button
                   onClick={handleActivateTrial}
-                  className="rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 transition"
+                  className="rounded-full bg-white text-black px-4 py-1.5 text-xs font-medium hover:bg-zinc-200 transition"
                 >
                   Activate 7-Day Pro Trial
                 </button>
               ) : (
-                <span className="rounded bg-emerald-900/60 border border-emerald-700/60 px-3 py-1 text-xs text-emerald-300 font-semibold">
+                <span className="rounded-full bg-white/10 border border-white/15 px-3 py-1 text-xs text-white font-mono">
                   ✓ Pro Trial Active
                 </span>
               )}
               <button
                 onClick={handleDeepLinkHandoff}
                 disabled={isHandoffLoading}
-                className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 transition"
+                className="rounded-full border border-white/20 bg-white/[0.05] hover:bg-white/10 px-4 py-1.5 text-xs font-medium text-white transition"
               >
                 {isHandoffLoading ? 'Connecting...' : 'Launch in Desktop App (mahi://)'}
               </button>
             </div>
           </div>
           {handoffStatus && (
-            <p className="mt-2 text-xs text-emerald-400 font-mono">{handoffStatus}</p>
+            <p className="mt-2 text-xs text-white/70 font-mono">{handoffStatus}</p>
           )}
         </div>
       )}
 
       {/* Primary OS Hero Download Card */}
-      <div className="relative overflow-hidden rounded-2xl border border-red-900/50 bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 p-6 sm:p-8 shadow-2xl">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-950/40 px-3 py-1 text-xs font-semibold text-red-300">
-              <span className="h-2 w-2 rounded-full bg-red-500" />
-              Detected OS: {detectedOs === 'windows' ? 'Windows x64' : detectedOs === 'mac' ? 'macOS (Windows & Linux Available)' : 'Linux x64'}
+      <div className="relative overflow-hidden rounded-[8px] border border-white/10 bg-[#131517] p-8 sm:p-10 shadow-2xl backdrop-blur-xl">
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
+          <div className="space-y-3">
+            <div className="inline-flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-[1px] bg-[#969290] inline-block" />
+              <span className="text-[11px] font-mono font-normal uppercase tracking-[0.05em] text-[#969290]">
+                DETECTED PLATFORM: {detectedOs === 'windows' ? 'WINDOWS x64' : detectedOs === 'mac' ? 'macOS (x64 / arm64)' : 'LINUX x64'}
+              </span>
             </div>
-            <h3 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+            <h3 className="font-['Spectral',serif] text-2xl sm:text-4xl font-light text-white tracking-[-0.03em]">
               {primaryOption.label}
             </h3>
-            <p className="text-sm text-slate-300 max-w-xl">
+            <p className="text-[13px] sm:text-[14px] text-white/60 max-w-xl leading-relaxed">
               {primaryOption.notes}. Includes Chromium 138 with on-demand Camoufox dual-engine support and offline SQLite storage.
             </p>
-            <div className="flex items-center gap-4 text-xs text-slate-400 pt-1">
+            <div className="flex items-center gap-3 text-xs text-white/40 pt-1 font-mono">
               <span>Version: <strong className="text-white">v{BRAND.version}</strong></span>
               <span>•</span>
               <span>Architecture: <strong className="text-white">{primaryOption.arch}</strong></span>
               <span>•</span>
-              <span>Status: <strong className="text-emerald-400">Stable Release</strong></span>
+              <span>Status: <strong className="text-white">Stable Production</strong></span>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="shrink-0">
             <a
               href={primaryOption.downloadUrl}
               onClick={() => trackDownload(primaryOption)}
-              className="inline-flex items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-red-600 to-red-700 px-7 py-4 text-base font-bold text-white shadow-lg shadow-red-900/30 transition hover:from-red-500 hover:to-red-600 active:scale-[0.99]"
+              className="inline-flex items-center justify-center gap-3 rounded-full bg-white text-black px-8 py-3.5 text-[14px] font-medium shadow-xl hover:bg-zinc-200 transition-all duration-200 active:scale-[0.98]"
             >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
-              Download for {detectedOs === 'windows' ? 'Windows' : detectedOs === 'mac' ? 'Windows (macOS Coming Soon)' : 'Linux'}
+              <span>Download for {detectedOs === 'windows' ? 'Windows' : detectedOs === 'mac' ? 'Windows (macOS Coming Soon)' : 'Linux'}</span>
             </a>
           </div>
         </div>
       </div>
 
       {/* All Platforms & Alternatives Grid */}
-      <div className="space-y-4">
-        <h4 className="text-base font-bold text-slate-200">
-          All Available Builds & Packages
-        </h4>
+      <div className="space-y-4 pt-4">
+        <div className="flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-[1px] bg-[#969290] inline-block" />
+          <span className="text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290]">
+            ALL AVAILABLE BUILDS & PACKAGES
+          </span>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {DOWNLOAD_OPTIONS.map((opt) => (
             <div
               key={opt.id}
-              className="flex flex-col justify-between rounded-xl border border-slate-800 bg-slate-900/50 p-4 transition hover:border-slate-700 hover:bg-slate-900/80"
+              className="flex flex-col justify-between rounded-[8px] border border-white/10 bg-[#131517] p-5 transition hover:border-white/20 hover:bg-[#181a1d]"
             >
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-[#969290]">
                     {opt.os} ({opt.arch})
                   </span>
                   {opt.comingSoon ? (
-                    <span className="rounded bg-amber-900/60 border border-amber-700/60 px-2 py-0.5 text-[11px] font-mono text-amber-300">
+                    <span className="rounded-full bg-white/5 border border-white/10 px-2 py-0.5 text-[10px] font-mono text-zinc-400">
                       Coming Soon
                     </span>
                   ) : (
-                    <span className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-mono text-slate-300">
+                    <span className="rounded-full bg-white/5 border border-white/10 px-2 py-0.5 text-[10px] font-mono text-white">
                       {opt.fileExt}
                     </span>
                   )}
                 </div>
-                <h5 className="font-semibold text-sm text-white">{opt.label}</h5>
-                <p className="text-xs text-slate-400 leading-relaxed">{opt.notes}</p>
+                <h5 className="font-['Spectral',serif] font-light text-base text-white">{opt.label}</h5>
+                <p className="text-xs text-white/50 leading-relaxed">{opt.notes}</p>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
-                <span className="text-[11px] text-slate-500 font-mono">v{BRAND.version}</span>
+              <div className="mt-5 pt-3 border-t border-white/5 flex items-center justify-between">
+                <span className="text-[11px] text-white/30 font-mono">v{BRAND.version}</span>
                 {opt.comingSoon ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-950/40 border border-amber-800/50 px-3 py-1.5 text-xs font-semibold text-amber-300 cursor-not-allowed select-none">
-                    Coming Soon — Windows & Linux Available
+                  <span className="text-[11px] font-mono text-zinc-500 cursor-not-allowed select-none">
+                    macOS Coming Soon
                   </span>
                 ) : (
                   <a
                     href={opt.downloadUrl}
                     onClick={() => trackDownload(opt)}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-400 hover:text-red-300 transition"
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-white hover:underline underline-offset-4 transition"
                   >
-                    Download {opt.fileExt}
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <span>Download {opt.fileExt}</span>
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                     </svg>
                   </a>
@@ -339,15 +334,13 @@ export default function DownloadButtons() {
         </div>
       </div>
 
-      {/* Enterprise & Security Notice */}
-      <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-5 text-xs text-slate-400 space-y-2">
-        <div className="flex items-center gap-2 text-slate-300 font-semibold">
-          <svg className="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-          </svg>
+      {/* Enterprise Security Notice */}
+      <div className="rounded-[8px] border border-white/10 bg-[#131517] p-5 text-xs text-white/50 space-y-2">
+        <div className="flex items-center gap-2 text-white font-medium text-[13px]">
+          <span className="w-1.5 h-1.5 rounded-[1px] bg-[#969290]" />
           SHA-256 Checksum Integrity & Multi-Layer Stealth Verification
         </div>
-        <p>
+        <p className="leading-relaxed">
           All MAHI Browser releases include published SHA-256 checksums for cryptographic integrity verification. Shipped builds operate with JavaScript-layer stealth (MV3 main-world injection) and rebrowser-patches flags; native C++ engine available as an optional, separately provisioned build. For offline and air-gapped environments, MAHI Browser operates completely locally using embedded SQLite storage with zero cloud dependencies.
         </p>
       </div>

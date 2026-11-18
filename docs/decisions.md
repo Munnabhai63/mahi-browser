@@ -1,23 +1,110 @@
-# MAHI Browser — Architecture & Design Decisions
+# Decisions Log
 
-## Decision 1: Centralized Writable Runtime Path Resolver
-- **Context:** Packaged desktop applications (installed in `C:\Program Files\MAHI Browser\` on Windows, `/Applications/MAHI Browser.app/` on macOS, or mounted read-only AppImages on Linux) throw fatal `EPERM` or `EACCES` errors if the app writes to `process.cwd()`.
-- **Decision:** All runtime state writes (`crash-log.txt`, SQLite databases, updates, enc caches, cloud-workers, downloads) must resolve through `getWritableUserDataDir()` (`app.getPath('userData')` or OS appdata fallbacks). Static bundled resources must resolve through `getBundledResourcePath()` or `getLandingBaseDir()`.
+## 2026-11-19 - Blog Page & Navbar "Documentation -> Blog" 1:1 Lateral Framer Template Implementation
+- **Context**: User uploaded 2 screenshots: (1) circled "Documentation" in the navbar, requesting to rename it to "Blog", and (2) uploaded Lateral's Blog template (`https://lateral.framer.media/blog`) requesting to port the entire Blog structure 1:1 into the theme.
+- **Implementation**:
+  1. **Navbar Integration**: Replaced "Documentation" (`/docs`) in desktop and mobile navigation with "Blog" (`/blog`), added active link highlighting, and enabled automatic Light Theme (`#f9f9f9`) activation across all `/blog` routes.
+  2. **Blog Index (`/blog`) Architecture**:
+     - Built `BlogView.tsx` with exact `#f9f9f9` light theme and left gutter border (`border-l border-[#e6e3e3] pl-6 sm:pl-8`).
+     - Eyebrow `■ BLOG`, 62px Spectral serif `News & Insights` headline with muted italic accent, subtitle, and black pill `[ Request Demo ]` button.
+     - Featured 2-column bento card (`#e5e5e3`) with top animated hover line, `NEWS` category tag, `Jun 5, 2026` date, 34px Spectral serif title, description, and high-res phone graphic.
+     - 6-article grid (3 columns x 2 rows) with top line hover animations, `INSIGHTS` tag, 16:9 natural photography, dates, titles, and descriptions.
+     - Integrated the dark `#191919` bento CTA card directly below the 6-article grid matching `final-cta`: `■ GET STARTED`, 42px Spectral serif "See Why Top Finance Teams Use Lateral", "Book a demo to see Lateral in action.", white pill `[ Request Demo ]` button, and the dashboard UI mockup (`cta_dashboard.png`).
+  3. **Single Post View (`/blog/[slug]`)**:
+     - Replicated Lateral single post layout: `↶ All Posts` back button, 52px headline, wide banner image, 2-column editorial layout with author card (`John Carver • Co-Founder`), sticky sidebar with published date and `[ Request Demo ]` button, and "Read Next" 3-card related section with `[ View All Articles ]` button.
+  4. **Assets & Data**:
+     - Downloaded all 7 high-res photography assets locally into `landing/public/assets/blog/`.
+     - Scraped full editorial content for all 7 posts into `landing/lib/lateralBlogData.json` with helper functions in `landing/lib/blogData.ts`.
+  5. **Build & Verification**: Verified production build (`38/38` static routes generated cleanly) and confirmed with Playwright screenshots.
 
-## Decision 2: Atomic SQLite Single-Use Web Handoff Persistence
-- **Context:** In-memory `Map` handoff tokens were lost across backend server restarts and lacked atomic concurrency guards across multi-process workers.
-- **Decision:** Web handoff sessions are stored in SQLite table `web_handoff_sessions` and consumed atomically with `UPDATE web_handoff_sessions SET used = 1 WHERE code = ? AND used = 0 AND expires_at > ?`. This prevents token loss on restart and guarantees strict anti-replay protection.
+## 2026-11-19 - Company Page 1:1 Lateral Framer Template Implementation & Polish
+- **Context**: User provided iterative review on Company page (`/company`): replace Founder name with Mahipal Choudhary (`Mahipal Choudhary`, `Founder & CEO`) with studio B&W portrait, configure 2-men / 2-women leadership team, implement live count-up stats animation (`500+`, `52`, `25`), position 16:9 MAHI Keynote Conference banner, style Open Roles table with black pill buttons, place obsidian `#131517` employee quote card below Open Roles, and remove extra bottom CTA card.
+- **Implementation**:
+  1. **Leadership Team**: Position 1 updated to `Mahipal Choudhary` (`Founder & CEO`) with `mahipal_founder.jpg` portrait, followed by John Carver (Co-Founder), Sophie Green (CTO), and Jo West (VP Product). Styled with `text-[14px]` name and `text-[12px] text-white/60` role.
+  2. **Count-Up Stat Animation**: Built custom `StatCounter` component with `IntersectionObserver`, `requestAnimationFrame`, ease-out cubic curve, and `tabular-nums` counting to `500+`, `52`, and `25`.
+  3. **Conference Banner & Vacancies**: Exact 16:9 `mahi_conference_banner.jpg` banner placed right below Careers header, followed by Open Roles table with black pill `[ View Job ]` buttons.
+  4. **Quote Card Hierarchy**: Re-ordered so James Hunter quote card (`#131517`, 4:3 photo, Spectral serif quote, uppercase `SOFTWARE ENGINEER`) sits below the Open Roles table.
+  5. **CTA Card Clean-up**: Completely removed redundant bottom CTA section.
+  6. **Build & Verification**: Verified production build `31/31` static routes generated cleanly and captured Playwright visual evidence for all sections.
 
-## Decision 3: Trial & Subscription Entitlement Alignment
-- **Context:** Querying only `status = 'ACTIVE'` skipped users on `status = 'TRIAL'`, and expired users could retain elevated plan limits indefinitely if downgrade was not persisted.
-- **Decision:** Queries inspect `status IN ('ACTIVE', 'TRIAL')`. When a subscription or trial expires, an atomic DB update changes `status = 'EXPIRED'` on the subscription and resets `plan_id = 'plan_free'` on the user records.
+## 2026-11-19 - Pricing Page 1:1 Lateral Framer Template Redesign
+- **Context**: User instructed to redesign the Pricing page (`/pricing`) by picking the layout, styling, and design 1:1 from the Lateral template (`https://lateral.framer.media/pricing`) while populating it with MAHI Browser pricing tiers, stealth capabilities, and 0% Indian UPI payment rails.
+- **Implementation**:
+  1. **Hero Section (`#050505`)**: Recreated Lateral's dark obsidian hero with 62px Spectral serif headline (*Simple Pricing Built for Scale*), Monthly/Yearly toggle with 20% discount badge, and USD / INR switcher.
+  2. **3 Luxury Pricing Cards**: Core ($4 / ₹299), Growth ($20 / ₹1,499 with Popular pill), and Pro ($65 / ₹4,999) with Spectral serif pricing digits, PER USER/MONTH uppercase subtitle, grouped features with checkmarks, and white pill action buttons.
+  3. **Logo Ticker**: Monochrome white multi-account ecosystem platforms (Meta, Google Ads, TikTok, Amazon, eBay, YouTube, Reddit, LinkedIn).
+  4. **Compare Plans Section (`#f9f9f9`)**: Clean light-theme matrix table with sticky plan headers and 4 feature categories (Engines & Isolation, Stealth & Fingerprinting, Automation & Workflows, Payments & Team Governance).
+  5. **Testimonial Bento Card (`#e5e5e3`)**: 2-column card with warm natural photography on the left, executive quote on the right, and 3 ROI stats ($180K Savings, 99.8% Survival, 10x ROI).
+  6. **FAQ Section**: 2-column layout with "Your Questions Answered" on the left and 5 interactive collapsible accordion items on the right.
+  7. **Pre-Footer CTA & Footer**: Black CTA container and unified home footer (`Footer.tsx`).
+  8. **Build & QA**: Verified Next.js production build (`29/29` static routes generated with 0 errors) and validated via Playwright screenshots.
 
+## 2026-11-18 - Removed 4 Critical Flaws & FAQs from Customers Page
+- **Context**: User uploaded screenshot circling "4 Critical Flaws in Legacy Anti-Detect Browsers" and "Frequently Asked Questions" in red, asking to remove both sections from the page.
+- **Implementation**:
+  1. Removed Section 5 (`4 Critical Flaws`) and Section 6 (`Frequently Asked Questions`) from `landing/components/CustomersCompareView.tsx`.
+  2. Cleaned up unused `COMPARISON_FAQS` array and `FaqAccordion` import.
+  3. Page now flows seamlessly from Section 4 (4-Way Technical Comparison Matrix) directly into Section 5 (Pre-Footer CTA Card) and Footer, matching user requirements.
+  4. Verified Next.js build passes cleanly (`29/29` static routes) and captured fresh verification screenshots.
 
-## Decision 5: Supabase Central Auth & SQLite ID Synchronization & Account Security
-- **Context:** During Google OAuth, users were previously created only in local SQLite without syncing to Supabase PostgreSQL `auth_users`, causing 401s and FK errors on R2 cloud profiles. Additionally, suspended accounts could be erroneously revived to `ACTIVE`, and Nginx dropped security headers on static dashboard assets.
-- **Decision:** Google OAuth logins now query Supabase PostgreSQL `auth_users` first. If the user exists in PostgreSQL, that exact `userId` is reused and synced to SQLite with atomic child FK migration (`PRAGMA foreign_keys = OFF;` ... `ON;`). Suspended accounts are immediately blocked with `ACCOUNT_SUSPENDED` and their status is never overwritten to `ACTIVE`. If PostgreSQL is configured, errors fail closed to prevent split-brain accounts. In Nginx, all 4 security headers (`Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, `X-Robots-Tag`) are repeated inside static asset caching locations to guarantee strict inheritance.
+## 2026-11-18 - Customers Page 1:1 Lateral Functionality, Animation & Fleet Content
+- **Context**: User provided detailed feedback on Customers page:
+  1. The hero logo strip had placeholder template finance logos; replaced with real MAHI multi-account ecosystem platforms (Meta, Google Ads, TikTok, Amazon, eBay, YouTube, Reddit, LinkedIn) in a single horizontal row.
+  2. The featured case study card in Lateral has a soft `#e5e5e3` grey background and an animated top horizontal progress line that auto-advances slides every 6 seconds, with warm natural full-color photography (not grayscale).
+  3. The 3-column case studies below follow Lateral's exact clean column structure (`border-t border-[#d8d8d6]`, category tag, 16:10 natural color photo, `JUN 5, 2026` date, bold company name, and summary) without outer box cards, borders, or floating tags.
+  4. Content is 100% focused on MAHI Browser multi-account operations, anti-detect stealth, and GoLogin migration ROI.
+- **Implementation**:
+  1. **Navbar**: Added `Customers` link alongside `vs GoLogin` with dynamic active page highlighting.
+  2. **Hero Platform Logos**: Single-row clean horizontal flex with subtle monochrome opacity.
+  3. **Featured Card**: Interactive auto-advancing progress line (6s duration, pause on hover), Spectral headline, 10x ROI and $180k savings stats, and full natural color imagery.
+  4. **3-Column Grid**: Exact border-top clean layout with natural photography (`lattice_case.jpg`, `westbridge_exec.jpg`, `greythorne_case.jpg`) and MAHI fleet content.
+  5. **Architecture**: Clean client component `CustomersCompareView.tsx` with dedicated Server Component pages exporting full SEO `metadata` on `/customers`, `/compare`, and `/compare/gologin-alternative`.
+  6. **Build & QA**: Verified `npm --prefix landing run build` generates 29/29 routes with 0 errors, and captured full verification screenshots.
 
-## Decision 6: Dual-Engine Anti-Detect Truthfulness & Managed Camoufox Provisioning
-- **Context:** Previous landing page copy advertised native C++ engine patches that did not exist in released binaries, creating compliance, credibility, and audit risks. Furthermore, Camoufox engine provisioning used invalid version tags and hyphens in asset filenames resulting in HTTP 404s.
-- **Decision:** Marketing and documentation were strictly updated to truthfully state our dual-engine architecture: production Chromium with injection stealth layers + fully managed Firefox-based Camoufox anti-detect engine. The Camoufox download manager was pinned to `v135.0.1-beta.24` with verified dot asset naming conventions, binary header validation (MZ / ELF magic), and helper utility exclusions.
+## 2026-11-18 - Customers Page Full Lateral Light Theme Parity
+- **Context**: User clarified that the Customers reference page (`https://lateral.framer.media/customers`) uses a crisp **WHITE / LIGHT** (`#f9f9f9`) background, not fully black. All sizes, font weights, and spacing must match the Lateral template 1:1, while populated with MAHI Browser content.
+- **Implementation**:
+  1. **Background & Theme**: Switched main background to `#f9f9f9` with dark `#080808` typography.
+  2. **Navbar Dynamic Theme**: Updated `Navbar.tsx` to detect Customers/Compare routes and render with `#f9f9f9` light theme, dark branding, and black pill CTA button.
+  3. **Exact Dimensions & Typography**:
+     - Headline: `62px` Spectral serif font (`font-light leading-[1.08]`) with italic muted accent on "Everywhere".
+     - Left Guide Line: `1px solid #e6e3e3` with `32px` padding-left.
+     - Pill Button: `Request Demo` with `#080808` background and `14px` font size.
+  4. **Logos Sequence**: Vector SVGs arranged in exact reference sequence: Gantry, 53 CAPITAL, NORTHRIDGE, Greythorne, Westbridge, Lattice.
+  5. **Cards & Matrix**: Westbridge featured case study, 3-card bento grid, 4-way comparison matrix, and FAQs all styled with crisp white cards (`bg-white border-[#e6e3e3]`).
+  6. **Unified Footer**: Seamless transition to the unified black footer at the bottom.
 
+## 2026-11-18 - Customers / vs GoLogin Full Lateral Template + 4-Way Matrix Redesign
+- **Context**: The user instructed to work on the Customers page (`vs GoLogin`), expand the content substantially to match the Lateral Customers template (`https://lateral.framer.media/customers`), integrate the 4-way comparison matrix (`MAHI Browser v1.1.9` vs `GoLogin Orbita` vs `AdsPower` vs `Multilogin`), and strictly match the Lateral luxury monochrome aesthetic.
+- **Implementation**:
+  1. **Theme Alignment**: Styled with deep obsidian `#050505` / `#080808`, 1px subtle borders `border-white/10`, Spectral serif typography, and clean monochrome pills.
+  2. **Hero & Client Logos**: Built matching Lateral hero (`Trusted by Growth Fleets Everywhere`) with 6 authentic vector client partner logos.
+  3. **Westbridge Featured Case Study**: 2-column luxury layout with 3 key metrics (`10x ROI`, `$180k Saved`, `99.8% Fleet Survival`), executive quote, and photo.
+  4. **3-Col Case Studies Grid**: OmniScale Brands (E-Commerce), Nexus Data Labs (Data Extraction), and 53 Capital Portfolio (Multi-Team Fleet).
+  5. **4-Way Benchmark Matrix (`#matrix`)**: Fully integrated all 11 technical capabilities across engine versions, hooks, air-gapped sqlite, concurrency locks, and pricing rails. Highlighted MAHI with glass styling and red `BEST` badge.
+  6. **Routing Parity**: Linked cleanly across `/customers`, `/compare`, and `/compare/gologin-alternative`.
+  7. **Footer Parity**: Unified `Footer.tsx` renders identical 2-row layout without watermarks or copyright lines.
+
+## 2026-11-18 - Footer Strict Homepage 1:1 Match (All Extra Elements Removed)
+- **Problem**: User circled 3 items in red on the screenshot that did not belong to the Homepage footer:
+  1. Giant watermark `Lateral` in the background.
+  2. Copyright text `Mahi Browser Inc. © Copyright 2026` at the bottom left.
+  3. Floating template badges `Get This Template` and `Made in Framer` in the bottom right corner.
+- **Solution**: Removed all 3 items, verified 1:1 match with homepage.
+
+## 2026-11-19 - Full Lateral Luxury Aesthetic Polish Across Auth, Download & Book-Demo
+- **Context**: User noted that `/login` and `/signup` were still using the old red gaming theme (`#1e293b` blue-gray, bright red buttons, red dragon SVG) and asked to bring them to the premium Lateral theme.
+- **Implementation**:
+  1. **Login & Signup Redesign**:
+     - Upgraded `/login` and `/signup` with deep obsidian `#030303` background, atmospheric team hero texture overlay (`opacity-15`), and radial ambient glow.
+     - Centered `#131517` luxury floating cards with hairline border (`border-white/10`), top highlight gradient line, and backdrop blur.
+     - Replaced red dragon logo with the minimalist monochrome square brand emblem matching Navbar.
+     - Added monospace eyebrows (`■ AUTHENTICATION`, `■ GET STARTED FREE`) and Spectral serif headlines.
+     - Replaced red buttons with clean white pill primary buttons (`rounded-full bg-white text-black hover:bg-zinc-200`).
+     - Maintained full API logic (`/api/v1/auth/login`, `/api/v1/auth/register`, local storage, and Google Workspace OAuth).
+  2. **Book Demo & Download Redesign**:
+     - Upgraded `/book-demo` and `/download` with the same luxury `#030303` / `#131517` bento structure, white pill action buttons, and monospace eyebrows.
+     - Updated founder branding from "Munna Bhai" to **Mahipal Choudhary** (`BRAND.creator`, legal name, placeholders, and contact details).
+  3. **Build & Visual Verification**:
+     - Next.js production build (`npm run build`) succeeded with 38/38 static routes generated with 0 errors.
+     - Playwright screenshots captured and verified: `verified_auth_login.png`, `verified_auth_signup.png`, `verified_auth_download.png`, and `verified_auth_bookdemo.png`.

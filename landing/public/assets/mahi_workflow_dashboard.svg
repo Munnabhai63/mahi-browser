@@ -1,0 +1,334 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1648" height="928" viewBox="0 0 1648 928" role="img" aria-labelledby="title desc">
+  <title id="title">Mahi Browser — Stealth Profiles Dashboard</title>
+  <desc id="desc">Monochrome dark SaaS dashboard with sidebar, search, profile statistics, and platform fleet distribution.</desc>
+
+  <defs>
+    <linearGradient id="outer" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#b8b8b8"/>
+      <stop offset=".5" stop-color="#555"/>
+      <stop offset="1" stop-color="#151515"/>
+    </linearGradient>
+
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#08090b"/>
+      <stop offset="1" stop-color="#050506"/>
+    </linearGradient>
+
+    <linearGradient id="sidebar" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#111214"/>
+      <stop offset="1" stop-color="#0c0d0f"/>
+    </linearGradient>
+
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#111214"/>
+      <stop offset="1" stop-color="#0b0c0e"/>
+    </linearGradient>
+
+    <linearGradient id="selected" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#303034"/>
+      <stop offset="1" stop-color="#262629"/>
+    </linearGradient>
+
+    <linearGradient id="bar1" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#77777f"/>
+      <stop offset="1" stop-color="#55565e"/>
+    </linearGradient>
+
+    <linearGradient id="bar2" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#b8b8c0"/>
+      <stop offset="1" stop-color="#92939b"/>
+    </linearGradient>
+
+    <linearGradient id="bar3" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#e4e4e8"/>
+      <stop offset="1" stop-color="#c7c8ce"/>
+    </linearGradient>
+
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="20"/>
+    </filter>
+
+    <style>
+      .sans {
+        font-family: Inter, Arial, Helvetica, sans-serif;
+      }
+      .serif {
+        font-family: Georgia, 'Times New Roman', serif;
+      }
+      .muted {
+        fill: #b8b8bf;
+      }
+      .white {
+        fill: #f5f5f6;
+      }
+      .line {
+        stroke: #25262a;
+        stroke-width: 1;
+      }
+      .icon {
+        fill: none;
+        stroke: #d9d9df;
+        stroke-width: 2.4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+    </style>
+  </defs>
+
+  <!-- OUTER FRAME -->
+  <rect width="1648" height="928" fill="#030304"/>
+
+  <rect x="22" y="22" width="1605" height="883"
+        rx="18" fill="url(#outer)"/>
+
+  <rect x="92" y="82" width="1535" height="823"
+        rx="37" fill="#000" opacity=".72"
+        filter="url(#shadow)"/>
+
+  <rect x="94" y="83" width="1533" height="822"
+        rx="37" fill="#08090b"
+        stroke="#242528" stroke-width="4"/>
+
+  <rect x="118" y="108" width="1509" height="797"
+        rx="23" fill="url(#screen)"/>
+
+  <!-- SIDEBAR -->
+  <path d="M141 108H442V905H141Q118 905 118 882V131Q118 108 141 108Z"
+        fill="url(#sidebar)"/>
+
+  <path d="M442 108V905" class="line"/>
+  <path d="M118 194H1627" class="line"/>
+
+  <!-- LOGO -->
+  <circle cx="159" cy="151" r="31"
+          fill="#08090b" stroke="#34353a" stroke-width="2"/>
+
+  <path d="M145 160L155 139L166 160M151 151L163 139L174 160"
+        class="icon" stroke-width="3.2"/>
+
+  <text x="214" y="159" class="serif white" font-size="24">
+    Mahi Browser
+  </text>
+
+  <path d="M401 145l-7 7 7 7" class="icon" opacity=".8"/>
+
+  <!-- SEARCH BAR -->
+  <rect x="474" y="124" width="718" height="54"
+        rx="13" fill="#1a1b1e" stroke="#25262a"/>
+
+  <circle cx="502" cy="151" r="9" class="icon"/>
+  <path d="M509 158l7 7" class="icon"/>
+
+  <text x="538" y="159" class="sans muted" font-size="21">
+    Search profiles, proxies...
+  </text>
+
+  <rect x="1135" y="135" width="43" height="31"
+        rx="8" fill="#292a2f"/>
+
+  <text x="1144" y="156" class="sans muted" font-size="15">
+    ⌘K
+  </text>
+
+  <!-- NAVIGATION -->
+  <g class="sans" font-size="20">
+
+    <!-- Dashboard -->
+    <g transform="translate(147 243)">
+      <rect width="24" height="24" rx="3" class="icon"/>
+      <path d="M12 0v24M0 12h24" class="icon"/>
+    </g>
+    <text x="206" y="264" class="muted">Dashboard</text>
+
+    <!-- Profiles Active -->
+    <rect x="129" y="289" width="293" height="55"
+          rx="14" fill="url(#selected)"/>
+
+    <g transform="translate(148 302)" class="icon">
+      <circle cx="12" cy="7" r="6"/>
+      <path d="M2 25c0-7 20-7 20 0"/>
+    </g>
+
+    <text x="206" y="324" class="white">Profiles</text>
+
+    <!-- Proxies -->
+    <g transform="translate(148 365)" class="icon">
+      <ellipse cx="12" cy="5" rx="11" ry="4"/>
+      <path d="M1 5v18c0 5 22 5 22 0V5M1 14c0 5 22 5 22 0"/>
+    </g>
+
+    <text x="206" y="385" class="muted">Proxies</text>
+
+    <!-- Fingerprints -->
+    <g transform="translate(148 420)" class="icon">
+      <path d="M12 1C5 1 2 7 2 13v10M7 23V13c0-4 2-7 5-7s5 3 5 7v10M21 23V13c0-6-3-12-9-12"/>
+    </g>
+
+    <text x="206" y="441" class="muted">Fingerprints</text>
+
+    <!-- Automation -->
+    <g transform="translate(148 477)" class="icon">
+      <path d="M14 0L2 16h10l-2 16 14-20H13z"/>
+    </g>
+
+    <text x="206" y="498" class="muted">Automation</text>
+
+    <!-- Settings -->
+    <g transform="translate(148 537)" class="icon">
+      <path d="M12 1l3 2 4-1 2 4 3 3-2 4 1 4-4 2-2 4-5-1-4 1-2-4-4-2 1-5-1-4 4-2 2-4z"/>
+      <circle cx="12" cy="12" r="4"/>
+    </g>
+
+    <text x="206" y="558" class="muted">Settings</text>
+
+  </g>
+
+  <!-- MAIN CONTENT -->
+
+  <path d="M478 249l-9 0m0 0 8-8m-8 8 8 8"
+        class="icon" opacity=".9"/>
+
+  <text x="510" y="256" class="sans muted" font-size="18">
+    Back to Dashboard
+  </text>
+
+  <!-- HEADER ICON -->
+  <rect x="474" y="291" width="75" height="76"
+        rx="18" fill="#292a2f"/>
+
+  <g transform="translate(493 310)" class="icon">
+    <rect x="1" y="1" width="37" height="42" rx="5"/>
+    <circle cx="19" cy="14" r="6"/>
+    <path d="M8 34c1-9 21-9 22 0"/>
+  </g>
+
+  <!-- PAGE TITLE -->
+  <text x="578" y="350" class="serif white" font-size="58">
+    Stealth Profiles
+  </text>
+
+  <!-- ACTIVE BADGE -->
+  <rect x="998" y="308" width="117" height="44"
+        rx="22" fill="#111214"/>
+
+  <circle cx="1024" cy="330" r="5.5" fill="#c7c7ce"/>
+
+  <text x="1040" y="338" class="sans white" font-size="19">
+    Active
+  </text>
+
+  <!-- STAT CARDS -->
+  <g>
+
+    <rect x="474" y="398" width="355" height="151"
+          rx="17" fill="url(#card)"
+          stroke="#27282c" stroke-width="1.4"/>
+
+    <rect x="855" y="398" width="370" height="151"
+          rx="17" fill="url(#card)"
+          stroke="#27282c" stroke-width="1.4"/>
+
+    <rect x="1251" y="398" width="352" height="151"
+          rx="17" fill="url(#card)"
+          stroke="#27282c" stroke-width="1.4"/>
+
+    <!-- ACTIVE PROFILES -->
+    <text x="507" y="445" class="sans muted" font-size="20">
+      Active Profiles
+    </text>
+
+    <text x="507" y="513" class="serif white" font-size="64">
+      1,420
+    </text>
+
+    <!-- BAN FREE RATE -->
+    <text x="887" y="445" class="sans muted" font-size="20">
+      Ban-Free Rate
+    </text>
+
+    <text x="887" y="513" class="serif white" font-size="64">
+      99%
+    </text>
+
+    <!-- PIXELSCAN -->
+    <text x="1284" y="445" class="sans muted" font-size="20">
+      Passed PixelScan
+    </text>
+
+    <text x="1284" y="513" class="serif white" font-size="64">
+      100%
+    </text>
+
+    <!-- PROFILE ICON -->
+    <rect x="744" y="420" width="55" height="55"
+          rx="14" fill="#292a2f"/>
+
+    <g transform="translate(759 432)" class="icon">
+      <circle cx="12" cy="8" r="6"/>
+      <path d="M2 29c0-8 20-8 20 0"/>
+    </g>
+
+    <!-- SHIELD ICON -->
+    <rect x="1142" y="420" width="55" height="55"
+          rx="14" fill="#292a2f"/>
+
+    <g transform="translate(1157 431)" class="icon">
+      <path d="M13 1L25 6v9c0 8-6 13-12 16C7 28 1 23 1 15V6z"/>
+      <path d="M7 15l4 4 8-9"/>
+    </g>
+
+    <!-- CHECK ICON -->
+    <rect x="1527" y="420" width="55" height="55"
+          rx="14" fill="#292a2f"/>
+
+    <g transform="translate(1541 434)" class="icon">
+      <circle cx="13" cy="13" r="12"/>
+      <path d="M7 13l4 4 8-9"/>
+    </g>
+
+  </g>
+
+  <!-- PLATFORM FLEET DISTRIBUTION -->
+  <rect x="474" y="578" width="1129" height="263"
+        rx="17" fill="url(#card)"
+        stroke="#27282c" stroke-width="1.4"/>
+
+  <text x="507" y="632" class="serif white" font-size="31">
+    Platform Fleet Distribution
+  </text>
+
+  <!-- DISTRIBUTION BARS -->
+  <rect x="507" y="656" width="1024" height="20"
+        rx="7" fill="url(#bar1)"/>
+
+  <rect x="507" y="686" width="543" height="20"
+        rx="7" fill="url(#bar2)"/>
+
+  <rect x="507" y="716" width="345" height="20"
+        rx="7" fill="url(#bar3)"/>
+
+  <rect x="507" y="746" width="238" height="20"
+        rx="7" fill="#eeeeF1"/>
+
+  <!-- LEGEND -->
+  <g class="sans" font-size="19">
+
+    <circle cx="516" cy="804" r="9" fill="#77777f"/>
+    <text x="543" y="811" class="muted">Meta Ads</text>
+    <text x="639" y="811" class="white" font-weight="600">540</text>
+
+    <circle cx="749" cy="804" r="9" fill="#a4a5ad"/>
+    <text x="777" y="811" class="muted">Google Ads</text>
+    <text x="889" y="811" class="white" font-weight="600">380</text>
+
+    <circle cx="999" cy="804" r="9" fill="#c4c5cc"/>
+    <text x="1027" y="811" class="muted">TikTok</text>
+    <text x="1106" y="811" class="white" font-weight="600">320</text>
+
+    <circle cx="1214" cy="804" r="9" fill="#eeeeF1"/>
+    <text x="1242" y="811" class="muted">Amazon</text>
+    <text x="1332" y="811" class="white" font-weight="600">180</text>
+
+  </g>
+
+</svg>

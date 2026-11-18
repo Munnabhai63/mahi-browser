@@ -1,96 +1,12 @@
 import React from 'react';
-import Link from 'next/link';
-import { BRAND } from '../lib/brand';
+
+const EXACT_HOMEPAGE_FOOTER_HTML = `<footer class="framer-4WIBY framer-ouHNz framer-huoV0 framer-SvvV3 framer-amyoh framer-Tiqm0 framer-1cwph6i framer-v-1cwph6i" data-border="true" data-framer-name="Desktop" style="--border-bottom-width: 0px; --border-color: var(--token-a5d748db-3180-4b00-915f-52de4feae1c1, rgba(237, 239, 242, 0.15)); --border-left-width: 0px; --border-right-width: 0px; --border-style: solid; --border-top-width: 1px; width: 100%; opacity: 1;"><div class="framer-yspg4y" data-framer-name="Container" style="opacity: 1;"><div class="framer-1sk53gx" data-framer-name="Top" style="opacity: 1;"><div class="framer-b68mck" data-framer-name="Main Content" style="opacity: 1;"><div class="framer-1a5zzxs" data-framer-name="Left Content" style="opacity: 1;"><div class="framer-wsrfrz" data-framer-component-type="RichTextContainer" data-framer-name="Title" style="justify-content: center; --extracted-a0htzi: var(--token-c95d001f-1513-4074-a93a-2d3f80627576, rgb(255, 255, 255)); --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><h3 class="framer-text framer-styles-preset-1cbjjzi" data-styles-preset="xHQaNLbtd" dir="auto" style="--framer-text-color: var(--extracted-a0htzi, var(--token-c95d001f-1513-4074-a93a-2d3f80627576, rgb(255, 255, 255)));">Supercharge Your Multi-Account Operations</h3></div></div><div class="framer-h3dej9" data-framer-name="CTA" style="opacity: 1;"><div class="framer-v4r0hz-container" style="opacity: 1;"><a class="framer-ahRQy framer-DIx7U framer-r9urgy framer-v-r9urgy framer-isi6n1" data-framer-name="Primary" data-highlight="true" href="/download" style="background-color: var(--token-cecf886f-35d1-4207-a045-acf7164ed7a9, rgb(255, 255, 255)); border-radius: 45px; opacity: 1;" tabindex="0"><div class="framer-1e3ib6y" data-framer-component-type="RichTextContainer" data-framer-name="Get started" style="justify-content: center; --extracted-r6o4lv: var(--token-d38b0f81-f118-48c8-8bf1-8eae39bbebfc, rgb(8, 8, 8)); --framer-paragraph-spacing: 0px; opacity: 1; transform: none;"><p class="framer-text framer-styles-preset-4l8074" data-styles-preset="UZwODHG8s" dir="auto" style="--framer-text-color: var(--extracted-r6o4lv, var(--token-d38b0f81-f118-48c8-8bf1-8eae39bbebfc, rgb(8, 8, 8)));">Download for Windows</p></div></a></div></div></div></div><div class="framer-12tw0p0" data-border="true" data-framer-name="Main" style="--border-bottom-width: 0px; --border-color: var(--token-a5d748db-3180-4b00-915f-52de4feae1c1, rgba(237, 239, 242, 0.15)); --border-left-width: 0px; --border-right-width: 0px; --border-style: solid; --border-top-width: 1px; opacity: 1;"><div class="framer-13g2e73" data-framer-name="Main Content" style="opacity: 1;"><div class="framer-1n9lqd0" data-framer-name="Left Content" style="opacity: 1;"><a as="a" class="framer-15mkhyb framer-1c09ug9" data-framer-name="Logo" data-framer-page-link-current="true" href="/" style="height: auto; aspect-ratio: 1 / 1; opacity: 1;"><div data-framer-background-image-wrapper="true" style="position: absolute; border-radius: inherit; corner-shape: inherit; inset: 0px;"><img alt="Mahi Browser" decoding="auto" height="600" loading="lazy" sizes="26px" src="/assets/7IgQL6RW6RRIKqHfv4QAMyq5s.svg" srcset="/assets/7IgQL6RW6RRIKqHfv4QAMyq5s.svg" style="display: block; width: 100%; height: 100%; border-radius: inherit; corner-shape: inherit; object-position: center center; object-fit: cover;" width="600"/></div></a></div><div class="framer-qwamhe" data-framer-name="Product" style="opacity: 1;"><div class="framer-kg4s5u" data-framer-component-type="RichTextContainer" data-framer-name="Title" style="justify-content: center; --extracted-r6o4lv: var(--token-8ec7110b-200a-422e-b77d-da5cd3a2ce37, rgba(255, 255, 255, 0.6)); --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><p class="framer-text framer-styles-preset-1k5fx91" data-styles-preset="gmm2FfZrm" dir="auto" style="--framer-text-color: var(--extracted-r6o4lv, var(--token-8ec7110b-200a-422e-b77d-da5cd3a2ce37, rgba(255, 255, 255, 0.6)));">Product</p></div><div class="framer-fjsn6e" data-framer-component-type="RichTextContainer" data-framer-name="Features" style="justify-content: center; --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><p class="framer-text framer-styles-preset-1pb0ath" data-styles-preset="vqs3u5GdU" dir="auto"><a class="framer-text framer-styles-preset-46zxtr" data-styles-preset="DB5CPUj7W" href="/features">Features</a></p></div><div class="framer-1am2r08" data-framer-component-type="RichTextContainer" data-framer-name="Use Cases" style="justify-content: center; --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><p class="framer-text framer-styles-preset-1pb0ath" data-styles-preset="vqs3u5GdU" dir="auto"><a class="framer-text framer-styles-preset-46zxtr" data-styles-preset="DB5CPUj7W" href="/#solutions">Use Cases</a></p></div><div class="framer-1m4wnmq" data-framer-component-type="RichTextContainer" data-framer-name="Customer Stories" style="justify-content: center; --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><p class="framer-text framer-styles-preset-1pb0ath" data-styles-preset="vqs3u5GdU" dir="auto"><a class="framer-text framer-styles-preset-46zxtr" data-styles-preset="DB5CPUj7W" href="/#solutions">Customer Stories</a></p></div><div class="framer-s0ibyb" data-framer-component-type="RichTextContainer" data-framer-name="Pricing" style="justify-content: center; --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><p class="framer-text framer-styles-preset-1pb0ath" data-styles-preset="vqs3u5GdU" dir="auto"><a class="framer-text framer-styles-preset-46zxtr" data-styles-preset="DB5CPUj7W" href="/pricing">Pricing</a></p></div></div><div class="framer-1jwczch" data-framer-name="Company" style="opacity: 1;"><div class="framer-jdr0ik" data-framer-component-type="RichTextContainer" data-framer-name="Title" style="justify-content: center; --extracted-r6o4lv: var(--token-8ec7110b-200a-422e-b77d-da5cd3a2ce37, rgba(255, 255, 255, 0.6)); --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><p class="framer-text framer-styles-preset-1k5fx91" data-styles-preset="gmm2FfZrm" dir="auto" style="--framer-text-color: var(--extracted-r6o4lv, var(--token-8ec7110b-200a-422e-b77d-da5cd3a2ce37, rgba(255, 255, 255, 0.6)));">Company</p></div><div class="framer-1ilxif" data-framer-component-type="RichTextContainer" data-framer-name="About Us" style="justify-content: center; --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><p class="framer-text framer-styles-preset-1pb0ath" data-styles-preset="vqs3u5GdU" dir="auto"><a class="framer-text framer-styles-preset-46zxtr" data-styles-preset="DB5CPUj7W" href="/about">About Us</a></p></div><div class="framer-17oih47" data-framer-component-type="RichTextContainer" data-framer-name="Careers" style="justify-content: center; --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><p class="framer-text framer-styles-preset-1pb0ath" data-styles-preset="vqs3u5GdU" dir="auto"><a class="framer-text framer-styles-preset-46zxtr" data-styles-preset="DB5CPUj7W" href="/careers">Careers</a></p></div><div class="framer-1eaerhm" data-framer-component-type="RichTextContainer" data-framer-name="Terms" style="justify-content: center; --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><p class="framer-text framer-styles-preset-1pb0ath" data-styles-preset="vqs3u5GdU" dir="auto"><a class="framer-text framer-styles-preset-46zxtr" data-styles-preset="DB5CPUj7W" href="/terms">Terms</a></p></div><div class="framer-15fn963" data-framer-component-type="RichTextContainer" data-framer-name="Privacy" style="justify-content: center; --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><p class="framer-text framer-styles-preset-1pb0ath" data-styles-preset="vqs3u5GdU" dir="auto"><a class="framer-text framer-styles-preset-46zxtr" data-styles-preset="DB5CPUj7W" href="/privacy">Privacy</a></p></div></div><div class="framer-1dtmeaa" data-framer-name="Connect" style="opacity: 1;"><div class="framer-mdatic" data-framer-component-type="RichTextContainer" data-framer-name="Title" style="justify-content: center; --extracted-r6o4lv: var(--token-8ec7110b-200a-422e-b77d-da5cd3a2ce37, rgba(255, 255, 255, 0.6)); --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><p class="framer-text framer-styles-preset-1k5fx91" data-styles-preset="gmm2FfZrm" dir="auto" style="--framer-text-color: var(--extracted-r6o4lv, var(--token-8ec7110b-200a-422e-b77d-da5cd3a2ce37, rgba(255, 255, 255, 0.6)));">Connect</p></div><div class="framer-11895zk" data-framer-component-type="RichTextContainer" data-framer-name="Blog" style="justify-content: center; --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><p class="framer-text framer-styles-preset-1pb0ath" data-styles-preset="vqs3u5GdU" dir="auto"><a class="framer-text framer-styles-preset-46zxtr" data-styles-preset="DB5CPUj7W" href="./blog">Blog</a></p></div><div class="framer-ic2xfd" data-framer-component-type="RichTextContainer" data-framer-name="Request Demo" style="justify-content: center; --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><p class="framer-text framer-styles-preset-1pb0ath" data-styles-preset="vqs3u5GdU" dir="auto"><a class="framer-text framer-styles-preset-46zxtr" data-styles-preset="DB5CPUj7W" href="/download">Download Free Trial</a></p></div><div class="framer-7tcge5" data-framer-component-type="RichTextContainer" data-framer-name="LinkedIn" style="justify-content: center; --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><p class="framer-text framer-styles-preset-1pb0ath" data-styles-preset="vqs3u5GdU" dir="auto"><a class="framer-text framer-styles-preset-46zxtr" data-styles-preset="DB5CPUj7W" href="https://linkedin.com" rel="">LinkedIn</a></p></div><div class="framer-w8g3wu" data-framer-component-type="RichTextContainer" data-framer-name="X" style="justify-content: center; --framer-paragraph-spacing: 0px; transform: none; opacity: 1;"><p class="framer-text framer-styles-preset-1pb0ath" data-styles-preset="vqs3u5GdU" dir="auto"><a class="framer-text framer-styles-preset-46zxtr" data-styles-preset="DB5CPUj7W" href="https://x.com/" rel="">X</a></p></div></div></div></div></div></footer>`;
 
 export default function Footer() {
   return (
-    <footer className="border-t border-slate-800 bg-slate-950 text-slate-400">
-      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 gap-10 md:grid-cols-4 lg:grid-cols-5">
-          {/* Brand Col */}
-          <div className="md:col-span-2 space-y-4">
-            <div className="flex items-center gap-3">
-              <img
-                src={BRAND.assets.logo}
-                alt="MAHI Browser"
-                width={36}
-                height={36}
-                draggable={false}
-                className="footer-brand-logo-img h-9 w-9 object-contain select-none rounded-lg"
-                style={{ userSelect: 'none' }}
-              />
-              <span className="font-bold text-lg text-white tracking-tight">
-                MAHI <span className="text-red-500 font-extrabold">Browser</span>
-              </span>
-            </div>
-            <p className="text-sm text-slate-400 max-w-sm leading-relaxed">
-              {BRAND.tagline}. Developed by {BRAND.creator}. Engineered for media buyers, growth teams, and automation architects.
-            </p>
-            <div className="space-y-1.5 text-xs text-slate-400 pt-2 border-t border-slate-900">
-              <p className="flex items-center gap-2">
-                <span className="text-slate-400 font-medium">Direct Support:</span>
-                <a href={`mailto:${BRAND.officialEmail}`} className="text-slate-300 hover:text-red-400 transition">{BRAND.officialEmail}</a>
-              </p>
-              <p className="flex items-center gap-2">
-                <span className="text-slate-400 font-medium">Operations:</span>
-                <a href={`mailto:${BRAND.hubEmail}`} className="text-slate-300 hover:text-red-400 transition">{BRAND.hubEmail}</a>
-              </p>
-              <p className="flex items-center gap-2">
-                <span className="text-slate-400 font-medium">WhatsApp / Call:</span>
-                <a href="tel:+919376343629" className="text-slate-300 hover:text-red-400 transition">{BRAND.phone}</a>
-              </p>
-              <p className="flex items-center gap-2">
-                <span className="text-slate-400 font-medium">Direct UPI Settlement:</span>
-                <span className="font-mono text-emerald-400 font-semibold">{BRAND.upiId}</span>
-              </p>
-            </div>
-          </div>
-
-          {/* Product Col */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-200">Product</h4>
-            <ul className="space-y-2 text-sm">
-              <li><Link href="/#features" className="hover:text-white transition">Core Features</Link></li>
-              <li><Link href="/#dual-engine" className="hover:text-white transition">Dual Engine Matrix</Link></li>
-              <li><Link href="/pricing" className="hover:text-white transition">Plans & Pricing</Link></li>
-              <li><Link href="/download" className="hover:text-white transition">Download Client</Link></li>
-              <li><Link href="/compare/gologin-alternative" className="hover:text-white transition">GoLogin vs MAHI</Link></li>
-              <li><Link href="/book-demo" className="hover:text-white transition">Book Enterprise Demo</Link></li>
-            </ul>
-          </div>
-
-          {/* Docs & Resources Col */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-200">Resources</h4>
-            <ul className="space-y-2 text-sm">
-              <li><Link href="/docs/getting-started" className="hover:text-white transition">Quickstart Guide</Link></li>
-              <li><Link href="/docs/anti-detect-fingerprinting" className="hover:text-white transition">Fingerprint Stealth</Link></li>
-              <li><Link href="/docs/proxy-configuration" className="hover:text-white transition">Proxy Protocols</Link></li>
-              <li><Link href="/docs/automation-api" className="hover:text-white transition">Automation & RPA</Link></li>
-              <li><Link href="/docs/team-workspaces" className="hover:text-white transition">Team Workspaces</Link></li>
-              <li><Link href="/blog" className="hover:text-white transition">Engineering Blog</Link></li>
-            </ul>
-          </div>
-
-          {/* Trust & Legal Col */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-200">Legal & Trust</h4>
-            <ul className="space-y-2 text-sm">
-              <li><Link href="/privacy" className="hover:text-white transition">Privacy Policy</Link></li>
-              <li><Link href="/terms" className="hover:text-white transition">Terms of Service</Link></li>
-              <li><Link href="/aup" className="hover:text-white transition">Acceptable Use Policy</Link></li>
-              <li><span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">● Cloud Systems Operational</span></li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="mt-12 pt-8 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
-          <p>© 2026 {BRAND.legalName}. All rights reserved.</p>
-          <p className="text-slate-400">
-            Engineered with Zero CDP Leak Technology. Built for privacy, speed, and cross-platform resilience.
-          </p>
-        </div>
-      </div>
-    </footer>
+    <div
+      className="w-full"
+      dangerouslySetInnerHTML={{ __html: EXACT_HOMEPAGE_FOOTER_HTML }}
+    />
   );
 }

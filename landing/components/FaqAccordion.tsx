@@ -11,12 +11,12 @@ export const DEFAULT_FAQS: FaqItem[] = [
   {
     question: 'What makes MAHI Browser different from GoLogin, Multilogin, or AdsPower?',
     answer:
-      'Unlike legacy anti-detect browsers that rely on easily detectable prototypes on outdated browser forks, MAHI Browser uses Chromium 138 with JavaScript-layer MV3 main-world stealth injection (canvas/audio/WebGL/timezone/client-hints coherence) plus an on-demand Camoufox C++ hardened Gecko engine (with optional native C++ Chromium builds available). We integrate rebrowser-patches to eliminate CDP Runtime.Enable leaks, offer local-first SQLite offline operation, and support distributed multi-seat profile sync with Redis concurrency locks.',
+      'Unlike legacy anti-detect browsers that rely on easily detectable prototypes on outdated browser forks, MAHI Browser uses Chromium 138 with JavaScript-layer MV3 main-world stealth injection (canvas/audio/WebGL/timezone/client-hints coherence) plus an on-demand Camoufox C++ hardened Gecko engine. We integrate rebrowser-patches to eliminate CDP Runtime.Enable leaks, offer local-first SQLite offline operation, and support distributed multi-seat profile sync with Redis concurrency locks.',
   },
   {
     question: 'How does the Dual-Engine (Chromium 138 + Camoufox) architecture protect against detection?',
     answer:
-      'Certain anti-fraud systems (like DataDome, Akamai, and Cloudflare Turnstile) inspect browser-specific execution characteristics. By offering both Chromium 138 and on-demand Camoufox (hardened C++ Firefox engine with native Gecko Canvas/Audio/Font hooks, downloaded on demand), you can isolate profiles into completely distinct rendering and networking stacks, making cross-engine profile correlation virtually impossible.',
+      'Certain anti-fraud systems (like DataDome, Akamai, and Cloudflare Turnstile) inspect browser-specific execution characteristics. By offering both Chromium 138 and on-demand Camoufox (hardened C++ Firefox engine with native Gecko Canvas/Audio/Font hooks), you can isolate profiles into completely distinct rendering and networking stacks, making cross-engine profile correlation virtually impossible.',
   },
   {
     question: 'Does MAHI Browser work completely offline without sending data to servers?',
@@ -79,30 +79,30 @@ export default function FaqAccordion({ items = DEFAULT_FAQS }: { items?: FaqItem
               key={idx}
               className={`rounded-xl border transition-all duration-200 overflow-hidden ${
                 isOpen
-                  ? 'border-red-900/60 bg-slate-900/70 shadow-lg'
-                  : 'border-slate-800/80 bg-slate-950/40 hover:border-slate-700/80'
+                  ? 'border-black/25 bg-white shadow-md'
+                  : 'border-black/10 bg-white hover:border-black/20 shadow-sm'
               }`}
             >
               <button
                 type="button"
                 onClick={() => toggle(idx)}
                 aria-expanded={isOpen}
-                className="w-full flex items-center justify-between gap-4 p-5 text-left text-sm sm:text-base font-bold text-white transition focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                className="w-full flex items-center justify-between gap-4 p-5 text-left text-sm sm:text-[15px] font-medium text-[#0a0a0a] transition focus:outline-none"
               >
-                <span>{item.question}</span>
+                <span className="font-['Spectral',serif] text-base sm:text-lg">{item.question}</span>
                 <span
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-slate-300 transition-transform duration-200 ${
-                    isOpen ? 'rotate-180 bg-red-950 border-red-800 text-red-400' : ''
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-black/10 bg-zinc-100 text-zinc-700 transition-transform duration-200 ${
+                    isOpen ? 'rotate-180 bg-black text-white border-black' : ''
                   }`}
                 >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </span>
               </button>
 
               {isOpen && (
-                <div className="px-5 pb-5 pt-1 text-xs sm:text-sm leading-relaxed text-slate-300 border-t border-slate-800/50">
+                <div className="px-5 pb-5 pt-1 text-xs sm:text-[13.5px] leading-relaxed text-zinc-600 border-t border-black/5 font-normal">
                   {item.answer}
                 </div>
               )}

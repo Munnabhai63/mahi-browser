@@ -30,12 +30,22 @@ const config: Config = {
       },
       animation: {
         marquee: 'marquee 28s linear infinite',
+        'marquee-reverse': 'marqueeReverse 28s linear infinite',
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        fadeInScale: 'fadeInScale 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards',
       },
       keyframes: {
         marquee: {
           '0%': { transform: 'translateX(0%)' },
           '100%': { transform: 'translateX(-50%)' },
+        },
+        marqueeReverse: {
+          '0%': { transform: 'translateX(-50%)' },
+          '100%': { transform: 'translateX(0%)' },
+        },
+        fadeInScale: {
+          '0%': { opacity: '0', transform: 'scale(0.985) translateY(6px)' },
+          '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
         },
       },
     },

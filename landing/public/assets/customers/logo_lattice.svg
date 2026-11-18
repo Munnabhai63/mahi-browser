@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 130 28" fill="none">
+  <!-- Lattice Isometric Node Icon -->
+  <circle cx="12" cy="14" r="8" stroke="#080808" stroke-width="2" fill="none"/>
+  <path d="M8 10L16 18M8 18L16 10" stroke="#080808" stroke-width="1.8"/>
+  <!-- Lattice Typography -->
+  <text x="28" y="19" font-family="'Inter', -apple-system, sans-serif" font-size="16" font-weight="600" fill="#080808" letter-spacing="-0.2">Lattice</text>
+</svg>

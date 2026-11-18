@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2560 1440" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <!-- किनारों को स्मूथ रखने के लिए 4K क्लिप पाथ -->
+    <clipPath id="ctaDashboardFrame">
+      <rect x="0" y="0" width="2560" height="1440" rx="24" ry="24" />
+    </clipPath>
+  </defs>
+
+  <!-- 4K अल्ट्रा-एचडी इमेज लेयर -->
+  <g clip-path="url(#ctaDashboardFrame)">
+    <image href="/assets/cta_dashboard_monochrome_4k.png" x="0" y="0" width="2560" height="1440" preserveAspectRatio="xMidYMid slice" />
+  </g>
+</svg>

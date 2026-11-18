@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg_soc" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#111215"/>
+      <stop offset="100%" stop-color="#07080a"/>
+    </linearGradient>
+    <linearGradient id="card_soc" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#181920"/>
+      <stop offset="100%" stop-color="#101116"/>
+    </linearGradient>
+    <linearGradient id="silver_grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#8a8b94"/>
+    </linearGradient>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif; }
+      .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+      .serif { font-family: Georgia, 'Times New Roman', serif; }
+      .text-w { fill: #ffffff; }
+      .text-s { fill: #d8d8e0; }
+      .text-m { fill: #9da0aa; }
+      .border { stroke: #2a2b34; stroke-width: 1.2; }
+    </style>
+  </defs>
+
+  <!-- Frame -->
+  <rect width="800" height="600" fill="url(#bg_soc)"/>
+  <rect x="0.5" y="0.5" width="799" height="599" rx="14" fill="none" class="border"/>
+
+  <!-- Window Header -->
+  <rect x="0" y="0" width="800" height="50" fill="#14151a"/>
+  <line x1="0" y1="50" x2="800" y2="50" stroke="#262732" stroke-width="1.2"/>
+  <circle cx="28" cy="25" r="5.5" fill="#4a4b55"/>
+  <circle cx="48" cy="25" r="5.5" fill="#363740"/>
+  <circle cx="68" cy="25" r="5.5" fill="#282930"/>
+  <text x="100" y="30" class="mono text-m" font-size="13" font-weight="500" letter-spacing="0.5">MAHI // SOCIAL_FLEET_CONTROLLER</text>
+  <rect x="605" y="13" width="168" height="25" rx="12.5" fill="#1e2028" stroke="#363744" stroke-width="1.2"/>
+  <circle cx="622" cy="25.5" r="4" fill="#ffffff"/>
+  <text x="636" y="30" class="mono text-w" font-size="12" font-weight="600">320 Profiles Active</text>
+
+  <!-- Top Metrics -->
+  <rect x="28" y="68" width="232" height="92" rx="8" fill="url(#card_soc)" class="border"/>
+  <text x="46" y="94" class="sans text-m" font-size="12" font-weight="600">AGGREGATE AUDIENCE</text>
+  <text x="46" y="134" class="serif text-w" font-size="32" font-weight="700">680K+</text>
+  <rect x="180" y="80" width="65" height="22" rx="4" fill="#252733"/>
+  <text x="188" y="95" class="mono text-w" font-size="11" font-weight="600">+18.4%</text>
+
+  <rect x="284" y="68" width="232" height="92" rx="8" fill="url(#card_soc)" class="border"/>
+  <text x="302" y="94" class="sans text-m" font-size="12" font-weight="600">COOKIE PERSISTENCE</text>
+  <text x="302" y="134" class="serif text-w" font-size="32" font-weight="700">320/320</text>
+  <rect x="432" y="80" width="70" height="22" rx="4" fill="#252733"/>
+  <text x="442" y="95" class="mono text-w" font-size="11" font-weight="600">0 Relog</text>
+
+  <rect x="540" y="68" width="232" height="92" rx="8" fill="url(#card_soc)" class="border"/>
+  <text x="558" y="94" class="sans text-m" font-size="12" font-weight="600">PHONE / SMS GATES</text>
+  <text x="558" y="134" class="serif text-w" font-size="32" font-weight="700">0 Alerts</text>
+  <rect x="684" y="80" width="74" height="22" rx="4" fill="#252733"/>
+  <text x="696" y="95" class="mono text-w" font-size="11" font-weight="600">Clean</text>
+
+  <!-- Platform Fleet Breakdown Section -->
+  <rect x="28" y="176" width="744" height="398" rx="10" fill="url(#card_soc)" class="border"/>
+  <text x="48" y="206" class="sans text-w" font-size="15" font-weight="600">Cross-Platform Fleet Allocation &amp; Session Health</text>
+  <text x="48" y="228" class="sans text-m" font-size="12">Automated warm-up scripts, device fingerprint isolation, and rotating proxy assignments</text>
+
+  <!-- Platform 1: X (Twitter) -->
+  <rect x="48" y="250" width="696" height="68" rx="8" fill="#111217" class="border"/>
+  <rect x="64" y="264" width="40" height="40" rx="7" fill="#22242e"/>
+  <text x="77" y="290" class="sans text-w" font-size="18" font-weight="700">𝕏</text>
+  <text x="116" y="278" class="sans text-w" font-size="14" font-weight="700">X / Twitter Fleet (120 Profiles)</text>
+  <text x="116" y="298" class="mono text-m" font-size="12">Audience: 310K • Retweets: 4.8K/day • Proxy: Mobile 4G AT&amp;T</text>
+  <rect x="490" y="274" width="136" height="7" rx="3.5" fill="#22242e"/>
+  <rect x="490" y="274" width="126" height="7" rx="3.5" fill="url(#silver_grad)"/>
+  <text x="642" y="282" class="mono text-w" font-size="12" font-weight="700">● 100% Ready</text>
+
+  <!-- Platform 2: Discord -->
+  <rect x="48" y="328" width="696" height="68" rx="8" fill="#111217" class="border"/>
+  <rect x="64" y="342" width="40" height="40" rx="7" fill="#22242e"/>
+  <text x="77" y="368" class="mono text-w" font-size="16" font-weight="700">D</text>
+  <text x="116" y="356" class="sans text-w" font-size="14" font-weight="700">Discord Community &amp; Moderator Fleet (95 Profiles)</text>
+  <text x="116" y="376" class="mono text-m" font-size="12">Servers: 48 • Daily Messages: 12.4K • Proxy: Static Residential</text>
+  <rect x="490" y="352" width="136" height="7" rx="3.5" fill="#22242e"/>
+  <rect x="490" y="352" width="116" height="7" rx="3.5" fill="url(#silver_grad)"/>
+  <text x="642" y="360" class="mono text-w" font-size="12" font-weight="700">● 100% Ready</text>
+
+  <!-- Platform 3: Reddit -->
+  <rect x="48" y="406" width="696" height="68" rx="8" fill="#111217" class="border"/>
+  <rect x="64" y="420" width="40" height="40" rx="7" fill="#22242e"/>
+  <text x="77" y="446" class="mono text-w" font-size="16" font-weight="700">R</text>
+  <text x="116" y="434" class="sans text-w" font-size="14" font-weight="700">Reddit Karma &amp; Discussion Hub (65 Profiles)</text>
+  <text x="116" y="454" class="mono text-m" font-size="12">Subreddits: 32 • Average Karma: 8,420 • Shadowban Rate: 0.0%</text>
+  <rect x="490" y="430" width="136" height="7" rx="3.5" fill="#22242e"/>
+  <rect x="490" y="430" width="102" height="7" rx="3.5" fill="url(#silver_grad)"/>
+  <text x="642" y="438" class="mono text-w" font-size="12" font-weight="700">● 100% Ready</text>
+
+  <!-- Platform 4: LinkedIn -->
+  <rect x="48" y="484" width="696" height="68" rx="8" fill="#111217" class="border"/>
+  <rect x="64" y="498" width="40" height="40" rx="7" fill="#22242e"/>
+  <text x="77" y="524" class="mono text-w" font-size="16" font-weight="700">in</text>
+  <text x="116" y="512" class="sans text-w" font-size="14" font-weight="700">LinkedIn B2B Outreach &amp; Warm-up (40 Profiles)</text>
+  <text x="116" y="532" class="mono text-m" font-size="12">Connections: 45K • Acceptance: 42% • Zero Weekly Invitation Caps</text>
+  <rect x="490" y="508" width="136" height="7" rx="3.5" fill="#22242e"/>
+  <rect x="490" y="508" width="94" height="7" rx="3.5" fill="url(#silver_grad)"/>
+  <text x="642" y="516" class="mono text-w" font-size="12" font-weight="700">● 100% Ready</text>
+</svg>

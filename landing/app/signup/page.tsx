@@ -49,9 +49,12 @@ export default function SignupPage() {
           window.location.href = `/download`;
         }
       } else {
-        const errorText = typeof data.error === 'string'
-          ? data.error
-          : (data.error?.message || data.message || 'Failed to create account. Please try another email.');
+        const errorText =
+          typeof data.error === 'string'
+            ? data.error
+            : data.error?.message ||
+              data.message ||
+              'Failed to create account. Please try another email.';
         setErrorMsg(errorText);
       }
     } catch {
@@ -68,35 +71,66 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="mx-auto flex min-h-[75vh] max-w-md items-center justify-center px-4 py-12">
-      <div className="w-full space-y-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-6 sm:p-8 backdrop-blur-md shadow-2xl">
-        <div className="text-center space-y-2">
-          <Link href="/" className="inline-block brand-logo-clean">
-            <img
-              src={BRAND.assets.logo}
-              alt="MAHI Browser"
-              width={48}
-              height={48}
-              draggable={false}
-              className="mx-auto h-12 w-12 rounded-xl object-contain select-none"
-              style={{ userSelect: 'none' }}
-            />
+    <div className="relative min-h-screen flex items-center justify-center bg-[#030303] text-white selection:bg-white selection:text-black px-4 py-24 sm:py-32 overflow-hidden">
+      
+      {/* Subtle Atmospheric Background Overlay matching Lateral Hero */}
+      <div className="absolute inset-0 z-0 pointer-events-none">
+        <img
+          src="/assets/company/hero_walking.jpg"
+          alt=""
+          className="w-full h-full object-cover object-center opacity-15 filter contrast-125"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#030303]/80 via-[#030303]/95 to-[#030303]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_800px_500px_at_50%_20%,rgba(255,255,255,0.04),transparent)]" />
+      </div>
+
+      {/* Main Luxury Auth Card */}
+      <div className="relative z-10 w-full max-w-[460px] rounded-[8px] bg-[#131517] border border-white/10 p-8 sm:p-10 shadow-2xl backdrop-blur-xl">
+        
+        {/* Subtle top highlight hairline */}
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+
+        {/* Card Header & Brand Emblem */}
+        <div className="text-center mb-8">
+          <Link href="/" className="inline-block group mb-4">
+            <div className="w-11 h-11 rounded-lg bg-zinc-900 border border-zinc-700/60 p-2 shadow-sm flex items-center justify-center group-hover:border-zinc-500 transition-colors">
+              <svg className="w-full h-full text-white" viewBox="0 0 24 24" fill="none">
+                <rect x="3" y="3" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="2" fill="none" />
+                <rect x="9" y="9" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="2" fill="#18181b" />
+              </svg>
+            </div>
           </Link>
-          <h1 className="text-2xl font-extrabold text-white">Create Your MAHI Account</h1>
-          <p className="text-xs text-slate-400">
-            Includes 15 offline SQLite profiles and 7-day Pro trial with cloud sync.
+
+          {/* Eyebrow */}
+          <div className="inline-flex items-center gap-2 mb-2">
+            <span className="w-1.5 h-1.5 rounded-[1px] bg-[#969290] inline-block" />
+            <span className="text-[11px] font-mono font-normal uppercase tracking-[0.05em] text-[#969290]">
+              GET STARTED FREE
+            </span>
+          </div>
+
+          {/* Heading in Spectral Serif */}
+          <h1 className="font-['Spectral',serif] text-2xl sm:text-[32px] font-light tracking-[-0.03em] leading-tight text-white mb-2">
+            Create Your Account
+          </h1>
+
+          {/* Subtitle */}
+          <p className="text-white/60 text-[13px] leading-relaxed max-w-xs mx-auto">
+            Includes 15 offline SQLite profiles and 7-day Pro trial with air-gapped cloud sync.
           </p>
         </div>
 
+        {/* Error Alert */}
         {errorMsg && (
-          <div className="rounded-lg border border-red-800/60 bg-red-950/40 p-3 text-xs text-red-300">
+          <div className="mb-6 rounded-[6px] border border-red-500/30 bg-red-950/20 px-3.5 py-2.5 text-xs text-red-200">
             {errorMsg}
           </div>
         )}
 
+        {/* Registration Form */}
         <form onSubmit={handleRegister} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
+            <label className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
               Full Name
             </label>
             <input
@@ -104,66 +138,90 @@ export default function SignupPage() {
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Munna Bhai"
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:border-red-500 focus:outline-none"
+              placeholder="Mahipal Choudhary"
+              className="w-full rounded-[6px] border border-white/10 bg-[#080808] px-4 py-2.5 text-[14px] text-white placeholder-zinc-500 focus:border-white/40 focus:ring-1 focus:ring-white/20 focus:outline-none transition-all"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
-              Work Email Address
+            <label className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
+              Work Email
             </label>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@agency.com"
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:border-red-500 focus:outline-none"
+              placeholder="name@company.com"
+              className="w-full rounded-[6px] border border-white/10 bg-[#080808] px-4 py-2.5 text-[14px] text-white placeholder-zinc-500 focus:border-white/40 focus:ring-1 focus:ring-white/20 focus:outline-none transition-all"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
-              Password
+            <label className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
+              Password (Min 8 Characters)
             </label>
             <input
               type="password"
               required
+              minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••••••"
-              minLength={8}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:border-red-500 focus:outline-none"
+              className="w-full rounded-[6px] border border-white/10 bg-[#080808] px-4 py-2.5 text-[14px] text-white placeholder-zinc-500 focus:border-white/40 focus:ring-1 focus:ring-white/20 focus:outline-none transition-all"
             />
           </div>
 
-          <div className="text-[11px] text-slate-400">
-            Target Tier: <span className="text-red-400 font-semibold">{planId}</span> (Can be adjusted anytime)
+          {/* Plan Selection Badge */}
+          <div className="rounded-[6px] border border-white/10 bg-[#080808] p-3 flex items-center justify-between text-xs">
+            <div>
+              <div className="font-mono text-[10px] uppercase text-[#969290]">Selected Tier</div>
+              <div className="text-white font-medium capitalize mt-0.5">
+                {planId === 'free' ? 'Starter (15 Free Profiles)' : `${planId} Plan (7-Day Trial)`}
+              </div>
+            </div>
+            <Link href="/pricing" className="text-zinc-400 hover:text-white underline text-[11px] transition-colors">
+              Change
+            </Link>
           </div>
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full rounded-lg bg-red-600 py-2.5 text-xs sm:text-sm font-bold text-white transition hover:bg-red-500 disabled:opacity-50"
-          >
-            {isLoading ? 'Creating Account...' : 'Start 7-Day Pro Trial'}
-          </button>
+          {/* White Pill Create Account Button */}
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full rounded-full bg-white text-black py-3 text-[14px] font-medium transition-all duration-200 hover:bg-zinc-200 active:scale-[0.98] disabled:opacity-50 shadow-lg shadow-white/5 flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 text-black" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  <span>Creating Account...</span>
+                </>
+              ) : (
+                'Create Account'
+              )}
+            </button>
+          </div>
         </form>
 
-        <div className="relative my-4">
+        {/* Divider */}
+        <div className="relative my-6 flex items-center justify-center">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-slate-800" />
+            <div className="w-full border-t border-white/10" />
           </div>
-          <div className="relative flex justify-center text-[10px] uppercase">
-            <span className="bg-slate-900 px-2 text-slate-400">Or continue with</span>
-          </div>
+          <span className="relative bg-[#131517] px-3 text-[10px] font-mono uppercase tracking-[0.08em] text-[#969290]">
+            OR SIGN UP WITH
+          </span>
         </div>
 
+        {/* Google Workspace OAuth Button */}
         <button
           onClick={handleGoogleOAuth}
           type="button"
-          className="w-full flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-950 py-2.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800 hover:text-white"
+          className="w-full flex items-center justify-center gap-2.5 rounded-full border border-white/15 bg-white/[0.04] hover:bg-white/[0.08] hover:border-white/25 py-2.5 text-[13px] font-medium text-white transition-all shadow-sm"
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24">
             <path
@@ -183,15 +241,17 @@ export default function SignupPage() {
               d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
             />
           </svg>
-          Google Workspace OAuth
+          <span>Google Workspace OAuth</span>
         </button>
 
-        <p className="text-center text-xs text-slate-400">
-          Already registered?{' '}
-          <Link href="/login" className="font-semibold text-red-400 hover:text-red-300">
-            Sign In
+        {/* Card Footer Link */}
+        <p className="text-center text-[13px] text-zinc-400 mt-6 pt-4 border-t border-white/5">
+          Already have an account?{' '}
+          <Link href="/login" className="text-white hover:underline underline-offset-4 font-medium transition-colors">
+            Sign in
           </Link>
         </p>
+
       </div>
     </div>
   );

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 130 28" fill="none">
+  <!-- Gantry Chevron Icon -->
+  <path d="M4 14L10 8H16L10 14L16 20H10L4 14Z" fill="#080808"/>
+  <path d="M12 14L18 8H24L18 14L24 20H18L12 14Z" fill="#080808"/>
+  <!-- Gantry Typography -->
+  <text x="32" y="19" font-family="'Inter', -apple-system, sans-serif" font-size="16" font-weight="700" fill="#080808" letter-spacing="-0.3">Gantry</text>
+</svg>

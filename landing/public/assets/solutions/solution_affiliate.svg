@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg_aff" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#111215"/>
+      <stop offset="100%" stop-color="#07080a"/>
+    </linearGradient>
+    <linearGradient id="card_aff" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#181920"/>
+      <stop offset="100%" stop-color="#101116"/>
+    </linearGradient>
+    <linearGradient id="spline_aff" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#d4d4dc"/>
+      <stop offset="100%" stop-color="#7a7b85"/>
+    </linearGradient>
+    <linearGradient id="area_aff" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.0"/>
+    </linearGradient>
+    <linearGradient id="silver_bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#a0a0a8"/>
+    </linearGradient>
+    <linearGradient id="dark_bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#60616b"/>
+      <stop offset="100%" stop-color="#32333b"/>
+    </linearGradient>
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif; }
+      .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+      .serif { font-family: Georgia, 'Times New Roman', serif; }
+      .text-w { fill: #ffffff; }
+      .text-s { fill: #d8d8e0; }
+      .text-m { fill: #9da0aa; }
+      .border { stroke: #2a2b34; stroke-width: 1.2; }
+      .line-grid { stroke: #202129; stroke-width: 1; stroke-dasharray: 4 4; }
+    </style>
+  </defs>
+
+  <!-- Frame -->
+  <rect width="800" height="600" fill="url(#bg_aff)"/>
+  <rect x="0.5" y="0.5" width="799" height="599" rx="14" fill="none" class="border"/>
+
+  <!-- Window Header -->
+  <rect x="0" y="0" width="800" height="50" fill="#14151a"/>
+  <line x1="0" y1="50" x2="800" y2="50" stroke="#262732" stroke-width="1.2"/>
+  <circle cx="28" cy="25" r="5.5" fill="#4a4b55"/>
+  <circle cx="48" cy="25" r="5.5" fill="#363740"/>
+  <circle cx="68" cy="25" r="5.5" fill="#282930"/>
+  <text x="100" y="30" class="mono text-m" font-size="13" font-weight="500" letter-spacing="0.5">MAHI // AD_ARBITRAGE_FLEET</text>
+  <rect x="615" y="13" width="158" height="25" rx="12.5" fill="#1e2028" stroke="#363744" stroke-width="1.2"/>
+  <circle cx="632" cy="25.5" r="4" fill="#ffffff"/>
+  <text x="646" y="30" class="mono text-w" font-size="12" font-weight="600">240 Ads Live</text>
+
+  <!-- 3 Top Metric Cards -->
+  <rect x="28" y="68" width="232" height="92" rx="8" fill="url(#card_aff)" class="border"/>
+  <text x="46" y="94" class="sans text-m" font-size="12" font-weight="600">AGGREGATE ROAS</text>
+  <text x="46" y="134" class="serif text-w" font-size="32" font-weight="700">4.82x</text>
+  <rect x="175" y="80" width="70" height="22" rx="4" fill="#252733"/>
+  <text x="184" y="95" class="mono text-w" font-size="11" font-weight="600">+34.8%</text>
+
+  <rect x="284" y="68" width="232" height="92" rx="8" fill="url(#card_aff)" class="border"/>
+  <text x="302" y="94" class="sans text-m" font-size="12" font-weight="600">PIXEL ISOLATION</text>
+  <text x="302" y="134" class="serif text-w" font-size="32" font-weight="700">100%</text>
+  <rect x="432" y="80" width="70" height="22" rx="4" fill="#252733"/>
+  <text x="440" y="95" class="mono text-w" font-size="11" font-weight="600">0 Cross</text>
+
+  <rect x="540" y="68" width="232" height="92" rx="8" fill="url(#card_aff)" class="border"/>
+  <text x="558" y="94" class="sans text-m" font-size="12" font-weight="600">DAILY AD SPEND</text>
+  <text x="558" y="134" class="serif text-w" font-size="32" font-weight="700">$48.5K</text>
+  <rect x="684" y="80" width="74" height="22" rx="4" fill="#252733"/>
+  <text x="692" y="95" class="mono text-w" font-size="11" font-weight="600">Active</text>
+
+  <!-- Central Chart Box -->
+  <rect x="28" y="176" width="744" height="236" rx="10" fill="url(#card_aff)" class="border"/>
+  <text x="48" y="206" class="sans text-w" font-size="15" font-weight="600">Campaign Scaling &amp; Ban-Free Conversion Curve</text>
+  <text x="48" y="228" class="sans text-m" font-size="12">Meta US (120) • TikTok EU (80) • Google Ads (40) — Independent Canvas &amp; WebGL</text>
+
+  <!-- Grid Lines -->
+  <line x1="48" y1="254" x2="748" y2="254" class="line-grid"/>
+  <line x1="48" y1="298" x2="748" y2="298" class="line-grid"/>
+  <line x1="48" y1="342" x2="748" y2="342" class="line-grid"/>
+  <line x1="48" y1="384" x2="748" y2="384" stroke="#2a2b36" stroke-width="1.2"/>
+
+  <!-- Bar Visuals -->
+  <rect x="80" y="312" width="20" height="72" rx="3" fill="url(#dark_bar)"/>
+  <rect x="106" y="278" width="20" height="106" rx="3" fill="url(#silver_bar)"/>
+
+  <rect x="164" y="295" width="20" height="89" rx="3" fill="url(#dark_bar)"/>
+  <rect x="190" y="254" width="20" height="130" rx="3" fill="url(#silver_bar)"/>
+
+  <rect x="248" y="276" width="20" height="108" rx="3" fill="url(#dark_bar)"/>
+  <rect x="274" y="228" width="20" height="156" rx="3" fill="url(#silver_bar)"/>
+
+  <rect x="332" y="258" width="20" height="126" rx="3" fill="url(#dark_bar)"/>
+  <rect x="358" y="208" width="20" height="176" rx="3" fill="url(#silver_bar)"/>
+
+  <rect x="416" y="246" width="20" height="138" rx="3" fill="url(#dark_bar)"/>
+  <rect x="442" y="190" width="20" height="194" rx="3" fill="url(#silver_bar)"/>
+
+  <!-- Spline & Area -->
+  <path d="M 470 348 Q 520 316, 570 256 T 670 204 T 734 180 L 734 384 L 470 384 Z" fill="url(#area_aff)"/>
+  <path d="M 470 348 Q 520 316, 570 256 T 670 204 T 734 180" fill="none" stroke="url(#spline_aff)" stroke-width="3.2" stroke-linecap="round"/>
+  <circle cx="734" cy="180" r="5.5" fill="#ffffff"/>
+  <circle cx="734" cy="180" r="10" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-opacity="0.5"/>
+
+  <!-- Bottom Fleet Rows -->
+  <rect x="28" y="428" width="744" height="144" rx="8" fill="#111217" class="border"/>
+  
+  <!-- Row 1 -->
+  <rect x="44" y="442" width="24" height="24" rx="5" fill="#252733"/>
+  <text x="52" y="458" class="mono text-w" font-size="12" font-weight="700">M</text>
+  <text x="78" y="458" class="sans text-w" font-size="13" font-weight="600">Meta_Scale_US_#14</text>
+  <text x="250" y="458" class="mono text-m" font-size="12">4G Mobile • AT&amp;T</text>
+  <text x="430" y="458" class="mono text-s" font-size="12">Canvas: Unique Noise 0.88</text>
+  <text x="645" y="458" class="mono text-w" font-size="12" font-weight="700">● 100% Stealth</text>
+  <line x1="44" y1="476" x2="756" y2="476" stroke="#22232d" stroke-width="1"/>
+
+  <!-- Row 2 -->
+  <rect x="44" y="488" width="24" height="24" rx="5" fill="#252733"/>
+  <text x="52" y="504" class="mono text-w" font-size="12" font-weight="700">T</text>
+  <text x="78" y="504" class="sans text-w" font-size="13" font-weight="600">TikTok_Ads_EU_#08</text>
+  <text x="250" y="504" class="mono text-m" font-size="12">Residential • Vodafone</text>
+  <text x="430" y="504" class="mono text-s" font-size="12">WebGL: Apple M3 Max</text>
+  <text x="645" y="504" class="mono text-w" font-size="12" font-weight="700">● 100% Stealth</text>
+  <line x1="44" y1="522" x2="756" y2="522" stroke="#22232d" stroke-width="1"/>
+
+  <!-- Row 3 -->
+  <rect x="44" y="534" width="24" height="24" rx="5" fill="#252733"/>
+  <text x="52" y="550" class="mono text-w" font-size="12" font-weight="700">G</text>
+  <text x="78" y="550" class="sans text-w" font-size="13" font-weight="600">Google_Ads_Agency_#22</text>
+  <text x="250" y="550" class="mono text-m" font-size="12">Static Res • Comcast</text>
+  <text x="430" y="550" class="mono text-s" font-size="12">AudioContext: Injected</text>
+  <text x="645" y="550" class="mono text-w" font-size="12" font-weight="700">● 100% Stealth</text>
+</svg>
