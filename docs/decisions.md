@@ -1,5 +1,15 @@
 # Decisions Log
 
+## 2026-11-19 - Production Deployment of Luxury Monochrome Web Portal to Live VPS (`200.97.164.97`)
+- **Context**: The user verified the local luxury monochrome web design and authorized immediate live deployment to replace the legacy red landing page currently served by Nginx on production server `200.97.164.97`.
+- **Implementation**:
+  1. **Pre-Deployment Safety**: Created timestamped backup of `/var/www/mahibrowser/landing/out/` on VPS (`out_backup_20261119_0612`).
+  2. **Production Build**: Exported 39 static routes via Next.js 14 (`npm --prefix landing run build`), generating fresh HTML, JS chunks, and optimized assets into `landing/out/`.
+  3. **File Sync & Transfer**: Synced `landing/public/index.html` and `landing/index.html` with `landing/public/theme.html`. Packaged into compressed archive `scratch/landing_out.tar.gz` (49 MB) and uploaded over secure SSH (port 2222) to `/var/www/mahibrowser/landing/`.
+  4. **Extraction & Permissions**: Extracted archive on the remote server into `/var/www/mahibrowser/landing/out/`, set ownership `www-data:www-data` and permissions `755`.
+  5. **Nginx Reload**: Verified Nginx configuration (`nginx -t`) and reloaded (`systemctl reload nginx`) with zero downtime and zero interruption to co-located services.
+  6. **Live Verification**: Verified `https://mahibrowser.com` and all sub-routes (`/pricing`, `/company`, `/careers`, `/blog`, `/customers`, `/compare`, `/sitemap.xml`, `/robots.txt`) return HTTP 200 with the active luxury monochrome portal.
+
 ## 2026-11-19 - Blog Page (`/blog` & `/blog/[slug]`) Full Anti-Detect Wiring
 - **Context**: Replaced all placeholder Lateral finance/accounting articles with 7 authentic, comprehensive MAHI Browser anti-detect engineering and kernel architecture articles. Wired Mahipal Choudhary (Founder & CEO) as the primary author with studio B&W portrait across all posts.
 - **Implementation**:

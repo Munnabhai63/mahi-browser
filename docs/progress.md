@@ -1,6 +1,27 @@
 # Progress Tracker
 
-## Latest Updates (2026-11-18)
+## Latest Updates (2026-11-19)
+- [x] **Live Production VPS Deployment (`mahibrowser.com` on VPS `200.97.164.97`):**
+  - Created timestamped server backup `/var/www/mahibrowser/landing/out_backup_20261119_0612` via SSH.
+  - Built fresh static export (39/39 pages) in `landing/out/` with updated luxury monochrome theme.
+  - Synced `landing/public/index.html` and `landing/index.html` with `landing/public/theme.html` (all footer links, 0% Indian UPI, Mahipal Choudhary founder attribution).
+  - Packaged and transferred `scratch/landing_out.tar.gz` (49 MB) to VPS `200.97.164.97:2222`.
+  - Extracted archive into `/var/www/mahibrowser/landing/out/` with `www-data:www-data` ownership and `755` permissions.
+  - Tested Nginx configuration syntax (`nginx -t`) and reloaded Nginx gracefully with zero downtime (`systemctl reload nginx`).
+  - Verified 100% HTTP 200 OK on live endpoints:
+    * `https://mahibrowser.com/` -> 200 OK (luxury monochrome theme live)
+    * `https://mahibrowser.com/pricing` -> 200 OK (3 tiers, monthly/annual toggle, Indian UPI)
+    * `https://mahibrowser.com/company` -> 200 OK (Mahipal Choudhary Founder & CEO)
+    * `https://mahibrowser.com/careers` -> 200 OK
+    * `https://mahibrowser.com/blog` -> 200 OK (7 anti-detect deep dives)
+    * `https://mahibrowser.com/customers` -> 200 OK (case studies & 4-way comparison)
+    * `https://mahibrowser.com/compare` -> 200 OK
+    * `https://mahibrowser.com/sitemap.xml` -> 200 OK
+    * `https://mahibrowser.com/robots.txt` -> 200 OK
+    * `https://mahibrowser.com/blog/mahi-browser-v2-released-dual-engine-architecture` -> 200 OK
+  - Committed (`cdb164e`) and pushed to `origin/main`.
+
+## Previous Updates (2026-11-18)
 - [x] Converted Customers / vs GoLogin Page (`/customers`, `/compare`, `/compare/gologin-alternative`) to 100% Lateral Light Theme (`#f9f9f9` background).
 - [x] Matched exact Lateral reference dimensions, font sizes (`62px` Spectral serif headline with light italic accent), margins, and line heights.
 - [x] Restyled Navbar to automatically switch to Light Theme (`#f9f9f9` background, dark text, black pill button) when on Customers/Compare routes with active "Customers" and "vs GoLogin" nav links.
