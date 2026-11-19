@@ -601,7 +601,8 @@ export default function FeaturesPage() {
       {/* ========================================================================= */}
       {/* 5. SECTION 5: PURPOSE-BUILT FOR YOUR INDUSTRY                             */}
       {/* ========================================================================= */}
-      <section id="solutions" className="bg-[#f9f9f9] text-[#080808] pt-24 sm:pt-28 lg:pt-32 pb-24 sm:pb-28 lg:pb-32 border-t border-zinc-200/80">
+      <section id="solutions" className="relative bg-[#f9f9f9] text-[#080808] pt-24 sm:pt-28 lg:pt-32 pb-24 sm:pb-28 lg:pb-32 border-t border-zinc-200/80">
+        <div id="use-cases" className="absolute -top-20" />
         <div className="max-w-[1440px] mx-auto px-4 sm:px-8 lg:px-10">
           
           <div className="border-l border-zinc-300/80 pl-6 sm:pl-8 lg:pl-10">
