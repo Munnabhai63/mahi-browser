@@ -47,7 +47,9 @@ describe('PHASE 18 — Complete Plan-Based Feature Entitlements & Automatic Unlo
   describe('1. Canonical Plan Catalog Resolution & Aliases', () => {
     it('should correctly map all short and legacy plan IDs to canonical IDs', () => {
       expect(legacyPlanIdToCanonical('free')).toBe('free');
-      expect(legacyPlanIdToCanonical('starter')).toBe('professional_10');
+      expect(legacyPlanIdToCanonical('starter')).toBe('mahi_starter');
+      expect(legacyPlanIdToCanonical('growth')).toBe('mahi_growth');
+      expect(legacyPlanIdToCanonical('ultimate')).toBe('mahi_ultimate');
       expect(legacyPlanIdToCanonical('pro_25')).toBe('professional_25');
       expect(legacyPlanIdToCanonical('pro')).toBe('professional_100');
       expect(legacyPlanIdToCanonical('trial')).toBe('professional_100');

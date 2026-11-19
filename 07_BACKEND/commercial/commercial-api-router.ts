@@ -13,6 +13,7 @@ import {
   boostUserQuota,
   setUserFeatureOverrides,
 } from './commercial-auth-service.js';
+import { TRIAL_CONFIG } from './canonical-plan-catalog.js';
 import {
   registerCentralUser,
   verifyEmailToken,
@@ -1123,7 +1124,7 @@ export async function handleCommercialApiRoutes(
     const token = commUserResult?.token || result.tokens?.accessToken;
     const isTrial = registeredUser?.signupIntent === 'trial' || body.intent === 'trial';
     const trialExpiresAt = registeredUser?.trialExpiresAt;
-    const planId = registeredUser?.planId || (isTrial ? 'professional_50' : 'plan_free');
+    const planId = registeredUser?.planId || (isTrial ? TRIAL_CONFIG.trialPlanId : 'plan_free');
 
     // Record privacy-safe conversion funnel event
     try {
@@ -1272,7 +1273,7 @@ export async function handleCommercialApiRoutes(
   // 1. OAuth Start: Redirects browser to Google OAuth consent
   if (routePath === '/api/v1/auth/google/start' && method === 'GET') {
     const intent = parsedUrl.searchParams.get('intent') || 'trial';
-    const planId = parsedUrl.searchParams.get('plan') || parsedUrl.searchParams.get('planId') || 'professional_50';
+    const planId = parsedUrl.searchParams.get('plan') || parsedUrl.searchParams.get('planId') || TRIAL_CONFIG.trialPlanId;
     const billingCycle = parsedUrl.searchParams.get('billing') || parsedUrl.searchParams.get('billingCycle') || 'annual';
     const returnUrl = parsedUrl.searchParams.get('returnUrl') || parsedUrl.searchParams.get('return_url') || '';
     const handoff = parsedUrl.searchParams.get('handoff') || '';
@@ -1350,7 +1351,7 @@ export async function handleCommercialApiRoutes(
     if (error || !state) {
       const stateRecord = state ? validateAndConsumeOAuthState(state) : null;
       const fallbackIntent = stateRecord?.intent || 'trial';
-      const fallbackPlan = stateRecord?.planId || 'professional_50';
+      const fallbackPlan = stateRecord?.planId || TRIAL_CONFIG.trialPlanId;
       const errorMsg = error === 'access_denied' ? 'cancelled' : (error || 'oauth_error');
       res.writeHead(302, {
         Location: `${websiteBase}/signup?error=${encodeURIComponent(errorMsg)}&intent=${encodeURIComponent(fallbackIntent)}&plan=${encodeURIComponent(fallbackPlan)}`,
@@ -1926,9 +1927,11 @@ export async function handleCommercialApiRoutes(
       return true;
     }
     const body = await parseBody(req);
-    const trialPlanId = body.planId || body.plan_id;
+    // Fall back to the canonical trial plan: the download page sends no planId, and
+    // TRIAL_CONFIG is the single source of truth for which plan a trial grants.
+    const trialPlanId = body.planId || body.plan_id || TRIAL_CONFIG.trialPlanId;
     if (!trialPlanId) {
-      sendJSON(res, 400, { success: false, error: 'planId is required for trial activation.' });
+      sendJSON(res, 400, { success: false, error: 'NO_TRIAL_PLAN_CONFIGURED' });
       return true;
     }
     const result = activateUserTrial(auth.userId, trialPlanId);

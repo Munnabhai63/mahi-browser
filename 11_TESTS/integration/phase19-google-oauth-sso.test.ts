@@ -24,6 +24,9 @@ describe('Phase 19: Google OAuth SSO, Central Auth & Intent Continuity Suite', (
   const dbPath = path.join(tempDir, 'google_oauth_test.sqlite');
 
   beforeAll(async () => {
+    process.env.GOOGLE_CLIENT_ID = 'test-client-id.apps.googleusercontent.com';
+    process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret-value-1234567890';
+    process.env.GOOGLE_REDIRECT_URI = 'https://mahibrowser.com/api/v1/auth/google/callback';
     await initSqlEngine();
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
@@ -34,6 +37,9 @@ describe('Phase 19: Google OAuth SSO, Central Auth & Intent Continuity Suite', (
   });
 
   afterAll(() => {
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    delete process.env.GOOGLE_REDIRECT_URI;
     closeDatabase();
     try {
       if (fs.existsSync(tempDir)) {

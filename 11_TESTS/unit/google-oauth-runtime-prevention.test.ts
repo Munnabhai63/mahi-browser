@@ -15,11 +15,17 @@ import {
 
 describe('Google OAuth SSO Runtime & "https is not defined" Regression Prevention', () => {
   beforeAll(async () => {
+    process.env.GOOGLE_CLIENT_ID = 'test-client-id.apps.googleusercontent.com';
+    process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret-value-1234567890';
+    process.env.GOOGLE_REDIRECT_URI = 'https://mahibrowser.com/api/v1/auth/google/callback';
     await initSqlEngine();
     await initializeDatabase();
   });
 
   afterAll(() => {
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    delete process.env.GOOGLE_REDIRECT_URI;
     closeDatabase();
   });
 
