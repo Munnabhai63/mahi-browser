@@ -34,7 +34,39 @@ export interface EmailProvider {
     inviterName: string,
     inviteUrl: string
   ): Promise<boolean>;
-  sendBillingAlert(email: string, invoiceId: string, amount: string, reason: string): Promise<boolean>;
+  sendBillingAlert(
+    email: string,
+    invoiceId: string,
+    amount: string,
+    reason: string,
+    metadata?: {
+      planName?: string;
+      userId?: string;
+      submittedAt?: string;
+      instruction?: string;
+    }
+  ): Promise<boolean>;
+  sendPaymentPendingEmail(payload: {
+    email: string;
+    planName: string;
+    amountInr: string;
+    utr: string;
+    submittedAt: string;
+  }): Promise<boolean>;
+  sendPaymentApprovedEmail(payload: {
+    email: string;
+    planName: string;
+    amountInr: string;
+    paidAt: string;
+    licenceKey?: string;
+    validUntil?: string;
+  }): Promise<boolean>;
+  sendPaymentRejectedEmail(payload: {
+    email: string;
+    planName: string;
+    reason: string;
+    supportEmail: string;
+  }): Promise<boolean>;
   sendSupportEscalationEmail(payload: {
     ticketNumber: string;
     userName?: string;
@@ -61,6 +93,70 @@ export interface DomainAuthConfig {
     dmarc?: string;
     dkim?: string;
   };
+}
+
+export function maskEmail(email: string): string {
+  if (!email || typeof email !== 'string') return '***';
+  const parts = email.split('@');
+  if (parts.length !== 2) return '***';
+  const [name, domain] = parts;
+  const maskedName = name.length <= 2 ? `${name[0]}***` : `${name[0]}***${name[name.length - 1]}`;
+  return `${maskedName}@${domain}`;
+}
+
+export function renderPaymentPendingHtml(payload: {
+  planName: string;
+  amountInr: string;
+  utr: string;
+  submittedAt: string;
+}): string {
+  return `
+    <div style="background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; border-radius: 8px; border: 1px solid #334155;">
+      <h2 style="color: #ffffff; margin-top: 0;">Payment Submission Received</h2>
+      <p>Your payment submission for <strong>${payload.planName}</strong> plan is currently pending verification.</p>
+      <p><strong>Amount:</strong> ${payload.amountInr}</p>
+      <p><strong>UTR:</strong> ${payload.utr}</p>
+      <p><strong>Submitted At:</strong> ${payload.submittedAt}</p>
+      <p style="color: #94a3b8; font-size: 13px;">Our team is verifying the UTR. You will receive an email once approved.</p>
+    </div>
+  `;
+}
+
+export function renderPaymentApprovedHtml(payload: {
+  planName: string;
+  amountInr: string;
+  paidAt: string;
+  licenceKey?: string;
+  validUntil?: string;
+}): string {
+  const licenceBlock = payload.licenceKey ? `<p><strong>Licence Key:</strong> <code>${payload.licenceKey}</code></p>` : '';
+  const validityBlock = payload.validUntil ? `<p><strong>Valid Until:</strong> ${payload.validUntil}</p>` : '';
+  return `
+    <div style="background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; border-radius: 8px; border: 1px solid #334155;">
+      <h2 style="color: #ffffff; margin-top: 0;">Payment Approved</h2>
+      <p>Your subscription to <strong>${payload.planName}</strong> is now active.</p>
+      <p><strong>Amount Paid:</strong> ${payload.amountInr}</p>
+      <p><strong>Approved At:</strong> ${payload.paidAt}</p>
+      ${licenceBlock}
+      ${validityBlock}
+      <p style="color: #94a3b8; font-size: 13px;">Launch MAHI Browser to access your premium features.</p>
+    </div>
+  `;
+}
+
+export function renderPaymentRejectedHtml(payload: {
+  planName: string;
+  reason: string;
+  supportEmail: string;
+}): string {
+  return `
+    <div style="background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; border-radius: 8px; border: 1px solid #334155;">
+      <h2 style="color: #ffffff; margin-top: 0;">Payment Verification Update</h2>
+      <p>Your payment submission for <strong>${payload.planName}</strong> could not be verified.</p>
+      <p><strong>Reason:</strong> ${payload.reason}</p>
+      <p>If you believe this is an error, please contact our support team at <a href="mailto:${payload.supportEmail}" style="color: #ffffff;">${payload.supportEmail}</a>.</p>
+    </div>
+  `;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -131,15 +227,99 @@ export class DevelopmentEmailProvider implements EmailProvider {
     return true;
   }
 
-  async sendBillingAlert(email: string, invoiceId: string, amount: string, reason: string): Promise<boolean> {
+  async sendBillingAlert(
+    email: string,
+    invoiceId: string,
+    amount: string,
+    reason: string,
+    metadata?: {
+      planName?: string;
+      userId?: string;
+      submittedAt?: string;
+      instruction?: string;
+    }
+  ): Promise<boolean> {
+    const subject = metadata
+      ? `Billing Alert: Payment ${invoiceId} (${amount}) - ${reason}`
+      : `Billing Alert: ${reason}`;
+    const planLine = metadata?.planName ? `<p><strong>Plan:</strong> ${metadata.planName}</p>` : '';
+    const userLine = metadata?.userId ? `<p><strong>User ID:</strong> ${metadata.userId}</p>` : '';
+    const timeLine = metadata?.submittedAt ? `<p><strong>Submitted At:</strong> ${metadata.submittedAt}</p>` : '';
+    const instructionLine = metadata?.instruction ? `<p><strong>Action:</strong> ${metadata.instruction}</p>` : '';
+
     const msg: EmailMessage = {
       to: email,
-      subject: `Billing Alert: ${reason}`,
-      html: `<p>MAHI Browser Billing Notification</p><p>Invoice: ${invoiceId}</p><p>Amount: ${amount}</p><p>Status: ${reason}</p>`,
+      subject,
+      html: `
+        <div style="background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; border-radius: 8px; border: 1px solid #334155;">
+          <h2 style="color: #ffffff; margin-top: 0;">MAHI Browser Billing Notification</h2>
+          <p>A billing alert has been triggered for invoice / payment <strong>${invoiceId}</strong>.</p>
+          <p><strong>Amount:</strong> ${amount}</p>
+          <p><strong>Reason:</strong> ${reason}</p>
+          ${planLine}
+          ${userLine}
+          ${timeLine}
+          ${instructionLine}
+        </div>
+      `,
       sentAt: new Date().toISOString(),
     };
     this.sentEmails.push(msg);
     console.log(`[EmailService:DEV] Billing alert sent to ${email}: Invoice ${invoiceId}`);
+    return true;
+  }
+
+  async sendPaymentPendingEmail(payload: {
+    email: string;
+    planName: string;
+    amountInr: string;
+    utr: string;
+    submittedAt: string;
+  }): Promise<boolean> {
+    const msg: EmailMessage = {
+      to: payload.email,
+      subject: `Payment Pending: ${payload.planName} Plan Submission`,
+      html: renderPaymentPendingHtml(payload),
+      sentAt: new Date().toISOString(),
+    };
+    this.sentEmails.push(msg);
+    console.log(`[EmailService:DEV] payment.pending -> ${maskEmail(payload.email)} plan=${payload.planName} amount=${payload.amountInr} utr=${payload.utr}`);
+    return true;
+  }
+
+  async sendPaymentApprovedEmail(payload: {
+    email: string;
+    planName: string;
+    amountInr: string;
+    paidAt: string;
+    licenceKey?: string;
+    validUntil?: string;
+  }): Promise<boolean> {
+    const msg: EmailMessage = {
+      to: payload.email,
+      subject: `Payment Approved: Welcome to MAHI ${payload.planName}`,
+      html: renderPaymentApprovedHtml(payload),
+      sentAt: new Date().toISOString(),
+    };
+    this.sentEmails.push(msg);
+    console.log(`[EmailService:DEV] payment.approved -> ${maskEmail(payload.email)} plan=${payload.planName} amount=${payload.amountInr}`);
+    return true;
+  }
+
+  async sendPaymentRejectedEmail(payload: {
+    email: string;
+    planName: string;
+    reason: string;
+    supportEmail: string;
+  }): Promise<boolean> {
+    const msg: EmailMessage = {
+      to: payload.email,
+      subject: `Payment Update: ${payload.planName} Submission`,
+      html: renderPaymentRejectedHtml(payload),
+      sentAt: new Date().toISOString(),
+    };
+    this.sentEmails.push(msg);
+    console.log(`[EmailService:DEV] payment.rejected -> ${maskEmail(payload.email)} plan=${payload.planName} reason=${payload.reason}`);
     return true;
   }
 
@@ -271,11 +451,80 @@ export class ProductionSmtpEmailProvider implements EmailProvider {
     );
   }
 
-  async sendBillingAlert(email: string, invoiceId: string, amount: string, reason: string): Promise<boolean> {
+  async sendBillingAlert(
+    email: string,
+    invoiceId: string,
+    amount: string,
+    reason: string,
+    metadata?: {
+      planName?: string;
+      userId?: string;
+      submittedAt?: string;
+      instruction?: string;
+    }
+  ): Promise<boolean> {
+    const subject = metadata
+      ? `Billing Alert: Payment ${invoiceId} (${amount}) - ${reason}`
+      : `Billing Alert: ${reason}`;
+    const planLine = metadata?.planName ? `<p><strong>Plan:</strong> ${metadata.planName}</p>` : '';
+    const userLine = metadata?.userId ? `<p><strong>User ID:</strong> ${metadata.userId}</p>` : '';
+    const timeLine = metadata?.submittedAt ? `<p><strong>Submitted At:</strong> ${metadata.submittedAt}</p>` : '';
+    const instructionLine = metadata?.instruction ? `<p><strong>Action:</strong> ${metadata.instruction}</p>` : '';
+
+    const html = `
+      <div style="background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; border-radius: 8px; border: 1px solid #334155;">
+        <h2 style="color: #ffffff; margin-top: 0;">MAHI Browser Billing Notification</h2>
+        <p>A billing alert has been triggered for invoice / payment <strong>${invoiceId}</strong>.</p>
+        <p><strong>Amount:</strong> ${amount}</p>
+        <p><strong>Reason:</strong> ${reason}</p>
+        ${planLine}
+        ${userLine}
+        ${timeLine}
+        ${instructionLine}
+      </div>
+    `;
+    return this.deliver(email, subject, html);
+  }
+
+  async sendPaymentPendingEmail(payload: {
+    email: string;
+    planName: string;
+    amountInr: string;
+    utr: string;
+    submittedAt: string;
+  }): Promise<boolean> {
     return this.deliver(
-      email,
-      `Billing Alert: ${reason}`,
-      `<p>Invoice: ${invoiceId} | Amount: ${amount} | ${reason}</p>`
+      payload.email,
+      `Payment Pending: ${payload.planName} Plan Submission`,
+      renderPaymentPendingHtml(payload)
+    );
+  }
+
+  async sendPaymentApprovedEmail(payload: {
+    email: string;
+    planName: string;
+    amountInr: string;
+    paidAt: string;
+    licenceKey?: string;
+    validUntil?: string;
+  }): Promise<boolean> {
+    return this.deliver(
+      payload.email,
+      `Payment Approved: Welcome to MAHI ${payload.planName}`,
+      renderPaymentApprovedHtml(payload)
+    );
+  }
+
+  async sendPaymentRejectedEmail(payload: {
+    email: string;
+    planName: string;
+    reason: string;
+    supportEmail: string;
+  }): Promise<boolean> {
+    return this.deliver(
+      payload.email,
+      `Payment Update: ${payload.planName} Submission`,
+      renderPaymentRejectedHtml(payload)
     );
   }
 
@@ -380,11 +629,80 @@ export class ProductionApiEmailProvider implements EmailProvider {
     );
   }
 
-  async sendBillingAlert(email: string, invoiceId: string, amount: string, reason: string): Promise<boolean> {
+  async sendBillingAlert(
+    email: string,
+    invoiceId: string,
+    amount: string,
+    reason: string,
+    metadata?: {
+      planName?: string;
+      userId?: string;
+      submittedAt?: string;
+      instruction?: string;
+    }
+  ): Promise<boolean> {
+    const subject = metadata
+      ? `Billing Alert: Payment ${invoiceId} (${amount}) - ${reason}`
+      : `Billing Alert: ${reason}`;
+    const planLine = metadata?.planName ? `<p><strong>Plan:</strong> ${metadata.planName}</p>` : '';
+    const userLine = metadata?.userId ? `<p><strong>User ID:</strong> ${metadata.userId}</p>` : '';
+    const timeLine = metadata?.submittedAt ? `<p><strong>Submitted At:</strong> ${metadata.submittedAt}</p>` : '';
+    const instructionLine = metadata?.instruction ? `<p><strong>Action:</strong> ${metadata.instruction}</p>` : '';
+
+    const html = `
+      <div style="background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; border-radius: 8px; border: 1px solid #334155;">
+        <h2 style="color: #ffffff; margin-top: 0;">MAHI Browser Billing Notification</h2>
+        <p>A billing alert has been triggered for invoice / payment <strong>${invoiceId}</strong>.</p>
+        <p><strong>Amount:</strong> ${amount}</p>
+        <p><strong>Reason:</strong> ${reason}</p>
+        ${planLine}
+        ${userLine}
+        ${timeLine}
+        ${instructionLine}
+      </div>
+    `;
+    return this.deliver(email, subject, html);
+  }
+
+  async sendPaymentPendingEmail(payload: {
+    email: string;
+    planName: string;
+    amountInr: string;
+    utr: string;
+    submittedAt: string;
+  }): Promise<boolean> {
     return this.deliver(
-      email,
-      `Billing Alert: ${reason}`,
-      `<p>Invoice: ${invoiceId} | Amount: ${amount} | ${reason}</p>`
+      payload.email,
+      `Payment Pending: ${payload.planName} Plan Submission`,
+      renderPaymentPendingHtml(payload)
+    );
+  }
+
+  async sendPaymentApprovedEmail(payload: {
+    email: string;
+    planName: string;
+    amountInr: string;
+    paidAt: string;
+    licenceKey?: string;
+    validUntil?: string;
+  }): Promise<boolean> {
+    return this.deliver(
+      payload.email,
+      `Payment Approved: Welcome to MAHI ${payload.planName}`,
+      renderPaymentApprovedHtml(payload)
+    );
+  }
+
+  async sendPaymentRejectedEmail(payload: {
+    email: string;
+    planName: string;
+    reason: string;
+    supportEmail: string;
+  }): Promise<boolean> {
+    return this.deliver(
+      payload.email,
+      `Payment Update: ${payload.planName} Submission`,
+      renderPaymentRejectedHtml(payload)
     );
   }
 

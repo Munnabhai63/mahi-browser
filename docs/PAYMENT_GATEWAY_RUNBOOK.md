@@ -95,3 +95,41 @@ To rotate `YOUPI_PG_API_KEY` or `YOUPI_PG_WEBHOOK_SECRET` with zero downtime:
      ```
 4. **Deprecate Old Key**:
    - In YouPI Gateway admin, revoke the old API key once active traffic confirms smooth operation.
+
+---
+
+## 6. Payment Email Notifications
+
+MAHI Browser provides transactional email notifications across the payment and manual UPI lifecycle:
+1. **Admin UTR Submission Alert** (`sendBillingAlert`): Dispatched to the admin (`ADMIN_PAYMENT_EMAIL`, falling back to `SUPPORT_EMAIL`) when a user submits a manual UPI UTR, detailing the payment ID, amount in INR, UTR, user ID, timestamp, and action instructions.
+2. **Payment Pending Confirmation** (`sendPaymentPendingEmail`): Available for user-facing pending status notifications containing plan name, amount, UTR, and submission timestamp.
+3. **Payment Approved Notification** (`sendPaymentApprovedEmail`): Sent directly to the customer's verified email upon admin approval, confirming plan activation, amount paid, timestamp, and access instructions.
+4. **Payment Rejected Notification** (`sendPaymentRejectedEmail`): Sent to the customer if an invalid or unverified UTR submission is rejected, containing the explicit rejection reason and support contact info.
+
+### Fault Tolerance & Non-Blocking Design
+All email dispatches are isolated in best-effort blocks. If the email provider fails or SMTP is offline, the error is safely logged (`[PaymentService] ... failed`) and payment processing/activation proceeds without interruption.
+
+### Required Environment Configuration
+To enable live email delivery in production:
+- **REST API Delivery (Resend / SendGrid)**:
+  ```bash
+  EMAIL_API_KEY=your-api-key # or RESEND_API_KEY
+  EMAIL_FROM=support@mahibrowser.com
+  ```
+- **SMTP Delivery**:
+  ```bash
+  SMTP_HOST=smtp.mailgun.org
+  SMTP_PORT=587
+  SMTP_USER=postmaster@mahibrowser.com
+  SMTP_PASS=your-smtp-password
+  SMTP_FROM=MAHI Browser <noreply@mahibrowser.com>
+  ```
+- **Admin Alert Recipient**:
+  ```bash
+  ADMIN_PAYMENT_EMAIL=admin@mahibrowser.com # Optional; defaults to SUPPORT_EMAIL
+  ```
+
+### How to Verify
+Submit a test UTR via `/pricing` or API in development mode and check stdout logs:
+- `[EmailService:DEV] Billing alert sent to ...`
+- `[EmailService:DEV] payment.approved -> <masked> plan=... amount=...`

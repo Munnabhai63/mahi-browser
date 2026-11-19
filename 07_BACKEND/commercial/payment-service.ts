@@ -18,6 +18,9 @@ import { getCommercialPlans, getCommercialPlanById } from './commercial-plan-ser
 import { CommercialPlan } from '../../10_CONFIG/shared/types/commercial.js';
 import { calculateAuthoritativeOrderTotal, legacyPlanIdToCanonical } from './canonical-plan-catalog.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
+import { getEmailProvider } from '../../05_AUTH/email-service.js';
+import { SUPPORT_EMAIL } from '../../10_CONFIG/contact-config.js';
+import { getUserById } from './commercial-auth-service.js';
 
 export type PaymentProviderType = 'stripe' | 'razorpay' | 'youpi_pg' | 'simulation';
 
@@ -1335,6 +1338,26 @@ export class PaymentService {
       });
     } catch {}
 
+    try {
+      const emailProvider = getEmailProvider();
+      const adminEmail = process.env.ADMIN_PAYMENT_EMAIL || SUPPORT_EMAIL;
+      const amountInr = `₹${(amountPaise / 100).toFixed(2)}`;
+      await emailProvider.sendBillingAlert(
+        adminEmail,
+        paymentId,
+        amountInr,
+        `UPI UTR ${cleanUtr} pending admin approval`,
+        {
+          planName: plan.name || plan.id,
+          userId: params.userId,
+          submittedAt: now,
+          instruction: 'Please review and approve from the admin panel.',
+        }
+      );
+    } catch (err: any) {
+      console.warn(`[PaymentService] admin UTR notification failed: ${err.message}`);
+    }
+
     return {
       paymentId,
       status: 'PENDING_VERIFICATION',
@@ -1394,6 +1417,27 @@ export class PaymentService {
       });
     } catch {}
 
+    try {
+      const user = getUserById(payment.user_id);
+      if (!user || !user.email) {
+        console.log(`[PaymentService] skipping approval email: user or email not found for userId=${payment.user_id}`);
+      } else {
+        const plan = getCommercialPlanById(payment.plan_id);
+        const planName = plan ? plan.name : payment.plan_id;
+        const amountInr = (payment.amount_cents / 100).toString();
+        const paidAt = new Date().toISOString();
+        await getEmailProvider().sendPaymentApprovedEmail({
+          email: user.email,
+          planName,
+          amountInr,
+          paidAt,
+          licenceKey: undefined,
+        });
+      }
+    } catch (err: any) {
+      console.warn(`[PaymentService] payment approval notification failed: ${err.message}`);
+    }
+
     return {
       success: true,
       paymentId: payment.id,
@@ -1450,6 +1494,24 @@ export class PaymentService {
         details: `Rejected manual UPI payment ${payment.id} for user ${payment.user_id}. Reason: ${reason}`,
       });
     } catch {}
+
+    try {
+      const user = getUserById(payment.user_id);
+      if (!user || !user.email) {
+        console.log(`[PaymentService] skipping rejection email: user or email not found for userId=${payment.user_id}`);
+      } else {
+        const plan = getCommercialPlanById(payment.plan_id);
+        const planName = plan ? plan.name : payment.plan_id;
+        await getEmailProvider().sendPaymentRejectedEmail({
+          email: user.email,
+          planName,
+          reason,
+          supportEmail: SUPPORT_EMAIL,
+        });
+      }
+    } catch (err: any) {
+      console.warn(`[PaymentService] payment rejection notification failed: ${err.message}`);
+    }
 
     return {
       success: true,
