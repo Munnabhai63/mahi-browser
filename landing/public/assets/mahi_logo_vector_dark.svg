@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="36" viewBox="0 0 200 36" fill="none">
+  <!-- Brand Icon (28x28 squircle) -->
+  <g transform="translate(2, 4)">
+    <rect width="28" height="28" rx="8" fill="#09090B" stroke="#000000" stroke-width="1"/>
+    <!-- Interlocking double-square anti-detect symbol -->
+    <rect x="7" y="7" width="10" height="10" rx="2.5" stroke="#FFFFFF" stroke-width="1.6" fill="none"/>
+    <rect x="11" y="11" width="10" height="10" rx="2.5" stroke="#FFFFFF" stroke-width="1.6" fill="#09090B"/>
+  </g>
+  
+  <!-- Brand Name: Mahi Browser in deep luxury dark -->
+  <text x="39" y="23" fill="#09090B" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif" font-size="16" font-weight="700" letter-spacing="-0.02em">Mahi</text>
+  <text x="81" y="23" fill="#18181B" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif" font-size="16" font-weight="500" letter-spacing="-0.02em">Browser</text>
+  
+  <!-- Sleek Version Pill Badge -->
+  <rect x="150" y="10.5" width="36" height="16" rx="4.5" fill="rgba(0, 0, 0, 0.06)" stroke="rgba(0, 0, 0, 0.16)" stroke-width="0.8"/>
+  <text x="168" y="22" text-anchor="middle" fill="#52525B" font-family="-apple-system, BlinkMacSystemFont, 'JetBrains Mono', monospace" font-size="9.5" font-weight="600" letter-spacing="0.04em">v2.0</text>
+</svg>
