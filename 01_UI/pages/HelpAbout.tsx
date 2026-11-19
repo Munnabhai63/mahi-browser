@@ -146,7 +146,13 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
     if (!window.mahiAPI?.getDiagnostics) return;
     try {
       const diag = await window.mahiAPI.getDiagnostics();
-      const text = JSON.stringify(diag, null, 2);
+      const redact = (s: string) => s
+        .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[EMAIL_REDACTED]')
+        .replace(/\b(Bearer\s+)?[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, '[TOKEN_REDACTED]')
+        .replace(/MAHI-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}/gi, '[LICENSE_KEY_REDACTED]')
+        .replace(/(password|secret|api[_-]?key)\s*[:=]\s*\S+/gi, '$1=[REDACTED]');
+      const safe = { ...diag, logTail: redact(String(diag.logTail || '')) };
+      const text = JSON.stringify(safe, null, 2);
       await navigator.clipboard.writeText(text);
       setIsCopyingDiagnostics(true);
       useToastStore.getState().showToast({
@@ -384,7 +390,7 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
             </button>
           </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            Export anonymized environment data and crash log excerpts for debugging and support tickets.
+            Export environment data and redacted crash-log excerpts. Emails, tokens, and licence keys are masked before copying. Review before sharing.
           </p>
         </div>
       </div>

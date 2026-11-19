@@ -1120,7 +1120,10 @@ export async function handleCommercialApiRoutes(
       });
       return true;
     }
-    const termsVer = body.termsVersion ? String(body.termsVersion).trim() : CURRENT_TERMS_VERSION;
+    // Server is authoritative for the terms version. A client-supplied value is never
+    // trusted, otherwise a user could record consent against an arbitrary or nonexistent
+    // version, making the audit trail worthless.
+    const termsVer = CURRENT_TERMS_VERSION;
     if (result.user?.id) {
       try {
         const db = getDatabase();

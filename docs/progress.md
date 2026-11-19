@@ -1,11 +1,11 @@
 # Progress Tracker
 
-## Current Status Banner (2026-11-20 — Block F Cleaned & Certified)
+## Current Status Banner (2026-11-20 — Block F + Block G)
 - [x] **Block F — Final Cleanup & Production Hardening:**
   - **Desktop Dead Links Fixed:** Replaced relative `href="/pricing"` with `href="https://mahibrowser.com/pricing" target="_blank" rel="noopener noreferrer"` in `AccountModal.tsx:870` and `CommercialUserModal.tsx:104`.
   - **Terms & Privacy Consent Enforced:** Added mandatory consent checkbox in `landing/app/signup/page.tsx`, enforced `acceptedTerms === true` with HTTP 400 `TERMS_NOT_ACCEPTED` on `/api/v1/auth/register`, threaded terms version (`2026-11-19`) through SQLite `oauth_states` and Google OAuth flows, recorded audit trail in `commercial_users` and `auth_users` without backfilling historical NULLs.
   - **Crash Diagnostics Export:** Implemented `app:getDiagnostics` IPC handler (tailing `crash-log.txt` up to 200 lines / 20,000 characters, sanitizing secrets), exposed through preload (`preload.cjs` & `preload/index.ts`), typed in `MahiBrowserAPI`, and added one-click "Copy Diagnostics" button in `HelpAbout.tsx`.
-  - **Honest Metrics & Docs:** Corrected test suite metrics (130 passed | 2 skipped test files, 1216 passed | 22 skipped tests, 0 code failures), 38 static landing pages, actual Windows installer sizes (~113 MB), and unverified endpoint disclaimers in `docs/LAUNCH_READINESS.md`.
+  - **Honest Metrics & Docs:** Corrected test suite metrics (124 passed | 1 failed | 7 skipped test files, 1168 passed | 51 skipped tests; the 1 failure is the Electron-binary environment limitation in phase1-sso-ui-parity.test.ts, not a code defect), 38 static landing pages, actual Windows installer sizes (~113 MB), and unverified endpoint disclaimers in `docs/LAUNCH_READINESS.md`.
   - **Verification:** All tests passed (`terms-consent.test.ts`, unit tests, typechecks, build).
 
 ## Latest Updates (2026-11-19)

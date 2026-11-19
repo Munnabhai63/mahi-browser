@@ -284,4 +284,32 @@ describe('Terms & Privacy Policy Consent Enforcement Suite (Block F)', () => {
     expect(authUser.accepted_terms).toBeNull();
     expect(authUser.terms_version).toBeNull();
   });
+
+  // ---------------------------------------------------------------------------
+  // 8. Client-supplied termsVersion is ignored; server value is authoritative
+  // ---------------------------------------------------------------------------
+  it('8. client-supplied termsVersion is ignored; server value is authoritative', async () => {
+    const email = `consent_spoof_${Date.now()}@test.com`;
+    const res = await postRegister({
+      email,
+      password: 'StrongPassword123!',
+      name: 'Spoof Attempt User',
+      acceptedTerms: true,
+      termsVersion: '1999-01-01',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.data.success).toBe(true);
+
+    const db = getDatabase();
+    const commUser = db.prepare('SELECT terms_version FROM commercial_users WHERE email = ?').get(email) as any;
+    expect(commUser).toBeDefined();
+    expect(commUser.terms_version).toBe(CURRENT_TERMS_VERSION);
+    expect(commUser.terms_version).not.toBe('1999-01-01');
+
+    const authUser = db.prepare('SELECT terms_version FROM auth_users WHERE email = ?').get(email) as any;
+    expect(authUser).toBeDefined();
+    expect(authUser.terms_version).toBe(CURRENT_TERMS_VERSION);
+    expect(authUser.terms_version).not.toBe('1999-01-01');
+  });
 });
