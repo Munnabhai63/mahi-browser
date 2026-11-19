@@ -428,6 +428,8 @@ export function getAllUsers(filter?: { status?: string; role?: string; searchQue
       bonusProfiles: r.bonus_profiles || 0,
       bonusProxyBytes: r.bonus_proxy_bytes || 0,
       featureOverrides,
+      acceptedTerms: r.accepted_terms === 1 ? true : r.accepted_terms === 0 ? false : undefined,
+      termsVersion: r.terms_version || undefined,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
       lastLoginAt: r.last_login_at || undefined,

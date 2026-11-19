@@ -2221,7 +2221,68 @@ export async function handleCommercialApiRoutes(
     const offset = parseInt(parsedUrl.searchParams.get('offset') || '0', 10);
 
     const result = getAllUsers({ status, role, searchQuery: search, limit, offset });
-    sendJSON(res, 200, { success: true, data: result.users, total: result.total });
+    const users = result.users.map((row: any) => ({
+      ...row,
+      acceptedTerms: row.acceptedTerms ?? (row.accepted_terms !== undefined ? row.accepted_terms : null),
+      termsVersion: row.termsVersion ?? (row.terms_version !== undefined ? row.terms_version : null),
+    }));
+    sendJSON(res, 200, { success: true, data: users, total: result.total });
+    return true;
+  }
+
+  // Terms Acceptance & Legal Compliance Summary
+  if (pathname === '/api/v1/admin/terms-compliance' && method === 'GET') {
+    const { isAdmin } = checkAdminAuth(req);
+    if (!isAdmin) {
+      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
+      return true;
+    }
+
+    const db = getDatabase();
+    let rows: any[] = [];
+    try {
+      rows = db.prepare('SELECT id, accepted_terms, terms_version FROM commercial_users').all() as any[];
+    } catch {
+      rows = [];
+    }
+    try {
+      const authRows = db.prepare('SELECT id, accepted_terms, terms_version FROM auth_users').all() as any[];
+      const existingIds = new Set(rows.map((r: any) => r.id));
+      for (const ar of authRows) {
+        if (!existingIds.has(ar.id)) {
+          rows.push(ar);
+        }
+      }
+    } catch {}
+
+    const totalUsers = rows.length;
+    let accepted = 0;
+    let missing = 0;
+    const byVersion: Record<string, number> = {};
+
+    for (const r of rows) {
+      if (r.accepted_terms === 1) {
+        accepted++;
+        if (r.terms_version !== null && r.terms_version !== undefined && String(r.terms_version).trim() !== '') {
+          const v = String(r.terms_version).trim();
+          byVersion[v] = (byVersion[v] || 0) + 1;
+        } else {
+          byVersion['unversioned'] = (byVersion['unversioned'] || 0) + 1;
+        }
+      } else {
+        missing++;
+      }
+    }
+
+    sendJSON(res, 200, {
+      success: true,
+      data: {
+        totalUsers,
+        accepted,
+        missing,
+        byVersion,
+      },
+    });
     return true;
   }
 

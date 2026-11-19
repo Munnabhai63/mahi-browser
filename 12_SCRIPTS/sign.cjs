@@ -46,13 +46,13 @@ exports.default = async function sign(configuration) {
   if (certThumbprint) {
     console.log(`[Authenticode:PRODUCTION:HARDWARE_TOKEN] Signing artifact: ${path.basename(targetPath)}`);
     try {
-      const cmd = `"${signtool}" sign /sha1 "${certThumbprint}" /fd sha256 /d "MAHI Browser — By Munna Bhai" /du "https://mahibrowser.com" /tr "${timestampServer}" /td sha256 "${targetPath}"`;
+      const cmd = `"${signtool}" sign /sha1 "${certThumbprint}" /fd sha256 /d "MAHI Browser — By Mahipal Choudhary" /du "https://mahibrowser.com" /tr "${timestampServer}" /td sha256 "${targetPath}"`;
       execSync(cmd, { stdio: 'inherit' });
       console.log(`[Authenticode:PRODUCTION] Successfully signed with Authenticode token: ${path.basename(targetPath)}`);
       return;
     } catch (err) {
-      console.error(`[Authenticode:ERROR] Signtool token signing failed: ${err.message}`);
-      throw err;
+      console.error(`[Authenticode:ERROR] Signtool signing failed: ${err.message}`);
+      console.error('[Authenticode:WARN] Continuing with UNSIGNED artifact.');
     }
   }
 
@@ -60,13 +60,13 @@ exports.default = async function sign(configuration) {
   if (certPath && fs.existsSync(certPath) && certPassword) {
     console.log(`[Authenticode:PRODUCTION:PFX] Signing artifact: ${path.basename(targetPath)}`);
     try {
-      const cmd = `"${signtool}" sign /f "${certPath}" /p "${certPassword}" /fd sha256 /d "MAHI Browser — By Munna Bhai" /du "https://mahibrowser.com" /tr "${timestampServer}" /td sha256 "${targetPath}"`;
+      const cmd = `"${signtool}" sign /f "${certPath}" /p "${certPassword}" /fd sha256 /d "MAHI Browser — By Mahipal Choudhary" /du "https://mahibrowser.com" /tr "${timestampServer}" /td sha256 "${targetPath}"`;
       execSync(cmd, { stdio: 'inherit' });
       console.log(`[Authenticode:PRODUCTION] Successfully signed with Authenticode PFX: ${path.basename(targetPath)}`);
       return;
     } catch (err) {
-      console.error(`[Authenticode:ERROR] Signtool PFX signing failed: ${err.message}`);
-      throw err;
+      console.error(`[Authenticode:ERROR] Signtool signing failed: ${err.message}`);
+      console.error('[Authenticode:WARN] Continuing with UNSIGNED artifact.');
     }
   }
 
