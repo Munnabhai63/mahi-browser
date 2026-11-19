@@ -1,6 +1,19 @@
 # Progress Tracker
 
 ## Latest Updates (2026-11-19)
+- [x] **Pricing Luxury Theme Polish & Production VPS Deployment:**
+  - Expanded Pricing Cards geometry (`max-w-[1380px]`, `p-8 sm:p-10 lg:p-9 xl:p-11`, price `text-64px`) for enhanced visual presence and readability.
+  - Aligned Hero eyebrow and headline 1:1 with user reference:
+    * Eyebrow: `■ TRANSPARENT PRICING`
+    * Headline: `Simple Pricing.` / `Built for Scale & Zero Leaks.` (*Spectral Serif Italics*)
+    * Subtitle: *"Run multi-account operations without recurring per-seat fees or cloud leak vulnerabilities. Air-gapped offline profiles, dual-engine stealth, and instant 0% fee UPI activation."*
+  - Strict privacy compliance: Removed all raw phone numbers (`+91 9376343629`) from visible text in public UI cards, comparison table, and modal (retained behind action links `Chat with Founder on WhatsApp` and `Confirm on WhatsApp`).
+  - Purged all emojis and bright green badges; standardized monochrome `Popular` and `Best Value` pills.
+  - Verified on localhost preview (`http://localhost:3000/pricing`) with Playwright Chrome screenshots before obtaining user approval.
+  - Deployed package (`scratch/landing_pricing_final.tar.gz`) to live VPS `root@200.97.164.97:2222:/var/www/mahibrowser/landing/out/` and gracefully reloaded Nginx.
+  - Verified live on `https://mahibrowser.com/pricing` with Playwright screenshots: 0 errors, correct pricing, luxury monochrome styling.
+  - Pushed commit `6e341c2` to `origin/main`.
+
 - [x] **Subscription Tier & Pricing Overhaul (1M / 6M / 1Y with Unlimited Annual Profiles):**
   - Calibrated the pricing ladder and per-month psychology based on user's exact specification:
     * **Starter (1 Month):** ₹599 total (Effective ₹599 / mo) — 25 Air-Gapped Profiles, 1 PC, 3 concurrent windows.

@@ -1,5 +1,23 @@
 # Decisions Log
 
+## 2026-11-19 - Pricing Polish, Card Expansion & Phone Number Privacy Deployment
+- **Context**: The user reviewed the initial pricing deployment and provided strict design constraints:
+  1. Purge all cartoon emojis (`🔥`, `🚀`) and green pill badges.
+  2. Hide raw phone numbers (`+91 9376343629`) completely from visible UI text across cards, comparison table, and modal.
+  3. Expand card geometry and typography (cards were perceived as too small on desktop).
+  4. Align header eyebrow, headline, and subtitle 1:1 with user-supplied reference (`media_1795057221935_56cf84bb.png`).
+  5. Mandatory local preview verification and explicit user approval before touching production VPS.
+- **Implementation**:
+  - `landing/components/PricingView.tsx`:
+    * Eyebrow: `■ TRANSPARENT PRICING`
+    * Headline: `Simple Pricing.` / `Built for Scale & Zero Leaks.` in Spectral serif italics.
+    * Subtitle: *"Run multi-account operations without recurring per-seat fees or cloud leak vulnerabilities. Air-gapped offline profiles, dual-engine stealth, and instant 0% fee UPI activation."*
+    * Container expanded from `max-w-7xl` to `max-w-[1380px]`; padding expanded to `p-8 sm:p-10 lg:p-9 xl:p-11`; prices styled with `text-64px` Spectral serif.
+    * Features formatted with `14px` clean zinc text and `space-y-3` vertical rhythm.
+    * Privacy: Raw phone number removed from visible text, keeping action copy clean (`24/7 Dedicated VIP WhatsApp Support`, `Chat with Founder on WhatsApp`, `Confirm on WhatsApp`).
+  - Verification: Local static preview server tested with Chrome screenshots (`localhost_expanded_pricing_cards.png`, `localhost_expanded_cards_bottom.png`, `localhost_expanded_upi_modal.png`).
+  - Deployment: Exported 39 static routes (`npm --prefix landing run build`), transferred archive to VPS `200.97.164.97:2222`, extracted to `/var/www/mahibrowser/landing/out/`, and reloaded Nginx. Live verification confirmed 1:1 parity with 0 console errors.
+
 ## 2026-11-19 - Calibrated Subscription Tiers & Unlimited Annual Profiles Implementation
 - **Context**: The user identified a pricing incentive flaw where 6-Month and 12-Month tiers offered identical per-month rates (~₹166/mo), eliminating annual adoption incentive. The user directed an overhaul into 3 distinct duration tiers (1M / 6M / 1Y) with unconstrained offline profiles on 1-Year, "UNLIMITED" zero-cost marketing hooks on 6-Month, and strict limits on 1-Month, backed by silent server guardrails.
 - **Implementation**:
