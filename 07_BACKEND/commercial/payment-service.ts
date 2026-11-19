@@ -277,9 +277,12 @@ export function verifyRazorpayPaymentSignature(
   let effectiveSecret = secret || envSecret;
   if (!effectiveSecret) {
     if (process.env.NODE_ENV === 'test' || process.env.PAYMENT_ALLOW_TEST_ADAPTERS === 'true') {
-      effectiveSecret = 'rzp_sec_mahi_production_secret';
+      effectiveSecret = 'rzp_sec_test_only_not_for_production';
     } else {
-      return false;
+      throw new PaymentGatewayNotConfiguredError(
+        'razorpay',
+        'RAZORPAY_KEY_SECRET or RAZORPAY_WEBHOOK_SECRET is required before Razorpay signatures can be verified.'
+      );
     }
   }
   const text = `${orderId}|${paymentId}`;
@@ -293,7 +296,17 @@ export function verifyRazorpayPaymentSignature(
 
 export class RazorpayPaymentAdapter implements PaymentProvider {
   public readonly name: PaymentProviderType = 'razorpay';
-  private defaultSecret = process.env.RAZORPAY_WEBHOOK_SECRET || 'rzp_sec_mahi_production_secret';
+  private get defaultSecret(): string {
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (secret) return secret;
+    if (process.env.NODE_ENV === 'test' || process.env.PAYMENT_ALLOW_TEST_ADAPTERS === 'true') {
+      return 'rzp_sec_test_only_not_for_production';
+    }
+    throw new PaymentGatewayNotConfiguredError(
+      'razorpay',
+      'RAZORPAY_WEBHOOK_SECRET is required before Razorpay webhooks can be verified.'
+    );
+  }
 
   public async createCheckoutSession(
     req: CheckoutSessionRequest,
@@ -700,7 +713,7 @@ export class YoupiPgPaymentAdapter implements PaymentProvider {
 export class PaymentService {
   private static instance: PaymentService | null = null;
   private providers = new Map<PaymentProviderType, PaymentProvider>();
-  private defaultProvider: PaymentProviderType = 'simulation';
+  private defaultProvider: PaymentProviderType = 'youpi_pg';
 
   private constructor() {
     this.registerProvider(new StripePaymentAdapter());
@@ -822,7 +835,9 @@ export class PaymentService {
     }
 
     // 4. Delegate to provider adapter
-    const provider = this.getProvider(providerType);
+    const resolvedCurrency = (req.currency || (plan.id.startsWith('plan_') ? 'USD' : 'INR')).toUpperCase();
+    const effectiveProvider = providerType || (resolvedCurrency === 'INR' ? 'youpi_pg' : this.defaultProvider);
+    const provider = this.getProvider(effectiveProvider);
     const session = await provider.createCheckoutSession(req, plan, amountCents);
     if (req.idempotencyKey) {
       session.orderId = req.idempotencyKey;

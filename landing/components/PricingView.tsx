@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { BRAND } from '../lib/brand';
 
@@ -206,6 +206,32 @@ export default function PricingView() {
   const [isSubmittingUtr, setIsSubmittingUtr] = useState(false);
   const [utrError, setUtrError] = useState<string | null>(null);
   const [submittedPaymentId, setSubmittedPaymentId] = useState<string | null>(null);
+  const [isYoupiEnabled, setIsYoupiEnabled] = useState(false);
+
+  // Probe payment gateways on mount
+  useEffect(() => {
+    let mounted = true;
+    const fetchGateways = async () => {
+      try {
+        const resp = await fetch(`${BRAND.apiUrl}/api/v1/billing/gateways`);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (mounted && Array.isArray(data?.gateways)) {
+            const youpi = data.gateways.find((g: any) => g.id === 'youpi_pg');
+            if (youpi?.enabled) {
+              setIsYoupiEnabled(true);
+            }
+          }
+        }
+      } catch {
+        // Fall back gracefully to manual UPI on any error
+      }
+    };
+    fetchGateways();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Telemetry event tracking (active in production to avoid dev-mode 404 toast)
   const trackFunnel = (eventName: string, metadata?: Record<string, any>) => {
@@ -219,10 +245,46 @@ export default function PricingView() {
   };
 
   // Plan CTA Click Handler
-  const handlePlanClick = (plan: PlanTier) => {
+  const handlePlanClick = async (plan: PlanTier) => {
     trackFunnel('plan_cta_clicked', { planId: plan.id, currency });
 
     if (currency === 'INR') {
+      if (isYoupiEnabled) {
+        try {
+          const token =
+            typeof window !== 'undefined'
+              ? localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token')
+              : null;
+          if (token) {
+            const resp = await fetch(`${BRAND.apiUrl}/api/v1/billing/checkout`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                planId: plan.id,
+                billingCycle: plan.id === 'starter' ? 'MONTHLY' : 'ANNUAL',
+                provider: 'youpi_pg',
+                currency: 'INR',
+              }),
+            });
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data?.checkoutUrl) {
+                window.location.href = data.checkoutUrl;
+                return;
+              }
+            }
+          } else {
+            window.location.href = `/login?redirect=/pricing&plan=${plan.id}`;
+            return;
+          }
+        } catch {
+          // Fall back gracefully to manual UPI modal
+        }
+      }
+
       setSelectedUpiPlan({
         id: plan.id,
         name: plan.name,
@@ -478,9 +540,16 @@ export default function PricingView() {
                       }`}
                     >
                       {currency === 'INR'
-                        ? `Pay with UPI (${symbol}${price.toLocaleString()})`
+                        ? (isYoupiEnabled
+                            ? 'Pay Now (Instant UPI)'
+                            : `Pay with UPI (${symbol}${price.toLocaleString()})`)
                         : `${plan.ctaText} (${symbol}${price})`}
                     </button>
+                    {currency === 'INR' && !isYoupiEnabled && (
+                      <p className="text-[11px] text-zinc-500 font-mono text-center mt-2.5">
+                        Instant checkout is being activated. Manual UPI is available now.
+                      </p>
+                    )}
                   </div>
 
                 </div>
@@ -560,7 +629,9 @@ export default function PricingView() {
                             : 'bg-zinc-200 text-[#080808] hover:bg-zinc-300'
                         }`}
                       >
-                        {currency === 'INR' ? 'Pay with UPI' : 'Get Started'}
+                        {currency === 'INR'
+                          ? (isYoupiEnabled ? 'Pay Now (Instant UPI)' : 'Pay with UPI')
+                          : 'Get Started'}
                       </button>
                     </div>
                   );
@@ -854,6 +925,11 @@ export default function PricingView() {
               <p className="text-xs text-zinc-400 mt-1 font-mono">
                 Amount: <strong className="text-white text-sm">₹{selectedUpiPlan.price.toLocaleString()}</strong> ({selectedUpiPlan.billingLabel})
               </p>
+              {!isYoupiEnabled && (
+                <p className="text-[11px] text-zinc-400 font-mono mt-2">
+                  Instant checkout is being activated. Manual UPI is available now.
+                </p>
+              )}
             </div>
 
             {/* UPI QR Code Container */}
