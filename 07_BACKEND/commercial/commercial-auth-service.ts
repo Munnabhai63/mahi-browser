@@ -93,30 +93,41 @@ export function registerUser(dto: RegisterUserDTO, ipAddress?: string, explicitI
   const trialExpiresAt = isTrial ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
   const pendingPlanId = intent === 'paid' ? dto.planId || null : null;
   const pendingBillingCycle = intent === 'paid' ? dto.billingCycle || 'annual' : null;
+  const acceptedTerms = typeof dto.acceptedTerms === 'boolean' ? (dto.acceptedTerms ? 1 : 0) : null;
+  const termsVersion = dto.termsVersion ? String(dto.termsVersion).trim() : null;
 
   if (existing && existing.id === explicitId) {
     db.prepare(`
       UPDATE commercial_users SET
         password_hash = ?, salt = ?, name = ?, plan_id = ?,
         trial_started_at = ?, trial_expires_at = ?, trial_used = ?, signup_intent = ?,
-        pending_plan_id = ?, pending_billing_cycle = ?, updated_at = ?
+        pending_plan_id = ?, pending_billing_cycle = ?,
+        accepted_terms = COALESCE(?, accepted_terms),
+        terms_version = COALESCE(?, terms_version),
+        updated_at = ?
       WHERE id = ?
     `).run(
       passwordHash, salt, name, targetPlan,
       trialStartedAt, trialExpiresAt, trialUsed, intent,
-      pendingPlanId, pendingBillingCycle, now, id
+      pendingPlanId, pendingBillingCycle,
+      acceptedTerms, termsVersion,
+      now, id
     );
   } else {
     db.prepare(`
       INSERT INTO commercial_users (
         id, email, password_hash, salt, name, role, status, plan_id,
         trial_started_at, trial_expires_at, trial_used, signup_intent,
-        pending_plan_id, pending_billing_cycle, created_at, updated_at, last_login_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        pending_plan_id, pending_billing_cycle,
+        accepted_terms, terms_version,
+        created_at, updated_at, last_login_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, email, passwordHash, salt, name, role, status, targetPlan,
       trialStartedAt, trialExpiresAt, trialUsed, intent,
-      pendingPlanId, pendingBillingCycle, now, now, now
+      pendingPlanId, pendingBillingCycle,
+      acceptedTerms, termsVersion,
+      now, now, now
     );
   }
 
@@ -314,6 +325,8 @@ export function getUserById(userId: string): CommercialUser | null {
       googleSub: row.google_sub || undefined,
       avatarUrl: row.avatar_url || undefined,
       authProvider: row.auth_provider || 'LOCAL',
+      acceptedTerms: row.accepted_terms === 1 ? true : row.accepted_terms === 0 ? false : undefined,
+      termsVersion: row.terms_version || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       lastLoginAt: row.last_login_at || undefined,
@@ -352,6 +365,8 @@ export function getUserByEmail(email: string): CommercialUser | null {
     role: row.role as CommercialRole,
     status: row.status as CommercialUserStatus,
     planId: row.plan_id,
+    acceptedTerms: row.accepted_terms === 1 ? true : row.accepted_terms === 0 ? false : undefined,
+    termsVersion: row.terms_version || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastLoginAt: row.last_login_at || undefined,

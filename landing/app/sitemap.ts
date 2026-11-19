@@ -117,6 +117,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.3,
     },
     {
+      url: `${baseUrl}/refund`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.3,
+    },
+    {
+      url: `${baseUrl}/contact`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.3,
+    },
+    {
       url: `${baseUrl}/aup`,
       lastModified: now,
       changeFrequency: 'monthly',

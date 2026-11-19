@@ -133,3 +133,16 @@ To enable live email delivery in production:
 Submit a test UTR via `/pricing` or API in development mode and check stdout logs:
 - `[EmailService:DEV] Billing alert sent to ...`
 - `[EmailService:DEV] payment.approved -> <masked> plan=... amount=...`
+
+---
+
+## 7. Support Mailbox Migration
+
+The active support and billing mailbox is currently hosted on Gmail (`mahiverse.official@gmail.com` and `mahiverse.hub@gmail.com`). This is an operational reality and not a defect.
+
+When custom branded domain mailboxes (e.g. `support@mahibrowser.com`, `billing@mahibrowser.com`, `contact@mahibrowser.com`) are provisioned in the future:
+1. Update `SUPPORT_EMAIL`, `BUSINESS_EMAIL`, and `BILLING_EMAIL` constants in `10_CONFIG/contact-config.ts`.
+2. Update `BRAND.officialEmail` and `BRAND.hubEmail` in `landing/lib/brand.ts`.
+3. If using SMTP or API email delivery for notifications, update `SMTP_USER` / `SMTP_FROM` / `EMAIL_FROM` in `.env`.
+4. Run full typechecks and builds (`npm run build:prod` and `npm --prefix landing run build`), then redeploy both the landing site and backend gateway daemon.
+

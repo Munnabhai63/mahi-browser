@@ -48,7 +48,39 @@ export const USDT_NETWORK = '';
 export const DEFAULT_PRICE_INR = 599;
 export const DEFAULT_PRICE_USDT = 7;
 
+// Authoritative Legal Identity & Redressal Configuration
+export const LEGAL_SELLER_NAME = 'Mahipal Choudhary';
+export const LEGAL_BRAND_NAME = 'MAHI Browser';
+export const LEGAL_COUNTRY = 'India';
+export const LEGAL_STATE = 'Rajasthan';
+export const LEGAL_GSTIN: string | null = null;          // NOT REGISTERED
+export const LEGAL_REGISTERED_ADDRESS: string | null = null; // NOT ON FILE
+export const GRIEVANCE_OFFICER_NAME = 'Mahipal Choudhary';
+export const GRIEVANCE_OFFICER_EMAIL = SUPPORT_EMAIL;
+export const GRIEVANCE_RESPONSE_DAYS = 15;
+export const REFUND_WINDOW_DAYS = 7;
+
 export const CONTACT_CONFIG = {
+  LEGAL_SELLER_NAME,
+  LEGAL_BRAND_NAME,
+  LEGAL_COUNTRY,
+  LEGAL_STATE,
+  LEGAL_GSTIN,
+  LEGAL_REGISTERED_ADDRESS,
+  GRIEVANCE_OFFICER_NAME,
+  GRIEVANCE_OFFICER_EMAIL,
+  GRIEVANCE_RESPONSE_DAYS,
+  REFUND_WINDOW_DAYS,
+  legalSellerName: LEGAL_SELLER_NAME,
+  legalBrandName: LEGAL_BRAND_NAME,
+  legalCountry: LEGAL_COUNTRY,
+  legalState: LEGAL_STATE,
+  legalGstin: LEGAL_GSTIN,
+  legalRegisteredAddress: LEGAL_REGISTERED_ADDRESS,
+  grievanceOfficerName: GRIEVANCE_OFFICER_NAME,
+  grievanceOfficerEmail: GRIEVANCE_OFFICER_EMAIL,
+  grievanceResponseDays: GRIEVANCE_RESPONSE_DAYS,
+  refundWindowDays: REFUND_WINDOW_DAYS,
   BUSINESS_EMAIL,
   SUPPORT_EMAIL,
   BILLING_EMAIL,

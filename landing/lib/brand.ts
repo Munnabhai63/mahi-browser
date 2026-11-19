@@ -24,4 +24,32 @@ export const BRAND = {
     macDmgAvailable: false,
     linuxAvailable: false,
   },
+  legal: {
+    sellerName: 'Mahipal Choudhary',
+    brandName: 'MAHI Browser',
+    country: 'India',
+    state: 'Rajasthan',
+    // Placeholders on purpose — must never be fabricated.
+    gstin: null as string | null,
+    registeredAddress: null as string | null,
+    grievanceOfficer: 'Mahipal Choudhary',
+    grievanceOfficerEmail: 'mahiverse.official@gmail.com',
+    grievanceResponseDays: 15,
+    refundWindowDays: 7,
+    effectiveDate: '2026-11-16',
+    lastUpdated: '2026-11-19',
+  },
+  whatsapp: {
+    rawNumber: '919376343629',
+    number: '+919376343629',
+    display: '+91 9376343629',
+    url: 'https://wa.me/919376343629',
+  },
 };
+
+export function buildWhatsAppLink(customMessage?: string): string {
+  const defaultMsg = 'Hello MAHI Browser Support, I need help with my account.';
+  const msg = encodeURIComponent(customMessage || defaultMsg);
+  return `https://wa.me/919376343629?text=${msg}`;
+}
+

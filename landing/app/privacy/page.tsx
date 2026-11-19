@@ -4,7 +4,7 @@ import { BRAND } from '../../lib/brand';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy — MAHI Browser',
-  description: 'Privacy Policy and local-first data protection guarantees of MAHI Browser.',
+  description: 'Privacy Policy, local-first data protection guarantees, and compliance disclosures of MAHI Browser.',
 };
 
 export default function PrivacyPolicyPage() {
@@ -13,11 +13,18 @@ export default function PrivacyPolicyPage() {
       <div className="border-b border-slate-800 pb-6">
         <h1 className="text-3xl sm:text-4xl font-extrabold text-white">Privacy Policy</h1>
         <p className="mt-2 text-xs text-slate-400">
-          Last Updated: November 16, 2026 • Effective Immediately
+          Effective Date: {BRAND.legal.effectiveDate} • Last Updated: {BRAND.legal.lastUpdated}
         </p>
       </div>
 
       <div className="space-y-6 text-sm text-slate-300 leading-relaxed">
+        <p className="text-slate-400">
+          This service and website are operated by{' '}
+          <strong className="text-white">{BRAND.legal.sellerName}</strong> (Sole Proprietorship), operating under the trade name{' '}
+          <strong className="text-white">{BRAND.legal.brandName}</strong>, located in{' '}
+          <strong className="text-white">{BRAND.legal.state}, {BRAND.legal.country}</strong>.
+        </p>
+
         <section className="space-y-2">
           <h2 className="text-lg font-bold text-white">1. Local-First Architecture Guarantee</h2>
           <p>
@@ -28,7 +35,7 @@ export default function PrivacyPolicyPage() {
         <section className="space-y-2">
           <h2 className="text-lg font-bold text-white">2. Optional Encrypted Cloud Synchronization</h2>
           <p>
-            When you subscribe to a plan featuring cloud synchronization, profiles uploaded to our Cloudflare R2 bucket are encrypted client-side using industry-standard AES-256-GCM. We store only metadata required for distributed concurrency locks (e.g. active profile ID, lock lease duration, client instance ID) in our central database.
+            When you subscribe to a plan featuring cloud synchronization, profiles uploaded to our Cloudflare R2 bucket are encrypted client-side using industry-standard AES-256-GCM. Cloud synchronization is strictly opt-in. We store only metadata required for distributed concurrency locks (e.g. active profile ID, lock lease duration, client instance ID) in our central database.
           </p>
         </section>
 
@@ -42,6 +49,9 @@ export default function PrivacyPolicyPage() {
             <li>Machine identification hashes for node-locked seat counting</li>
             <li>Payment references (Transaction IDs, UPI UTR numbers)</li>
           </ul>
+          <p className="text-xs text-slate-400 mt-1">
+            Customer account and licensing data is retained while your account remains active.
+          </p>
         </section>
 
         <section className="space-y-2">
@@ -52,11 +62,39 @@ export default function PrivacyPolicyPage() {
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-lg font-bold text-white">5. Contact Information</h2>
+          <h2 className="text-lg font-bold text-white">5. Data Deletion & Contact Information</h2>
           <p>
             For privacy inquiries or data deletion requests, contact us at <a href={`mailto:${BRAND.officialEmail}`} className="text-zinc-300 hover:text-white underline">{BRAND.officialEmail}</a> or via <a href="https://wa.me/919376343629" className="text-zinc-300 hover:text-white underline">WhatsApp Support</a>.
           </p>
         </section>
+
+        <section className="space-y-2">
+          <h2 className="text-lg font-bold text-white">6. Grievance Redressal Officer</h2>
+          <p>
+            In compliance with the Information Technology Act, 2000 and the Information Technology (Intermediary Guidelines and Digital Media Ethics Code) Rules, 2021, the designated Grievance Officer for data protection and privacy matters is set forth below:
+          </p>
+          <ul className="list-disc list-inside space-y-1 text-slate-400 pl-2">
+            <li>
+              <strong className="text-slate-300">Grievance Officer:</strong> {BRAND.legal.grievanceOfficer}
+            </li>
+            <li>
+              <strong className="text-slate-300">Email:</strong>{' '}
+              <a href={`mailto:${BRAND.legal.grievanceOfficerEmail}`} className="text-slate-200 underline hover:text-white">
+                {BRAND.legal.grievanceOfficerEmail}
+              </a>
+            </li>
+            <li>
+              <strong className="text-slate-300">Jurisdiction:</strong> {BRAND.legal.state}, {BRAND.legal.country}
+            </li>
+            <li>
+              <strong className="text-slate-300">Acknowledgement Commitment:</strong> All grievances are acknowledged within 24–48 hours and resolved within {BRAND.legal.grievanceResponseDays} business days.
+            </li>
+          </ul>
+        </section>
+
+        <div className="pt-6 border-t border-slate-800 text-xs text-slate-500">
+          Last updated: {BRAND.legal.lastUpdated}
+        </div>
       </div>
     </div>
   );

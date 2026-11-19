@@ -236,6 +236,8 @@ export interface CommercialUser {
   googleSub?: string;
   avatarUrl?: string;
   authProvider?: string;
+  acceptedTerms?: boolean;
+  termsVersion?: string;
   createdAt: string;
   updatedAt: string;
   lastLoginAt?: string;
@@ -399,6 +401,8 @@ export interface RegisterUserDTO {
   intent?: 'trial' | 'free' | 'paid';
   planId?: string;
   billingCycle?: 'annual' | 'monthly';
+  acceptedTerms?: boolean;
+  termsVersion?: string;
 }
 
 export interface LoginUserDTO {

@@ -1535,4 +1535,10 @@ export async function initializeDatabase(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_web_handoff_expires ON web_handoff_sessions(expires_at);
     CREATE INDEX IF NOT EXISTS idx_web_handoff_used ON web_handoff_sessions(used);
   `);
+
+  // Terms Acceptance Audit Trail
+  addColumnIfNotExists(db, 'commercial_users', 'accepted_terms', 'INTEGER DEFAULT NULL');
+  addColumnIfNotExists(db, 'commercial_users', 'terms_version', 'TEXT DEFAULT NULL');
+  addColumnIfNotExists(db, 'auth_users', 'accepted_terms', 'INTEGER DEFAULT NULL');
+  addColumnIfNotExists(db, 'auth_users', 'terms_version', 'TEXT DEFAULT NULL');
 }
