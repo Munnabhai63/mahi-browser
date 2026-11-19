@@ -201,3 +201,7 @@
   6. **Copy & Link Clean-Up**: Fixed leftover Lateral finance strings ("Top Finance Teams" -> "Top Growth Fleets") and wired all pre-footer & FAQ CTAs to `/download?auto=true` and `/compare`.
   7. **Silent Telemetry**: Used production-safe `sendBeacon` telemetry to eliminate dev-mode 404 overlay toasts.
   8. **Verification**: Playwright automated suite (`scratch/verify_pricing_wiring.py`) validated monthly/yearly pricing recalculation, INR currency switch, UPI modal open/copy/submit flow, FAQ accordion expansion, and download redirection. Production static build passed with 40/40 routes.
+
+## Dual-Tone Logo Architecture for Dynamic Framer Variants
+- Context: Framer sticky navbar dynamically transitions between Transparent/Dark and Light modes based on scroll position.
+- Decision: Created two synchronized vector logos: mahi_logo_vector.svg (white fills for dark hero/footer) and mahi_logo_vector_dark.svg (black/dark-grey fills for white intro section sticky navbar). Enforce both via asset replacement, CSS content fallback, and DOM observer.

@@ -143,3 +143,11 @@
   - Full automated Playwright verification (`scratch/verify_blog_wiring.py`) passed 100% (HTTP 200, zero console errors), and static export build passed with 38/38 routes generated.
 
 
+
+## Scrolled Sticky Navbar Lateral Logo Bug Fix
+- Identified Framer Light variant asset: 61qlHBYUhSYBxFfxVjXQnzoVcE.svg in shared-lib.DZXixvvS.mjs.
+- Created official dark monochrome MAHI Browser vector logo (/assets/mahi_logo_vector_dark.svg).
+- Replaced legacy Lateral SVG references across all JS bundles, SVG files, and HTML templates.
+- Added high-contrast CSS and persistent observer for sticky light navigation.
+- Rebuilt Next.js portal and deployed to production VPS (200.97.164.97).
+- Verified live with Playwright on Chrome: Zero Lateral traces, clean crisp MAHI logo and dark nav links on scroll up.
