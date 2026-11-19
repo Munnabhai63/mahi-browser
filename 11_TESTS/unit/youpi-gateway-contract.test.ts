@@ -128,7 +128,7 @@ describe('YouPI Gateway Contract & Invariant Tests', () => {
 
     const parsedBody = JSON.parse(calledInit.body);
     expect(parsedBody.currency).toBe('INR');
-    expect(parsedBody.amount).toBe('1499.00');
+    expect(parsedBody.amount).toBe(1499);
     expect(session.provider).toBe('youpi_pg');
     expect(session.checkoutUrl).toContain('/checkout/');
   });

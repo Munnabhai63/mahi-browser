@@ -547,7 +547,7 @@ export class YoupiPgPaymentAdapter implements PaymentProvider {
     }
 
     const orderId = req.idempotencyKey || `mahi_ord_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-    const amountRupees = (amountCents / 100).toFixed(2);
+    const amountRupees = amountCents / 100;
     const returnUrl = req.successUrl || `https://mahibrowser.com/pricing?status=success&orderId=${orderId}`;
 
     const resolveCheckoutUrl = (sessionId: string, customUrl?: string) => {
