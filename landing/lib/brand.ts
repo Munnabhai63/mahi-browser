@@ -21,5 +21,7 @@ export const BRAND = {
     windowsPortable: '/download/portable',
     macDmg: '/releases/MAHI-Browser-1.1.9-macOS-arm64.dmg',
     linuxAppImage: '/releases/MAHI-Browser-1.1.9-Linux-x64.AppImage',
+    macDmgAvailable: false,
+    linuxAvailable: false,
   },
 };

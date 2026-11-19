@@ -44,7 +44,7 @@ const DOWNLOAD_OPTIONS: DownloadOption[] = [
     arch: 'arm64',
     fileExt: '.dmg',
     downloadUrl: BRAND.downloads.macDmg,
-    comingSoon: true,
+    comingSoon: !BRAND.downloads.macDmgAvailable,
     notes: 'Native arm64 binary with Apple Notarization & Gatekeeper signing',
   },
   {
@@ -54,7 +54,7 @@ const DOWNLOAD_OPTIONS: DownloadOption[] = [
     arch: 'x64',
     fileExt: '.dmg',
     downloadUrl: '/releases/MAHI-Browser-1.1.9-macOS-x64.dmg',
-    comingSoon: true,
+    comingSoon: !BRAND.downloads.macDmgAvailable,
     notes: 'Legacy Intel Mac build with full dual-engine hardware emulation',
   },
   {
@@ -65,6 +65,7 @@ const DOWNLOAD_OPTIONS: DownloadOption[] = [
     fileExt: '.AppImage',
     downloadUrl: BRAND.downloads.linuxAppImage,
     isPrimary: true,
+    comingSoon: !BRAND.downloads.linuxAvailable,
     notes: 'Runs on Ubuntu 20.04+, Debian 11+, Fedora, Arch, and Red Hat Linux',
   },
   {
@@ -74,6 +75,7 @@ const DOWNLOAD_OPTIONS: DownloadOption[] = [
     arch: 'x64',
     fileExt: '.deb',
     downloadUrl: '/releases/MAHI-Browser-1.1.9-Linux-x64.deb',
+    comingSoon: !BRAND.downloads.linuxAvailable,
     notes: 'DPKG package with systemd sandbox integration and apt compatibility',
   },
 ];
@@ -285,16 +287,25 @@ export default function DownloadButtons() {
           </div>
 
           <div className="shrink-0">
-            <a
-              href={primaryOption.downloadUrl}
-              onClick={() => trackDownload(primaryOption)}
-              className="inline-flex items-center justify-center gap-3 rounded-full bg-white text-black px-8 py-3.5 text-[14px] font-medium shadow-xl hover:bg-zinc-200 transition-all duration-200 active:scale-[0.98]"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              <span>Download for {detectedOs === 'windows' ? 'Windows' : detectedOs === 'mac' ? 'Windows (macOS Coming Soon)' : 'Linux'}</span>
-            </a>
+            {primaryOption.comingSoon ? (
+              <button
+                disabled
+                className="inline-flex items-center justify-center gap-3 rounded-full bg-zinc-900 text-zinc-400 border border-white/10 px-8 py-3.5 text-[14px] font-medium cursor-not-allowed select-none"
+              >
+                <span>{detectedOs === 'mac' ? 'macOS — Coming Soon' : detectedOs === 'linux' ? 'Linux — Coming Soon' : 'Coming Soon'}</span>
+              </button>
+            ) : (
+              <a
+                href={primaryOption.downloadUrl}
+                onClick={() => trackDownload(primaryOption)}
+                className="inline-flex items-center justify-center gap-3 rounded-full bg-white text-black px-8 py-3.5 text-[14px] font-medium shadow-xl hover:bg-zinc-200 transition-all duration-200 active:scale-[0.98]"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span>Download for Windows</span>
+              </a>
+            )}
           </div>
         </div>
       </div>
@@ -336,9 +347,12 @@ export default function DownloadButtons() {
               <div className="mt-5 pt-3 border-t border-white/5 flex items-center justify-between">
                 <span className="text-[11px] text-white/30 font-mono">v{BRAND.version}</span>
                 {opt.comingSoon ? (
-                  <span className="text-[11px] font-mono text-zinc-500 cursor-not-allowed select-none">
-                    macOS Coming Soon
-                  </span>
+                  <button
+                    disabled
+                    className="text-[11px] font-mono text-zinc-500 cursor-not-allowed select-none border border-white/10 rounded-full px-2.5 py-0.5 bg-white/[0.02]"
+                  >
+                    {opt.os === 'mac' ? 'macOS — Coming Soon' : opt.os === 'linux' ? 'Linux — Coming Soon' : 'Coming Soon'}
+                  </button>
                 ) : (
                   <a
                     href={opt.downloadUrl}

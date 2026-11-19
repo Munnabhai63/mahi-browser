@@ -18,6 +18,9 @@ on:
         required: false
         default: false
 
+permissions:
+  contents: write
+
 jobs:
   resolve-matrix:
     name: Resolve Target Matrix
@@ -163,3 +166,30 @@ jobs:
           name: mahi-browser-${{ matrix.platform }}-${{ matrix.arch }}
           path: release/*
           if-no-files-found: error
+
+      - name: Normalise release filenames
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json | ConvertFrom-Json).version
+          Copy-Item "release/MAHI-Browser-Setup-$v.exe" "release/MAHI-Browser-Setup-latest.exe" -Force
+          $portable = Get-ChildItem "release/*.exe" | Where-Object { $_.Name -notmatch 'Setup' }
+          if ($portable) {
+            Copy-Item $portable.FullName "release/MAHI-Browser-Portable-latest.exe" -Force
+          }
+          Get-ChildItem release | Select-Object Name, Length | Format-Table -AutoSize
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') && runner.os == 'Windows'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MAHI Browser ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: |
+            release/MAHI-Browser-Setup-*.exe
+            release/MAHI-Browser-Portable-*.exe
+            release/latest.yml
+            release/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

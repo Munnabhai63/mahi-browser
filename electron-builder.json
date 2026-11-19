@@ -43,6 +43,12 @@
     ],
     "icon": "13_ASSETS/resources/icon.ico",
     "artifactName": "MAHI-Browser-Setup-${version}.${ext}",
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://mahibrowser.com/update/"
+      }
+    ],
     "signtoolOptions": {
       "sign": "./12_SCRIPTS/sign.cjs"
     }
