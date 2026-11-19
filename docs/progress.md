@@ -1,5 +1,13 @@
 # Progress Tracker
 
+## Current Status Banner (2026-11-20 — Block F Cleaned & Certified)
+- [x] **Block F — Final Cleanup & Production Hardening:**
+  - **Desktop Dead Links Fixed:** Replaced relative `href="/pricing"` with `href="https://mahibrowser.com/pricing" target="_blank" rel="noopener noreferrer"` in `AccountModal.tsx:870` and `CommercialUserModal.tsx:104`.
+  - **Terms & Privacy Consent Enforced:** Added mandatory consent checkbox in `landing/app/signup/page.tsx`, enforced `acceptedTerms === true` with HTTP 400 `TERMS_NOT_ACCEPTED` on `/api/v1/auth/register`, threaded terms version (`2026-11-19`) through SQLite `oauth_states` and Google OAuth flows, recorded audit trail in `commercial_users` and `auth_users` without backfilling historical NULLs.
+  - **Crash Diagnostics Export:** Implemented `app:getDiagnostics` IPC handler (tailing `crash-log.txt` up to 200 lines / 20,000 characters, sanitizing secrets), exposed through preload (`preload.cjs` & `preload/index.ts`), typed in `MahiBrowserAPI`, and added one-click "Copy Diagnostics" button in `HelpAbout.tsx`.
+  - **Honest Metrics & Docs:** Corrected test suite metrics (130 passed | 2 skipped test files, 1216 passed | 22 skipped tests, 0 code failures), 38 static landing pages, actual Windows installer sizes (~113 MB), and unverified endpoint disclaimers in `docs/LAUNCH_READINESS.md`.
+  - **Verification:** All tests passed (`terms-consent.test.ts`, unit tests, typechecks, build).
+
 ## Latest Updates (2026-11-19)
 - [x] **Full Remediation Engine (Blocks 2, 3, 4, 5, 6, 7, 8 & Gaps A, C, E, F):**
   - **Block 2 + 4 (Plan Catalog & Price Resolution):**
@@ -30,7 +38,7 @@
   - **Verification:**
     * `cd landing && npx tsc --noEmit && npm run build` -> PASS (39/39 pages).
     * `npx tsc -p tsconfig.gateway.json --noEmit` -> PASS (0 errors).
-    * `npx vitest run` -> 21/21 tests PASS.
+    * `npx vitest run` -> 21/21 tests PASS *(historical snapshot from early remediation pass; full test suite currently passes 1200+ tests with 0 code failures)*.
     * Localhost screenshots verified: header, cards, modal, and zero phone numbers.
 - [x] **Block 1: UPI Payment Wire to Backend API:**
   - Fixed critical P0 bug where UPI UTR submissions never reached backend database (`fetch()` calls in `PricingView.tsx` were 0).

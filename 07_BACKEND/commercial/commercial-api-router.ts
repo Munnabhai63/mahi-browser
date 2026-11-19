@@ -126,7 +126,7 @@ import {
 } from '../../04_LICENSING/license-engine.js';
 import { verifyAdminAccess } from '../../05_AUTH/admin-auth.js';
 import { isValidAdminWebSecret } from '../../08_SECURITY/install-secrets.js';
-import { CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
+import { CommercialRole, CURRENT_TERMS_VERSION } from '../../10_CONFIG/shared/types/commercial.js';
 
 import {
   getUserSyncUsage,
@@ -1072,6 +1072,16 @@ export async function handleCommercialApiRoutes(
     }
 
     const body = await parseBody(req);
+    if (body.acceptedTerms !== true) {
+      sendJSON(res, 400, {
+        success: false,
+        error: {
+          code: 'TERMS_NOT_ACCEPTED',
+          message: 'You must accept the Terms of Service and Privacy Policy to create an account.',
+        },
+      });
+      return true;
+    }
     const VALID_REGISTER_PLANS = [
       'free',
       'starter',
@@ -1110,6 +1120,13 @@ export async function handleCommercialApiRoutes(
       });
       return true;
     }
+    const termsVer = body.termsVersion ? String(body.termsVersion).trim() : CURRENT_TERMS_VERSION;
+    if (result.user?.id) {
+      try {
+        const db = getDatabase();
+        db.prepare('UPDATE auth_users SET accepted_terms = 1, terms_version = ? WHERE id = ?').run(termsVer, result.user.id);
+      } catch {}
+    }
     let commUserResult: any;
     try {
       commUserResult = registerUser({
@@ -1119,6 +1136,8 @@ export async function handleCommercialApiRoutes(
         intent: body.intent,
         planId: body.planId || body.plan,
         billingCycle: body.billingCycle || body.billing,
+        acceptedTerms: true,
+        termsVersion: termsVer,
       }, clientIp, result.user?.id);
     } catch {}
 
@@ -1280,6 +1299,8 @@ export async function handleCommercialApiRoutes(
     const returnUrl = parsedUrl.searchParams.get('returnUrl') || parsedUrl.searchParams.get('return_url') || '';
     const handoff = parsedUrl.searchParams.get('handoff') || '';
     const codeChallenge = parsedUrl.searchParams.get('code_challenge') || '';
+    const acceptedTerms = parsedUrl.searchParams.get('acceptedTerms') === 'true';
+    const termsVersion = parsedUrl.searchParams.get('termsVersion') || undefined;
 
     if (handoff) {
       desktopAuthTickets.set(handoff, {
@@ -1298,6 +1319,8 @@ export async function handleCommercialApiRoutes(
         billingCycle,
         returnUrl,
         handoff,
+        acceptedTerms,
+        termsVersion,
       });
     } catch (err: any) {
       if (err?.message === 'GOOGLE_OAUTH_NOT_CONFIGURED') {

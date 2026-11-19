@@ -33,6 +33,7 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusEvent | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isCopyingDiagnostics, setIsCopyingDiagnostics] = useState(false);
 
   useEffect(() => {
     if (window.mahiAPI) {
@@ -136,6 +137,29 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
       useToastStore.getState().showToast({
         type: 'error',
         title: 'Install Error',
+        message: msg,
+      });
+    }
+  };
+
+  const handleCopyDiagnostics = async () => {
+    if (!window.mahiAPI?.getDiagnostics) return;
+    try {
+      const diag = await window.mahiAPI.getDiagnostics();
+      const text = JSON.stringify(diag, null, 2);
+      await navigator.clipboard.writeText(text);
+      setIsCopyingDiagnostics(true);
+      useToastStore.getState().showToast({
+        type: 'success',
+        title: 'Diagnostics Copied',
+        message: 'System diagnostics copied to clipboard.',
+      });
+      setTimeout(() => setIsCopyingDiagnostics(false), 2000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      useToastStore.getState().showToast({
+        type: 'error',
+        title: 'Failed to Copy Diagnostics',
         message: msg,
       });
     }
@@ -340,6 +364,28 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
               </kbd>
             </div>
           </div>
+        </div>
+
+        {/* System Diagnostics */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-3 mt-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-100">
+              <Terminal className="w-4 h-4 text-teal-500" />
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">System Diagnostics</h2>
+            </div>
+            <button
+              type="button"
+              disabled={!window.mahiAPI?.getDiagnostics || isCopyingDiagnostics}
+              onClick={handleCopyDiagnostics}
+              className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 cursor-pointer disabled:opacity-50"
+            >
+              <Copy size={13} className={isCopyingDiagnostics ? 'text-teal-400' : ''} />
+              <span>{isCopyingDiagnostics ? 'Copied!' : 'Copy Diagnostics'}</span>
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Export anonymized environment data and crash log excerpts for debugging and support tickets.
+          </p>
         </div>
       </div>
     </div>

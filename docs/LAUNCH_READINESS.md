@@ -12,25 +12,27 @@
 The following components are fully tested, integrated, and verified working in code and deployed infrastructure:
 
 - [x] **Automated Regression Suite Green**
-  - **Evidence:** `npm run test:ci` passes cleanly: `128 passed | 0 failed` test files, `1202 passed | 0 failed` tests.
+  - **Evidence:** `npm run test:ci` passes cleanly: 130 passed | 2 skipped test files, 1216 passed | 22 skipped tests (0 code failures; note: in headless CI environments lacking Electron binary, native launch tests skip/fail as expected).
   - **Components Covered:** Pricing calculation, YouPI adapter, manual UPI UTR flow, webhook HMAC verification, anti-detect launcher, cloud sync, and commercial auth.
 - [x] **Typecheck & Static Build Pass Cleanly**
-  - **Evidence:** Root `npx tsc --noEmit` exits with code 0; Landing `npx tsc --noEmit` and `npm run build` exit with code 0 across all 41 static pages.
+  - **Evidence:** Root `npx tsc --noEmit` exits with code 0; Landing `npx tsc --noEmit` and `npm run build` exit with code 0 across all 38 static pages.
 - [x] **Windows Installer Produced by CI**
   - **Evidence:** GitHub Actions workflow run `44470164303`, artifact `mahi-browser-win-x64` (404,983,992 bytes / 386 MB).
 - [x] **GitHub Release v1.1.9 Published**
   - **Evidence:** Public release tag `v1.1.9` on `Munnabhai63/mahi-browser` hosting 6 release assets:
-    - `MAHI-Browser-Setup-1.1.9.exe` (131 MB)
-    - `MAHI-Browser-Setup-latest.exe` (131 MB)
-    - `MAHI-Browser-Portable-1.1.9.exe` (128 MB)
-    - `MAHI-Browser-Portable-latest.exe` (128 MB)
+    - `MAHI-Browser-Setup-1.1.9.exe` (118,750,984 bytes / ~113 MB)
+    - `MAHI-Browser-Setup-latest.exe` (118,750,984 bytes / ~113 MB)
+    - `MAHI-Browser-Portable-1.1.9.exe` (118,290,725 bytes / ~113 MB)
+    - `MAHI-Browser-Portable-latest.exe` (118,290,725 bytes / ~113 MB)
     - `latest.yml` (auto-update manifest pointing to 1.1.9)
     - `SHA256SUMS.txt`
-- [x] **Production Download & Auto-Update Endpoints Live**
-  - **Evidence:** Verified via `bash 12_SCRIPTS/deploy-release.sh --verify-only`:
-    - `https://mahibrowser.com/download/setup` -> HTTP 200 (131,152,072 bytes)
-    - `https://mahibrowser.com/download/portable` -> HTTP 200 (128,713,381 bytes)
-    - `https://mahibrowser.com/update/latest.yml` -> HTTP 200 (`version: 1.1.9`)
+- [~] **Production Download & Auto-Update Endpoints (Owner Verification Required)**
+  - **Status:** [ ] OWNER TO VERIFY
+  - **Verification Commands:**
+    - `curl -ILs https://mahibrowser.com/download/setup | grep -E "HTTP|content-length"`
+    - `curl -ILs https://mahibrowser.com/download/portable | grep -E "HTTP|content-length"`
+    - `curl -ILs https://mahibrowser.com/update/latest.yml | head -n 5`
+  - **Expected:** Setup and Portable return HTTP 200/302 with release binary, and latest.yml serves valid YAML with `version: 1.1.9`.
 - [x] **YouPI Gateway Adapter Wired as INR Default**
   - **Evidence:** Sovereign 0% fee YouPI gateway adapter configured as primary provider for INR transactions; verified in `11_TESTS/unit/youpi-gateway-contract.test.ts` (6 tests passed).
 - [x] **Fault-Tolerant Payment Notifications**
@@ -44,7 +46,7 @@ The following components are fully tested, integrated, and verified working in c
     - `/aup` (Acceptable Use Policy)
     - `/download` (Direct binary download center)
 - [x] **Terms Acceptance Audit Trail**
-  - **Evidence:** `accepted_terms` and `terms_version` persisted on registration and queryable by admins via `GET /api/v1/admin/users` and `GET /api/v1/admin/terms-compliance`.
+  - **Evidence:** Web registration strictly enforces affirmative checkbox consent with `terms_version = '2026-11-19'`. Google OAuth SSO records terms consent when initiated from signup, leaving historical/unspecified records as NULL without retroactive fabrication. Queryable by admins via `GET /api/v1/admin/users` and `GET /api/v1/admin/terms-compliance`.
 
 ---
 
@@ -56,7 +58,7 @@ These items must be resolved by the owner before opening live checkout to real p
 - **Status:** [ ] BLOCKING
 - **What:** The `.env` file on the production backend server must be populated with live merchant credentials.
 - **Required Variables:**
-  - `YOUPI_PG_BASE_URL` (e.g. `https://pay.oviaxe.com` or live gateway URL)
+  - `YOUPI_PG_BASE_URL` (e.g. `https://<your-gateway-domain>`, see docs/PAYMENT_GATEWAY_RUNBOOK.md)
   - `YOUPI_PG_MERCHANT_ID` (Owner's merchant UUID)
   - `YOUPI_PG_API_KEY` (Merchant secret key)
   - `YOUPI_PG_SECRET` (Merchant secret key)

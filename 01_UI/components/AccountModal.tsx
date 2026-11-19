@@ -867,7 +867,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                 ) : (
                   <div className="text-xs text-slate-400 space-y-1">
                     <p>No licence yet. It is issued automatically after payment is approved.</p>
-                    <a href="/pricing" className="text-slate-300 hover:text-white underline inline-block font-medium">View Pricing</a>
+                    <a href="https://mahibrowser.com/pricing" target="_blank" rel="noopener noreferrer" className="text-slate-300 hover:text-white underline inline-block font-medium">View Pricing</a>
                   </div>
                 )}
               </div>

@@ -73,7 +73,8 @@ describe('Phase 18: Complete CTA → Auth → Trial/Plan → Download Onboarding
         password: 'ValidSecurePass123!',
         confirmPassword: 'ValidSecurePass123!',
         name: 'Trial Tester',
-        intent: 'trial'
+        intent: 'trial',
+        acceptedTerms: true
       })
     });
     expect(regRes.status).toBe(201);
@@ -119,7 +120,8 @@ describe('Phase 18: Complete CTA → Auth → Trial/Plan → Download Onboarding
         name: 'Pro Subscriber',
         intent: 'paid',
         plan: 'professional_50',
-        billing: 'annual'
+        billing: 'annual',
+        acceptedTerms: true
       })
     });
     expect(regRes.status).toBe(201);
@@ -151,7 +153,8 @@ describe('Phase 18: Complete CTA → Auth → Trial/Plan → Download Onboarding
         email: existingEmail,
         password: 'ExistingPass2026!',
         name: 'Existing Member',
-        intent: 'free'
+        intent: 'free',
+        acceptedTerms: true
       })
     });
     expect(regRes.status).toBe(201);
@@ -170,7 +173,8 @@ describe('Phase 18: Complete CTA → Auth → Trial/Plan → Download Onboarding
       body: JSON.stringify({
         email: existingEmail,
         password: 'AnyPassword123!',
-        name: 'Duplicate Tester'
+        name: 'Duplicate Tester',
+        acceptedTerms: true
       })
     });
     expect(dupRes.status).toBe(409);
@@ -295,7 +299,8 @@ describe('Phase 18: Complete CTA → Auth → Trial/Plan → Download Onboarding
         email: continuityEmail,
         password,
         name: 'Desktop User',
-        intent: 'trial'
+        intent: 'trial',
+        acceptedTerms: true
       })
     });
     expect(webRegRes.status).toBe(201);
@@ -346,7 +351,8 @@ describe('Phase 18: Complete CTA → Auth → Trial/Plan → Download Onboarding
         email: expiredEmail,
         password: 'ExpiredPass123!',
         name: 'Expired Trial User',
-        intent: 'trial'
+        intent: 'trial',
+        acceptedTerms: true
       })
     });
     const regData = await regRes.json();

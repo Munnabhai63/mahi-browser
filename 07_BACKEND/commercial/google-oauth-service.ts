@@ -62,6 +62,8 @@ export interface OAuthStateRecord {
   returnUrl: string;
   expiresAt: string;
   createdAt: string;
+  acceptedTerms?: boolean | null;
+  termsVersion?: string | null;
 }
 
 export function getGoogleOAuthConfig(): GoogleOAuthConfig {
@@ -249,6 +251,8 @@ export function generateOAuthAuthorization(params: {
   returnUrl?: string;
   redirectUri?: string;
   handoff?: string;
+  acceptedTerms?: boolean;
+  termsVersion?: string;
 }): { authUrl: string; state: string; nonce: string; configured: boolean; redirectUri: string } {
   const config = getGoogleOAuthConfig();
   const db = getDatabase();
@@ -269,12 +273,14 @@ export function generateOAuthAuthorization(params: {
     handoff: params.handoff,
   });
   const redirectUri = params.redirectUri || config.defaultRedirectUri;
+  const acceptedTermsInt = params.acceptedTerms === true ? 1 : (params.acceptedTerms === false ? 0 : null);
+  const termsVersion = params.termsVersion || null;
 
   db.prepare(`
     INSERT INTO oauth_states (
-      state, nonce, provider, intent, plan_id, billing_cycle, return_url, expires_at, created_at
-    ) VALUES (?, ?, 'google', ?, ?, ?, ?, ?, ?)
-  `).run(state, nonce, intent, planId, billingCycle, returnUrl, expiresAt, now);
+      state, nonce, provider, intent, plan_id, billing_cycle, return_url, expires_at, created_at, accepted_terms, terms_version
+    ) VALUES (?, ?, 'google', ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(state, nonce, intent, planId, billingCycle, returnUrl, expiresAt, now, acceptedTermsInt, termsVersion);
 
   if (!config.clientId || !config.clientSecret) {
     throw new Error('GOOGLE_OAUTH_NOT_CONFIGURED');
@@ -318,6 +324,8 @@ export function validateAndConsumeOAuthState(state: string): OAuthStateRecord | 
     returnUrl: row.return_url,
     expiresAt: row.expires_at,
     createdAt: row.created_at,
+    acceptedTerms: row.accepted_terms === 1 ? true : (row.accepted_terms === 0 ? false : null),
+    termsVersion: row.terms_version || null,
   };
 }
 
@@ -616,16 +624,20 @@ export async function authenticateWithGoogleClaimsAsync(
       // Create user in SQLite commercial_users + auth_users with matching pgUser.id
       const displayName = (claims.name || pgUser.name || cleanEmail.split('@')[0] || 'Google User').trim();
       const avatarUrl = claims.picture || pgUser.avatar_url || null;
+      const acceptedTermsInt = stateRecord?.acceptedTerms === true ? 1 : (stateRecord?.acceptedTerms === false ? 0 : null);
+      const termsVersion = stateRecord?.termsVersion || null;
       db.prepare(`
         INSERT INTO commercial_users (
           id, email, password_hash, salt, name, role, status, plan_id,
           trial_started_at, trial_expires_at, trial_used, signup_intent,
-          google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at
-        ) VALUES (?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
+          google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at,
+          accepted_terms, terms_version
+        ) VALUES (?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
       `).run(
         userId, cleanEmail, displayName, pgUser.status || 'ACTIVE', pgUser.plan_id || planId,
         pgUser.trial_started_at || null, pgUser.trial_expires_at || null, pgUser.trial_used ? 1 : 0, intent,
-        claims.sub, avatarUrl, pgUser.created_at || now, now, now
+        claims.sub, avatarUrl, pgUser.created_at || now, now, now,
+        acceptedTermsInt, termsVersion
       );
 
       try {
@@ -634,12 +646,14 @@ export async function authenticateWithGoogleClaimsAsync(
             id, email, normalized_email, password_hash, salt, name, role, status,
             email_verified, email_verified_at, plan_id, profile_quota,
             trial_started_at, trial_expires_at, trial_used, signup_intent,
-            google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at
-          ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
+            google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at,
+            accepted_terms, terms_version
+          ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
         `).run(
           userId, cleanEmail, cleanEmail, displayName, pgUser.status || 'ACTIVE', now, pgUser.plan_id || planId, pgUser.profile_quota || profileQuota,
           pgUser.trial_started_at || null, pgUser.trial_expires_at || null, pgUser.trial_used ? 1 : 0, intent,
-          claims.sub, avatarUrl, pgUser.created_at || now, now, now
+          claims.sub, avatarUrl, pgUser.created_at || now, now, now,
+          acceptedTermsInt, termsVersion
         );
       } catch {}
     }
@@ -743,6 +757,8 @@ export async function authenticateWithGoogleClaimsAsync(
     const trialUsed = isTrial ? 1 : 0;
     const pendingPlanId = intent === 'paid' ? planId : null;
     const pendingBillingCycle = intent === 'paid' ? billingCycle : null;
+    const acceptedTermsInt = stateRecord?.acceptedTerms === true ? 1 : (stateRecord?.acceptedTerms === false ? 0 : null);
+    const termsVersion = stateRecord?.termsVersion || null;
 
     // Insert into SQLite commercial_users
     db.prepare(`
@@ -750,13 +766,15 @@ export async function authenticateWithGoogleClaimsAsync(
         id, email, password_hash, salt, name, role, status, plan_id,
         trial_started_at, trial_expires_at, trial_used, signup_intent,
         pending_plan_id, pending_billing_cycle, google_sub, avatar_url, auth_provider,
-        created_at, updated_at, last_login_at
-      ) VALUES (?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
+        created_at, updated_at, last_login_at,
+        accepted_terms, terms_version
+      ) VALUES (?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
     `).run(
       userId, cleanEmail, displayName, planId,
       trialStartedAt, trialExpiresAt, trialUsed, intent,
       pendingPlanId, pendingBillingCycle, claims.sub, avatarUrl,
-      now, now, now
+      now, now, now,
+      acceptedTermsInt, termsVersion
     );
 
     // Insert into SQLite auth_users
@@ -766,12 +784,14 @@ export async function authenticateWithGoogleClaimsAsync(
           id, email, normalized_email, password_hash, salt, name, role, status,
           email_verified, email_verified_at, plan_id, profile_quota,
           trial_started_at, trial_expires_at, trial_used, signup_intent,
-          google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at
-        ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
+          google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at,
+          accepted_terms, terms_version
+        ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
       `).run(
         userId, cleanEmail, cleanEmail, displayName, now, planId, profileQuota,
         trialStartedAt, trialExpiresAt, trialUsed, intent,
-        claims.sub, avatarUrl, now, now, now
+        claims.sub, avatarUrl, now, now, now,
+        acceptedTermsInt, termsVersion
       );
     } catch {}
 
@@ -1002,19 +1022,23 @@ export function authenticateWithGoogleClaims(
     const trialUsed = isTrial ? 1 : 0;
     const pendingPlanId = intent === 'paid' ? planId : null;
     const pendingBillingCycle = intent === 'paid' ? billingCycle : null;
+    const acceptedTermsInt = stateRecord?.acceptedTerms === true ? 1 : (stateRecord?.acceptedTerms === false ? 0 : null);
+    const termsVersion = stateRecord?.termsVersion || null;
 
     db.prepare(`
       INSERT INTO commercial_users (
         id, email, password_hash, salt, name, role, status, plan_id,
         trial_started_at, trial_expires_at, trial_used, signup_intent,
         pending_plan_id, pending_billing_cycle, google_sub, avatar_url, auth_provider,
-        created_at, updated_at, last_login_at
-      ) VALUES (?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
+        created_at, updated_at, last_login_at,
+        accepted_terms, terms_version
+      ) VALUES (?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
     `).run(
       userId, cleanEmail, displayName, planId,
       trialStartedAt, trialExpiresAt, trialUsed, intent,
       pendingPlanId, pendingBillingCycle, claims.sub, avatarUrl,
-      now, now, now
+      now, now, now,
+      acceptedTermsInt, termsVersion
     );
 
     try {
@@ -1023,12 +1047,14 @@ export function authenticateWithGoogleClaims(
           id, email, normalized_email, password_hash, salt, name, role, status,
           email_verified, email_verified_at, plan_id, profile_quota,
           trial_started_at, trial_expires_at, trial_used, signup_intent,
-          google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at
-        ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?)
+          google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at,
+          accepted_terms, terms_version
+        ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
       `).run(
         userId, cleanEmail, cleanEmail, displayName, now, planId, profileQuota,
         trialStartedAt, trialExpiresAt, trialUsed, intent,
-        claims.sub, avatarUrl, now, now, now
+        claims.sub, avatarUrl, now, now, now,
+        acceptedTermsInt, termsVersion
       );
     } catch {}
 

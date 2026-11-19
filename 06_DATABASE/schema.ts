@@ -1360,7 +1360,9 @@ export async function initializeDatabase(): Promise<void> {
         billing_cycle TEXT,
         return_url TEXT,
         expires_at TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        accepted_terms INTEGER DEFAULT NULL,
+        terms_version TEXT DEFAULT NULL
       );
 
       CREATE INDEX IF NOT EXISTS idx_oauth_states_expires ON oauth_states(expires_at);
@@ -1541,4 +1543,6 @@ export async function initializeDatabase(): Promise<void> {
   addColumnIfNotExists(db, 'commercial_users', 'terms_version', 'TEXT DEFAULT NULL');
   addColumnIfNotExists(db, 'auth_users', 'accepted_terms', 'INTEGER DEFAULT NULL');
   addColumnIfNotExists(db, 'auth_users', 'terms_version', 'TEXT DEFAULT NULL');
+  addColumnIfNotExists(db, 'oauth_states', 'accepted_terms', 'INTEGER DEFAULT NULL');
+  addColumnIfNotExists(db, 'oauth_states', 'terms_version', 'TEXT DEFAULT NULL');
 }

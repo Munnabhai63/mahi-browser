@@ -113,6 +113,16 @@ export interface DashboardMetrics {
   recentProfiles: Profile[];
 }
 
+export interface AppDiagnostics {
+  version: string;
+  platform: string;
+  arch: string;
+  electron: string;
+  node: string;
+  generatedAt: string;
+  logTail: string;
+}
+
 export interface MahiBrowserAPI {
   // Profiles
   getProfiles: (filter?: ProfileFilterOptions) => Promise<Profile[]>;
@@ -318,6 +328,7 @@ export interface MahiBrowserAPI {
   getUpdateConfig: () => Promise<UpdateConfig>;
   setUpdateConfig: (config: Partial<UpdateConfig>) => Promise<UpdateConfig>;
   getAppVersion: () => Promise<string>;
+  getDiagnostics: () => Promise<AppDiagnostics>;
 
 
   // Resource Monitoring & Memory Optimizer

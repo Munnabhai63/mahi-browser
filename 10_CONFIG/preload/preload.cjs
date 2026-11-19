@@ -209,6 +209,7 @@ const api = {
   getUpdateConfig: () => ipcRenderer.invoke('updater:getConfig'),
   setUpdateConfig: (config) => ipcRenderer.invoke('updater:setConfig', config),
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
+  getDiagnostics: () => ipcRenderer.invoke('app:getDiagnostics'),
 
   // Resource Monitoring & Memory Optimizer
   getFleetResources: () => ipcRenderer.invoke('resources:getFleetUsage'),

@@ -9,6 +9,7 @@ export default function SignupPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [planId, setPlanId] = useState('free');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -21,8 +22,14 @@ export default function SignupPage() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     setErrorMsg(null);
+
+    if (!acceptedTerms) {
+      setErrorMsg('Please accept the Terms of Service and Privacy Policy to continue.');
+      return;
+    }
+
+    setIsLoading(true);
 
     try {
       const resp = await fetch(`${BRAND.apiUrl}/api/v1/auth/register`, {
@@ -35,6 +42,8 @@ export default function SignupPage() {
           planId,
           requestedPlan: planId,
           intent: planId !== 'free' ? 'trial' : 'free',
+          acceptedTerms: true,
+          termsVersion: BRAND.legal.lastUpdated,
         }),
       });
 
@@ -65,9 +74,13 @@ export default function SignupPage() {
   };
 
   const handleGoogleOAuth = () => {
+    if (!acceptedTerms) {
+      setErrorMsg('Please accept the Terms of Service and Privacy Policy before continuing with Google.');
+      return;
+    }
     window.location.href = `${BRAND.apiUrl}/api/v1/auth/google/start?returnUrl=${encodeURIComponent(
       `${BRAND.website}/download`
-    )}`;
+    )}&acceptedTerms=true&termsVersion=${encodeURIComponent(BRAND.legal.lastUpdated)}`;
   };
 
   return (
@@ -183,6 +196,28 @@ export default function SignupPage() {
             <Link href="/pricing" className="text-zinc-400 hover:text-white underline text-[11px] transition-colors">
               Change
             </Link>
+          </div>
+
+          {/* Terms and Privacy Consent Checkbox */}
+          <div className="flex items-start gap-2.5 pt-1 text-xs text-white/70">
+            <input
+              type="checkbox"
+              id="acceptTerms"
+              checked={acceptedTerms}
+              onChange={(e) => setAcceptedTerms(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-white/20 bg-[#080808] text-white focus:ring-0 focus:ring-offset-0 cursor-pointer accent-white"
+            />
+            <label htmlFor="acceptTerms" className="cursor-pointer leading-tight text-[12px] text-zinc-400 select-none">
+              I agree to the{' '}
+              <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-white underline hover:text-white/90">
+                Terms of Service
+              </Link>{' '}
+              and{' '}
+              <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-white underline hover:text-white/90">
+                Privacy Policy
+              </Link>
+              .
+            </label>
           </div>
 
           {/* White Pill Create Account Button */}

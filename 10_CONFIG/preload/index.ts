@@ -210,6 +210,7 @@ const api: MahiBrowserAPI = {
   getUpdateConfig: () => ipcRenderer.invoke('updater:getConfig'),
   setUpdateConfig: (config: any) => ipcRenderer.invoke('updater:setConfig', config),
   getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
+  getDiagnostics: () => ipcRenderer.invoke('app:getDiagnostics'),
 
 
   // Resource Monitoring & Memory Optimizer

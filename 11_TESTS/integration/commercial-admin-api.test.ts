@@ -67,6 +67,7 @@ describe('Commercial Admin & REST API Integration Suite', () => {
         email: 'apiuser@company.com',
         password: 'Password123!',
         name: 'API User',
+        acceptedTerms: true,
       },
     });
 

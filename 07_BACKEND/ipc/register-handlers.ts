@@ -2551,6 +2551,38 @@ export function registerIpcHandlers(): void {
     } catch {}
     return APP_VERSION;
   });
+  ipcMain.handle('app:getDiagnostics', async () => {
+    let version = APP_VERSION;
+    try {
+      if (app && typeof app.getVersion === 'function') {
+        const v = app.getVersion();
+        if (v) version = v;
+      }
+    } catch {}
+
+    let logTail = '';
+    try {
+      const crashLogPath = path.join(getWritableUserDataDir(), 'crash-log.txt');
+      if (fs.existsSync(crashLogPath)) {
+        const content = fs.readFileSync(crashLogPath, 'utf-8');
+        const lines = content.split('\n');
+        logTail = lines.slice(-200).join('\n');
+        if (logTail.length > 20000) {
+          logTail = logTail.slice(-20000);
+        }
+      }
+    } catch {}
+
+    return {
+      version,
+      platform: process.platform,
+      arch: process.arch,
+      electron: process.versions.electron || '',
+      node: process.versions.node || '',
+      generatedAt: new Date().toISOString(),
+      logTail,
+    };
+  });
 
   ipcMain.handle('account:verifyEmail', async (_e, dto: { token: string }) => {
     return accountVerifyEmail(dto.token);

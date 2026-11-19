@@ -405,6 +405,8 @@ export interface RegisterUserDTO {
   termsVersion?: string;
 }
 
+export const CURRENT_TERMS_VERSION = '2026-11-19';
+
 export interface LoginUserDTO {
   email: string;
   password: string;

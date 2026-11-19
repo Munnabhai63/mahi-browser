@@ -548,6 +548,15 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     getUpdateConfig: async () => ({ channel: 'STABLE' as const, autoCheck: true, autoDownload: true, notifyBeforeRestart: true }),
     setUpdateConfig: async (config: any) => ({ channel: 'STABLE' as const, autoCheck: true, autoDownload: true, notifyBeforeRestart: true, ...config }),
     getAppVersion: async () => APP_VERSION,
+    getDiagnostics: async () => ({
+      version: APP_VERSION,
+      platform: typeof navigator !== 'undefined' ? navigator.platform : 'web',
+      arch: 'x64',
+      electron: '',
+      node: '',
+      generatedAt: new Date().toISOString(),
+      logTail: '',
+    }),
 
     // Resource Monitoring & Memory Optimizer
     getFleetResources: async () => ({ totalMemoryMB: 0, totalCpuPercent: 0, activeProfilesCount: 0, profiles: {} }),

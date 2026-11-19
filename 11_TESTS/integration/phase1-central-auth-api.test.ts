@@ -87,6 +87,7 @@ describe('PHASE 1: Central Auth Endpoints & Security Controls Integration', () =
           email: 'api-user@mahibrowser.com',
           password: 'Password1234!',
           name: 'API Tester',
+          acceptedTerms: true,
         },
       });
 
@@ -201,7 +202,7 @@ describe('PHASE 1: Central Auth Endpoints & Security Controls Integration', () =
       // Register
       await apiRequest('/api/v1/auth/register', {
         method: 'POST',
-        body: { email: 'reset-sec@mahibrowser.com', password: 'PasswordOld123!' },
+        body: { email: 'reset-sec@mahibrowser.com', password: 'PasswordOld123!', acceptedTerms: true },
       });
 
       // Request forgot password
@@ -229,7 +230,7 @@ describe('PHASE 1: Central Auth Endpoints & Security Controls Integration', () =
       // Old password login fails
       const oldLogin = await apiRequest('/api/v1/auth/login', {
         method: 'POST',
-        body: { email: 'reset-sec@mahibrowser.com', password: 'PasswordOld123!' },
+        body: { email: 'reset-sec@mahibrowser.com', password: 'PasswordOld123!', acceptedTerms: true },
       });
       expect(oldLogin.status).toBe(401);
 
