@@ -1,6 +1,11 @@
 # Progress Tracker
 
 ## Current Status Banner (2026-11-20 — Blocks F, G, H)
+- [x] **Full Production Deployment to VPS (200.97.164.97):**
+  - **Landing Portal Live:** Rebuilt 41 static pages in Next.js (`npm run build` with zero errors), deployed fresh archive to `/var/www/mahibrowser/landing/out/` with `www-data:www-data` (755), and reloaded Nginx gracefully. Live `https://mahibrowser.com`, `/pricing`, and `/signup` (with terms checkbox) confirmed HTTP 200 OK.
+  - **Backend Cloud Gateway Live:** Synchronized updated backend source files (`07_BACKEND`, `06_DATABASE`, `10_CONFIG`, etc.) to `/opt/mahi-browser/`. Injected live sovereign YouPI payment gateway credentials (`https://pay.oviaxe.com`, merchant `ca67904f...`) and live Resend email credentials (`support@mahibrowser.com`) into `/opt/mahi-browser/.env`.
+  - **Docker Container Rebuild:** Rebuilt `mahibrowser_gateway` via `docker compose -f docker-compose.production.yml up -d --build`. Container is healthy (`Up (healthy)`), listening on `127.0.0.1:8989`, with PostgreSQL and Redis connections active.
+  - **Zero Regressions on Multi-Tenant VPS:** Confirmed 100% continuous uptime and zero restarts across all foreign containers (`m4k-cobalt-api`, `mahi_pot_provider`, `rumble_postgres`, etc.) and all 11 PM2 processes.
 - [x] **Block H — Launch Scope Locked by Owner:**
   - **Deferred (owner waived):** GST registration (below Rs 20 lakh threshold), macOS .dmg, Linux .AppImage, Windows Authenticode code signing. Accepted consequence: unsigned installer shows the SmartScreen warning.
   - **Confirmed live on production server:** YouPI gateway credentials (UPI QR working), email transport (Resend/SMTP verified).
