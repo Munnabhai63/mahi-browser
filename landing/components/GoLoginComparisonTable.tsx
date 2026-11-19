@@ -104,7 +104,7 @@ const COMPARISON_DATA: ComparisonFeature[] = [
   {
     category: 'Pricing & Support',
     feature: 'Direct WhatsApp Line',
-    mahi: { value: 'Yes (+91 9376343629)', highlight: true },
+    mahi: { value: 'Yes (24/7 Priority WhatsApp)', highlight: true },
     gologin: { value: 'No (Standard Ticket Queue)' },
     adspower: { value: 'Telegram bot only' },
     multilogin: { value: 'Email support only' },
@@ -120,7 +120,7 @@ export default function GoLoginComparisonTable() {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-black/10 pb-5">
         <div>
           <div className="inline-flex items-center gap-2 mb-2">
-            <span className="w-1.5 h-1.5 rounded-[1px] bg-red-600 inline-block"></span>
+            <span className="w-1.5 h-1.5 rounded-[1px] bg-black inline-block"></span>
             <span className="text-[10px] font-mono font-medium uppercase tracking-[0.2em] text-zinc-500">
               HEAD-TO-HEAD MATRIX
             </span>
@@ -229,7 +229,7 @@ export default function GoLoginComparisonTable() {
       <div className="relative overflow-hidden rounded-2xl border border-black/10 bg-[#0c0c0c] text-white p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl">
         <div className="space-y-1.5 max-w-2xl">
           <div className="inline-flex items-center gap-2 mb-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className="w-1.5 h-1.5 rounded-[1px] bg-white inline-block"></span>
             <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-widest">
               Zero-Downtime Migration
             </span>

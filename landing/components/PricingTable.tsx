@@ -237,10 +237,10 @@ export default function PricingTable() {
             </div>
             <div className="rounded-lg bg-slate-950 p-2.5 text-xs border border-slate-800">
               <span className="text-slate-400">UPI VPA: </span>
-              <span className="font-mono text-emerald-400 font-bold">{BRAND.upiId}</span>
+              <span className="font-mono text-zinc-200 font-bold">{BRAND.upiId}</span>
             </div>
             <p className="text-[11px] text-slate-400">
-              After transfer, send transaction screenshot to <a href={`mailto:${BRAND.officialEmail}`} className="text-red-400 underline">{BRAND.officialEmail}</a> or WhatsApp <a href="tel:+919376343629" className="text-red-400 underline">{BRAND.phone}</a> for instant activation within 15 minutes.
+              After transfer, send transaction screenshot to <a href={`mailto:${BRAND.officialEmail}`} className="text-zinc-300 underline">{BRAND.officialEmail}</a> or <a href="https://wa.me/919376343629" className="text-zinc-300 underline">WhatsApp Support</a> for prompt activation.
             </p>
           </div>
         </div>

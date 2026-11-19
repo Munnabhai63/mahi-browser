@@ -88,7 +88,6 @@ export default function RootLayout({
     url: BRAND.website,
     logo: `${BRAND.website}${BRAND.assets.logo}`,
     email: BRAND.officialEmail,
-    telephone: BRAND.phone,
     founder: {
       '@type': 'Person',
       name: BRAND.creator,
@@ -115,7 +114,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
         />
       </head>
-      <body className="min-h-screen flex flex-col bg-[#050505] text-[#ededed] antialiased selection:bg-white selection:text-black">
+      <body className="min-h-screen flex flex-col bg-[#030303] text-[#ededed] antialiased selection:bg-white selection:text-black">
         <Navbar />
         <main className="flex-1 w-full">{children}</main>
         <Footer />

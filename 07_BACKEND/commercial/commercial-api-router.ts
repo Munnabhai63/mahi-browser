@@ -735,7 +735,11 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 400, { success: false, error: 'Invalid UTR: Transaction reference must be at least 6 characters.' });
       return true;
     }
-    const planId = body.planId || body.plan_id || body.plan || 'professional_10';
+    const planId = body.planId || body.plan_id || body.plan;
+    if (!planId || typeof planId !== 'string' || !planId.trim()) {
+      sendJSON(res, 400, { success: false, error: 'planId is required. Cannot determine payment amount.' });
+      return true;
+    }
     const billingCycle = ((body.billingCycle || body.billing_cycle || body.billing || 'MONTHLY') as string).toUpperCase() as 'MONTHLY' | 'ANNUAL';
     const proofAsset = body.proofAsset || body.proof_asset || body.receiptUrl || body.receipt_url;
     const extraMembers = body.extraMembers || body.extra_members;
@@ -1065,6 +1069,26 @@ export async function handleCommercialApiRoutes(
     }
 
     const body = await parseBody(req);
+    const VALID_REGISTER_PLANS = [
+      'free',
+      'starter',
+      'growth',
+      'ultimate',
+      'mahi_starter',
+      'mahi_growth',
+      'mahi_ultimate',
+      'pro',
+      'business',
+      'enterprise',
+      'plan_free',
+      'plan_pro',
+      'plan_business',
+      'plan_enterprise',
+    ];
+    if (body.planId && !VALID_REGISTER_PLANS.includes(String(body.planId).toLowerCase().trim())) {
+      sendJSON(res, 400, { success: false, error: `Invalid plan "${body.planId}"` });
+      return true;
+    }
     const result = await registerCentralUser({
       email: body.email,
       password: body.password,
@@ -1263,13 +1287,35 @@ export async function handleCommercialApiRoutes(
       });
     }
 
-    const auth = generateOAuthAuthorization({
-      intent,
-      planId,
-      billingCycle,
-      returnUrl,
-      handoff,
-    });
+    let auth;
+    try {
+      auth = generateOAuthAuthorization({
+        intent,
+        planId,
+        billingCycle,
+        returnUrl,
+        handoff,
+      });
+    } catch (err: any) {
+      if (err?.message === 'GOOGLE_OAUTH_NOT_CONFIGURED') {
+        const acceptsJson = req.headers.accept?.includes('application/json') || req.headers['x-requested-with'];
+        if (acceptsJson) {
+          sendJSON(res, 503, {
+            success: false,
+            error: 'Google OAuth is not configured on this server.',
+            code: 'GOOGLE_OAUTH_NOT_CONFIGURED',
+          });
+          return true;
+        }
+        res.writeHead(302, {
+          Location: `/login?error=${encodeURIComponent('Google OAuth is not configured yet. Please sign in with email and password.')}`,
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end();
+        return true;
+      }
+      throw err;
+    }
 
     // Check if caller requested JSON response (e.g., API client or AJAX)
     const acceptsJson = req.headers.accept?.includes('application/json') || req.headers['x-requested-with'];
@@ -1880,7 +1926,12 @@ export async function handleCommercialApiRoutes(
       return true;
     }
     const body = await parseBody(req);
-    const result = activateUserTrial(auth.userId, body.planId || 'professional_50');
+    const trialPlanId = body.planId || body.plan_id;
+    if (!trialPlanId) {
+      sendJSON(res, 400, { success: false, error: 'planId is required for trial activation.' });
+      return true;
+    }
+    const result = activateUserTrial(auth.userId, trialPlanId);
     if (result.success) {
       try {
         recordFunnelEvent({

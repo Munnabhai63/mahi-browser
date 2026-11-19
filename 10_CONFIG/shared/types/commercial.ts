@@ -26,7 +26,10 @@ export type CanonicalPlanId =
   | 'business_growth'    // Team 100
   | 'business_scale'     // Team 200
   | 'business_enterprise' // Team 300
-  | 'enterprise_custom';
+  | 'enterprise_custom'
+  | 'mahi_starter'
+  | 'mahi_growth'
+  | 'mahi_ultimate';
 
 export type PlanCategory = 'PERSONAL' | 'BUSINESS';
 

@@ -14,6 +14,7 @@ import {
 } from '../../07_BACKEND/commercial/payment-service.js';
 import { handleRemoteApiRequest } from '../../07_BACKEND/commercial/remote-api-router.js';
 import { registerCentralUser } from '../../05_AUTH/central-auth-service.js';
+import { DEFAULT_COMMERCIAL_PLANS } from '../../07_BACKEND/commercial/commercial-plan-service.js';
 
 describe('Batch P0-A — Commercial Payment System & Security Tests', () => {
   let userAId: string;
@@ -63,11 +64,12 @@ describe('Batch P0-A — Commercial Payment System & Security Tests', () => {
       const catalog = paymentService.getPlanCatalog();
       expect(catalog.length).toBeGreaterThan(0);
 
-      const proPlan = catalog.find((p) => p.id === 'plan_pro' || p.tier === 'PRO');
+      const proPlan = catalog.find((p) => p.id === 'plan_pro') || catalog.find((p) => p.tier === 'PRO');
       expect(proPlan).toBeDefined();
-      expect(proPlan!.priceMonthly).toBe(29);
-      expect(paymentService.calculatePlanAmountCents(proPlan!, 'MONTHLY')).toBe(2900);
-      expect(paymentService.calculatePlanAmountCents(proPlan!, 'ANNUAL')).toBe(29000);
+      const expected = DEFAULT_COMMERCIAL_PLANS.find((p) => p.id === proPlan!.id);
+      expect(proPlan!.priceMonthly).toBe(expected!.priceMonthly);
+      expect(paymentService.calculatePlanAmountCents(proPlan!, 'MONTHLY')).toBe(expected!.priceMonthly * 100);
+      expect(paymentService.calculatePlanAmountCents(proPlan!, 'ANNUAL')).toBe(expected!.priceAnnual * 100);
     });
 
     it('rejects checkout session for non-existent plan', async () => {

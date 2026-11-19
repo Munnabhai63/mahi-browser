@@ -110,8 +110,18 @@ export default function DownloadButtons() {
         } catch {}
       }
 
-      // Auto-trigger download if navigated from Home CTA
+      // Auto-trigger download if navigated from Home CTA (require authentication)
       if (urlParams.get('auto') === 'true') {
+        const currentToken =
+          urlToken ||
+          (typeof window !== 'undefined'
+            ? localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token')
+            : null);
+        if (!currentToken) {
+          window.location.href = '/signup?intent=trial&returnUrl=/download';
+          return;
+        }
+
         setTimeout(() => {
           const downloadTarget = BRAND.downloads.windowsSetup;
           const a = document.createElement('a');
@@ -210,7 +220,7 @@ export default function DownloadButtons() {
         <div className="rounded-[8px] border border-white/15 bg-[#131517] p-5 backdrop-blur-md">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-white inline-block" />
               <div>
                 <p className="text-[13px] font-medium text-white">
                   Signed in to MAHI Cloud

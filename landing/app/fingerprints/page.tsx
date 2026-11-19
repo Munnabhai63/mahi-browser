@@ -125,7 +125,7 @@ export default function FingerprintsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-[#ededed] selection:bg-white selection:text-black">
+    <div className="min-h-screen bg-[#030303] text-[#ededed] selection:bg-white selection:text-black">
       
       {/* ========================================================================= */}
       {/* 1. HERO SECTION: HARDWARE-LEVEL FINGERPRINT SPOOFING                      */}
@@ -192,7 +192,7 @@ export default function FingerprintsPage() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-white/10 pb-6 sm:pb-8">
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1 text-[11px] font-mono text-zinc-300 mb-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-white inline-block" />
                   LIVE HARDWARE EMULATION LAB
                 </div>
                 <h3 className="text-xl sm:text-2xl font-['Spectral',serif] text-white tracking-tight">
@@ -247,7 +247,7 @@ export default function FingerprintsPage() {
                   className="rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-xs font-medium text-white hover:bg-white/20 transition active:scale-95 flex items-center gap-1.5"
                 >
                   <svg
-                    className={`h-3.5 w-3.5 text-emerald-400 ${isScrambling ? 'animate-spin' : ''}`}
+                    className={`h-3.5 w-3.5 text-zinc-300 ${isScrambling ? 'animate-spin' : ''}`}
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -268,7 +268,7 @@ export default function FingerprintsPage() {
                   <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400">
                     Canvas Perturbation
                   </span>
-                  <span className="rounded-full bg-white/10 border border-white/20 px-2.5 py-0.5 text-[10px] font-mono text-emerald-400">
+                  <span className="rounded-full bg-white/10 border border-white/20 px-2.5 py-0.5 text-[10px] font-mono text-zinc-300">
                     Noise Injected
                   </span>
                 </div>
@@ -305,7 +305,7 @@ export default function FingerprintsPage() {
                   <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400">
                     AudioContext Frequency
                   </span>
-                  <span className="rounded-full bg-white/10 border border-white/20 px-2.5 py-0.5 text-[10px] font-mono text-emerald-400">
+                  <span className="rounded-full bg-white/10 border border-white/20 px-2.5 py-0.5 text-[10px] font-mono text-zinc-300">
                     Seed: {currentFp.audioSeed}
                   </span>
                 </div>
@@ -365,11 +365,11 @@ export default function FingerprintsPage() {
                   <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-300">
                     CreepJS Benchmark Score
                   </span>
-                  <span className="rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2.5 py-0.5 text-[10px] font-mono font-medium text-emerald-300">
+                  <span className="rounded-full bg-zinc-800 border border-zinc-700 px-2.5 py-0.5 text-[10px] font-mono font-medium text-zinc-200">
                     100% PASS
                   </span>
                 </div>
-                <div className="bg-black/80 p-2.5 rounded-lg border border-white/10 text-xs font-mono text-emerald-400 font-medium">
+                <div className="bg-black/80 p-2.5 rounded-lg border border-white/10 text-xs font-mono text-zinc-200 font-medium">
                   {currentFp.creepJsScore}
                 </div>
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
@@ -465,7 +465,7 @@ export default function FingerprintsPage() {
       {/* ========================================================================= */}
       {/* 4. SECTION 4: THIRD-PARTY VERIFICATION SCORECARD                          */}
       {/* ========================================================================= */}
-      <section className="relative w-full bg-[#050505] text-white py-24 sm:py-32 border-t border-white/5">
+      <section className="relative w-full bg-[#030303] text-white py-24 sm:py-32 border-t border-white/5">
         <div className="w-full max-w-[1440px] mx-auto px-6 sm:px-12 lg:px-20">
           
           <div className="max-w-2xl mx-auto flex flex-col items-center text-center mb-16 sm:mb-20">
@@ -487,7 +487,7 @@ export default function FingerprintsPage() {
             <div className="rounded-2xl border border-white/10 bg-[#0d0f12] p-6 flex flex-col items-center text-center">
               <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">CreepJS Detection</span>
               <div className="font-['Spectral',serif] text-4xl text-white font-normal my-3">0.0%</div>
-              <span className="text-[11px] font-mono text-emerald-400 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
+              <span className="text-[11px] font-mono text-zinc-300 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
                 A+ Rating &bull; Zero Lies
               </span>
               <p className="text-[11px] text-zinc-500 mt-4 leading-relaxed">
@@ -498,7 +498,7 @@ export default function FingerprintsPage() {
             <div className="rounded-2xl border border-white/10 bg-[#0d0f12] p-6 flex flex-col items-center text-center">
               <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">Pixelscan Consistency</span>
               <div className="font-['Spectral',serif] text-4xl text-white font-normal my-3">100%</div>
-              <span className="text-[11px] font-mono text-emerald-400 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
+              <span className="text-[11px] font-mono text-zinc-300 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
                 Clean Persona &bull; No Flags
               </span>
               <p className="text-[11px] text-zinc-500 mt-4 leading-relaxed">
@@ -509,7 +509,7 @@ export default function FingerprintsPage() {
             <div className="rounded-2xl border border-white/10 bg-[#0d0f12] p-6 flex flex-col items-center text-center">
               <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">IPHEY Hardware Authenticity</span>
               <div className="font-['Spectral',serif] text-4xl text-white font-normal my-3">Passed</div>
-              <span className="text-[11px] font-mono text-emerald-400 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
+              <span className="text-[11px] font-mono text-zinc-300 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
                 Authentic Hardware
               </span>
               <p className="text-[11px] text-zinc-500 mt-4 leading-relaxed">
@@ -520,7 +520,7 @@ export default function FingerprintsPage() {
             <div className="rounded-2xl border border-white/10 bg-[#0d0f12] p-6 flex flex-col items-center text-center">
               <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">BrowserLeaks WebRTC</span>
               <div className="font-['Spectral',serif] text-4xl text-white font-normal my-3">0 Leaks</div>
-              <span className="text-[11px] font-mono text-emerald-400 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
+              <span className="text-[11px] font-mono text-zinc-300 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
                 Proxy Tunneling Strict
               </span>
               <p className="text-[11px] text-zinc-500 mt-4 leading-relaxed">
@@ -571,13 +571,13 @@ export default function FingerprintsPage() {
                 </tr>
                 <tr>
                   <td className="py-4 px-4 font-medium text-zinc-900">Iframe &amp; Worker Isolation</td>
-                  <td className="py-4 px-4 text-red-600 font-medium">Leaks real GPU in Web Workers</td>
-                  <td className="py-4 px-4 font-medium text-emerald-700 bg-zinc-200/30">100% Consistent in Workers &amp; Iframes</td>
+                  <td className="py-4 px-4 text-zinc-500 font-medium">Leaks real GPU in Web Workers</td>
+                  <td className="py-4 px-4 font-semibold text-black bg-zinc-200/30">100% Consistent in Workers &amp; Iframes</td>
                 </tr>
                 <tr>
                   <td className="py-4 px-4 font-medium text-zinc-900">CDP Inspector Detection</td>
-                  <td className="py-4 px-4 text-red-600 font-medium">Flagged via Runtime.enable</td>
-                  <td className="py-4 px-4 font-medium text-emerald-700 bg-zinc-200/30">Zero CDP Leaks (Rebrowser Patches)</td>
+                  <td className="py-4 px-4 text-zinc-500 font-medium">Flagged via Runtime.enable</td>
+                  <td className="py-4 px-4 font-semibold text-black bg-zinc-200/30">Zero CDP Leaks (Rebrowser Patches)</td>
                 </tr>
                 <tr>
                   <td className="py-4 px-4 font-medium text-zinc-900">Canvas Drift Protection</td>
@@ -599,7 +599,7 @@ export default function FingerprintsPage() {
       {/* ========================================================================= */}
       {/* 6. SECTION 6: INTERACTIVE FINGERPRINTING FAQ                              */}
       {/* ========================================================================= */}
-      <section id="faq" className="bg-[#050505] text-white py-24 sm:py-32 border-t border-white/5">
+      <section id="faq" className="bg-[#030303] text-white py-24 sm:py-32 border-t border-white/5">
         <div className="max-w-[1440px] mx-auto px-4 sm:px-8 lg:px-10">
           
           <div className="flex flex-col items-center text-center gap-4 sm:gap-5 max-w-2xl mx-auto mb-16">

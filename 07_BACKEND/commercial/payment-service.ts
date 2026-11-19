@@ -1308,6 +1308,18 @@ export class PaymentService {
       now
     );
 
+    try {
+      await logCommercialAudit({
+        actorId: params.userId,
+        actorName: 'USER',
+        actorRole: 'USER',
+        action: 'UPI_UTR_SUBMITTED',
+        targetType: 'PAYMENT',
+        targetId: paymentId,
+        details: `UPI ₹${amountPaise/100} pending — UTR ${cleanUtr} — plan ${plan.id}`,
+      });
+    } catch {}
+
     return {
       paymentId,
       status: 'PENDING_VERIFICATION',

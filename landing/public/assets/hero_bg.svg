@@ -2,9 +2,9 @@
   <defs>
     <!-- बाईं तरफ़ टेक्स्ट को साफ़ दिखाने के लिए हल्का डार्क ग्रेडिएंट -->
     <linearGradient id="leftTextOverlay" x1="0%" y1="0%" x2="60%" y2="0%">
-      <stop offset="0%" stop-color="#050505" stop-opacity="0.85" />
-      <stop offset="65%" stop-color="#050505" stop-opacity="0.35" />
-      <stop offset="100%" stop-color="#050505" stop-opacity="0" />
+      <stop offset="0%" stop-color="#030303" stop-opacity="0.85" />
+      <stop offset="65%" stop-color="#030303" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#030303" stop-opacity="0" />
     </linearGradient>
   </defs>
 

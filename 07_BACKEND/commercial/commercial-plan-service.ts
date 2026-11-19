@@ -25,7 +25,7 @@ export const DEFAULT_COMMERCIAL_PLANS: CommercialPlan[] = [
     createdAt: '2026-01-01T00:00:00.000Z',
   },
   {
-    id: 'plan_1month',
+    id: 'mahi_starter',
     name: 'Starter (1 Month)',
     tier: 'PRO',
     priceMonthly: 599,
@@ -44,7 +44,7 @@ export const DEFAULT_COMMERCIAL_PLANS: CommercialPlan[] = [
     createdAt: '2026-01-01T00:00:00.000Z',
   },
   {
-    id: 'plan_6months',
+    id: 'mahi_growth',
     name: 'Growth (6 Months)',
     tier: 'PRO',
     priceMonthly: 166,
@@ -63,7 +63,7 @@ export const DEFAULT_COMMERCIAL_PLANS: CommercialPlan[] = [
     createdAt: '2026-01-01T00:00:00.000Z',
   },
   {
-    id: 'plan_1year',
+    id: 'mahi_ultimate',
     name: 'Ultimate (1 Year)',
     tier: 'BUSINESS',
     priceMonthly: 125,
@@ -172,10 +172,22 @@ export function getCommercialPlans(includeInactive = false): CommercialPlan[] {
 
 export function getCommercialPlanById(planId: string): CommercialPlan | null {
   const db = getDatabase();
-  const normalizedId = planId.startsWith('plan_') ? planId : `plan_${planId.toLowerCase()}`;
-  let row = db.prepare('SELECT * FROM commercial_plans WHERE id = ? OR id = ?').get(planId, normalizedId) as any;
+  const aliasMap: Record<string, string> = {
+    starter: 'mahi_starter',
+    growth: 'mahi_growth',
+    ultimate: 'mahi_ultimate',
+    plan_1month: 'mahi_starter',
+    plan_6months: 'mahi_growth',
+    plan_1year: 'mahi_ultimate',
+  };
+  const raw = (planId || '').toLowerCase().trim();
+  const resolved = aliasMap[raw] || raw;
+  const normalizedId = resolved.startsWith('mahi_')
+    ? resolved
+    : (resolved.startsWith('plan_') ? resolved : `plan_${resolved}`);
+  let row = db.prepare('SELECT * FROM commercial_plans WHERE id = ? OR id = ?').get(resolved, normalizedId) as any;
   if (!row) {
-    row = db.prepare('SELECT * FROM commercial_plans WHERE LOWER(tier) = ?').get(planId.toLowerCase()) as any;
+    row = db.prepare('SELECT * FROM commercial_plans WHERE LOWER(tier) = ?').get(resolved.toLowerCase()) as any;
   }
   if (!row) {
     // Check canonical catalog (Pro 10, 25, 50, 100, team aliases, etc.)
@@ -210,7 +222,7 @@ export function getCommercialPlanById(planId: string): CommercialPlan | null {
 
     // Check in default list if not yet inserted
     const fallback = DEFAULT_COMMERCIAL_PLANS.find(
-      (p) => p.id === planId || p.id === normalizedId || p.tier.toLowerCase() === planId.toLowerCase()
+      (p) => p.id === resolved || p.id === planId || p.id === normalizedId || p.tier.toLowerCase() === resolved.toLowerCase()
     );
     return fallback || null;
   }

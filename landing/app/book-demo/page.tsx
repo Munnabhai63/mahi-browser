@@ -119,7 +119,7 @@ export default function BookDemoPage() {
               </div>
               <div className="text-[13px] text-zinc-300 space-y-1.5 font-sans">
                 <div>Email: <a href={`mailto:${BRAND.officialEmail}`} className="text-white hover:underline underline-offset-4">{BRAND.officialEmail}</a></div>
-                <div>WhatsApp: <a href={`https://wa.me/919376343629`} className="text-white hover:underline underline-offset-4">{BRAND.phone}</a></div>
+                <div>WhatsApp: <a href="https://wa.me/919376343629" className="text-white hover:underline underline-offset-4">Chat on WhatsApp</a></div>
                 <div>Founder & CEO: <strong className="text-white">{BRAND.creator}</strong></div>
               </div>
             </div>
@@ -231,7 +231,7 @@ export default function BookDemoPage() {
                         required
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
-                        placeholder="+91 9376343629"
+                        placeholder="+91 98765 43210"
                         className="w-full rounded-[6px] border border-white/10 bg-[#080808] px-4 py-2.5 text-[14px] text-white placeholder-zinc-500 focus:border-white/40 focus:ring-1 focus:ring-white/20 focus:outline-none transition-all"
                       />
                     </div>

@@ -12,7 +12,7 @@ export default function HeroSection() {
   ];
 
   return (
-    <section className="relative min-h-screen flex flex-col justify-between pt-36 pb-8 overflow-hidden bg-[#050505]">
+    <section className="relative min-h-screen flex flex-col justify-between pt-36 pb-8 overflow-hidden bg-[#030303]">
       
       {/* BACKGROUND PHONE MOCKUP & GRADIENT OVERLAYS */}
       <div className="absolute inset-0 pointer-events-none select-none z-0 overflow-hidden">
@@ -43,7 +43,7 @@ export default function HeroSection() {
             href="/changelog"
             className="glass-pill inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full text-[13px] text-zinc-200 hover:text-white hover:border-zinc-500 transition-all group"
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
             <span className="font-normal text-zinc-300 group-hover:text-white">
               Mahi Browser v2.0 Released — Zero CDP Leaks
             </span>

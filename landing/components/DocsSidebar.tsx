@@ -42,7 +42,7 @@ export default function DocsSidebar({ docs, currentSlug }: DocsSidebarProps) {
             href="https://wa.me/919376343629"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 font-semibold"
+            className="inline-flex items-center gap-1.5 text-xs text-zinc-300 hover:text-white font-medium transition-colors"
           >
             WhatsApp Support &rarr;
           </a>

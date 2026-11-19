@@ -322,6 +322,66 @@ export const CANONICAL_PLAN_CATALOG: Record<CanonicalPlanId, CanonicalPlanDefini
     status: 'ACTIVE',
     displayOrder: 9,
   },
+
+  'mahi_starter': {
+    planId: 'mahi_starter',
+    displayName: 'Starter',
+    category: 'PERSONAL',
+    tier: 'PRO',
+    tierRank: 25,
+    currency: 'INR',
+    priceMode: 'FIXED',
+    profileLimit: 25,
+    seatLimit: 1,
+    cloudMinutesMonthly: 30,
+    proxyDataGbMonthly: 0,
+    automationConcurrency: 3,
+    apiRequestsMonthly: 0,
+    workspaceLimit: 0,
+    capabilities: PRO_25_CAPABILITIES,
+    status: 'ACTIVE',
+    displayOrder: 10,
+  },
+
+  'mahi_growth': {
+    planId: 'mahi_growth',
+    displayName: 'Growth',
+    category: 'PERSONAL',
+    tier: 'PRO',
+    tierRank: 50,
+    currency: 'INR',
+    priceMode: 'FIXED',
+    profileLimit: 100,
+    seatLimit: 1,
+    cloudMinutesMonthly: 30,
+    proxyDataGbMonthly: 2,
+    automationConcurrency: 10,
+    apiRequestsMonthly: 1000,
+    workspaceLimit: 0,
+    capabilities: PRO_100_CAPABILITIES,
+    status: 'ACTIVE',
+    displayOrder: 11,
+  },
+
+  'mahi_ultimate': {
+    planId: 'mahi_ultimate',
+    displayName: 'Ultimate',
+    category: 'BUSINESS',
+    tier: 'BUSINESS',
+    tierRank: 100,
+    currency: 'INR',
+    priceMode: 'FIXED',
+    profileLimit: 1000000,
+    seatLimit: 2,
+    cloudMinutesMonthly: 100,
+    proxyDataGbMonthly: 10,
+    automationConcurrency: 25,
+    apiRequestsMonthly: 10000,
+    workspaceLimit: 2,
+    capabilities: BUSINESS_ALL_CAPABILITIES,
+    status: 'ACTIVE',
+    displayOrder: 12,
+  },
 };
 
 // ─── Initial Pricing (Website Current as of Audit) ─────────────────────────────
@@ -342,6 +402,9 @@ export const INITIAL_PLAN_PRICES: PlanPrice[] = [
   { planId: 'business_scale',      monthlyPricePaise: 499900,  annualPricePaise: 249900,  currency: 'INR' },
   { planId: 'business_enterprise', monthlyPricePaise: 599900,  annualPricePaise: 299900,  currency: 'INR' },
   { planId: 'enterprise_custom',   monthlyPricePaise: 0,       annualPricePaise: 0,       currency: 'INR' }, // Custom pricing
+  { planId: 'mahi_starter',        monthlyPricePaise: 59900,   annualPricePaise: 59900,   currency: 'INR' },
+  { planId: 'mahi_growth',         monthlyPricePaise: 16650,   annualPricePaise: 99900,   currency: 'INR' },
+  { planId: 'mahi_ultimate',       monthlyPricePaise: 12492,   annualPricePaise: 149900,  currency: 'INR' },
 ];
 
 // ─── Trial Configuration ───────────────────────────────────────────────────────
@@ -453,6 +516,24 @@ export const PLAN_DISPLAY_FEATURES: Record<CanonicalPlanId, string[]> = {
     'Dedicated account manager',
     'Custom SLA',
     'Contact Sales',
+  ],
+  'mahi_starter': [
+    '25 Air-Gapped Profiles (Offline SQLite)',
+    'Dual Engine (Chromium 138 + Camoufox)',
+    '25 Custom Proxy Slots (HTTP/SOCKS5)',
+    '1 Active Device Seat',
+  ],
+  'mahi_growth': [
+    '100 High-Entropy Profiles (Offline SQLite)',
+    'Unlimited Custom Proxies (BYOP)',
+    'Unlimited Fingerprint Perturbation & Re-gen',
+    'Unlimited Bulk Cookie & Session Importer',
+  ],
+  'mahi_ultimate': [
+    'Unlimited Air-Gapped Profiles (Offline SQLite)',
+    'Unlimited Dual-Engine Stealth Fingerprints',
+    'Unlimited Proxy Management & Routing',
+    'Unlimited RPA & Headless Playwright API',
   ],
 };
 
@@ -605,6 +686,9 @@ export const INITIAL_PLAN_PRICES_USD: Record<CanonicalPlanId, { monthlyCents: nu
   'business_scale': { monthlyCents: 6000, annualCents: 3000 },
   'business_enterprise': { monthlyCents: 7200, annualCents: 3600 },
   'enterprise_custom': { monthlyCents: 0, annualCents: 0 },
+  'mahi_starter': { monthlyCents: 900, annualCents: 900 },
+  'mahi_growth': { monthlyCents: 250, annualCents: 1500 },
+  'mahi_ultimate': { monthlyCents: 200, annualCents: 2400 },
 };
 
 export interface OrderTotalOptions {
@@ -643,7 +727,14 @@ export interface AuthoritativeOrderTotal {
  * - Add-ons billed per month (multiplied by 12 on annual cycle)
  */
 export function calculateAuthoritativeOrderTotal(options: OrderTotalOptions): AuthoritativeOrderTotal {
-  const canonicalId = legacyPlanIdToCanonical(options.planId) || 'free';
+  const resolved = legacyPlanIdToCanonical(options.planId);
+  if (!resolved) {
+    throw new Error(
+      `AUTHORITATIVE_PRICE_UNRESOLVED: planId="${options.planId}" ` +
+      `cannot be priced. Refusing to default to free — this would under-bill.`
+    );
+  }
+  const canonicalId = resolved;
   const currency = options.currency === 'USD' ? 'USD' : 'INR';
   const billingCycle = options.billingCycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY';
   const extraMembers = Math.max(0, Math.floor(options.extraMembers || 0));
@@ -707,7 +798,17 @@ export function legacyPlanIdToCanonical(legacyId: string): CanonicalPlanId | nul
   const map: Record<string, CanonicalPlanId> = {
     'free': 'free',
     'plan_free': 'free',
-    'starter': 'professional_10',
+    'starter': 'mahi_starter',
+    'growth': 'mahi_growth',
+    'ultimate': 'mahi_ultimate',
+    'plan_1month': 'mahi_starter',
+    'plan_6months': 'mahi_growth',
+    'plan_1year': 'mahi_ultimate',
+    'annual': 'mahi_ultimate',
+    'yearly': 'mahi_ultimate',
+    'mahi_starter': 'mahi_starter',
+    'mahi_growth': 'mahi_growth',
+    'mahi_ultimate': 'mahi_ultimate',
     'pro_10': 'professional_10',
     'professional_10': 'professional_10',
     'pro_25': 'professional_25',

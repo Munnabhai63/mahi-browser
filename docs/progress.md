@@ -1,6 +1,37 @@
 # Progress Tracker
 
 ## Latest Updates (2026-11-19)
+- [x] **Full Remediation Engine (Blocks 2, 3, 4, 5, 6, 7, 8 & Gaps A, C, E, F):**
+  - **Block 2 + 4 (Plan Catalog & Price Resolution):**
+    * Added `mahi_starter` (₹599 / 25 profiles), `mahi_growth` (₹999 / 100 profiles), `mahi_ultimate` (₹1,499 / 1,000,000 profiles) to `CANONICAL_PLAN_CATALOG` in `07_BACKEND/commercial/canonical-plan-catalog.ts` and `10_CONFIG/shared/types/commercial.ts`.
+    * Added alias mappings (`starter`, `growth`, `ultimate`, `plan_1month`, `plan_6months`, `plan_1year`, `annual`, `yearly`) in `legacyPlanIdToCanonical` and `getCommercialPlanById()`.
+    * Removed silent fallback to `free` in `calculateAuthoritativeOrderTotal`, throwing `AUTHORITATIVE_PRICE_UNRESOLVED` if unresolved.
+  - **Block 3 (Entitlement & Unlimited Profiles):**
+    * Extended `isPaidPlan()` in `08_SECURITY/account-service.ts` to recognize `growth`, `ultimate`, `annual`, `yearly`, `mahi_*`, and `plan_*`.
+    * Extended `isBusinessPlan()` to recognize `ultimate`, `plan_1year`, and `mahi_ultimate`.
+    * Enforced unlimited bypass in `08_SECURITY/freemium-guard.ts` for profiles >= 100,000.
+    * Added unit test suite `11_TESTS/unit/plan-entitlement.test.ts` (3/3 pass).
+  - **Block 5 (Silent Defaults Removal):**
+    * Removed `|| 'professional_10'` in `07_BACKEND/commercial/commercial-api-router.ts`, returning HTTP 400 on invalid/missing plans.
+    * Removed `|| 'professional_50'` in `/api/v1/auth/trial/activate`, returning HTTP 400 if plan is missing.
+  - **Block 6 (Phone Number Purge):**
+    * Removed `phone` field from `landing/lib/brand.ts`.
+    * Purged visible raw phone numbers across `app/book-demo/page.tsx`, `app/features/page.tsx`, `app/privacy/page.tsx`, `components/DocsSidebar.tsx`, `components/GoLoginComparisonTable.tsx`, `components/PricingTable.tsx`, `components/PricingView.tsx`, and `components/ChatWidget.tsx`.
+    * Action links now use clean text: `Chat on WhatsApp`, `WhatsApp Support`, `Confirm on WhatsApp`.
+  - **Block 7 & 8 (Luxury Monochrome Theme & #030303 Base):**
+    * Replaced all `#050505` and `rgba(5, 5, 5, ...)` with `#030303` across `globals.css`, `layout.tsx`, `features/page.tsx`, `fingerprints/page.tsx`, `Navbar.tsx`, `HeroSection.tsx`, `PricingView.tsx`, and SVG assets.
+    * Purged bright green/red badges and emojis (`🔥`, `🚀`); preserved Google logo official `fill="#EA4335"`.
+    * Aligned Pricing Header 1:1 with user reference: Eyebrow `■ PRICING`, Title `Simple Pricing` / `Built for Scale` (Spectral Serif Italics).
+  - **Gaps A, C, E, F:**
+    * Gap A: Added `logCommercialAudit` for `UPI_UTR_SUBMITTED` in `payment-service.ts`.
+    * Gap C: Protected `?auto=true` in `DownloadButtons.tsx` with mandatory auth check.
+    * Gap E: Removed `GOOGLE_CLIENT_ID_PLACEHOLDER`, added graceful 503/error handling.
+    * Gap F: Added 6-30 alphanumeric UTR regex validation in `PricingView.tsx`.
+  - **Verification:**
+    * `cd landing && npx tsc --noEmit && npm run build` -> PASS (39/39 pages).
+    * `npx tsc -p tsconfig.gateway.json --noEmit` -> PASS (0 errors).
+    * `npx vitest run` -> 21/21 tests PASS.
+    * Localhost screenshots verified: header, cards, modal, and zero phone numbers.
 - [x] **Block 1: UPI Payment Wire to Backend API:**
   - Fixed critical P0 bug where UPI UTR submissions never reached backend database (`fetch()` calls in `PricingView.tsx` were 0).
   - Made `handleUtrSubmit` async and wired it to `${BRAND.apiUrl}/api/v1/account/payments/upi/submit` with Bearer auth token, `planId`, `billingCycle`, and `utr`.

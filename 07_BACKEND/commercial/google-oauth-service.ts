@@ -276,7 +276,10 @@ export function generateOAuthAuthorization(params: {
     ) VALUES (?, ?, 'google', ?, ?, ?, ?, ?, ?)
   `).run(state, nonce, intent, planId, billingCycle, returnUrl, expiresAt, now);
 
-  const clientId = config.clientId || 'GOOGLE_CLIENT_ID_PLACEHOLDER';
+  if (!config.clientId || !config.clientSecret) {
+    throw new Error('GOOGLE_OAUTH_NOT_CONFIGURED');
+  }
+  const clientId = config.clientId;
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20email%20profile&state=${state}&nonce=${nonce}&prompt=select_account`;
 
   return {

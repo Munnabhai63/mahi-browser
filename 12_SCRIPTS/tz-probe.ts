@@ -139,7 +139,7 @@ async function runProbe() {
   const probeUrl = `http://127.0.0.1:${serverPort}/`;
 
   const profileId = 'tz-probe-profile-01';
-  const profile: Profile = {
+  const profile = {
     id: profileId,
     name: 'Timezone Probe Profile',
     status: 'STOPPED',
@@ -149,7 +149,6 @@ async function runProbe() {
     settings: {
       browser: {
         startupUrl: probeUrl,
-        showProfileBadge: false,
       },
       locale: {
         timezone: targetTz,
@@ -157,7 +156,7 @@ async function runProbe() {
         languagesList: ['en-US', 'en'],
       },
     },
-  };
+  } as any as Profile;
 
   const debugPort = getProfileDebugPort(profile.id);
   console.log(`[TZ Probe] Launching test profile with timezone: ${targetTz} on debug port ${debugPort}...`);

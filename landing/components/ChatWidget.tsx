@@ -70,7 +70,7 @@ export default function ChatWidget() {
         ...prev,
         {
           sender: 'assistant',
-          text: `For instant priority assistance, you can also reach Munna Bhai directly on WhatsApp/Call at ${BRAND.phone} or email ${BRAND.officialEmail}.`,
+          text: `For instant priority assistance, you can reach out via WhatsApp support or email ${BRAND.officialEmail}.`,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);

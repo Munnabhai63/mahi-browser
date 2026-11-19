@@ -364,7 +364,7 @@ export default function CustomersView() {
             
             <div className="relative z-10 max-w-2xl mx-auto space-y-4">
               <div className="inline-flex items-center gap-2 mb-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="w-1.5 h-1.5 rounded-[1px] bg-white inline-block"></span>
                 <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-widest">
                   Ready to Deploy
                 </span>

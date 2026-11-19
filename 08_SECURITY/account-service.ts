@@ -978,6 +978,12 @@ export function isPaidPlan(plan?: string | null): boolean {
     p === 'pro' ||
     p === 'trial' ||
     p === 'starter' ||
+    p === 'growth' ||
+    p === 'ultimate' ||
+    p === 'annual' ||
+    p === 'yearly' ||
+    p.startsWith('mahi_') ||
+    p.startsWith('plan_') ||
     p.startsWith('pro_') ||
     p.startsWith('professional_') ||
     p === 'business' ||
@@ -1001,7 +1007,10 @@ export function isBusinessPlan(plan?: string | null): boolean {
     p === 'team' ||
     p.startsWith('team_') ||
     p === 'enterprise' ||
-    p === 'enterprise_custom'
+    p === 'enterprise_custom' ||
+    p === 'ultimate' ||
+    p === 'plan_1year' ||
+    p === 'mahi_ultimate'
   );
 }
 

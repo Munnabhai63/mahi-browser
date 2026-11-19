@@ -107,7 +107,7 @@ export default function CompareView() {
           <div className="relative rounded-2xl border border-black/10 bg-[#080808] text-white p-10 sm:p-16 text-center overflow-hidden shadow-2xl">
             <div className="relative z-10 max-w-2xl mx-auto space-y-4">
               <div className="inline-flex items-center gap-2 mb-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="w-1.5 h-1.5 rounded-[1px] bg-white inline-block"></span>
                 <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-widest">
                   Zero Downtime Switch
                 </span>

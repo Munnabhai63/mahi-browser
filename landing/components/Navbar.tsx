@@ -26,7 +26,7 @@ export default function Navbar() {
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         isLight
           ? 'bg-[#f9f9f9]/90 backdrop-blur-md border-b border-black/5 text-[#111111]'
-          : 'bg-[#050505]/80 backdrop-blur-md border-b border-white/5 text-[#ededed]'
+          : 'bg-[#030303]/80 backdrop-blur-md border-b border-white/5 text-[#ededed]'
       }`}
     >
       <div className="w-full max-w-[1920px] mx-auto px-6 sm:px-10 lg:px-12 py-5 flex items-center justify-between">
@@ -208,7 +208,7 @@ export default function Navbar() {
           className={`md:hidden px-6 pt-2 pb-6 border-b space-y-4 ${
             isLight
               ? 'bg-[#f9f9f9] border-black/10 text-black'
-              : 'bg-[#050505] border-white/10 text-white'
+              : 'bg-[#030303] border-white/10 text-white'
           }`}
         >
           <Link

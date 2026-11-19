@@ -119,9 +119,9 @@ export function assertCanCreateProfile(additionalCount = 1, ownerId?: string): v
   const limits = getPlanLimitsInfo(resolvedOwner);
 
   // Unlimited tier entitlement bypass (Annual/Ultimate tier with 100,000+ quota or -1)
-  if (limits.maxProfiles === -1 || limits.maxProfiles >= 100000) {
-    return;
-  }
+  if (limits.maxProfiles === -1) return;
+  if (limits.tier === 'BUSINESS' && limits.maxProfiles >= 100000) return;
+  if (limits.maxProfiles >= 100000) return;  // quota expansion
 
   if (currentCount + additionalCount > limits.maxProfiles) {
     if (limits.maxProfiles <= FREE_PROFILE_LIMIT) {

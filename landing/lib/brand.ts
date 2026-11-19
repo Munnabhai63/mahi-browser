@@ -5,7 +5,6 @@ export const BRAND = {
   tagline: 'Enterprise Anti-Detect Browser with JS-Layer MV3 Stealth & Camoufox C++ Engine',
   officialEmail: 'mahiverse.official@gmail.com',
   hubEmail: 'mahiverse.hub@gmail.com',
-  phone: '+91 9376343629',
   upiId: '6375823589@slc',
   version: '1.1.9',
   website: 'https://mahibrowser.com',

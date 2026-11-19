@@ -168,7 +168,7 @@ const PRICING_FAQS = [
   {
     question: 'How does 0% fee Indian UPI payment work?',
     answer:
-      'You can pay directly via any Indian UPI app (PhonePe, Google Pay, Paytm, CRED, BHIM) to our registered merchant VPA 6375823589@slc (Mahipal Choudhary). There are zero international credit card markups or foreign transaction fees. Your license key is activated within 5 minutes.',
+      'You can pay directly via any Indian UPI app (PhonePe, Google Pay, Paytm, CRED, BHIM) to our registered merchant VPA 6375823589@slc. There are zero international credit card markups or foreign transaction fees. Your license key is verified and activated promptly.',
   },
   {
     question: 'Can I import my existing GoLogin or AdsPower profiles and cookies?',
@@ -267,7 +267,13 @@ export default function PricingView() {
   // Handle UTR submission
   const handleUtrSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!utrInput.trim() || !selectedUpiPlan) return;
+    const trimmedUtr = utrInput.trim();
+    if (!trimmedUtr || !selectedUpiPlan) return;
+
+    if (!/^[a-zA-Z0-9]{6,30}$/.test(trimmedUtr)) {
+      setUtrError('Please enter a valid 6-30 character alphanumeric UTR / Transaction Reference number.');
+      return;
+    }
 
     setIsSubmittingUtr(true);
     setUtrError(null);
@@ -292,7 +298,7 @@ export default function PricingView() {
         body: JSON.stringify({
           planId: selectedUpiPlan.id,
           billingCycle: selectedUpiPlan.cycle,
-          utr: utrInput.trim(),
+          utr: trimmedUtr,
           currency: 'INR',
         }),
       });
@@ -309,7 +315,7 @@ export default function PricingView() {
       }
 
       trackFunnel('upi_utr_submitted', {
-        utr: utrInput,
+        utr: trimmedUtr,
         paymentId: data.payment_id,
         amountPaise: data.amount_paise,
       });
@@ -323,31 +329,31 @@ export default function PricingView() {
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-[#ededed] selection:bg-white selection:text-black">
+    <div className="min-h-screen bg-[#030303] text-[#ededed] selection:bg-white selection:text-black">
       
       {/* ========================================================================= */}
       {/* 1. HERO SECTION: EXACT LATERAL SCALE, DARK OBSIDIAN AESTHETIC             */}
       {/* ========================================================================= */}
-      <section className="relative w-full pt-32 sm:pt-40 lg:pt-44 pb-20 bg-[#050505] text-white overflow-hidden">
+      <section className="relative w-full pt-32 sm:pt-40 lg:pt-44 pb-20 bg-[#030303] text-white overflow-hidden">
         <div className="w-full max-w-[1440px] mx-auto px-6 sm:px-10 lg:px-16 text-center">
           
-          {/* Eyebrow: ■ TRANSPARENT PRICING */}
+          {/* Eyebrow: ■ PRICING */}
           <div className="inline-flex items-center gap-2 mb-4">
             <span className="w-1.5 h-1.5 rounded-[1px] bg-white inline-block"></span>
             <span className="text-[11px] font-mono font-medium uppercase tracking-[0.2em] text-zinc-400">
-              TRANSPARENT PRICING
+              PRICING
             </span>
           </div>
 
           {/* Headline in Spectral Serif */}
           <h1 className="font-['Spectral',serif] text-4xl sm:text-5xl lg:text-[62px] xl:text-[68px] font-light tracking-[-0.02em] leading-[1.08] text-white mb-4">
-            Simple Pricing.<br />
-            <span className="italic text-zinc-400 font-light">Built for Scale &amp; Zero Leaks.</span>
+            Simple Pricing<br />
+            <span className="italic text-zinc-400 font-light">Built for Scale</span>
           </h1>
 
           {/* Subtitle */}
           <p className="text-zinc-400 text-sm sm:text-[15px] lg:text-[16px] max-w-[660px] mx-auto font-normal leading-[1.6] mb-9">
-            Run multi-account operations without recurring per-seat fees or cloud leak vulnerabilities. Air-gapped offline profiles, dual-engine stealth, and instant 0% fee UPI activation.
+            Start automating multi-account operations for less than the cost of a single ban. Most operators see 10x ROI and 99.8% fleet survival in their first month.
           </p>
 
           {/* Currency Controls (USD $ / INR ₹ 0% UPI) */}
@@ -778,7 +784,7 @@ export default function PricingView() {
             
             <div className="relative z-10 max-w-2xl mx-auto space-y-4">
               <div className="inline-flex items-center gap-2 mb-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="w-1.5 h-1.5 rounded-[1px] bg-white inline-block"></span>
                 <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-widest">
                   GET STARTED
                 </span>
@@ -895,7 +901,7 @@ export default function PricingView() {
                 )}
                 <div>
                   <label htmlFor="utr-input" className="block text-[11px] font-mono text-zinc-400 uppercase tracking-wider mb-1">
-                    Enter 12-Digit UTR / Transaction Reference No.
+                    Enter UTR / Transaction Reference No. (6-30 alphanumeric)
                   </label>
                   <input
                     id="utr-input"

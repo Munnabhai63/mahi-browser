@@ -65,7 +65,7 @@ export default function FeaturesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-[#ededed] selection:bg-white selection:text-black">
+    <div className="min-h-screen bg-[#030303] text-[#ededed] selection:bg-white selection:text-black">
       
       {/* ========================================================================= */}
       {/* 1. HERO SECTION: MEET YOUR COMPETITIVE ADVANTAGE                         */}
@@ -333,7 +333,7 @@ export default function FeaturesPage() {
       {/* ========================================================================= */}
       {/* 3. SECTION 3: WORKFLOW / WORK AT LIGHTNING SPEED (DARK OBSIDIAN)          */}
       {/* ========================================================================= */}
-      <section className="relative w-full bg-[#050505] text-white pt-20 sm:pt-28 pb-24 sm:pb-32 overflow-hidden border-t border-white/5">
+      <section className="relative w-full bg-[#030303] text-white pt-20 sm:pt-28 pb-24 sm:pb-32 overflow-hidden border-t border-white/5">
         <div className="w-full max-w-[1440px] mx-auto px-6 sm:px-12 lg:px-20">
           
           {/* Left-Aligned Header Block */}
@@ -431,11 +431,11 @@ export default function FeaturesPage() {
           >
             {/* Top Bar Controls / Live Dot */}
             <div className="absolute top-4 right-4 z-20 flex items-center gap-2 px-3 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-[11px] font-mono text-zinc-300">
-              <span className={`w-1.5 h-1.5 rounded-full ${isPaused ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'}`}></span>
+              <span className={`w-1.5 h-1.5 rounded-full ${isPaused ? 'bg-zinc-500' : 'bg-white'}`}></span>
               <span>{isPaused ? 'PAUSED' : 'AUTO-TOUR'}</span>
             </div>
 
-            <div className="relative w-full aspect-[16/9] overflow-hidden flex items-center justify-center bg-[#050505]">
+            <div className="relative w-full aspect-[16/9] overflow-hidden flex items-center justify-center bg-[#030303]">
               <img
                 key={activeWorkflowTab}
                 src={workflowTabs[activeWorkflowTab]?.image || '/assets/mahi_workflow_laptop.jpg'}
@@ -449,9 +449,9 @@ export default function FeaturesPage() {
       </section>
 
       {/* ========================================================================= */}
-      {/* 4. SECTION 4: INTEGRATIONS (DARK OBSIDIAN #050505)                         */}
+      {/* 4. SECTION 4: INTEGRATIONS (DARK OBSIDIAN #030303)                         */}
       {/* ========================================================================= */}
-      <section className="relative w-full bg-[#050505] text-white pt-24 sm:pt-32 pb-24 sm:pb-36 overflow-hidden border-t border-white/5">
+      <section className="relative w-full bg-[#030303] text-white pt-24 sm:pt-32 pb-24 sm:pb-36 overflow-hidden border-t border-white/5">
         <div className="w-full max-w-[1440px] mx-auto px-6 sm:px-12 lg:px-20">
           
           {/* Centered Header Block */}
@@ -954,7 +954,7 @@ export default function FeaturesPage() {
               },
               {
                 q: 'How does the 0% Indian UPI payment gateway work?',
-                a: 'Indian teams can pay directly bank-to-bank via UPI (VPA: 6375823589@slc). There are 0% gateway transaction fees, instant license activation, and direct WhatsApp support (+91 9376343629).',
+                a: 'Indian teams can pay directly bank-to-bank via UPI (VPA: 6375823589@slc). There are 0% gateway transaction fees, instant license activation, and direct WhatsApp and email support.',
               },
             ].map((item, idx) => {
               const isOpen = openFaq === idx;
