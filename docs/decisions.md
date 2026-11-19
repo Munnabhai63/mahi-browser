@@ -1,6 +1,19 @@
 # Decisions Log
 
-## 2026-11-19 - Production Deployment of Luxury Monochrome Web Portal to Live VPS (`200.97.164.97`)
+## 2026-11-19 - Calibrated Subscription Tiers & Unlimited Annual Profiles Implementation
+- **Context**: The user identified a pricing incentive flaw where 6-Month and 12-Month tiers offered identical per-month rates (~₹166/mo), eliminating annual adoption incentive. The user directed an overhaul into 3 distinct duration tiers (1M / 6M / 1Y) with unconstrained offline profiles on 1-Year, "UNLIMITED" zero-cost marketing hooks on 6-Month, and strict limits on 1-Month, backed by silent server guardrails.
+- **Implementation**:
+  1. **Pricing Ladder Structure**:
+     - **Starter (1 Month):** ₹599 total (Effective ₹599/mo, 50% OFF MRP ~~₹1,199~~) — 25 air-gapped profiles, 1 PC, 3 concurrent windows, 25 custom proxy slots, local-only storage.
+     - **Growth (6 Months):** ₹999 total (Effective ₹166/mo, 72% OFF MRP ~~₹3,594~~) — 100 profiles, UNLIMITED custom proxies (BYOP), UNLIMITED fingerprint regenerations, UNLIMITED cookie/session imports, 25 cloud backups.
+     - **Ultimate (1 Year):** ₹1,499 total (Effective सिर्फ ₹125/mo, 79% OFF MRP ~~₹7,188~~) — 100% UNLIMITED offline profiles, UNLIMITED stealth fingerprints, 2 device workspaces, 25 concurrent windows, 24/7 VIP WhatsApp (+91 9376343629).
+  2. **Technical Pipeline Alignment**:
+     - `landing/components/PricingView.tsx`: Rewritten with full obsidian theme preservation, dynamic UPI QR modal amounts (₹599 / ₹999 / ₹1,499), strikethroughs, comparison table matrix, and instant USD ($9 / $15 / $24) toggle.
+     - `07_BACKEND/commercial/commercial-plan-service.ts`: Updated `DEFAULT_COMMERCIAL_PLANS` with `plan_1month`, `plan_6months`, and `plan_1year` (`maxProfiles: 1000000`).
+     - `08_SECURITY/freemium-guard.ts`: Added unlimited quota bypass (`limits.maxProfiles >= 100000 || limits.maxProfiles === -1`) for annual subscribers.
+     - VPS `/opt/mahi-admin-panel/src/account-service.js`: Configured tier limits (`profileLimit = 1000000` for `ultimate`/`1year`/`annual`, `100` for `growth`/`6months`, `25` for `starter`/`1month`) and restarted `mahi-admin` via PM2.
+  3. **Verification**: Automated Playwright suite verified live on `https://mahibrowser.com/pricing` with 0 console errors; verified UPI modal binds ₹1,499 with QR code; verified USD currency toggle; verified comparison table rows.
+
 - **Context**: The user verified the local luxury monochrome web design and authorized immediate live deployment to replace the legacy red landing page currently served by Nginx on production server `200.97.164.97`.
 - **Implementation**:
   1. **Pre-Deployment Safety**: Created timestamped backup of `/var/www/mahibrowser/landing/out/` on VPS (`out_backup_20261119_0612`).

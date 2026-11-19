@@ -1,6 +1,19 @@
 # Progress Tracker
 
 ## Latest Updates (2026-11-19)
+- [x] **Subscription Tier & Pricing Overhaul (1M / 6M / 1Y with Unlimited Annual Profiles):**
+  - Calibrated the pricing ladder and per-month psychology based on user's exact specification:
+    * **Starter (1 Month):** ₹599 total (Effective ₹599 / mo) — 25 Air-Gapped Profiles, 1 PC, 3 concurrent windows.
+    * **Growth (6 Months):** ₹999 total (Effective ₹166 / mo, 72% OFF) — 100 Profiles, UNLIMITED custom proxies (BYOP), UNLIMITED fingerprint regenerations, UNLIMITED bulk cookie/session imports, 25 cloud backups.
+    * **Ultimate (1 Year):** ₹1,499 total (Effective सिर्फ ₹125 / mo, 79% OFF) — 100% UNLIMITED air-gapped offline profiles, UNLIMITED stealth fingerprints, 2 device workspaces, 25 concurrent windows, 24/7 dedicated Founder WhatsApp (+91 9376343629).
+  - Enforced "Silent Fair-Usage Guardrails" in the backend to protect server disk/bandwidth without exposing restrictions publicly.
+  - Updated `landing/components/PricingView.tsx` with dynamic UPI modal (₹599 / ₹999 / ₹1,499), strikethroughs, monthly breakdown pills, and comparison matrix.
+  - Updated `07_BACKEND/commercial/commercial-plan-service.ts` and `08_SECURITY/freemium-guard.ts` with unlimited profile bypass for annual tier (`>= 100000`).
+  - Patched VPS `/opt/mahi-admin-panel/src/account-service.js` with `profileLimit = 1000000` for Ultimate tier and restarted `mahi-admin` via PM2.
+  - Rebuilt Next.js portal (39/39 pages), packaged tar archive, uploaded to VPS `200.97.164.97:2222`, deployed to `/var/www/mahibrowser/landing/out/`, and reloaded Nginx.
+  - Verified live on `https://mahibrowser.com/pricing` with Playwright Chromium: all 3 tiers visible, UPI modal functional for ₹1,499 with QR code, 0 console errors.
+  - Committed (`130e6e0`) and pushed to `origin/main`.
+
 - [x] **Live Production VPS Deployment (`mahibrowser.com` on VPS `200.97.164.97`):**
   - Created timestamped server backup `/var/www/mahibrowser/landing/out_backup_20261119_0612` via SSH.
   - Built fresh static export (39/39 pages) in `landing/out/` with updated luxury monochrome theme.
