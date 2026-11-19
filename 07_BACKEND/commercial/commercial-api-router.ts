@@ -122,6 +122,7 @@ import {
   extendLicense,
   getLicenseDevices,
   deactivateDevice,
+  evaluateServerStatus,
 } from '../../04_LICENSING/license-engine.js';
 import { verifyAdminAccess } from '../../05_AUTH/admin-auth.js';
 import { isValidAdminWebSecret } from '../../08_SECURITY/install-secrets.js';
@@ -583,12 +584,13 @@ export async function handleCommercialApiRoutes(
   method: string,
   parsedUrl: URL
 ): Promise<boolean> {
-  // Support /api/v1/*, direct /auth/*, direct /v1/sync/*, and direct /v1/* routes
+  // Support /api/v1/*, direct /auth/*, direct /v1/sync/*, direct /v1/*, and direct /me/* routes
   const isApiV1 = pathname.startsWith('/api/v1/');
   const isDirectAuth = pathname.startsWith('/auth/');
   const isDirectSync = pathname.startsWith('/v1/sync/');
   const isDirectV1 = pathname.startsWith('/v1/');
-  if (!isApiV1 && !isDirectAuth && !isDirectSync && !isDirectV1) {
+  const isDirectMe = pathname.startsWith('/me/');
+  if (!isApiV1 && !isDirectAuth && !isDirectSync && !isDirectV1 && !isDirectMe) {
     return false;
   }
 
@@ -605,7 +607,7 @@ export async function handleCommercialApiRoutes(
     if (handled) return true;
   }
 
-  const routePath = isDirectAuth ? `/api/v1${pathname}` : isDirectSync ? `/api${pathname}` : pathname;
+  const routePath = isDirectAuth || isDirectMe ? `/api/v1${pathname}` : isDirectSync ? `/api${pathname}` : pathname;
 
   const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1';
 
@@ -2076,6 +2078,77 @@ export async function handleCommercialApiRoutes(
     }
     const metrics = getFunnelMetrics();
     sendJSON(res, 200, { success: true, data: metrics });
+    return true;
+  }
+
+  // -------------------------------------------------------------
+  // 2. CUSTOMER SELF-SERVICE: GET /api/v1/me/license
+  // -------------------------------------------------------------
+  if ((pathname === '/api/v1/me/license' || routePath === '/api/v1/me/license') && method === 'GET') {
+    const auth = getAuthUser(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
+
+    const db = getDatabase();
+    // Scope strictly to auth.userId — never accept a userId query parameter (prevent IDOR)
+    const row = db.prepare(`
+      SELECT * FROM licenses 
+      WHERE account_id = ? 
+      ORDER BY CASE WHEN status = 'ACTIVE' THEN 0 ELSE 1 END, created_at DESC 
+      LIMIT 1
+    `).get(auth.userId) as any;
+
+    if (!row) {
+      sendJSON(res, 404, { success: false, error: 'NO_LICENSE' });
+      return true;
+    }
+
+    const devicesCount = (db.prepare(
+      "SELECT COUNT(*) as count FROM license_devices WHERE license_id = ? AND status = 'ACTIVE'"
+    ).get(row.id) as any)?.count || 0;
+
+    const evaluatedStatus = evaluateServerStatus(row.status, row.expires_at, row.revoked_at);
+    if (evaluatedStatus !== row.status) {
+      try {
+        db.prepare('UPDATE licenses SET status = ? WHERE id = ?').run(evaluatedStatus, row.id);
+      } catch {}
+    }
+
+    // Resolve planId and planName
+    let planId = '';
+    if (row.notes) {
+      const match = row.notes.match(/Plan:\s*([^\s|]+)/i);
+      if (match) planId = match[1];
+    }
+    if (!planId) {
+      const subRow = db.prepare('SELECT plan_id FROM commercial_subscriptions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1').get(auth.userId) as any;
+      if (subRow?.plan_id) planId = subRow.plan_id;
+      else {
+        const u = db.prepare('SELECT plan_id FROM commercial_users WHERE id = ?').get(auth.userId) as any;
+        if (u?.plan_id) planId = u.plan_id;
+      }
+    }
+    if (!planId) planId = 'free';
+
+    const plan = getCommercialPlanById(planId);
+    const planName = plan ? plan.name : planId;
+
+    sendJSON(res, 200, {
+      success: true,
+      data: {
+        hasLicense: true,
+        keyMasked: row.key_masked,
+        planId,
+        planName,
+        status: evaluatedStatus,
+        deviceLimit: row.max_devices || 1,
+        devicesUsed: devicesCount,
+        validUntil: row.expires_at || null,
+        createdAt: row.created_at || null,
+      },
+    });
     return true;
   }
 

@@ -21,6 +21,7 @@ import { logCommercialAudit } from './commercial-audit-service.js';
 import { getEmailProvider } from '../../05_AUTH/email-service.js';
 import { SUPPORT_EMAIL } from '../../10_CONFIG/contact-config.js';
 import { getUserById } from './commercial-auth-service.js';
+import { createLicense } from '../../04_LICENSING/license-engine.js';
 
 export type PaymentProviderType = 'stripe' | 'razorpay' | 'youpi_pg' | 'simulation';
 
@@ -1035,7 +1036,11 @@ export class PaymentService {
     externalOrderId?: string;
     receiptUrl?: string;
     metadata?: Record<string, any>;
-  }): Promise<{ subscription: UserSubscriptionSummary; invoice: PaymentInvoiceRecord }> {
+  }): Promise<{
+    subscription: UserSubscriptionSummary;
+    invoice: PaymentInvoiceRecord;
+    licence: { rawKey: string; keyMasked: string } | null;
+  }> {
     const db = getDatabase();
     const targetPlan = getCommercialPlanById(params.planId);
     if (!targetPlan) {
@@ -1048,6 +1053,8 @@ export class PaymentService {
     const subId = `sub_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     const invoiceNumber = `INV-${new Date().getFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
     const invoiceId = `inv_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+
+    let licenceResult: { rawKey: string; keyMasked: string } | null = null;
 
     const runUpdates = () => {
       // 1. Payment Record
@@ -1147,6 +1154,42 @@ export class PaymentService {
           WHERE id = ?
         `).run(params.planId, params.userId);
       } catch {}
+
+      // 7. Step 7: Create License in Database (with idempotency duplicate guard)
+      try {
+        const existingLicence = db.prepare(
+          'SELECT id, key_masked FROM licenses WHERE account_id = ? AND (notes LIKE ? OR notes LIKE ?)'
+        ).get(params.userId, `%${params.externalPaymentId}%`, `%${subId}%`) as any;
+
+        if (!existingLicence) {
+          let customerName = params.userId;
+          try {
+            const u = getUserById(params.userId);
+            if (u?.name) customerName = u.name;
+            else if (u?.email) customerName = u.email;
+          } catch {}
+
+          const created = createLicense({
+            durationType: 'CUSTOM',
+            customerName,
+            accountId: params.userId,
+            maxDevices: targetPlan.limits.maxDevices || 1,
+            startsAt: now,
+            expiresAt,
+            notes: `Plan: ${params.planId} | Payment: ${params.externalPaymentId} | Sub: ${subId}`,
+          }, 'PAYMENT_GATEWAY');
+
+          if (created && created.rawLicenseKey) {
+            licenceResult = {
+              rawKey: created.rawLicenseKey,
+              keyMasked: created.license.keyMasked,
+            };
+          }
+        }
+      } catch (licErr: any) {
+        console.warn(`[PaymentService] licence creation failed for user ${params.userId}:`, licErr?.message || licErr);
+        licenceResult = null;
+      }
     };
 
     if (typeof (db as any).transaction === 'function') {
@@ -1182,7 +1225,7 @@ export class PaymentService {
       createdAt: now,
     };
 
-    return { subscription: subSummary, invoice: invoiceRecord };
+    return { subscription: subSummary, invoice: invoiceRecord, licence: licenceResult };
   }
 
   /**
@@ -1392,7 +1435,7 @@ export class PaymentService {
       meta = JSON.parse(payment.metadata_json || '{}');
     } catch {}
 
-    await this.activateSubscriptionFromPayment({
+    const actResult = await this.activateSubscriptionFromPayment({
       userId: payment.user_id,
       planId: payment.plan_id,
       billingCycle: payment.billing_cycle,
@@ -1431,7 +1474,8 @@ export class PaymentService {
           planName,
           amountInr,
           paidAt,
-          licenceKey: undefined,
+          licenceKey: actResult.licence?.rawKey,
+          validUntil: actResult.subscription.expiresAt,
         });
       }
     } catch (err: any) {

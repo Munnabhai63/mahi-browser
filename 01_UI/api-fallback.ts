@@ -61,6 +61,41 @@ async function apiDelete(path: string) {
   return res.json();
 }
 
+export interface MyLicenseResponse {
+  hasLicense: boolean;
+  keyMasked: string | null;
+  planId: string;
+  planName: string;
+  status: 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'SUSPENDED' | 'NOT_ACTIVATED' | null;
+  deviceLimit: number;
+  devicesUsed: number;
+  validUntil: string | null;
+  createdAt: string | null;
+}
+
+export async function fetchMyLicense(): Promise<MyLicenseResponse | null> {
+  try {
+    let res: any;
+    try {
+      res = await apiGet('/me/license');
+    } catch (err: any) {
+      if (err?.message?.includes('NO_LICENSE') || err?.status === 404) {
+        return null;
+      }
+      res = await apiGet('/api/v1/me/license');
+    }
+    if (res && res.success && res.data) {
+      return res.data;
+    }
+    return null;
+  } catch (err: any) {
+    if (err?.message?.includes('NO_LICENSE') || err?.status === 404) {
+      return null;
+    }
+    return null;
+  }
+}
+
 export const fallbackMahiAPI: MahiBrowserAPI = {
     // Profiles - all go through real REST API
     getProfiles: async () => {

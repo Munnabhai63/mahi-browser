@@ -3,6 +3,7 @@ import { Key, Shield, Check, Copy, X } from 'lucide-react';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { BrandLogo } from './BrandLogo.js';
+import { fetchMyLicense, MyLicenseResponse } from '../api-fallback.js';
 
 interface CommercialUserModalProps {
   isOpen: boolean;
@@ -15,10 +16,12 @@ export const CommercialUserModal: React.FC<CommercialUserModalProps> = ({ isOpen
   const [licenseKey, setLicenseKey] = useState('');
   const [hwid, setHwid] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [myLicense, setMyLicense] = useState<MyLicenseResponse | null>(null);
 
   useEffect(() => {
     // Fetch HWID on mount
     (window.mahiAPI as any).getHwid().then((res: string) => setHwid(res)).catch(() => {});
+    fetchMyLicense().then(setMyLicense).catch(() => setMyLicense(null));
   }, []);
 
   useEffect(() => {
@@ -77,9 +80,31 @@ export const CommercialUserModal: React.FC<CommercialUserModalProps> = ({ isOpen
           <BrandLogo variant="icon" className="w-16 h-16 rounded-2xl shadow-xl shadow-red-900/40 mb-6 shrink-0" />
           
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">Activate License</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm text-center mb-6">
+          <p className="text-slate-500 dark:text-slate-400 text-sm text-center mb-4">
             Please enter your license key to unlock MAHI BROWSER.
           </p>
+
+          {/* Your Licence Block */}
+          <div className="w-full bg-slate-900/60 border border-slate-700 rounded-xl p-3 mb-4 text-xs">
+            <div className="font-semibold text-slate-300 uppercase tracking-wider text-[10px] mb-1.5">Your Licence</div>
+            {myLicense && myLicense.hasLicense ? (
+              <div className="space-y-1">
+                <div className="font-mono text-xs bg-slate-950/80 p-2 rounded border border-slate-800 text-slate-100 select-all">
+                  {myLicense.keyMasked}
+                </div>
+                <div className="text-[11px] text-slate-400 pt-1 space-y-0.5">
+                  <div>Plan: <span className="font-medium text-slate-200">{myLicense.planName || myLicense.planId}</span></div>
+                  <div>Valid until: <span className="font-mono text-slate-200">{myLicense.validUntil ? new Date(myLicense.validUntil).toLocaleDateString() : 'Lifetime'}</span></div>
+                  <div>Devices: <span className="font-mono text-slate-200">{myLicense.devicesUsed} / {myLicense.deviceLimit}</span></div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-[11px] text-slate-400">
+                <p>No licence yet. It is issued automatically after payment is approved.</p>
+                <a href="/pricing" className="text-slate-300 hover:text-white underline inline-block mt-1 font-medium">View Pricing</a>
+              </div>
+            )}
+          </div>
 
           <form onSubmit={handleSubmit} className="w-full space-y-5">
             <div className="space-y-1">

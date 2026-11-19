@@ -28,6 +28,7 @@ import { useProfileStore } from '../stores/useProfileStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { BrandLogo } from './BrandLogo.js';
 import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
+import { fetchMyLicense, MyLicenseResponse } from '../api-fallback.js';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -94,6 +95,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
   const [successInfo, setSuccessInfo] = useState<string | null>(null);
   const [deviceMismatchError, setDeviceMismatchError] = useState(false);
   const [isActivatingTrial, setIsActivatingTrial] = useState(false);
+  const [myLicense, setMyLicense] = useState<MyLicenseResponse | null>(null);
 
   // Manual UPI payment submission states
   const [selectedPlanId, setSelectedPlanId] = useState('professional_10');
@@ -113,6 +115,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       fetchPaymentHistory().catch(() => {});
       if (isUserLoggedIn) {
         fetchActiveSessions().catch(() => {});
+        fetchMyLicense().then(setMyLicense).catch(() => setMyLicense(null));
+      } else {
+        setMyLicense(null);
       }
       setErrorMessage(null);
       setSuccessInfo(null);
@@ -838,6 +843,31 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                       <Sparkles size={14} />
                       {isActivatingTrial ? 'Activating 7-Day Trial...' : 'Start 7-Day Free Trial (50 Profiles)'}
                     </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Your Licence Block */}
+              <div className="p-4 rounded-2xl bg-slate-800/40 border border-slate-700/50">
+                <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                  Your Licence
+                </div>
+                {myLicense && myLicense.hasLicense ? (
+                  <div className="space-y-2 text-xs">
+                    <div className="font-mono text-xs tracking-wider bg-slate-900/80 p-2.5 rounded-xl border border-slate-700 text-slate-100 select-all">
+                      {myLicense.keyMasked}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400 pt-1">
+                      <div>Plan: <span className="text-slate-200 font-medium">{myLicense.planName || myLicense.planId}</span></div>
+                      <div>Devices: <span className="text-slate-200 font-mono">{myLicense.devicesUsed} / {myLicense.deviceLimit}</span></div>
+                      <div>Valid until: <span className="text-slate-200 font-mono">{myLicense.validUntil ? new Date(myLicense.validUntil).toLocaleDateString() : 'Lifetime'}</span></div>
+                      <div>Status: <span className="text-slate-200 font-mono uppercase">{myLicense.status || 'ACTIVE'}</span></div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-400 space-y-1">
+                    <p>No licence yet. It is issued automatically after payment is approved.</p>
+                    <a href="/pricing" className="text-slate-300 hover:text-white underline inline-block font-medium">View Pricing</a>
                   </div>
                 )}
               </div>

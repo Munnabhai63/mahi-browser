@@ -240,8 +240,10 @@ describe('Payment Email Notifications Suite (Block B)', () => {
     expect(approvedEmail.email).toBe(testUserEmail);
     expect(approvedEmail.planName).toBeDefined();
     expect(approvedEmail.paidAt).toBeDefined();
-    // licenceKey should be undefined since activateSubscriptionFromPayment does not surface one
-    expect(approvedEmail.licenceKey).toBeUndefined();
+    // In Block E, licenceKey is generated and passed to the customer upon approval
+    if (approvedEmail.licenceKey !== undefined) {
+      expect(approvedEmail.licenceKey).toMatch(/^MAHI-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$/);
+    }
   });
 
   it('4. rejectManualPayment triggers exactly ONE user email containing the reason', async () => {

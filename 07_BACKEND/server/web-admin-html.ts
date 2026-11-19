@@ -373,14 +373,60 @@ export function getWebAdminHtml(): string {
 
     async function renderUsers() {
       const container = document.getElementById('content-container');
-      container.innerHTML = '<div class="text-slate-400 text-xs animate-pulse">Loading users list...</div>';
-      const res = await apiFetch('/api/v1/admin/users');
+      container.innerHTML = '<div class="text-slate-400 text-xs animate-pulse">Loading users and terms compliance...</div>';
+      const [res, termsRes] = await Promise.all([
+        apiFetch('/api/v1/admin/users'),
+        apiFetch('/api/v1/admin/terms-compliance')
+      ]);
       if (!res.success) {
         container.innerHTML = \`<div class="p-4 bg-rose-50 text-rose-700 text-xs font-bold rounded-xl">\${res.error || 'Failed to load users'}</div>\`;
         return;
       }
+      const termsData = (termsRes && termsRes.success && termsRes.data) || { totalUsers: 0, accepted: 0, missing: 0, byVersion: {} };
 
       container.innerHTML = \`
+        <!-- Terms Acceptance & Legal Compliance Panel -->
+        <div class="mb-6 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+              <h4 class="text-xs font-bold uppercase tracking-wider text-slate-800">Legal & Terms Compliance Overview</h4>
+              <p class="text-[11px] text-slate-400 mt-0.5">Tracking IT Rules 2021 & Terms of Service Acceptance across user accounts</p>
+            </div>
+            <button onclick="renderUsers()" class="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition">🔄 Refresh</button>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <div class="text-[10px] font-bold text-slate-500 uppercase">Total Users</div>
+              <div class="text-2xl font-extrabold text-slate-900 mt-1 font-mono">\${termsData.totalUsers ?? 0}</div>
+            </div>
+            <div class="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl">
+              <div class="text-[10px] font-bold text-emerald-700 uppercase">Accepted</div>
+              <div class="text-2xl font-extrabold text-emerald-800 mt-1 font-mono">\${termsData.accepted ?? 0}</div>
+            </div>
+            <div class="p-3 bg-amber-50/60 border border-amber-200 rounded-xl">
+              <div class="text-[10px] font-bold text-amber-700 uppercase">Missing</div>
+              <div class="text-2xl font-extrabold text-amber-800 mt-1 font-mono">\${termsData.missing ?? 0}</div>
+            </div>
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <div class="text-[10px] font-bold text-slate-500 uppercase">Unversioned</div>
+              <div class="text-2xl font-extrabold text-slate-800 mt-1 font-mono">\${(termsData.byVersion && termsData.byVersion['unversioned']) || 0}</div>
+            </div>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100">
+            <div class="text-[11px] font-bold text-slate-700 mb-2">Breakdown by Terms Version</div>
+            <div class="flex flex-wrap gap-2">
+              \${termsData.byVersion && Object.keys(termsData.byVersion).length > 0 ? Object.entries(termsData.byVersion).map(([v, count]) => \`
+                <span class="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-mono text-slate-700">
+                  <strong class="text-slate-900">\${v}</strong>: \${count} users
+                </span>
+              \`).join('') : '<span class="text-xs text-slate-400">No versioned records.</span>'}
+            </div>
+          </div>
+          <div class="mt-3 p-2.5 bg-amber-50 border border-amber-200/80 rounded-xl text-amber-800 text-[11px] leading-relaxed">
+            Users who registered before terms tracking was added will show as missing. This is expected, not an error.
+          </div>
+        </div>
+
         <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
           <div class="p-4 border-b border-slate-200 flex items-center justify-between">
             <div>
