@@ -1,6 +1,11 @@
 # Progress Tracker
 
-## Current Status Banner (2026-11-20 — Block F + Block G)
+## Current Status Banner (2026-11-20 — Blocks F, G, H)
+- [x] **Block H — Launch Scope Locked by Owner:**
+  - **Deferred (owner waived):** GST registration (below Rs 20 lakh threshold), macOS .dmg, Linux .AppImage, Windows Authenticode code signing. Accepted consequence: unsigned installer shows the SmartScreen warning.
+  - **Confirmed live on production server:** YouPI gateway credentials (UPI QR working), email transport (Resend/SMTP verified).
+  - **Still blocking:** domain support mailbox (support@mahibrowser.com).
+  - **Rule for future edits:** a deferred item must never be listed as blocking, and an unverified endpoint must never be listed as verified.
 - [x] **Block F — Final Cleanup & Production Hardening:**
   - **Desktop Dead Links Fixed:** Replaced relative `href="/pricing"` with `href="https://mahibrowser.com/pricing" target="_blank" rel="noopener noreferrer"` in `AccountModal.tsx:870` and `CommercialUserModal.tsx:104`.
   - **Terms & Privacy Consent Enforced:** Added mandatory consent checkbox in `landing/app/signup/page.tsx`, enforced `acceptedTerms === true` with HTTP 400 `TERMS_NOT_ACCEPTED` on `/api/v1/auth/register`, threaded terms version (`2026-11-19`) through SQLite `oauth_states` and Google OAuth flows, recorded audit trail in `commercial_users` and `auth_users` without backfilling historical NULLs.

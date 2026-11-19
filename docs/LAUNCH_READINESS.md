@@ -51,12 +51,13 @@ The following components are fully tested, integrated, and verified working in c
 
 ---
 
-## B. BLOCKING Before Taking Real Money
+## B. Infrastructure Status (payments & email live)
 
 These items must be resolved by the owner before opening live checkout to real paying users:
 
 ### 1. Production Host Environment Secrets (.env)
-- **Status:** [ ] BLOCKING
+- **Status:** [x] CONFIGURED ON PRODUCTION — owner confirmed
+- **Owner Confirmation:** Production .env is populated with YouPI merchant credentials; the gateway is live and serving UPI QR codes. Secrets are gitignored (.gitignore:12-13) and are never committed. This repository intentionally contains NO .env file — verification happens on the server, not in the repo.
 - **What:** The `.env` file on the production backend server must be populated with live merchant credentials.
 - **Required Variables:**
   - `YOUPI_PG_BASE_URL` (e.g. `https://<your-gateway-domain>`, see docs/PAYMENT_GATEWAY_RUNBOOK.md)
@@ -70,41 +71,42 @@ These items must be resolved by the owner before opening live checkout to real p
 - **Verification:** SSH into server, verify `.env` is present and gitignored, run gateway smoke test curl from `docs/PAYMENT_GATEWAY_RUNBOOK.md`.
 
 ### 2. Live Email Transport Configuration
-- **Status:** [ ] BLOCKING
+- **Status:** [x] CONFIGURED ON PRODUCTION — owner confirmed
 - **What:** Configure real SMTP or Resend API credentials in production `.env`.
 - **Required Variables (Option 1 - Resend API):**
   - `RESEND_API_KEY` or `EMAIL_API_KEY`
   - `EMAIL_FROM=MAHI Browser <support@mahibrowser.com>`
 - **Required Variables (Option 2 - SMTP Relay):**
   - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
-- **Why It Matters:** While payments succeed if email fails, customers will not receive payment receipts, license activation keys, or UTR approval notifications.
+- **Why It Matters:** Payments, account creation and login work without email — email verification is not enforced at login. Without a transport the customer receives no licence key, receipt or UTR status email, although the licence is always visible in-app under Account -> Your Licence (GET /api/v1/me/license). Owner has confirmed the transport is configured and verified on the production server.
 - **Responsible Party:** Owner.
 - **Verification:** Run `npm run verify:email -- --send owner@example.com` and confirm receipt in your personal inbox.
 
 ### 3. Windows Authenticode Code Signing Certificate
-- **Status:** [ ] BLOCKING
+- **Status:** [x] DEFERRED — owner decision
 - **What:** Install an EV or OV Authenticode certificate (PFX or Hardware Token) in the build pipeline.
 - **Required Variables:**
   - `WIN_CSC_LINK` or `CSC_LINK`
   - `WIN_CSC_KEY_PASSWORD` or `CSC_KEY_PASSWORD`
   - Or `CERT_THUMBPRINT` for Cloud HSM / USB Dongle
 - **Why It Matters:** Unsigned executables trigger the blue Windows Defender SmartScreen "Windows protected your PC" banner, severely harming checkout conversion.
+- **Accepted Consequence:** The unsigned installer triggers the Windows SmartScreen "Windows protected your PC" prompt on first run. The user must click "More info" -> "Run anyway". Download and installation still work normally. Owner has accepted this trade-off. Revisit before large paid ad spend.
 - **Responsible Party:** Owner (procure from DigiCert, Sectigo, or Certum).
 - **Verification:** Run `signtool verify /pa release/MAHI-Browser-Setup-latest.exe` or right-click installer -> Properties -> Digital Signatures.
 
 ---
 
-## C. BLOCKING Before Public Marketing Launch
+## C. Remaining Before Public Marketing Launch
 
 These items must be resolved before executing broad marketing, advertising, or press campaigns:
+Every item in this section is DEFERRED by explicit owner decision except the one marked [ ] BLOCKING.
 
 ### 1. GST & Commercial Business Registration
-- **Status:** [ ] BLOCKING
-- **What:** Obtain formal GSTIN or formal proprietorship registration documents if revenue approaches threshold.
-- **Current State:** Pages currently render compliant statutory placeholder: `"Not applicable (proprietorship below GST threshold)"`.
-- **Why It Matters:** Indian tax compliance and merchant payment gateway KYC verification require formal registration documents.
-- **Responsible Party:** Owner / Chartered Accountant.
-- **Verification:** Update `BRAND.legal.gstin` in `landing/lib/brand.ts` and `LEGAL_GSTIN` in `10_CONFIG/contact-config.ts` once issued.
+- **Status:** [x] DEFERRED — owner decision
+- **Current State:** Site already renders the legally-safe disclosure "Not applicable (proprietorship below GST threshold)" in place of a GSTIN. GST registration is not required below the Rs 20 lakh annual turnover threshold.
+- **Why It Matters:** No statutory requirement at current turnover. Owner has explicitly waived this as a launch blocker.
+- **Revisit:** Only if annual turnover approaches Rs 20 lakh.
+- **Verification:** Update BRAND.legal.gstin in landing/lib/brand.ts and LEGAL_GSTIN in 10_CONFIG/contact-config.ts if registration is ever obtained.
 
 ### 2. Domain Support Mailbox Migration
 - **Status:** [ ] BLOCKING
@@ -114,13 +116,19 @@ These items must be resolved before executing broad marketing, advertising, or p
 - **Responsible Party:** Owner.
 - **Verification:** Follow runbook Section 7 in `docs/PAYMENT_GATEWAY_RUNBOOK.md` and verify inbound/outbound delivery.
 
-### 3. macOS & Linux Distribution Packages
-- **Status:** [ ] BLOCKING
-- **What:** Compile and publish signed `.dmg` (Apple Silicon & Intel) and `.AppImage` (Linux x64) binaries.
-- **Current State:** Landing page downloads block has `macDmgAvailable: false` and `linuxAvailable: false` with buttons showing "Coming Soon".
-- **Why It Matters:** Multi-accounting agencies and web scrapers heavily utilize macOS and Ubuntu.
-- **Responsible Party:** Lead Engineer (configure macOS GitHub Actions runner with Apple Developer ID certificate).
-- **Verification:** Inspect GitHub Release v1.1.9 for `.dmg` and `.AppImage` assets.
+### 3a. macOS Distribution Packages (.dmg)
+- **Status:** [x] DEFERRED — owner decision
+- **Current State:** Landing page already shows macOS as "Coming Soon" (BRAND.downloads.macDmgAvailable = false in landing/lib/brand.ts:24). This is accurate, not misleading.
+- **Why It Matters:** Owner has waived macOS for launch. Windows is the launch platform.
+- **Revisit:** When macOS demand justifies the Apple Developer ID cost.
+- **Verification:** Flip BRAND.downloads.macDmgAvailable to true once a signed .dmg is published to the release.
+
+### 3b. Linux Distribution Package (.AppImage)
+- **Status:** [x] DEFERRED — owner decision
+- **Current State:** Landing page already shows Linux as "Coming Soon" (BRAND.downloads.linuxAvailable = false in landing/lib/brand.ts:25).
+- **Why It Matters:** Owner has waived Linux for launch; will revisit as the user base grows.
+- **Revisit:** When Linux user demand justifies the CI runner cost.
+- **Verification:** Flip BRAND.downloads.linuxAvailable to true once an .AppImage is published to the release.
 
 ---
 
