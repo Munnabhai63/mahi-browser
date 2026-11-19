@@ -1,6 +1,7 @@
 import { MetadataRoute } from 'next';
 import { BRAND } from '../lib/brand';
 import { getAllDocs, getAllBlogPosts } from '../lib/mdx';
+import { getAllLateralPosts } from '../lib/blogData';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = BRAND.website;
@@ -12,6 +13,36 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: now,
       changeFrequency: 'daily',
       priority: 1.0,
+    },
+    {
+      url: `${baseUrl}/features`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.9,
+    },
+    {
+      url: `${baseUrl}/fingerprints`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.9,
+    },
+    {
+      url: `${baseUrl}/customers`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.85,
+    },
+    {
+      url: `${baseUrl}/compare`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.9,
+    },
+    {
+      url: `${baseUrl}/compare/gologin-alternative`,
+      lastModified: now,
+      changeFrequency: 'weekly',
+      priority: 0.85,
     },
     {
       url: `${baseUrl}/pricing`,
@@ -26,10 +57,22 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.95,
     },
     {
-      url: `${baseUrl}/compare/gologin-alternative`,
+      url: `${baseUrl}/company`,
       lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.85,
+      changeFrequency: 'monthly',
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/about`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.75,
+    },
+    {
+      url: `${baseUrl}/careers`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.7,
     },
     {
       url: `${baseUrl}/docs`,
@@ -41,7 +84,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: `${baseUrl}/blog`,
       lastModified: now,
       changeFrequency: 'daily',
-      priority: 0.8,
+      priority: 0.85,
     },
     {
       url: `${baseUrl}/login`,
@@ -90,12 +133,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
   }));
 
   const blogPosts = getAllBlogPosts();
-  const blogRoutes: MetadataRoute.Sitemap = blogPosts.map((post) => ({
+  const mdxBlogRoutes: MetadataRoute.Sitemap = blogPosts.map((post) => ({
     url: `${baseUrl}/blog/${post.slug}`,
     lastModified: new Date(post.date),
     changeFrequency: 'monthly',
     priority: 0.75,
   }));
 
-  return [...staticRoutes, ...docRoutes, ...blogRoutes];
+  const lateralPosts = getAllLateralPosts();
+  const lateralBlogRoutes: MetadataRoute.Sitemap = lateralPosts.map((post) => ({
+    url: `${baseUrl}/blog/${post.slug}`,
+    lastModified: now,
+    changeFrequency: 'monthly',
+    priority: 0.8,
+  }));
+
+  return [...staticRoutes, ...docRoutes, ...mdxBlogRoutes, ...lateralBlogRoutes];
 }
