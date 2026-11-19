@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { BRAND } from '../lib/brand';
 
 interface PlanTier {
   id: string;
@@ -193,13 +194,18 @@ export default function PricingView() {
   // Indian UPI Modal state
   const [isUpiModalOpen, setIsUpiModalOpen] = useState(false);
   const [selectedUpiPlan, setSelectedUpiPlan] = useState<{
+    id: string;
     name: string;
     price: number;
     billingLabel: string;
+    cycle: 'MONTHLY' | 'ANNUAL';
   } | null>(null);
   const [copiedUpi, setCopiedUpi] = useState(false);
   const [utrInput, setUtrInput] = useState('');
   const [utrSubmitted, setUtrSubmitted] = useState(false);
+  const [isSubmittingUtr, setIsSubmittingUtr] = useState(false);
+  const [utrError, setUtrError] = useState<string | null>(null);
+  const [submittedPaymentId, setSubmittedPaymentId] = useState<string | null>(null);
 
   // Telemetry event tracking (active in production to avoid dev-mode 404 toast)
   const trackFunnel = (eventName: string, metadata?: Record<string, any>) => {
@@ -218,13 +224,17 @@ export default function PricingView() {
 
     if (currency === 'INR') {
       setSelectedUpiPlan({
+        id: plan.id,
         name: plan.name,
         price: plan.priceINR,
         billingLabel: plan.billingLabelINR,
+        cycle: plan.id === 'starter' ? 'MONTHLY' : 'ANNUAL',
       });
       setIsUpiModalOpen(true);
       setUtrSubmitted(false);
       setUtrInput('');
+      setUtrError(null);
+      setSubmittedPaymentId(null);
     } else {
       window.location.href = `${plan.ctaHref}&currency=USD`;
     }
@@ -255,15 +265,61 @@ export default function PricingView() {
   };
 
   // Handle UTR submission
-  const handleUtrSubmit = (e: React.FormEvent) => {
+  const handleUtrSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!utrInput.trim()) return;
-    trackFunnel('upi_utr_submitted', {
-      utr: utrInput,
-      plan: selectedUpiPlan?.name,
-      amount: selectedUpiPlan?.price,
-    });
-    setUtrSubmitted(true);
+    if (!utrInput.trim() || !selectedUpiPlan) return;
+
+    setIsSubmittingUtr(true);
+    setUtrError(null);
+
+    try {
+      const token =
+        typeof window !== 'undefined'
+          ? localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token')
+          : null;
+
+      if (!token) {
+        setUtrError('Please log in first so we can attach this payment to your account.');
+        return;
+      }
+
+      const resp = await fetch(`${BRAND.apiUrl}/api/v1/account/payments/upi/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          planId: selectedUpiPlan.id,
+          billingCycle: selectedUpiPlan.cycle,
+          utr: utrInput.trim(),
+          currency: 'INR',
+        }),
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      if (!resp.ok || !data.success) {
+        setUtrError(
+          typeof data.error === 'string'
+            ? data.error
+            : data.error?.message || 'Could not submit UTR. Please check and retry.'
+        );
+        return;
+      }
+
+      trackFunnel('upi_utr_submitted', {
+        utr: utrInput,
+        paymentId: data.payment_id,
+        amountPaise: data.amount_paise,
+      });
+      setSubmittedPaymentId(data.payment_id || null);
+      setUtrSubmitted(true);
+    } catch {
+      setUtrError('Network error. Your payment is safe — please retry or contact support.');
+    } finally {
+      setIsSubmittingUtr(false);
+    }
   };
 
   return (
@@ -832,6 +888,11 @@ export default function PricingView() {
             {/* UTR Submission Form */}
             {!utrSubmitted ? (
               <form onSubmit={handleUtrSubmit} className="space-y-3">
+                {utrError && (
+                  <div className="rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-xs text-[#e6e3e3]">
+                    {utrError}
+                  </div>
+                )}
                 <div>
                   <label htmlFor="utr-input" className="block text-[11px] font-mono text-zinc-400 uppercase tracking-wider mb-1">
                     Enter 12-Digit UTR / Transaction Reference No.
@@ -848,9 +909,10 @@ export default function PricingView() {
                 </div>
                 <button
                   type="submit"
-                  className="w-full rounded-full bg-white text-black py-2.5 text-xs sm:text-sm font-semibold hover:bg-zinc-200 transition-colors shadow-sm"
+                  disabled={isSubmittingUtr}
+                  className="w-full rounded-full bg-white text-black py-2.5 text-xs sm:text-sm font-semibold hover:bg-zinc-200 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Verify Payment & Submit
+                  {isSubmittingUtr ? 'Submitting…' : 'Verify Payment & Submit'}
                 </button>
               </form>
             ) : (
@@ -859,11 +921,17 @@ export default function PricingView() {
                   Payment Reference Recorded
                 </div>
                 <p className="text-xs text-zinc-400 leading-relaxed">
-                  Your UTR <code className="text-white font-mono">{utrInput}</code> for ₹{selectedUpiPlan.price.toLocaleString()} has been submitted. Instant license key is dispatched to your email and WhatsApp within 5 minutes.
+                  Your UTR <code className="text-white font-mono">{utrInput}</code> for ₹{selectedUpiPlan.price.toLocaleString()} has been submitted for verification.
+                  Your license will be activated after manual verification (usually within 24 hours).
+                  {submittedPaymentId && (
+                    <span className="block mt-1 font-mono text-[11px] text-zinc-400">
+                      Keep this reference: <code className="text-white font-semibold">{submittedPaymentId}</code>
+                    </span>
+                  )}
                 </p>
                 <div className="pt-2">
                   <a
-                    href={`https://wa.me/919376343629?text=Hi%20Mahipal,%20I%20have%20paid%20INR%20${selectedUpiPlan.price}%20via%20UPI%20for%20MAHI%20Browser%20${encodeURIComponent(selectedUpiPlan.name)}%20Plan.%20UTR:%20${encodeURIComponent(utrInput)}`}
+                    href={`https://wa.me/919376343629?text=Hi%20Mahipal,%20I%20have%20paid%20INR%20${selectedUpiPlan.price}%20via%20UPI%20for%20MAHI%20Browser%20${encodeURIComponent(selectedUpiPlan.name)}%20Plan.%20UTR:%20${encodeURIComponent(utrInput)}${submittedPaymentId ? `%20Ref:%20${encodeURIComponent(submittedPaymentId)}` : ''}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-center gap-2 rounded-full bg-white text-black px-4 py-2 text-xs font-semibold hover:bg-zinc-200 transition-colors"
