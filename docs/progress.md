@@ -1,6 +1,17 @@
 # Progress Tracker
 
 ## Latest Updates (2026-11-19)
+- [x] **Block 1: UPI Payment Wire to Backend API:**
+  - Fixed critical P0 bug where UPI UTR submissions never reached backend database (`fetch()` calls in `PricingView.tsx` were 0).
+  - Made `handleUtrSubmit` async and wired it to `${BRAND.apiUrl}/api/v1/account/payments/upi/submit` with Bearer auth token, `planId`, `billingCycle`, and `utr`.
+  - Added user authentication validation check with user-facing message: *"Please log in first so we can attach this payment to your account."*
+  - Added monochrome error display (`border-white/20 bg-white/5`) and submit loading state (`isSubmittingUtr` -> "Submitting…").
+  - Updated success screen copy to honest manual verification timeline (within 24 hours) with dynamic `payment_id` reference and WhatsApp confirmation payload.
+  - Acceptance checks passed: `account/payments/upi/submit` count = 1, `fetch(` count = 1, `isSubmittingUtr|utrError` count = 6, `red-[0-9]` count = 0.
+  - Next.js build passed with exit code 0 (39/39 pages).
+  - Deployed to VPS `200.97.164.97:2222` and verified live on `https://mahibrowser.com/pricing`.
+  - Pushed commit `20ee00f` to `origin/main`.
+
 - [x] **Pricing Luxury Theme Polish & Production VPS Deployment:**
   - Expanded Pricing Cards geometry (`max-w-[1380px]`, `p-8 sm:p-10 lg:p-9 xl:p-11`, price `text-64px`) for enhanced visual presence and readability.
   - Aligned Hero eyebrow and headline 1:1 with user reference:

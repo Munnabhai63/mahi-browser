@@ -1,5 +1,15 @@
 # Decisions Log
 
+## 2026-11-19 - Block 1: UPI Payment Wiring to Commercial Backend API
+- **Context**: Code review revealed a P0 flaw in `landing/components/PricingView.tsx` where UTR form submissions only altered client state (`setUtrSubmitted(true)`) without making any API request to persist payments. The backend endpoint `/api/v1/account/payments/upi/submit` existed but was never invoked.
+- **Implementation**:
+  - Wired `handleUtrSubmit` to POST `${BRAND.apiUrl}/api/v1/account/payments/upi/submit` passing Bearer token from localStorage (`mahi_auth_token` / `mahi_access_token`).
+  - Required active user session before UTR submission to guarantee payment attribution to a user account.
+  - Implemented monochrome error display and loading state on submit button.
+  - Aligned post-submission messaging to honest 24-hour SLA with `payment_id` reference display.
+  - Validated via automated Playwright test suite (both unauthenticated rejection and authenticated intercept).
+  - Deployed to live VPS `200.97.164.97:2222` with Nginx reload.
+
 ## 2026-11-19 - Pricing Polish, Card Expansion & Phone Number Privacy Deployment
 - **Context**: The user reviewed the initial pricing deployment and provided strict design constraints:
   1. Purge all cartoon emojis (`🔥`, `🚀`) and green pill badges.
