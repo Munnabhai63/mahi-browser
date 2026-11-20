@@ -196,13 +196,6 @@ jobs:
         run: |
           Get-ChildItem release\*.exe | Get-FileHash -Algorithm SHA256 | Out-File -FilePath release\SHA256SUMS.txt
 
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: mahi-browser-${{ matrix.platform }}-${{ matrix.arch }}
-          path: release/*
-          if-no-files-found: error
-
       - name: Normalise release filenames
         if: runner.os == 'Windows'
         shell: pwsh
@@ -260,6 +253,13 @@ jobs:
           }
           Write-Host "Blockmap Verified: $($blockmaps[0].Name)"
 
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahi-browser-${{ matrix.platform }}-${{ matrix.arch }}
+          path: release/*
+          if-no-files-found: error
+
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v') && runner.os == 'Windows'
         uses: softprops/action-gh-release@v2
@@ -279,7 +279,7 @@ jobs:
 
   deploy-vps:
     name: Deploy Release to Production VPS
-    needs: [test-and-verify, package-desktop]
+    needs: [test-and-verify, build-and-package]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -318,8 +318,12 @@ jobs:
 
           # 1. Upload Binaries First
           scp -P $PORT release/MAHI-Browser-Setup-${VERSION}.exe $USER@$HOST:/var/www/mahibrowser/updates/
-          scp -P $PORT release/MAHI-Browser-Setup-latest.exe $USER@$HOST:/var/www/mahibrowser/releases/
-          scp -P $PORT release/MAHI-Browser-Portable-latest.exe $USER@$HOST:/var/www/mahibrowser/releases/
+          if [ -f release/MAHI-Browser-Setup-latest.exe ]; then
+            scp -P $PORT release/MAHI-Browser-Setup-latest.exe $USER@$HOST:/var/www/mahibrowser/releases/
+          fi
+          if [ -f release/MAHI-Browser-Portable-latest.exe ]; then
+            scp -P $PORT release/MAHI-Browser-Portable-latest.exe $USER@$HOST:/var/www/mahibrowser/releases/
+          fi
           if [ -f release/MAHI-Browser-Portable-${VERSION}.exe ]; then
             scp -P $PORT release/MAHI-Browser-Portable-${VERSION}.exe $USER@$HOST:/var/www/mahibrowser/updates/
           fi
