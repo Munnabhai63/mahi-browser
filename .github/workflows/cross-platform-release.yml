@@ -397,47 +397,79 @@ jobs:
 
       - name: Live Verification Gate
         run: |
-          echo "Verifying live HTTP endpoints..."
+          set -euo pipefail
           VERSION=${GITHUB_REF_NAME#v}
+          BASE=https://mahibrowser.com
+          TMP=$(mktemp -d)
+          echo "Verifying live release for v${VERSION}"
 
-          # 1. Check latest.yml
-          YML_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://mahibrowser.com/update/latest.yml)
-          if [ "$YML_CODE" -ne 200 ]; then
-            echo "FATAL: https://mahibrowser.com/update/latest.yml returned $YML_CODE"
-            exit 1
-          fi
-          echo "✓ latest.yml: HTTP 200"
+          # G1 - endpoints must be 200 and must not be cached
+          YML_HDR=$(curl -sS -D - -o "$TMP/latest.yml" "${BASE}/update/latest.yml")
+          echo "$YML_HDR" | grep -qi "^HTTP/.* 200" || { echo "FATAL G1: latest.yml not 200"; exit 1; }
+          echo "$YML_HDR" | grep -qi "cache-control:.*no-store" || { echo "FATAL G1: latest.yml is cacheable"; exit 1; }
 
-          # 2. Check latest.json
-          JSON_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://mahibrowser.com/update/latest.json)
-          if [ "$JSON_CODE" -ne 200 ]; then
-            echo "FATAL: https://mahibrowser.com/update/latest.json returned $JSON_CODE"
-            exit 1
-          fi
-          echo "✓ latest.json: HTTP 200"
+          JSON_HDR=$(curl -sS -D - -o "$TMP/latest.json" "${BASE}/update/latest.json")
+          echo "$JSON_HDR" | grep -qi "^HTTP/.* 200" || { echo "FATAL G1: latest.json not 200"; exit 1; }
+          echo "$JSON_HDR" | grep -qi "cache-control:.*no-store" || { echo "FATAL G1: latest.json is cacheable"; exit 1; }
+          echo "G1 PASS: both manifests 200 and no-store"
 
-          # 3. Check Setup download
-          SETUP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://mahibrowser.com/download/setup)
-          if [ "$SETUP_CODE" -ne 200 ]; then
-            echo "FATAL: https://mahibrowser.com/download/setup returned $SETUP_CODE"
-            exit 1
-          fi
-          echo "✓ setup endpoint: HTTP 200"
+          # G2 - both manifests must name this exact version
+          YML_VER=$(grep -m1 '^version:' "$TMP/latest.yml" | awk '{print $2}' | tr -d '\r')
+          [ "$YML_VER" = "$VERSION" ] || { echo "FATAL G2: latest.yml version=$YML_VER expected=$VERSION"; exit 1; }
+          JSON_VER=$(node -e "process.stdout.write(String(require(process.argv[1]).version||''))" "$TMP/latest.json")
+          [ "$JSON_VER" = "$VERSION" ] || { echo "FATAL G2: latest.json version=$JSON_VER expected=$VERSION"; exit 1; }
+          echo "G2 PASS: both manifests version=$VERSION"
 
-          # 4. Check that version in latest.yml matches
-          LIVE_YML=$(curl -s https://mahibrowser.com/update/latest.yml)
-          if ! echo "$LIVE_YML" | grep -q "version: $VERSION"; then
-            echo "FATAL: latest.yml does not contain version $VERSION!"
-            exit 1
-          fi
-          echo "✓ latest.yml verified version: $VERSION"
+          # G3 and G4 - download the exe the manifest points at, hash it, compare both ways
+          EXE_URL="${BASE}/update/MAHI-Browser-Setup-${VERSION}.exe"
+          curl -sS -f -o "$TMP/setup.exe" "$EXE_URL" || { echo "FATAL G3: cannot download $EXE_URL"; exit 1; }
+          ACTUAL_B64=$(openssl dgst -sha512 -binary "$TMP/setup.exe" | openssl base64 -A)
+          YML_B64=$(grep -m1 'sha512:' "$TMP/latest.yml" | sed 's/.*sha512:[[:space:]]*//' | tr -d '\r"')
+          [ "$ACTUAL_B64" = "$YML_B64" ] || { echo "FATAL G3: sha512 mismatch"; echo "computed=$ACTUAL_B64"; echo "manifest=$YML_B64"; exit 1; }
+          echo "G3 PASS: latest.yml sha512 matches the downloadable exe"
 
-          # 5. Check that version in latest.json matches
-          LIVE_JSON=$(curl -s https://mahibrowser.com/update/latest.json)
-          if ! echo "$LIVE_JSON" | grep -q "\"version\": \"$VERSION\""; then
-            echo "FATAL: latest.json does not contain version $VERSION!"
-            exit 1
-          fi
-          echo "✓ latest.json verified version: $VERSION"
+          ACTUAL_SIZE=$(stat -c%s "$TMP/setup.exe")
+          YML_SIZE=$(grep -m1 'size:' "$TMP/latest.yml" | head -1 | awk '{print $2}' | tr -d '\r')
+          [ "$YML_SIZE" = "$ACTUAL_SIZE" ] || { echo "FATAL G4: size mismatch manifest=$YML_SIZE actual=$ACTUAL_SIZE"; exit 1; }
+          echo "G4 PASS: size=$ACTUAL_SIZE matches latest.yml"
 
-          echo "All live verification gates PASSED! Release v${VERSION} is live and active."
+          # G5 - the fresh-install endpoint must serve the same bytes
+          SETUP_LEN=$(curl -sS -I "${BASE}/download/setup" | grep -i '^content-length:' | tail -1 | tr -d '\r' | awk '{print $2}')
+          [ "$SETUP_LEN" = "$ACTUAL_SIZE" ] || { echo "FATAL G5: /download/setup length=$SETUP_LEN expected=$ACTUAL_SIZE"; exit 1; }
+          echo "G5 PASS: /download/setup serves the same artefact"
+
+          # G6 - the custom JSON client must be told to fetch the Setup build, not Portable
+          JSON_PRIMARY=$(node -e "process.stdout.write(String(require(process.argv[1]).primaryArtifact||''))" "$TMP/latest.json")
+          [ "$JSON_PRIMARY" = "MAHI-Browser-Setup-${VERSION}.exe" ] || { echo "FATAL G6: primaryArtifact=$JSON_PRIMARY"; exit 1; }
+          echo "G6 PASS: primaryArtifact is the Setup build"
+
+          # Evidence file - written only when every gate passed
+          mkdir -p docs/deployment-evidence
+          STAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          {
+            echo "# Deployment evidence - v${VERSION}"
+            echo
+            echo "- Timestamp (UTC): ${STAMP}"
+            echo "- Tag: ${GITHUB_REF_NAME}"
+            echo "- Commit: ${GITHUB_SHA}"
+            echo "- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo "| Gate | Result | Value |"
+            echo "|---|---|---|"
+            echo "| G1 both manifests 200 + no-store | PASS | checked |"
+            echo "| G2 both manifests version | PASS | ${VERSION} |"
+            echo "| G3 latest.yml sha512 vs exe | PASS | ${ACTUAL_B64} |"
+            echo "| G4 size vs latest.yml | PASS | ${ACTUAL_SIZE} bytes |"
+            echo "| G5 /download/setup length | PASS | ${SETUP_LEN} bytes |"
+            echo "| G6 latest.json primaryArtifact | PASS | ${JSON_PRIMARY} |"
+          } > "docs/deployment-evidence/${STAMP%%T*}.md"
+          echo "Evidence written to docs/deployment-evidence/${STAMP%%T*}.md"
+          echo "ALL LIVE GATES PASSED for v${VERSION}"
+
+      - name: Upload Deployment Evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-evidence-${{ github.ref_name }}
+          path: docs/deployment-evidence/*.md
+          if-no-files-found: warn
