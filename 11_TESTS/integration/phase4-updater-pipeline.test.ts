@@ -48,6 +48,7 @@ describe('PHASE 4 INTEGRATION: Complete Update Pipeline, Checksum Integrity & Da
   let serveOffline = false;
 
   beforeAll(async () => {
+    process.env.MAHI_USER_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-upd-'));
     testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-phase4-integ-'));
     testDbPath = path.join(testDir, 'test_user_data.sqlite');
     setCustomDatabasePath(testDbPath);
@@ -137,6 +138,12 @@ describe('PHASE 4 INTEGRATION: Complete Update Pipeline, Checksum Integrity & Da
     try {
       fs.rmSync(testDir, { recursive: true, force: true });
     } catch {}
+    if (process.env.MAHI_USER_DATA_DIR) {
+      try {
+        fs.rmSync(process.env.MAHI_USER_DATA_DIR, { recursive: true, force: true });
+      } catch {}
+      delete process.env.MAHI_USER_DATA_DIR;
+    }
   });
 
   // --------------------------------------------------------------------------

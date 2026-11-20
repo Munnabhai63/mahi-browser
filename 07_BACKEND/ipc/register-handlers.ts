@@ -1924,7 +1924,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('updater:setConfig', async (_event, config: any) => {
     try {
-      return setUpdateConfig(config);
+      const { feedUrl: _ignoredFeedUrl, ...safeConfig } = (config && typeof config === 'object') ? config : {};
+      return setUpdateConfig(safeConfig);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }

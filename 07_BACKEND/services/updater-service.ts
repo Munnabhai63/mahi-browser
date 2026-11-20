@@ -36,6 +36,26 @@ export const DEFAULT_UPDATE_FEED_URL = 'https://mahibrowser.com/update/';
 export const UPDATE_FEED_URL = DEFAULT_UPDATE_FEED_URL;
 export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
+const ALLOWED_UPDATE_FEED_HOSTS = ['mahibrowser.com', 'www.mahibrowser.com'];
+
+/**
+ * Any feed URL that is not https on the allowed hosts collapses to the production
+ * default. This defends against a stale localhost port written by a test run, a
+ * tampered updater_config.json, and a compromised renderer.
+ */
+export function sanitizeFeedUrl(input: unknown): string {
+  try {
+    if (typeof input !== 'string' || !input.trim()) return DEFAULT_UPDATE_FEED_URL;
+    const u = new URL(input.trim());
+    if (u.protocol !== 'https:') return DEFAULT_UPDATE_FEED_URL;
+    if (!ALLOWED_UPDATE_FEED_HOSTS.includes(u.hostname.toLowerCase())) return DEFAULT_UPDATE_FEED_URL;
+    const s = u.toString();
+    return s.endsWith('/') ? s : s + '/';
+  } catch {
+    return DEFAULT_UPDATE_FEED_URL;
+  }
+}
+
 export { compareSemVer, isValidTransition };
 export type UpdaterState = UpdateState;
 
@@ -53,7 +73,7 @@ export function loadUpdateConfig(): UpdateConfig {
         autoCheck: data.autoCheck !== false,
         autoDownload: data.autoDownload !== false,
         notifyBeforeRestart: data.notifyBeforeRestart !== false,
-        feedUrl: data.feedUrl || DEFAULT_UPDATE_FEED_URL,
+        feedUrl: sanitizeFeedUrl(data.feedUrl),
         lastCheckedAt: data.lastCheckedAt,
       };
     }
@@ -106,7 +126,7 @@ function getAutoUpdater(): any {
   }
 }
 
-let activeConfig: UpdateConfig = loadUpdateConfig();
+let activeConfig = loadUpdateConfig();
 let updateStatus: UpdateStatusEvent = {
   state: 'IDLE',
   currentVersion: getSafeAppVersion(),
@@ -148,7 +168,7 @@ export function initAutoUpdater(): void {
   try {
     autoUpdater.setFeedURL({
       provider: 'generic',
-      url: activeConfig.feedUrl || DEFAULT_UPDATE_FEED_URL,
+      url: sanitizeFeedUrl(activeConfig.feedUrl),
     });
     autoUpdater.channel = activeConfig.channel === 'BETA' ? 'beta' : 'latest';
     autoUpdater.autoDownload = activeConfig.autoDownload;
