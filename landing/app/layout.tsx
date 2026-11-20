@@ -80,22 +80,52 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const organizationSchema = {
+  const structuredData = {
     '@context': 'https://schema.org',
-    '@type': 'Organization',
-    name: BRAND.name,
-    legalName: BRAND.legalName,
-    url: BRAND.website,
-    logo: `${BRAND.website}${BRAND.assets.logo}`,
-    email: BRAND.officialEmail,
-    founder: {
-      '@type': 'Person',
-      name: BRAND.creator,
-    },
-    sameAs: [
-      'https://github.com/Munnabhai63/mahi-browser',
-      'https://x.com/MunaBhai63',
-      'https://linkedin.com/in/mahipal-choudhary-153ba83b1',
+    '@graph': [
+      {
+        '@type': 'WebSite',
+        '@id': `${BRAND.website}/#website`,
+        url: BRAND.website,
+        name: BRAND.name,
+        description:
+          'Enterprise Anti-Detect Browser with Chromium 138 JavaScript MV3 Stealth Injection, On-Demand Camoufox C++ Hardened Gecko, and Instant 0% Fee UPI Settlements.',
+        publisher: { '@id': `${BRAND.website}/#organization` },
+      },
+      {
+        '@type': 'Organization',
+        '@id': `${BRAND.website}/#organization`,
+        name: BRAND.name,
+        legalName: BRAND.legalName,
+        url: BRAND.website,
+        logo: `${BRAND.website}${BRAND.assets.logo}`,
+        email: 'support@mahibrowser.com',
+        founder: {
+          '@type': 'Person',
+          name: BRAND.creator,
+        },
+        sameAs: [
+          'https://github.com/Munnabhai63/mahi-browser',
+          'https://x.com/MunaBhai63',
+          'https://www.linkedin.com/in/mahipal-choudhary-153ba83b1',
+        ],
+      },
+      {
+        '@type': 'SoftwareApplication',
+        '@id': `${BRAND.website}/#software`,
+        name: BRAND.name,
+        operatingSystem: 'Windows 10, Windows 11',
+        applicationCategory: 'SecurityApplication, BrowserApplication, BusinessApplication',
+        softwareVersion: BRAND.version,
+        downloadUrl: `${BRAND.website}/download`,
+        offers: {
+          '@type': 'AggregateOffer',
+          priceCurrency: 'INR',
+          lowPrice: '0',
+          highPrice: '1499',
+          offerCount: '4',
+        },
+      },
     ],
   };
 
@@ -111,7 +141,7 @@ export default function RootLayout({
         <link rel="stylesheet" href="/assets/css/framer-theme.css" />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
       </head>
       <body className="min-h-screen flex flex-col bg-[#030303] text-[#ededed] antialiased selection:bg-white selection:text-black">

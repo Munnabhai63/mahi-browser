@@ -1,0 +1,27 @@
+# MAHI Browser
+> Enterprise Dual-Engine Anti-Detect Browser with Chromium 138 MV3 Stealth Injection, Camoufox C++ Hardened Gecko, and Sovereign 0% Fee Instant UPI Payments.
+
+MAHI Browser is a professional privacy, multi-accounting, and anti-detect automation browser engineered for media buyers, e-commerce operators, crypto researchers, web scrapers, and privacy-conscious professionals.
+
+## Core Capabilities
+- **Dual-Engine Architecture:** Chromium 138 with JS-layer MV3 stealth injection alongside on-demand Camoufox C++ hardened Gecko engine.
+- **Deep Fingerprint Spoofing:** Dynamic hardware-level noise generation for Canvas, WebGL, AudioContext, ClientRects, WebRTC IP leakage masking, Font list enumeration, and Navigator/Platform consistency.
+- **Undetectable CDP Automation:** Native rebrowser-patches eliminating `Runtime.enable`, `Page.addScriptToEvaluateOnNewDocument`, and Puppeteer/Playwright execution traces.
+- **Sovereign Indian Payments:** Integrated 0% gateway fee UPI payments with instant dynamic QR code checkout and automatic licence activation.
+- **Local-First Architecture:** Air-gapped offline local SQLite storage with end-to-end encrypted multi-device cloud synchronization and distributed Redis profile locks.
+
+## Plans & Pricing
+- **Free Air-Gapped:** 15 local offline profiles, essential canvas/WebGL noise, community support. (₹0)
+- **Starter Plan:** 25 cloud profiles, 2 team seats, standard proxy manager, 1-click proxy health checker. (₹599/month)
+- **Growth Plan:** 100 cloud profiles, 5 team seats, advanced dual-engine routing, bulk profile importer. (₹999/month)
+- **Ultimate Enterprise:** 1,000,000 profiles, unlimited team seats, priority Indian WhatsApp support, dedicated cloud nodes. (₹1,499/month)
+
+## Key Documentation & URLs
+- Homepage: https://mahibrowser.com
+- Pricing: https://mahibrowser.com/pricing
+- Download Windows Installer: https://mahibrowser.com/download
+- Fingerprint Protection Engine: https://mahibrowser.com/fingerprints
+- Feature Matrix: https://mahibrowser.com/features
+- Compare vs GoLogin: https://mahibrowser.com/compare/gologin-alternative
+- Documentation: https://mahibrowser.com/docs
+- Contact & Support: https://mahibrowser.com/contact
