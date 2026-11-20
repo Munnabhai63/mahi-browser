@@ -194,12 +194,6 @@ jobs:
         run: |
           cd release && shasum -a 256 * > SHA256SUMS.txt || true
 
-      - name: Generate Checksums (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Get-ChildItem release\*.exe | Get-FileHash -Algorithm SHA256 | Out-File -FilePath release\SHA256SUMS.txt
-
       - name: Normalise release filenames
         if: runner.os == 'Windows'
         shell: pwsh
@@ -211,6 +205,15 @@ jobs:
             Copy-Item $portable.FullName "release/MAHI-Browser-Portable-latest.exe" -Force
           }
           Get-ChildItem release | Select-Object Name, Length | Format-Table -AutoSize
+
+      - name: Generate Checksums (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem release\*.exe | Get-FileHash -Algorithm SHA256 | Out-File -FilePath release\SHA256SUMS.txt
+          Get-ChildItem release\*-latest.exe -ErrorAction SilentlyContinue |
+            Get-FileHash -Algorithm SHA256 |
+            Out-File -FilePath release\SHA256SUMS.txt -Append
 
       - name: Generate latest.json Manifest
         if: runner.os == 'Windows'
@@ -265,7 +268,10 @@ jobs:
           $required = @(
             "release/MAHI-Browser-Setup-$v.exe",
             "release/MAHI-Browser-Setup-latest.exe",
+            "release/MAHI-Browser-Portable-$v.exe",
             "release/MAHI-Browser-Portable-latest.exe",
+            "release/MAHI-Browser-Setup-$v.exe.blockmap",
+            "release/SHA256SUMS.txt",
             "release/latest.yml",
             "release/latest.json"
           )

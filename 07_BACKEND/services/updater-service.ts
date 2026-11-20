@@ -365,6 +365,12 @@ export async function checkForAppUpdates(manual = true, overrideChannel?: Update
   }
 }
 
+function pickPrimaryArtifact(manifest: any): any {
+  const files = Array.isArray(manifest && manifest.files) ? manifest.files : [];
+  if (!files.length) return null;
+  return files.find((f: any) => /Setup/i.test((f && f.name) || '')) || files[0];
+}
+
 export async function startDownloadUpdate(): Promise<boolean> {
   try {
     if (app && app.isPackaged) {
@@ -396,7 +402,15 @@ export async function startDownloadUpdate(): Promise<boolean> {
       },
     });
 
-    const primaryFile = currentPendingManifest.files[0];
+    const primaryFile = pickPrimaryArtifact(currentPendingManifest);
+    if (!primaryFile) {
+      broadcastStatus({
+        state: 'ERROR',
+        currentVersion: getSafeAppVersion(),
+        error: 'Update manifest contains no downloadable artefact',
+      });
+      return false;
+    }
     const updateDir = path.join(getWritableUserDataDir(), 'updates');
     if (!fs.existsSync(updateDir)) {
       fs.mkdirSync(updateDir, { recursive: true });

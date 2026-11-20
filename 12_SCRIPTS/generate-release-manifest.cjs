@@ -28,9 +28,15 @@ function generateReleaseManifest(options = {}) {
   }
 
   // Find installer files
-  const files = fs.readdirSync(releaseDir).filter((f) => f.endsWith('.exe') && !f.includes('elevate'));
+  const allExes = fs.readdirSync(releaseDir).filter(
+    (f) => f.endsWith('.exe') && !f.includes('elevate') && !f.includes('-latest')
+  );
+  const setupExes = allExes.filter((f) => /Setup/.test(f));
+  if (setupExes.length !== 1) {
+    throw new Error('Expected exactly one Setup exe, found: ' + setupExes.join(', '));
+  }
 
-  const manifestFiles = files.map((fileName) => {
+  const manifestFiles = allExes.map((fileName) => {
     const fullPath = path.join(releaseDir, fileName);
     const stats = fs.statSync(fullPath);
     const sha256 = calculateHash(fullPath, 'sha256');
@@ -46,10 +52,12 @@ function generateReleaseManifest(options = {}) {
     };
   });
 
-  const primaryFile = manifestFiles.find((f) => f.name.includes(`Setup-${version}`)) || manifestFiles.find((f) => f.name.includes('Setup')) || manifestFiles[0];
+  const primaryFile = manifestFiles.find((f) => f.name === setupExes[0]);
+  if (!primaryFile) throw new Error('Setup exe missing from manifest files');
 
   const manifest = {
     version,
+    primaryArtifact: primaryFile.name,
     releaseDate: new Date().toISOString(),
     channel,
     minAppVersion: '1.0.0',
