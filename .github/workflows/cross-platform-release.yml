@@ -140,7 +140,10 @@ jobs:
           New-Item -ItemType Directory -Path $engineDir -Force
           $zipPath = "$env:TEMP/chrome-win.zip"
           $primaryUrl = "https://commondatastorage.googleapis.com/chromium-browser-snapshots/Win_x64/1465706/chrome-win.zip"
-          $fallbackUrl = "https://mahibrowser.com/engine/chrome-138-win64.zip"
+          # Fallback is Pin A (Chromium snapshot), served as chromium-138-win64.zip.
+          # Do NOT point this at chrome-138.zip - that is Chrome for Testing (Pin B), a
+          # different archive with a different sha256.
+          $fallbackUrl = "https://mahibrowser.com/engine/chromium-138-win64.zip"
           $expectedSha256 = "26237e603d68f909f2ba62162a30c51fa1ba94683ca61358e5489b0a08461bc2"
 
           Write-Host "Downloading Chromium 138 engine from $primaryUrl..."
