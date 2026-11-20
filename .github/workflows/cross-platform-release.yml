@@ -18,6 +18,10 @@ on:
         required: false
         default: false
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -316,6 +320,7 @@ jobs:
     needs: [test-and-verify, build-and-package]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -348,37 +353,41 @@ jobs:
 
           ls -la release/
 
-          ssh -p $PORT $USER@$HOST "mkdir -p /var/www/mahibrowser/updates /var/www/mahibrowser/releases"
+          FILES=(
+            "release/MAHI-Browser-Setup-${VERSION}.exe"
+            "release/MAHI-Browser-Setup-latest.exe"
+            "release/MAHI-Browser-Portable-latest.exe"
+            "release/MAHI-Browser-Portable-${VERSION}.exe"
+            "release/MAHI-Browser-Setup-${VERSION}.exe.blockmap"
+            "release/SHA256SUMS.txt"
+            "release/latest.json"
+            "release/latest.yml"
+          )
+          for f in "${FILES[@]}"; do
+            if [ ! -f "$f" ]; then echo "FATAL: missing required artefact: $f"; exit 1; fi
+            echo "present: $f ($(stat -c%s "$f") bytes)"
+          done
 
-          # 1. Upload Binaries First
-          scp -P $PORT release/MAHI-Browser-Setup-${VERSION}.exe $USER@$HOST:/var/www/mahibrowser/updates/
-          if [ -f release/MAHI-Browser-Setup-latest.exe ]; then
-            scp -P $PORT release/MAHI-Browser-Setup-latest.exe $USER@$HOST:/var/www/mahibrowser/releases/
-          fi
-          if [ -f release/MAHI-Browser-Portable-latest.exe ]; then
-            scp -P $PORT release/MAHI-Browser-Portable-latest.exe $USER@$HOST:/var/www/mahibrowser/releases/
-          fi
-          if [ -f release/MAHI-Browser-Portable-${VERSION}.exe ]; then
-            scp -P $PORT release/MAHI-Browser-Portable-${VERSION}.exe $USER@$HOST:/var/www/mahibrowser/updates/
-          fi
-          if [ -f release/MAHI-Browser-Setup-${VERSION}.exe.blockmap ]; then
-            scp -P $PORT release/MAHI-Browser-Setup-${VERSION}.exe.blockmap $USER@$HOST:/var/www/mahibrowser/updates/
-          fi
-          if [ -f release/SHA256SUMS.txt ]; then
-            scp -P $PORT release/SHA256SUMS.txt $USER@$HOST:/var/www/mahibrowser/releases/
-            scp -P $PORT release/SHA256SUMS.txt $USER@$HOST:/var/www/mahibrowser/updates/
-          fi
+          ssh -p "$PORT" "$USER@$HOST" "mkdir -p /var/www/mahibrowser/updates /var/www/mahibrowser/releases"
 
-          # 2. Upload Manifests LAST (Atomic Cutover)
-          scp -P $PORT release/latest.yml $USER@$HOST:/var/www/mahibrowser/updates/
-          if [ -f release/latest.json ]; then
-            scp -P $PORT release/latest.json $USER@$HOST:/var/www/mahibrowser/updates/
-          fi
+          # 1. binaries first
+          scp -P "$PORT" "release/MAHI-Browser-Setup-${VERSION}.exe"          "$USER@$HOST:/var/www/mahibrowser/updates/"
+          scp -P "$PORT" "release/MAHI-Browser-Setup-latest.exe"              "$USER@$HOST:/var/www/mahibrowser/releases/"
+          scp -P "$PORT" "release/MAHI-Browser-Portable-latest.exe"           "$USER@$HOST:/var/www/mahibrowser/releases/"
+          scp -P "$PORT" "release/MAHI-Browser-Portable-${VERSION}.exe"       "$USER@$HOST:/var/www/mahibrowser/updates/"
+          scp -P "$PORT" "release/MAHI-Browser-Setup-${VERSION}.exe.blockmap" "$USER@$HOST:/var/www/mahibrowser/updates/"
+          scp -P "$PORT" "release/SHA256SUMS.txt"                             "$USER@$HOST:/var/www/mahibrowser/releases/"
+          scp -P "$PORT" "release/SHA256SUMS.txt"                             "$USER@$HOST:/var/www/mahibrowser/updates/"
 
-          # 3. Fix Permissions
-          ssh -p $PORT $USER@$HOST "chown -R www-data:www-data /var/www/mahibrowser/updates /var/www/mahibrowser/releases && chmod 755 /var/www/mahibrowser/updates /var/www/mahibrowser/releases && chmod 644 /var/www/mahibrowser/updates/* /var/www/mahibrowser/releases/*"
+          # 2. manifests last, via temp file + atomic rename
+          scp -P "$PORT" "release/latest.json" "$USER@$HOST:/var/www/mahibrowser/updates/latest.json.tmp"
+          scp -P "$PORT" "release/latest.yml"  "$USER@$HOST:/var/www/mahibrowser/updates/latest.yml.tmp"
+          ssh -p "$PORT" "$USER@$HOST" "mv /var/www/mahibrowser/updates/latest.json.tmp /var/www/mahibrowser/updates/latest.json && mv /var/www/mahibrowser/updates/latest.yml.tmp /var/www/mahibrowser/updates/latest.yml"
 
-          echo "Deployment files successfully synced to VPS."
+          # 3. permissions
+          ssh -p "$PORT" "$USER@$HOST" "chown -R www-data:www-data /var/www/mahibrowser/updates /var/www/mahibrowser/releases && chmod 755 /var/www/mahibrowser/updates /var/www/mahibrowser/releases && chmod 644 /var/www/mahibrowser/updates/* /var/www/mahibrowser/releases/*"
+
+          echo "Deployment files synced and manifests atomically activated."
 
       - name: Live Verification Gate
         run: |
