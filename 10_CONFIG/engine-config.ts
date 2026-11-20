@@ -77,6 +77,24 @@ export const CHROMIUM_PRODUCTION_CONFIG = {
   arch: 'x64' as const,
   platformKey: 'win64' as const,
   downloadUrl: 'https://commondatastorage.googleapis.com/chromium-browser-snapshots/Win_x64/1465706/chrome-win.zip',
+  // ── Engine archive pins ────────────────────────────────────────────────
+  // Pin A - Chromium snapshot (NOT Chrome for Testing). This is the archive whose
+  //          fallbackUrl is chromium-138-win64.zip on THIS object.
+  //   source : Chromium-browser-snapshots Win_x64/1465706/chrome-win.zip
+  //   sha256 : 26237e603d68f909f2ba62162a30c51fa1ba94683ca61358e5489b0a08461bc2
+  //   bytes  : 296108021
+  //   verified by: CHROMIUM_PRODUCTION_SHA256 in managed-engine.ts
+  //
+  // Pin B - Chrome for Testing 138.0.7204.183 win64 (NOT the snapshot).
+  //          Served as chrome-138.zip, used by MANAGED_ENGINE_FALLBACK_URL,
+  //          LEGACY_CFT_FALLBACK_URL and MANAGED_ENGINE_PLATFORMS.win64.
+  //   source : chrome-for-testing-public/138.0.7204.183/win64/chrome-win64.zip
+  //   sha256 : 10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68
+  //   verified by: MANAGED_ENGINE_SHA256 in managed-engine.ts
+  //
+  // These are two DIFFERENT archives with DIFFERENT hashes. Never interchange
+  // their URLs and never hash one against the other's pin.
+  // ───────────────────────────────────────────────────────────────────────
   fallbackUrl: 'https://mahibrowser.com/engine/chromium-138-win64.zip',
   sha256: '26237e603d68f909f2ba62162a30c51fa1ba94683ca61358e5489b0a08461bc2',
   fileSizeBytes: 296108021,
@@ -91,6 +109,8 @@ export const CHROMIUM_PRODUCTION_DOWNLOAD_URL = CHROMIUM_PRODUCTION_CONFIG.downl
 /**
  * Expected SHA-256 integrity checksum for the official Google win64 CfT zip (Legacy/Automated tests).
  */
+// Pin B - see the pin block above. Do NOT compare this hash against anything
+// downloaded from chromium-138-win64.zip, which is Pin A.
 export const MANAGED_ENGINE_SHA256 = '10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68';
 export const LEGACY_CFT_SHA256 = '10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68';
 
@@ -137,7 +157,7 @@ export const MANAGED_ENGINE_PLATFORMS: Record<SupportedPlatformKey, ManagedEngin
     arch: 'x64',
     platformKey: 'win64',
     downloadUrl: `https://storage.googleapis.com/chrome-for-testing-public/${MANAGED_ENGINE_VERSION}/win64/chrome-win64.zip`,
-    fallbackUrl: 'https://mahibrowser.com/engine/chrome-138-win64.zip',
+    fallbackUrl: 'https://mahibrowser.com/engine/chrome-138.zip',
     sha256: '10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68',
     archiveSubdir: 'chrome-win64',
     executableRelativePath: 'chrome.exe',

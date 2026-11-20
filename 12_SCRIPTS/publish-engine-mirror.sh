@@ -3,12 +3,13 @@ set -euo pipefail
 
 # ==============================================================================
 # MAHI BROWSER — Publish Engine Fallback Mirror Script (Block F7)
-# Provisions Chromium 138 win64 engine mirror under /var/www/mahibrowser/engine/
+# Publishes Archive A (the Chromium snapshot) under the name chromium-138-win64.zip
+# under /var/www/mahibrowser/engine/
 # ==============================================================================
 
 ENGINE_DIR="${ENGINE_DIR:-/var/www/mahibrowser/engine}"
 SOURCE_URL="${SOURCE_URL:-https://commondatastorage.googleapis.com/chromium-browser-snapshots/Win_x64/1465706/chrome-win.zip}"
-PRIMARY_FILE="chrome-138.0.7204.92-win64.zip"
+PRIMARY_FILE="chromium-138-win64.zip"
 EXPECTED_SHA256="26237e603d68f909f2ba62162a30c51fa1ba94683ca61358e5489b0a08461bc2"
 MIN_BYTES=104857600 # 100MB
 
