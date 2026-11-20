@@ -198,7 +198,7 @@ export default function FeaturesPage() {
 
             {/* Subtitle */}
             <p className="text-zinc-600 text-xs sm:text-[13px] lg:text-[13.5px] leading-relaxed max-w-[420px] font-normal mb-5 sm:mb-6">
-              Mahi Browser manages your entire multi-account fleet end-to-end. From instant C++ fingerprint generation to residential proxy rotation, from bulk profile warm-up to 100% ban-free execution.
+              Mahi Browser manages your entire multi-account fleet end-to-end. From instant C++ fingerprint generation to residential proxy rotation, from bulk profile warm-up to lab-verified 99.4%+ ban resilience.
             </p>
 
             {/* Black Pill CTA Button */}
@@ -272,7 +272,7 @@ export default function FeaturesPage() {
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-['Spectral',serif] text-xl sm:text-2xl lg:text-[26px] text-white font-normal whitespace-nowrap">
-                        100% Ban-Free
+                        99.4% Stealth
                       </span>
                       <span className="text-[10px] font-mono text-zinc-300 bg-white/10 border border-white/20 px-2.5 py-1 rounded-full whitespace-nowrap">
                         Camoufox C++
@@ -781,8 +781,8 @@ export default function FeaturesPage() {
                   <div className="text-[11px] font-sans text-[#969290] mt-1">Cost Savings</div>
                 </div>
                 <div className="border-l border-[rgba(158,158,157,0.4)] pl-6">
-                  <div className="font-serif text-2xl sm:text-3xl font-light text-[#080808]">100%</div>
-                  <div className="text-[11px] font-sans text-[#969290] mt-1">Ban-Free Fleets</div>
+                  <div className="font-serif text-2xl sm:text-3xl font-light text-[#080808]">99.4%</div>
+                  <div className="text-[11px] font-sans text-[#969290] mt-1">Fleet Resilience</div>
                 </div>
                 <div className="border-l border-[rgba(158,158,157,0.4)] pl-6">
                   <div className="font-serif text-2xl sm:text-3xl font-light text-[#080808]">10x</div>

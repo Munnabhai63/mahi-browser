@@ -6,6 +6,7 @@ import { signToken, getUserById } from './commercial-auth-service.js';
 import { CANONICAL_PLAN_CATALOG } from './canonical-plan-catalog.js';
 import { recordFunnelEvent } from './funnel-service.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
+import { CURRENT_TERMS_VERSION } from '../../10_CONFIG/shared/types/commercial.js';
 
 export interface GoogleAuthResult {
   success: boolean;
@@ -655,7 +656,17 @@ export async function authenticateWithGoogleClaimsAsync(
           claims.sub, avatarUrl, pgUser.created_at || now, now, now,
           acceptedTermsInt, termsVersion
         );
-      } catch {}
+      } catch (err) {
+        console.error('[GoogleOAuth] SQLite auth_users terms write error', err);
+      }
+
+      if (isPostgresConfigured() && repo && acceptedTermsInt !== null) {
+        try {
+          await repo.updateAuthUserTerms(userId, acceptedTermsInt, termsVersion || CURRENT_TERMS_VERSION);
+        } catch (err) {
+          console.error('[GoogleOAuth] PG terms write error', err);
+        }
+      }
     }
 
     logCommercialAudit({
@@ -793,7 +804,9 @@ export async function authenticateWithGoogleClaimsAsync(
         claims.sub, avatarUrl, now, now, now,
         acceptedTermsInt, termsVersion
       );
-    } catch {}
+    } catch (err) {
+      console.error('[GoogleOAuth] SQLite auth_users insert error', err);
+    }
 
     // Insert into Supabase PostgreSQL auth_users via repo
     if (repo) {
@@ -821,6 +834,8 @@ export async function authenticateWithGoogleClaimsAsync(
           created_at: now,
           updated_at: now,
           last_login_at: now,
+          accepted_terms: acceptedTermsInt !== null ? acceptedTermsInt : 0,
+          terms_version: termsVersion || CURRENT_TERMS_VERSION,
         });
       } catch (e: any) {
         console.error('[GoogleOAuth] Failed to create user in PostgreSQL:', e?.message);

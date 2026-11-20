@@ -73,14 +73,22 @@ if [[ ${VERIFY_ONLY} -eq 0 ]]; then
   echo "  latest.yml:                       ${SHA_LATEST_YML}"
   echo "  MAHI-Browser-Setup-${VERSION}.exe:   ${SHA_SETUP_VERSIONED}"
 
-  # 3. Remote Transfer via SCP
+  # 3. Remote Transfer via SCP (Binaries FIRST, Manifest LAST)
   echo "--- Transferring release files to ${REMOTE_HOST} ---"
   ssh -o BatchMode=yes "${REMOTE_HOST}" "mkdir -p ${RELEASES_REMOTE_DIR} ${UPDATES_REMOTE_DIR}"
 
+  scp "${FILE_SETUP_VERSIONED}" "${REMOTE_HOST}:${UPDATES_REMOTE_DIR}/MAHI-Browser-Setup-${VERSION}.exe"
   scp "${FILE_SETUP_LATEST}" "${REMOTE_HOST}:${RELEASES_REMOTE_DIR}/MAHI-Browser-Setup-latest.exe"
   scp "${FILE_PORTABLE_LATEST}" "${REMOTE_HOST}:${RELEASES_REMOTE_DIR}/MAHI-Browser-Portable-latest.exe"
+
+  FILE_BLOCKMAP="${LOCAL_RELEASE_DIR}/MAHI-Browser-Setup-${VERSION}.exe.blockmap"
+  if [[ -f "${FILE_BLOCKMAP}" ]]; then
+    echo "  Transferring blockmap: ${FILE_BLOCKMAP}"
+    scp "${FILE_BLOCKMAP}" "${REMOTE_HOST}:${UPDATES_REMOTE_DIR}/"
+  fi
+
+  # Transfer latest.yml LAST so clients never discover update before binaries are placed
   scp "${FILE_LATEST_YML}" "${REMOTE_HOST}:${UPDATES_REMOTE_DIR}/latest.yml"
-  scp "${FILE_SETUP_VERSIONED}" "${REMOTE_HOST}:${UPDATES_REMOTE_DIR}/MAHI-Browser-Setup-${VERSION}.exe"
 
   # 4. Verify Remote SHA-256 Checksums
   echo "--- Remote File SHA-256 Checksums ---"
@@ -102,7 +110,7 @@ if [[ ${VERIFY_ONLY} -eq 0 ]]; then
     exit 1
   fi
 
-  echo "[+] Integrity verified: All 4 remote files match local SHA-256."
+  echo "[+] Integrity verified: All remote files match local SHA-256."
 fi
 
 # 5. Strict Live HTTP Endpoint Verification Gate
@@ -132,16 +140,13 @@ echo "=== Verification Summary ==="
 printf "%-25s | %-8s | %-28s | %-12s\n" "Endpoint" "Status" "Details" "Result"
 printf "%-25s-+-%-8s-+-%-28s-+-%-12s\n" "-------------------------" "--------" "----------------------------" "------------"
 
-# Check 1: /download/setup status 200 and Content-Length > 50,000,000
+# Check 1: /download/setup status 200
 SETUP_RESULT="PASS"
 if [[ "${SETUP_HEADER}" != "200" ]]; then
   SETUP_RESULT="FAIL"
   FAILURES=$((FAILURES + 1))
-elif (( SETUP_CL <= 50000000 )); then
-  SETUP_RESULT="FAIL (<=50MB)"
-  FAILURES=$((FAILURES + 1))
 fi
-printf "%-25s | %-8s | Content-Length: %-12s | %-12s\n" "/download/setup" "${SETUP_HEADER}" "${SETUP_CL}" "${SETUP_RESULT}"
+printf "%-25s | %-8s | HTTP 200 Check             | %-12s\n" "/download/setup" "${SETUP_HEADER}" "-" "${SETUP_RESULT}"
 
 # Check 2: /download/portable status 200
 PORTABLE_RESULT="PASS"
@@ -151,16 +156,43 @@ if [[ "${PORTABLE_HEADER}" != "200" ]]; then
 fi
 printf "%-25s | %-8s | %-28s | %-12s\n" "/download/portable" "${PORTABLE_HEADER}" "-" "${PORTABLE_RESULT}"
 
-# Check 3: /update/latest.yml status 200 and version == package.json version
+# Check 3: /update/latest.yml status 200 and version match
 UPDATE_RESULT="PASS"
 if [[ "${UPDATE_HEADER}" != "200" ]]; then
   UPDATE_RESULT="FAIL"
   FAILURES=$((FAILURES + 1))
-elif [[ "${UPDATE_VERSION}" != "${PKG_VERSION}" ]]; then
+elif [[ "${UPDATE_VERSION}" != "${VERSION}" ]]; then
   UPDATE_RESULT="FAIL (ver mismatch)"
   FAILURES=$((FAILURES + 1))
 fi
 printf "%-25s | %-8s | Version: %-19s | %-12s\n" "/update/latest.yml" "${UPDATE_HEADER}" "${UPDATE_VERSION}" "${UPDATE_RESULT}"
+
+# Check 4: Compare sha512 inside latest.yml against actual downloaded binary
+YML_SHA512=$(echo "${UPDATE_BODY}" | grep -E "sha512:" | head -n 1 | awk '{print $2}' | tr -d '\r\n')
+LIVE_SHA512=$(curl -sSL "${SETUP_URL}" | openssl dgst -sha512 -binary | openssl base64 -A 2>/dev/null || echo "error")
+SHA512_RESULT="PASS"
+if [[ -z "${YML_SHA512}" ]] || [[ "${YML_SHA512}" != "${LIVE_SHA512}" ]]; then
+  SHA512_RESULT="FAIL (mismatch)"
+  FAILURES=$((FAILURES + 1))
+fi
+printf "%-25s | %-8s | Live SHA512 == latest.yml    | %-12s\n" "SHA-512 Integrity" "-" "-" "${SHA512_RESULT}"
+
+# Check 5: Verify binary size > 250MB
+SIZE_RESULT="PASS"
+if (( SETUP_CL <= 250000000 )); then
+  SIZE_RESULT="FAIL (<=250MB)"
+  FAILURES=$((FAILURES + 1))
+fi
+printf "%-25s | %-8s | Content-Length > 250MB     | %-12s\n" "Binary Size (>250MB)" "-" "${SETUP_CL} bytes" "${SIZE_RESULT}"
+
+# Check 6: Check for .blockmap
+BLOCKMAP_URL="${BASE_URL}/update/MAHI-Browser-Setup-${VERSION}.exe.blockmap"
+BLOCKMAP_HEADER=$(curl -sSLI -w "%{http_code}" -o /dev/null "${BLOCKMAP_URL}" 2>&1 || echo "000")
+BLOCKMAP_RESULT="PASS"
+if [[ "${BLOCKMAP_HEADER}" != "200" ]]; then
+  BLOCKMAP_RESULT="NOTICE (${BLOCKMAP_HEADER})"
+fi
+printf "%-25s | %-8s | Blockmap HTTP Status       | %-12s\n" "Blockmap (${VERSION})" "${BLOCKMAP_HEADER}" "-" "${BLOCKMAP_RESULT}"
 echo "--------------------------------------------------------------------------------"
 
 if [[ ${FAILURES} -gt 0 ]]; then

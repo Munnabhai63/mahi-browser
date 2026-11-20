@@ -6,7 +6,7 @@ export const BRAND = {
   officialEmail: 'mahiverse.official@gmail.com',
   hubEmail: 'mahiverse.hub@gmail.com',
   upiId: '6375823589@slc',
-  version: '1.2.0',
+  version: '1.2.1',
   website: 'https://mahibrowser.com',
   appUrl: 'https://app.mahibrowser.com',
   apiUrl: 'https://api.mahibrowser.com',

@@ -1,8 +1,9 @@
 /**
  * MAHI BROWSER — Landing Page & Release Assets Version Synchronization
  * 
- * Synchronizes landing/index.html, landing/download.html, landing/assets/js/main.js,
- * and landing/content.json with package.json version as single source of truth.
+ * Synchronizes landing/package.json, landing/content.json, landing/index.html,
+ * landing/download.html, landing/assets/js/main.js, landing/lib/brand.ts,
+ * and brand-assets.json with package.json version as single source of truth.
  */
 
 const fs = require('node:fs');
@@ -15,17 +16,44 @@ const version = pkg.version;
 
 console.log(`[SYNC_LANDING] Target version from package.json: ${version}`);
 
-// 1. landing/content.json
+// 1. landing/package.json
+const landingPkgPath = path.join(rootDir, 'landing', 'package.json');
+if (fs.existsSync(landingPkgPath)) {
+  const lPkg = JSON.parse(fs.readFileSync(landingPkgPath, 'utf8'));
+  lPkg.version = version;
+  fs.writeFileSync(landingPkgPath, JSON.stringify(lPkg, null, 2) + '\n', 'utf8');
+  console.log(`✓ Updated ${landingPkgPath} (version: ${version})`);
+}
+
+// 2. landing/content.json
 const contentJsonPath = path.join(rootDir, 'landing', 'content.json');
 if (fs.existsSync(contentJsonPath)) {
   const content = JSON.parse(fs.readFileSync(contentJsonPath, 'utf8'));
   content.version = version;
   content.app_version = version;
-  fs.writeFileSync(contentJsonPath, JSON.stringify(content, null, 2), 'utf8');
+  fs.writeFileSync(contentJsonPath, JSON.stringify(content, null, 2) + '\n', 'utf8');
   console.log(`✓ Updated ${contentJsonPath} (version: ${version})`);
 }
 
-// 2. landing/index.html
+// 3. brand-assets.json
+const brandAssetsPath = path.join(rootDir, 'brand-assets.json');
+if (fs.existsSync(brandAssetsPath)) {
+  const brandAssets = JSON.parse(fs.readFileSync(brandAssetsPath, 'utf8'));
+  brandAssets.app_version = version;
+  fs.writeFileSync(brandAssetsPath, JSON.stringify(brandAssets, null, 2) + '\n', 'utf8');
+  console.log(`✓ Updated ${brandAssetsPath} (app_version: ${version})`);
+}
+
+// 4. landing/lib/brand.ts
+const brandTsPath = path.join(rootDir, 'landing', 'lib', 'brand.ts');
+if (fs.existsSync(brandTsPath)) {
+  let content = fs.readFileSync(brandTsPath, 'utf8');
+  content = content.replace(/version:\s*'[^']+'/g, `version: '${version}'`);
+  fs.writeFileSync(brandTsPath, content, 'utf8');
+  console.log(`✓ Synchronized ${brandTsPath} to v${version}`);
+}
+
+// 5. landing/index.html
 const indexPath = path.join(rootDir, 'landing', 'index.html');
 if (fs.existsSync(indexPath)) {
   let html = fs.readFileSync(indexPath, 'utf8');
@@ -37,7 +65,7 @@ if (fs.existsSync(indexPath)) {
   console.log(`✓ Synchronized ${indexPath} to v${version}`);
 }
 
-// 3. landing/download.html
+// 6. landing/download.html
 const downloadPath = path.join(rootDir, 'landing', 'download.html');
 if (fs.existsSync(downloadPath)) {
   let html = fs.readFileSync(downloadPath, 'utf8');
@@ -50,7 +78,7 @@ if (fs.existsSync(downloadPath)) {
   console.log(`✓ Synchronized ${downloadPath} to v${version}`);
 }
 
-// 4. landing/assets/js/main.js and landing/public/assets/js/main.js
+// 7. landing/assets/js/main.js and landing/public/assets/js/main.js
 const mainJsPaths = [
   path.join(rootDir, 'landing', 'assets', 'js', 'main.js'),
   path.join(rootDir, 'landing', 'public', 'assets', 'js', 'main.js'),

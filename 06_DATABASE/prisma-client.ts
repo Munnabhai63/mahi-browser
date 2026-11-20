@@ -21,7 +21,11 @@ export function isPostgresConfigured(): boolean {
   if ((typeof process !== 'undefined' && process.versions?.electron) || (process.env.VITEST && !testPrismaInstance)) {
     return false;
   }
-  const url = process.env.DATABASE_URL;
+  const rawUrl = process.env.DATABASE_URL;
+  const url = rawUrl ? rawUrl.trim().replace(/^["']|["']$/g, '') : '';
+  if (rawUrl && rawUrl !== url) {
+    process.env.DATABASE_URL = url;
+  }
   return Boolean(
     url &&
     (url.startsWith('postgres://') || url.startsWith('postgresql://'))

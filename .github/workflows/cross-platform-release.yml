@@ -128,6 +128,42 @@ jobs:
           npm run build
         shell: bash
 
+      - name: Provision Chromium 138 Engine
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $engineDir = ".mahi_data/engines/138.0.7204.0"
+          New-Item -ItemType Directory -Path $engineDir -Force
+          $zipPath = "$env:TEMP/chrome-win.zip"
+          $primaryUrl = "https://commondatastorage.googleapis.com/chromium-browser-snapshots/Win_x64/1465706/chrome-win.zip"
+          $fallbackUrl = "https://mahibrowser.com/engine/chrome-138-win64.zip"
+          $expectedSha256 = "26237e603d68f909f2ba62162a30c51fa1ba94683ca61358e5489b0a08461bc2"
+
+          Write-Host "Downloading Chromium 138 engine from $primaryUrl..."
+          try {
+            Invoke-WebRequest -Uri $primaryUrl -OutFile $zipPath -TimeoutSec 180
+          } catch {
+            Write-Host "Primary download failed, attempting fallback to $fallbackUrl..."
+            Invoke-WebRequest -Uri $fallbackUrl -OutFile $zipPath -TimeoutSec 180
+          }
+
+          $hash = (Get-FileHash -Algorithm SHA256 $zipPath).Hash.ToLower()
+          Write-Host "Downloaded hash: $hash"
+          if ($hash -ne $expectedSha256) {
+            throw "FATAL: Engine archive SHA-256 mismatch ($hash vs $expectedSha256)"
+          }
+
+          Write-Host "Extracting engine to $engineDir..."
+          Expand-Archive -Path $zipPath -DestinationPath "$env:TEMP/engine_extract" -Force
+          Copy-Item -Path "$env:TEMP/engine_extract/chrome-win/*" -Destination $engineDir -Recurse -Force
+          if (-not (Test-Path "$engineDir/chrome.exe")) {
+            throw "FATAL: chrome.exe not found after engine extraction"
+          }
+          Write-Host "Chromium 138 engine successfully provisioned ($(Get-Item "$engineDir/chrome.exe").Length bytes)"
+
+      - name: Run Build Info Stamp
+        run: node 12_SCRIPTS/stamp-build-info.cjs
+
       - name: Pre-Stage Packaging Resources
         run: node 12_SCRIPTS/stage-packaging-resources.cjs
 
@@ -179,6 +215,43 @@ jobs:
           }
           Get-ChildItem release | Select-Object Name, Length | Format-Table -AutoSize
 
+      - name: Verify latest.yml matches built installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json | ConvertFrom-Json).version
+          $setupFile = "release/MAHI-Browser-Setup-$v.exe"
+          if (-not (Test-Path $setupFile)) { throw "Missing $setupFile" }
+          $stream = [System.IO.File]::OpenRead((Resolve-Path $setupFile))
+          $sha512 = [System.Security.Cryptography.SHA512]::Create()
+          $hashBytes = $sha512.ComputeHash($stream)
+          $stream.Close()
+          $actualBase64 = [Convert]::ToBase64String($hashBytes)
+
+          $ymlContent = Get-Content release/latest.yml -Raw
+          if ($ymlContent -notmatch 'sha512:\s*([A-Za-z0-9+/=]+)') {
+            throw "Cannot find sha512 in release/latest.yml"
+          }
+          $ymlSha512 = $matches[1]
+
+          Write-Host "Computed SHA512: $actualBase64"
+          Write-Host "latest.yml SHA512: $ymlSha512"
+
+          if ($actualBase64 -ne $ymlSha512) {
+            throw "FATAL: SHA512 mismatch between $setupFile and release/latest.yml!"
+          }
+          Write-Host "Integrity Verified: installer SHA512 exactly matches release/latest.yml"
+
+      - name: Assert Blockmap Exists
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $blockmaps = Get-ChildItem release/*.blockmap
+          if (-not $blockmaps -or $blockmaps.Count -eq 0) {
+            throw "FATAL: No .blockmap file generated in release/"
+          }
+          Write-Host "Blockmap Verified: $($blockmaps[0].Name)"
+
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v') && runner.os == 'Windows'
         uses: softprops/action-gh-release@v2
@@ -190,6 +263,7 @@ jobs:
             release/MAHI-Browser-Setup-*.exe
             release/MAHI-Browser-Portable-*.exe
             release/latest.yml
+            release/*.blockmap
             release/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

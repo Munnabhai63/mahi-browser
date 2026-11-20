@@ -100,6 +100,7 @@ import {
 import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getCentralRepository, isPostgresConfigured } from '../../06_DATABASE/central-repository.js';
+import { reconcileUserPlanOnLogin } from './commercial-reconcile-service.js';
 import {
   paymentService,
   PaymentProviderType,
@@ -217,6 +218,20 @@ function parseBody(req: http.IncomingMessage): Promise<any> {
 function parseRawBuffer(req: http.IncomingMessage): Promise<Buffer> {
   if ((req as any).rawBuffer !== undefined && Buffer.isBuffer((req as any).rawBuffer)) {
     return Promise.resolve((req as any).rawBuffer);
+  }
+  if ((req as any).body !== undefined) {
+    if (Buffer.isBuffer((req as any).body)) {
+      return Promise.resolve((req as any).body);
+    }
+    if (typeof (req as any).body === 'string') {
+      return Promise.resolve(Buffer.from((req as any).body, 'utf-8'));
+    }
+    if (typeof (req as any).body === 'object' && (req as any).body !== null) {
+      return Promise.resolve(Buffer.from(JSON.stringify((req as any).body), 'utf-8'));
+    }
+  }
+  if (req.readableEnded || (req as any)._readableState?.ended) {
+    return Promise.resolve(Buffer.alloc(0));
   }
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -1000,10 +1015,10 @@ export async function handleCommercialApiRoutes(
         req.headers['x-youpi-signature'] ||
         req.headers['stripe-signature'] ||
         req.headers['x-razorpay-signature'] ||
-        req.headers['x-simulation-signature'] ||
         ''
       ) as string;
 
+      const ALLOWED_WEBHOOK_PROVIDERS = ['youpi_pg', 'razorpay', 'stripe'];
       let provider: PaymentProviderType = 'youpi_pg';
       if (req.headers['stripe-signature']) {
         provider = 'stripe';
@@ -1015,8 +1030,15 @@ export async function handleCommercialApiRoutes(
         req.headers['x-youpi-signature']
       ) {
         provider = 'youpi_pg';
-      } else if (parsedUrl.searchParams.get('provider')) {
-        provider = parsedUrl.searchParams.get('provider') as any;
+      }
+
+      if (parsedUrl.searchParams.get('provider')) {
+        const requested = parsedUrl.searchParams.get('provider');
+        if (!requested || !ALLOWED_WEBHOOK_PROVIDERS.includes(requested)) {
+          sendJSON(res, 404, { success: false, error: 'Unknown webhook provider.' });
+          return true;
+        }
+        provider = requested as PaymentProviderType;
       }
 
       const result = await paymentService.handleWebhook(provider, rawBody, signature);
@@ -1124,12 +1146,43 @@ export async function handleCommercialApiRoutes(
     // trusted, otherwise a user could record consent against an arbitrary or nonexistent
     // version, making the audit trail worthless.
     const termsVer = CURRENT_TERMS_VERSION;
+    const acceptedTermsVal = 1;
+    const termsVersionVal = termsVer;
+    let termsSaved = false;
+
     if (result.user?.id) {
       try {
         const db = getDatabase();
-        db.prepare('UPDATE auth_users SET accepted_terms = 1, terms_version = ? WHERE id = ?').run(termsVer, result.user.id);
-      } catch {}
+        const info = db.prepare('UPDATE commercial_users SET accepted_terms = ?, terms_version = ? WHERE id = ?').run(acceptedTermsVal, termsVersionVal, result.user.id);
+        if (info.changes > 0) termsSaved = true;
+      } catch (err) {
+        console.error('[Registration] SQLite commercial_users terms write error', err);
+      }
+
+      try {
+        const db = getDatabase();
+        const info = db.prepare('UPDATE auth_users SET accepted_terms = ?, terms_version = ? WHERE id = ?').run(acceptedTermsVal, termsVersionVal, result.user.id);
+        if (info.changes > 0) termsSaved = true;
+      } catch (err) {
+        console.error('[Registration] SQLite auth_users terms write error', err);
+      }
+
+      if (isPostgresConfigured()) {
+        try {
+          const pgOk = await getCentralRepository().updateAuthUserTerms(result.user.id, acceptedTermsVal, termsVersionVal);
+          if (pgOk) termsSaved = true;
+        } catch (err) {
+          console.error('[Registration] PG terms write error', err);
+        }
+      }
     }
+
+    if (!termsSaved) {
+      console.error('[Registration][CRITICAL] Terms consent could not be saved to ANY store for user', result.user?.id);
+      sendJSON(res, 500, { success: false, error: 'Registration failed to persist legal consent. Please retry.' });
+      return true;
+    }
+
     let commUserResult: any;
     try {
       commUserResult = registerUser({
@@ -1142,7 +1195,9 @@ export async function handleCommercialApiRoutes(
         acceptedTerms: true,
         termsVersion: termsVer,
       }, clientIp, result.user?.id);
-    } catch {}
+    } catch (err) {
+      console.error('[Registration] SQLite registerUser error', err);
+    }
 
     const registeredUser = commUserResult?.user || result.user;
     const token = commUserResult?.token || result.tokens?.accessToken;
@@ -1247,6 +1302,11 @@ export async function handleCommercialApiRoutes(
     });
 
     if (centralRes.success && centralRes.user && centralRes.tokens) {
+      try {
+        await reconcileUserPlanOnLogin(centralRes.user.id);
+      } catch (err) {
+        console.error('[Login] Reconcile error:', err);
+      }
       const commUser = getUserById(centralRes.user.id);
       const isTrial = Boolean(commUser?.trialExpiresAt && new Date(commUser.trialExpiresAt).getTime() > Date.now());
       const entitlements = evaluateUserEntitlements(centralRes.user.id, body.deviceId, body.deviceName);
@@ -1272,6 +1332,11 @@ export async function handleCommercialApiRoutes(
     if (!centralUserExists) {
       const legacyResult = loginUser(body, clientIp);
       if (legacyResult.success && legacyResult.user) {
+        try {
+          await reconcileUserPlanOnLogin(legacyResult.user.id);
+        } catch (err) {
+          console.error('[Login] Reconcile error:', err);
+        }
         const entitlements = evaluateUserEntitlements(legacyResult.user.id, body.deviceId, body.deviceName);
         sendJSON(res, 200, {
           success: true,

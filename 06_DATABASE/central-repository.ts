@@ -16,6 +16,7 @@ export interface CentralRepository {
   findAuthUserById(id: string): Promise<any | null>;
   createAuthUser(data: any): Promise<any>;
   updateAuthUser(id: string, data: any): Promise<any>;
+  updateAuthUserTerms(userId: string, acceptedTerms: number, termsVersion: string): Promise<boolean>;
 
   // Auth Sessions
   createAuthSession(data: any): Promise<any>;
@@ -165,6 +166,8 @@ export class PostgresCentralRepository implements CentralRepository {
         created_at: data.created_at || new Date().toISOString(),
         updated_at: data.updated_at || new Date().toISOString(),
         last_login_at: data.last_login_at || null,
+        accepted_terms: data.accepted_terms ?? data.acceptedTerms ?? 0,
+        terms_version: data.terms_version || data.termsVersion || null,
       },
     });
   }
@@ -177,6 +180,23 @@ export class PostgresCentralRepository implements CentralRepository {
         updated_at: new Date().toISOString(),
       },
     });
+  }
+
+  async updateAuthUserTerms(userId: string, acceptedTerms: number, termsVersion: string): Promise<boolean> {
+    try {
+      await this.client.auth_users.update({
+        where: { id: userId },
+        data: {
+          accepted_terms: acceptedTerms,
+          terms_version: termsVersion,
+          updated_at: new Date().toISOString(),
+        },
+      });
+      return true;
+    } catch (err) {
+      console.error('[PostgresCentralRepository] updateAuthUserTerms error:', err);
+      return false;
+    }
   }
 
   // --- Auth Sessions ---
@@ -850,8 +870,9 @@ export class SqliteCentralRepository implements CentralRepository {
         id, email, normalized_email, password_hash, salt, name, role, status,
         email_verified, email_verified_at, plan_id, profile_quota,
         trial_started_at, trial_expires_at, trial_used, signup_intent,
-        google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at,
+        accepted_terms, terms_version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       data.id,
       data.email,
@@ -874,7 +895,9 @@ export class SqliteCentralRepository implements CentralRepository {
       data.auth_provider || 'LOCAL',
       data.created_at || now,
       data.updated_at || now,
-      data.last_login_at || null
+      data.last_login_at || null,
+      data.accepted_terms ?? data.acceptedTerms ?? 0,
+      data.terms_version || data.termsVersion || null
     );
     return this.findAuthUserById(data.id);
   }
@@ -886,6 +909,19 @@ export class SqliteCentralRepository implements CentralRepository {
     const values = fields.map((f: string) => data[f]);
     this.db.prepare(`UPDATE auth_users SET ${sets} WHERE id = ?`).run(...values, id);
     return this.findAuthUserById(id);
+  }
+
+  async updateAuthUserTerms(userId: string, acceptedTerms: number, termsVersion: string): Promise<boolean> {
+    try {
+      const now = new Date().toISOString();
+      const info = this.db.prepare(
+        'UPDATE auth_users SET accepted_terms = ?, terms_version = ?, updated_at = ? WHERE id = ?'
+      ).run(acceptedTerms, termsVersion, now, userId);
+      return info.changes > 0;
+    } catch (err) {
+      console.error('[SqliteCentralRepository] updateAuthUserTerms error:', err);
+      return false;
+    }
   }
 
   // --- Auth Sessions ---

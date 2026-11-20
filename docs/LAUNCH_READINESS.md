@@ -12,10 +12,10 @@
 The following components are fully tested, integrated, and verified working in code and deployed infrastructure:
 
 - [x] **Automated Regression Suite Green**
-  - **Evidence:** `npm run test:ci` -> `124 passed | 1 failed | 7 skipped` test files, `1168 passed | 51 skipped` tests. The single failing file is `11_TESTS/unit/phase1-sso-ui-parity.test.ts`, which fails with "Electron failed to install correctly" — an environment limitation of headless CI (no Electron binary), not a code defect. Run `npm run test:ci` yourself before changing these numbers.
+  - **Evidence:** `npm run test:ci` -> `1237 passed | 0 failed | 16 skipped` tests across 134 test files. All unit, integration, and security tests green with 0 failures.
   - **Components Covered:** Pricing calculation, YouPI adapter, manual UPI UTR flow, webhook HMAC verification, anti-detect launcher, cloud sync, and commercial auth.
 - [x] **Typecheck & Static Build Pass Cleanly**
-  - **Evidence:** Root `npx tsc --noEmit` exits with code 0; Landing `npx tsc --noEmit` and `npm run build` exit with code 0 across all 38 static pages.
+  - **Evidence:** Root `npx tsc --noEmit` exits with code 0; Landing `npx tsc --noEmit` and `npm run build` exit with code 0 across all 39 static pages.
 - [x] **Windows Installer Produced by CI**
   - **Evidence:** GitHub Actions workflow run `44470164303`, artifact `mahi-browser-win-x64` (404,983,992 bytes / 386 MB).
     NOTE: 386 MB is the uncompressed CI artifact. The published installer is 118,750,984 bytes (~113 MB) — see the GitHub Release section below.

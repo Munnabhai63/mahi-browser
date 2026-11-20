@@ -14,6 +14,7 @@
 
 import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
+import { isPostgresConfigured, getCentralRepository } from '../../06_DATABASE/central-repository.js';
 import { getCommercialPlans, getCommercialPlanById } from './commercial-plan-service.js';
 import { CommercialPlan } from '../../10_CONFIG/shared/types/commercial.js';
 import { calculateAuthoritativeOrderTotal, legacyPlanIdToCanonical } from './canonical-plan-catalog.js';
@@ -120,7 +121,14 @@ export interface PaymentProvider {
 
 export class StripePaymentAdapter implements PaymentProvider {
   public readonly name: PaymentProviderType = 'stripe';
-  private defaultSecret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_mahi_stripe_production_test_secret';
+  private get defaultSecret(): string {
+    const s = process.env.STRIPE_WEBHOOK_SECRET;
+    if (s) return s;
+    if (process.env.NODE_ENV === 'test' || process.env.PAYMENT_ALLOW_TEST_ADAPTERS === 'true') {
+      return 'whsec_test_only_not_for_production';
+    }
+    throw new PaymentGatewayNotConfiguredError('stripe', 'STRIPE_WEBHOOK_SECRET is not configured.');
+  }
 
   public async createCheckoutSession(
     req: CheckoutSessionRequest,
@@ -451,7 +459,28 @@ export class RazorpayPaymentAdapter implements PaymentProvider {
 
 export class SimulationPaymentAdapter implements PaymentProvider {
   public readonly name: PaymentProviderType = 'simulation';
-  public secret = process.env.PAYMENT_SIMULATION_WEBHOOK_SECRET || 'sim_secret_mahi_test_suite_key_2026';
+
+  constructor() {
+    // Evaluating defaultSecret on instantiation enforces that in non-test modes without an explicit
+    // secret, instantiating this adapter fails immediately.
+    const _s = this.defaultSecret;
+  }
+
+  private get defaultSecret(): string {
+    const s = process.env.PAYMENT_SIMULATION_WEBHOOK_SECRET;
+    if (s) return s;
+    if (process.env.NODE_ENV === 'test' || process.env.PAYMENT_ALLOW_TEST_ADAPTERS === 'true') {
+      return 'sim_secret_mahi_test_suite_key_2026';
+    }
+    throw new PaymentGatewayNotConfiguredError(
+      'simulation',
+      'PAYMENT_SIMULATION_WEBHOOK_SECRET is not configured.'
+    );
+  }
+
+  public get secret(): string {
+    return this.defaultSecret;
+  }
 
   public async createCheckoutSession(
     req: CheckoutSessionRequest,
@@ -689,7 +718,11 @@ export class YoupiPgPaymentAdapter implements PaymentProvider {
   public parseWebhookPayload(rawBody: string): PaymentWebhookEvent {
     const payload = JSON.parse(rawBody);
     const eventType = payload.event || payload.type || (payload.status === 'SUCCESS' ? 'SUCCESS' : 'FAILED');
-    const isSuccess = eventType === 'SUCCESS' || eventType === 'PAYMENT_SUCCESS' || payload.status === 'SUCCESS';
+    const isSuccess =
+      eventType === 'SUCCESS' ||
+      eventType === 'PAYMENT_SUCCESS' ||
+      eventType === 'payment.succeeded' ||
+      payload.status === 'SUCCESS';
     const amountPaise = payload.amountPaise ? Number(payload.amountPaise) : Math.round(Number(payload.amount || 0) * 100);
 
     return {
@@ -723,7 +756,9 @@ export class PaymentService {
     this.registerProvider(new StripePaymentAdapter());
     this.registerProvider(new RazorpayPaymentAdapter());
     this.registerProvider(new YoupiPgPaymentAdapter());
-    this.registerProvider(new SimulationPaymentAdapter());
+    if (process.env.NODE_ENV === 'test' || process.env.PAYMENT_ALLOW_TEST_ADAPTERS === 'true') {
+      this.registerProvider(new SimulationPaymentAdapter());
+    }
 
     const envProv = process.env.PAYMENT_PROVIDER?.toLowerCase() as PaymentProviderType;
     if (envProv && this.providers.has(envProv)) {
@@ -1040,6 +1075,7 @@ export class PaymentService {
     subscription: UserSubscriptionSummary;
     invoice: PaymentInvoiceRecord;
     licence: { rawKey: string; keyMasked: string } | null;
+    planSyncFailed?: boolean;
   }> {
     const db = getDatabase();
     const targetPlan = getCommercialPlanById(params.planId);
@@ -1144,7 +1180,9 @@ export class PaymentService {
           SET plan_id = ?, profile_quota = ?, updated_at = ?
           WHERE id = ?
         `).run(params.planId, targetPlan.limits.maxProfiles, now, params.userId);
-      } catch {}
+      } catch (err: any) {
+        console.error('[PaymentService] SQLite auth_users plan update error:', err?.message);
+      }
 
       // 6. Update User Plan in commercial_users
       try {
@@ -1153,7 +1191,9 @@ export class PaymentService {
           SET plan_id = ?
           WHERE id = ?
         `).run(params.planId, params.userId);
-      } catch {}
+      } catch (err: any) {
+        console.error('[PaymentService] SQLite commercial_users plan update error:', err?.message);
+      }
 
       // 7. Step 7: Create License in Database (with idempotency duplicate guard)
       try {
@@ -1198,6 +1238,24 @@ export class PaymentService {
       runUpdates();
     }
 
+    let planSyncFailed = false;
+    if (isPostgresConfigured()) {
+      try {
+        const repo = getCentralRepository();
+        await repo.updateAuthUser(params.userId, {
+          plan_id: params.planId,
+          profile_quota: targetPlan.limits.maxProfiles,
+        });
+      } catch (err: any) {
+        console.error('[PaymentService][CRITICAL] PG plan sync error', err?.message);
+        planSyncFailed = true;
+      }
+    }
+
+    if (planSyncFailed) {
+      console.error('[PaymentService][RECONCILE_REQUIRED] Subscription active but PG out of sync for user', params.userId);
+    }
+
     const subSummary: UserSubscriptionSummary = {
       userId: params.userId,
       planId: params.planId,
@@ -1225,7 +1283,12 @@ export class PaymentService {
       createdAt: now,
     };
 
-    return { subscription: subSummary, invoice: invoiceRecord, licence: licenceResult };
+    return {
+      subscription: subSummary,
+      invoice: invoiceRecord,
+      licence: licenceResult,
+      planSyncFailed,
+    };
   }
 
   /**

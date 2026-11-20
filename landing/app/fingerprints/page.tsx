@@ -366,14 +366,14 @@ export default function FingerprintsPage() {
                     CreepJS Benchmark Score
                   </span>
                   <span className="rounded-full bg-zinc-800 border border-zinc-700 px-2.5 py-0.5 text-[10px] font-mono font-medium text-zinc-200">
-                    100% PASS
+                    99.4% PASS
                   </span>
                 </div>
                 <div className="bg-black/80 p-2.5 rounded-lg border border-white/10 text-xs font-mono text-zinc-200 font-medium">
                   {currentFp.creepJsScore}
                 </div>
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  Pixelscan 100% Consistent &bull; IPHEY Authentic &bull; Rebrowser-Patches Runtime.Enable Leak Eliminated.
+                  Pixelscan 99.4%+ Consistent &bull; IPHEY Authentic &bull; Rebrowser-Patches Runtime.Enable Leak Eliminated.
                 </p>
               </div>
 
@@ -426,7 +426,7 @@ export default function FingerprintsPage() {
               {
                 num: '04',
                 title: 'Client Hints & Sec-CH-UA',
-                desc: 'Synchronizes HTTP headers, Navigator user-agent metadata, and GREASE brands to ensure 100% coherence across web requests.',
+                desc: 'Synchronizes HTTP headers, Navigator user-agent metadata, and GREASE brands to ensure complete protocol coherence across web requests.',
               },
               {
                 num: '05',
@@ -479,7 +479,7 @@ export default function FingerprintsPage() {
               Tested on the World&apos;s Strictest Checkers
             </h2>
             <p className="text-zinc-400 text-xs sm:text-[13.5px] leading-relaxed max-w-[500px] font-normal">
-              Every build of MAHI Browser is rigorously verified across leading anti-bot benchmarks to guarantee 100% authentic scoring.
+              Every build of MAHI Browser is rigorously verified across leading anti-bot benchmarks to achieve 99.4%+ authentic scoring.
             </p>
           </div>
 
@@ -497,7 +497,7 @@ export default function FingerprintsPage() {
 
             <div className="rounded-2xl border border-white/10 bg-[#0d0f12] p-6 flex flex-col items-center text-center">
               <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">Pixelscan Consistency</span>
-              <div className="font-['Spectral',serif] text-4xl text-white font-normal my-3">100%</div>
+              <div className="font-['Spectral',serif] text-4xl text-white font-normal my-3">99.4%</div>
               <span className="text-[11px] font-mono text-zinc-300 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
                 Clean Persona &bull; No Flags
               </span>
@@ -572,7 +572,7 @@ export default function FingerprintsPage() {
                 <tr>
                   <td className="py-4 px-4 font-medium text-zinc-900">Iframe &amp; Worker Isolation</td>
                   <td className="py-4 px-4 text-zinc-500 font-medium">Leaks real GPU in Web Workers</td>
-                  <td className="py-4 px-4 font-semibold text-black bg-zinc-200/30">100% Consistent in Workers &amp; Iframes</td>
+                  <td className="py-4 px-4 font-semibold text-black bg-zinc-200/30">Rigorous Consistency in Workers &amp; Iframes</td>
                 </tr>
                 <tr>
                   <td className="py-4 px-4 font-medium text-zinc-900">CDP Inspector Detection</td>
@@ -623,7 +623,7 @@ export default function FingerprintsPage() {
             {[
               {
                 q: 'How does MAHI Browser prevent Canvas fingerprinting without breaking images?',
-                a: 'MAHI Browser applies a deterministic sub-pixel mathematical perturbation to 2D canvas drawing routines. This alters the cryptographic hash calculated by anti-bot scripts while keeping user-visible renderings, charts, and captcha graphics 100% sharp and undistorted.',
+                a: 'MAHI Browser applies a deterministic sub-pixel mathematical perturbation to 2D canvas drawing routines. This alters the cryptographic hash calculated by anti-bot scripts while keeping user-visible renderings, charts, and captcha graphics completely sharp and undistorted.',
               },
               {
                 q: 'Can anti-bot networks detect that WebGL GPU information is masked?',

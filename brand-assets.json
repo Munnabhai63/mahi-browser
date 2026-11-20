@@ -83,5 +83,6 @@
         "favicon/app tile where square icon is appropriate"
       ]
     }
-  }
+  },
+  "app_version": "1.2.1"
 }

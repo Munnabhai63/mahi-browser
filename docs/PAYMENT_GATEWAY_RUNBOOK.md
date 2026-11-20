@@ -146,3 +146,36 @@ When custom branded domain mailboxes (e.g. `support@mahibrowser.com`, `billing@m
 3. If using SMTP or API email delivery for notifications, update `SMTP_USER` / `SMTP_FROM` / `EMAIL_FROM` in `.env`.
 4. Run full typechecks and builds (`npm run build:prod` and `npm --prefix landing run build`), then redeploy both the landing site and backend gateway daemon.
 
+---
+
+## 8. DB Backup and Restore
+
+Production PostgreSQL backups run via the sovereign Docker-based backup script `12_SCRIPTS/backup-db.sh`. Because the gateway container is a minimal node container without a native `psql` or `pg_dump` binary, all database maintenance commands execute using an ephemeral container image.
+
+> [!WARNING]
+> Always ensure `PG_IMAGE` matches the active PostgreSQL major version verified in production (F0.5 verified: `postgres:17-alpine`). Mismatched client major versions can fail to dump or restore newer catalog formats.
+
+### Automated Nightly Backup Cron
+Add the following job to root crontab (`crontab -e`):
+```cron
+0 2 * * * /opt/mahi-browser/12_SCRIPTS/backup-db.sh >> /var/log/mahi-backup.log 2>&1
+```
+
+### 4-Step Disaster Recovery Procedure
+1. **Locate and Select Backup**:
+   Identify the latest valid dump file in `/var/backups/mahibrowser/` (e.g., `/var/backups/mahibrowser/mahi-20261120T120000Z.dump`).
+2. **Verify SHA256 Integrity**:
+   Verify the companion `.sha256` checksum before restoring:
+   ```bash
+   cd /var/backups/mahibrowser && sha256sum -c mahi-<TIMESTAMP>.dump.sha256
+   ```
+3. **Execute Safe Restore Script**:
+   Run the interactive restore script:
+   ```bash
+   bash /opt/mahi-browser/12_SCRIPTS/restore-db.sh /var/backups/mahibrowser/mahi-<TIMESTAMP>.dump
+   ```
+   Type `RESTORE` when prompted to authorize wiping and restoring the database.
+4. **Verify Post-Restore Table Counts**:
+   Confirm that `auth_users` and `commercial_subscriptions` counts match expected values, and restart the gateway container if needed (`docker restart mahibrowser_gateway`).
+
+

@@ -14,6 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { resolveMultiCoreExecutablePath, getAvailableCores } from './multi-core-resolver.js';
 import { getCamoufoxExecutablePath } from '../detector.js';
 import { getEnginesBaseDir, downloadFileWithProgress, extractZipArchive } from '../managed-engine.js';
+import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 
 export interface CamoufoxProgressEvent {
   stage: 'RESOLVING' | 'DOWNLOADING' | 'VERIFYING' | 'EXTRACTING' | 'READY' | 'FAILED';
@@ -61,7 +62,7 @@ export async function resolveCamoufoxRelease(): Promise<CamoufoxReleaseInfo> {
     const res = await new Promise<{ statusCode: number; data: string }>((resolve, reject) => {
       const req = https.get('https://api.github.com/repos/daijro/camoufox/releases/latest', {
         headers: {
-          'User-Agent': 'MAHI-Browser/1.1.9',
+          'User-Agent': `MAHI-Browser/${APP_VERSION}`,
           'Accept': 'application/vnd.github.v3+json',
         },
         timeout: 5000,

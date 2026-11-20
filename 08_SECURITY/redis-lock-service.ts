@@ -92,7 +92,12 @@ let testRedisInstance: any = null;
 
 export function isRedisConfigured(): boolean {
   if (testRedisInstance) return true;
-  return Boolean(process.env.REDIS_URL);
+  const rawUrl = process.env.REDIS_URL;
+  const url = rawUrl ? rawUrl.trim().replace(/^["']|["']$/g, '') : '';
+  if (rawUrl && rawUrl !== url) {
+    process.env.REDIS_URL = url;
+  }
+  return Boolean(url);
 }
 
 export function getRedisClient(): Redis | null {
@@ -100,7 +105,8 @@ export function getRedisClient(): Redis | null {
   if (!isRedisConfigured()) return null;
 
   if (!redisClientInstance) {
-    const url = process.env.REDIS_URL!;
+    const rawUrl = process.env.REDIS_URL!;
+    const url = rawUrl.trim().replace(/^["']|["']$/g, '');
     redisClientInstance = new Redis(url, {
       lazyConnect: true,
       maxRetriesPerRequest: 3,

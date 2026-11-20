@@ -221,7 +221,13 @@ export async function createFastifyCloudGateway(
 
     // Attach parsed payloads for downstream consume
     (req as any).body = request.body;
-    (req as any).rawBuffer = Buffer.isBuffer(request.body) ? request.body : undefined;
+    (req as any).rawBuffer = Buffer.isBuffer(request.body)
+      ? request.body
+      : typeof request.body === 'string'
+      ? Buffer.from(request.body, 'utf-8')
+      : request.body !== undefined
+      ? Buffer.from(JSON.stringify(request.body), 'utf-8')
+      : undefined;
 
     await handleCentralApiRequest(req, res);
   });
