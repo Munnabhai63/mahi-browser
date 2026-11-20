@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
@@ -19,6 +19,21 @@ import {
 } from '../../07_BACKEND/services/updater-provider.js';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { setCustomDatabasePath, closeDatabase, getDatabase, initSqlEngine } from '../../06_DATABASE/connection.js';
+
+// This suite simulates an OLDER client (1.1.9) discovering a NEWER release (1.2.0).
+// The client version must be pinned here. Without this, the test would compare
+// APP_VERSION (currently 1.2.0) against a 1.2.0 manifest and never see an update.
+vi.mock('../../08_SECURITY/electron-bridge.js', async (importOriginal) => {
+  const actual: any = await importOriginal();
+  return {
+    ...actual,
+    app: {
+      ...actual.app,
+      isPackaged: false,
+      getVersion: () => '1.1.9', // pinned baseline for this integration test
+    },
+  };
+});
 
 describe('PHASE 4 INTEGRATION: Complete Update Pipeline, Checksum Integrity & Data Safety', () => {
   let testDir: string;
