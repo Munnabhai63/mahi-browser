@@ -1,0 +1,294 @@
+MAHI BROWSER — UPDATE PIPELINE REMEDIATION PROMPT
+Target: origin/main = 28551ee43d31a82010c51af014066a0d733d0df7
+Baseline error: CI run 44765886726 -> job "Test & Typecheck (windows-latest)" failure
+Source audit: UPDATER-PIPELINE-AUDIT.md (commit 5b1cf3a)
+
+INSTRUCTIONS FOR THE OPERATOR (not part of the prompt)
+- Paste ONE BLOCK per Anti-Gravity message. Say "Block 0 karo, baaki mat karna."
+- Every block ends with tsc --noEmit, git status --short, and a pasted terminal output.
+- Blocks are strictly ordered. Do not skip. Do not bundle.
+
+BLOCK 0 — READ-ONLY EVIDENCE (no edits)
+Run and paste raw output of each line. Do not summarise.
+  1  git rev-parse HEAD
+  2  git show HEAD:.github/workflows/cross-platform-release.yml | grep -nE "name: (Upload Build Artifacts|Normalise release filenames|Generate latest.json Manifest|Verify latest.yml matches built installer|Assert Blockmap Exists|Publish GitHub Release)"
+  3  git show HEAD:.github/workflows/cross-platform-release.yml | grep -n "needs: \[test-and-verify, package-desktop\]"
+  4  grep -c "deploy-vps" .github/workflows/cross-platform-release.yml
+  5  grep -n "process.env.APPDATA" 11_TESTS/unit/account-session-and-quota.test.ts 11_TESTS/unit/account-service.test.ts
+  6  grep -n "MAHI_USER_DATA_DIR" 11_TESTS/setup/global-test-setup.ts
+  7  grep -nE "feedUrl: data.feedUrl|export function setUpdateConfig|const primaryFile = currentPendingManifest" 07_BACKEND/services/updater-service.ts
+  8  grep -n "protocol === 'https:'" 07_BACKEND/services/updater-provider.ts
+  9  grep -rn "200.97.164.97" --include="*.md" . | wc -l
+ 10  gh run list --branch main --limit 3
+If any line prints nothing where something was expected, STOP and report BLOCKED with that line number.
+
+BLOCK 1 — MAKE MAIN GREEN (do this first, nothing else matters until it is green)
+File: 11_TESTS/unit/account-session-and-quota.test.ts
+  - Replace the APPDATA-based assertion at lines 96-103 with a call to the real resolver.
+    Import getWritableUserDataDir from '../../07_BACKEND/utils/runtime-paths.js'.
+    const sessionFile = path.join(getWritableUserDataDir(), 'account-session.enc');
+    Keep every other assertion identical. Do NOT delete the test. Do NOT weaken toBe(true).
+  - In beforeAll, keep the same testDir but ALSO set process.env.MAHI_USER_DATA_DIR =
+    path.join(testDir, 'userdata') so the test is deterministic regardless of the global setup.
+  - In afterAll, delete process.env.MAHI_USER_DATA_DIR only if this test set it.
+File: 11_TESTS/unit/account-service.test.ts
+  - Line 26 sets process.env.APPDATA inside beforeEach. Add, in the same place,
+    process.env.MAHI_USER_DATA_DIR = path.join(testUserData, 'userdata'), and delete it in afterEach.
+File: 11_TESTS/e2e/phase19-engine-proxy-acceptance.test.ts
+  - Line 202 reads process.env.APPDATA to find a real customer database. That is a host-state
+    assertion and it is not part of test:ci, but it must not silently pass on CI.
+    Change it to call getWritableUserDataDir() and mark the test with
+    it.skipIf(process.env.CI === 'true') so CI never pretends to verify a real user DB.
+FORBIDDEN: editing 11_TESTS/integration/phase4-updater-pipeline.test.ts,
+11_TESTS/integration/phase4-updater-pipeline.test.ts's vi.mock version pin,
+or 07_BACKEND/commercial/commercial.ts. FORBIDDEN: deleting any test.
+ACCEPTANCE
+  npm run test:ci      -> 0 failures, paste the "Test Files / Tests" summary lines
+  npx tsc --noEmit     -> clean
+  git status --short   -> only the three test files above
+  gh run list --branch main --limit 1  -> after push, that run must reach a green
+  "Test & Typecheck" job. Paste the run URL and the job conclusion.
+
+BLOCK 2 — ARTIFACT ORDER (the deploy currently ships the wrong snapshot)
+File: .github/workflows/cross-platform-release.yml, job build-and-package
+  - Cut the "Upload Build Artifacts" step (currently line 199) out of its position.
+  - Re-insert it AFTER these steps, in this exact order: "Normalise release filenames",
+    "Generate latest.json Manifest", "Verify latest.yml matches built installer",
+    "Assert Blockmap Exists".
+  - Add a new step immediately after the Assert Blockmap step, before the new Upload:
+      - name: Fail if required release assets are missing
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json | ConvertFrom-Json).version
+          $required = @(
+            "release/MAHI-Browser-Setup-$v.exe",
+            "release/MAHI-Browser-Setup-latest.exe",
+            "release/MAHI-Browser-Portable-latest.exe",
+            "release/latest.yml",
+            "release/latest.json"
+          )
+          $missing = $required | Where-Object { -not (Test-Path $_) }
+          if ($missing) { throw "Missing required release assets: $($missing -join ', ')" }
+          $bm = Get-ChildItem release/*.blockmap
+          if (-not $bm) { throw "Missing .blockmap" }
+          Write-Host "All required release assets present."
+  - The "Publish GitHub Release" step must stay last in the job.
+ACCEPTANCE
+  git show HEAD:.github/workflows/cross-platform-release.yml | grep -nE "name: (Upload Build Artifacts|Normalise release filenames|Generate latest.json Manifest|Assert Blockmap Exists|Fail if required release assets are missing|Publish GitHub Release)"
+  -> Upload line number must be GREATER than the Assert Blockmap line number.
+  Paste that output. npx tsc --noEmit clean. git status --short shows only the workflow file.
+
+BLOCK 3 — DEPLOY JOB CANNOT RUN, AND CANNOT FAIL LOUDLY
+File: .github/workflows/cross-platform-release.yml, job deploy-vps
+  3a  Fix the broken dependency reference.
+      Current: needs: [test-and-verify, package-desktop]
+      The job id in this same file is build-and-package. package-desktop does not exist,
+      so the workflow is invalid and every tag run is rejected.
+      Change to: needs: [test-and-verify, build-and-package]
+  3b  Make the deploy deterministic and loud. Replace every "if [ -f ... ]; then scp ... fi"
+      guard in the "Deploy Binaries & Manifests to VPS" step with a hard requirement:
+        for f in "release/MAHI-Browser-Setup-${VERSION}.exe" \
+                 "release/MAHI-Browser-Setup-latest.exe" \
+                 "release/MAHI-Browser-Portable-latest.exe" \
+                 "release/latest.yml" \
+                 "release/latest.json"; do
+          if [ ! -f "$f" ]; then echo "FATAL: missing $f"; exit 1; fi
+        done
+      Upload order must be: setup exe -> portable exe -> blockmap -> SHA256SUMS -> latest.json
+      -> latest.yml LAST (atomic cutover: manifest is the last file to change).
+  3c  Manifest swap must be atomic on the server. Instead of scp-ing directly onto
+      /var/www/mahibrowser/updates/latest.yml, scp to latest.yml.tmp then
+      ssh "mv /var/www/mahibrowser/updates/latest.yml.tmp /var/www/mahibrowser/updates/latest.yml".
+      Same pattern for latest.json.
+  3d  Add a workflow-level guard so two tags cannot interleave:
+        concurrency:
+          group: release-${{ github.ref }}
+          cancel-in-progress: false
+      Place it at top level next to "on:".
+  3e  Add an approval gate so a tag cannot silently push to production:
+      inside deploy-vps add  environment: production
+      (the operator must then create the "production" environment in GitHub settings with a
+      required reviewer; do not invent any secret name beyond VPS_HOST, VPS_USER, VPS_PORT,
+      VPS_SSH_KEY which the file already references).
+ACCEPTANCE
+  Paste: grep -n "needs: \[test-and-verify, build-and-package\]" .github/workflows/cross-platform-release.yml
+  Paste: grep -n "concurrency" .github/workflows/cross-platform-release.yml
+  Paste: grep -c "if \[ -f release/" .github/workflows/cross-platform-release.yml   -> must be 0
+  npx tsc --noEmit clean, git status --short only the workflow file.
+  NOTE: 3e breaks nothing until the environment exists; if you cannot create the GitHub
+  environment yet, report 3e as "OWNER TO DO" and continue.
+
+BLOCK 4 — MANIFEST MUST NAME THE SETUP EXE, NOT WHATEVER REaddir RETURNS FIRST
+File: 12_SCRIPTS/generate-release-manifest.cjs
+  - Line 31 currently collects every .exe. Split it:
+      const allExes = readdir(...).filter(f => f.endsWith('.exe') && !f.includes('elevate')
+                                               && !f.includes('-latest'));
+      const setupExes = allExes.filter(f => /Setup/.test(f));
+      if (setupExes.length !== 1) throw new Error('Expected exactly one Setup exe, found: ' + setupExes.join(','));
+  - Build manifestFiles from allExes (so Portable is still listed), but the object written at
+    the top level (version/sha256/sha512) must come from the Setup exe ONLY:
+      const primaryFile = manifestFiles.find(f => f.name === setupExes[0]);
+      if (!primaryFile) throw new Error('Setup exe missing from manifest files');
+  - Also emit a machine-readable pin so the client and the server can cross-check:
+      primaryArtifact: primaryFile.name,
+File: 07_BACKEND/services/updater-service.ts
+  - Line 399 uses currentPendingManifest.files[0]. Replace with a resolver that prefers the
+    Setup artefact and only falls back to files[0] if no Setup entry exists:
+      function pickPrimaryArtifact(manifest) {
+        const files = Array.isArray(manifest.files) ? manifest.files : [];
+        if (!files.length) return null;
+        return files.find(f => /Setup/i.test(f.name || '')) || files[0];
+      }
+      const primaryFile = pickPrimaryArtifact(currentPendingManifest);
+      if (!primaryFile) { broadcastStatus({state:'ERROR', ...}); return false; }
+  - Apply the same resolver wherever files[0] is used for download/verify in that file.
+ACCEPTANCE
+  Paste the diff hunks for both files.
+  Add a unit test file 11_TESTS/unit/release-manifest-primary.test.ts that:
+    (a) creates a temp dir with MAHI-Browser-Setup-1.2.1.exe and MAHI-Browser-Portable-1.2.1.exe,
+    (b) runs generateReleaseManifest({releaseDir}),
+    (c) asserts manifest.primaryArtifact === 'MAHI-Browser-Setup-1.2.1.exe'
+    (d) asserts files[] still contains the Portable entry
+  Paste the vitest output. npx tsc --noEmit clean.
+
+BLOCK 5 — feedUrl IS UNVALIDATED (this is the ERR_CONNECTION_REFUSED and the RCE surface)
+File: 07_BACKEND/services/updater-service.ts
+  - Add near DEFAULT_UPDATE_FEED_URL (line 35):
+      const ALLOWED_UPDATE_FEED_HOSTS = ['mahibrowser.com', 'www.mahibrowser.com'];
+      export function sanitizeFeedUrl(input) {
+        try {
+          if (typeof input !== 'string' || !input.trim()) return DEFAULT_UPDATE_FEED_URL;
+          const u = new URL(input.trim());
+          if (u.protocol !== 'https:') return DEFAULT_UPDATE_FEED_URL;
+          if (!ALLOWED_UPDATE_FEED_HOSTS.includes(u.hostname.toLowerCase())) return DEFAULT_UPDATE_FEED_URL;
+          return u.toString().endsWith('/') ? u.toString() : u.toString() + '/';
+        } catch { return DEFAULT_UPDATE_FEED_URL; }
+      }
+  - Use it at BOTH read and write points: loadUpdateConfig line 56, setUpdateConfig (line 541+)
+    when partial.feedUrl is present.
+  - resetUpdaterStateForTesting (line 572) must also reset activeConfig = loadUpdateConfig();
+    today it only resets status, which is why a test-written feedUrl survives into the app.
+File: 07_BACKEND/ipc/register-handlers.ts
+  - ipcMain.handle('updater:setConfig', ...) at line 1925 must DROP feedUrl entirely before
+    calling setUpdateConfig: const { feedUrl: _ignored, ...safe } = config ?? {}; return setUpdateConfig(safe);
+    feedUrl is not exposed in the UI (AppSettings.tsx has no feedUrl field), so the renderer
+    has no legitimate reason to set it.
+FORBIDDEN: changing DEFAULT_UPDATE_FEED_URL away from https://mahibrowser.com/update/.
+ACCEPTANCE
+  Add 11_TESTS/unit/updater-feedurl-guard.test.ts with exactly these cases:
+    1  sanitizeFeedUrl('http://127.0.0.1:54346/update/')  -> DEFAULT
+    2  sanitizeFeedUrl('http://mahibrowser.com/update/')   -> DEFAULT  (no plain http)
+    3  sanitizeFeedUrl('https://evil.example/update/')     -> DEFAULT
+    4  sanitizeFeedUrl('https://mahibrowser.com/update/')  -> unchanged
+    5  loadUpdateConfig() with a config file containing 127.0.0.1 -> returns DEFAULT
+    6  resetUpdaterStateForTesting() restores the default activeConfig
+  Paste vitest output, npx tsc --noEmit clean.
+  Also paste: grep -n "MAHI_USER_DATA_DIR" 11_TESTS/integration/phase4-updater-pipeline.test.ts
+  -> if empty, add process.env.MAHI_USER_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-upd-'))
+  in beforeAll and delete it in afterAll. That file's existing vi.mock version pin (1.1.9) must
+  stay untouched.
+
+BLOCK 6 — PROVE THE DEPLOY IN THE SAME RUN (no more "HTTP 200 = success")
+File: .github/workflows/cross-platform-release.yml, step "Live Verification Gate" in deploy-vps
+  Replace the version-string greps with these hard gates, all failing the job:
+    G1  HTTP 200 + Cache-Control: no-store on /update/latest.yml and /update/latest.json
+    G2  version in latest.yml == VERSION and version in latest.json == VERSION
+    G3  latest.yml sha512 == base64(sha512 of the deployed MAHI-Browser-Setup-${VERSION}.exe);
+        download the exe from https://mahibrowser.com/update/MAHI-Browser-Setup-${VERSION}.exe
+        and recompute locally in the runner. A wrong manifest over a correct hash must fail.
+    G4  size in latest.yml == Content-Length of that downloaded exe
+    G5  /download/setup Content-Length == same size  (this is what a brand-new user gets)
+    G6  latest.json primaryArtifact == MAHI-Browser-Setup-${VERSION}.exe
+  Then write a deployment evidence file docs/deployment-evidence/<UTC date>.md containing the
+  six gate results plus the tag, the commit sha and the workflow run id, and commit it back
+  only if all six pass.
+ACCEPTANCE
+  Paste the new step YAML and a full dry-run of the six curls locally against the CURRENT
+  production feed (read-only; it is expected to show the old 1.1.9 size — record that honestly
+  as the "before" state). npx tsc --noEmit clean.
+
+BLOCK 7 — STOP PUBLISHING THE SERVER ADDRESS (27 files expose it)
+  - Remove the literal VPS IP from every tracked markdown file. It appears in at least:
+    DEPLOYMENT_RECON_REPORT.md, DEPLOYMENT_REPORT.md, docs/AUTO_UPDATE_RELEASE_GUIDE.md,
+    docs/progress.md, docs/MAHI_BROWSER_* and docs/MAHI_BROWSER_PHASE12_PRODUCTION_DEPLOYMENT/*.
+    Replace with: <VPS_HOST>  (literal placeholder, same characters everywhere).
+  - Do NOT rewrite git history and do NOT force-push. Historical exposure is accepted and must
+    be stated as such in docs/SECURITY-NOTES.md under a heading "Known historical exposure".
+  - Add to .env.example, in a new "── CI / DEPLOY SECRETS (GitHub Actions only) ──" section,
+    names only, no values: VPS_HOST, VPS_USER, VPS_PORT, VPS_SSH_KEY.
+  - docs/SECURITY-NOTES.md must also state: paper IP is not a secret; the SSH key is. Key
+    rotation is OWNER TO DO.
+ACCEPTANCE
+  Paste: grep -rn "200.97.164.97" --include="*.md" . | wc -l   -> must be 0
+  Paste: grep -n "VPS_" .env.example
+  git status --short shows markdown + .env.example only.
+
+BLOCK 8 — ENGINE MIRROR IS DEAD CODE AND THE FILENAMES DISAGREE
+  Facts to respect, do not "fix" by guessing:
+    10_CONFIG/engine-config.ts line 80 fallback -> /engine/chromium-138-win64.zip
+    lines 108-109  MANAGED/LEGACY fallback      -> /engine/chrome-138.zip
+    line 140,150,159,168 per-platform           -> /engine/chrome-138-{win64,mac-arm64,mac-x64,linux64}.zip
+    12_SCRIPTS/publish-engine-mirror.sh writes  -> chrome-138.0.7204.92-win64.zip
+    No workflow calls publish-engine-mirror.sh (grep returns nothing).
+    10_CONFIG/engine-config.ts line 82 pins fileSizeBytes 296108021 and line 78 pins
+    sha256 26237e60...; MANAGED_ENGINE_SHA256 line 94 pins 10a9fa69... for a DIFFERENT archive.
+  Required work:
+    8a  Pick ONE canonical mirror filename per platform and use it everywhere:
+        chrome-138-win64.zip, chrome-138-mac-arm64.zip, chrome-138-mac-x64.zip, chrome-138-linux64.zip
+    8b  publish-engine-mirror.sh must write the canonical name for win64 and must assert the
+        downloaded archive sha256 equals the value pinned in engine-config.ts. If the pinned
+        value and the Google-served file disagree, STOP and report a mismatch table; do not
+        change the pinned value without the owner.
+    8c  Do not wire the mirror into CI in this block. Only make the script self-consistent and
+        runnable by hand.
+    8d  Add a comment block in engine-config.ts that names which sha256 belongs to which archive,
+        because two different pins currently sit 12 lines apart with no labels.
+ACCEPTANCE
+  Paste the diff of publish-engine-mirror.sh, the diff of engine-config.ts, and the output of:
+  grep -rn "mahibrowser.com/engine" --include="*.ts" --include="*.sh" --include="*.yml" . | grep -v node_modules
+  Every path in that output must match one of the four canonical filenames in 8a.
+
+BLOCK 9 — VERSION AND CLAIM TRUTH
+  - landing/lib/brand.ts lines 22-23 still point at 1.1.9 macOS/Linux artefacts that do not exist.
+    Those platforms are permanently waived. Keep macDmgAvailable:false / linuxAvailable:false and
+    change the two dead paths to empty strings, so no dead URL is ever shipped.
+  - 12_SCRIPTS/sync-landing-version.cjs rewrites version:'x' in brand.ts but does NOT rewrite
+    those two filenames. Add a rewrite for /releases/MAHI-Browser-<ver>-*.dmg|AppImage, or delete
+    the fields under 9's first bullet. State which you chose in the report.
+  - docs/progress.md claims "Deployed to Live VPS" and "Verified HTTP/2 200 OK" for v1.2.0, but
+    the only committed live evidence (docs/deployment-evidence/2026-11-17.md lines 77-88) shows
+    latest.yml version 1.1.9, sha512 9iUcLQRd... , size 131152072. Append a dated correction
+    section to progress.md quoting that file, and mark the v1.2.0 deploy claim as
+    UNVERIFIED — superseded by audit 5b1cf3a.
+ACCEPTANCE
+  Paste: grep -n "1.1.9" landing/lib/brand.ts landing/components/DownloadButtons.tsx   -> 0 hits
+  Paste the appended progress.md section. npx tsc --noEmit clean (landing types included).
+
+BLOCK 10 — SHIP v1.2.1 AND PROVE IT END TO END
+  Preconditions, all must be pasted green before the tag:
+    npm run test:ci            -> 0 failures
+    npx tsc --noEmit           -> clean
+    git status --short         -> clean
+    grep -c "deploy-vps" .github/workflows/cross-platform-release.yml  -> >=1
+    grep -c "if \[ -f release/" .github/workflows/cross-platform-release.yml -> 0
+  Then:
+    1  Bump version to 1.2.1 in package.json only (sync-landing-version runs in build).
+    2  Commit, push to main, wait for the CI run to be GREEN.
+    3  Create and push tag v1.2.1.
+    4  Paste the tag run URL. The run must show: Package -> Deploy -> Live Verification Gate all green.
+    5  Paste: gh release view v1.2.1 --json assets
+    6  Paste the six curl gates from Block 6, executed fresh against production.
+    7  Install 1.1.9 on a clean Windows machine, open the app, wait 15 seconds, paste the
+       updater log lines and the resulting version shown in Settings.
+  Do NOT delete, move or retag v1.1.9 or v1.2.0. If v1.2.1 is wrong, publish 1.2.2.
+  HARD RULES for every block in this prompt:
+    - Never invent credentials, hosts, ports, hashes, line numbers or test counts.
+    - Never print secret values; report SET / EMPTY / MISSING only.
+    - Never run docker prune, never touch foreign containers or PM2 processes.
+    - Never edit 11_TESTS/integration/phase4-updater-pipeline.test.ts's version pin, and never
+      edit 07_BACKEND/commercial/commercial.ts.
+    - Every claim needs a command output pasted next to it. If unsure, write UNVERIFIED.
+  Final report format (13 rows, one per block): Block | files changed | command run | output
+  pasted (yes/no) | status (PASS / PARTIAL / BLOCKED) | one-line risk.
+  End with GO / NO-GO for production traffic and the single biggest remaining risk.
