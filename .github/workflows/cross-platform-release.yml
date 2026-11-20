@@ -215,6 +215,14 @@ jobs:
           }
           Get-ChildItem release | Select-Object Name, Length | Format-Table -AutoSize
 
+      - name: Generate latest.json Manifest
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          node 12_SCRIPTS/generate-release-manifest.cjs release
+          if (-not (Test-Path release/latest.json)) { throw "Failed to generate release/latest.json" }
+          Write-Host "Generated release/latest.json successfully."
+
       - name: Verify latest.yml matches built installer
         if: runner.os == 'Windows'
         shell: pwsh
@@ -263,7 +271,120 @@ jobs:
             release/MAHI-Browser-Setup-*.exe
             release/MAHI-Browser-Portable-*.exe
             release/latest.yml
+            release/latest.json
             release/*.blockmap
             release/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-vps:
+    name: Deploy Release to Production VPS
+    needs: [test-and-verify, package-desktop]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Packaged Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mahi-browser-win-x64
+          path: release
+
+      - name: Setup SSH Authentication
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p $PORT -H $HOST >> ~/.ssh/known_hosts
+
+      - name: Deploy Binaries & Manifests to VPS
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT }}
+          USER: ${{ secrets.VPS_USER }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "Deploying release v${VERSION} to production VPS..."
+
+          ls -la release/
+
+          ssh -p $PORT $USER@$HOST "mkdir -p /var/www/mahibrowser/updates /var/www/mahibrowser/releases"
+
+          # 1. Upload Binaries First
+          scp -P $PORT release/MAHI-Browser-Setup-${VERSION}.exe $USER@$HOST:/var/www/mahibrowser/updates/
+          scp -P $PORT release/MAHI-Browser-Setup-latest.exe $USER@$HOST:/var/www/mahibrowser/releases/
+          scp -P $PORT release/MAHI-Browser-Portable-latest.exe $USER@$HOST:/var/www/mahibrowser/releases/
+          if [ -f release/MAHI-Browser-Portable-${VERSION}.exe ]; then
+            scp -P $PORT release/MAHI-Browser-Portable-${VERSION}.exe $USER@$HOST:/var/www/mahibrowser/updates/
+          fi
+          if [ -f release/MAHI-Browser-Setup-${VERSION}.exe.blockmap ]; then
+            scp -P $PORT release/MAHI-Browser-Setup-${VERSION}.exe.blockmap $USER@$HOST:/var/www/mahibrowser/updates/
+          fi
+          if [ -f release/SHA256SUMS.txt ]; then
+            scp -P $PORT release/SHA256SUMS.txt $USER@$HOST:/var/www/mahibrowser/releases/
+            scp -P $PORT release/SHA256SUMS.txt $USER@$HOST:/var/www/mahibrowser/updates/
+          fi
+
+          # 2. Upload Manifests LAST (Atomic Cutover)
+          scp -P $PORT release/latest.yml $USER@$HOST:/var/www/mahibrowser/updates/
+          if [ -f release/latest.json ]; then
+            scp -P $PORT release/latest.json $USER@$HOST:/var/www/mahibrowser/updates/
+          fi
+
+          # 3. Fix Permissions
+          ssh -p $PORT $USER@$HOST "chown -R www-data:www-data /var/www/mahibrowser/updates /var/www/mahibrowser/releases && chmod 755 /var/www/mahibrowser/updates /var/www/mahibrowser/releases && chmod 644 /var/www/mahibrowser/updates/* /var/www/mahibrowser/releases/*"
+
+          echo "Deployment files successfully synced to VPS."
+
+      - name: Live Verification Gate
+        run: |
+          echo "Verifying live HTTP endpoints..."
+          VERSION=${GITHUB_REF_NAME#v}
+
+          # 1. Check latest.yml
+          YML_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://mahibrowser.com/update/latest.yml)
+          if [ "$YML_CODE" -ne 200 ]; then
+            echo "FATAL: https://mahibrowser.com/update/latest.yml returned $YML_CODE"
+            exit 1
+          fi
+          echo "✓ latest.yml: HTTP 200"
+
+          # 2. Check latest.json
+          JSON_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://mahibrowser.com/update/latest.json)
+          if [ "$JSON_CODE" -ne 200 ]; then
+            echo "FATAL: https://mahibrowser.com/update/latest.json returned $JSON_CODE"
+            exit 1
+          fi
+          echo "✓ latest.json: HTTP 200"
+
+          # 3. Check Setup download
+          SETUP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://mahibrowser.com/download/setup)
+          if [ "$SETUP_CODE" -ne 200 ]; then
+            echo "FATAL: https://mahibrowser.com/download/setup returned $SETUP_CODE"
+            exit 1
+          fi
+          echo "✓ setup endpoint: HTTP 200"
+
+          # 4. Check that version in latest.yml matches
+          LIVE_YML=$(curl -s https://mahibrowser.com/update/latest.yml)
+          if ! echo "$LIVE_YML" | grep -q "version: $VERSION"; then
+            echo "FATAL: latest.yml does not contain version $VERSION!"
+            exit 1
+          fi
+          echo "✓ latest.yml verified version: $VERSION"
+
+          # 5. Check that version in latest.json matches
+          LIVE_JSON=$(curl -s https://mahibrowser.com/update/latest.json)
+          if ! echo "$LIVE_JSON" | grep -q "\"version\": \"$VERSION\""; then
+            echo "FATAL: latest.json does not contain version $VERSION!"
+            exit 1
+          fi
+          echo "✓ latest.json verified version: $VERSION"
+
+          echo "All live verification gates PASSED! Release v${VERSION} is live and active."
