@@ -1,7 +1,7 @@
 # MAHI BROWSER — PHASE 16 REPORT 11
 ## PRODUCTION DEPLOYMENT VERIFICATION
 
-**HOST:** `200.97.164.97:2222`  
+**HOST:** `<VPS_HOST>:2222`  
 **APPLICATION:** MAHI Browser Super Admin Panel  
 **DEPLOYMENT TARGET DIRECTORY:** `/opt/mahi-admin-panel/`  
 **PM2 PROCESS ID:** `45` (`mahi-admin`)  

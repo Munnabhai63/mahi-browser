@@ -4,13 +4,13 @@
 - [x] **Desktop App v1.2.0 Packaging & Release Feed Deployment:**
   - **Version Bump:** Synchronized v1.2.0 across `package.json`, `landing/package.json`, `landing/lib/brand.ts`, and fallback constants via `sync-landing-version.cjs`.
   - **Binary Artifacts Packaged:** Built with Vite/Electron and packaged via `electron-builder` into `release/MAHI-Browser-Setup-1.2.0.exe` (315 MB), `MAHI-Browser-Portable-1.2.0.exe` (315 MB), and `latest.yml` with SHA-512 blockmaps.
-  - **Deployed to Live VPS (200.97.164.97):** Published to `/var/www/mahibrowser/updates/` and `/var/www/mahibrowser/releases/`.
+  - **Deployed to Live VPS (<VPS_HOST>):** Published to `/var/www/mahibrowser/updates/` and `/var/www/mahibrowser/releases/`.
   - **Live Verification:** Verified HTTP/2 200 OK on `https://mahibrowser.com/update/latest.yml`, `https://mahibrowser.com/download/setup`, and `https://mahibrowser.com/download/portable`.
 - [x] **Domain Support & Outbound Email Delivery Verified:**
   - **DNS Records Verified on Hostinger:** Configured DKIM (`resend._domainkey`), SPF CNAMEs (`rsend`, `send`), and DMARC (`_dmarc`) for `mahibrowser.com`.
   - **Resend Dashboard Verified:** `mahibrowser.com` status confirmed **Verified** with **Resend Forge Ready**.
   - **Live Delivery Smoke Test:** Dispatched test transaction email from `support@mahibrowser.com` via Resend API to `mahiverse.official@gmail.com` with 100% success (`[✓] Test email successfully dispatched`).
-- [x] **Full Production Deployment to VPS (200.97.164.97):**
+- [x] **Full Production Deployment to VPS (<VPS_HOST>):**
   - **Landing Portal Live:** Rebuilt 39 static pages in Next.js (`npm run build` with zero errors), deployed fresh archive to `/var/www/mahibrowser/landing/out/` with `www-data:www-data` (755), and reloaded Nginx gracefully. Live `https://mahibrowser.com`, `/pricing`, `/methodology`, and `/signup` (with terms checkbox) confirmed HTTP 200 OK.
   - **Backend Cloud Gateway Live:** Synchronized updated backend source files (`07_BACKEND`, `06_DATABASE`, `10_CONFIG`, etc.) to `/opt/mahi-browser/`. Injected live sovereign YouPI payment gateway credentials (`https://pay.oviaxe.com`, merchant `ca67904f...`) and live Resend email credentials (`support@mahibrowser.com`) into `/opt/mahi-browser/.env`.
   - **Docker Container Rebuild:** Rebuilt `mahibrowser_gateway` via `docker compose -f docker-compose.production.yml up -d --build`. Container is healthy (`Up (healthy)`), listening on `127.0.0.1:8989`, with PostgreSQL and Redis connections active.
@@ -67,7 +67,7 @@
   - Updated success screen copy to honest manual verification timeline (within 24 hours) with dynamic `payment_id` reference and WhatsApp confirmation payload.
   - Acceptance checks passed: `account/payments/upi/submit` count = 1, `fetch(` count = 1, `isSubmittingUtr|utrError` count = 6, `red-[0-9]` count = 0.
   - Next.js build passed with exit code 0 (39/39 pages).
-  - Deployed to VPS `200.97.164.97:2222` and verified live on `https://mahibrowser.com/pricing`.
+  - Deployed to VPS `<VPS_HOST>:2222` and verified live on `https://mahibrowser.com/pricing`.
   - Pushed commit `20ee00f` to `origin/main`.
 
 - [x] **Pricing Luxury Theme Polish & Production VPS Deployment:**
@@ -79,7 +79,7 @@
   - Strict privacy compliance: Removed all raw phone numbers (`+91 9376343629`) from visible text in public UI cards, comparison table, and modal (retained behind action links `Chat with Founder on WhatsApp` and `Confirm on WhatsApp`).
   - Purged all emojis and bright green badges; standardized monochrome `Popular` and `Best Value` pills.
   - Verified on localhost preview (`http://localhost:3000/pricing`) with Playwright Chrome screenshots before obtaining user approval.
-  - Deployed package (`scratch/landing_pricing_final.tar.gz`) to live VPS `root@200.97.164.97:2222:/var/www/mahibrowser/landing/out/` and gracefully reloaded Nginx.
+  - Deployed package (`scratch/landing_pricing_final.tar.gz`) to live VPS `root@<VPS_HOST>:2222:/var/www/mahibrowser/landing/out/` and gracefully reloaded Nginx.
   - Verified live on `https://mahibrowser.com/pricing` with Playwright screenshots: 0 errors, correct pricing, luxury monochrome styling.
   - Pushed commit `6e341c2` to `origin/main`.
 
@@ -92,15 +92,15 @@
   - Updated `landing/components/PricingView.tsx` with dynamic UPI modal (₹599 / ₹999 / ₹1,499), strikethroughs, monthly breakdown pills, and comparison matrix.
   - Updated `07_BACKEND/commercial/commercial-plan-service.ts` and `08_SECURITY/freemium-guard.ts` with unlimited profile bypass for annual tier (`>= 100000`).
   - Patched VPS `/opt/mahi-admin-panel/src/account-service.js` with `profileLimit = 1000000` for Ultimate tier and restarted `mahi-admin` via PM2.
-  - Rebuilt Next.js portal (39/39 pages), packaged tar archive, uploaded to VPS `200.97.164.97:2222`, deployed to `/var/www/mahibrowser/landing/out/`, and reloaded Nginx.
+  - Rebuilt Next.js portal (39/39 pages), packaged tar archive, uploaded to VPS `<VPS_HOST>:2222`, deployed to `/var/www/mahibrowser/landing/out/`, and reloaded Nginx.
   - Verified live on `https://mahibrowser.com/pricing` with Playwright Chromium: all 3 tiers visible, UPI modal functional for ₹1,499 with QR code, 0 console errors.
   - Committed (`130e6e0`) and pushed to `origin/main`.
 
-- [x] **Live Production VPS Deployment (`mahibrowser.com` on VPS `200.97.164.97`):**
+- [x] **Live Production VPS Deployment (`mahibrowser.com` on VPS `<VPS_HOST>`):**
   - Created timestamped server backup `/var/www/mahibrowser/landing/out_backup_20261119_0612` via SSH.
   - Built fresh static export (39/39 pages) in `landing/out/` with updated luxury monochrome theme.
   - Synced `landing/public/index.html` and `landing/index.html` with `landing/public/theme.html` (all footer links, 0% Indian UPI, Mahipal Choudhary founder attribution).
-  - Packaged and transferred `scratch/landing_out.tar.gz` (49 MB) to VPS `200.97.164.97:2222`.
+  - Packaged and transferred `scratch/landing_out.tar.gz` (49 MB) to VPS `<VPS_HOST>:2222`.
   - Extracted archive into `/var/www/mahibrowser/landing/out/` with `www-data:www-data` ownership and `755` permissions.
   - Tested Nginx configuration syntax (`nginx -t`) and reloaded Nginx gracefully with zero downtime (`systemctl reload nginx`).
   - Verified 100% HTTP 200 OK on live endpoints:
@@ -244,5 +244,5 @@
 - Created official dark monochrome MAHI Browser vector logo (/assets/mahi_logo_vector_dark.svg).
 - Replaced legacy Lateral SVG references across all JS bundles, SVG files, and HTML templates.
 - Added high-contrast CSS and persistent observer for sticky light navigation.
-- Rebuilt Next.js portal and deployed to production VPS (200.97.164.97).
+- Rebuilt Next.js portal and deployed to production VPS (<VPS_HOST>).
 - Verified live with Playwright on Chrome: Zero Lateral traces, clean crisp MAHI logo and dark nav links on scroll up.

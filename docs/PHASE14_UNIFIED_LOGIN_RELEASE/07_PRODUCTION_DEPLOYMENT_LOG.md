@@ -1,7 +1,7 @@
 # PHASE 14 — UNIFIED LOGIN RELEASE
 ## DOCUMENT 07: PRODUCTION DEPLOYMENT LOG
 
-**Deployment Host:** `200.97.164.97:2222` (SSH Key Authenticated)  
+**Deployment Host:** `<VPS_HOST>:2222` (SSH Key Authenticated)  
 **Target Services:** `mahi-admin` (PM2 PID 3461785), Nginx Reverse Proxy  
 **Execution Timestamp:** 2026-10-14T00:56:35+05:30  
 **Deployment Status:** SUCCESS  

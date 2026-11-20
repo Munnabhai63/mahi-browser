@@ -3,7 +3,7 @@
 
 **Project:** MAHI Browser  
 **Target Domain:** `https://mahibrowser.com`  
-**Host IP:** `200.97.164.97:2222`  
+**Host IP:** `<VPS_HOST>:2222`  
 **Date:** October 13, 2026  
 **Auditor:** Antigravity Autonomous Lead Systems Architect  
 **Final Status:** **MAHI BROWSER — PHASE 12 PRODUCTION DEPLOYMENT COMPLETE & VERIFIED**

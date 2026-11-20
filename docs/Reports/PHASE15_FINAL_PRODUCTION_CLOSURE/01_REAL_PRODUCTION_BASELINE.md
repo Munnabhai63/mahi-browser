@@ -1,7 +1,7 @@
 # MAHI BROWSER v1.1.3 — REAL PRODUCTION BASELINE
 ## Document: 01_REAL_PRODUCTION_BASELINE.md
 **Project Path:** `C:\Users\munaf\Desktop\mahai brouser`  
-**Production Server:** `200.97.164.97:2222` (Ubuntu 24.04 LTS x86_64, Kernel 6.8.0)  
+**Production Server:** `<VPS_HOST>:2222` (Ubuntu 24.04 LTS x86_64, Kernel 6.8.0)  
 **Domains:** `https://mahibrowser.com`, `https://admin.mahibrowser.com`  
 **Date of Audit:** October 14, 2026 (03:15 UTC)
 
@@ -28,7 +28,7 @@ An independent verification of `https://mahibrowser.com` revealed a divergence b
 
 ### 2. FORENSIC ROOT CAUSE ANALYSIS
 
-Direct SSH connection to `root@200.97.164.97:2222` identified the root causes:
+Direct SSH connection to `root@<VPS_HOST>:2222` identified the root causes:
 
 1. **Omission of Remote Binary Deployment:**
    - The proposed `v1.1.3` installer was successfully compiled locally in `C:\Users\munaf\Desktop\mahai brouser\release\`.

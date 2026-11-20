@@ -3,7 +3,7 @@
 
 **Project:** MAHI Browser  
 **Target Domain:** `https://mahibrowser.com`  
-**Host IP:** `200.97.164.97` (Ubuntu 24.04 LTS)  
+**Host IP:** `<VPS_HOST>` (Ubuntu 24.04 LTS)  
 **Release Candidate:** v1.1.1 RC1 Windows x64 (282 MB)  
 **Date:** October 13, 2026  
 **Auditor:** Antigravity Autonomous Security & Release Orchestrator  

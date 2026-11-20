@@ -14,7 +14,7 @@
 
 In accordance with Phase 13 operational policy:
 - **NO PRODUCTION DEPLOYMENT WAS EXECUTED DURING THIS PHASE.**
-- The production server (`root@200.97.164.97:2222`), live database (`/opt/mahi-admin-panel/data/panel.db`), live Admin Panel (`https://admin.mahibrowser.com`), and real customer subscriptions remain 100% untouched.
+- The production server (`root@<VPS_HOST>:2222`), live database (`/opt/mahi-admin-panel/data/panel.db`), live Admin Panel (`https://admin.mahibrowser.com`), and real customer subscriptions remain 100% untouched.
 - This runbook is prepared exclusively for future authorized execution following the owner's review.
 
 ---

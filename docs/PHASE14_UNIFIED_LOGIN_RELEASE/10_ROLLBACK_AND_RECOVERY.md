@@ -9,7 +9,7 @@
 
 ### 1. Production Rollback Procedure (VPS)
 
-In the event of an emergency, execute the following commands on `200.97.164.97`:
+In the event of an emergency, execute the following commands on `<VPS_HOST>`:
 
 ```bash
 # 1. Restore server.js from pre-deploy backup
@@ -50,9 +50,9 @@ Copy-Item "C:\Users\munaf\Documents\MAHI_BROWSER_ARCHIVE\Backups\local_pre_upgra
 
 | Component | Backup File Path | Host | Verified Date |
 | :--- | :--- | :--- | :--- |
-| **Backend Code** | `/opt/mahi-admin-panel/backups/phase14_pre_deploy/server.js.bak` | VPS (`200.97.164.97`) | 2026-10-13 |
-| **Backend Nginx** | `/opt/mahi-admin-panel/backups/phase14_pre_deploy/mahibrowser.com.nginx.bak` | VPS (`200.97.164.97`) | 2026-10-13 |
-| **Backend SQLite** | `/opt/mahi-admin-panel/backups/phase14_pre_deploy/panel.db.bak` | VPS (`200.97.164.97`) | 2026-10-13 |
+| **Backend Code** | `/opt/mahi-admin-panel/backups/phase14_pre_deploy/server.js.bak` | VPS (`<VPS_HOST>`) | 2026-10-13 |
+| **Backend Nginx** | `/opt/mahi-admin-panel/backups/phase14_pre_deploy/mahibrowser.com.nginx.bak` | VPS (`<VPS_HOST>`) | 2026-10-13 |
+| **Backend SQLite** | `/opt/mahi-admin-panel/backups/phase14_pre_deploy/panel.db.bak` | VPS (`<VPS_HOST>`) | 2026-10-13 |
 | **Local SQLite** | `C:\Users\munaf\Documents\MAHI_BROWSER_ARCHIVE\Backups\local_pre_upgrade_1.1.2\mahi_browser.sqlite.bak` | Local Machine | 2026-10-14 |
 | **Local Master Key** | `C:\Users\munaf\Documents\MAHI_BROWSER_ARCHIVE\Backups\local_pre_upgrade_1.1.2\.mahi_master.key.bak` | Local Machine | 2026-10-14 |
 | **Release Binaries** | `C:\Users\munaf\Desktop\mahai brouser\release\MAHI-Browser-Setup-1.1.1.exe` | Local Machine | 2026-10-13 |

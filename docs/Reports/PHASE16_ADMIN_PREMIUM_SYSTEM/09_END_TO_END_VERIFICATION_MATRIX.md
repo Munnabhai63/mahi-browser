@@ -1,7 +1,7 @@
 # MAHI BROWSER — PHASE 16 REPORT 09
 ## END-TO-END VERIFICATION MATRIX
 
-**EXECUTION ENVIRONMENT:** Live Production VPS (`root@200.97.164.97:2222`)  
+**EXECUTION ENVIRONMENT:** Live Production VPS (`root@<VPS_HOST>:2222`)  
 **TEST RUNNER:** Automated Node.js Integration Suite (`verify_phase16_complete.js`)  
 **VERIFICATION DATE:** October 14, 2026  
 **RESULT:** **100% PASSED (0 FAILURES, 0 REGRESSIONS)**  

@@ -1,6 +1,6 @@
 # PHASE 1 RECONNAISSANCE REPORT — PRODUCTION VPS
 
-**Target Server Public IP:** `200.97.164.97`  
+**Target Server Public IP:** `<VPS_HOST>`  
 **Target Domain:** `mahibrowser.com` / `www.mahibrowser.com`  
 **Status:** **PHASE 1 COMPLETE (STRICTLY READ-ONLY). DEPLOYMENT PAUSED PENDING DNS UPDATE.**
 
@@ -42,7 +42,7 @@ Swap:          4.0Gi       332Mi       3.7Gi
 
 Command: `curl -4 -s ifconfig.me`
 ```text
-200.97.164.97
+<VPS_HOST>
 ```
 
 ---
@@ -185,7 +185,7 @@ mahibrowser.com.
 
 **CRITICAL FINDING:**
 - The domain `mahibrowser.com` currently resolves to **`2.57.91.91`** (an external host / registrar default).
-- The VPS Public IP address is **`200.97.164.97`**.
+- The VPS Public IP address is **`<VPS_HOST>`**.
 - They do **NOT** match.
 
 Per strict safety rules:
@@ -211,9 +211,9 @@ Please update your DNS records at your domain registrar (e.g. Namecheap, Cloudfl
 
 | Type | Host / Name | Target / Value | TTL |
 |---|---|---|---|
-| **A** | `@` (or `mahibrowser.com`) | `200.97.164.97` | Auto / 300s (5m) |
-| **A** | `www` (or `www.mahibrowser.com`) | `200.97.164.97` | Auto / 300s (5m) |
+| **A** | `@` (or `mahibrowser.com`) | `<VPS_HOST>` | Auto / 300s (5m) |
+| **A** | `www` (or `www.mahibrowser.com`) | `<VPS_HOST>` | Auto / 300s (5m) |
 
-*(Alternatively, if `www` is a CNAME pointing to `@`, that works as well once `@` points to `200.97.164.97`).*
+*(Alternatively, if `www` is a CNAME pointing to `@`, that works as well once `@` points to `<VPS_HOST>`).*
 
 **Once updated and saved, reply to confirm. Phase 2 deployment will immediately proceed.**

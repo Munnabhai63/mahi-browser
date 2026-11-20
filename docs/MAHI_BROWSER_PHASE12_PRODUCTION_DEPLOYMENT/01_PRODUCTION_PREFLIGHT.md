@@ -3,7 +3,7 @@
 
 **Project:** MAHI Browser  
 **Target Domain:** `https://mahibrowser.com`  
-**Host IP:** `200.97.164.97` (Ubuntu 24.04 LTS, Kernel 6.8.0-138-generic)  
+**Host IP:** `<VPS_HOST>` (Ubuntu 24.04 LTS, Kernel 6.8.0-138-generic)  
 **Access Method:** Authorized SSH (Port 2222, Key: `~/.ssh/id_ed25519`, User: `root`)  
 **Audit Mode:** Strict Read-Only Forensic Discovery  
 **Date:** October 13, 2026  
@@ -31,7 +31,7 @@ A direct, authorized, read-only preflight inspection was executed on the live pr
 
 ### 2. Multi-Tenant Service Boundary Mapping
 
-To guarantee zero cross-project impact, all active PM2 services on `200.97.164.97` were inventoried:
+To guarantee zero cross-project impact, all active PM2 services on `<VPS_HOST>` were inventoried:
 
 | PM2 ID | Service Name | Status | Memory | Domain / Function | Isolation Rule |
 | :---: | :--- | :---: | :---: | :--- | :--- |

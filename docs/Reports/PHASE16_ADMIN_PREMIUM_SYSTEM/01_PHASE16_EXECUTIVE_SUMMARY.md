@@ -26,7 +26,7 @@ Prior to Phase 16, the Admin Panel exhibited several structural deficiencies:
 
 ### 2. CORE DELIVERABLES ACCOMPLISHED
 
-All Phase 16 objectives were engineered, tested against strict integration suites, and deployed to production on the VPS (`root@200.97.164.97:2222`):
+All Phase 16 objectives were engineered, tested against strict integration suites, and deployed to production on the VPS (`root@<VPS_HOST>:2222`):
 
 | Pillar | Architectural Implementation | Production Status |
 | :--- | :--- | :--- |

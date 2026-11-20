@@ -2,7 +2,7 @@
 ## REPORT 05: PRODUCTION BACKUP SPECIFICATION & ROLLBACK PLAYBOOK
 
 **Project:** MAHI Browser  
-**Target Host:** Production VPS (`200.97.164.97:2222`)  
+**Target Host:** Production VPS (`<VPS_HOST>:2222`)  
 **Date:** October 13, 2026  
 **Auditor:** Antigravity Autonomous Reliability & Incident Lead  
 **Status:** BACKUP & ROLLBACK PLANS FORMALLY VALIDATED  

@@ -3,7 +3,7 @@
 ## 🎯 AUDITOR ROLE & MISSION
 You are an **Independent Adversarial Principal Systems, Stealth & Release Auditor** auditing **MAHI Browser** (`c:\Users\munaf\Desktop\mahai brouser`, remote `https://github.com/Munnabhai63/mahi-browser.git`).
 
-The engineering team has completed Round 3 bug remediation, restored green CI, deployed to production VPS `200.97.164.97`, and synchronized memory records on commits `70e3eec`, `adda3ab`, and `a96d6af`. Your mission is to **verify every claim, inspect all 17 public endpoints, audit code truthfulness, check evidence files, and confirm zero regression on the multi-tenant VPS**.
+The engineering team has completed Round 3 bug remediation, restored green CI, deployed to production VPS `<VPS_HOST>`, and synchronized memory records on commits `70e3eec`, `adda3ab`, and `a96d6af`. Your mission is to **verify every claim, inspect all 17 public endpoints, audit code truthfulness, check evidence files, and confirm zero regression on the multi-tenant VPS**.
 
 **Trust nothing. Demand pasted terminal output for every check. Any unbacked assertion or failure is an automatic FAIL.**
 
@@ -14,7 +14,7 @@ The engineering team has completed Round 3 bug remediation, restored green CI, d
 2. **ZERO TEST EXCLUSIONS:** `package.json` must have **zero** `--exclude` flags.
 3. **TYPECHECK & DETERMINISTIC TESTS:** `npx tsc --noEmit` must return 0 errors. `npm run test:ci` must have 0 failures twice in a row.
 4. **TRUTHFUL STEALTH MARKETING:** The codebase, landing page, and documentation must **NOT** claim that shipped binaries contain a custom native C++ patched Chromium core. It must truthfully reflect the dual-engine architecture: production Chromium with injection stealth layers + fully managed Firefox-based Camoufox anti-detect engine.
-5. **VPS NON-REGRESSION (ABSOLUTE):** On VPS `200.97.164.97`, foreign services (`desisexy.in`, `dripsmm.com`, `falcon-smm`, `m4k-cobalt-api`, `rumbletraffic.com`, `trafik-*`, `ytcpm.*`, all PM2 apps, all other containers) must have **zero restarts and zero uptime resets**.
+5. **VPS NON-REGRESSION (ABSOLUTE):** On VPS `<VPS_HOST>`, foreign services (`desisexy.in`, `dripsmm.com`, `falcon-smm`, `m4k-cobalt-api`, `rumbletraffic.com`, `trafik-*`, `ytcpm.*`, all PM2 apps, all other containers) must have **zero restarts and zero uptime resets**.
 6. **NO FAKE 200s ON DOWNLOADS:** The download URLs must serve genuine PE executable binaries with DOS `MZ` headers (`0x4D5A`), not HTML error pages masked with a 200 status.
 
 ---
@@ -204,10 +204,10 @@ curl.exe -s -i https://api.mahibrowser.com/api/v1/commercial/admin/demo-requests
 
 ---
 
-### STEP 7: VPS Host & Container Non-Regression Audit (`200.97.164.97`)
+### STEP 7: VPS Host & Container Non-Regression Audit (`<VPS_HOST>`)
 SSH to the VPS and verify that zero non-mahibrowser services were restarted or affected:
 ```bash
-ssh -i C:\Users\munaf\.ssh\id_ed25519 -p 2222 -o StrictHostKeyChecking=no root@200.97.164.97
+ssh -i C:\Users\munaf\.ssh\id_ed25519 -p 2222 -o StrictHostKeyChecking=no root@<VPS_HOST>
 
 # 1. Check foreign containers uptime
 docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
@@ -280,7 +280,7 @@ Fill out and report this exact evaluation table with your pasted terminal eviden
 | 16 | `api.mahibrowser.com/health` | | | status: ok | PASS/FAIL |
 | 17 | `api.mahibrowser.com/admin` (Edge Block) | | | 404 | PASS/FAIL |
 
-## 3. VPS Multi-Tenant Non-Regression (`200.97.164.97`)
+## 3. VPS Multi-Tenant Non-Regression (`<VPS_HOST>`)
 | Target | Evidence | Verdict |
 |---|---|---|
 | Foreign Docker Containers Uptime | | PASS/FAIL |

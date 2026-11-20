@@ -4,7 +4,7 @@
 **Project:** MAHI Browser  
 **Release Target:** v1.1.2 Production Release  
 **Production Identity:** `mahibrowser.com` / `admin.mahibrowser.com`  
-**Host Target:** `200.97.164.97:2222`  
+**Host Target:** `<VPS_HOST>:2222`  
 **Environment Baseline:** Electron 33.4.11 / Node.js 22.23.2 / Chromium 138.0.7204.0  
 
 ---

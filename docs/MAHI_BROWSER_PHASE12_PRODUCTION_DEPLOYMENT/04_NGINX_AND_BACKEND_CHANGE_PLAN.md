@@ -2,7 +2,7 @@
 ## REPORT 04: NGINX & BACKEND ARCHITECTURAL CHANGE PLAN
 
 **Project:** MAHI Browser  
-**Target Infrastructure:** Production VPS (`200.97.164.97:2222`)  
+**Target Infrastructure:** Production VPS (`<VPS_HOST>:2222`)  
 **Affected Nginx Virtual Host:** `/etc/nginx/sites-available/mahibrowser.com`  
 **Affected Backend Service:** PM2 ID 45 (`mahi-admin`, `/opt/mahi-admin-panel/src/server.js`)  
 **Date:** October 13, 2026  

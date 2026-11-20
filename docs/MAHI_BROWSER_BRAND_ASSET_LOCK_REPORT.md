@@ -166,7 +166,7 @@ To eliminate ghost drags without breaking click navigation or affecting non-bran
 
 ## 6. Live Production Server Verification
 
-The updated static website was deployed to production VPS (`root@200.97.164.97:2222` at `/var/www/mahi/`).
+The updated static website was deployed to production VPS (`root@<VPS_HOST>:2222` at `/var/www/mahi/`).
 
 ### Verification Checks:
 1. **HTTP Headers & Asset Payload:**

@@ -1,7 +1,7 @@
 # MAHI BROWSER v1.1.3 — PRODUCTION INFRASTRUCTURE HEALTH
 ## Document: 07_INFRASTRUCTURE_HEALTH.md
 **Project Path:** `C:\Users\munaf\Desktop\mahai brouser`  
-**Host:** `srv1814872` (`200.97.164.97:2222`)  
+**Host:** `srv1814872` (`<VPS_HOST>:2222`)  
 **Operating System:** Linux Ubuntu 24.04 LTS (Kernel: 6.8.0-138-generic x86_64)  
 **Audit Date:** October 14, 2026
 

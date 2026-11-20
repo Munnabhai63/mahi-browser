@@ -1,7 +1,7 @@
 # PHASE 14 — UNIFIED LOGIN RELEASE
 ## DOCUMENT 09: INFRASTRUCTURE ISOLATION REPORT
 
-**Target VPS Host:** `200.97.164.97:2222`  
+**Target VPS Host:** `<VPS_HOST>:2222`  
 **Isolation Policy:** Strict zero-impact boundary enforcement  
 **Audited Process List:** PM2 Ecosystem & Nginx Configurations  
 **Status:** 100% ISOLATED & HEALTHY  

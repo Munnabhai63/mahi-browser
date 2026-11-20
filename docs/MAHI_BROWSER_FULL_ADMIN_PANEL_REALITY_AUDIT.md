@@ -2,7 +2,7 @@
 
 **Audit Execution Date:** October 11, 2026  
 **Auditor Mode:** Strict Read-Only Forensic Audit  
-**Target Environment:** Production VPS (`root@200.97.164.97:2222`), Admin Console (`admin.mahibrowser.com`), Live Landing (`mahibrowser.com`), Client App Codebase  
+**Target Environment:** Production VPS (`root@<VPS_HOST>:2222`), Admin Console (`admin.mahibrowser.com`), Live Landing (`mahibrowser.com`), Client App Codebase  
 **Current Baseline Commit:** `e4ab464d9feba904c4d095b9a9894368da790cd2`  
 **Test Baseline:** 851 / 851 PASS (93 Test Files)
 

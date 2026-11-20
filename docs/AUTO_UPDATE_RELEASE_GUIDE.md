@@ -8,7 +8,7 @@ This document describes the complete release procedure for publishing software u
 
 - **Update Feed URL:** `https://mahibrowser.com/update/`
 - **Provider:** Generic (`electron-updater`)
-- **Hosting Location:** VPS `/var/www/mahi/update/` (IP: `200.97.164.97`)
+- **Hosting Location:** VPS `/var/www/mahi/update/` (IP: `<VPS_HOST>`)
 - **Main Download Location:** VPS `/var/www/mahi/download/MAHI-Setup.exe`
 - **Update Cadence:** Automatic check after 10 seconds on app launch + periodic check every 6 hours
 - **Download Behavior:** 100% silent background download
@@ -46,13 +46,13 @@ This generates the following artifacts in the `release/` folder:
 ### Step 3: Upload 3 Update Files to VPS
 Run the exact `scp` command to upload all 3 update files to the update feed directory:
 ```powershell
-scp "release/latest.yml" "release/MAHI BROWSER-1.0.2-Setup.exe" "release/MAHI BROWSER-1.0.2-Setup.exe.blockmap" root@200.97.164.97:/var/www/mahi/update/
+scp "release/latest.yml" "release/MAHI BROWSER-1.0.2-Setup.exe" "release/MAHI BROWSER-1.0.2-Setup.exe.blockmap" root@<VPS_HOST>:/var/www/mahi/update/
 ```
 
 ### Step 4: Ensure Proper Permissions & Copy to Main Download Link
 SSH into the server or run via remote command:
 ```powershell
-ssh root@200.97.164.97 "chown -R www-data:www-data /var/www/mahi/update && chmod 644 /var/www/mahi/update/* && cp '/var/www/mahi/update/MAHI BROWSER-1.0.2-Setup.exe' /var/www/mahi/download/MAHI-Setup.exe && chown www-data:www-data /var/www/mahi/download/MAHI-Setup.exe"
+ssh root@<VPS_HOST> "chown -R www-data:www-data /var/www/mahi/update && chmod 644 /var/www/mahi/update/* && cp '/var/www/mahi/update/MAHI BROWSER-1.0.2-Setup.exe' /var/www/mahi/download/MAHI-Setup.exe && chown www-data:www-data /var/www/mahi/download/MAHI-Setup.exe"
 ```
 
 ### Step 5: Done!

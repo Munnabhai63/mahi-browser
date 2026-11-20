@@ -1,7 +1,7 @@
 # MAHI BROWSER v1.1.3 — PRODUCTION DEPLOYMENT ACTIONS & BACKUPS
 ## Document: 05_DEPLOYMENT_ACTIONS_AND_BACKUPS.md
 **Project Path:** `C:\Users\munaf\Desktop\mahai brouser`  
-**Production Server:** `200.97.164.97:2222`  
+**Production Server:** `<VPS_HOST>:2222`  
 **Deployment Date:** October 14, 2026
 
 ---

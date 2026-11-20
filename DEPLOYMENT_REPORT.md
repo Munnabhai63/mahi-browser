@@ -3,7 +3,7 @@
 **Date:** 2026-10-07  
 **Live Production URL:** [https://mahibrowser.com](https://mahibrowser.com)  
 **Direct Installer Download URL:** [https://mahibrowser.com/download/MAHI-Setup.exe](https://mahibrowser.com/download/MAHI-Setup.exe)  
-**Server IP:** `200.97.164.97` (Ubuntu 24.04 LTS)  
+**Server IP:** `<VPS_HOST>` (Ubuntu 24.04 LTS)  
 **Status:** **DEPLOYMENT COMPLETE & 100% VERIFIED**
 
 ---
@@ -23,10 +23,10 @@ MAHI BROWSER has been successfully deployed to production on your existing multi
 
 ```text
 Command: dig +short mahibrowser.com @8.8.8.8
-Output:  200.97.164.97
+Output:  <VPS_HOST>
 
 Command: dig +short www.mahibrowser.com @8.8.8.8
-Output:  mahibrowser.com. -> 200.97.164.97
+Output:  mahibrowser.com. -> <VPS_HOST>
 ```
 
 ---
@@ -164,12 +164,12 @@ Whenever a new build is packaged locally (`release/MAHI BROWSER-X.X.X-Setup.exe`
 
 1. **Upload the updated installer to the VPS:**
    ```powershell
-   scp "release/MAHI BROWSER-1.0.0-Setup.exe" root@200.97.164.97:/var/www/mahi/download/MAHI-Setup.exe
+   scp "release/MAHI BROWSER-1.0.0-Setup.exe" root@<VPS_HOST>:/var/www/mahi/download/MAHI-Setup.exe
    ```
 
 2. **(Optional) If you edit `scratch/index.html`:**
    ```powershell
-   scp "scratch/index.html" root@200.97.164.97:/var/www/mahi/index.html
+   scp "scratch/index.html" root@<VPS_HOST>:/var/www/mahi/index.html
    ```
 
 No server restart or downtime is required!

@@ -8,7 +8,7 @@
   - Implemented monochrome error display and loading state on submit button.
   - Aligned post-submission messaging to honest 24-hour SLA with `payment_id` reference display.
   - Validated via automated Playwright test suite (both unauthenticated rejection and authenticated intercept).
-  - Deployed to live VPS `200.97.164.97:2222` with Nginx reload.
+  - Deployed to live VPS `<VPS_HOST>:2222` with Nginx reload.
 
 ## 2026-11-19 - Pricing Polish, Card Expansion & Phone Number Privacy Deployment
 - **Context**: The user reviewed the initial pricing deployment and provided strict design constraints:
@@ -26,7 +26,7 @@
     * Features formatted with `14px` clean zinc text and `space-y-3` vertical rhythm.
     * Privacy: Raw phone number removed from visible text, keeping action copy clean (`24/7 Dedicated VIP WhatsApp Support`, `Chat with Founder on WhatsApp`, `Confirm on WhatsApp`).
   - Verification: Local static preview server tested with Chrome screenshots (`localhost_expanded_pricing_cards.png`, `localhost_expanded_cards_bottom.png`, `localhost_expanded_upi_modal.png`).
-  - Deployment: Exported 39 static routes (`npm --prefix landing run build`), transferred archive to VPS `200.97.164.97:2222`, extracted to `/var/www/mahibrowser/landing/out/`, and reloaded Nginx. Live verification confirmed 1:1 parity with 0 console errors.
+  - Deployment: Exported 39 static routes (`npm --prefix landing run build`), transferred archive to VPS `<VPS_HOST>:2222`, extracted to `/var/www/mahibrowser/landing/out/`, and reloaded Nginx. Live verification confirmed 1:1 parity with 0 console errors.
 
 ## 2026-11-19 - Calibrated Subscription Tiers & Unlimited Annual Profiles Implementation
 - **Context**: The user identified a pricing incentive flaw where 6-Month and 12-Month tiers offered identical per-month rates (~₹166/mo), eliminating annual adoption incentive. The user directed an overhaul into 3 distinct duration tiers (1M / 6M / 1Y) with unconstrained offline profiles on 1-Year, "UNLIMITED" zero-cost marketing hooks on 6-Month, and strict limits on 1-Month, backed by silent server guardrails.
@@ -42,7 +42,7 @@
      - VPS `/opt/mahi-admin-panel/src/account-service.js`: Configured tier limits (`profileLimit = 1000000` for `ultimate`/`1year`/`annual`, `100` for `growth`/`6months`, `25` for `starter`/`1month`) and restarted `mahi-admin` via PM2.
   3. **Verification**: Automated Playwright suite verified live on `https://mahibrowser.com/pricing` with 0 console errors; verified UPI modal binds ₹1,499 with QR code; verified USD currency toggle; verified comparison table rows.
 
-- **Context**: The user verified the local luxury monochrome web design and authorized immediate live deployment to replace the legacy red landing page currently served by Nginx on production server `200.97.164.97`.
+- **Context**: The user verified the local luxury monochrome web design and authorized immediate live deployment to replace the legacy red landing page currently served by Nginx on production server `<VPS_HOST>`.
 - **Implementation**:
   1. **Pre-Deployment Safety**: Created timestamped backup of `/var/www/mahibrowser/landing/out/` on VPS (`out_backup_20261119_0612`).
   2. **Production Build**: Exported 39 static routes via Next.js 14 (`npm --prefix landing run build`), generating fresh HTML, JS chunks, and optimized assets into `landing/out/`.

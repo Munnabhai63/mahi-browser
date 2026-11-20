@@ -104,7 +104,7 @@ The fresh installer was executed in silent upgrade mode over `C:\Users\munaf\App
 - **Cryptographic Match:** **100% PASS**
 
 ### 3.4 Live Public Download & Update Feed Synchronization
-All release artifacts were deployed to the live production server (`200.97.164.97`):
+All release artifacts were deployed to the live production server (`<VPS_HOST>`):
 - **Public Download URL:** `https://mahibrowser.com/download/MAHI-Setup.exe`
   - Downloaded live and hashed: `8692D0F1C9842399F8DE2AFC845D2EBF539EBAFF86AB8F7BAE071C094DB35919`
   - Local Release Hash: `8692D0F1C9842399F8DE2AFC845D2EBF539EBAFF86AB8F7BAE071C094DB35919`
