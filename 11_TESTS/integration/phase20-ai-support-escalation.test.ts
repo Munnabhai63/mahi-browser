@@ -81,7 +81,7 @@ describe('Phase 20 — AI Support Assistant & Payment Escalation Integration Sui
       const result = classifySupportQuery('How do I install the .exe file on Windows 11?');
       expect(result.isPaymentRelated).toBe(false);
       expect(result.category).toBe('SETUP');
-      expect(result.suggestedReply).toMatch(/MAHI-Browser-Setup-1\.1\.\d+\.exe/);
+      expect(result.suggestedReply).toMatch(/MAHI-Browser-Setup-\d+\.\d+\.\d+\.exe/);
     });
 
     it('classifies fingerprint isolation questions correctly', () => {

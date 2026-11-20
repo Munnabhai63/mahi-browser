@@ -14,6 +14,7 @@ import type {
   Dialog,
   IpcMain,
 } from 'electron';
+import { APP_VERSION } from '../10_CONFIG/shared/version.js';
 
 const esmRequire = createRequire(import.meta.url);
 
@@ -46,7 +47,7 @@ if (isElectronRuntime) {
 
 export const app: App = (electronMod?.app ?? {
   isPackaged: false,
-  getVersion: () => '1.1.9',
+  getVersion: () => APP_VERSION,
   getName: () => 'mahi-browser',
   getPath: (_name: string) => '',
   getAppPath: () => process.cwd(),
