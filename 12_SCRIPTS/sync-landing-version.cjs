@@ -29,10 +29,10 @@ if (fs.existsSync(contentJsonPath)) {
 const indexPath = path.join(rootDir, 'landing', 'index.html');
 if (fs.existsSync(indexPath)) {
   let html = fs.readFileSync(indexPath, 'utf8');
-  html = html.replace(/Download v1\.1\.[0-9]+/g, `Download v${version}`);
-  html = html.replace(/Download MAHI Browser \(v1\.1\.[0-9]+\)/g, `Download MAHI Browser (v${version})`);
-  html = html.replace(/Windows \(v1\.1\.[0-9]+ Now\)/g, `Windows (v${version} Now)`);
-  html = html.replace(/MAHI-Browser-Setup-1\.1\.[0-9]+\.exe/g, `MAHI-Browser-Setup-${version}.exe`);
+  html = html.replace(/Download v[0-9]+\.[0-9]+\.[0-9]+/g, `Download v${version}`);
+  html = html.replace(/Download MAHI Browser \(v[0-9]+\.[0-9]+\.[0-9]+\)/g, `Download MAHI Browser (v${version})`);
+  html = html.replace(/Windows \(v[0-9]+\.[0-9]+\.[0-9]+ Now\)/g, `Windows (v${version} Now)`);
+  html = html.replace(/MAHI-Browser-Setup-[0-9]+\.[0-9]+\.[0-9]+\.exe/g, `MAHI-Browser-Setup-${version}.exe`);
   fs.writeFileSync(indexPath, html, 'utf8');
   console.log(`✓ Synchronized ${indexPath} to v${version}`);
 }
@@ -41,11 +41,11 @@ if (fs.existsSync(indexPath)) {
 const downloadPath = path.join(rootDir, 'landing', 'download.html');
 if (fs.existsSync(downloadPath)) {
   let html = fs.readFileSync(downloadPath, 'utf8');
-  html = html.replace(/Version:<\/strong> v1\.1\.[0-9]+/g, `Version:</strong> v${version}`);
-  html = html.replace(/What's New in MAHI Browser v1\.1\.[0-9]+/g, `What's New in MAHI Browser v${version}`);
-  html = html.replace(/MAHI-Browser-Setup-1\.1\.[0-9]+\.exe/g, `MAHI-Browser-Setup-${version}.exe`);
-  html = html.replace(/MAHI-Browser-Portable-1\.1\.[0-9]+\.exe/g, `MAHI-Browser-Portable-${version}.exe`);
-  html = html.replace(/metadata: \{ package: type, version: '1\.1\.[0-9]+' \}/g, `metadata: { package: type, version: '${version}' }`);
+  html = html.replace(/Version:<\/strong> v[0-9]+\.[0-9]+\.[0-9]+/g, `Version:</strong> v${version}`);
+  html = html.replace(/What's New in MAHI Browser v[0-9]+\.[0-9]+\.[0-9]+/g, `What's New in MAHI Browser v${version}`);
+  html = html.replace(/MAHI-Browser-Setup-[0-9]+\.[0-9]+\.[0-9]+\.exe/g, `MAHI-Browser-Setup-${version}.exe`);
+  html = html.replace(/MAHI-Browser-Portable-[0-9]+\.[0-9]+\.[0-9]+\.exe/g, `MAHI-Browser-Portable-${version}.exe`);
+  html = html.replace(/metadata: \{ package: type, version: '[0-9]+\.[0-9]+\.[0-9]+' \}/g, `metadata: { package: type, version: '${version}' }`);
   fs.writeFileSync(downloadPath, html, 'utf8');
   console.log(`✓ Synchronized ${downloadPath} to v${version}`);
 }
@@ -58,7 +58,7 @@ const mainJsPaths = [
 for (const mainJsPath of mainJsPaths) {
   if (fs.existsSync(mainJsPath)) {
     let js = fs.readFileSync(mainJsPath, 'utf8');
-    js = js.replace(/MAHI-Browser-Setup-1\.1\.[0-9]+\.exe \(v1\.1\.[0-9]+\)/g, `MAHI-Browser-Setup-${version}.exe (v${version})`);
+    js = js.replace(/MAHI-Browser-Setup-[0-9]+\.[0-9]+\.[0-9]+\.exe \(v[0-9]+\.[0-9]+\.[0-9]+\)/g, `MAHI-Browser-Setup-${version}.exe (v${version})`);
     fs.writeFileSync(mainJsPath, js, 'utf8');
     console.log(`✓ Synchronized ${mainJsPath} to v${version}`);
   }

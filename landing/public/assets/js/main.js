@@ -2833,7 +2833,7 @@ function initResourceModal() {
 function initDownloadTriggers() {
   document.querySelectorAll('.btn-download-trigger, a[href*="MAHI-Setup.exe"], a[href*="download/setup"]').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      showToast('Download started! MAHI-Browser-Setup-1.1.9.exe (v1.1.9)', 'success', 4500);
+      showToast('Download started! MAHI-Browser-Setup-1.2.0.exe (v1.2.0)', 'success', 4500);
     });
   });
 }
