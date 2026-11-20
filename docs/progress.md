@@ -246,3 +246,28 @@
 - Added high-contrast CSS and persistent observer for sticky light navigation.
 - Rebuilt Next.js portal and deployed to production VPS (<VPS_HOST>).
 - Verified live with Playwright on Chrome: Zero Lateral traces, clean crisp MAHI logo and dark nav links on scroll up.
+
+## Correction - 2026-11-16 (audit-driven)
+
+The v1.2.0 deploy claim in the banner above is **partially unverified and must not be
+repeated as fact**.
+
+What is actually proven:
+- `/download/setup` and `/releases/MAHI-Browser-Setup-latest.exe` both serve 315782958
+  bytes, matching the size recorded in live `latest.yml` for v1.2.0. The Windows
+  installer is genuinely reachable.
+
+What was contradicted by a live read on 2026-11-16:
+- `https://mahibrowser.com/update/latest.json` returned **version 1.1.9**, with four stale
+  file entries (1.1.5 through 1.1.9) and **no primaryArtifact field**, while `latest.yml`
+  returned 1.2.0. The two manifests disagreed with each other.
+- No CI job had ever executed the deploy step at audit time. The v1.1.9 and v1.2.0 tag
+  trees did not contain the `deploy-vps` job at all, so those tags could not have deployed
+  anything from CI.
+
+Consequence: any client reading `latest.json` was told "no update available" while any
+client reading `latest.yml` saw one available. That is the exact defect the release
+pipeline now gates against with six live checks, including a sha512 recomputation of the
+artefact actually served.
+
+The old claim is therefore downgraded to: **UNVERIFIED - superseded by audit 5b1cf3a.**
