@@ -253,6 +253,40 @@ jobs:
           }
           Write-Host "Blockmap Verified: $($blockmaps[0].Name)"
 
+      - name: Fail if required release assets are missing
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json | ConvertFrom-Json).version
+          $required = @(
+            "release/MAHI-Browser-Setup-$v.exe",
+            "release/MAHI-Browser-Setup-latest.exe",
+            "release/MAHI-Browser-Portable-latest.exe",
+            "release/latest.yml",
+            "release/latest.json"
+          )
+          $missing = @()
+          foreach ($f in $required) {
+            if (-not (Test-Path -LiteralPath $f)) { $missing += $f }
+          }
+          if ($missing.Count -gt 0) {
+            throw ("FATAL: missing required release assets: " + ($missing -join ", "))
+          }
+          $bm = @(Get-ChildItem -Path release -Filter *.blockmap -ErrorAction SilentlyContinue)
+          if ($bm.Count -eq 0) { throw "FATAL: no .blockmap file in release/" }
+          $setup = Get-Item -LiteralPath "release/MAHI-Browser-Setup-$v.exe"
+          if ($setup.Length -lt 50000000) {
+            throw "FATAL: setup exe looks truncated ($($setup.Length) bytes)"
+          }
+          $json = Get-Content -LiteralPath "release/latest.json" -Raw | ConvertFrom-Json
+          if (-not $json.version) { throw "FATAL: latest.json has no version field" }
+          if ($json.version -ne $v) {
+            throw "FATAL: latest.json version $($json.version) != package.json $v"
+          }
+          Write-Host "All required release assets present."
+          Write-Host "Setup size: $($setup.Length) bytes | latest.json version: $($json.version)"
+          Get-ChildItem release | Select-Object Name, Length | Format-Table -AutoSize
+
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
