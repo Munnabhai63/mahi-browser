@@ -57,9 +57,19 @@ describe('PHASE 9: Cross-Platform Abstraction & Platform Adapter Suite', () => {
 
   describe('2. Cross-Platform Storage Directories', () => {
     it('should generate standard Windows AppData directory path', () => {
-      const dir = platformAdapter.getAppDataDir('win32');
-      expect(dir).toContain('mahi-browser');
-      expect(dir).toMatch(/AppData[\\/]Roaming[\\/]mahi-browser/i);
+      const prevAppData = process.env.APPDATA;
+      try {
+        process.env.APPDATA = path.join(os.homedir(), 'AppData', 'Roaming');
+        const dir = platformAdapter.getAppDataDir('win32');
+        expect(dir).toContain('mahi-browser');
+        expect(dir).toMatch(/AppData[\\/]Roaming[\\/]mahi-browser/i);
+      } finally {
+        if (prevAppData !== undefined) {
+          process.env.APPDATA = prevAppData;
+        } else {
+          delete process.env.APPDATA;
+        }
+      }
     });
 
     it('should generate standard macOS Application Support path', () => {

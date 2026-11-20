@@ -24,6 +24,7 @@ import {
 import { getHWID, resetHwidCacheForTesting } from '../../08_SECURITY/license-service.js';
 import { setCustomDatabasePath, closeDatabase, getDatabase, initSqlEngine } from '../../06_DATABASE/connection.js';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
+import { getWritableUserDataDir } from '../../07_BACKEND/utils/runtime-paths.js';
 
 describe('Task R3: Account Session, Token Refresh & Quota Isolation Suite', () => {
   const testDir = path.resolve('.mahi_data', 'test_account_session_quota');
@@ -94,12 +95,12 @@ describe('Task R3: Account Session, Token Refresh & Quota Isolation Suite', () =
       expect(loaded?.account_id).toBe('usr_test_alpha');
 
       // Check on-disk format is encrypted (either SAFE_STORAGE_V1: or AESGCM:)
-      const appdata = process.env.APPDATA || '';
-      const sessionFile = path.join(appdata, 'mahi-browser', 'account-session.enc');
+      const sessionFile = path.join(getWritableUserDataDir(), 'account-session.enc');
       expect(fs.existsSync(sessionFile)).toBe(true);
       const rawContent = fs.readFileSync(sessionFile);
       const rawStr = rawContent.toString('utf8');
-      const isEncrypted = rawStr.startsWith('SAFE_STORAGE_V1:') || rawContent.subarray(0, 7).equals(Buffer.from('AESGCM:'));
+      const isEncrypted = rawStr.startsWith('SAFE_STORAGE_V1:')
+        || rawContent.subarray(0, 7).equals(Buffer.from('AESGCM:'));
       expect(isEncrypted).toBe(true);
     });
   });
