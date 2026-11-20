@@ -25,8 +25,9 @@ on:
         default: false
   push:
     tags:
+      # Deliberately NOT 'v*': release tags must not start a 6-hour Chromium build that
+      # publishes into the same GitHub Release as cross-platform-release.yml.
       - 'engine-v*'
-      - 'v*'
 
 permissions:
   contents: write
