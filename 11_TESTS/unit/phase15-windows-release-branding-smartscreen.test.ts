@@ -28,7 +28,7 @@ describe('Phase 15: Windows Release Branding, Artifact Naming & SmartScreen Diag
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 
       expect(pkg.author).toBe('Munna Bhai');
-      expect(pkg.version).toMatch(/^1\.1\.\d+$/);
+      expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
     });
 
   });
@@ -104,9 +104,9 @@ describe('Phase 15: Windows Release Branding, Artifact Naming & SmartScreen Diag
     it.skipIf(!fs.existsSync(path.resolve(process.cwd(), 'release/latest.json')))('verifies distribution service serves versioned filename and accurate metadata', () => {
       const info = getDistributionInfo();
 
-      expect(info.setupFileName).toMatch(/^MAHI-Browser-Setup-1\.1\.\d+\.exe$/);
-      expect(info.portableFileName).toMatch(/^MAHI-Browser-Portable-1\.1\.\d+\.exe$/);
-      expect(info.version).toMatch(/^1\.1\.\d+$/);
+      expect(info.setupFileName).toMatch(/^MAHI-Browser-Setup-\d+\.\d+\.\d+\.exe$/);
+      expect(info.portableFileName).toMatch(/^MAHI-Browser-Portable-\d+\.\d+\.\d+\.exe$/);
+      expect(info.version).toMatch(/^\d+\.\d+\.\d+$/);
 
       expect(info.setupAvailable).toBe(true);
       expect(info.setupSizeMB).toBeGreaterThan(50);

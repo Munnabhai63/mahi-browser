@@ -10,12 +10,15 @@ import { WebApiClient } from '../../01_UI/web/api/api-client.js';
 describe('Phase 5: Next.js 14 Landing, Docs & Blog Portal + Web Cloud Console Production Wiring', () => {
   const rootDir = process.cwd();
   const landingDir = path.join(rootDir, 'landing');
+  const pkgVersion = JSON.parse(
+    fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')
+  ).version;
 
   describe('1. Brand Constants & Authoritative Invariants', () => {
-    it('should match authoritative contact details and version 1.1.9', () => {
+    it('should match authoritative contact details and version consistency', () => {
       expect(BRAND.name).toBe('MAHI Browser');
       expect(BRAND.creator).toBe('Mahipal Choudhary');
-      expect(BRAND.version).toBe('1.1.9');
+      expect(BRAND.version).toBe(pkgVersion);
       expect(BRAND.officialEmail).toBe('mahiverse.official@gmail.com');
       expect(BRAND.hubEmail).toBe('mahiverse.hub@gmail.com');
       expect((BRAND as any).phone).toBeUndefined();
