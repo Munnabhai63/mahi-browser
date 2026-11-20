@@ -30,3 +30,6 @@ landing/out/
 landing/node_modules/
 landing/public/assets
 *.tsbuildinfo
+
+# Arena session workspace
+.arena/
