@@ -128,6 +128,20 @@ import {
 import { verifyAdminAccess } from '../../05_AUTH/admin-auth.js';
 import { isValidAdminWebSecret } from '../../08_SECURITY/install-secrets.js';
 import { CommercialRole, CURRENT_TERMS_VERSION } from '../../10_CONFIG/shared/types/commercial.js';
+import {
+  adminGetDashboardSummary,
+  adminListUsers,
+  adminTermsCompliance,
+  adminListPlans,
+  adminListLicenses,
+  adminListDevices,
+  adminListAuditLogs,
+  adminListVersions,
+  adminListPayments,
+  adminFunnelMetrics,
+  adminListSupportTickets,
+  adminListDemoRequests,
+} from './admin-data-service.js';
 
 import {
   getUserSyncUsage,
@@ -1195,8 +1209,9 @@ export async function handleCommercialApiRoutes(
         acceptedTerms: true,
         termsVersion: termsVer,
       }, clientIp, result.user?.id);
-    } catch (err) {
-      console.error('[Registration] SQLite registerUser error', err);
+    } catch (err: any) {
+      console.error('[REGISTER] commercial mirror write failed for user %s: %s',
+                    result.user?.id, err?.message || err);
     }
 
     const registeredUser = commUserResult?.user || result.user;
@@ -2069,7 +2084,7 @@ export async function handleCommercialApiRoutes(
       return true;
     }
     const statusFilter = parsedUrl.searchParams.get('status') as DemoRequestStatus | undefined;
-    const leads = getDemoRequests(statusFilter);
+    const { items: leads } = await adminListDemoRequests({ status: statusFilter });
     sendJSON(res, 200, { success: true, data: leads });
     return true;
   }
@@ -2110,7 +2125,7 @@ export async function handleCommercialApiRoutes(
     const status = parsedUrl.searchParams.get('status') || undefined;
     const category = parsedUrl.searchParams.get('category') || undefined;
     const escalatedOnly = parsedUrl.searchParams.get('escalatedOnly') === 'true';
-    const tickets = getSupportTickets({ status, category, escalatedOnly });
+    const { items: tickets } = await adminListSupportTickets({ status, category, escalatedOnly });
     sendJSON(res, 200, { success: true, data: tickets });
     return true;
   }
@@ -2167,7 +2182,7 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 403, { success: false, error: 'Admin authorization required' });
       return true;
     }
-    const metrics = getFunnelMetrics();
+    const metrics = await adminFunnelMetrics();
     sendJSON(res, 200, { success: true, data: metrics });
     return true;
   }
@@ -2333,38 +2348,7 @@ export async function handleCommercialApiRoutes(
       return true;
     }
 
-    const { users, total: totalUsers } = getAllUsers({ limit: 1000 });
-    const activeUsers = users.filter((u) => u.status === 'ACTIVE').length;
-    const suspendedUsers = users.filter((u) => u.status === 'SUSPENDED').length;
-    const bannedUsers = users.filter((u) => u.status === 'BANNED').length;
-
-    const licenses = getLicenses();
-    const activeLicenses = licenses.filter((l) => l.status === 'ACTIVE').length;
-    const expiredLicenses = licenses.filter((l) => l.status === 'EXPIRED').length;
-
-    const devices = getAllCommercialDevices();
-    const activeDevices = devices.filter((d) => d.status === 'ACTIVE').length;
-
-    const plans = getCommercialPlans(true);
-    const { logs: recentAuditLogs } = getCommercialAuditLogs({ limit: 10 });
-    const ticketMetrics = getSupportTicketMetrics();
-
-    const stats = {
-      totalUsers,
-      activeUsers,
-      suspendedUsers,
-      bannedUsers,
-      activeLicenses,
-      expiredLicenses,
-      activeDevices,
-      activeSubscriptions: activeUsers,
-      totalPlans: plans.length,
-      revenueEstMonthly: activeLicenses * 29,
-      recentAuditLogs,
-      openTickets: ticketMetrics.open,
-      escalatedTickets: ticketMetrics.escalated,
-    };
-
+    const stats = await adminGetDashboardSummary();
     sendJSON(res, 200, { success: true, data: stats });
     return true;
   }
@@ -2384,13 +2368,8 @@ export async function handleCommercialApiRoutes(
     const limit = parseInt(parsedUrl.searchParams.get('limit') || '50', 10);
     const offset = parseInt(parsedUrl.searchParams.get('offset') || '0', 10);
 
-    const result = getAllUsers({ status, role, searchQuery: search, limit, offset });
-    const users = result.users.map((row: any) => ({
-      ...row,
-      acceptedTerms: row.acceptedTerms ?? (row.accepted_terms !== undefined ? row.accepted_terms : null),
-      termsVersion: row.termsVersion ?? (row.terms_version !== undefined ? row.terms_version : null),
-    }));
-    sendJSON(res, 200, { success: true, data: users, total: result.total });
+    const result = await adminListUsers({ status, role, searchQuery: search, limit, offset });
+    sendJSON(res, 200, { success: true, data: result.users, users: result.users, total: result.total, source: result.source });
     return true;
   }
 
@@ -2402,50 +2381,10 @@ export async function handleCommercialApiRoutes(
       return true;
     }
 
-    const db = getDatabase();
-    let rows: any[] = [];
-    try {
-      rows = db.prepare('SELECT id, accepted_terms, terms_version FROM commercial_users').all() as any[];
-    } catch {
-      rows = [];
-    }
-    try {
-      const authRows = db.prepare('SELECT id, accepted_terms, terms_version FROM auth_users').all() as any[];
-      const existingIds = new Set(rows.map((r: any) => r.id));
-      for (const ar of authRows) {
-        if (!existingIds.has(ar.id)) {
-          rows.push(ar);
-        }
-      }
-    } catch {}
-
-    const totalUsers = rows.length;
-    let accepted = 0;
-    let missing = 0;
-    const byVersion: Record<string, number> = {};
-
-    for (const r of rows) {
-      if (r.accepted_terms === 1) {
-        accepted++;
-        if (r.terms_version !== null && r.terms_version !== undefined && String(r.terms_version).trim() !== '') {
-          const v = String(r.terms_version).trim();
-          byVersion[v] = (byVersion[v] || 0) + 1;
-        } else {
-          byVersion['unversioned'] = (byVersion['unversioned'] || 0) + 1;
-        }
-      } else {
-        missing++;
-      }
-    }
-
+    const data = await adminTermsCompliance();
     sendJSON(res, 200, {
       success: true,
-      data: {
-        totalUsers,
-        accepted,
-        missing,
-        byVersion,
-      },
+      data,
     });
     return true;
   }
@@ -2531,7 +2470,8 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 403, { success: false, error: 'Forbidden.' });
       return true;
     }
-    sendJSON(res, 200, { success: true, data: getCommercialPlans(true) });
+    const { items: plans } = await adminListPlans(true);
+    sendJSON(res, 200, { success: true, data: plans });
     return true;
   }
 
@@ -2717,7 +2657,7 @@ export async function handleCommercialApiRoutes(
     }
     const status = parsedUrl.searchParams.get('status') || undefined;
     const search = parsedUrl.searchParams.get('search') || undefined;
-    const licenses = getLicenses({ status, searchQuery: search });
+    const { items: licenses } = await adminListLicenses({ status, searchQuery: search });
     sendJSON(res, 200, { success: true, data: licenses });
     return true;
   }
@@ -2771,7 +2711,7 @@ export async function handleCommercialApiRoutes(
     }
     const status = parsedUrl.searchParams.get('status') || undefined;
     const search = parsedUrl.searchParams.get('search') || undefined;
-    const devices = getAllCommercialDevices({ status, searchQuery: search });
+    const { items: devices } = await adminListDevices({ status, searchQuery: search });
     sendJSON(res, 200, { success: true, data: devices });
     return true;
   }
@@ -2805,7 +2745,7 @@ export async function handleCommercialApiRoutes(
     const limit = parseInt(parsedUrl.searchParams.get('limit') || '50', 10);
     const offset = parseInt(parsedUrl.searchParams.get('offset') || '0', 10);
 
-    const logs = getCommercialAuditLogs({
+    const logs = await adminListAuditLogs({
       action,
       actorRole: role,
       result: resultStatus,
@@ -2813,7 +2753,7 @@ export async function handleCommercialApiRoutes(
       limit,
       offset,
     });
-    sendJSON(res, 200, { success: true, data: logs.logs, total: logs.total });
+    sendJSON(res, 200, { success: true, data: logs.items, total: logs.total });
     return true;
   }
 
@@ -2826,7 +2766,8 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 403, { success: false, error: 'Forbidden.' });
       return true;
     }
-    sendJSON(res, 200, { success: true, data: getSoftwareVersions() });
+    const { items: versions } = await adminListVersions();
+    sendJSON(res, 200, { success: true, data: versions });
     return true;
   }
 
@@ -2852,7 +2793,7 @@ export async function handleCommercialApiRoutes(
       return true;
     }
     const status = parsedUrl.searchParams.get('status') || undefined;
-    const payments = paymentService.listAdminPayments(status);
+    const { items: payments } = await adminListPayments({ status });
     sendJSON(res, 200, { success: true, data: payments, payments });
     return true;
   }
