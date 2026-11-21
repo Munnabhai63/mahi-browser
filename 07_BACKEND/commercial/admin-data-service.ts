@@ -8,7 +8,7 @@ import { getPrismaClient, isPostgresConfigured } from '../../06_DATABASE/prisma-
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getAllUsers } from './commercial-auth-service.js';
 import { getLicenses, evaluateServerStatus } from '../../04_LICENSING/license-engine.js';
-import type { LicenseStatus } from '../../04_LICENSING/license-engine.js';
+import type { LicenseStatus } from '../../10_CONFIG/shared/types/license.js';
 import { getAllCommercialDevices } from './commercial-device-service.js';
 import { getCommercialPlans, DEFAULT_COMMERCIAL_PLANS } from './commercial-plan-service.js';
 import { getCommercialAuditLogs } from './commercial-audit-service.js';
@@ -331,7 +331,7 @@ export async function adminListUsers(filter?: UserListFilter): Promise<UserListR
           } catch {}
         }
 
-        const authMatch = authMap.get(u.email.toLowerCase().trim());
+        const authMatch = authMap.get(u.email.toLowerCase().trim()) as any;
         const acceptedTerms =
           authMatch?.accepted_terms !== null && authMatch?.accepted_terms !== undefined
             ? authMatch.accepted_terms === 1
@@ -389,8 +389,8 @@ export async function adminListUsers(filter?: UserListFilter): Promise<UserListR
             googleSub: au.google_sub || null,
             avatarUrl: au.avatar_url || null,
             authProvider: au.auth_provider || 'LOCAL',
-            acceptedTerms: au.accepted_terms === 1,
-            termsVersion: au.terms_version || undefined,
+            acceptedTerms: (au as any).accepted_terms === 1,
+            termsVersion: (au as any).terms_version || undefined,
             createdAt: au.created_at,
             updatedAt: au.updated_at,
             lastLoginAt: au.last_login_at || undefined,
@@ -549,8 +549,8 @@ export async function adminGetUserDetail(id: string): Promise<UserDetailResponse
             bonusProfiles: 0,
             bonusProxyBytes: 0,
             featureOverrides: {},
-            acceptedTerms: authUser.accepted_terms === 1,
-            termsVersion: authUser.terms_version,
+            acceptedTerms: (authUser as any).accepted_terms === 1,
+            termsVersion: (authUser as any).terms_version,
             createdAt: authUser.created_at,
             updatedAt: authUser.updated_at,
             lastLoginAt: authUser.last_login_at,
@@ -1119,13 +1119,7 @@ export async function adminTermsCompliance(): Promise<any> {
 
   if (prisma) {
     try {
-      const rows = await prisma.auth_users.findMany({
-        select: {
-          id: true,
-          accepted_terms: true,
-          terms_version: true,
-        },
-      });
+      const rows = (await prisma.auth_users.findMany()) as any[];
 
       const totalUsers = rows.length;
       let accepted = 0;
