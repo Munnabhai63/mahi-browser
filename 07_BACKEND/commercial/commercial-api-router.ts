@@ -13,6 +13,13 @@ import {
   boostUserQuota,
   setUserFeatureOverrides,
 } from './commercial-auth-service.js';
+import {
+  adminSetUserStatus,
+  adminSetUserPlan,
+  adminBoostQuota,
+  adminSetFeatureOverrides,
+  adminResetUserDevices,
+} from './admin-actions.js';
 import { TRIAL_CONFIG } from './canonical-plan-catalog.js';
 import {
   registerCentralUser,
@@ -2390,7 +2397,7 @@ export async function handleCommercialApiRoutes(
   }
 
   const userStatusMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_-]+)\/status$/);
-  if (userStatusMatch && method === 'PUT') {
+  if (userStatusMatch && (method === 'PUT' || method === 'POST')) {
     const { isAdmin, actor } = checkAdminAuth(req);
     if (!isAdmin) {
       sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
@@ -2398,13 +2405,29 @@ export async function handleCommercialApiRoutes(
     }
     const userId = userStatusMatch[1];
     const body = await parseBody(req);
+    const prisma = isPostgresConfigured();
+    if (prisma) {
+      const r = await adminSetUserStatus(userId, body.status, actor, body.reason);
+      if (r.centralGone) {
+        sendJSON(res, 409, {
+          success: false,
+          error: 'mirror_missing_commercial_record',
+          message:
+            r.message ||
+            'This account exists only in the central auth registry (mirror-missing). A commercial record is required before plan/quota/override/device changes. Ask the user to sign in once to create it, then retry.',
+        });
+        return true;
+      }
+      sendJSON(res, r.ok ? 200 : 404, { success: r.ok });
+      return true;
+    }
     const ok = updateUserStatus(userId, body.status, actor, body.reason);
     sendJSON(res, ok ? 200 : 404, { success: ok });
     return true;
   }
 
   const userPlanMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_-]+)\/plan$/);
-  if (userPlanMatch && method === 'PUT') {
+  if (userPlanMatch && (method === 'PUT' || method === 'POST')) {
     const { isAdmin, actor } = checkAdminAuth(req);
     if (!isAdmin) {
       sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
@@ -2412,6 +2435,22 @@ export async function handleCommercialApiRoutes(
     }
     const userId = userPlanMatch[1];
     const body = await parseBody(req);
+    const prisma = isPostgresConfigured();
+    if (prisma) {
+      const r = await adminSetUserPlan(userId, body.planId, actor);
+      if (r.centralGone) {
+        sendJSON(res, 409, {
+          success: false,
+          error: 'mirror_missing_commercial_record',
+          message:
+            r.message ||
+            'This account exists only in the central auth registry (mirror-missing). A commercial record is required before plan/quota/override/device changes. Ask the user to sign in once to create it, then retry.',
+        });
+        return true;
+      }
+      sendJSON(res, r.ok ? 200 : 404, { success: r.ok });
+      return true;
+    }
     const ok = updateUserPlan(userId, body.planId, actor);
     sendJSON(res, ok ? 200 : 404, { success: ok });
     return true;
@@ -2427,6 +2466,22 @@ export async function handleCommercialApiRoutes(
     }
     const userId = userBoostMatch[1];
     const body = await parseBody(req);
+    const prisma = isPostgresConfigured();
+    if (prisma) {
+      const r = await adminBoostQuota(userId, body.type, body.amount, actor);
+      if (r.centralGone) {
+        sendJSON(res, 409, {
+          success: false,
+          error: 'mirror_missing_commercial_record',
+          message:
+            r.message ||
+            'This account exists only in the central auth registry (mirror-missing). A commercial record is required before plan/quota/override/device changes. Ask the user to sign in once to create it, then retry.',
+        });
+        return true;
+      }
+      sendJSON(res, r.success ? 200 : 400, r);
+      return true;
+    }
     const result = boostUserQuota(userId, body.type, body.amount, actor);
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
@@ -2434,7 +2489,7 @@ export async function handleCommercialApiRoutes(
 
   // Phase 23: Admin Enterprise Feature Overrides (MostLogin Parity)
   const userFeaturesMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_-]+)\/features$/);
-  if (userFeaturesMatch && method === 'PUT') {
+  if (userFeaturesMatch && (method === 'PUT' || method === 'POST')) {
     const { isAdmin, actor } = checkAdminAuth(req);
     if (!isAdmin) {
       sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
@@ -2442,6 +2497,22 @@ export async function handleCommercialApiRoutes(
     }
     const userId = userFeaturesMatch[1];
     const body = await parseBody(req);
+    const prisma = isPostgresConfigured();
+    if (prisma) {
+      const r = await adminSetFeatureOverrides(userId, body.overrides || {}, actor);
+      if (r.centralGone) {
+        sendJSON(res, 409, {
+          success: false,
+          error: 'mirror_missing_commercial_record',
+          message:
+            r.message ||
+            'This account exists only in the central auth registry (mirror-missing). A commercial record is required before plan/quota/override/device changes. Ask the user to sign in once to create it, then retry.',
+        });
+        return true;
+      }
+      sendJSON(res, r.success ? 200 : 400, r);
+      return true;
+    }
     const result = setUserFeatureOverrides(userId, body.overrides || {}, actor);
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
@@ -2456,6 +2527,22 @@ export async function handleCommercialApiRoutes(
       return true;
     }
     const userId = userResetDevicesMatch[1];
+    const prisma = isPostgresConfigured();
+    if (prisma) {
+      const r = await adminResetUserDevices(userId, actor);
+      if (r.centralGone) {
+        sendJSON(res, 409, {
+          success: false,
+          error: 'mirror_missing_commercial_record',
+          message:
+            r.message ||
+            'This account exists only in the central auth registry (mirror-missing). A commercial record is required before plan/quota/override/device changes. Ask the user to sign in once to create it, then retry.',
+        });
+        return true;
+      }
+      sendJSON(res, 200, { success: true, unbindCount: r.unbindCount });
+      return true;
+    }
     const result = resetAllUserDevices(userId, actor);
     sendJSON(res, 200, { success: true, unbindCount: result.unbindCount });
     return true;
