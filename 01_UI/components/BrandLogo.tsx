@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   BRAND_CONFIG,
   PRIMARY_LOGO,
@@ -13,7 +13,16 @@ export interface BrandLogoProps {
   className?: string;
   isDark?: boolean;
   alt?: string;
-  onClick?: (e: React.MouseEvent<HTMLImageElement>) => void;
+  onClick?: (e: React.MouseEvent<HTMLImageElement | SVGSVGElement>) => void;
+}
+
+function resolveAssetSrc(assetPath: string): string {
+  if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
+    if (assetPath.startsWith('/')) {
+      return '.' + assetPath;
+    }
+  }
+  return assetPath;
 }
 
 export const BrandLogo: React.FC<BrandLogoProps> = ({
@@ -24,6 +33,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   alt = BRAND_CONFIG.brandName,
   onClick,
 }) => {
+  const [hasError, setHasError] = useState(false);
   let src: string = RED_MARK;
 
   if (variant === 'full' || variant === 'primary') {
@@ -36,6 +46,8 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
     // variant === 'mark' or fallback
     src = isDark ? DARK_MARK : RED_MARK;
   }
+
+  const finalSrc = resolveAssetSrc(src);
 
   const style: React.CSSProperties & { [key: string]: any } = {
     objectFit: 'contain',
@@ -50,13 +62,43 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
     style.height = `${size}px`;
   }
 
+  if (hasError) {
+    const pixelSize = typeof size === 'number' ? size : 32;
+    return (
+      <svg
+        width={pixelSize}
+        height={pixelSize}
+        viewBox="0 0 32 32"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        style={style}
+        onClick={onClick as any}
+        className={`select-none shrink-0 pointer-events-auto ${className}`}
+        aria-label={alt}
+      >
+        <rect width="32" height="32" rx="8" fill="url(#mahi_logo_grad)" />
+        <path
+          d="M8 23V9L16 16.5L24 9V23H20.5V14.2L16 18.5L11.5 14.2V23H8Z"
+          fill="white"
+        />
+        <defs>
+          <linearGradient id="mahi_logo_grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#DC2626" />
+            <stop offset="1" stopColor="#991B1B" />
+          </linearGradient>
+        </defs>
+      </svg>
+    );
+  }
+
   return (
     <img
-      src={src}
+      src={finalSrc}
       alt={alt}
       style={style}
       draggable={false}
       onDragStart={(e) => e.preventDefault()}
+      onError={() => setHasError(true)}
       onClick={onClick}
       className={`object-contain select-none shrink-0 pointer-events-auto ${className}`}
       loading="eager"

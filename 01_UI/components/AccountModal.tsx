@@ -39,8 +39,54 @@ function getAdminApiBaseUrl(): string {
   return (
     (import.meta as any).env?.VITE_MAHI_API_URL ||
     (import.meta as any).env?.VITE_MAHI_ADMIN_URL ||
-    'https://admin.mahibrowser.com'
+    'https://api.mahibrowser.com'
   );
+}
+
+const DESKTOP_PLANS = [
+  { id: 'professional_10', name: 'Professional 10', profiles: 10, rateMonthly: 599 },
+  { id: 'professional_25', name: 'Professional 25', profiles: 25, rateMonthly: 1499 },
+  { id: 'professional_50', name: 'Professional 50', profiles: 50, rateMonthly: 2999 },
+  { id: 'professional_100', name: 'Professional 100', profiles: 100, rateMonthly: 5999 },
+  { id: 'business_starter', name: 'Team 50 (5 Seats)', profiles: 50, rateMonthly: 2999 },
+  { id: 'business_growth', name: 'Team 100 (10 Seats)', profiles: 100, rateMonthly: 3999 },
+  { id: 'business_scale', name: 'Team 200 (20 Seats)', profiles: 200, rateMonthly: 4999 },
+  { id: 'business_enterprise', name: 'Team 300 (Unlimited)', profiles: 300, rateMonthly: 5999 },
+];
+
+function formatAuthError(err: any): string {
+  if (!err) return 'An unexpected error occurred. Please try again.';
+  let msg = typeof err === 'string' ? err : err.message || err.error || '';
+  msg = msg.replace(/^Error invoking remote method '[^']+':\s*Error:\s*/i, '');
+  msg = msg.replace(/^Error invoking remote method '[^']+':\s*/i, '');
+  msg = msg.replace(/^Error:\s*/i, '');
+
+  const lower = msg.toLowerCase();
+  if (
+    lower.includes('http 401') ||
+    lower.includes('unauthorized') ||
+    lower.includes('invalid credentials') ||
+    lower.includes('password incorrect') ||
+    lower.includes('user not found')
+  ) {
+    return 'Invalid email or password. Please verify your credentials or continue with Google.';
+  }
+  if (lower.includes('already exists') || lower.includes('already registered')) {
+    return 'This email is already registered on MAHI Browser. Switched to Sign In — please enter your password or continue with Google.';
+  }
+  if (
+    lower.includes('failed to fetch') ||
+    lower.includes('econnrefused') ||
+    lower.includes('network') ||
+    lower.includes('enotfound') ||
+    lower.includes('offline')
+  ) {
+    return 'Unable to reach MAHI authentication servers. Please check your internet connection.';
+  }
+  if (lower.includes('google')) {
+    return 'This account was registered using Google Sign-In. Please click "Continue with Google" above.';
+  }
+  return msg || 'Authentication request failed. Please try again.';
 }
 
 export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) => {
@@ -106,6 +152,40 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
   const [paymentSubmittedStatus, setPaymentSubmittedStatus] = useState<string | null>(null);
 
   const isUserLoggedIn = Boolean(accountSession?.token);
+  const currentPlan = planLimits?.plan || 'free';
+  const isProActive = planLimits?.isPro || false;
+
+  const dynamicPlans = React.useMemo(() => {
+    if (!pricingCatalog) return DESKTOP_PLANS;
+    const items: Array<{ id: string; name: string; profiles: number; rateMonthly: number }> = [];
+    if (Array.isArray(pricingCatalog.personal)) {
+      for (const p of pricingCatalog.personal) {
+        items.push({
+          id: p.planId,
+          name: p.displayName,
+          profiles: p.profileLimit,
+          rateMonthly: Math.round((p.monthlyPricePaise || 0) / 100),
+        });
+      }
+    }
+    if (Array.isArray(pricingCatalog.business)) {
+      for (const p of pricingCatalog.business) {
+        items.push({
+          id: p.planId,
+          name: `${p.displayName} (${p.seatLimit ? `${p.seatLimit} Seats` : 'Team'})`,
+          profiles: p.profileLimit,
+          rateMonthly: Math.round((p.monthlyPricePaise || 0) / 100),
+        });
+      }
+    }
+    return items.length > 0 ? items : DESKTOP_PLANS;
+  }, [pricingCatalog]);
+
+  const activePlanMeta = dynamicPlans.find(p => p.id === selectedPlanId) || dynamicPlans[0];
+  const effectiveMonthlyInr = selectedBillingCycle === 'ANNUAL' ? Math.round(activePlanMeta.rateMonthly * 0.5) : activePlanMeta.rateMonthly;
+  const priceInr = selectedBillingCycle === 'ANNUAL' ? effectiveMonthlyInr * 12 : effectiveMonthlyInr;
+
+  const latestPayment = (paymentHistory && paymentHistory.length > 0) ? paymentHistory[0] : null;
 
   useEffect(() => {
     if (isOpen) {
@@ -170,8 +250,6 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -215,20 +293,20 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
         }
       } else {
         const errStr = res.error || 'Failed to create account.';
-        if (errStr.toLowerCase().includes('already exists')) {
+        if (errStr.toLowerCase().includes('already exists') || errStr.toLowerCase().includes('already registered')) {
           setErrorMessage('This email is already registered on MAHI Browser. Switched to Sign In — please enter your password or continue with Google.');
           setActiveTab('signin');
         } else {
-          setErrorMessage(errStr);
+          setErrorMessage(formatAuthError(errStr));
         }
       }
     } catch (err: any) {
       const msg = err.message || 'Signup failed.';
-      if (msg.toLowerCase().includes('already exists')) {
+      if (msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('already registered')) {
         setErrorMessage('This email is already registered on MAHI Browser. Switched to Sign In — please enter your password or continue with Google.');
         setActiveTab('signin');
       } else {
-        setErrorMessage(msg);
+        setErrorMessage(formatAuthError(msg));
       }
     } finally {
       setIsLoading(false);
@@ -326,10 +404,10 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
         await fetchActiveSessions().catch(() => {});
         onClose();
       } else {
-        setErrorMessage(res.error || 'Failed to authenticate session token.');
+        setErrorMessage(formatAuthError(res.error || 'Failed to authenticate session token.'));
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Token verification failed.');
+      setErrorMessage(formatAuthError(err.message || 'Token verification failed.'));
     } finally {
       setIsLoading(false);
     }
@@ -369,7 +447,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
         if (errStr.toLowerCase().includes('google') || (res as any).code === 'GOOGLE_ACCOUNT') {
           setErrorMessage('This account was created with Google. Click "Continue with Google" above or use Forgot Password to set a password.');
         } else {
-          setErrorMessage(errStr);
+          setErrorMessage(formatAuthError(errStr));
         }
         if (res.deviceMismatch) {
           setDeviceMismatchError(true);
@@ -380,7 +458,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       if (msg.toLowerCase().includes('google') || err.code === 'GOOGLE_ACCOUNT') {
         setErrorMessage('This account was created with Google. Click "Continue with Google" above or use Forgot Password to set a password.');
       } else {
-        setErrorMessage(msg);
+        setErrorMessage(formatAuthError(msg));
       }
       if (err.device_limit) {
         setDeviceMismatchError(true);
@@ -596,52 +674,6 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     });
   };
 
-  const currentPlan = planLimits?.plan || 'free';
-  const isProActive = planLimits?.isPro || false;
-
-  const DESKTOP_PLANS = [
-    { id: 'professional_10', name: 'Professional 10', profiles: 10, rateMonthly: 599 },
-    { id: 'professional_25', name: 'Professional 25', profiles: 25, rateMonthly: 1499 },
-    { id: 'professional_50', name: 'Professional 50', profiles: 50, rateMonthly: 2999 },
-    { id: 'professional_100', name: 'Professional 100', profiles: 100, rateMonthly: 5999 },
-    { id: 'business_starter', name: 'Team 50 (5 Seats)', profiles: 50, rateMonthly: 2999 },
-    { id: 'business_growth', name: 'Team 100 (10 Seats)', profiles: 100, rateMonthly: 3999 },
-    { id: 'business_scale', name: 'Team 200 (20 Seats)', profiles: 200, rateMonthly: 4999 },
-    { id: 'business_enterprise', name: 'Team 300 (Unlimited)', profiles: 300, rateMonthly: 5999 },
-  ];
-
-  const dynamicPlans = React.useMemo(() => {
-    if (!pricingCatalog) return DESKTOP_PLANS;
-    const items: Array<{ id: string; name: string; profiles: number; rateMonthly: number }> = [];
-    if (Array.isArray(pricingCatalog.personal)) {
-      for (const p of pricingCatalog.personal) {
-        items.push({
-          id: p.planId,
-          name: p.displayName,
-          profiles: p.profileLimit,
-          rateMonthly: Math.round((p.monthlyPricePaise || 0) / 100),
-        });
-      }
-    }
-    if (Array.isArray(pricingCatalog.business)) {
-      for (const p of pricingCatalog.business) {
-        items.push({
-          id: p.planId,
-          name: `${p.displayName} (${p.seatLimit ? `${p.seatLimit} Seats` : 'Team'})`,
-          profiles: p.profileLimit,
-          rateMonthly: Math.round((p.monthlyPricePaise || 0) / 100),
-        });
-      }
-    }
-    return items.length > 0 ? items : DESKTOP_PLANS;
-  }, [pricingCatalog]);
-
-  const activePlanMeta = dynamicPlans.find(p => p.id === selectedPlanId) || dynamicPlans[0];
-  const effectiveMonthlyInr = selectedBillingCycle === 'ANNUAL' ? Math.round(activePlanMeta.rateMonthly * 0.5) : activePlanMeta.rateMonthly;
-  const priceInr = selectedBillingCycle === 'ANNUAL' ? effectiveMonthlyInr * 12 : effectiveMonthlyInr;
-
-  const latestPayment = (paymentHistory && paymentHistory.length > 0) ? paymentHistory[0] : null;
-
   const handleOnlineCheckout = async () => {
     try {
       const res = await createCheckoutSession({
@@ -728,12 +760,14 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     }
   };
 
+  if (!isOpen) return null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-150">
-      <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden relative text-slate-200">
+      <div className="w-full max-w-lg max-h-[92vh] flex flex-col bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden relative text-slate-200">
         
         {/* Header Bar */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/80 bg-slate-950/40">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/80 bg-slate-950/40 shrink-0">
           <div className="flex items-center gap-2.5">
             <BrandLogo variant="icon" className="w-8 h-8 rounded-xl shadow-sm shrink-0" />
             <div>
@@ -755,7 +789,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
         </div>
 
         {/* Content Body */}
-        <div className="p-6 max-h-[80vh] overflow-y-auto">
+        <div className="p-6 overflow-y-auto flex-1">
           {isUserLoggedIn ? (
             /* ========================================================== */
             /* VIEW A: LOGGED IN USER STATUS & SUBSCRIPTION DETAILS       */
