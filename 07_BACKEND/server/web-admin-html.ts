@@ -167,7 +167,7 @@ export function getWebAdminHtml(): string {
       <div class="flex items-center space-x-3">
         <div class="flex items-center space-x-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
           <span class="text-slate-500 font-medium">Admin Key:</span>
-          <input type="password" id="admin-secret-input" value="" placeholder="Enter Admin Secret" class="bg-transparent text-slate-800 font-mono text-xs focus:outline-none w-36">
+          <input type="password" id="admin-secret-input" value="" placeholder="Enter Admin Secret" onkeydown="if(event.key==='Enter')refreshData()" class="bg-transparent text-slate-800 font-mono text-xs focus:outline-none w-36">
         </div>
         <button onclick="refreshData()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center space-x-1.5">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
@@ -187,7 +187,12 @@ export function getWebAdminHtml(): string {
     let dashboardData = null;
 
     function getAdminSecret() {
-      return document.getElementById('admin-secret-input')?.value || '';
+      const input = document.getElementById('admin-secret-input');
+      const val = input?.value?.trim() || localStorage.getItem('mahi_admin_key') || '';
+      if (input && !input.value && val) {
+        input.value = val;
+      }
+      return val;
     }
 
     async function apiFetch(url, options = {}) {
@@ -238,6 +243,10 @@ export function getWebAdminHtml(): string {
     }
 
     async function refreshData() {
+      const input = document.getElementById('admin-secret-input');
+      if (input && input.value.trim()) {
+        localStorage.setItem('mahi_admin_key', input.value.trim());
+      }
       renderPage();
       showToast('Data refreshed successfully');
     }
@@ -1654,6 +1663,8 @@ export function getWebAdminHtml(): string {
           </table>
         </div>
       \`;
+    }
+
     async function renderDemoRequests(statusFilter = '') {
       const container = document.getElementById('content-container');
       const url = statusFilter ? \`/api/v1/commercial/admin/demo-requests?status=\${encodeURIComponent(statusFilter)}\` : '/api/v1/commercial/admin/demo-requests';
@@ -1872,11 +1883,11 @@ export function getWebAdminHtml(): string {
                       ? p.metadata.proofAsset
                       : null;
                     const proofHtml = safeProofAsset
-                      ? \\\`<a href="\${escapeHtml(safeProofAsset)}" target="_blank" rel="noopener noreferrer" class="text-[10px] text-emerald-600 hover:underline block mt-0.5 font-medium">View Proof</a>\\\`
-                      : (p.metadata?.proofAsset ? \\\`<span class="text-[10px] text-slate-400 block mt-0.5">Proof: \${escapeHtml(p.metadata.proofAsset)}</span>\\\` : '');
+                      ? ('<a href="' + escapeHtml(safeProofAsset) + '" target="_blank" rel="noopener noreferrer" class="text-[10px] text-emerald-600 hover:underline block mt-0.5 font-medium">View Proof</a>')
+                      : (p.metadata?.proofAsset ? ('<span class="text-[10px] text-slate-400 block mt-0.5">Proof: ' + escapeHtml(p.metadata.proofAsset) + '</span>') : '');
 
                     const rejectionHtml = (p.metadata?.rejectionReason && isRejected)
-                      ? \\\`<div class="text-[10px] text-rose-600 font-medium mt-0.5 leading-tight">Reason: \${escapeHtml(p.metadata.rejectionReason)}</div>\\\`
+                      ? ('<div class="text-[10px] text-rose-600 font-medium mt-0.5 leading-tight">Reason: ' + escapeHtml(p.metadata.rejectionReason) + '</div>')
                       : '';
 
                     return \`
@@ -1914,7 +1925,7 @@ export function getWebAdminHtml(): string {
                                 Reject
                               </button>
                             </div>
-                          \` : \\\`<span class="text-[11px] text-slate-400 italic">Completed</span>\\\`}
+                          \` : '<span class="text-[11px] text-slate-400 italic">Completed</span>'}
                         </td>
                       </tr>
                     \`;
@@ -1958,6 +1969,11 @@ export function getWebAdminHtml(): string {
     }
 
     // Initial Load
+    const savedAdminKey = localStorage.getItem('mahi_admin_key');
+    if (savedAdminKey) {
+      const input = document.getElementById('admin-secret-input');
+      if (input) input.value = savedAdminKey;
+    }
     renderPage();
   </script>
 </body>
