@@ -2396,7 +2396,7 @@ export async function handleCommercialApiRoutes(
     return true;
   }
 
-  const userStatusMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_-]+)\/status$/);
+  const userStatusMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_:-]+)\/status$/);
   if (userStatusMatch && (method === 'PUT' || method === 'POST')) {
     const { isAdmin, actor } = checkAdminAuth(req);
     if (!isAdmin) {
@@ -2426,7 +2426,7 @@ export async function handleCommercialApiRoutes(
     return true;
   }
 
-  const userPlanMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_-]+)\/plan$/);
+  const userPlanMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_:-]+)\/plan$/);
   if (userPlanMatch && (method === 'PUT' || method === 'POST')) {
     const { isAdmin, actor } = checkAdminAuth(req);
     if (!isAdmin) {
@@ -2457,7 +2457,7 @@ export async function handleCommercialApiRoutes(
   }
 
   // Phase 23: Admin Quota Booster (GoLogin Parity)
-  const userBoostMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_-]+)\/boost$/);
+  const userBoostMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_:-]+)\/boost$/);
   if (userBoostMatch && method === 'POST') {
     const { isAdmin, actor } = checkAdminAuth(req);
     if (!isAdmin) {
@@ -2488,7 +2488,7 @@ export async function handleCommercialApiRoutes(
   }
 
   // Phase 23: Admin Enterprise Feature Overrides (MostLogin Parity)
-  const userFeaturesMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_-]+)\/features$/);
+  const userFeaturesMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_:-]+)\/features$/);
   if (userFeaturesMatch && (method === 'PUT' || method === 'POST')) {
     const { isAdmin, actor } = checkAdminAuth(req);
     if (!isAdmin) {
@@ -2519,7 +2519,7 @@ export async function handleCommercialApiRoutes(
   }
 
   // Phase 23: 1-Click HWID & Machine Unbind (GoLogin Parity)
-  const userResetDevicesMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_-]+)\/reset-devices$/);
+  const userResetDevicesMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_:-]+)\/reset-devices$/);
   if (userResetDevicesMatch && method === 'POST') {
     const { isAdmin, actor } = checkAdminAuth(req);
     if (!isAdmin) {
