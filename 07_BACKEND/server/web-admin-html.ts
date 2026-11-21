@@ -187,12 +187,7 @@ export function getWebAdminHtml(): string {
     let dashboardData = null;
 
     function getAdminSecret() {
-      const input = document.getElementById('admin-secret-input');
-      const val = input?.value?.trim() || localStorage.getItem('mahi_admin_key') || '';
-      if (input && !input.value && val) {
-        input.value = val;
-      }
-      return val;
+      return document.getElementById('admin-secret-input')?.value?.trim() || '';
     }
 
     async function apiFetch(url, options = {}) {
@@ -243,10 +238,6 @@ export function getWebAdminHtml(): string {
     }
 
     async function refreshData() {
-      const input = document.getElementById('admin-secret-input');
-      if (input && input.value.trim()) {
-        localStorage.setItem('mahi_admin_key', input.value.trim());
-      }
       renderPage();
       showToast('Data refreshed successfully');
     }
@@ -1969,11 +1960,6 @@ export function getWebAdminHtml(): string {
     }
 
     // Initial Load
-    const savedAdminKey = localStorage.getItem('mahi_admin_key');
-    if (savedAdminKey) {
-      const input = document.getElementById('admin-secret-input');
-      if (input) input.value = savedAdminKey;
-    }
     renderPage();
   </script>
 </body>

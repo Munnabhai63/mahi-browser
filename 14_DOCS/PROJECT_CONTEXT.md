@@ -272,7 +272,7 @@ The database is powered by SQLite via `sql.js` with automated migrations:
 ### REST API Endpoints (`http://127.0.0.1:32123`)
 - `GET /health` / `GET /api/v2/health` — Service health check
 - `GET /admin` — Web Admin Control Center SPA
-- `GET /super-admin` — Secret Super Admin Console SPA (Master Key PIN: `mahi_super_admin_2026`)
+- `GET /super-admin` — Secret Super Admin Console SPA (Master Key PIN: `<CRIT-LEGACY-REDACTED>`)
 - `GET /api/v2/profiles` — List profiles
 - `POST /api/v2/profiles` — Create profile
 - `GET /api/v2/profiles/:id` — Get profile details
@@ -358,7 +358,7 @@ The database is powered by SQLite via `sql.js` with automated migrations:
   npm run dist
   ```
 - **Open Super Admin Console:**
-  Run `Start-Super-Admin.bat` or navigate to `http://127.0.0.1:32123/super-admin` with Master Key PIN `mahi_super_admin_2026`.
+  Run `Start-Super-Admin.bat` or navigate to `http://127.0.0.1:32123/super-admin` with Master Key PIN `<CRIT-LEGACY-REDACTED>`.
 - **Open Web Admin Control Center:**
   Run `Start-Web-Admin.bat` or navigate to `http://127.0.0.1:32123/admin`.
 

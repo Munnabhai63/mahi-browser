@@ -20,7 +20,7 @@ The MAHI BROWSER ecosystem possesses **five distinct admin interfaces** (two web
   - [12_SCRIPTS/Start-Super-Admin.bat](file:///c:/Users/munaf/Desktop/mahai%20brouser/12_SCRIPTS/Start-Super-Admin.bat#L1-L39).
 - **Credentials & Access Control:**
   - Client-side modal overlay unlock ([super-admin-html.ts:L454](file:///c:/Users/munaf/Desktop/mahai%20brouser/07_BACKEND/server/super-admin-html.ts#L454)).
-  - Accepts hardcoded secrets in browser JS: `mahi_super_admin_2026`, `mahi2026`, or `admin123`.
+  - Accepts hardcoded secrets in browser JS: `<CRIT-LEGACY-REDACTED>`, `<CRIT-LEGACY-REDACTED>`, or `<CRIT-LEGACY-REDACTED>`.
   - **No HTTP authentication** on the backend for `/super-admin` HTML delivery or any `/api/v2/super-admin/*` sub-routes.
 - **Interface Structure:**
   - **Header:** System title ("ROOT GOVERNANCE"), "Emergency Lockdown" button, "Lock Console" button.
@@ -29,7 +29,7 @@ The MAHI BROWSER ecosystem possesses **five distinct admin interfaces** (two web
   - **Tab 3: Global Fleet & HWID (`#tab-fleet-master`):** Master node telemetry table (Hardware ID / Device Key, Hostname/IP, OS/Node, Status) with "Force Revoke" button per device.
   - **Tab 4: SQLite Inspector (`#tab-db-inspector`):** Direct database query dropdown targeting 10 allowed tables (`profiles`, `profile_folders`, `profile_locks`, `fleet_devices`, `feature_flags`, `api_keys_v2`, `proxies`, `activity_logs`, `workspaces`, `licenses`) with a JSON record viewer.
   - **Tab 5: Core Overrides (`#tab-core-overrides`):** 4 toggle switches: "Bypass Commercial Profile Limit", "Strict Lock Collision Enforcement", "Force Canvas & WebGL Noise Injection", "Master Telemetry Streamer", and an "Apply Core Overrides" button.
-  - **Tab 6: Root Authority (`#tab-root-tokens`):** Information card displaying master secrets (`mahi_super_admin_2026`, `Bearer mahi_browser_local_api_2024`, `* Full Root Authority`).
+  - **Tab 6: Root Authority (`#tab-root-tokens`):** Information card displaying master secrets (`<CRIT-LEGACY-REDACTED>`, `Bearer mahi_browser_local_api_2024`, `* Full Root Authority`).
 
 ---
 
@@ -38,7 +38,7 @@ The MAHI BROWSER ecosystem possesses **five distinct admin interfaces** (two web
 - **Source File:** [07_BACKEND/server/web-admin-html.ts](file:///c:/Users/munaf/Desktop/mahai%20brouser/07_BACKEND/server/web-admin-html.ts#L7-L697).
 - **Launcher Script:** [12_SCRIPTS/Start-Web-Admin.bat](file:///c:/Users/munaf/Desktop/mahai%20brouser/12_SCRIPTS/Start-Web-Admin.bat#L1-L38).
 - **Credentials & Access Control:**
-  - Header input `#admin-secret-input` ([web-admin-html.ts:L158](file:///c:/Users/munaf/Desktop/mahai%20brouser/07_BACKEND/server/web-admin-html.ts#L158)), pre-filled by default with `mahi_super_admin_2026`.
+  - Header input `#admin-secret-input` ([web-admin-html.ts:L158](file:///c:/Users/munaf/Desktop/mahai%20brouser/07_BACKEND/server/web-admin-html.ts#L158)), pre-filled by default with `<CRIT-LEGACY-REDACTED>`.
   - Sent via HTTP header `X-Admin-Secret` on all fetch calls to `/api/v1/admin/*`.
   - Validated by [07_BACKEND/commercial/commercial-api-router.ts:L98](file:///c:/Users/munaf/Desktop/mahai%20brouser/07_BACKEND/commercial/commercial-api-router.ts#L98) using `verifyAdminAccess()` or `isValidAdminWebSecret()`.
 - **Interface Structure:**
@@ -63,7 +63,7 @@ The MAHI BROWSER ecosystem possesses **five distinct admin interfaces** (two web
 - **Credentials & Access Control:**
   - Unlocked by entering the Owner PIN / Admin Secret into `#adminSecretInput`.
   - Handled by `adminLogin()` in `useLicenseStore.ts`, validated against `verifyAdminAccess()` in `05_AUTH/admin-auth.ts`.
-  - Accepts dynamic `masterAdminSecret` from `install-secrets.json`, dynamic SQLite `app_settings.owner_pin`, or hardcoded bypasses `MAHI_OWNER_AUTH_2026` / `mahi_pro_owner_master`.
+  - Accepts dynamic `masterAdminSecret` from `install-secrets.json`, dynamic SQLite `app_settings.owner_pin`, or hardcoded bypasses `<CRIT-LEGACY-REDACTED>` / `<CRIT-LEGACY-REDACTED>`.
 - **Interface Structure:**
   - **Admin Login Overlay:** PIN input dialog.
   - **Management Console:** Top controls with Search input, Status dropdown filter, "+ Create License" button, "Change PIN" button, and "Refresh" button.
@@ -312,21 +312,21 @@ Table of ALL endpoints hosted on `127.0.0.1:32123` across [07_BACKEND/commercial
      &rarr; `mahi_browser_local_api_2024` works on EVERY installation regardless of dynamic secrets.
   2. **Admin Web Secret:** [08_SECURITY/install-secrets.ts:L116](file:///c:/Users/munaf/Desktop/mahai%20brouser/08_SECURITY/install-secrets.ts#L116):
      ```typescript
-     return secret === currentSecret || secret === 'mahi_super_admin_2026';
+     return secret === currentSecret || secret === '<CRIT-LEGACY-REDACTED>';
      ```
-     &rarr; `mahi_super_admin_2026` works on EVERY installation.
+     &rarr; `<CRIT-LEGACY-REDACTED>` works on EVERY installation.
   3. **Master Admin PIN / Secret:** [05_AUTH/admin-auth.ts:L13 & L31](file:///c:/Users/munaf/Desktop/mahai%20brouser/05_AUTH/admin-auth.ts#L13):
      ```typescript
-     if (providedSecretOrKey === masterSecret || providedSecretOrKey === 'MAHI_OWNER_AUTH_2026') return true;
+     if (providedSecretOrKey === masterSecret || providedSecretOrKey === '<CRIT-LEGACY-REDACTED>') return true;
      ...
-     const legacyHash = crypto.createHash('sha256').update('mahi_pro_owner_master').digest('hex');
+     const legacyHash = crypto.createHash('sha256').update('<CRIT-LEGACY-REDACTED>').digest('hex');
      ```
-     &rarr; Both `MAHI_OWNER_AUTH_2026` and `mahi_pro_owner_master` provide 100% bypass authority.
+     &rarr; Both `<CRIT-LEGACY-REDACTED>` and `<CRIT-LEGACY-REDACTED>` provide 100% bypass authority.
   4. **Super Admin Front-End PIN:** [07_BACKEND/server/super-admin-html.ts:L454](file:///c:/Users/munaf/Desktop/mahai%20brouser/07_BACKEND/server/super-admin-html.ts#L454):
      ```javascript
-     if (pin === MASTER_SECRET || pin === 'mahi2026' || pin === 'admin123')
+     if (pin === MASTER_SECRET || pin === '<CRIT-LEGACY-REDACTED>' || pin === '<CRIT-LEGACY-REDACTED>')
      ```
-     &rarr; Allows frontend unlock with `mahi2026` or `admin123`.
+     &rarr; Allows frontend unlock with `<CRIT-LEGACY-REDACTED>` or `<CRIT-LEGACY-REDACTED>`.
 
 ---
 
@@ -382,7 +382,7 @@ Table of ALL endpoints hosted on `127.0.0.1:32123` across [07_BACKEND/commercial
   2. [04_LICENSING/license-engine.ts:L28-L36](file:///c:/Users/munaf/Desktop/mahai%20brouser/04_LICENSING/license-engine.ts#L28-L36): Actively generates old non-RSA random hex keys.
   3. [12_SCRIPTS/mint-master-owner.cjs](file:///c:/Users/munaf/Desktop/mahai%20brouser/12_SCRIPTS/mint-master-owner.cjs#L19): Generates `MAHI-OWNER-XXXX-XXXX-XXXX` format.
   4. [12_SCRIPTS/mint-standard-owner.cjs](file:///c:/Users/munaf/Desktop/mahai%20brouser/12_SCRIPTS/mint-standard-owner.cjs#L14): Generates `MAHI-XXXX-XXXX-XXXX-XXXX` format.
-  5. [05_AUTH/admin-auth.ts:L31](file:///c:/Users/munaf/Desktop/mahai%20brouser/05_AUTH/admin-auth.ts#L31): Verifies legacy hash `mahi_pro_owner_master`.
+  5. [05_AUTH/admin-auth.ts:L31](file:///c:/Users/munaf/Desktop/mahai%20brouser/05_AUTH/admin-auth.ts#L31): Verifies legacy hash `<CRIT-LEGACY-REDACTED>`.
 
 ---
 
@@ -391,8 +391,8 @@ Table of ALL endpoints hosted on `127.0.0.1:32123` across [07_BACKEND/commercial
 ### P0 (Critical Vulnerabilities & Bypasses)
 1. In [07_BACKEND/api/local-api-server.ts:L265](file:///c:/Users/munaf/Desktop/mahai%20brouser/07_BACKEND/api/local-api-server.ts#L265), remove direct `execSync` execution of `../mahi-keygen/keygen.cjs` from the client app server, or require strict authenticated owner credentials.
 2. In [08_SECURITY/freemium-guard.ts:L61-L67](file:///c:/Users/munaf/Desktop/mahai%20brouser/08_SECURITY/freemium-guard.ts#L61-L67), eliminate fallback 3 (`validateCurrentLicense()`), making unforgeable RSA signatures (`verifyLicense()`) the sole criterion for PRO tier.
-3. In [08_SECURITY/install-secrets.ts:L107 & L116](file:///c:/Users/munaf/Desktop/mahai%20brouser/08_SECURITY/install-secrets.ts#L107), remove hardcoded fallback strings `'mahi_browser_local_api_2024'` and `'mahi_super_admin_2026'`.
-4. In [05_AUTH/admin-auth.ts:L13 & L31](file:///c:/Users/munaf/Desktop/mahai%20brouser/05_AUTH/admin-auth.ts#L13), remove hardcoded credentials `'MAHI_OWNER_AUTH_2026'` and `'mahi_pro_owner_master'`.
+3. In [08_SECURITY/install-secrets.ts:L107 & L116](file:///c:/Users/munaf/Desktop/mahai%20brouser/08_SECURITY/install-secrets.ts#L107), remove hardcoded fallback strings `'mahi_browser_local_api_2024'` and `'<CRIT-LEGACY-REDACTED>'`.
+4. In [05_AUTH/admin-auth.ts:L13 & L31](file:///c:/Users/munaf/Desktop/mahai%20brouser/05_AUTH/admin-auth.ts#L13), remove hardcoded credentials `'<CRIT-LEGACY-REDACTED>'` and `'<CRIT-LEGACY-REDACTED>'`.
 5. In [07_BACKEND/api/local-api-server.ts:L73 & L81](file:///c:/Users/munaf/Desktop/mahai%20brouser/07_BACKEND/api/local-api-server.ts#L73) and [07_BACKEND/server/app.ts:L32](file:///c:/Users/munaf/Desktop/mahai%20brouser/07_BACKEND/server/app.ts#L32), restrict CORS origin from `'*'` to `null` / local origins to prevent cross-origin drive-by attacks from arbitrary websites.
 6. In [07_BACKEND/api/local-api-server.ts:L325-L375](file:///c:/Users/munaf/Desktop/mahai%20brouser/07_BACKEND/api/local-api-server.ts#L325-L375), wrap `/api/v2/super-admin/*` routes behind `verifyAdminAccess()` to prevent unauthorized listing, deletion, and table inspection.
 7. In [07_BACKEND/server/app.ts:L173](file:///c:/Users/munaf/Desktop/mahai%20brouser/07_BACKEND/server/app.ts#L173), add `assertCanCreateProfile()` to prevent bypassing profile limits when running standalone server.

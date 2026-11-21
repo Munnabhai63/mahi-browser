@@ -44,7 +44,7 @@
 | **2.2e** | Concurrency Race Attack | At 14 profiles, fire 6 concurrent creates | Atomic limit check keeps count <= 15 | Req #1 created; Reqs #2–#6 rejected with limit error. Final count: **15 profiles exactly**. | ✅ PASS |
 | **2.3** | Pro Tier Limit | Activate RSA license, create 100 profiles, try 101st | Rejection with Pro limit error | Throws: `Pro plan limit reached.` | ✅ PASS |
 | **2.4** | Limit Config Tampering | Inspect Super Admin, REST, IPC, DB for limit mutations | Zero mutable pathways for limits | Confirmed: `FREE_PROFILE_LIMIT = 15` and `PRO_PROFILE_LIMIT = 100` are compile-time constants. | ✅ PASS |
-| **3.1** | Old Secrets Attack | POST `/api/v2/super-admin/auth/verify` with legacy passwords | HTTP 401 Unauthorized | Tested: `mahi_super_admin_2026`, `admin123`, `mahi2026`. All returned `Status: 401, {"success":false,"error":"Invalid master secret"}` | ✅ PASS |
+| **3.1** | Old Secrets Attack | POST `/api/v2/super-admin/auth/verify` with legacy passwords | HTTP 401 Unauthorized | Tested: `<CRIT-LEGACY-REDACTED>`, `<CRIT-LEGACY-REDACTED>`, `<CRIT-LEGACY-REDACTED>`. All returned `Status: 401, {"success":false,"error":"Invalid master secret"}` | ✅ PASS |
 | **3.2** | CORS Attack | Request with `Origin: https://evil-attacker.example` | No `Access-Control-Allow-Origin` | `Status: 200`, `ACAO: NONE (BLOCKED)`. Browser denies cross-origin reads. | ✅ PASS |
 | **3.3** | DNS Rebinding Attack | Request with `Host: evil.com` | HTTP 403 Forbidden | `Status: 403`, Body: `Forbidden: Invalid Host header` | ✅ PASS |
 | **3.4** | Remote Exposure Check | Socket binding inspection | Loopback `127.0.0.1` binding only | `netstat -ano`: `TCP 127.0.0.1:32123 LISTENING`. `0.0.0.0` is completely absent. | ✅ PASS |
@@ -186,9 +186,9 @@
 
 #### 3.1 Old Secrets Attack
 - Tested legacy credentials against `POST http://127.0.0.1:32123/api/v2/super-admin/auth/verify`:
-  - `{"secret":"mahi_super_admin_2026"}` -> **Status: 401**, Body: `{"success":false,"error":"Invalid master secret"}`
-  - `{"secret":"admin123"}` -> **Status: 401**, Body: `{"success":false,"error":"Invalid master secret"}`
-  - `{"secret":"mahi2026"}` -> **Status: 401**, Body: `{"success":false,"error":"Invalid master secret"}`
+  - `{"secret":"<CRIT-LEGACY-REDACTED>"}` -> **Status: 401**, Body: `{"success":false,"error":"Invalid master secret"}`
+  - `{"secret":"<CRIT-LEGACY-REDACTED>"}` -> **Status: 401**, Body: `{"success":false,"error":"Invalid master secret"}`
+  - `{"secret":"<CRIT-LEGACY-REDACTED>"}` -> **Status: 401**, Body: `{"success":false,"error":"Invalid master secret"}`
 
 #### 3.2 Cross-Origin Resource Sharing (CORS) Attack
 - Request: `curl -i -H "Origin: https://evil-attacker.example" http://127.0.0.1:32123/api/v2/profiles`
@@ -235,11 +235,11 @@ Unpacked `release/win-unpacked/resources/app.asar` (67.6 MB) and conducted exhau
 
 | Target String | Matches in `app.asar` | Locations & Analysis |
 | :--- | :---: | :--- |
-| `mahi_super_admin_2026` | **0** | Clean |
-| `MAHI_OWNER_AUTH_2026` | **0** | Clean |
-| `mahi_pro_owner_master` | **0** | Clean |
-| `admin123` | **0** | Clean |
-| `mahi2026` | **0** | Clean |
+| `<CRIT-LEGACY-REDACTED>` | **0** | Clean |
+| `<CRIT-LEGACY-REDACTED>` | **0** | Clean |
+| `<CRIT-LEGACY-REDACTED>` | **0** | Clean |
+| `<CRIT-LEGACY-REDACTED>` | **0** | Clean |
+| `<CRIT-LEGACY-REDACTED>` | **0** | Clean |
 | `BEGIN PRIVATE KEY` | **0** | Clean (Zero private keys packaged) |
 | `mahi_browser_local_api_2024` | **1** | Found in **orphaned uncleaned directory** `dist-electron/shared/constants/defaults.js` (stale file from August 23, 2026). *Note: The active bundled runtime (`dist-electron/main/index.js`) does NOT contain this string.* |
 | `keygen` | **13** | - 1 React HTML `<keygen>` element reference in UI bundle<br>- 6 `KeygenProvider` references in `electron-updater` (keygen.sh commercial updater)<br>- 4 developer-facing string notices in `index.js`: `"Use external keygen at ../mahi-keygen/keygen.cjs"`<br>- 2 Playwright trace/dashboard references |
