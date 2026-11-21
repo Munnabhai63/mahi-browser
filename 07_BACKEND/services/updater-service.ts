@@ -539,7 +539,8 @@ export async function applyAndRestartUpdate(options?: UpdateInstallOptions): Pro
     if (app && app.isPackaged) {
       const autoUpdater = getAutoUpdater();
       if (!autoUpdater) return { success: false, error: 'autoUpdater not available' };
-      autoUpdater.quitAndInstall();
+      // Pass (isSilent: true, isForceRunAfter: true) for zero-wizard seamless background update
+      autoUpdater.quitAndInstall(true, true);
     } else {
       // Development / Staging simulation
       if (app && typeof app.relaunch === 'function') {

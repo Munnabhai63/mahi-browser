@@ -54,8 +54,8 @@
     }
   },
   "nsis": {
-    "oneClick": false,
-    "allowToChangeInstallationDirectory": true,
+    "oneClick": true,
+    "allowToChangeInstallationDirectory": false,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
     "shortcutName": "MAHI Browser",
@@ -63,7 +63,8 @@
     "installerIcon": "13_ASSETS/resources/icon.ico",
     "uninstallerIcon": "13_ASSETS/resources/icon.ico",
     "deleteAppDataOnUninstall": false,
-    "perMachine": false
+    "perMachine": false,
+    "differentialPackage": true
   },
   "portable": {
     "artifactName": "MAHI-Browser-Portable-${version}.${ext}"
