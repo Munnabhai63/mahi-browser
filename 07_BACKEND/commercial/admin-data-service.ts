@@ -74,6 +74,8 @@ export interface UserDetailResponse {
   missingMirror?: boolean;
 }
 
+const warnedMissingPlans = new Set<string>();
+
 /**
  * 1. Admin Dashboard Summary & KPI Telemetry
  */
@@ -87,7 +89,8 @@ export async function adminGetDashboardSummary(): Promise<DashboardSummaryRespon
         authUsers,
         allLicenses,
         activeDevicesCount,
-        plansCount,
+        allPlans,
+        activeSubs,
         recentLogs,
         openTicketsCount,
         escalatedTicketsCount,
@@ -96,7 +99,8 @@ export async function adminGetDashboardSummary(): Promise<DashboardSummaryRespon
         prisma.auth_users.findMany(),
         prisma.licenses.findMany(),
         prisma.commercial_devices.count({ where: { status: 'ACTIVE' } }),
-        prisma.commercial_plans.count(),
+        prisma.commercial_plans.findMany(),
+        prisma.commercial_subscriptions.findMany({ where: { status: 'ACTIVE' } }),
         prisma.commercial_audit_logs.findMany({
           orderBy: { created_at: 'desc' },
           take: 10,
@@ -181,6 +185,22 @@ export async function adminGetDashboardSummary(): Promise<DashboardSummaryRespon
       allSignups.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       const recentSignups = allSignups.slice(0, 10);
 
+      const planMap = new Map(allPlans.map((p) => [p.id, p]));
+      const rawRevenue = activeSubs.reduce((acc, sub) => {
+        const plan = planMap.get(sub.plan_id);
+        if (!plan) {
+          const planId = sub.plan_id || 'unknown';
+          if (!warnedMissingPlans.has(planId)) {
+            warnedMissingPlans.add(planId);
+            console.warn(`[AdminDataService] Active subscription references missing plan: ${planId}`);
+          }
+          return acc;
+        }
+        const price = typeof plan.price_monthly === 'number' ? plan.price_monthly : Number(plan.price_monthly) || 0;
+        return price > 0 ? acc + price : acc;
+      }, 0);
+      const revenueEstMonthly = Math.round(rawRevenue * 100) / 100;
+
       return {
         totalUsers,
         centralUsers,
@@ -192,10 +212,10 @@ export async function adminGetDashboardSummary(): Promise<DashboardSummaryRespon
         expiredLicenses,
         activeDevices: activeDevicesCount,
         authorizedDevices: activeDevicesCount,
-        activeSubscriptions: activeUsers,
-        totalPlans: plansCount,
-        activePlans: plansCount,
-        revenueEstMonthly: activeLicenses * 29,
+        activeSubscriptions: activeSubs.length,
+        totalPlans: allPlans.length,
+        activePlans: allPlans.filter((p) => p.is_active === 1).length,
+        revenueEstMonthly,
         recentAuditLogs,
         recentSignups,
         openTickets: openTicketsCount,
@@ -259,7 +279,20 @@ function sqliteGetDashboardSummary(): DashboardSummaryResponse {
   const devices = getAllCommercialDevices();
   const activeDevices = devices.filter((d) => d.status === 'ACTIVE').length;
 
-  const plans = getCommercialPlans(true);
+  let activeSubs: any[] = [];
+  try {
+    activeSubs = db.prepare("SELECT * FROM commercial_subscriptions WHERE status = 'ACTIVE'").all() as any[];
+  } catch {
+    activeSubs = [];
+  }
+
+  let allPlans: any[] = [];
+  try {
+    allPlans = db.prepare('SELECT * FROM commercial_plans').all() as any[];
+  } catch {
+    allPlans = [];
+  }
+
   const { logs: recentAuditLogs } = getCommercialAuditLogs({ limit: 10 });
   const ticketMetrics = getSupportTicketMetrics();
 
@@ -278,6 +311,22 @@ function sqliteGetDashboardSummary(): DashboardSummaryResponse {
   allSignups.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const recentSignups = allSignups.slice(0, 10);
 
+  const planMap = new Map(allPlans.map((p: any) => [p.id, p]));
+  const rawRevenue = activeSubs.reduce((acc: number, sub: any) => {
+    const plan = planMap.get(sub.plan_id);
+    if (!plan) {
+      const planId = sub.plan_id || 'unknown';
+      if (!warnedMissingPlans.has(planId)) {
+        warnedMissingPlans.add(planId);
+        console.warn(`[AdminDataService] Active subscription references missing plan: ${planId}`);
+      }
+      return acc;
+    }
+    const price = typeof plan.price_monthly === 'number' ? plan.price_monthly : Number(plan.price_monthly) || 0;
+    return price > 0 ? acc + price : acc;
+  }, 0);
+  const revenueEstMonthly = Math.round(rawRevenue * 100) / 100;
+
   return {
     totalUsers,
     centralUsers,
@@ -289,10 +338,10 @@ function sqliteGetDashboardSummary(): DashboardSummaryResponse {
     expiredLicenses,
     activeDevices,
     authorizedDevices: activeDevices,
-    activeSubscriptions: activeUsers,
-    totalPlans: plans.length,
-    activePlans: plans.length,
-    revenueEstMonthly: activeLicenses * 29,
+    activeSubscriptions: activeSubs.length,
+    totalPlans: allPlans.length,
+    activePlans: allPlans.filter((p: any) => p.is_active === 1 || p.is_active === true).length,
+    revenueEstMonthly,
     recentAuditLogs,
     recentSignups,
     openTickets: ticketMetrics.open,
