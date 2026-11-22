@@ -107,6 +107,7 @@ import {
 import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getCentralRepository, isPostgresConfigured } from '../../06_DATABASE/central-repository.js';
+import { getPrismaClient } from '../../06_DATABASE/prisma-client.js';
 import { reconcileUserPlanOnLogin } from './commercial-reconcile-service.js';
 import {
   paymentService,
@@ -935,8 +936,21 @@ export async function handleCommercialApiRoutes(
       return true;
     }
 
-    const db = getDatabase();
-    const pending = db.prepare('SELECT * FROM commercial_payments WHERE external_order_id = ? OR id = ?').get(razorpay_order_id, razorpay_order_id) as any;
+    let pending: any = null;
+    if (isPostgresConfigured()) {
+      const prisma = getPrismaClient();
+      pending = await prisma.commercial_payments.findFirst({
+        where: {
+          OR: [
+            { external_order_id: razorpay_order_id },
+            { id: razorpay_order_id },
+          ],
+        },
+      });
+    } else {
+      const db = getDatabase();
+      pending = db.prepare('SELECT * FROM commercial_payments WHERE external_order_id = ? OR id = ?').get(razorpay_order_id, razorpay_order_id) as any;
+    }
     if (!pending) {
       sendJSON(res, 404, { success: false, error: 'Order not found.' });
       return true;

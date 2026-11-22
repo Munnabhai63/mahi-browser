@@ -15,14 +15,26 @@
 import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { isPostgresConfigured, getCentralRepository } from '../../06_DATABASE/central-repository.js';
-import { getCommercialPlans, getCommercialPlanById } from './commercial-plan-service.js';
+import { getPrismaClient } from '../../06_DATABASE/prisma-client.js';
+import { getCommercialPlans, getCommercialPlanById, DEFAULT_COMMERCIAL_PLANS } from './commercial-plan-service.js';
 import { CommercialPlan } from '../../10_CONFIG/shared/types/commercial.js';
 import { calculateAuthoritativeOrderTotal, legacyPlanIdToCanonical } from './canonical-plan-catalog.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 import { getEmailProvider } from '../../05_AUTH/email-service.js';
 import { SUPPORT_EMAIL } from '../../10_CONFIG/contact-config.js';
 import { getUserById } from './commercial-auth-service.js';
-import { createLicense } from '../../04_LICENSING/license-engine.js';
+import { getCentralUserByIdAsync } from '../../05_AUTH/central-auth-service.js';
+import { createLicense, generateLicenseKey } from '../../04_LICENSING/license-engine.js';
+
+function resolveCommercialPlan(planId: string): CommercialPlan | null {
+  const plan = getCommercialPlanById(planId);
+  if (plan) return plan;
+  const normalized = (planId || '').toLowerCase().trim();
+  const fallback = DEFAULT_COMMERCIAL_PLANS.find(
+    (p) => p.id === planId || p.id.toLowerCase() === normalized || p.tier.toLowerCase() === normalized
+  );
+  return fallback || null;
+}
 
 export type PaymentProviderType = 'stripe' | 'razorpay' | 'youpi_pg' | 'simulation';
 
@@ -1077,8 +1089,7 @@ export class PaymentService {
     licence: { rawKey: string; keyMasked: string } | null;
     planSyncFailed?: boolean;
   }> {
-    const db = getDatabase();
-    const targetPlan = getCommercialPlanById(params.planId);
+    const targetPlan = resolveCommercialPlan(params.planId);
     if (!targetPlan) {
       throw new Error(`PLAN_NOT_FOUND: Unknown plan "${params.planId}".`);
     }
@@ -1091,169 +1102,351 @@ export class PaymentService {
     const invoiceId = `inv_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 
     let licenceResult: { rawKey: string; keyMasked: string } | null = null;
+    let planSyncFailed = false;
 
-    const runUpdates = () => {
-      // 1. Payment Record
-      const existingPayment = db.prepare('SELECT id FROM commercial_payments WHERE external_payment_id = ?').get(params.externalPaymentId) as any;
-      if (existingPayment) {
-        db.prepare(`
-          UPDATE commercial_payments
-          SET status = 'SUCCEEDED', receipt_url = ?, updated_at = ?
-          WHERE id = ?
-        `).run(params.receiptUrl || null, now, existingPayment.id);
-      } else {
-        db.prepare(`
-          INSERT INTO commercial_payments (
-            id, user_id, subscription_id, provider, external_order_id, external_payment_id,
-            amount_cents, currency, status, plan_id, billing_cycle, receipt_url, metadata_json,
-            created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SUCCEEDED', ?, ?, ?, ?, ?, ?)
-        `).run(
-          `pay_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
-          params.userId,
-          subId,
-          params.provider,
-          params.externalOrderId || null,
-          params.externalPaymentId,
-          params.amountCents,
-          params.currency,
-          params.planId,
-          params.billingCycle,
-          params.receiptUrl || null,
-          JSON.stringify(params.metadata || {}),
-          now,
-          now
-        );
-      }
+    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
+    if (prisma) {
+      await prisma.$transaction(async (tx) => {
+        // 1) payment
+        const existingPayment = await tx.commercial_payments.findFirst({
+          where: { external_payment_id: params.externalPaymentId },
+        });
+        if (existingPayment) {
+          await tx.commercial_payments.update({
+            where: { id: existingPayment.id },
+            data: {
+              status: 'SUCCEEDED',
+              receipt_url: params.receiptUrl || null,
+              updated_at: now,
+            },
+          });
+        } else {
+          await tx.commercial_payments.create({
+            data: {
+              id: `pay_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+              user_id: params.userId,
+              subscription_id: subId,
+              provider: params.provider,
+              external_order_id: params.externalOrderId || null,
+              external_payment_id: params.externalPaymentId,
+              amount_cents: params.amountCents,
+              currency: params.currency,
+              status: 'SUCCEEDED',
+              plan_id: params.planId,
+              billing_cycle: params.billingCycle,
+              receipt_url: params.receiptUrl || null,
+              metadata_json: JSON.stringify(params.metadata || {}),
+              created_at: now,
+              updated_at: now,
+            },
+          });
+        }
 
-      // 2. Create Invoice Record
-      db.prepare(`
-        INSERT INTO commercial_billing_invoices (
-          id, user_id, payment_id, invoice_number, amount_cents, currency, status,
-          period_start, period_end, pdf_url, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'PAID', ?, ?, ?, ?)
-      `).run(
-        invoiceId,
-        params.userId,
-        params.externalPaymentId,
-        invoiceNumber,
-        params.amountCents,
-        params.currency,
-        now,
-        expiresAt,
-        params.receiptUrl || null,
-        now
-      );
+        // 2) invoice
+        await tx.commercial_billing_invoices.create({
+          data: {
+            id: invoiceId,
+            user_id: params.userId,
+            payment_id: params.externalPaymentId,
+            invoice_number: invoiceNumber,
+            amount_cents: params.amountCents,
+            currency: params.currency,
+            status: 'PAID',
+            period_start: now,
+            period_end: expiresAt,
+            pdf_url: params.receiptUrl || null,
+            created_at: now,
+          },
+        });
 
-      // 3. Ensure commercial_users and commercial_plans rows exist to satisfy FK constraints under PRAGMA foreign_keys = ON
-      db.prepare(`
-        INSERT OR IGNORE INTO commercial_users (id, email, password_hash, salt, name, plan_id, created_at, updated_at)
-        VALUES (?, ?, 'placeholder', 'placeholder', 'Subscriber', ?, ?, ?)
-      `).run(params.userId, `${params.userId}@commercial.local`, params.planId, now, now);
-      db.prepare(`
-        INSERT OR IGNORE INTO commercial_plans (id, name, tier, limits_json, created_at)
-        VALUES (?, 'Plan', 'pro', '{}', ?)
-      `).run(params.planId, now);
+        // 3) subscription
+        await tx.commercial_subscriptions.create({
+          data: {
+            id: subId,
+            user_id: params.userId,
+            plan_id: params.planId,
+            status: 'ACTIVE',
+            billing_cycle: params.billingCycle,
+            starts_at: now,
+            expires_at: expiresAt,
+            payment_provider: params.provider,
+            external_sub_id: params.externalOrderId || null,
+            created_at: now,
+          },
+        });
+      });
 
-      // 4. Activate Subscription in Database
-      db.prepare(`
-        INSERT INTO commercial_subscriptions (
-          id, user_id, plan_id, status, billing_cycle, starts_at, expires_at,
-          payment_provider, external_sub_id, created_at
-        ) VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?)
-      `).run(
-        subId,
-        params.userId,
-        params.planId,
-        params.billingCycle,
-        now,
-        expiresAt,
-        params.provider,
-        params.externalOrderId || null,
-        now
-      );
-
-      // 5. Update User Plan & Quotas in auth_users
+      // AFTER the transaction (c4)
       try {
-        db.prepare(`
-          UPDATE auth_users
-          SET plan_id = ?, profile_quota = ?, updated_at = ?
-          WHERE id = ?
-        `).run(params.planId, targetPlan.limits.maxProfiles, now, params.userId);
+        await prisma.auth_users.update({
+          where: { id: params.userId },
+          data: {
+            plan_id: params.planId,
+            profile_quota: targetPlan.limits.maxProfiles,
+            updated_at: now,
+          },
+        });
       } catch (err: any) {
-        console.error('[PaymentService] SQLite auth_users plan update error:', err?.message);
+        console.error('[PaymentService][CRITICAL] PG plan sync error', err?.message);
+        planSyncFailed = true;
       }
 
-      // 6. Update User Plan in commercial_users
+      if (planSyncFailed) {
+        console.error('[PaymentService][RECONCILE_REQUIRED] Subscription active but PG out of sync for user', params.userId);
+      }
+
       try {
-        db.prepare(`
-          UPDATE commercial_users
-          SET plan_id = ?
-          WHERE id = ?
-        `).run(params.planId, params.userId);
+        const commUser = await prisma.commercial_users.findFirst({
+          where: { id: params.userId },
+        });
+        if (commUser) {
+          await prisma.commercial_users.update({
+            where: { id: params.userId },
+            data: {
+              plan_id: params.planId,
+              updated_at: now,
+            },
+          });
+        } else {
+          console.warn(`[PaymentService] Mirror-missing user ${params.userId} in commercial_users; skipping commercial_users update.`);
+        }
       } catch (err: any) {
-        console.error('[PaymentService] SQLite commercial_users plan update error:', err?.message);
+        console.warn(`[PaymentService] Failed to update commercial_users plan_id for ${params.userId}:`, err?.message);
       }
 
-      // 7. Step 7: Create License in Database (with idempotency duplicate guard)
       try {
-        const existingLicence = db.prepare(
-          'SELECT id, key_masked FROM licenses WHERE account_id = ? AND (notes LIKE ? OR notes LIKE ?)'
-        ).get(params.userId, `%${params.externalPaymentId}%`, `%${subId}%`) as any;
+        const existing = await prisma.licenses.findFirst({
+          where: {
+            account_id: params.userId,
+            AND: [
+              {
+                OR: [
+                  { notes: { contains: params.externalPaymentId } },
+                  { notes: { contains: subId } },
+                ],
+              },
+            ],
+          },
+        });
 
-        if (!existingLicence) {
+        if (!existing) {
           let customerName = params.userId;
           try {
-            const u = getUserById(params.userId);
-            if (u?.name) customerName = u.name;
-            else if (u?.email) customerName = u.email;
+            const u = await getCentralUserByIdAsync(params.userId);
+            if (u?.name) customerName = u.name.trim();
+            else if (u?.email) customerName = u.email.trim();
           } catch {}
 
-          const created = createLicense({
-            durationType: 'CUSTOM',
-            customerName,
-            accountId: params.userId,
-            maxDevices: targetPlan.limits.maxDevices || 1,
-            startsAt: now,
-            expiresAt,
-            notes: `Plan: ${params.planId} | Payment: ${params.externalPaymentId} | Sub: ${subId}`,
-          }, 'PAYMENT_GATEWAY');
+          const { rawKey, keyHash, keyMasked } = generateLicenseKey();
+          await prisma.licenses.create({
+            data: {
+              id: crypto.randomUUID(),
+              license_key_hash: keyHash,
+              key_masked: keyMasked,
+              customer_name: customerName,
+              account_id: params.userId,
+              status: 'ACTIVE',
+              duration_type: 'CUSTOM',
+              max_devices: targetPlan.limits.maxDevices || 1,
+              starts_at: now,
+              expires_at: expiresAt,
+              created_at: now,
+              created_by: 'PAYMENT_GATEWAY',
+              revoked_at: null,
+              last_validation_at: null,
+              notes: `Plan: ${params.planId} | Payment: ${params.externalPaymentId} | Sub: ${subId}`,
+            },
+          });
+          licenceResult = { rawKey, keyMasked };
 
-          if (created && created.rawLicenseKey) {
-            licenceResult = {
-              rawKey: created.rawLicenseKey,
-              keyMasked: created.license.keyMasked,
-            };
+          try {
+            await prisma.commercial_audit_logs.create({
+              data: {
+                id: crypto.randomUUID(),
+                actor_id: params.userId,
+                actor_name: customerName,
+                actor_role: 'SYSTEM',
+                action: 'LICENSE_ISSUED',
+                target_type: 'LICENSE',
+                target_id: params.userId,
+                details: `License issued on plan approval: ${params.planId} (sub ${subId})`,
+                ip_address: null,
+                result: 'SUCCESS',
+                created_at: now,
+              },
+            });
+          } catch (auditErr: any) {
+            console.warn('[PaymentService] Failed to log license audit log:', auditErr?.message);
           }
         }
       } catch (licErr: any) {
         console.warn(`[PaymentService] licence creation failed for user ${params.userId}:`, licErr?.message || licErr);
         licenceResult = null;
       }
-    };
-
-    if (typeof (db as any).transaction === 'function') {
-      (db as any).transaction(runUpdates)();
     } else {
-      runUpdates();
-    }
+      const db = getDatabase();
+      const runUpdates = () => {
+        // 1. Payment Record
+        const existingPayment = db.prepare('SELECT id FROM commercial_payments WHERE external_payment_id = ?').get(params.externalPaymentId) as any;
+        if (existingPayment) {
+          db.prepare(`
+            UPDATE commercial_payments
+            SET status = 'SUCCEEDED', receipt_url = ?, updated_at = ?
+            WHERE id = ?
+          `).run(params.receiptUrl || null, now, existingPayment.id);
+        } else {
+          db.prepare(`
+            INSERT INTO commercial_payments (
+              id, user_id, subscription_id, provider, external_order_id, external_payment_id,
+              amount_cents, currency, status, plan_id, billing_cycle, receipt_url, metadata_json,
+              created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SUCCEEDED', ?, ?, ?, ?, ?, ?)
+          `).run(
+            `pay_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+            params.userId,
+            subId,
+            params.provider,
+            params.externalOrderId || null,
+            params.externalPaymentId,
+            params.amountCents,
+            params.currency,
+            params.planId,
+            params.billingCycle,
+            params.receiptUrl || null,
+            JSON.stringify(params.metadata || {}),
+            now,
+            now
+          );
+        }
 
-    let planSyncFailed = false;
-    if (isPostgresConfigured()) {
-      try {
-        const repo = getCentralRepository();
-        await repo.updateAuthUser(params.userId, {
-          plan_id: params.planId,
-          profile_quota: targetPlan.limits.maxProfiles,
-        });
-      } catch (err: any) {
-        console.error('[PaymentService][CRITICAL] PG plan sync error', err?.message);
-        planSyncFailed = true;
+        // 2. Create Invoice Record
+        db.prepare(`
+          INSERT INTO commercial_billing_invoices (
+            id, user_id, payment_id, invoice_number, amount_cents, currency, status,
+            period_start, period_end, pdf_url, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, 'PAID', ?, ?, ?, ?)
+        `).run(
+          invoiceId,
+          params.userId,
+          params.externalPaymentId,
+          invoiceNumber,
+          params.amountCents,
+          params.currency,
+          now,
+          expiresAt,
+          params.receiptUrl || null,
+          now
+        );
+
+        // 3. Ensure commercial_users and commercial_plans rows exist to satisfy FK constraints under PRAGMA foreign_keys = ON
+        db.prepare(`
+          INSERT OR IGNORE INTO commercial_users (id, email, password_hash, salt, name, plan_id, created_at, updated_at)
+          VALUES (?, ?, 'placeholder', 'placeholder', 'Subscriber', ?, ?, ?)
+        `).run(params.userId, `${params.userId}@commercial.local`, params.planId, now, now);
+        db.prepare(`
+          INSERT OR IGNORE INTO commercial_plans (id, name, tier, limits_json, created_at)
+          VALUES (?, 'Plan', 'pro', '{}', ?)
+        `).run(params.planId, now);
+
+        // 4. Activate Subscription in Database
+        db.prepare(`
+          INSERT INTO commercial_subscriptions (
+            id, user_id, plan_id, status, billing_cycle, starts_at, expires_at,
+            payment_provider, external_sub_id, created_at
+          ) VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?)
+        `).run(
+          subId,
+          params.userId,
+          params.planId,
+          params.billingCycle,
+          now,
+          expiresAt,
+          params.provider,
+          params.externalOrderId || null,
+          now
+        );
+
+        // 5. Update User Plan & Quotas in auth_users
+        try {
+          db.prepare(`
+            UPDATE auth_users
+            SET plan_id = ?, profile_quota = ?, updated_at = ?
+            WHERE id = ?
+          `).run(params.planId, targetPlan.limits.maxProfiles, now, params.userId);
+        } catch (err: any) {
+          console.error('[PaymentService] SQLite auth_users plan update error:', err?.message);
+        }
+
+        // 6. Update User Plan in commercial_users
+        try {
+          db.prepare(`
+            UPDATE commercial_users
+            SET plan_id = ?
+            WHERE id = ?
+          `).run(params.planId, params.userId);
+        } catch (err: any) {
+          console.error('[PaymentService] SQLite commercial_users plan update error:', err?.message);
+        }
+
+        // 7. Step 7: Create License in Database (with idempotency duplicate guard)
+        try {
+          const existingLicence = db.prepare(
+            'SELECT id, key_masked FROM licenses WHERE account_id = ? AND (notes LIKE ? OR notes LIKE ?)'
+          ).get(params.userId, `%${params.externalPaymentId}%`, `%${subId}%`) as any;
+
+          if (!existingLicence) {
+            let customerName = params.userId;
+            try {
+              const u = getUserById(params.userId);
+              if (u?.name) customerName = u.name;
+              else if (u?.email) customerName = u.email;
+            } catch {}
+
+            const created = createLicense({
+              durationType: 'CUSTOM',
+              customerName,
+              accountId: params.userId,
+              maxDevices: targetPlan.limits.maxDevices || 1,
+              startsAt: now,
+              expiresAt,
+              notes: `Plan: ${params.planId} | Payment: ${params.externalPaymentId} | Sub: ${subId}`,
+            }, 'PAYMENT_GATEWAY');
+
+            if (created && created.rawLicenseKey) {
+              licenceResult = {
+                rawKey: created.rawLicenseKey,
+                keyMasked: created.license.keyMasked,
+              };
+            }
+          }
+        } catch (licErr: any) {
+          console.warn(`[PaymentService] licence creation failed for user ${params.userId}:`, licErr?.message || licErr);
+          licenceResult = null;
+        }
+      };
+
+      if (typeof (db as any).transaction === 'function') {
+        (db as any).transaction(runUpdates)();
+      } else {
+        runUpdates();
       }
-    }
 
-    if (planSyncFailed) {
-      console.error('[PaymentService][RECONCILE_REQUIRED] Subscription active but PG out of sync for user', params.userId);
+      if (isPostgresConfigured()) {
+        try {
+          const repo = getCentralRepository();
+          await repo.updateAuthUser(params.userId, {
+            plan_id: params.planId,
+            profile_quota: targetPlan.limits.maxProfiles,
+          });
+        } catch (err: any) {
+          console.error('[PaymentService][CRITICAL] PG plan sync error', err?.message);
+          planSyncFailed = true;
+        }
+      }
+
+      if (planSyncFailed) {
+        console.error('[PaymentService][RECONCILE_REQUIRED] Subscription active but PG out of sync for user', params.userId);
+      }
     }
 
     const subSummary: UserSubscriptionSummary = {
@@ -1372,20 +1565,13 @@ export class PaymentService {
     extraMembers?: number;
     extraProxyGb?: number;
   }): Promise<{ paymentId: string; status: string; utr: string; amountPaise: number; createdAt: string }> {
-    const db = getDatabase();
     const cleanUtr = (params.utr || '').trim();
 
     if (!cleanUtr || cleanUtr.length < 6 || cleanUtr.length > 30 || !/^[a-zA-Z0-9]+$/.test(cleanUtr)) {
       throw new Error('INVALID_UTR: Transaction reference must be 6-30 alphanumeric characters.');
     }
 
-    // Check duplicate UTR
-    const existing = db.prepare('SELECT id FROM commercial_payments WHERE external_payment_id = ?').get(cleanUtr) as any;
-    if (existing) {
-      throw new Error('UTR_ALREADY_EXISTS: This UTR has already been submitted.');
-    }
-
-    const plan = getCommercialPlanById(params.planId);
+    const plan = resolveCommercialPlan(params.planId);
     if (!plan || !plan.isActive) {
       throw new Error(`Selected plan "${params.planId}" is not available for purchase.`);
     }
@@ -1405,44 +1591,112 @@ export class PaymentService {
     const externalOrderId = `upi_ord_${Date.now()}`;
     const now = new Date().toISOString();
 
-    db.prepare(`
-      INSERT INTO commercial_payments (
-        id, user_id, subscription_id, provider, external_order_id, external_payment_id,
-        amount_cents, currency, status, plan_id, billing_cycle, receipt_url, metadata_json,
-        created_at, updated_at
-      ) VALUES (?, ?, NULL, 'manual_upi', ?, ?, ?, 'INR', 'PENDING_VERIFICATION', ?, ?, ?, ?, ?, ?)
-    `).run(
-      paymentId,
-      params.userId,
-      externalOrderId,
-      cleanUtr,
-      amountPaise,
-      plan.id,
-      cycle,
-      params.proofAsset || null,
-      JSON.stringify({
-        utr: cleanUtr,
-        proofAsset: params.proofAsset,
-        submittedAt: now,
-        extraMembers: params.extraMembers || 0,
-        extraProxyGb: params.extraProxyGb || 0,
-        orderTotal,
-      }),
-      now,
-      now
-    );
-
-    try {
-      await logCommercialAudit({
-        actorId: params.userId,
-        actorName: 'USER',
-        actorRole: 'USER',
-        action: 'UPI_UTR_SUBMITTED',
-        targetType: 'PAYMENT',
-        targetId: paymentId,
-        details: `UPI ₹${amountPaise/100} pending — UTR ${cleanUtr} — plan ${plan.id}`,
+    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
+    if (prisma) {
+      // Check duplicate UTR via Postgres
+      const existing = await prisma.commercial_payments.findFirst({
+        where: {
+          OR: [
+            { external_payment_id: cleanUtr },
+            { id: cleanUtr },
+          ],
+        },
       });
-    } catch {}
+      if (existing) {
+        throw new Error('UTR_ALREADY_EXISTS: This UTR has already been submitted.');
+      }
+
+      await prisma.commercial_payments.create({
+        data: {
+          id: paymentId,
+          user_id: params.userId,
+          subscription_id: null,
+          provider: 'manual_upi',
+          external_order_id: externalOrderId,
+          external_payment_id: cleanUtr,
+          amount_cents: amountPaise,
+          currency: 'INR',
+          status: 'PENDING_VERIFICATION',
+          plan_id: plan.id,
+          billing_cycle: cycle,
+          receipt_url: params.proofAsset || null,
+          metadata_json: JSON.stringify({
+            utr: cleanUtr,
+            proofAsset: params.proofAsset,
+            submittedAt: now,
+            extraMembers: params.extraMembers || 0,
+            extraProxyGb: params.extraProxyGb || 0,
+            orderTotal,
+          }),
+          created_at: now,
+          updated_at: now,
+        },
+      });
+
+      try {
+        await prisma.commercial_audit_logs.create({
+          data: {
+            id: crypto.randomUUID(),
+            actor_id: params.userId,
+            actor_name: 'USER',
+            actor_role: 'USER',
+            action: 'UPI_UTR_SUBMITTED',
+            target_type: 'PAYMENT',
+            target_id: paymentId,
+            details: `UPI ₹${amountPaise/100} pending — UTR ${cleanUtr} — plan ${plan.id}`,
+            ip_address: null,
+            result: 'SUCCESS',
+            created_at: now,
+          },
+        });
+      } catch {}
+    } else {
+      const db = getDatabase();
+      // Check duplicate UTR
+      const existing = db.prepare('SELECT id FROM commercial_payments WHERE external_payment_id = ?').get(cleanUtr) as any;
+      if (existing) {
+        throw new Error('UTR_ALREADY_EXISTS: This UTR has already been submitted.');
+      }
+
+      db.prepare(`
+        INSERT INTO commercial_payments (
+          id, user_id, subscription_id, provider, external_order_id, external_payment_id,
+          amount_cents, currency, status, plan_id, billing_cycle, receipt_url, metadata_json,
+          created_at, updated_at
+        ) VALUES (?, ?, NULL, 'manual_upi', ?, ?, ?, 'INR', 'PENDING_VERIFICATION', ?, ?, ?, ?, ?, ?)
+      `).run(
+        paymentId,
+        params.userId,
+        externalOrderId,
+        cleanUtr,
+        amountPaise,
+        plan.id,
+        cycle,
+        params.proofAsset || null,
+        JSON.stringify({
+          utr: cleanUtr,
+          proofAsset: params.proofAsset,
+          submittedAt: now,
+          extraMembers: params.extraMembers || 0,
+          extraProxyGb: params.extraProxyGb || 0,
+          orderTotal,
+        }),
+        now,
+        now
+      );
+
+      try {
+        await logCommercialAudit({
+          actorId: params.userId,
+          actorName: 'USER',
+          actorRole: 'USER',
+          action: 'UPI_UTR_SUBMITTED',
+          targetType: 'PAYMENT',
+          targetId: paymentId,
+          details: `UPI ₹${amountPaise/100} pending — UTR ${cleanUtr} — plan ${plan.id}`,
+        });
+      } catch {}
+    }
 
     try {
       const emailProvider = getEmailProvider();
@@ -1480,10 +1734,20 @@ export class PaymentService {
     paymentId: string,
     adminActor: { id: string; name: string; role?: string }
   ): Promise<{ success: boolean; paymentId: string; status: string; userId: string }> {
-    const db = getDatabase();
-    const payment = db.prepare(
-      'SELECT * FROM commercial_payments WHERE id = ? OR external_payment_id = ?'
-    ).get(paymentId, paymentId) as any;
+    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
+    let payment: any = null;
+    if (prisma) {
+      payment = await prisma.commercial_payments.findFirst({
+        where: {
+          OR: [{ id: paymentId }, { external_payment_id: paymentId }],
+        },
+      });
+    } else {
+      const db = getDatabase();
+      payment = db.prepare(
+        'SELECT * FROM commercial_payments WHERE id = ? OR external_payment_id = ?'
+      ).get(paymentId, paymentId) as any;
+    }
 
     if (!payment) {
       throw new Error(`Payment record "${paymentId}" not found.`);
@@ -1505,35 +1769,63 @@ export class PaymentService {
       amountCents: payment.amount_cents,
       currency: payment.currency,
       provider: payment.provider,
-      externalPaymentId: payment.external_payment_id,
+      externalPaymentId: payment.external_payment_id || payment.id,
       externalOrderId: payment.external_order_id,
       receiptUrl: payment.receipt_url,
       metadata: meta,
     });
 
-    try {
-      logCommercialAudit({
-        actorId: adminActor.id,
-        actorName: adminActor.name,
-        actorRole: (adminActor.role as any) || 'ADMIN',
-        action: 'APPROVE_MANUAL_PAYMENT',
-        targetType: 'PAYMENT',
-        targetId: payment.id,
-        details: `Approved manual UPI payment ${payment.id} for user ${payment.user_id} (UTR: ${payment.external_payment_id})`,
-      });
-    } catch {}
+    if (prisma) {
+      try {
+        await prisma.commercial_audit_logs.create({
+          data: {
+            id: crypto.randomUUID(),
+            actor_id: adminActor.id,
+            actor_name: adminActor.name,
+            actor_role: (adminActor.role as any) || 'ADMIN',
+            action: 'APPROVE_MANUAL_PAYMENT',
+            target_type: 'PAYMENT',
+            target_id: payment.id,
+            details: `Approved manual UPI payment ${payment.id} for user ${payment.user_id} (UTR: ${payment.external_payment_id})`,
+            ip_address: null,
+            result: 'SUCCESS',
+            created_at: new Date().toISOString(),
+          },
+        });
+      } catch {}
+    } else {
+      try {
+        logCommercialAudit({
+          actorId: adminActor.id,
+          actorName: adminActor.name,
+          actorRole: (adminActor.role as any) || 'ADMIN',
+          action: 'APPROVE_MANUAL_PAYMENT',
+          targetType: 'PAYMENT',
+          targetId: payment.id,
+          details: `Approved manual UPI payment ${payment.id} for user ${payment.user_id} (UTR: ${payment.external_payment_id})`,
+        });
+      } catch {}
+    }
 
     try {
-      const user = getUserById(payment.user_id);
-      if (!user || !user.email) {
+      let userEmail: string | undefined;
+      if (prisma) {
+        const u = await getCentralUserByIdAsync(payment.user_id);
+        userEmail = u?.email;
+      } else {
+        const user = getUserById(payment.user_id);
+        userEmail = user?.email;
+      }
+
+      if (!userEmail) {
         console.log(`[PaymentService] skipping approval email: user or email not found for userId=${payment.user_id}`);
       } else {
-        const plan = getCommercialPlanById(payment.plan_id);
+        const plan = resolveCommercialPlan(payment.plan_id);
         const planName = plan ? plan.name : payment.plan_id;
         const amountInr = (payment.amount_cents / 100).toString();
         const paidAt = new Date().toISOString();
         await getEmailProvider().sendPaymentApprovedEmail({
-          email: user.email,
+          email: userEmail,
           planName,
           amountInr,
           paidAt,
@@ -1561,10 +1853,20 @@ export class PaymentService {
     adminActor: { id: string; name: string; role?: string },
     reason: string
   ): Promise<{ success: boolean; paymentId: string; status: string; reason: string }> {
-    const db = getDatabase();
-    const payment = db.prepare(
-      'SELECT * FROM commercial_payments WHERE id = ? OR external_payment_id = ?'
-    ).get(paymentId, paymentId) as any;
+    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
+    let payment: any = null;
+    if (prisma) {
+      payment = await prisma.commercial_payments.findFirst({
+        where: {
+          OR: [{ id: paymentId }, { external_payment_id: paymentId }],
+        },
+      });
+    } else {
+      const db = getDatabase();
+      payment = db.prepare(
+        'SELECT * FROM commercial_payments WHERE id = ? OR external_payment_id = ?'
+      ).get(paymentId, paymentId) as any;
+    }
 
     if (!payment) {
       throw new Error(`Payment record "${paymentId}" not found.`);
@@ -1584,33 +1886,71 @@ export class PaymentService {
     meta.rejectedBy = adminActor.name;
     meta.rejectedAt = now;
 
-    db.prepare(`
-      UPDATE commercial_payments
-      SET status = 'REJECTED', metadata_json = ?, updated_at = ?
-      WHERE id = ?
-    `).run(JSON.stringify(meta), now, payment.id);
-
-    try {
-      logCommercialAudit({
-        actorId: adminActor.id,
-        actorName: adminActor.name,
-        actorRole: (adminActor.role as any) || 'ADMIN',
-        action: 'REJECT_MANUAL_PAYMENT',
-        targetType: 'PAYMENT',
-        targetId: payment.id,
-        details: `Rejected manual UPI payment ${payment.id} for user ${payment.user_id}. Reason: ${reason}`,
+    if (prisma) {
+      await prisma.commercial_payments.update({
+        where: { id: payment.id },
+        data: {
+          status: 'REJECTED',
+          metadata_json: JSON.stringify(meta),
+          updated_at: now,
+        },
       });
-    } catch {}
+
+      try {
+        await prisma.commercial_audit_logs.create({
+          data: {
+            id: crypto.randomUUID(),
+            actor_id: adminActor.id,
+            actor_name: adminActor.name,
+            actor_role: (adminActor.role as any) || 'ADMIN',
+            action: 'REJECT_MANUAL_PAYMENT',
+            target_type: 'PAYMENT',
+            target_id: payment.id,
+            details: `Rejected manual UPI payment ${payment.id} for user ${payment.user_id}. Reason: ${reason}`,
+            ip_address: null,
+            result: 'SUCCESS',
+            created_at: now,
+          },
+        });
+      } catch {}
+    } else {
+      const db = getDatabase();
+      db.prepare(`
+        UPDATE commercial_payments
+        SET status = 'REJECTED', metadata_json = ?, updated_at = ?
+        WHERE id = ?
+      `).run(JSON.stringify(meta), now, payment.id);
+
+      try {
+        logCommercialAudit({
+          actorId: adminActor.id,
+          actorName: adminActor.name,
+          actorRole: (adminActor.role as any) || 'ADMIN',
+          action: 'REJECT_MANUAL_PAYMENT',
+          targetType: 'PAYMENT',
+          targetId: payment.id,
+          details: `Rejected manual UPI payment ${payment.id} for user ${payment.user_id}. Reason: ${reason}`,
+        });
+      } catch {}
+    }
 
     try {
-      const user = getUserById(payment.user_id);
-      if (!user || !user.email) {
+      let userEmail: string | undefined;
+      if (prisma) {
+        const u = await getCentralUserByIdAsync(payment.user_id);
+        userEmail = u?.email;
+      } else {
+        const user = getUserById(payment.user_id);
+        userEmail = user?.email;
+      }
+
+      if (!userEmail) {
         console.log(`[PaymentService] skipping rejection email: user or email not found for userId=${payment.user_id}`);
       } else {
-        const plan = getCommercialPlanById(payment.plan_id);
+        const plan = resolveCommercialPlan(payment.plan_id);
         const planName = plan ? plan.name : payment.plan_id;
         await getEmailProvider().sendPaymentRejectedEmail({
-          email: user.email,
+          email: userEmail,
           planName,
           reason,
           supportEmail: SUPPORT_EMAIL,
