@@ -238,6 +238,38 @@ export function getWebAdminHtml(): string {
         .replace(/'/g, '&#39;');
     }
 
+    function copyToClipboard(text, el, label = 'Copied to clipboard!') {
+      if (!text) return;
+      const done = () => {
+        showToast(label);
+        if (el) {
+          const orig = el.innerHTML;
+          el.innerHTML = '✓ Copied';
+          el.classList.add('text-emerald-600', 'font-bold');
+          setTimeout(() => {
+            el.innerHTML = orig;
+            el.classList.remove('text-emerald-600', 'font-bold');
+          }, 1500);
+        }
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+      } else {
+        fallbackCopy(text, done);
+      }
+    }
+
+    function fallbackCopy(text, cb) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); if (cb) cb(); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+
     function switchPage(page) {
       currentPage = page;
       document.querySelectorAll('.nav-item').forEach(el => {
@@ -441,18 +473,22 @@ export function getWebAdminHtml(): string {
         </div>
 
         <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-          <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+          <div class="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 class="text-sm font-bold text-slate-900">Registered Users (\${res.total})</h3>
               <p class="text-[11px] text-slate-400 mt-0.5">Manage customer quotas, GoLogin-style boosters, enterprise feature overrides & HWID locks</p>
             </div>
-            <button onclick="renderUsers()" class="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition">🔄 Refresh</button>
+            <div class="flex items-center space-x-2">
+              <input type="text" id="user-filter-input" placeholder="🔍 Search name, email, or ID..." oninput="filterUsersTable(this.value)"
+                class="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-emerald-500 w-64 font-medium">
+              <button onclick="renderUsers()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition">🔄 Refresh</button>
+            </div>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full text-left text-xs">
               <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px]">
                 <tr>
-                  <th class="p-3">User</th>
+                  <th class="p-3">User Details</th>
                   <th class="p-3">Role</th>
                   <th class="p-3">Plan & Quotas</th>
                   <th class="p-3">Enterprise Overrides</th>
@@ -463,10 +499,29 @@ export function getWebAdminHtml(): string {
               </thead>
               <tbody class="divide-y divide-slate-100">
                 \${res.data && res.data.length > 0 ? res.data.map(u => \`
-                  <tr class="hover:bg-slate-50 transition">
-                    <td class="p-3">
-                      <div class="font-bold text-slate-800">\${u.name}</div>
-                      <div class="text-[11px] text-slate-400 font-mono">\${u.email}</div>
+                  <tr class="hover:bg-slate-50 transition" data-user-row="true">
+                    <td class="p-3" style="user-select: text;">
+                      <div class="flex items-start space-x-3">
+                        <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs uppercase">
+                          \${(u.name || u.email || 'U').charAt(0)}
+                        </div>
+                        <div class="space-y-1 min-w-0">
+                          <div class="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
+                            <span class="truncate">\${u.name || 'Unnamed User'}</span>
+                            <button onclick="copyToClipboard('\${(u.name || '').replace(/'/g, \"\\\\'\")}', this, 'Name copied!')" class="text-slate-400 hover:text-slate-700 text-[10px] p-0.5" title="Copy Name">📋</button>
+                          </div>
+                          <div class="flex items-center space-x-1.5">
+                            <span class="text-[11px] text-slate-700 font-mono font-medium truncate">\${u.email}</span>
+                            <button onclick="copyToClipboard('\${u.email}', this, 'Email copied!')" class="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold border border-slate-200 transition shrink-0" title="Click to copy email">
+                              📋 Copy Email
+                            </button>
+                          </div>
+                          <div class="flex items-center space-x-1">
+                            <span class="text-[10px] text-slate-400 font-mono truncate">ID: \${u.id}</span>
+                            <button onclick="copyToClipboard('\${u.id}', this, 'User ID copied!')" class="text-slate-400 hover:text-slate-700 text-[10px] p-0.5 shrink-0" title="Copy User ID">📋</button>
+                          </div>
+                        </div>
+                      </div>
                     </td>
                     <td class="p-3"><span class="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-700">\${u.role}</span></td>
                     <td class="p-3">
@@ -491,6 +546,10 @@ export function getWebAdminHtml(): string {
                     </td>
                     <td class="p-3 text-slate-400 text-[11px] font-mono">\${new Date(u.createdAt).toLocaleDateString()}</td>
                     <td class="p-3 text-right space-x-1 whitespace-nowrap">
+                      <button onclick="openGrantPremiumModal('\${u.id}', '\${(u.name || '').replace(/'/g, \"\\\\'\")}', '\${u.email}')" class="px-2.5 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg font-bold text-[10px] shadow-xs transition active:scale-95 inline-flex items-center space-x-1" title="Direct 1-Click Premium License Grant">
+                        <span>👑</span>
+                        <span>Grant Premium</span>
+                      </button>
                       <button onclick="openBoostModal('\${u.id}', '\${u.email}', \${u.bonusProfiles || 0})" class="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg font-bold text-[10px] border border-amber-200 transition" title="GoLogin-Style Quick Quota Boost">⚡ Boost</button>
                       <button onclick='openFeaturesModal("\${u.id}", "\${u.email}", \${JSON.stringify(u.featureOverrides || {})})' class="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-800 rounded-lg font-bold text-[10px] border border-purple-200 transition" title="MostLogin-Style Feature Overrides">⚙️ Features</button>
                       <button onclick="resetUserHardware('\${u.id}', '\${u.email}')" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-[10px] transition" title="1-Click Machine / HWID Unbind">🔓 HWID</button>
@@ -507,6 +566,204 @@ export function getWebAdminHtml(): string {
             </table>
           </div>
         </div>
+      \`;
+    }
+
+    function filterUsersTable(query) {
+      const q = (query || '').toLowerCase().trim();
+      const rows = document.querySelectorAll('tbody tr[data-user-row]');
+      rows.forEach(r => {
+        const text = r.innerText.toLowerCase();
+        r.style.display = text.includes(q) ? '' : 'none';
+      });
+    }
+
+    function openGrantPremiumModal(userId, name, email) {
+      const modal = document.createElement('div');
+      modal.id = 'grant-premium-modal';
+      modal.className = 'fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4';
+      modal.innerHTML = \`
+        <div class="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl p-6 space-y-5">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div class="flex items-center space-x-2.5">
+              <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center text-lg shadow-sm">
+                👑
+              </div>
+              <div>
+                <h3 class="text-sm font-extrabold text-slate-900">Grant Premium License</h3>
+                <p class="text-[11px] text-slate-400">Owner-level manual entitlement grant</p>
+              </div>
+            </div>
+            <button onclick="document.getElementById('grant-premium-modal').remove()" class="text-slate-400 hover:text-slate-700 font-bold text-sm">✕</button>
+          </div>
+
+          <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5 text-xs">
+            <div class="flex items-center justify-between">
+              <span class="text-slate-500 font-medium">Target User:</span>
+              <span class="font-bold text-slate-900 font-mono">\${name || 'User'}</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-500 font-medium">Email:</span>
+              <div class="flex items-center space-x-1">
+                <span class="font-mono text-slate-800 font-medium">\${email}</span>
+                <button onclick="copyToClipboard('\${email}', this, 'Copied!')" class="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] text-slate-600 hover:bg-slate-100 transition">📋 Copy</button>
+              </div>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-slate-500 font-medium">User ID:</span>
+              <div class="flex items-center space-x-1">
+                <span class="font-mono text-slate-500 text-[11px] truncate max-w-[200px]">\${userId}</span>
+                <button onclick="copyToClipboard('\${userId}', this, 'Copied!')" class="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] text-slate-600 hover:bg-slate-100 transition">📋 Copy</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="grant-modal-form" class="space-y-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1.5">Choose Commercial Plan</label>
+              <select id="modal-grant-plan" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-purple-500 font-medium">
+                <option value="plan_pro" selected>Professional (50 Profiles + Unlimited)</option>
+                <option value="plan_starter">Starter (10 Profiles)</option>
+                <option value="plan_enterprise">Enterprise (Unlimited Profiles + Full API)</option>
+                <option value="plan_agency">Agency Fleet (Multi-Seat + Qunkong)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1.5">Duration</label>
+              <select id="modal-grant-duration" class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-purple-500 font-medium">
+                <option value="30_DAYS" selected>30 Days (1 Month)</option>
+                <option value="90_DAYS">90 Days (Quarterly)</option>
+                <option value="1_YEAR">1 Year (Annual)</option>
+                <option value="LIFETIME">Lifetime License</option>
+              </select>
+            </div>
+
+            <div id="modal-totp-box" class="hidden p-3.5 bg-purple-50 border border-purple-200 rounded-2xl space-y-2">
+              <div class="text-xs font-bold text-purple-900 flex items-center space-x-1.5">
+                <span>🔐</span>
+                <span>Google Authenticator Verification Required</span>
+              </div>
+              <p class="text-[11px] text-purple-700">Enter the 6-digit code from your phone's Authenticator app:</p>
+              <input type="text" id="modal-totp-code" maxlength="6" inputmode="numeric" placeholder="123456"
+                class="w-full text-center font-mono text-xl tracking-[0.3em] py-2 bg-white border border-purple-300 rounded-xl focus:outline-purple-600 text-slate-900">
+            </div>
+
+            <div id="modal-grant-error" class="hidden p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl"></div>
+
+            <div class="pt-2 flex items-center justify-between border-t border-slate-100">
+              <a href="/super-admin?action=grant&userId=\${encodeURIComponent(userId)}&email=\${encodeURIComponent(email)}&name=\${encodeURIComponent(name)}"
+                class="text-xs text-purple-600 hover:text-purple-800 font-bold transition flex items-center space-x-1">
+                <span>Super Admin Suite →</span>
+              </a>
+              <div class="flex items-center space-x-2">
+                <button onclick="document.getElementById('grant-premium-modal').remove()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition">
+                  Cancel
+                </button>
+                <button id="modal-grant-btn" onclick="executeModalGrant('\${userId}')" class="px-5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs shadow-md shadow-purple-500/20 transition active:scale-95">
+                  👑 Issue Premium Now
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div id="modal-grant-result" class="hidden p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-3">
+            <div class="text-center">
+              <div class="w-10 h-10 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xl font-bold mb-1">
+                ✓
+              </div>
+              <h4 class="text-sm font-extrabold text-emerald-900">Premium License Issued!</h4>
+              <p class="text-[11px] text-emerald-700">Account has been upgraded successfully.</p>
+            </div>
+            <div class="bg-white p-3 rounded-xl border border-emerald-200/80">
+              <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">One-Time License Key:</label>
+              <div class="flex items-center space-x-2">
+                <input type="text" id="modal-raw-key" readonly class="w-full font-mono text-xs text-slate-800 bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-200 select-all">
+                <button onclick="copyToClipboard(document.getElementById('modal-raw-key').value, this, 'License Key Copied!')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition shrink-0">
+                  📋 Copy
+                </button>
+              </div>
+            </div>
+            <div class="text-center pt-2">
+              <button onclick="document.getElementById('grant-premium-modal').remove(); renderUsers();" class="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition">
+                Done & Refresh Table
+              </button>
+            </div>
+          </div>
+        </div>
+      \`;
+      document.body.appendChild(modal);
+    }
+
+    async function executeModalGrant(userId) {
+      const planId = document.getElementById('modal-grant-plan')?.value || 'plan_pro';
+      const duration = document.getElementById('modal-grant-duration')?.value || '30_DAYS';
+      const errorDiv = document.getElementById('modal-grant-error');
+      const totpBox = document.getElementById('modal-totp-box');
+      const totpCodeInput = document.getElementById('modal-totp-code');
+      const grantBtn = document.getElementById('modal-grant-btn');
+
+      if (errorDiv) {
+        errorDiv.classList.add('hidden');
+        errorDiv.innerText = '';
+      }
+
+      const totpCode = totpCodeInput ? totpCodeInput.value.trim() : '';
+
+      if (totpBox && !totpBox.classList.contains('hidden')) {
+        if (!totpCode || totpCode.length !== 6) {
+          errorDiv.classList.remove('hidden');
+          errorDiv.innerText = 'Please enter a valid 6-digit Google Authenticator code.';
+          return;
+        }
+        grantBtn.disabled = true;
+        grantBtn.innerText = 'Verifying Authenticator...';
+        const verifyRes = await apiFetch('/api/v1/admin/owner/verify', {
+          method: 'POST',
+          body: JSON.stringify({ code: totpCode })
+        });
+        if (!verifyRes.success) {
+          grantBtn.disabled = false;
+          grantBtn.innerText = '👑 Issue Premium Now';
+          errorDiv.classList.remove('hidden');
+          errorDiv.innerText = verifyRes.error || 'Invalid Authenticator code. Please check your phone.';
+          return;
+        }
+      }
+
+      grantBtn.disabled = true;
+      grantBtn.innerText = 'Issuing License...';
+
+      const res = await apiFetch('/api/v1/admin/owner/grant', {
+        method: 'POST',
+        body: JSON.stringify({ userId, planId, duration })
+      });
+
+      grantBtn.disabled = false;
+      grantBtn.innerText = '👑 Issue Premium Now';
+
+      if (res.success) {
+        document.getElementById('grant-modal-form').classList.add('hidden');
+        const resBox = document.getElementById('modal-grant-result');
+        resBox.classList.remove('hidden');
+        document.getElementById('modal-raw-key').value = res.data?.rawKey || res.rawKey || 'LICENSE-ISSUED';
+        showToast('Premium license issued successfully!');
+      } else {
+        if (res.error && res.error.toLowerCase().includes('owner session')) {
+          if (totpBox) totpBox.classList.remove('hidden');
+          if (errorDiv) {
+            errorDiv.classList.remove('hidden');
+            errorDiv.innerText = 'Security Step-Up required. Please enter your 6-digit Authenticator code above.';
+          }
+          if (totpCodeInput) totpCodeInput.focus();
+        } else {
+          if (errorDiv) {
+            errorDiv.classList.remove('hidden');
+            errorDiv.innerText = res.error || 'Failed to grant premium.';
+          }
+        }
+      }
+    }
       \`;
     }
 
@@ -2406,6 +2663,15 @@ export function getOwnerAdminHtml(): string {
 
     async function initOwnerConsole() {
       await loadPricingCatalog();
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('action') === 'grant' && urlParams.get('userId')) {
+          const uId = urlParams.get('userId');
+          const uName = urlParams.get('name') || '';
+          const uEmail = urlParams.get('email') || '';
+          selectUser('grant', uId, uName, uEmail, 'ACTIVE');
+        }
+      } catch (e) {}
     }
 
     async function loadPricingCatalog() {
@@ -2473,13 +2739,13 @@ export function getOwnerAdminHtml(): string {
         }
 
         resultsDiv.innerHTML = res.data.map(u => {
-          const maskedEmail = u.email ? u.email.replace(/(.{2})(.*)(?=@)/, (gp, a, b) => a + '*'.repeat(Math.max(1, b.length))) : 'N/A';
+          const displayEmail = u.email || 'N/A';
           const escapedName = (u.name || u.email || 'User').replace(/"/g, '&quot;');
           const safeEmail = (u.email || '').replace(/"/g, '&quot;');
           return \`<div onclick="selectUser('\${context}', '\${u.id}', '\${escapedName}', '\${safeEmail}', '\${u.status || 'ACTIVE'}')"
             class="p-2.5 hover:bg-slate-800 cursor-pointer border-b border-slate-800/60 last:border-0 text-xs transition">
             <div class="font-bold text-white">\${escapedName}</div>
-            <div class="text-[10px] text-slate-400 font-mono">\${maskedEmail} <span class="text-slate-500">(\${u.id})</span></div>
+            <div class="text-[11px] text-slate-300 font-mono">\${displayEmail} <span class="text-slate-500">(\${u.id})</span></div>
           </div>\`;
         }).join('');
       }, 250);
