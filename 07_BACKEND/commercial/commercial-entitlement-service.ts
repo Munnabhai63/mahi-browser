@@ -231,7 +231,40 @@ export function evaluateUserEntitlements(
       externalSubId: subRow.external_sub_id || undefined,
       createdAt: subRow.created_at,
     };
-  } else if (user.trialExpiresAt && new Date(user.trialExpiresAt).getTime() <= Date.now() && user.planId !== 'plan_free') {
+  }
+
+  // Check if there is an active direct license assigned to this account
+  let activeLicRow: any = null;
+  try {
+    activeLicRow = db.prepare(
+      "SELECT * FROM licenses WHERE account_id = ? AND status = 'ACTIVE' AND (expires_at IS NULL OR expires_at > ?) ORDER BY created_at DESC LIMIT 1"
+    ).get(user.id, new Date().toISOString()) as any;
+  } catch {}
+
+  if (!subRow && activeLicRow) {
+    let licPlanId = user.planId !== 'plan_free' ? user.planId : '';
+    if (!licPlanId && activeLicRow.notes) {
+      const match = activeLicRow.notes.match(/Plan:\s*([a-zA-Z0-9_-]+)/);
+      if (match) licPlanId = match[1];
+    }
+    if (!licPlanId) licPlanId = 'plan_pro';
+
+    subscription = {
+      id: `sub_lic_${activeLicRow.id}`,
+      userId: user.id,
+      planId: licPlanId,
+      licenseId: activeLicRow.id,
+      status: 'ACTIVE',
+      billingCycle: activeLicRow.duration_type === 'LIFETIME' ? 'LIFETIME' : (activeLicRow.duration_type === '365_DAYS' ? 'ANNUAL' : 'MONTHLY'),
+      startsAt: activeLicRow.starts_at || activeLicRow.created_at,
+      expiresAt: activeLicRow.expires_at || undefined,
+      paymentProvider: 'ADMIN_LICENSE',
+      createdAt: activeLicRow.created_at,
+    };
+    if (user.planId === 'plan_free') {
+      user.planId = licPlanId;
+    }
+  } else if (!subRow && !activeLicRow && user.trialExpiresAt && new Date(user.trialExpiresAt).getTime() <= Date.now() && user.planId !== 'plan_free') {
     try {
       db.prepare("UPDATE commercial_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
       db.prepare("UPDATE auth_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
@@ -251,6 +284,13 @@ export function evaluateUserEntitlements(
         expiresAt: lic.expiresAt,
       };
     }
+  } else if (activeLicRow) {
+    licenseInfo = {
+      id: activeLicRow.id,
+      keyMasked: activeLicRow.key_masked,
+      status: activeLicRow.status,
+      expiresAt: activeLicRow.expires_at,
+    };
   }
 
   // 6. Check Device Authorization & Limits
@@ -271,7 +311,11 @@ export function evaluateUserEntitlements(
   const isDeviceAuthorized = devReg.success;
   const isTrialActive = Boolean(user.trialExpiresAt && new Date(user.trialExpiresAt).getTime() > Date.now());
   const isTrialUser = Boolean(isTrialActive && (user.signupIntent === 'trial' || subscription?.billingCycle === 'TRIAL' || subscription?.status === 'TRIAL'));
-  const isSubActive = Boolean(subscription && (subscription.status === 'ACTIVE' || subscription.status === 'TRIAL') && !(subscription.expiresAt && new Date(subscription.expiresAt).getTime() <= Date.now()));
+  const isSubActive = Boolean(
+    (subscription && (subscription.status === 'ACTIVE' || subscription.status === 'TRIAL') && !(subscription.expiresAt && new Date(subscription.expiresAt).getTime() <= Date.now())) ||
+    Boolean(activeLicRow) ||
+    (user.planId && user.planId !== 'plan_free' && user.planId !== 'free')
+  );
   const effectivePlanObj = (!isTrialUser && !isSubActive) ? defaultFreePlan : (isSubActive ? plan : (isTrialUser ? (getCommercialPlanById('professional_50') || plan) : defaultFreePlan));
   const capabilities = resolveCapabilitiesForPlan(effectivePlanObj, subscription);
 

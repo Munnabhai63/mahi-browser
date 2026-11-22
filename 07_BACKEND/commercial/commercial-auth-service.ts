@@ -344,7 +344,7 @@ export function getUserById(userId: string): CommercialUser | null {
       name: authRow.name || authRow.email.split('@')[0],
       role,
       status,
-      planId: (authRow.plan_tier === 'pro' || authRow.plan_tier === 'PRO') ? 'plan_pro' : 'plan_free',
+      planId: authRow.plan_id || ((authRow.plan_tier === 'pro' || authRow.plan_tier === 'PRO') ? 'plan_pro' : 'plan_free'),
       createdAt: authRow.created_at,
       updatedAt: authRow.updated_at,
       lastLoginAt: authRow.last_login_at || undefined,

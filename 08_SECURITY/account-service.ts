@@ -14,7 +14,7 @@ import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 // CONSTANTS & PUBLIC KEY FOR SIGNATURE VERIFICATION
 // ============================================================================
 const GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days grace period
-const CHECK_INTERVAL_MS = 2 * 60 * 1000;        // 2 minutes live check interval
+const CHECK_INTERVAL_MS = 60 * 1000;        // 60 seconds (1 minute live check interval)
 const STARTUP_DELAY_MS = 1000;                  // 1s non-blocking delay on startup
 const REQUEST_TIMEOUT_MS = 5000;                 // 5s network timeout
 

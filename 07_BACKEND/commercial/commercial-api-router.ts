@@ -672,11 +672,56 @@ export async function handleCommercialApiRoutes(
       return true;
     }
     const hwidParam = (parsedUrl.searchParams.get('hwid') || '').trim();
+
+    // 1. Fetch authoritative central user record (Postgres/SQLite)
+    let centralUser: any = null;
+    try {
+      centralUser = await getCentralUserByIdAsync(auth.userId);
+    } catch {}
+
     const entitlements = evaluateUserEntitlements(auth.userId, hwidParam);
-    const plan = entitlements?.plan?.id || entitlements?.planId || 'free';
-    const profile_limit = entitlements?.maxProfiles || entitlements?.limits?.maxProfiles || 15;
-    const sync_allowed = entitlements?.features?.['cloud.sync'] ?? (plan !== 'free' && plan !== 'plan_free');
-    const expires_at = entitlements?.subscription?.expiresAt || null;
+
+    // 2. Resolve Plan
+    let rawPlan = centralUser?.planId || entitlements?.plan?.id || entitlements?.planId || 'free';
+    if (rawPlan === 'plan_free') rawPlan = 'free';
+
+    // 3. User status check (Banned / Suspended accounts are immediately demoted)
+    const isBannedOrSuspended =
+      centralUser?.status === 'BANNED' ||
+      centralUser?.status === 'SUSPENDED' ||
+      entitlements?.user?.status === 'BANNED' ||
+      entitlements?.user?.status === 'SUSPENDED';
+
+    const plan = isBannedOrSuspended ? 'free' : rawPlan;
+    const targetPlan = resolveCommercialPlan(plan);
+
+    // 4. Resolve Profile Limits & Cloud Sync
+    let profile_limit = 15;
+    if (isBannedOrSuspended) {
+      profile_limit = 0;
+    } else if (plan !== 'free') {
+      profile_limit = centralUser?.profileQuota || targetPlan?.limits?.maxProfiles || entitlements?.maxProfiles || 100;
+    } else {
+      profile_limit = entitlements?.maxProfiles || entitlements?.limits?.maxProfiles || 15;
+    }
+
+    const sync_allowed = !isBannedOrSuspended && (entitlements?.features?.['cloud.sync'] ?? (plan !== 'free'));
+
+    // 5. Expiration time from entitlement or Postgres license
+    let expires_at = entitlements?.subscription?.expiresAt || null;
+    if (isPostgresConfigured()) {
+      try {
+        const prisma = getPrismaClient();
+        if (prisma && (prisma as any).licenses) {
+          const activeLic = await (prisma as any).licenses.findFirst({
+            where: { account_id: auth.userId, status: 'ACTIVE' },
+            orderBy: { created_at: 'desc' },
+          });
+          if (activeLic?.expires_at) expires_at = activeLic.expires_at;
+        }
+      } catch {}
+    }
+
     const server_time = Date.now();
     const canonical = `${auth.userId}:${hwidParam}:${plan}:${profile_limit}:${sync_allowed ? 1 : 0}:${expires_at || ''}:${server_time}`;
     const sig = signAccountStatus(canonical);
@@ -3204,6 +3249,29 @@ export async function handleCommercialApiRoutes(
       } catch (err: any) {
         console.warn('[OwnerService] commercial_users plan sync skipped/warn:', err?.message);
       }
+
+      try {
+        if (typeof (prisma as any).commercial_subscriptions?.create === 'function') {
+          const subId = `sub_${crypto.randomUUID()}`;
+          const bCycle = durationType === '1_YEAR' ? 'ANNUAL' : 'MONTHLY';
+          await (prisma as any).commercial_subscriptions.create({
+            data: {
+              id: subId,
+              user_id: userId,
+              plan_id: targetPlan.id,
+              license_id: licenseId,
+              status: 'ACTIVE',
+              billing_cycle: bCycle,
+              starts_at: now,
+              expires_at: expiresAt,
+              payment_provider: 'OWNER_GRANT',
+              created_at: now,
+            },
+          });
+        }
+      } catch (err: any) {
+        console.warn('[OwnerService] commercial_subscriptions grant sync skipped/warn:', err?.message);
+      }
     } else {
       try {
         const db = getDatabase();
@@ -3240,9 +3308,26 @@ export async function handleCommercialApiRoutes(
               userId
             );
           }
+          db.prepare('UPDATE commercial_users SET plan_id = ?, updated_at = ? WHERE id = ?').run(
+            targetPlan.id,
+            now,
+            userId
+          );
         } catch (e: any) {
           console.error('[OwnerService][CRITICAL] SQLite plan sync error', e?.message);
           planSyncFailed = true;
+        }
+
+        try {
+          const subId = `sub_${crypto.randomUUID()}`;
+          const bCycle = durationType === '1_YEAR' ? 'ANNUAL' : 'MONTHLY';
+          db.prepare(`
+            INSERT INTO commercial_subscriptions (
+              id, user_id, plan_id, license_id, status, billing_cycle, starts_at, expires_at, payment_provider, created_at
+            ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 'OWNER_GRANT', ?)
+          `).run(subId, userId, targetPlan.id, licenseId, bCycle, now, expiresAt, now);
+        } catch (e: any) {
+          console.warn('[OwnerService] SQLite subscription grant sync warn:', e?.message);
         }
       } catch (err: any) {
         console.error('[OwnerService][CRITICAL] SQLite license create failed:', err?.message || err);
@@ -3465,6 +3550,37 @@ export async function handleCommercialApiRoutes(
       } catch (err: any) {
         console.warn('[OwnerService] commercial_users set-plan skipped/warn:', err?.message);
       }
+
+      try {
+        if (targetPlan.id !== 'plan_free' && targetPlan.id !== 'free') {
+          if (typeof (prisma as any).commercial_subscriptions?.create === 'function') {
+            const subId = `sub_${crypto.randomUUID()}`;
+            const expDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+            await (prisma as any).commercial_subscriptions.create({
+              data: {
+                id: subId,
+                user_id: userId,
+                plan_id: targetPlan.id,
+                status: 'ACTIVE',
+                billing_cycle: 'MONTHLY',
+                starts_at: now,
+                expires_at: expDate,
+                payment_provider: 'OWNER_SET_PLAN',
+                created_at: now,
+              },
+            });
+          }
+        } else {
+          if (typeof (prisma as any).commercial_subscriptions?.updateMany === 'function') {
+            await (prisma as any).commercial_subscriptions.updateMany({
+              where: { user_id: userId, status: 'ACTIVE' },
+              data: { status: 'CANCELLED' },
+            });
+          }
+        }
+      } catch (err: any) {
+        console.warn('[OwnerService] commercial_subscriptions set-plan sync skipped/warn:', err?.message);
+      }
     } else {
       try {
         const db = getDatabase();
@@ -3473,6 +3589,24 @@ export async function handleCommercialApiRoutes(
           now,
           userId
         );
+        try {
+          db.prepare('UPDATE commercial_users SET plan_id = ?, updated_at = ? WHERE id = ?').run(
+            targetPlan.id,
+            now,
+            userId
+          );
+          if (targetPlan.id !== 'plan_free' && targetPlan.id !== 'free') {
+            const subId = `sub_${crypto.randomUUID()}`;
+            const expDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+            db.prepare(`
+              INSERT INTO commercial_subscriptions (
+                id, user_id, plan_id, status, billing_cycle, starts_at, expires_at, payment_provider, created_at
+              ) VALUES (?, ?, ?, 'ACTIVE', 'MONTHLY', ?, ?, 'OWNER_SET_PLAN', ?)
+            `).run(subId, userId, targetPlan.id, now, expDate, now);
+          } else {
+            db.prepare("UPDATE commercial_subscriptions SET status = 'CANCELLED' WHERE user_id = ? AND status = 'ACTIVE'").run(userId);
+          }
+        } catch {}
       } catch (err: any) {
         console.error('[OwnerService][CRITICAL] SQLite set-plan error', err?.message);
         sendJSON(res, 500, { success: false, error: 'Failed to update plan' });
