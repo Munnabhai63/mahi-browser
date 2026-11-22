@@ -764,8 +764,6 @@ export function getWebAdminHtml(): string {
         }
       }
     }
-      \`;
-    }
 
     async function changeUserStatus(userId, status) {
       const res = await apiFetch(\`/api/v1/admin/users/\${userId}/status\`, {
