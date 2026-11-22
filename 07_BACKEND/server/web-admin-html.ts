@@ -675,17 +675,12 @@ export function getWebAdminHtml(): string {
               <div class="w-10 h-10 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xl font-bold mb-1">
                 ✓
               </div>
-              <h4 class="text-sm font-extrabold text-emerald-900">Premium License Issued!</h4>
-              <p class="text-[11px] text-emerald-700">Account has been upgraded successfully.</p>
+              <h4 class="text-sm font-extrabold text-emerald-900">Account Upgraded to PRO!</h4>
+              <p class="text-[11px] text-emerald-700">Account has been upgraded directly in the cloud. 100 Profiles unlocked.</p>
             </div>
-            <div class="bg-white p-3 rounded-xl border border-emerald-200/80">
-              <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">One-Time License Key:</label>
-              <div class="flex items-center space-x-2">
-                <input type="text" id="modal-raw-key" readonly class="w-full font-mono text-xs text-slate-800 bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-200 select-all">
-                <button onclick="copyToClipboard(document.getElementById('modal-raw-key').value, this, 'License Key Copied!')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition shrink-0">
-                  📋 Copy
-                </button>
-              </div>
+            <div class="p-3 bg-white rounded-xl border border-emerald-200/80 text-center space-y-1">
+              <p class="text-xs font-bold text-emerald-800">Direct Cloud Activation Active</p>
+              <p class="text-[11px] text-slate-500">No manual license key is needed. The user's Mahi Browser will automatically reflect PRO status on next sync or restart.</p>
             </div>
             <div class="text-center pt-2">
               <button onclick="document.getElementById('grant-premium-modal').remove(); renderUsers();" class="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition">
@@ -749,8 +744,7 @@ export function getWebAdminHtml(): string {
         document.getElementById('grant-modal-form').classList.add('hidden');
         const resBox = document.getElementById('modal-grant-result');
         resBox.classList.remove('hidden');
-        document.getElementById('modal-raw-key').value = res.data?.rawKey || res.rawKey || 'LICENSE-ISSUED';
-        showToast('Premium license issued successfully!');
+        showToast('Account upgraded to PRO successfully!');
       } else {
         if (res.error && res.error.toLowerCase().includes('owner session')) {
           if (totpBox) totpBox.classList.remove('hidden');
@@ -2812,11 +2806,8 @@ export function getOwnerAdminHtml(): string {
       });
 
       if (res.success) {
-        msg.className = 'text-xs p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300';
-        msg.innerText = \`License granted successfully! ID: \${res.licenseId} (Key: \${res.keyMasked})\${res.planSyncFailed ? ' [Warning: planSyncFailed]' : ''}\`;
-        if (res.rawKey) {
-          openKeyModal(res.rawKey);
-        }
+        msg.className = 'text-xs p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 space-y-1 block';
+        msg.innerHTML = '<div class="font-bold flex items-center space-x-1.5"><span class="text-base">✓</span> <span>Account Upgraded to PRO Successfully!</span></div><div class="text-[11px] text-emerald-400">100 Profiles unlocked. The user\'s Mahi Browser will automatically reflect PRO status. No manual key needed.</div>';
       } else {
         msg.className = 'text-xs p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300';
         msg.innerText = res.error || 'Failed to grant license';

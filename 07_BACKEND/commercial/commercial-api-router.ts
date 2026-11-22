@@ -327,12 +327,16 @@ function checkAdminAuth(req: http.IncomingMessage, body?: any): { isAdmin: boole
 }
 
 function signAccountStatus(canonical: string): string {
-  if (process.env.MAHI_STATUS_PRIVATE_KEY) {
+  const privateKey = process.env.MAHI_STATUS_PRIVATE_KEY || process.env.RSA_PRIVATE_KEY;
+  if (privateKey) {
     try {
+      const formatted = privateKey.includes('\\n') ? privateKey.replace(/\\n/g, '\n') : privateKey;
       const signer = crypto.createSign('SHA256');
       signer.update(canonical);
-      return signer.sign(process.env.MAHI_STATUS_PRIVATE_KEY, 'base64');
-    } catch {}
+      return signer.sign(formatted, 'base64');
+    } catch (err: any) {
+      console.warn('[AccountStatus] sign error:', err?.message);
+    }
   }
   return '';
 }
@@ -709,7 +713,7 @@ export async function handleCommercialApiRoutes(
     const sync_allowed = !isBannedOrSuspended && (entitlements?.features?.['cloud.sync'] ?? (plan !== 'free'));
 
     // 5. Expiration time from entitlement or Postgres license
-    let expires_at = entitlements?.subscription?.expiresAt || null;
+    let expires_at: string | null = entitlements?.subscription?.expiresAt || null;
     if (isPostgresConfigured()) {
       try {
         const prisma = getPrismaClient();
@@ -718,9 +722,16 @@ export async function handleCommercialApiRoutes(
             where: { account_id: auth.userId, status: 'ACTIVE' },
             orderBy: { created_at: 'desc' },
           });
-          if (activeLic?.expires_at) expires_at = activeLic.expires_at;
+          if (activeLic?.expires_at) {
+            expires_at = activeLic.expires_at instanceof Date
+              ? activeLic.expires_at.toISOString()
+              : String(activeLic.expires_at);
+          }
         }
       } catch {}
+    }
+    if (expires_at && typeof expires_at !== 'string') {
+      expires_at = (expires_at as any) instanceof Date ? (expires_at as any).toISOString() : String(expires_at);
     }
 
     const server_time = Date.now();

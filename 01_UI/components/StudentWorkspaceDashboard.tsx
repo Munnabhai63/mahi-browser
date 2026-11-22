@@ -31,7 +31,7 @@ interface StudentWorkspaceDashboardProps {
 }
 
 export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps> = ({ onNavigate }) => {
-  const { currentUser, planLimits } = useAccountStore();
+  const { currentUser, planLimits, fetchPlanLimits } = useAccountStore();
   const { currentLicenseStatus, fetchCurrentStatus } = useLicenseStore();
   const { profiles, startProfile, stopProfile, setSelectedProfileId } = useProfileStore();
   const { proxies } = useProxyStore();
@@ -42,13 +42,14 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
 
   useEffect(() => {
     fetchCurrentStatus();
+    fetchPlanLimits({ force: true }).catch(() => {});
 
     if (window.mahiAPI) {
       window.mahiAPI.getFleetResources().then(setFleetUsage);
       const unsub = window.mahiAPI.onFleetResourceUsage(setFleetUsage);
       return () => unsub();
     }
-  }, []);
+  }, [fetchCurrentStatus, fetchPlanLimits]);
 
   const handleOptimizeMemory = async () => {
     setIsOptimizing(true);
@@ -85,10 +86,14 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
     planLimits?.isPro ||
     isBusiness ||
     currentPlan === 'pro' ||
+    currentPlan === 'plan_pro' ||
+    currentPlan.includes('pro') ||
     currentPlan === 'trial' ||
     currentPlan.startsWith('pro_') ||
     currentPlan.startsWith('professional_') ||
     currentUser?.planName?.toUpperCase() === 'PRO' ||
+    currentUser?.planName?.toUpperCase() === 'PLAN_PRO' ||
+    currentUser?.planName?.toUpperCase()?.includes('PRO') ||
     currentUser?.planName?.toUpperCase() === 'TRIAL'
   );
   const isProActive = isLicensePro || isAccountPaid;

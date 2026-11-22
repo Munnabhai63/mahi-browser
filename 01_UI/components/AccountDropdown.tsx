@@ -50,8 +50,12 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
   const isAccountPro = Boolean(
     planLimits?.isPro ||
     planLimits?.plan === 'pro' ||
+    planLimits?.plan === 'plan_pro' ||
+    planLimits?.plan?.includes('pro') ||
     planLimits?.plan === 'trial' ||
     currentUser?.planName?.toUpperCase() === 'PRO' ||
+    currentUser?.planName?.toUpperCase() === 'PLAN_PRO' ||
+    currentUser?.planName?.toUpperCase()?.includes('PRO') ||
     currentUser?.planName?.toUpperCase() === 'TRIAL'
   );
   const isPro = isLicensePro || isAccountPro;
@@ -67,11 +71,11 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
     currentUser?.planName?.toUpperCase() === 'BUSINESS'
   );
 
-  const isPaidOrTrial = isBusiness || isPro || currentPlan === 'pro' || currentPlan === 'trial' || currentPlan === 'starter' || currentPlan.startsWith('pro_') || currentPlan.startsWith('professional_');
+  const isPaidOrTrial = isBusiness || isPro || currentPlan === 'pro' || currentPlan === 'plan_pro' || currentPlan.includes('pro') || currentPlan === 'trial' || currentPlan === 'starter' || currentPlan.startsWith('pro_') || currentPlan.startsWith('professional_');
   const planBadgeText = isBusiness
     ? (currentPlan === 'enterprise' ? 'ENTERPRISE' : currentPlan.includes('team') ? 'TEAM' : 'BUSINESS')
     : currentPlan === 'trial' ? 'TRIAL'
-    : (currentPlan === 'pro' || currentPlan.startsWith('pro_') || currentPlan.startsWith('professional_')) ? 'PRO'
+    : (currentPlan === 'pro' || currentPlan === 'plan_pro' || currentPlan.includes('pro') || currentPlan.startsWith('pro_') || currentPlan.startsWith('professional_')) ? 'PRO'
     : currentPlan === 'starter' ? 'STARTER'
     : (isPro ? 'PRO' : 'FREE');
 
