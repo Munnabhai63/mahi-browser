@@ -937,8 +937,8 @@ export async function handleCommercialApiRoutes(
     }
 
     let pending: any = null;
-    if (isPostgresConfigured()) {
-      const prisma = getPrismaClient();
+    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
+    if (prisma) {
       pending = await prisma.commercial_payments.findFirst({
         where: {
           OR: [
