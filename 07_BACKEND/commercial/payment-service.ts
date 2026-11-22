@@ -1105,78 +1105,92 @@ export class PaymentService {
     let planSyncFailed = false;
 
     const prisma = isPostgresConfigured() ? getPrismaClient() : null;
-    if (prisma && typeof (prisma as any).$transaction === 'function') {
-      await prisma.$transaction(async (tx) => {
-        // 1) payment
-        const existingPayment = await tx.commercial_payments.findFirst({
-          where: { external_payment_id: params.externalPaymentId },
-        });
-        if (existingPayment) {
-          await tx.commercial_payments.update({
-            where: { id: existingPayment.id },
-            data: {
-              status: 'SUCCEEDED',
-              receipt_url: params.receiptUrl || null,
-              updated_at: now,
-            },
-          });
-        } else {
-          await tx.commercial_payments.create({
-            data: {
-              id: `pay_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
-              user_id: params.userId,
-              subscription_id: subId,
-              provider: params.provider,
-              external_order_id: params.externalOrderId || null,
-              external_payment_id: params.externalPaymentId,
-              amount_cents: params.amountCents,
-              currency: params.currency,
-              status: 'SUCCEEDED',
-              plan_id: params.planId,
-              billing_cycle: params.billingCycle,
-              receipt_url: params.receiptUrl || null,
-              metadata_json: JSON.stringify(params.metadata || {}),
-              created_at: now,
-              updated_at: now,
-            },
-          });
-        }
+    const pgReady = !!(prisma
+      && ['commercial_payments', 'commercial_subscriptions', 'commercial_billing_invoices', 'licenses', 'auth_users']
+           .every((m) => !!(prisma as any)[m])
+      && typeof (prisma as any).commercial_payments.findFirst === 'function'
+      && typeof (prisma as any).commercial_payments.create === 'function'
+      && typeof (prisma as any).commercial_payments.update === 'function'
+      && typeof (prisma as any).commercial_subscriptions.create === 'function'
+      && typeof (prisma as any).commercial_billing_invoices.create === 'function'
+      && typeof (prisma as any).licenses.create === 'function'
+      && typeof (prisma as any).licenses.findFirst === 'function'
+      && typeof (prisma as any).auth_users.update === 'function');
+    if (prisma && !pgReady) {
+      console.warn('[PaymentService][PG_CAPABILITY_MISSING] Prisma client cannot serve commercial_payments chain; falling back to local SQLite activation + PG auth-users sync only');
+    }
 
-        // 2) invoice
-        await tx.commercial_billing_invoices.create({
+    if (prisma && pgReady) {
+      // MODE 1 - POSTGRES-PRIMARY (production). SEQUENTIAL ops only; NO $transaction.
+      // 1) payment: findFirst by external_payment_id -> update SUCCEEDED (+receipt_url, updated_at) OR create (same fields as SQLite branch)
+      const existingPayment = await prisma.commercial_payments.findFirst({
+        where: { external_payment_id: params.externalPaymentId },
+      });
+      if (existingPayment) {
+        await prisma.commercial_payments.update({
+          where: { id: existingPayment.id },
           data: {
-            id: invoiceId,
+            status: 'SUCCEEDED',
+            receipt_url: params.receiptUrl || null,
+            updated_at: now,
+          },
+        });
+      } else {
+        await prisma.commercial_payments.create({
+          data: {
+            id: `pay_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
             user_id: params.userId,
-            payment_id: params.externalPaymentId,
-            invoice_number: invoiceNumber,
+            subscription_id: subId,
+            provider: params.provider,
+            external_order_id: params.externalOrderId || null,
+            external_payment_id: params.externalPaymentId,
             amount_cents: params.amountCents,
             currency: params.currency,
-            status: 'PAID',
-            period_start: now,
-            period_end: expiresAt,
-            pdf_url: params.receiptUrl || null,
-            created_at: now,
-          },
-        });
-
-        // 3) subscription
-        await tx.commercial_subscriptions.create({
-          data: {
-            id: subId,
-            user_id: params.userId,
+            status: 'SUCCEEDED',
             plan_id: params.planId,
-            status: 'ACTIVE',
             billing_cycle: params.billingCycle,
-            starts_at: now,
-            expires_at: expiresAt,
-            payment_provider: params.provider,
-            external_sub_id: params.externalOrderId || null,
+            receipt_url: params.receiptUrl || null,
+            metadata_json: JSON.stringify(params.metadata || {}),
             created_at: now,
+            updated_at: now,
           },
         });
+      }
+
+      // 2) invoice create
+      await prisma.commercial_billing_invoices.create({
+        data: {
+          id: invoiceId,
+          user_id: params.userId,
+          payment_id: params.externalPaymentId,
+          invoice_number: invoiceNumber,
+          amount_cents: params.amountCents,
+          currency: params.currency,
+          status: 'PAID',
+          period_start: now,
+          period_end: expiresAt,
+          pdf_url: params.receiptUrl || null,
+          created_at: now,
+        },
       });
 
-      // AFTER the transaction (c4)
+      // 3) subscription create (identical field set as SQLite)
+      await prisma.commercial_subscriptions.create({
+        data: {
+          id: subId,
+          user_id: params.userId,
+          plan_id: params.planId,
+          status: 'ACTIVE',
+          billing_cycle: params.billingCycle,
+          starts_at: now,
+          expires_at: expiresAt,
+          payment_provider: params.provider,
+          external_sub_id: params.externalOrderId || null,
+          created_at: now,
+        },
+      });
+
+      // 4) auth_users.update plan_id/profile_quota -> on error: console.error('[PaymentService][CRITICAL] PG plan sync error', msg); planSyncFailed = true // subscription stays ACTIVE (legacy tolerance preserved)
       try {
         await prisma.auth_users.update({
           where: { id: params.userId },
@@ -1195,25 +1209,29 @@ export class PaymentService {
         console.error('[PaymentService][RECONCILE_REQUIRED] Subscription active but PG out of sync for user', params.userId);
       }
 
+      // 5) commercial_users: findFirst -> update plan_id; missing => warn+skip (never create)
       try {
-        const commUser = await prisma.commercial_users.findFirst({
-          where: { id: params.userId },
-        });
-        if (commUser) {
-          await prisma.commercial_users.update({
+        if (typeof (prisma as any).commercial_users?.findFirst === 'function') {
+          const commUser = await prisma.commercial_users.findFirst({
             where: { id: params.userId },
-            data: {
-              plan_id: params.planId,
-              updated_at: now,
-            },
           });
-        } else {
-          console.warn(`[PaymentService] Mirror-missing user ${params.userId} in commercial_users; skipping commercial_users update.`);
+          if (commUser) {
+            await prisma.commercial_users.update({
+              where: { id: params.userId },
+              data: {
+                plan_id: params.planId,
+                updated_at: now,
+              },
+            });
+          } else {
+            console.warn(`[PaymentService] Mirror-missing user ${params.userId} in commercial_users; skipping commercial_users update.`);
+          }
         }
       } catch (err: any) {
         console.warn(`[PaymentService] Failed to update commercial_users plan_id for ${params.userId}:`, err?.message);
       }
 
+      // 6) license idempotency: findFirst(account_id, AND/OR notes contains paymentId OR subId) -> if missing: generateLicenseKey() (import from license-engine.js) -> licenses.create (status ACTIVE, duration_type CUSTOM, created_by PAYMENT_GATEWAY, notes 'Plan: X | Payment: Y | Sub: Z'); errors => warn + licenceResult=null
       try {
         const existing = await prisma.licenses.findFirst({
           where: {
@@ -1259,22 +1277,25 @@ export class PaymentService {
           });
           licenceResult = { rawKey, keyMasked };
 
+          // 7) audit (Prisma commercial_audit_logs): insert LICENSE_ISSUED (target_type LICENSE, target_id account_id) when license created - try/catch warn
           try {
-            await prisma.commercial_audit_logs.create({
-              data: {
-                id: crypto.randomUUID(),
-                actor_id: params.userId,
-                actor_name: customerName,
-                actor_role: 'SYSTEM',
-                action: 'LICENSE_ISSUED',
-                target_type: 'LICENSE',
-                target_id: params.userId,
-                details: `License issued on plan approval: ${params.planId} (sub ${subId})`,
-                ip_address: null,
-                result: 'SUCCESS',
-                created_at: now,
-              },
-            });
+            if (typeof (prisma as any).commercial_audit_logs?.create === 'function') {
+              await prisma.commercial_audit_logs.create({
+                data: {
+                  id: crypto.randomUUID(),
+                  actor_id: params.userId,
+                  actor_name: customerName,
+                  actor_role: 'SYSTEM',
+                  action: 'LICENSE_ISSUED',
+                  target_type: 'LICENSE',
+                  target_id: params.userId,
+                  details: `License issued on plan approval: ${params.planId} (sub ${subId})`,
+                  ip_address: null,
+                  result: 'SUCCESS',
+                  created_at: now,
+                },
+              });
+            }
           } catch (auditErr: any) {
             console.warn('[PaymentService] Failed to log license audit log:', auditErr?.message);
           }
@@ -1592,7 +1613,7 @@ export class PaymentService {
     const now = new Date().toISOString();
 
     const prisma = isPostgresConfigured() ? getPrismaClient() : null;
-    if (prisma && typeof (prisma as any).$transaction === 'function') {
+    if (prisma) {
       // Check duplicate UTR via Postgres
       const existing = await prisma.commercial_payments.findFirst({
         where: {
