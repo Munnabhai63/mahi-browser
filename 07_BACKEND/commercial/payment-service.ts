@@ -1105,7 +1105,7 @@ export class PaymentService {
     let planSyncFailed = false;
 
     const prisma = isPostgresConfigured() ? getPrismaClient() : null;
-    if (prisma) {
+    if (prisma && typeof (prisma as any).$transaction === 'function') {
       await prisma.$transaction(async (tx) => {
         // 1) payment
         const existingPayment = await tx.commercial_payments.findFirst({
@@ -1592,7 +1592,7 @@ export class PaymentService {
     const now = new Date().toISOString();
 
     const prisma = isPostgresConfigured() ? getPrismaClient() : null;
-    if (prisma) {
+    if (prisma && typeof (prisma as any).$transaction === 'function') {
       // Check duplicate UTR via Postgres
       const existing = await prisma.commercial_payments.findFirst({
         where: {
