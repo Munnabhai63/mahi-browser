@@ -2756,7 +2756,8 @@ export function getOwnerAdminHtml(): string {
     }
 
     function selectUser(context, id, name, email, status) {
-      selectedUsers[context] = { id, name, email, status };
+      const cleanId = (id || '').startsWith('central:') ? id.replace('central:', '') : id;
+      selectedUsers[context] = { id: cleanId, name, email, status };
       const searchInput = document.getElementById(context + '-user-search');
       const resultsDiv = document.getElementById(context + '-search-results');
       const badge = document.getElementById(context + '-selected-badge');
@@ -2767,8 +2768,8 @@ export function getOwnerAdminHtml(): string {
       if (searchInput) searchInput.classList.add('hidden');
       if (resultsDiv) resultsDiv.classList.add('hidden');
       if (badge) badge.classList.remove('hidden');
-      if (badgeText) badgeText.innerText = \`\${name} (\${email || id}) [Status: \${status}]\`;
-      if (hiddenId) hiddenId.value = id;
+      if (badgeText) badgeText.innerText = \`\${name} (\${email || cleanId}) [Status: \${status}]\`;
+      if (hiddenId) hiddenId.value = cleanId;
       if (hiddenEmail) hiddenEmail.value = email;
     }
 

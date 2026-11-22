@@ -90,4 +90,29 @@ describe('Admin Instant Pro Entitlement & Sync Engine', () => {
     expect(ent.limits.maxProfiles).toBe(100);
     expect(ent.plan.tier).toBe('BUSINESS');
   });
+
+  it('resolves user correctly whether queried by central:id, bare id, or email', () => {
+    const db = getDatabase();
+    const userId = 'usr_c2887381_test';
+    const email = 'munaffyt_test@gmail.com';
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO auth_users (id, email, normalized_email, password_hash, salt, name, role, status, plan_id, profile_quota, created_at, updated_at)
+      VALUES (?, ?, ?, 'hash', 'salt', 'Kairo', 'USER', 'ACTIVE', 'plan_free', 15, ?, ?)
+    `).run(userId, email, email, now, now);
+
+    // Bare ID
+    const byBareId = getUserById(userId);
+    expect(byBareId).not.toBeNull();
+    expect(byBareId?.id).toBe(userId);
+
+    // central: prefix stripped
+    const cleanId = 'central:' + userId;
+    const stripped = cleanId.startsWith('central:') ? cleanId.slice(8) : cleanId;
+    expect(getUserById(stripped)?.id).toBe(userId);
+
+    // By Email
+    expect(getUserById(email)?.id).toBe(userId);
+  });
 });

@@ -7,6 +7,7 @@ import {
   signToken,
   verifyToken,
   getUserById,
+  getUserByEmail,
   getAllUsers,
   updateUserStatus,
   updateUserPlan,
@@ -3090,6 +3091,33 @@ export async function handleCommercialApiRoutes(
     }
   }
 
+  async function resolveTargetUser(rawIdOrEmail: string): Promise<any | null> {
+    if (!rawIdOrEmail) return null;
+    let clean = String(rawIdOrEmail).trim();
+    if (clean.startsWith('central:')) {
+      clean = clean.slice('central:'.length).trim();
+    }
+    // 1. Try by ID in central auth
+    try {
+      const byId = await getCentralUserByIdAsync(clean);
+      if (byId) return byId;
+    } catch {}
+
+    // 2. Try by Email in central auth
+    try {
+      const byEmail = await getCentralUserByEmailAsync(clean);
+      if (byEmail) return byEmail;
+    } catch {}
+
+    // 3. Fallback to local commercial users
+    try {
+      const comm = getUserById(clean) || getUserByEmail(clean);
+      if (comm) return comm;
+    } catch {}
+
+    return null;
+  }
+
   if (pathname === '/api/v1/admin/owner/verify' && method === 'POST') {
     const body = await parseBody(req);
     const { isAdmin } = checkAdminAuth(req, body);
@@ -3154,15 +3182,15 @@ export async function handleCommercialApiRoutes(
     }
 
     const clientIp = ((req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
-    const userId = body?.userId ? String(body.userId).trim() : '';
-    if (!userId) {
+    const rawTarget = body?.userId ? String(body.userId).trim() : '';
+    if (!rawTarget) {
       sendJSON(res, 400, { success: false, error: 'userId is required' });
       return true;
     }
 
     let targetUser: any = null;
     try {
-      targetUser = await getCentralUserByIdAsync(userId);
+      targetUser = await resolveTargetUser(rawTarget);
     } catch (err: any) {
       console.error('[OwnerService][CRITICAL] User lookup error for grant:', err?.message || err);
       sendJSON(res, 500, { success: false, error: 'Database error looking up user' });
@@ -3172,6 +3200,7 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 404, { success: false, error: 'User not found' });
       return true;
     }
+    const userId = targetUser.id;
 
     const planId = body?.planId ? String(body.planId).trim() : '';
     const targetPlan = resolveCommercialPlan(planId);
@@ -3243,6 +3272,22 @@ export async function handleCommercialApiRoutes(
             await prisma.commercial_users.update({
               where: { id: userId },
               data: { plan_id: targetPlan.id, updated_at: now },
+            });
+          } else {
+            await prisma.commercial_users.create({
+              data: {
+                id: userId,
+                email: targetUser.email,
+                password_hash: targetUser.passwordHash || 'OAUTH_MIRROR',
+                salt: targetUser.salt || 'OAUTH_MIRROR',
+                name: targetUser.name || targetUser.email.split('@')[0],
+                role: targetUser.role || 'USER',
+                status: targetUser.status || 'ACTIVE',
+                plan_id: targetPlan.id,
+                created_at: now,
+                updated_at: now,
+                last_login_at: now,
+              },
             });
           }
         }
@@ -3366,15 +3411,15 @@ export async function handleCommercialApiRoutes(
     }
 
     const clientIp = ((req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
-    const userId = body?.userId ? String(body.userId).trim() : '';
-    if (!userId) {
+    const rawTarget = body?.userId ? String(body.userId).trim() : '';
+    if (!rawTarget) {
       sendJSON(res, 400, { success: false, error: 'userId is required' });
       return true;
     }
 
     let targetUser: any = null;
     try {
-      targetUser = await getCentralUserByIdAsync(userId);
+      targetUser = await resolveTargetUser(rawTarget);
     } catch (err: any) {
       console.error('[OwnerService][CRITICAL] User lookup error for remove:', err?.message || err);
       sendJSON(res, 500, { success: false, error: 'Database error looking up user' });
@@ -3384,6 +3429,7 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 404, { success: false, error: 'User not found' });
       return true;
     }
+    const userId = targetUser.id;
 
     const reason = body?.reason || 'Revoked by owner';
     let revokedCount = 0;
@@ -3491,15 +3537,15 @@ export async function handleCommercialApiRoutes(
     }
 
     const clientIp = ((req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
-    const userId = body?.userId ? String(body.userId).trim() : '';
-    if (!userId) {
+    const rawTarget = body?.userId ? String(body.userId).trim() : '';
+    if (!rawTarget) {
       sendJSON(res, 400, { success: false, error: 'userId is required' });
       return true;
     }
 
     let targetUser: any = null;
     try {
-      targetUser = await getCentralUserByIdAsync(userId);
+      targetUser = await resolveTargetUser(rawTarget);
     } catch (err: any) {
       console.error('[OwnerService][CRITICAL] User lookup error for set-plan:', err?.message || err);
       sendJSON(res, 500, { success: false, error: 'Database error looking up user' });
@@ -3509,6 +3555,7 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 404, { success: false, error: 'User not found' });
       return true;
     }
+    const userId = targetUser.id;
 
     const planId = body?.planId ? String(body.planId).trim() : '';
     const targetPlan = resolveCommercialPlan(planId);
@@ -3544,6 +3591,22 @@ export async function handleCommercialApiRoutes(
             await prisma.commercial_users.update({
               where: { id: userId },
               data: { plan_id: targetPlan.id, updated_at: now },
+            });
+          } else {
+            await prisma.commercial_users.create({
+              data: {
+                id: userId,
+                email: targetUser.email,
+                password_hash: targetUser.passwordHash || 'OAUTH_MIRROR',
+                salt: targetUser.salt || 'OAUTH_MIRROR',
+                name: targetUser.name || targetUser.email.split('@')[0],
+                role: targetUser.role || 'USER',
+                status: targetUser.status || 'ACTIVE',
+                plan_id: targetPlan.id,
+                created_at: now,
+                updated_at: now,
+                last_login_at: now,
+              },
             });
           }
         }
@@ -3648,15 +3711,15 @@ export async function handleCommercialApiRoutes(
     }
 
     const clientIp = ((req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
-    const userId = body?.userId ? String(body.userId).trim() : '';
-    if (!userId) {
+    const rawTarget = body?.userId ? String(body.userId).trim() : '';
+    if (!rawTarget) {
       sendJSON(res, 400, { success: false, error: 'userId is required' });
       return true;
     }
 
     let targetUser: any = null;
     try {
-      targetUser = await getCentralUserByIdAsync(userId);
+      targetUser = await resolveTargetUser(rawTarget);
     } catch (err: any) {
       console.error('[OwnerService][CRITICAL] User lookup error for status change:', err?.message || err);
       sendJSON(res, 500, { success: false, error: 'Database error looking up user' });
@@ -3666,6 +3729,7 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 404, { success: false, error: 'User not found' });
       return true;
     }
+    const userId = targetUser.id;
 
     const now = new Date().toISOString();
     const prisma = isPostgresConfigured() ? getPrismaClient() : null;
@@ -3767,15 +3831,15 @@ export async function handleCommercialApiRoutes(
     }
 
     const clientIp = ((req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
-    const userId = body?.userId ? String(body.userId).trim() : '';
-    if (!userId) {
+    const rawTarget = body?.userId ? String(body.userId).trim() : '';
+    if (!rawTarget) {
       sendJSON(res, 400, { success: false, error: 'userId is required' });
       return true;
     }
 
     let targetUser: any = null;
     try {
-      targetUser = await getCentralUserByIdAsync(userId);
+      targetUser = await resolveTargetUser(rawTarget);
     } catch (err: any) {
       console.error('[OwnerService][CRITICAL] User lookup error for ban:', err?.message || err);
       sendJSON(res, 500, { success: false, error: 'Database error looking up user' });
@@ -3785,6 +3849,7 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 404, { success: false, error: 'User not found' });
       return true;
     }
+    const userId = targetUser.id;
 
     const now = new Date().toISOString();
     const reason = body?.reason || 'User banned by owner';
@@ -3906,15 +3971,15 @@ export async function handleCommercialApiRoutes(
     }
 
     const clientIp = ((req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
-    const userId = body?.userId ? String(body.userId).trim() : '';
-    if (!userId) {
+    const rawTarget = body?.userId ? String(body.userId).trim() : '';
+    if (!rawTarget) {
       sendJSON(res, 400, { success: false, error: 'userId is required' });
       return true;
     }
 
     let targetUser: any = null;
     try {
-      targetUser = await getCentralUserByIdAsync(userId);
+      targetUser = await resolveTargetUser(rawTarget);
     } catch (err: any) {
       console.error('[OwnerService][CRITICAL] User lookup error for unban:', err?.message || err);
       sendJSON(res, 500, { success: false, error: 'Database error looking up user' });
@@ -3924,6 +3989,7 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 404, { success: false, error: 'User not found' });
       return true;
     }
+    const userId = targetUser.id;
 
     const now = new Date().toISOString();
     const prisma = isPostgresConfigured() ? getPrismaClient() : null;
