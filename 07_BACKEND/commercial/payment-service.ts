@@ -26,7 +26,7 @@ import { getUserById } from './commercial-auth-service.js';
 import { getCentralUserByIdAsync } from '../../05_AUTH/central-auth-service.js';
 import { createLicense, generateLicenseKey } from '../../04_LICENSING/license-engine.js';
 
-function resolveCommercialPlan(planId: string): CommercialPlan | null {
+export function resolveCommercialPlan(planId: string): CommercialPlan | null {
   const plan = getCommercialPlanById(planId);
   if (plan) return plan;
   const normalized = (planId || '').toLowerCase().trim();

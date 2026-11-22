@@ -21,7 +21,8 @@ import { validateCurrentLicense, activateLicense, createLicense, getLicenses, re
 import fs from 'node:fs';
 import { getActivityLogs } from '../services/audit-service.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import { getWebAdminHtml } from './web-admin-html.js';
+import { isPostgresConfigured } from '../../06_DATABASE/central-repository.js';
+import { getWebAdminHtml, getOwnerAdminHtml } from './web-admin-html.js';
 import { getSuperAdminHtml } from './super-admin-html.js';
 import { getDownloadPortalHtml } from './download-portal-html.js';
 import { getDistributionInfo, fixDesktopShortcuts } from '../../03_HARDWARE/distribution-service.js';
@@ -385,8 +386,14 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
         }
       }
 
-      // 0. Secret Super Admin Console
-      if ((cleanPath === '/super-admin' || cleanPath === '/root-admin' || cleanPath === '/master-admin') && method === 'GET') {
+      // 0. Secret Super Admin Console & Owner Zone
+      if (cleanPath === '/super-admin' && method === 'GET') {
+        if (isLocalSuperAdminEnabled() && !process.env.MAHI_IS_GATEWAY && !isPostgresConfigured()) {
+          return sendHTML(res, 200, getSuperAdminHtml());
+        }
+        return sendHTML(res, 200, getOwnerAdminHtml());
+      }
+      if ((cleanPath === '/root-admin' || cleanPath === '/master-admin') && method === 'GET') {
         if (!isLocalSuperAdminEnabled()) {
           return sendJSON(res, 403, { success: false, error: 'Local Super Admin interface is disabled.' });
         }
