@@ -1704,7 +1704,7 @@ export function registerIpcHandlers(): void {
       throw new Error('Unauthorized. Admin authentication required to revoke licenses.');
     }
     try {
-      return revokeLicense(licenseId, reason);
+      return await revokeLicense(licenseId, reason);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }
@@ -1715,7 +1715,7 @@ export function registerIpcHandlers(): void {
       throw new Error('Unauthorized. Admin authentication required to extend licenses.');
     }
     try {
-      return extendLicense(dto);
+      return await extendLicense(dto);
     } catch (err) {
       throw new Error(sanitizeError(err));
     }

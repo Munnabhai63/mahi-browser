@@ -1142,8 +1142,13 @@ export function startApiServer(): void {
         if (!verifyAdminAccess(body.adminSecret)) {
           return sendJSON(res, 403, { error: 'Forbidden. Admin authentication required.' });
         }
-        const ok = revokeLicense(body.licenseId, body.reason);
-        return sendJSON(res, ok ? 200 : 404, { success: ok });
+        try {
+          const ok = await revokeLicense(body.licenseId, body.reason);
+          return sendJSON(res, ok ? 200 : 404, { success: ok });
+        } catch (e: any) {
+          console.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+          return sendJSON(res, 500, { success: false, error: 'License operation failed.' });
+        }
       }
 
       if (pathname === '/admin/license/extend' && method === 'POST') {
@@ -1151,9 +1156,14 @@ export function startApiServer(): void {
         if (!verifyAdminAccess(body.adminSecret)) {
           return sendJSON(res, 403, { error: 'Forbidden. Admin authentication required.' });
         }
-        const record = extendLicense(body);
-        if (!record) return sendJSON(res, 404, { error: 'License not found' });
-        return sendJSON(res, 200, { success: true, data: record });
+        try {
+          const record = await extendLicense(body);
+          if (!record) return sendJSON(res, 404, { error: 'License not found' });
+          return sendJSON(res, 200, { success: true, data: record });
+        } catch (e: any) {
+          console.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+          return sendJSON(res, 500, { success: false, error: 'License operation failed.' });
+        }
       }
 
       const devicesMatch = pathname.match(/^\/admin\/license\/([^/]+)\/devices$/);

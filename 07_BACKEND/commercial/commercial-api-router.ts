@@ -2784,9 +2784,15 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 403, { success: false, error: 'Forbidden.' });
       return true;
     }
-    const ok = revokeLicense(body.licenseId, body.reason);
-    sendJSON(res, ok ? 200 : 404, { success: ok });
-    return true;
+    try {
+      const ok = await revokeLicense(body.licenseId, body.reason);
+      sendJSON(res, ok ? 200 : 404, { success: ok });
+      return true;
+    } catch (e: any) {
+      console.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+      sendJSON(res, 500, { success: false, error: 'License operation failed.' });
+      return true;
+    }
   }
 
   if (pathname === '/api/v1/admin/licenses/extend' && method === 'POST') {
@@ -2796,9 +2802,15 @@ export async function handleCommercialApiRoutes(
       sendJSON(res, 403, { success: false, error: 'Forbidden.' });
       return true;
     }
-    const record = extendLicense(body);
-    sendJSON(res, record ? 200 : 404, { success: Boolean(record), data: record });
-    return true;
+    try {
+      const record = await extendLicense(body);
+      sendJSON(res, record ? 200 : 404, { success: Boolean(record), data: record });
+      return true;
+    } catch (e: any) {
+      console.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+      sendJSON(res, 500, { success: false, error: 'License operation failed.' });
+      return true;
+    }
   }
 
   // -------------------------------------------------------------

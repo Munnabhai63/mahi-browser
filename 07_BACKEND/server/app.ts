@@ -659,19 +659,29 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
       if (pathname === '/api/v2/licenses/revoke' && method === 'POST') {
         const body = await parseBody(req);
         if (!requireMasterAdminAuth(req, res, parsedUrl, body)) return;
-        const ok = revokeLicense(body.licenseId, body.reason || 'Revoked from Web Admin');
-        return sendJSON(res, 200, { success: ok });
+        try {
+          const ok = await revokeLicense(body.licenseId, body.reason || 'Revoked from Web Admin');
+          return sendJSON(res, 200, { success: ok });
+        } catch (e: any) {
+          console.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+          return sendJSON(res, 500, { success: false, error: 'License operation failed.' });
+        }
       }
 
       if (pathname === '/api/v2/licenses/extend' && method === 'POST') {
         const body = await parseBody(req);
         if (!requireMasterAdminAuth(req, res, parsedUrl, body)) return;
-        const record = extendLicense({
-          licenseId: body.licenseId,
-          additionalDays: parseInt(body.additionalDays, 10) || 30,
-        });
-        if (!record) return sendJSON(res, 404, { success: false, error: 'License not found' });
-        return sendJSON(res, 200, { success: true, data: record });
+        try {
+          const record = await extendLicense({
+            licenseId: body.licenseId,
+            additionalDays: parseInt(body.additionalDays, 10) || 30,
+          });
+          if (!record) return sendJSON(res, 404, { success: false, error: 'License not found' });
+          return sendJSON(res, 200, { success: true, data: record });
+        } catch (e: any) {
+          console.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+          return sendJSON(res, 500, { success: false, error: 'License operation failed.' });
+        }
       }
 
       // 8b. Super Admin License List & Action
