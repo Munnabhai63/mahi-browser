@@ -16,6 +16,7 @@ import {
   EyeOff
 } from 'lucide-react';
 import { useToastStore } from '../stores/useToastStore.js';
+import { useAccountStore } from '../stores/useAccountStore.js';
 import { ConfirmModal } from './ConfirmModal.js';
 import { NavigationPage } from './Sidebar.js';
 
@@ -43,6 +44,7 @@ interface CloudSyncSectionProps {
 
 export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, onProfileRestored }) => {
   const { showToast } = useToastStore();
+  const { openAccountModal } = useAccountStore();
 
   const [loading, setLoading] = useState(false);
   const [allowed, setAllowed] = useState<boolean | null>(null);
@@ -188,7 +190,7 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
         </p>
         <div className="flex items-center space-x-3">
           <button
-            onClick={() => onNavigate('license')}
+            onClick={() => openAccountModal('PRO')}
             className="px-5 py-2.5 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-600/25 flex items-center space-x-2 transition"
           >
             <span>Upgrade to MAHI PRO</span>

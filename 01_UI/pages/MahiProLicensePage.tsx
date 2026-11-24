@@ -23,6 +23,7 @@ import {
   Share2,
 } from 'lucide-react';
 import { useLicenseStore } from '../stores/useLicenseStore.js';
+import { useAccountStore } from '../stores/useAccountStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import {
   LicenseRecord,
@@ -57,6 +58,7 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
 
 
   const { showToast } = useToastStore();
+  const { currentUser, accountSession, planLimits, openAccountModal } = useAccountStore();
 
   const [activeTab, setActiveTab] = useState<'user' | 'admin'>('user');
 
@@ -312,6 +314,39 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
       {/* USER LICENSE VIEW */}
       {/* ------------------------------------------------------------- */}
       <div className="space-y-6 flex-1">
+        {/* Modern Cloud SaaS Account Status */}
+        <div className="bg-gradient-to-r from-teal-950/40 via-slate-900 to-slate-900 rounded-2xl border border-teal-500/30 p-5 shadow-sm space-y-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-teal-400">Cloud Account Status</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  planLimits?.isPro || planLimits?.plan === 'pro' || planLimits?.plan === 'plan_pro'
+                    ? 'bg-teal-500/20 text-teal-300 border border-teal-400/30'
+                    : 'bg-slate-800 text-slate-400 border border-slate-700'
+                }`}>
+                  {planLimits?.isPro || planLimits?.plan === 'pro' || planLimits?.plan === 'plan_pro' ? 'MAHI PRO ACTIVE' : 'FREE TIER (15 PROFILES)'}
+                </span>
+              </div>
+              <p className="text-sm font-bold text-white">
+                {currentUser?.email || accountSession?.email || 'Logged-in Account'}
+              </p>
+              <p className="text-xs text-slate-400">
+                {planLimits?.isPro || planLimits?.plan === 'pro' || planLimits?.plan === 'plan_pro'
+                  ? 'Your account has 100 profiles, cloud sync, and full anti-detect capabilities unlocked.'
+                  : 'Upgrade your cloud account to PRO for 100 profiles, cloud sync, and priority proxies.'}
+              </p>
+            </div>
+            <button
+              onClick={() => openAccountModal('PRO')}
+              className="px-5 py-2.5 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-600/25 flex items-center justify-center space-x-2 transition shrink-0"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>{planLimits?.isPro || planLimits?.plan === 'pro' || planLimits?.plan === 'plan_pro' ? 'Manage Cloud Subscription' : 'Upgrade Account to PRO'}</span>
+            </button>
+          </div>
+        </div>
+
           {/* Dynamic Reminder & Alert Banners */}
           {currentLicenseStatus?.status === 'EXPIRED' && (
             <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-between text-xs text-rose-300">
@@ -433,12 +468,10 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
             <div>
               <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                {isProActive ? 'Change / Switch License Key' : 'Activate MAHI PRO'}
+                Legacy Offline License Key Activation (Optional)
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                {isProActive
-                  ? 'Enter a new license key to switch entitlements.'
-                  : `Enter your license key to unlock up to 100 profiles (₹${priceInr}/year).`}
+                For offline enterprise deployments without internet access. For cloud accounts, subscriptions sync automatically.
               </p>
             </div>
 

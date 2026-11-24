@@ -22,6 +22,7 @@ import {
   Laptop,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
+import { useAccountStore } from '../stores/useAccountStore.js';
 import { NavigationPage } from './Sidebar.js';
 
 interface CommandPaletteModalProps {
@@ -182,11 +183,11 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
     },
     {
       id: 'nav-license',
-      title: 'Go to MAHI Pro License',
+      title: 'Open Account & Plan Limits (PRO)',
       category: 'Navigation',
       icon: <Key className="w-4 h-4 text-emerald-500" />,
       action: () => {
-        onNavigate('license');
+        useAccountStore.getState().openAccountModal('PRO');
         onClose();
       },
     },
