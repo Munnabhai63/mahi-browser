@@ -346,7 +346,9 @@ export async function exchangeGoogleAuthorizationCode(code: string, redirectUri:
   }
 
   // Test / Simulated support for automated tests without hitting live Google servers
-  if (code.startsWith('mock_code_') || process.env.NODE_ENV === 'test') {
+  // STRICT SECURITY GUARD: Mock OAuth code exchange is strictly permitted ONLY in test environment
+  const isTestEnv = process.env.NODE_ENV === 'test';
+  if (isTestEnv && code.startsWith('mock_code_')) {
     return {
       accessToken: `mock_access_token_${code}`,
       idToken: `mock_id_token_${code}`,
@@ -403,8 +405,9 @@ export async function exchangeGoogleAuthorizationCode(code: string, redirectUri:
  * Fetches user profile data from Google using access token
  */
 export async function fetchGoogleProfile(accessToken: string): Promise<GoogleClaims> {
-  // Test / Simulated support
-  if (accessToken.startsWith('mock_access_token_')) {
+  // Test / Simulated support: STRICT SECURITY GUARD - only permitted in test environment
+  const isTestEnv = process.env.NODE_ENV === 'test';
+  if (isTestEnv && accessToken.startsWith('mock_access_token_')) {
     const suffix = accessToken.replace('mock_access_token_', '');
     return {
       sub: `google_sub_${suffix}`,
