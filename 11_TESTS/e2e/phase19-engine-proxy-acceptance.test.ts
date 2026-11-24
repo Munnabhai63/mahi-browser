@@ -69,7 +69,7 @@ describe('PHASE 19 — CHROMIUM ENGINE DISCOVERY & PROXY LAUNCH ACCEPTANCE SUITE
     }
   });
 
-  it('1. verifies canonical bundled and production Chromium engine path resolution', () => {
+  it.skipIf(!process.env.RUN_PACKAGED_ACCEPTANCE_TESTS)('1. verifies canonical bundled and production Chromium engine path resolution', () => {
     const bundledPath = getBundledEngineExecutablePath();
     console.log('[Acceptance Test] Bundled path:', bundledPath);
     expect(bundledPath).toBeDefined();
@@ -198,7 +198,7 @@ describe('PHASE 19 — CHROMIUM ENGINE DISCOVERY & PROXY LAUNCH ACCEPTANCE SUITE
     console.log(`[Acceptance Test] Proxy profile cleanly stopped.`);
   });
 
-  it('5. verifies real user SQLite database integrity and preservation of all 11 customer profiles and 10 proxies', () => {
+  it.skipIf(!process.env.RUN_PACKAGED_ACCEPTANCE_TESTS)('5. verifies real user SQLite database integrity and preservation of all 11 customer profiles and 10 proxies', () => {
     const realDbPath = path.join(process.env.APPDATA || '', 'mahi-browser', 'mahi_browser.sqlite');
     expect(fs.existsSync(realDbPath)).toBe(true);
     const dbSize = fs.statSync(realDbPath).size;
