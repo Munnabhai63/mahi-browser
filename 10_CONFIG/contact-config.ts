@@ -13,6 +13,8 @@
  * - USDT Status: DISABLED (Fake placeholder removed; real wallet pending)
  */
 
+export const APP_AUTHOR = 'Munna Bhai';
+
 export const BUSINESS_EMAIL = 'mahiverse.hub@gmail.com';
 export const SUPPORT_EMAIL = 'mahiverse.official@gmail.com';
 export const BILLING_EMAIL = 'mahiverse.official@gmail.com';
@@ -61,6 +63,8 @@ export const GRIEVANCE_RESPONSE_DAYS = 15;
 export const REFUND_WINDOW_DAYS = 7;
 
 export const CONTACT_CONFIG = {
+  APP_AUTHOR,
+  appAuthor: APP_AUTHOR,
   LEGAL_SELLER_NAME,
   LEGAL_BRAND_NAME,
   LEGAL_COUNTRY,

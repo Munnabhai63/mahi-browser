@@ -756,6 +756,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     accountSwitchDevice: async () => ({ success: true, message: 'Device rebound' }),
     accountGetSession: async () => null,
     accountGetPaymentInfo: async () => ({
+      success: true,
       upi_id: CONTACT_CONFIG.UPI_ID,
       upi_account_holder: CONTACT_CONFIG.UPI_ACCOUNT_HOLDER,
       upi_qr_asset: CONTACT_CONFIG.UPI_QR_ASSET,
@@ -769,7 +770,62 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     }),
     accountGetPricingCatalog: async () => ({
       success: true,
-      catalog: { personal: [], business: [] },
+      catalog: {
+        personal: [
+          {
+            planId: 'free',
+            displayName: 'Free Starter',
+            profileLimit: 3,
+            monthlyPricePaise: 0,
+            annualPricePaise: 0,
+            features: ['3 Browser Profiles', 'Standard Canvas Spoofing', 'Local Storage'],
+          },
+          {
+            planId: 'professional_10',
+            displayName: 'Professional 10',
+            profileLimit: 10,
+            monthlyPricePaise: 59900,
+            annualPricePaise: 359400,
+            features: ['10 Browser Profiles', 'Cloud Sync', 'Advanced Fingerprinting', 'Priority Support'],
+          },
+          {
+            planId: 'professional_25',
+            displayName: 'Professional 25',
+            profileLimit: 25,
+            monthlyPricePaise: 149900,
+            annualPricePaise: 899400,
+            features: ['25 Browser Profiles', 'Cloud Sync', 'Anti-Detect Stealth', 'Team Collaboration'],
+          },
+          {
+            planId: 'professional_100',
+            displayName: 'Professional 100',
+            profileLimit: 100,
+            monthlyPricePaise: 599900,
+            annualPricePaise: 3599400,
+            features: ['100 Browser Profiles', 'Dedicated Proxy Pool', 'VIP Support', 'Full API Access'],
+          },
+        ],
+        business: [
+          {
+            planId: 'business_scale',
+            displayName: 'Team 200',
+            profileLimit: 200,
+            monthlyPricePaise: 499900,
+            annualPricePaise: 2999400,
+            seatLimit: 20,
+            features: ['200 Profiles', '20 Team Seats', 'Role-Based Access Control', 'Dedicated Manager'],
+          },
+          {
+            planId: 'business_enterprise',
+            displayName: 'Team 300',
+            profileLimit: 300,
+            monthlyPricePaise: 599900,
+            annualPricePaise: 3599400,
+            seatLimit: 50,
+            features: ['300 Profiles', '50 Team Seats', 'Custom Proxy Gateway', 'SLA Guarantee'],
+          },
+        ],
+      },
     }),
     accountCreateCheckoutSession: async () => ({
       success: true,

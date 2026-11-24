@@ -205,6 +205,12 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     }
   }, [isOpen, isUserLoggedIn]);
 
+  // Fetch payment coordinates and dynamic pricing on mount with silent fallback
+  useEffect(() => {
+    fetchPaymentInfo().catch(() => {});
+    fetchPricingCatalog().catch(() => {});
+  }, [fetchPaymentInfo, fetchPricingCatalog]);
+
   useEffect(() => {
     if (selectedPlanTier === 'BUSINESS') {
       setSelectedPlanId('business_starter');
