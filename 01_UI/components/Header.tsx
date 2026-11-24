@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Plus, Moon, Sun, Monitor, ShieldAlert, ArrowUpRight, FolderPlus } from 'lucide-react';
+import { Search, Plus, FolderPlus } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore.js';
 import { NavigationPage } from './Sidebar.js';
 

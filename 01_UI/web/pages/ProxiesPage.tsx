@@ -5,9 +5,6 @@ import {
   RefreshCw,
   Plus,
   Trash2,
-  Lock,
-  Activity,
-  Layers,
   CheckCircle2,
 } from 'lucide-react';
 import { ProxySessionModal } from '../components/ProxySessionModal.js';

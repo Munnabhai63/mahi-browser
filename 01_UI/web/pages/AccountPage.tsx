@@ -1,15 +1,8 @@
 import React from 'react';
 import {
   User,
-  Shield,
-  CreditCard,
-  HardDrive,
   LogOut,
   CheckCircle2,
-  AlertTriangle,
-  Download,
-  Key,
-  Globe2,
 } from 'lucide-react';
 import { useWebAuthStore } from '../state/useWebAuthStore.js';
 import { APP_VERSION } from '../../../10_CONFIG/shared/version.js';

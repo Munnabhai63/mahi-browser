@@ -6,13 +6,6 @@ import {
   Trash2,
   RefreshCw,
   Send,
-  Copy,
-  Check,
-  Shield,
-  Layers,
-  Clock,
-  AlertCircle,
-  ExternalLink,
 } from 'lucide-react';
 import {
   RemoteApiKeyRecord,

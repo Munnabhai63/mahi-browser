@@ -5,14 +5,10 @@ import {
   Layers,
   Shield,
   Key,
-  Webhook,
-  Activity,
   Plus,
   ArrowRight,
   Laptop,
   CheckCircle2,
-  AlertTriangle,
-  Download,
 } from 'lucide-react';
 import { WebTab } from '../components/WebDashboardLayout.js';
 import { APP_VERSION } from '../../../10_CONFIG/shared/version.js';

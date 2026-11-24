@@ -1,6 +1,4 @@
 import { MahiBrowserAPI } from '../10_CONFIG/shared/types/ipc.js';
-import { Profile } from '../10_CONFIG/shared/types/profile.js';
-import { getDefaultProfileSettings } from '../10_CONFIG/shared/constants/defaults.js';
 import { APP_VERSION } from '../10_CONFIG/shared/version.js';
 import { CONTACT_CONFIG } from '../10_CONFIG/contact-config.js';
 import { DEFAULT_LOCAL_DAEMON_PORT, getLocalDaemonBaseUrl } from '../10_CONFIG/shared/network-endpoints.js';

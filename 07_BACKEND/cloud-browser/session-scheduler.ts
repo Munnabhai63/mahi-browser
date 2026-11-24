@@ -3,7 +3,6 @@
  * Phase 10 Architecture
  */
 
-import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import {
   CloudBrowserWorker,

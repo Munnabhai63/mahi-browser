@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar, NavigationPage } from './components/Sidebar.js';
 import { Header } from './components/Header.js';
-import { GlobalSearchModal } from './components/GlobalSearchModal.js';
 import { CommandPaletteModal } from './components/CommandPaletteModal.js';
 import { SynchronizerModal } from './components/SynchronizerModal.js';
 import { ToastContainer } from './components/ToastContainer.js';

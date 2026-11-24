@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   X,
   Globe2,
-  Shield,
   Activity,
   CheckCircle2,
   AlertCircle,

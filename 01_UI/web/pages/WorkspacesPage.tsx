@@ -3,13 +3,9 @@ import {
   Layers,
   UserPlus,
   Users,
-  Shield,
   Trash2,
   Share2,
-  Mail,
   Plus,
-  CheckCircle2,
-  AlertTriangle,
 } from 'lucide-react';
 import {
   TeamWorkspace,

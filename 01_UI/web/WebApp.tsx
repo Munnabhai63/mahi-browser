@@ -1,18 +1,12 @@
 import React, { useState } from 'react';
 import {
   Globe2,
-  FolderPlus,
   Shield,
   Layers,
-  Bot,
   Key,
   CreditCard,
-  Activity,
   Plus,
-  Play,
   Search,
-  ExternalLink,
-  Laptop,
 } from 'lucide-react';
 
 export const WebApp: React.FC = () => {

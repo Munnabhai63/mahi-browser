@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, KeyRound, ArrowRight } from 'lucide-react';
+import { KeyRound, ArrowRight } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore.js';
 import { BrandLogo } from './BrandLogo.js';
 

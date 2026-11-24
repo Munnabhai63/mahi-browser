@@ -1,16 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
-  Shield,
   Sparkles,
-  Cloud,
   CheckCircle2,
   Copy,
   LogOut,
   ExternalLink,
   Laptop,
-  Smartphone,
-  Globe,
   AlertTriangle,
   Lock,
   Mail,
