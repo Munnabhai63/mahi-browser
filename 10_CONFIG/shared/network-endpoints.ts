@@ -36,7 +36,7 @@ export function getLocalDaemonBaseUrl(port?: number): string {
 
 /**
  * Returns the active Commercial Cloud Gateway API base URL.
- * Respects VITE_COMMERCIAL_API_URL, COMMERCIAL_API_URL, and NODE_ENV.
+ * Respects VITE_COMMERCIAL_API_URL, COMMERCIAL_API_URL, browser domain, and NODE_ENV.
  */
 export function getCloudGatewayUrl(): string {
   const envUrl = getEnv('VITE_COMMERCIAL_API_URL') || getEnv('COMMERCIAL_API_URL');
@@ -44,7 +44,16 @@ export function getCloudGatewayUrl(): string {
     return envUrl.replace(/\/+$/, '');
   }
 
+  const isBrowserCloudDomain =
+    typeof window !== 'undefined' &&
+    window.location &&
+    typeof window.location.hostname === 'string' &&
+    (window.location.hostname === 'app.mahibrowser.com' ||
+      (window.location.hostname.endsWith('.mahibrowser.com') &&
+        window.location.hostname !== 'api.mahibrowser.com'));
+
   const isProd =
+    isBrowserCloudDomain ||
     getEnv('NODE_ENV') === 'production' ||
     (typeof import.meta !== 'undefined' && Boolean((import.meta as any).env?.PROD));
 
