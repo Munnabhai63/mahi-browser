@@ -37,7 +37,6 @@ export default defineConfig({
                 'node:os',
                 'node:url',
                 'node:zlib',
-                'playwright-core',
                 'rebrowser-playwright-core',
                 'fingerprint-generator',
                 'header-generator',

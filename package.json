@@ -49,7 +49,6 @@
     "ioredis": "^6.0.0",
     "lucide-react": "^0.468.0",
     "pg": "^8.23.1",
-    "playwright-core": "^1.49.1",
     "rebrowser-playwright-core": "^1.64.102",
     "sql.js": "^1.14.2",
     "tailwind-merge": "^2.5.5",

@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
 import net from 'node:net';
-import { chromium } from 'playwright-core';
+import { chromium } from 'rebrowser-playwright-core';
 import {
   getBundledEngineExecutablePath,
   getProductionChromiumExecutablePath,
