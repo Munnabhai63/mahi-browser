@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Shield,
@@ -152,6 +152,21 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
   const [paymentSubmittedStatus, setPaymentSubmittedStatus] = useState<string | null>(null);
 
   const isUserLoggedIn = Boolean(accountSession?.token);
+  const wasUserLoggedInRef = useRef(isUserLoggedIn);
+  const isGoogleLoadingRef = useRef(isGoogleLoading);
+
+  // Synchronize Google loading state ref
+  useEffect(() => {
+    isGoogleLoadingRef.current = isGoogleLoading;
+  }, [isGoogleLoading]);
+
+  // Capture whether user was already signed in when modal opened
+  useEffect(() => {
+    if (isOpen) {
+      wasUserLoggedInRef.current = Boolean(useAccountStore.getState().accountSession?.token);
+    }
+  }, [isOpen]);
+
   const currentPlan = planLimits?.plan || 'free';
   const isProActive = planLimits?.isPro || false;
 
@@ -236,25 +251,41 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
   useEffect(() => {
     if (!isOpen) return;
     const unsub = window.mahiAPI?.onAccountStatusChanged?.(async () => {
+      const wasSignedIn = wasUserLoggedInRef.current;
+      const wasPendingGoogle = isGoogleLoadingRef.current;
+
       setIsGoogleLoading(false);
       setIsLoading(false);
+
+      // Silently update limits and profiles without force loop
       try {
-        await fetchPlanLimits({ force: true });
+        await fetchPlanLimits({ force: false });
         await useProfileStore.getState().fetchProfiles();
       } catch (err) {
         console.debug('[AccountModal] post-statusChanged refresh notice:', err);
       }
-      showToast({
-        type: 'success',
-        title: 'Signed In',
-        message: 'Account signed in successfully via deep link!',
-      });
-      onClose();
+
+      const currentSession = useAccountStore.getState().accountSession;
+      const isNowSignedIn = Boolean(currentSession?.token);
+
+      // ONLY show deep-link sign-in toast and close modal if user actually transitioned
+      // from signed-out to signed-in, or was actively waiting in a Google/OAuth deep-link flow.
+      if ((!wasSignedIn && isNowSignedIn) || (wasPendingGoogle && isNowSignedIn)) {
+        wasUserLoggedInRef.current = true;
+        showToast({
+          type: 'success',
+          title: 'Signed In',
+          message: 'Account signed in successfully via deep link!',
+        });
+        onClose();
+      }
+      // If already signed in, modal stays open without deep-link toast!
     });
+
     return () => {
       unsub?.();
     };
-  }, [isOpen]);
+  }, [isOpen, fetchPlanLimits, onClose, showToast]);
 
   const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
