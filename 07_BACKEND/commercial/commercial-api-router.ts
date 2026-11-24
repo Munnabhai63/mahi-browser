@@ -9,10 +9,13 @@ import { handleAdminOwnerRoutes } from './routes/admin-owner-routes.js';
 import { handleCloudSyncRoutes } from './routes/cloud-sync-routes.js';
 
 // Re-export shared types, helpers, and in-memory caches to maintain 100% backward compatibility
-export {
+export type {
   DesktopAuthTicket,
-  desktopAuthTickets,
   WebHandoffSession,
+} from './routes/router-shared.js';
+
+export {
+  desktopAuthTickets,
   webHandoffSessions,
   pruneWebHandoffSessions,
   _resetWebHandoffSessions,
