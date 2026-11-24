@@ -112,8 +112,8 @@ export const PUBLIC_PLANS: PublicPlan[] = [
     tagline: 'For high-scale marketing agencies & lead generation fleets',
     profileLimit: 200,
     seatLimit: 20,
-    monthlyPrice: { INR: 9999, USD: 129, EUR: 120 },
-    annualPrice: { INR: 4999, USD: 65, EUR: 60 },
+    monthlyPrice: { INR: 4999, USD: 65, EUR: 60 },
+    annualPrice: { INR: 2499, USD: 33, EUR: 30 },
     highlight: true,
     features: [
       '200 Shared Profiles with Multi-Device Sync',
