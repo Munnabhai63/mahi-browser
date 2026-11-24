@@ -1,21 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Play,
-  Square,
-  Clock,
   Layers,
   History,
   Calendar,
   Sparkles,
   RefreshCw,
-  Plus,
   AlertCircle,
   CheckCircle2,
   Trash2,
-  ChevronRight,
-  ShieldCheck,
   FileText,
-  ExternalLink,
 } from 'lucide-react';
 import { api } from '../api/api-client.js';
 import { TeamWorkspace } from '../../../10_CONFIG/shared/types/workspace.js';

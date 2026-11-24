@@ -11,13 +11,11 @@ import {
   Lock,
   Globe2,
   Sliders,
-  ShieldCheck,
   Smartphone,
   Trash2,
   Activity,
   Bot,
   Users,
-  Share2,
   MessageCircle,
   Mail,
 } from 'lucide-react';

@@ -2,19 +2,15 @@ import React, { useState } from 'react';
 import {
   Globe2,
   Search,
-  Filter,
   Plus,
   Play,
   Edit2,
   Trash2,
   Lock,
-  Unlock,
   AlertTriangle,
   RefreshCw,
   Folder,
-  Tag,
   Shield,
-  Laptop,
   Cloud,
 } from 'lucide-react';
 import { DeviceLaunchModal } from '../components/DeviceLaunchModal.js';

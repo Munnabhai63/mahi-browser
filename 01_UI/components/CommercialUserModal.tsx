@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Key, Shield, Check, Copy, X } from 'lucide-react';
+import { Key, Check, Copy, X } from 'lucide-react';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { BrandLogo } from './BrandLogo.js';

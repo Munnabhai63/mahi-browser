@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Globe2, Lock, Mail, User, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Lock, Mail, User, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useWebAuthStore } from '../state/useWebAuthStore.js';
 import { BrandLogo } from '../../components/BrandLogo.js';
 

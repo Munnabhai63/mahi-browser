@@ -16,7 +16,6 @@
  */
 
 import os from 'node:os';
-import fs from 'node:fs';
 import tls from 'node:tls';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getStorageProvider } from '../../08_SECURITY/storage-provider.js';
