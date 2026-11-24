@@ -27,6 +27,7 @@ import {
   ProxyRotationResult,
   ProxyUsageReport,
 } from '../../../10_CONFIG/shared/types/proxy-provider.js';
+import { getCloudGatewayUrl } from '../../../10_CONFIG/shared/network-endpoints.js';
 
 export interface ApiClientConfig {
   baseUrl?: string;
@@ -45,12 +46,12 @@ export class WebApiClient {
     } else if (typeof window !== 'undefined') {
       const hostname = window.location.hostname;
       if (hostname === 'app.mahibrowser.com' || (hostname.endsWith('.mahibrowser.com') && hostname !== 'api.mahibrowser.com')) {
-        this.baseUrl = (import.meta as any).env?.VITE_COMMERCIAL_API_URL || 'https://api.mahibrowser.com';
+        this.baseUrl = getCloudGatewayUrl();
       } else {
         this.baseUrl = window.location.origin;
       }
     } else {
-      this.baseUrl = 'http://localhost:8989';
+      this.baseUrl = getCloudGatewayUrl();
     }
     this.getAccessToken = config.getAccessToken || (() => null);
     this.onUnauthorized = config.onUnauthorized;

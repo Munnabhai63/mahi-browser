@@ -3,10 +3,11 @@ import { Profile } from '../10_CONFIG/shared/types/profile.js';
 import { getDefaultProfileSettings } from '../10_CONFIG/shared/constants/defaults.js';
 import { APP_VERSION } from '../10_CONFIG/shared/version.js';
 import { CONTACT_CONFIG } from '../10_CONFIG/contact-config.js';
+import { DEFAULT_LOCAL_DAEMON_PORT, getLocalDaemonBaseUrl } from '../10_CONFIG/shared/network-endpoints.js';
 
 // Resilient API fallback — routes ALL calls through the local REST API
 // This activates when preload/IPC is not available (e.g. ESM preload failure)
-const API_BASE = 'http://localhost:32123';
+const API_BASE = getLocalDaemonBaseUrl();
 const getAuthToken = () => (typeof localStorage !== 'undefined' && localStorage.getItem('mahi_local_api_token')) || '';
 
 const authHeaders = (): Record<string, string> => ({
@@ -380,7 +381,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
           privacy: { clearDataOnExit: false, defaultPermissions: {}, defaultWebRtcPolicy: 'disable_non_proxied_udp', doNotTrack: true, blockThirdPartyCookiesDefault: false, webrtcPolicyDefault: 'disable_non_proxied_udp' },
           security: { appLockEnabled: false, appLockTimeoutMinutes: 15, encryptionAlgorithm: 'aes-256-gcm' },
           performance: { maxConcurrentProfiles: 10, hardwareAcceleration: true, memorySaver: true },
-          advanced: { enableDebugLogs: false, developerMode: false, enableLocalApi: true, apiPort: 32123, apiAuthToken: getAuthToken() },
+          advanced: { enableDebugLogs: false, developerMode: false, enableLocalApi: true, apiPort: DEFAULT_LOCAL_DAEMON_PORT, apiAuthToken: getAuthToken() },
         } as any;
       }
     },
@@ -596,9 +597,9 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
       } catch {
         return {
           localIps: ['127.0.0.1'],
-          port: 32123,
-          downloadUrl: 'http://127.0.0.1:32123/download',
-          networkDownloadUrls: ['http://127.0.0.1:32123/download'],
+          port: DEFAULT_LOCAL_DAEMON_PORT,
+          downloadUrl: `${getLocalDaemonBaseUrl()}/download`,
+          networkDownloadUrls: [`${getLocalDaemonBaseUrl()}/download`],
           setupAvailable: true,
           portableAvailable: true,
           setupFileName: `MAHI-Browser-Setup-${APP_VERSION}.exe`,
