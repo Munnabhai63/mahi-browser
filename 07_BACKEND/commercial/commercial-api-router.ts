@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { URL } from 'node:url';
 import { sendJSON } from './routes/router-shared.js';
+import { isTrustedOrigin } from '../server/cloud-gateway.js';
 import { handleRemoteApiRoutes } from './remote-api-router.js';
 import { handleClientEntitlementRoutes } from './routes/client-entitlement-routes.js';
 import { handlePaymentRoutes } from './routes/payment-routes.js';
@@ -40,6 +41,28 @@ export async function handleCommercialApiRoutes(
   method: string,
   parsedUrl: URL
 ): Promise<boolean> {
+  (res as any).__req = req;
+
+  // Handle CORS preflight OPTIONS requests for all commercial API paths
+  if (method === 'OPTIONS') {
+    const origin = (req.headers.origin as string) || '';
+    if (origin && isTrustedOrigin(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Authorization, Content-Type, X-API-Key, X-Admin-Secret, x-mahi-token, Idempotency-Key, X-Mahi-Signature, X-Request-Id'
+    );
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    res.writeHead(204);
+    res.end();
+    return true;
+  }
+
   // Support /api/v1/*, direct /auth/*, direct /v1/sync/*, direct /v1/*, and direct /me/* routes
   const isApiV1 = pathname.startsWith('/api/v1/');
   const isDirectAuth = pathname.startsWith('/auth/');

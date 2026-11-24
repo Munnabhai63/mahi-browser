@@ -1,5 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import {
   DEFAULT_LOCAL_DAEMON_PORT,
   DEFAULT_CLOUD_GATEWAY_PORT,
@@ -10,7 +13,9 @@ import {
 } from '../../10_CONFIG/shared/network-endpoints.js';
 import { CONTACT_CONFIG, APP_AUTHOR } from '../../10_CONFIG/contact-config.js';
 import { handleCommercialAPIRequest } from '../../07_BACKEND/commercial/commercial-api-router.js';
+import { isTrustedOrigin } from '../../07_BACKEND/server/cloud-gateway.js';
 import { fallbackMahiAPI } from '../../01_UI/api-fallback.js';
+import { PUBLIC_PLANS } from '../../landing/lib/plans.js';
 
 function mockHttpRequest(method: string, url: string, headers: Record<string, string> = {}) {
   const req = Object.assign(new http.IncomingMessage(null as any), {
@@ -27,12 +32,22 @@ function mockHttpRequest(method: string, url: string, headers: Record<string, st
 
   let resData = '';
   let statusCode = 200;
+  const setHeaders: Record<string, string> = {};
   const res = Object.assign(new http.ServerResponse(req), {
-    writeHead: (code: number) => {
+    writeHead: (code: number, headers?: any) => {
       statusCode = code;
+      if (headers) {
+        Object.entries(headers).forEach(([k, v]) => {
+          setHeaders[k.toLowerCase()] = String(v);
+        });
+      }
       return res;
     },
-    setHeader: () => res,
+    setHeader: (name: string, value: any) => {
+      setHeaders[name.toLowerCase()] = String(value);
+      return res;
+    },
+    getHeader: (name: string) => setHeaders[name.toLowerCase()],
     end: (chunk?: any) => {
       if (chunk) resData += chunk.toString();
       return res;
@@ -49,11 +64,16 @@ function mockHttpRequest(method: string, url: string, headers: Record<string, st
     getResult: () => ({
       statusCode,
       json: resData ? JSON.parse(resData) : null,
+      headers: setHeaders,
     }),
   };
 }
 
 describe('Wave 2: Configuration & Business Info Centralization', () => {
+  beforeAll(async () => {
+    await initializeDatabase();
+  });
+
   describe('1. Network Endpoints & Port Resolution', () => {
     it('exports canonical ports and production endpoints', () => {
       expect(DEFAULT_LOCAL_DAEMON_PORT).toBe(32123);
@@ -181,6 +201,84 @@ describe('Wave 2: Configuration & Business Info Centralization', () => {
       expect(res.upi_id).toBe(CONTACT_CONFIG.UPI_ID);
       expect(res.upi_account_holder).toBe(CONTACT_CONFIG.UPI_ACCOUNT_HOLDER);
       expect(res.whatsapp_number).toBe(CONTACT_CONFIG.WHATSAPP_NUMBER);
+    });
+  });
+
+  describe('4. Phase 2B: Dynamic Pricing, UPI & Contact Sync for Landing Portal', () => {
+    it('verifies isTrustedOrigin permits landing domains and localhost origins', () => {
+      expect(isTrustedOrigin('https://mahibrowser.com')).toBe(true);
+      expect(isTrustedOrigin('http://mahibrowser.com')).toBe(true);
+      expect(isTrustedOrigin('https://www.mahibrowser.com')).toBe(true);
+      expect(isTrustedOrigin('http://www.mahibrowser.com')).toBe(true);
+      expect(isTrustedOrigin('https://app.mahibrowser.com')).toBe(true);
+      expect(isTrustedOrigin('http://localhost:3000')).toBe(true);
+      expect(isTrustedOrigin('http://127.0.0.1:8989')).toBe(true);
+      expect(isTrustedOrigin('https://malicious-site.com')).toBe(false);
+    });
+
+    it('returns CORS headers for trusted landing origins on payment-info endpoint', async () => {
+      const { req, res, getResult } = mockHttpRequest('GET', '/api/v1/commercial/payment-info', {
+        origin: 'https://mahibrowser.com',
+      });
+      const handled = await handleCommercialAPIRequest(req, res);
+      expect(handled).toBe(true);
+
+      const { statusCode, json, headers } = getResult();
+      expect(statusCode).toBe(200);
+      expect(json.success).toBe(true);
+      expect(headers['access-control-allow-origin']).toBe('https://mahibrowser.com');
+      expect(headers['access-control-allow-credentials']).toBe('true');
+    });
+
+    it('returns CORS headers for trusted landing origins on pricing/catalog endpoint', async () => {
+      const { req, res, getResult } = mockHttpRequest('GET', '/api/v1/pricing/catalog', {
+        origin: 'https://www.mahibrowser.com',
+      });
+      const handled = await handleCommercialAPIRequest(req, res);
+      expect(handled).toBe(true);
+
+      const { statusCode, json, headers } = getResult();
+      expect(statusCode).toBe(200);
+      expect(json.success).toBe(true);
+      expect(headers['access-control-allow-origin']).toBe('https://www.mahibrowser.com');
+      expect(headers['access-control-allow-credentials']).toBe('true');
+    });
+
+    it('handles CORS preflight OPTIONS requests cleanly with 204 status', async () => {
+      const { req, res, getResult } = mockHttpRequest('OPTIONS', '/api/v1/commercial/payment-info', {
+        origin: 'https://mahibrowser.com',
+      });
+      const handled = await handleCommercialAPIRequest(req, res);
+      expect(handled).toBe(true);
+
+      const { statusCode, headers } = getResult();
+      expect(statusCode).toBe(204);
+      expect(headers['access-control-allow-origin']).toBe('https://mahibrowser.com');
+      expect(headers['access-control-allow-methods']).toContain('GET');
+      expect(headers['access-control-allow-headers']).toContain('Content-Type');
+    });
+
+    it('verifies landing/public/assets/js/main.js contains dynamic hydration and silent fallback logic', () => {
+      const mainJsPath = path.resolve(__dirname, '../../landing/public/assets/js/main.js');
+      expect(fs.existsSync(mainJsPath)).toBe(true);
+
+      const mainJs = fs.readFileSync(mainJsPath, 'utf8');
+      expect(mainJs).toContain('getGatewayApiBaseUrl');
+      expect(mainJs).toContain('fetchWithTimeout');
+      expect(mainJs).toContain('fetchLivePaymentInfo');
+      expect(mainJs).toContain('fetchLivePricingCatalog');
+      expect(mainJs).toContain('/api/v1/commercial/payment-info');
+      expect(mainJs).toContain('/api/v1/pricing/catalog');
+      expect(mainJs).toContain('6375823589@slc'); // Immediate fallback default preserved
+      expect(mainJs).toContain('MAHI Browser Commercial'); // Immediate fallback default preserved
+      expect(mainJs).toContain('a[href^="https://wa.me/"]'); // WhatsApp dynamic link hydration selector
+    });
+
+    it('verifies landing/lib/plans.ts business_scale plan pricing matches canonical catalog', () => {
+      const team200 = PUBLIC_PLANS.find((p) => p.id === 'business_scale');
+      expect(team200).toBeDefined();
+      expect(team200?.monthlyPrice.INR).toBe(4999);
+      expect(team200?.annualPrice.INR).toBe(2499);
     });
   });
 });

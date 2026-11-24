@@ -3,6 +3,125 @@
  * Benchmark: GoLogin / Vengence UI • Zero external dependencies • High performance
  */
 
+/**
+ * Resolves the Commercial Cloud Gateway API Base URL for Landing Portal
+ * Prioritizes window.__MAHI_GATEWAY_URL__, local development ports, and official production gateway.
+ */
+function getGatewayApiBaseUrl() {
+  if (typeof window !== 'undefined') {
+    if (window.__MAHI_GATEWAY_URL__ && typeof window.__MAHI_GATEWAY_URL__ === 'string') {
+      return window.__MAHI_GATEWAY_URL__.replace(/\/+$/, '');
+    }
+    const host = window.location.hostname || '';
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return 'http://localhost:8989';
+    }
+    if (host === 'mahibrowser.com' || host.endsWith('.mahibrowser.com')) {
+      return 'https://api.mahibrowser.com';
+    }
+  }
+  return 'https://api.mahibrowser.com';
+}
+
+/**
+ * Safe fetch with configurable timeout (default 3500ms) and silent fallback support.
+ */
+async function fetchWithTimeout(url, options = {}, timeoutMs = 3500) {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller ? controller.signal : undefined
+    });
+    return res;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Fetches dynamic payment info & support contacts from the gateway with silent fallback.
+ */
+async function fetchLivePaymentInfo() {
+  const gatewayUrl = getGatewayApiBaseUrl();
+  const endpoints = [
+    `${gatewayUrl}/api/v1/commercial/payment-info`,
+    '/api/v1/commercial/payment-info',
+    '/v1/account/payment-info'
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const res = await fetchWithTimeout(endpoint, {}, 3500);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data && (data.success || data.upi_id)) {
+        if (typeof checkoutDrawerState !== 'undefined') {
+          if (!checkoutDrawerState.paymentInfo) {
+            checkoutDrawerState.paymentInfo = {};
+          }
+          if (data.upi_id) checkoutDrawerState.paymentInfo.upi_id = data.upi_id;
+          if (data.upi_account_holder) checkoutDrawerState.paymentInfo.upi_account_holder = data.upi_account_holder;
+          if (data.upi_qr_asset) checkoutDrawerState.paymentInfo.upi_qr_asset = data.upi_qr_asset;
+        }
+
+        const whatsapp = data.whatsapp_number || data.support_whatsapp;
+        if (whatsapp) {
+          const cleanNumber = String(whatsapp).replace(/[^0-9]/g, '') || '919376343629';
+          const defaultMsg = encodeURIComponent("Hello MAHI Browser Team, I would like to book a demo of MAHI Browser for my multi-accounting team.");
+          
+          document.querySelectorAll('a[href^="https://wa.me/"]').forEach(link => {
+            try {
+              const currentHref = link.getAttribute('href') || '';
+              const queryPart = currentHref.includes('?') ? currentHref.substring(currentHref.indexOf('?')) : `?text=${defaultMsg}`;
+              link.setAttribute('href', `https://wa.me/${cleanNumber}${queryPart}`);
+              if (link.textContent && link.textContent.includes('9376343629')) {
+                link.textContent = link.textContent.replace('9376343629', cleanNumber.slice(-10));
+              }
+            } catch {}
+          });
+
+          document.querySelectorAll('.dynamic-whatsapp-text').forEach(el => {
+            el.textContent = `${whatsapp} →`;
+          });
+        }
+
+        const supportEmail = data.support_email;
+        if (supportEmail) {
+          document.querySelectorAll('a[href^="mailto:"]').forEach(link => {
+            link.setAttribute('href', `mailto:${supportEmail}`);
+            if (link.textContent && link.textContent.includes('@')) {
+              link.textContent = supportEmail;
+            }
+          });
+          document.querySelectorAll('.dynamic-email-link').forEach(link => {
+            link.setAttribute('href', `mailto:${supportEmail}`);
+          });
+          document.querySelectorAll('.dynamic-email-text').forEach(el => {
+            el.textContent = `${supportEmail} →`;
+          });
+        }
+
+        if (data.price_inr !== undefined) {
+          document.querySelectorAll('.dynamic-price-inr').forEach(el => {
+            el.textContent = `₹${data.price_inr}`;
+          });
+        }
+
+        const drawer = document.getElementById('mahi-checkout-drawer');
+        if (drawer && drawer.classList.contains('active') && typeof renderDrawerContent === 'function') {
+          renderDrawerContent();
+        }
+        return data;
+      }
+    } catch {
+      // Continue to next endpoint fallback
+    }
+  }
+  return null;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   initAuthSessionState();
   initNavbarIsland();
@@ -24,6 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCheckoutDrawer();
   initLiveLeakTester();
   fetchDynamicContent();
+  fetchLivePaymentInfo();
   initSmoothScroll();
 });
 
@@ -3387,9 +3507,17 @@ function initPricingSection() {
 
   // Dynamically fetch live pricing catalog from centralized commercial API
   (async function fetchLivePricingCatalog() {
-    try {
-      const res = await fetch('/api/v1/pricing/catalog');
-      if (res.ok) {
+    const gatewayUrl = getGatewayApiBaseUrl();
+    const endpoints = [
+      `${gatewayUrl}/api/v1/pricing/catalog`,
+      '/api/v1/pricing/catalog',
+      '/api/v1/plans/catalog'
+    ];
+
+    for (const endpoint of endpoints) {
+      try {
+        const res = await fetchWithTimeout(endpoint, {}, 3500);
+        if (!res.ok) continue;
         const json = await res.json();
         if (json.success && json.data) {
           const cat = json.data;
@@ -3405,6 +3533,12 @@ function initPricingSection() {
               includedGb: 2,
               features: p.features || []
             }));
+            cat.personal.forEach(p => {
+              const key = p.planId || ('professional_' + p.profileLimit);
+              if (typeof CANONICAL_PLANS_META !== 'undefined' && CANONICAL_PLANS_META[key]) {
+                CANONICAL_PLANS_META[key].baseInr = Math.round(p.monthlyPricePaise / 100);
+              }
+            });
           }
           if (cat.business && cat.business.length > 0) {
             PRICING_DATA.business = cat.business.map(p => ({
@@ -3418,12 +3552,20 @@ function initPricingSection() {
               includedGb: p.profileLimit >= 200 ? 15 : 10,
               features: p.features || []
             }));
+            cat.business.forEach(p => {
+              const key = p.planId || ('team_' + p.profileLimit);
+              if (typeof CANONICAL_PLANS_META !== 'undefined' && CANONICAL_PLANS_META[key]) {
+                CANONICAL_PLANS_META[key].baseInr = Math.round(p.monthlyPricePaise / 100);
+              }
+            });
           }
           renderCards();
+          renderComparisonTable();
+          break;
         }
+      } catch {
+        // Silently continue or preserve defaults
       }
-    } catch {
-      // Offline fallback: preserve defaults
     }
   })();
 }
@@ -3711,19 +3853,13 @@ function openCheckoutDrawer(planId, billingCycle, extraMembers, extraProxyGb) {
 
   // Fetch payment-info details if not loaded
   if (!checkoutDrawerState.paymentInfo) {
-    fetch('/v1/account/payment-info')
-      .then(res => res.json())
-      .then(info => {
-        if (info.success) {
-          checkoutDrawerState.paymentInfo = info;
-          renderDrawerContent();
-        }
-      })
-      .catch(() => {});
+    fetchLivePaymentInfo().catch(() => {});
   }
 
-  fetch('/api/v1/billing/gateways')
-    .then(r => r.json())
+  const gatewayUrl = getGatewayApiBaseUrl();
+  fetchWithTimeout(`${gatewayUrl}/api/v1/billing/gateways`, {}, 3500)
+    .catch(() => fetchWithTimeout('/api/v1/billing/gateways', {}, 3500))
+    .then(r => r ? r.json() : null)
     .then(res => {
       if (res && res.gateways) {
         window.__mahiGateways = res.gateways;
@@ -4489,6 +4625,7 @@ async function fetchDynamicContent() {
       testSection.style.display = 'none';
     }
 
+    await fetchLivePaymentInfo().catch(() => {});
   } catch (err) {
     console.warn('content.json runtime note:', err.message);
   }
