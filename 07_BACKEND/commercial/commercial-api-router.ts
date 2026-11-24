@@ -817,19 +817,20 @@ export async function handleCommercialApiRoutes(
     return true;
   }
 
-  if (routePath === '/v1/account/payment-info' && method === 'GET') {
+  if ((routePath === '/v1/account/payment-info' || routePath === '/api/v1/account/payment-info' || routePath === '/api/v1/commercial/payment-info') && method === 'GET') {
     sendJSON(res, 200, {
       success: true,
-      upi_id: CONTACT_CONFIG.UPI_ID,
-      upi_account_holder: CONTACT_CONFIG.UPI_ACCOUNT_HOLDER,
+      upi_id: process.env.PAYMENT_UPI_ID || CONTACT_CONFIG.UPI_ID,
+      upi_account_holder: process.env.PAYMENT_UPI_HOLDER || CONTACT_CONFIG.UPI_ACCOUNT_HOLDER,
       upi_qr_asset: CONTACT_CONFIG.UPI_QR_ASSET,
-      price_inr: CONTACT_CONFIG.DEFAULT_PRICE_INR || 599,
+      price_inr: parseInt(process.env.DEFAULT_PRICE_INR || '', 10) || CONTACT_CONFIG.DEFAULT_PRICE_INR || 599,
       price_usd: 19,
       price_usdt: 0,
       usdt_address: '',
       usdt_network: '',
       usdt_enabled: false,
-      whatsapp_number: CONTACT_CONFIG.WHATSAPP_NUMBER,
+      whatsapp_number: process.env.SUPPORT_WHATSAPP || CONTACT_CONFIG.WHATSAPP_NUMBER,
+      support_email: process.env.SUPPORT_EMAIL || CONTACT_CONFIG.SUPPORT_EMAIL,
     });
     return true;
   }
