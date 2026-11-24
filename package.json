@@ -14,6 +14,8 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "lint": "node -e \"console.log('Linting passed')\"",
     "engine:doctor": "tsx 12_SCRIPTS/engine-doctor.ts",
+    "profiles:clean-cache": "tsx 12_SCRIPTS/clean-profile-caches.ts",
+    "profiles:clean-cache:apply": "tsx 12_SCRIPTS/clean-profile-caches.ts --apply",
     "test": "vitest run",
     "test:ci": "vitest run 11_TESTS/unit 11_TESTS/integration",
     "test:watch": "vitest",
