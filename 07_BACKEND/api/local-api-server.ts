@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { URL } from 'node:url';
 import { app } from '../../08_SECURITY/electron-bridge.js';
+import { DEFAULT_LOCAL_DAEMON_PORT } from '../../10_CONFIG/shared/network-endpoints.js';
 import { getAppSettings } from '../services/settings-service.js';
 import {
   getProfiles,
@@ -364,7 +365,7 @@ export function startApiServer(): void {
     try { apiServer.close(); } catch {}
   }
 
-  const port = settings.advanced.apiPort || 32123;
+  const port = settings.advanced.apiPort || DEFAULT_LOCAL_DAEMON_PORT;
   const token = settings.advanced.apiAuthToken;
 
   apiServer = http.createServer(async (req, res) => {

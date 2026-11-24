@@ -20,6 +20,7 @@ import { AppSettings } from '../../10_CONFIG/shared/types/settings.js';
 import { UpdateConfig, UpdateStatusEvent } from '../../10_CONFIG/shared/types/updater.js';
 import { NavigationPage } from '../components/Sidebar.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
+import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
 
 interface AppSettingsPageProps {
   onNavigate: (page: NavigationPage) => void;
@@ -472,7 +473,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
                   MAHI BROWSER Client Updates
                 </h4>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Current Version: <span className="font-mono font-semibold text-teal-500">v{appVersion}</span> • By Munna Bhai (x64)
+                  Current Version: <span className="font-mono font-semibold text-teal-500">v{appVersion}</span> • By {CONTACT_CONFIG.APP_AUTHOR} (x64)
                 </p>
               </div>
 

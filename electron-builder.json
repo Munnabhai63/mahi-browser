@@ -27,7 +27,6 @@
     "!*.pem",
     "!*.key",
     "!**/*.map",
-    "!**/node_modules/playwright-core/lib/vite/**",
     "!**/node_modules/rebrowser-playwright-core/lib/vite/**"
   ],
   "win": {

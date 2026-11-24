@@ -23,6 +23,7 @@ import { NavigationPage } from '../components/Sidebar.js';
 import { BrandLogo } from '../components/BrandLogo.js';
 import { UpdateStatusEvent } from '../../10_CONFIG/shared/types/updater.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
+import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
 
 interface HelpAboutProps {
   onNavigate: (page: NavigationPage) => void;
@@ -189,7 +190,7 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                By Munna Bhai • Enterprise-grade multi-profile environment manager & Playwright automation engine
+                By {CONTACT_CONFIG.APP_AUTHOR} • Enterprise-grade multi-profile environment manager & Playwright automation engine
               </p>
             </div>
           </div>

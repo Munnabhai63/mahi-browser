@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { chromium } from 'playwright-core';
+import { chromium } from 'rebrowser-playwright-core';
 import { initSqlEngine, setCustomDatabasePath } from '../../06_DATABASE/connection.js';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { createProfile } from '../../02_BROWSER/services/profile-service.js';
