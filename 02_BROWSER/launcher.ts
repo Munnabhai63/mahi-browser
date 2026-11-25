@@ -34,6 +34,65 @@ function debugLog(msg: string) {
   else console.log(msg);
 }
 
+/**
+ * Stable 32-bit FNV-1a hash for deterministic per-profile seed derivation.
+ */
+export function fnv1a32(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0) || 0x12345678;
+}
+
+/**
+ * Deterministic Mulberry32 PRNG returning floats in [0, 1).
+ */
+export function createMulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Derives a deterministic 32-bit seed from profileId + optional stored salt.
+ */
+export function deriveProfileStealthSeed(profileId: string, fingerprintSettings?: any): number {
+  const storedSalt = fingerprintSettings?.fingerprintSeed ?? fingerprintSettings?.noiseSeed ?? fingerprintSettings?.seed ?? '';
+  const rawSeedInput = storedSalt
+    ? `${String(profileId || 'default')}:${String(storedSalt)}`
+    : String(profileId || 'default');
+  return fnv1a32(rawSeedInput);
+}
+
+function pushUniqueFlag(args: string[], flag: string): void {
+  if (!args.includes(flag)) {
+    args.push(flag);
+  }
+}
+
+function applyStrictWebrtcArgs(
+  args: string[],
+  policy: 'disable_non_proxied_udp' | 'default_public_interface_only'
+): void {
+  for (let i = args.length - 1; i >= 0; i--) {
+    if (
+      args[i] === '--force-webrtc-ip-handling-policy' ||
+      args[i].startsWith('--force-webrtc-ip-handling-policy=') ||
+      args[i].startsWith('--webrtc-ip-handling-policy=')
+    ) {
+      args.splice(i, 1);
+    }
+  }
+  pushUniqueFlag(args, `--force-webrtc-ip-handling-policy=${policy}`);
+  pushUniqueFlag(args, '--enforce-webrtc-ip-permission-check');
+}
+
 export interface LaunchedProcessInfo {
   process: ChildProcess;
   pid: number;
@@ -374,19 +433,42 @@ export function ensureProfileStealthExtension(
   const audioMode = fp.audio || 'noise';
   const webglMode = fp.webgl || 'noise';
   const clientRectsMode = fp.clientRects || 'noise';
-  const webrtcOpt = settings?.network?.webrtc || fp.webrtc || 'default';
+  const hasActiveProxy = Boolean(
+    settings?.network &&
+    settings.network.directConnection === false &&
+    settings.network.proxyId
+  );
+  const rawWebrtcOpt = settings?.network?.webrtc || fp.webrtc || 'default';
+  const webrtcOpt = hasActiveProxy ? 'proxy_only' : rawWebrtcOpt;
+  const storedSalt = fp?.fingerprintSeed ?? fp?.noiseSeed ?? fp?.seed ?? '';
+  const rawSeedInput = storedSalt
+    ? `${String(profileId || 'default')}:${String(storedSalt)}`
+    : String(profileId || 'default');
   // 1. Stealth Core Script (Runs in MAIN world at document_start)
   const stealthCoreJs = `
 (function() {
   'use strict';
-  var pSeed = (function(str) {
-    var hash = 0;
+  function fnv1a32(str) {
+    var h = 0x811c9dc5;
     for (var i = 0; i < str.length; i++) {
-      hash = ((hash << 5) - hash) + str.charCodeAt(i);
-      hash |= 0;
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
     }
-    return Math.abs(hash) || 12345;
-  })(${JSON.stringify(profileId + '_' + profileName)});
+    return (h >>> 0) || 0x12345678;
+  }
+
+  function createMulberry32(seed) {
+    var a = seed >>> 0;
+    return function() {
+      a = (a + 0x6d2b79f5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  var pSeed = fnv1a32(${JSON.stringify(rawSeedInput)});
+  var profileRng = createMulberry32(pSeed);
 
   // Closure-scoped native registry for Function.prototype.toString spoofing (never leaks to window)
   var hookedProxies = typeof Map !== 'undefined' ? new Map() : null;
@@ -434,8 +516,15 @@ export function ensureProfileStealthExtension(
     registerNative(proxyToString, 'toString');
   } catch(e) {}
 
-  // Shared Stealth Configuration & Perturbation Primitives
-  var seedOffset = (pSeed % 15) + 1;
+  // Shared Deterministic Mulberry32 Perturbation Streams
+  var canvasRng = createMulberry32(pSeed ^ 0x43414e56);
+  var canvasSaltA = ((canvasRng() * 0xffffffff) >>> 0) || 0x9e3779b9;
+  var canvasSaltB = ((canvasRng() * 0xffffffff) >>> 0) || 0x85ebca6b;
+  var canvasChTable = [];
+  for (var cti = 0; cti < 64; cti++) {
+    canvasChTable.push(Math.floor(canvasRng() * 3));
+  }
+
   function applyNoiseToImageData(imgData, sx, sy, canvasWidth, canvasHeight) {
     if (!imgData || !imgData.data) return imgData;
     var sw = imgData.width;
@@ -451,14 +540,14 @@ export function ensureProfileStealthExtension(
       var gy = startY + y;
       for (var x = 0; x < sw; x++) {
         var gx = startX + x;
-        var _h = Math.imul(gx + 0x9E3779B9, 0x85EBCA6B) ^
-                 Math.imul(gy + pSeed, 0xC2B2AE35) ^ seedOffset;
-        _h ^= _h >>> 15; _h = Math.imul(_h, 0x2545F491);
+        var _h = Math.imul((gx + canvasSaltA) | 0, 0x85ebca6b) ^
+                 Math.imul((gy + canvasSaltB) | 0, 0xc2b2ae35) ^ pSeed;
+        _h ^= _h >>> 15; _h = Math.imul(_h, 0x2545f491);
         _h ^= _h >>> 13;
-        if ((_h & 127) === 0) {
+        if ((_h & 63) === 0) {
           var dataIdx = (y * sw + x) * 4;
           if (data[dataIdx + 3] === 0) continue;
-          var chIdx = (pSeed + gx + gy) % 3;
+          var chIdx = canvasChTable[(_h >>> 6) & 63];
           data[dataIdx + chIdx] ^= 1;
         }
       }
@@ -1239,7 +1328,33 @@ export function ensureProfileStealthExtension(
         '    var pGpuVendor = ' + JSON.stringify(${JSON.stringify(gpuVendor)}) + ';',
         '    var pGpuRenderer = ' + JSON.stringify(${JSON.stringify(gpuRenderer)}) + ';',
         '    var pSeed = ' + pSeed + ';',
-        '    var seedOffset = ((pSeed % 15) + 1);',
+        '    var pCanvasSaltA = ' + canvasSaltA + ';',
+        '    var pCanvasSaltB = ' + canvasSaltB + ';',
+        '    var pCanvasChTable = ' + JSON.stringify(canvasChTable) + ';',
+        '    function wApplyCanvasNoise(imgData, sx, sy, cw, ch) {',
+        '      if (!imgData || !imgData.data) return imgData;',
+        '      var sw = imgData.width, sh = imgData.height;',
+        '      var w = cw || sw, h = ch || sh;',
+        '      if (w <= 8 || h <= 8 || sw <= 8 || sh <= 8) return imgData;',
+        '      var data = imgData.data;',
+        '      var startX = sx || 0, startY = sy || 0;',
+        '      for (var y = 0; y < sh; y++) {',
+        '        var gy = startY + y;',
+        '        for (var x = 0; x < sw; x++) {',
+        '          var gx = startX + x;',
+        '          var _h = Math.imul((gx + pCanvasSaltA) | 0, 0x85ebca6b) ^ Math.imul((gy + pCanvasSaltB) | 0, 0xc2b2ae35) ^ pSeed;',
+        '          _h ^= _h >>> 15; _h = Math.imul(_h, 0x2545f491);',
+        '          _h ^= _h >>> 13;',
+        '          if ((_h & 63) === 0) {',
+        '            var dataIdx = (y * sw + x) * 4;',
+        '            if (data[dataIdx + 3] === 0) continue;',
+        '            var chIdx = pCanvasChTable[(_h >>> 6) & 63];',
+        '            data[dataIdx + chIdx] ^= 1;',
+        '          }',
+        '        }',
+        '      }',
+        '      return imgData;',
+        '    }',
         '    var wHooked = [];',
         '    function wReg(fn, name) {',
         '      if (typeof fn === "function") {',
@@ -1337,24 +1452,7 @@ export function ensureProfileStealthExtension(
         '                var sy = Number(args[1]) || 0;',
         '                var cw = (thisArg && thisArg.canvas) ? thisArg.canvas.width : imgData.width;',
         '                var ch = (thisArg && thisArg.canvas) ? thisArg.canvas.height : imgData.height;',
-        '                if (cw > 8 && ch > 8 && imgData.width > 8 && imgData.height > 8) {',
-        '                  var data = imgData.data;',
-        '                  for (var y = 0; y < imgData.height; y++) {',
-        '                    var gy = sy + y;',
-        '                    for (var x = 0; x < imgData.width; x++) {',
-        '                      var gx = sx + x;',
-        '                      var _h = Math.imul(gx + 0x9E3779B9, 0x85EBCA6B) ^ Math.imul(gy + pSeed, 0xC2B2AE35) ^ seedOffset;',
-        '                      _h ^= _h >>> 15; _h = Math.imul(_h, 0x2545F491);',
-        '                      _h ^= _h >>> 13;',
-        '                      if ((_h & 127) === 0) {',
-        '                        var dataIdx = (y * imgData.width + x) * 4;',
-        '                        if (data[dataIdx + 3] === 0) continue;',
-        '                        var chIdx = (pSeed + gx + gy) % 3;',
-        '                        data[dataIdx + chIdx] ^= 1;',
-        '                      }',
-        '                    }',
-        '                  }',
-        '                }',
+        '                wApplyCanvasNoise(imgData, sx, sy, cw, ch);',
         '              } catch(e) {}',
         '              return imgData;',
         '            }',
@@ -1375,22 +1473,7 @@ export function ensureProfileStealthExtension(
         '                if (cloneCtx) {',
         '                  cloneCtx.drawImage(thisArg, 0, 0);',
         '                  var imgData = cloneCtx.getImageData(0, 0, clone.width, clone.height);',
-        '                  var data = imgData.data;',
-        '                  for (var y = 0; y < imgData.height; y++) {',
-        '                    var gy = y;',
-        '                    for (var x = 0; x < imgData.width; x++) {',
-        '                      var gx = x;',
-        '                      var _h = Math.imul(gx + 0x9E3779B9, 0x85EBCA6B) ^ Math.imul(gy + pSeed, 0xC2B2AE35) ^ seedOffset;',
-        '                      _h ^= _h >>> 15; _h = Math.imul(_h, 0x2545F491);',
-        '                      _h ^= _h >>> 13;',
-        '                      if ((_h & 127) === 0) {',
-        '                        var dataIdx = (y * imgData.width + x) * 4;',
-        '                        if (data[dataIdx + 3] === 0) continue;',
-        '                        var chIdx = (pSeed + gx + gy) % 3;',
-        '                        data[dataIdx + chIdx] ^= 1;',
-        '                      }',
-        '                    }',
-        '                  }',
+        '                  wApplyCanvasNoise(imgData, 0, 0, clone.width, clone.height);',
         '                  if (cloneCtx.putImageData) cloneCtx.putImageData(imgData, 0, 0);',
         '                  return target.apply(clone, args);',
         '                }',
@@ -1898,7 +1981,7 @@ export function ensureProfileStealthExtension(
         } catch(e) {}
 
         try {
-          var mobileBattLevel = 0.65 + ((pSeed % 30) / 100);
+          var mobileBattLevel = Math.round((0.65 + profileRng() * 0.30) * 100) / 100;
           navigator.getBattery = function() {
             return Promise.resolve({
               charging: false,
@@ -1922,38 +2005,6 @@ export function ensureProfileStealthExtension(
   // -------------------------------------------------------------
   if (${canvasMode !== 'off'}) {
     try {
-      var seedOffset = (pSeed % 15) + 1;
-
-      function applyNoiseToImageData(imgData, sx, sy, canvasWidth, canvasHeight) {
-        if (!imgData || !imgData.data) return imgData;
-        var sw = imgData.width;
-        var sh = imgData.height;
-        var cw = canvasWidth || sw;
-        var ch = canvasHeight || sh;
-        if (cw <= 8 || ch <= 8 || sw <= 8 || sh <= 8) return imgData;
-        var data = imgData.data;
-        var startX = sx || 0;
-        var startY = sy || 0;
-
-        for (var y = 0; y < sh; y++) {
-          var gy = startY + y;
-          for (var x = 0; x < sw; x++) {
-            var gx = startX + x;
-            var _h = Math.imul(gx + 0x9E3779B9, 0x85EBCA6B) ^
-                 Math.imul(gy + pSeed, 0xC2B2AE35) ^ seedOffset;
-        _h ^= _h >>> 15; _h = Math.imul(_h, 0x2545F491);
-        _h ^= _h >>> 13;
-        if ((_h & 127) === 0) {
-              var dataIdx = (y * sw + x) * 4;
-              if (data[dataIdx + 3] === 0) continue;
-              var chIdx = (pSeed + gx + gy) % 3;
-              data[dataIdx + chIdx] ^= 1;
-            }
-          }
-        }
-        return imgData;
-      }
-
       var origToDataURL = HTMLCanvasElement.prototype.toDataURL;
       var origToBlob = HTMLCanvasElement.prototype.toBlob;
       var origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
@@ -2084,8 +2135,8 @@ export function ensureProfileStealthExtension(
   // -------------------------------------------------------------
   if (${clientRectsMode !== 'off'}) {
     try {
-      function shiftDOMRectList(origList, shift) {
-        if (!origList || origList.length === 0 || shift === 0) return origList;
+      function shiftDOMRectList(origList, shiftX, shiftY) {
+        if (!origList || origList.length === 0 || (shiftX === 0 && shiftY === 0)) return origList;
         var count = origList.length || 0;
         var shifted = [];
         for (var i = 0; i < count; i++) {
@@ -2094,7 +2145,7 @@ export function ensureProfileStealthExtension(
             if (r.width === 0 && r.height === 0) {
               shifted.push(r);
             } else {
-              shifted.push(new DOMRect(r.x + shift, r.y + shift, r.width, r.height));
+              shifted.push(new DOMRect(r.x + shiftX, r.y + shiftY, r.width, r.height));
             }
           }
         }
@@ -2116,69 +2167,69 @@ export function ensureProfileStealthExtension(
         });
       }
 
+      var crRng = createMulberry32(pSeed ^ 0x43524543);
+      var crShiftX = (crRng() < 0.5 ? -1 : 1) * (0.00001 + Math.floor(crRng() * 900) * 0.000001);
+      var crShiftY = (crRng() < 0.5 ? -1 : 1) * (0.00001 + Math.floor(crRng() * 900) * 0.000001);
       var origGetBoundingClientRect = Element.prototype.getBoundingClientRect;
-      var crShift = ((pSeed % 5) - 2) * 0.0001;
-      if (crShift !== 0) {
-        var proxyGetBoundingClientRect = new Proxy(origGetBoundingClientRect, {
+      var proxyGetBoundingClientRect = new Proxy(origGetBoundingClientRect, {
+        apply: function(target, thisArg, argumentsList) {
+          var rect = target.apply(thisArg, argumentsList);
+          if (!rect || (rect.width === 0 && rect.height === 0)) return rect;
+          return new DOMRect(
+            rect.x + crShiftX,
+            rect.y + crShiftY,
+            rect.width,
+            rect.height
+          );
+        }
+      });
+      Element.prototype.getBoundingClientRect = proxyGetBoundingClientRect;
+      registerNative(proxyGetBoundingClientRect, 'getBoundingClientRect');
+      registerNative(origGetBoundingClientRect, 'getBoundingClientRect');
+
+      if (Element.prototype.getClientRects) {
+        var origGetClientRects = Element.prototype.getClientRects;
+        var proxyGetClientRects = new Proxy(origGetClientRects, {
+          apply: function(target, thisArg, argumentsList) {
+            var rects = target.apply(thisArg, argumentsList);
+            return shiftDOMRectList(rects, crShiftX, crShiftY);
+          }
+        });
+        Element.prototype.getClientRects = proxyGetClientRects;
+        registerNative(proxyGetClientRects, 'getClientRects');
+        registerNative(origGetClientRects, 'getClientRects');
+      }
+
+      if (typeof window !== 'undefined' && window.Range && Range.prototype.getBoundingClientRect) {
+        var origRangeGetBoundingClientRect = Range.prototype.getBoundingClientRect;
+        var proxyRangeGetBoundingClientRect = new Proxy(origRangeGetBoundingClientRect, {
           apply: function(target, thisArg, argumentsList) {
             var rect = target.apply(thisArg, argumentsList);
             if (!rect || (rect.width === 0 && rect.height === 0)) return rect;
             return new DOMRect(
-              rect.x + crShift,
-              rect.y + crShift,
+              rect.x + crShiftX,
+              rect.y + crShiftY,
               rect.width,
               rect.height
             );
           }
         });
-        Element.prototype.getBoundingClientRect = proxyGetBoundingClientRect;
-        registerNative(proxyGetBoundingClientRect, 'getBoundingClientRect');
-        registerNative(origGetBoundingClientRect, 'getBoundingClientRect');
+        Range.prototype.getBoundingClientRect = proxyRangeGetBoundingClientRect;
+        registerNative(proxyRangeGetBoundingClientRect, 'getBoundingClientRect');
+        registerNative(origRangeGetBoundingClientRect, 'getBoundingClientRect');
+      }
 
-        if (Element.prototype.getClientRects) {
-          var origGetClientRects = Element.prototype.getClientRects;
-          var proxyGetClientRects = new Proxy(origGetClientRects, {
-            apply: function(target, thisArg, argumentsList) {
-              var rects = target.apply(thisArg, argumentsList);
-              return shiftDOMRectList(rects, crShift);
-            }
-          });
-          Element.prototype.getClientRects = proxyGetClientRects;
-          registerNative(proxyGetClientRects, 'getClientRects');
-          registerNative(origGetClientRects, 'getClientRects');
-        }
-
-        if (typeof window !== 'undefined' && window.Range && Range.prototype.getBoundingClientRect) {
-          var origRangeGetBoundingClientRect = Range.prototype.getBoundingClientRect;
-          var proxyRangeGetBoundingClientRect = new Proxy(origRangeGetBoundingClientRect, {
-            apply: function(target, thisArg, argumentsList) {
-              var rect = target.apply(thisArg, argumentsList);
-              if (!rect || (rect.width === 0 && rect.height === 0)) return rect;
-              return new DOMRect(
-                rect.x + crShift,
-                rect.y + crShift,
-                rect.width,
-                rect.height
-              );
-            }
-          });
-          Range.prototype.getBoundingClientRect = proxyRangeGetBoundingClientRect;
-          registerNative(proxyRangeGetBoundingClientRect, 'getBoundingClientRect');
-          registerNative(origRangeGetBoundingClientRect, 'getBoundingClientRect');
-        }
-
-        if (typeof window !== 'undefined' && window.Range && Range.prototype.getClientRects) {
-          var origRangeGetClientRects = Range.prototype.getClientRects;
-          var proxyRangeGetClientRects = new Proxy(origRangeGetClientRects, {
-            apply: function(target, thisArg, argumentsList) {
-              var rects = target.apply(thisArg, argumentsList);
-              return shiftDOMRectList(rects, crShift);
-            }
-          });
-          Range.prototype.getClientRects = proxyRangeGetClientRects;
-          registerNative(proxyRangeGetClientRects, 'getClientRects');
-          registerNative(origRangeGetClientRects, 'getClientRects');
-        }
+      if (typeof window !== 'undefined' && window.Range && Range.prototype.getClientRects) {
+        var origRangeGetClientRects = Range.prototype.getClientRects;
+        var proxyRangeGetClientRects = new Proxy(origRangeGetClientRects, {
+          apply: function(target, thisArg, argumentsList) {
+            var rects = target.apply(thisArg, argumentsList);
+            return shiftDOMRectList(rects, crShiftX, crShiftY);
+          }
+        });
+        Range.prototype.getClientRects = proxyRangeGetClientRects;
+        registerNative(proxyRangeGetClientRects, 'getClientRects');
+        registerNative(origRangeGetClientRects, 'getClientRects');
       }
     } catch(e) {}
   }
@@ -2361,6 +2412,12 @@ export function ensureProfileStealthExtension(
     try {
       if (typeof window !== 'undefined' && window.AudioBuffer) {
         var perturbedBuffers = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+        var audioRng = createMulberry32(pSeed ^ 0x41554449);
+        var audioOffsets = [];
+        for (var ai = 0; ai < 64; ai++) {
+          var ao = (audioRng() - 0.5) * 2e-6;
+          audioOffsets.push(ao === 0 ? 1e-7 : ao);
+        }
         var isBufferSilent = function(buf) {
           for (var si = 0; si < buf.length; si++) {
             if (buf[si] !== 0) return false;
@@ -2375,9 +2432,8 @@ export function ensureProfileStealthExtension(
             if (perturbedBuffers && !perturbedBuffers.has(buffer)) {
               perturbedBuffers.add(buffer);
               if (!isBufferSilent(buffer)) {
-                var offset = ((pSeed % 7) + 1) * 0.0000001;
-                for (var i = 0; i < buffer.length; i += 100) {
-                  buffer[i] += offset;
+                for (var i = 0, step = 0; i < buffer.length; i += 100, step++) {
+                  buffer[i] += audioOffsets[step & 63];
                 }
               }
             }
@@ -2410,6 +2466,34 @@ export function ensureProfileStealthExtension(
           registerNative(origCopyFromChannel, 'copyFromChannel');
         }
       }
+
+      if (typeof window !== 'undefined' && window.AnalyserNode && window.AnalyserNode.prototype && window.AnalyserNode.prototype.getFloatFrequencyData) {
+        var freqRng = createMulberry32(pSeed ^ 0x46524551);
+        var freqOffsets = [];
+        for (var fi = 0; fi < 64; fi++) {
+          var fo = (freqRng() - 0.5) * 0.002;
+          freqOffsets.push(fo === 0 ? 0.0005 : fo);
+        }
+        var origGetFloatFrequencyData = window.AnalyserNode.prototype.getFloatFrequencyData;
+        var proxyGetFloatFrequencyData = new Proxy(origGetFloatFrequencyData, {
+          apply: function(target, thisArg, argumentsList) {
+            var res = target.apply(thisArg, argumentsList);
+            var arr = argumentsList && argumentsList[0];
+            if (arr && typeof arr.length === 'number') {
+              for (var j = 0; j < arr.length; j++) {
+                var val = arr[j];
+                if (typeof val === 'number' && isFinite(val)) {
+                  arr[j] = val + freqOffsets[j & 63];
+                }
+              }
+            }
+            return res;
+          }
+        });
+        window.AnalyserNode.prototype.getFloatFrequencyData = proxyGetFloatFrequencyData;
+        registerNative(proxyGetFloatFrequencyData, 'getFloatFrequencyData');
+        registerNative(origGetFloatFrequencyData, 'getFloatFrequencyData');
+      }
     } catch(e) {}
   }
 
@@ -2418,7 +2502,7 @@ export function ensureProfileStealthExtension(
   // -------------------------------------------------------------
   try {
     var rtcMode = ${JSON.stringify(webrtcOpt)};
-    if (rtcMode === 'proxy_only' || rtcMode === 'disabled' || rtcMode === 'disable_non_proxied_udp') {
+    if (rtcMode === 'proxy_only' || rtcMode === 'disabled' || rtcMode === 'disable_non_proxied_udp' || rtcMode === 'altered') {
       var hookedProtos = new WeakSet();
       var hookPeerConnection = function(RTCClass, name) {
         if (!RTCClass) return;
@@ -3460,14 +3544,26 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
   }
   args.push('--password-store=basic');
 
-  // WebRTC Leak Prevention
+  // WebRTC Leak Prevention (Strict IPv6 & UDP Leak Guard)
   const webrtcOpt = settings?.network?.webrtc;
-  if (webrtcOpt === 'disable_non_proxied_udp' || webrtcOpt === 'disabled' || webrtcOpt === 'proxy_only') {
-    args.push('--force-webrtc-ip-handling-policy');
-    args.push('--webrtc-ip-handling-policy=disable_non_proxied_udp');
+  const fpWebrtc = settings?.fingerprint?.webrtc;
+  const hasProxy = Boolean(
+    settings?.network &&
+    settings.network.directConnection === false &&
+    settings.network.proxyId
+  );
+
+  if (
+    hasProxy ||
+    webrtcOpt === 'disable_non_proxied_udp' ||
+    webrtcOpt === 'disabled' ||
+    webrtcOpt === 'proxy_only' ||
+    webrtcOpt === 'altered' ||
+    (webrtcOpt !== 'real' && (fpWebrtc === 'disabled' || fpWebrtc === 'altered'))
+  ) {
+    applyStrictWebrtcArgs(args, 'disable_non_proxied_udp');
   } else if (webrtcOpt === 'default_public_interface_only' || webrtcOpt === 'public_interface_only') {
-    args.push('--force-webrtc-ip-handling-policy');
-    args.push('--webrtc-ip-handling-policy=default_public_interface_only');
+    applyStrictWebrtcArgs(args, 'default_public_interface_only');
   }
 
   // Hardware Acceleration
@@ -3966,15 +4062,13 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
           args.push(`--proxy-server=http://127.0.0.1:${proxyTunnel.port}`);
           args.push('--proxy-bypass-list=<-loopback>');
           args.push(`--host-resolver-rules=MAP * 0.0.0.0 , EXCLUDE ${proxy.host}`);
-          args.push('--force-webrtc-ip-handling-policy');
-          args.push('--webrtc-ip-handling-policy=disable_non_proxied_udp');
+          applyStrictWebrtcArgs(args, 'disable_non_proxied_udp');
           debugLog(`[Launcher Step 5/7] Authenticating Tunnel ready: 127.0.0.1:${proxyTunnel.port} -> ${proxy.host}:${proxy.port}`);
         } else {
           args.push(`--proxy-server=${proxy.protocol}://${proxy.host}:${proxy.port}`);
           args.push('--proxy-bypass-list=<-loopback>');
           args.push(`--host-resolver-rules=MAP * 0.0.0.0 , EXCLUDE ${proxy.host}`);
-          args.push('--force-webrtc-ip-handling-policy');
-          args.push('--webrtc-ip-handling-policy=disable_non_proxied_udp');
+          applyStrictWebrtcArgs(args, 'disable_non_proxied_udp');
           debugLog(`[Launcher Step 5/7] Direct Proxy Server: ${proxy.protocol}://${proxy.host}:${proxy.port}`);
         }
       } else {
@@ -3990,7 +4084,7 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
     // Custom Additional Arguments
     if (settings?.browser?.additionalArgs && Array.isArray(settings.browser.additionalArgs)) {
       for (const a of settings.browser.additionalArgs) {
-        if (a.trim()) args.push(a.trim());
+        if (a.trim()) pushUniqueFlag(args, a.trim());
       }
     }
 
