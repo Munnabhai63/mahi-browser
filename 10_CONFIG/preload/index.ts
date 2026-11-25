@@ -33,6 +33,8 @@ const api: MahiBrowserAPI = {
   quickSwitchProfile: (number) => ipcRenderer.invoke('profiles:quickSwitch', number),
   getProfileStatus: (id) => ipcRenderer.invoke('profiles:getStatus', id),
   getRunningProfiles: () => ipcRenderer.invoke('profiles:getRunningProfiles'),
+  previewProfileCacheCleanup: () => ipcRenderer.invoke('profiles:previewCacheCleanup'),
+  applyProfileCacheCleanup: () => ipcRenderer.invoke('profiles:applyCacheCleanup'),
 
 
   getProfileStats: (id) => ipcRenderer.invoke('profiles:getStats', id),
