@@ -13,7 +13,7 @@ import {
   ExtendLicenseDTO,
 } from '../10_CONFIG/shared/types/license.js';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
-import { getDeviceId, getDeviceName } from '../03_HARDWARE/device-id.js';
+import { getDeviceId, getLegacyDeviceId, getDeviceName } from '../03_HARDWARE/device-id.js';
 
 // Offline grace period in milliseconds (72 hours)
 const OFFLINE_GRACE_PERIOD_MS = 72 * 60 * 60 * 1000;
@@ -252,15 +252,21 @@ export function activateLicense(
     return { success: false, status: evaluatedStatus, message: 'Account mismatch: License is bound to a different MAHI account.' };
   }
 
-  // Check device registration
-  const existingDevice = db.prepare(
-    'SELECT * FROM license_devices WHERE license_id = ? AND device_id = ?'
-  ).get(row.id, deviceId) as any;
+  // Check device registration (supports both new stable HWID and legacy v1.2.2 deviceId)
+  const legacyDeviceId = deviceId === getDeviceId() ? getLegacyDeviceId() : undefined;
+  const existingDevice = legacyDeviceId
+    ? (db.prepare(
+        'SELECT * FROM license_devices WHERE license_id = ? AND device_id IN (?, ?)'
+      ).get(row.id, deviceId, legacyDeviceId) as any)
+    : (db.prepare(
+        'SELECT * FROM license_devices WHERE license_id = ? AND device_id = ?'
+      ).get(row.id, deviceId) as any);
 
   const now = new Date().toISOString();
 
   if (existingDevice) {
-    db.prepare("UPDATE license_devices SET status = 'ACTIVE', last_seen_at = ? WHERE id = ?").run(
+    db.prepare("UPDATE license_devices SET status = 'ACTIVE', device_id = ?, last_seen_at = ? WHERE id = ?").run(
+      deviceId,
       now,
       existingDevice.id
     );
@@ -338,23 +344,28 @@ export function validateCurrentLicense(targetDeviceId?: string): LicenseValidati
     return { isValid: false, status: 'EXPIRED', license, message: 'Your MAHI Pro license has expired.' };
   }
 
-  // Check device status
-  const currentDeviceId = targetDeviceId || cache.device_id || getDeviceId();
-  const device = db.prepare(
-    "SELECT * FROM license_devices WHERE license_id = ? AND device_id = ? AND status = 'ACTIVE'"
-  ).get(license.id, currentDeviceId);
+  // Check device status (backward-compatible against stable HWID, cached device_id, and legacy v1.2.2 ID)
+  const candidateDeviceIds = targetDeviceId
+    ? [targetDeviceId]
+    : Array.from(new Set([getDeviceId(), cache.device_id, getLegacyDeviceId()].filter(Boolean)));
+
+  let device: any = null;
+  for (const cid of candidateDeviceIds) {
+    device = db.prepare(
+      "SELECT * FROM license_devices WHERE license_id = ? AND device_id = ? AND status = 'ACTIVE'"
+    ).get(license.id, cid);
+    if (device) break;
+  }
 
   if (!device) {
     return { isValid: false, status: 'SUSPENDED', license, message: 'This device is not authorized or was deactivated.' };
   }
 
-
   // Update last seen
   const now = new Date().toISOString();
-  db.prepare('UPDATE license_devices SET last_seen_at = ? WHERE license_id = ? AND device_id = ?').run(
+  db.prepare('UPDATE license_devices SET last_seen_at = ? WHERE id = ?').run(
     now,
-    license.id,
-    currentDeviceId
+    device.id
   );
   db.prepare('UPDATE licenses SET last_validation_at = ? WHERE id = ?').run(now, license.id);
 
