@@ -67,6 +67,10 @@ export interface CentralRepository {
   getLatestCloudProfileVersion(cloudProfileId: string): Promise<any | null>;
   getCloudProfileVersion(cloudProfileId: string, version: number): Promise<any | null>;
 
+  // Cloud Deltas
+  createCloudProfileDelta?(data: any): Promise<any>;
+  getLatestCloudProfileDelta?(cloudProfileId: string): Promise<any | null>;
+
   // Upload Sessions
   createUploadSessionRecord(data: any): Promise<any>;
   findUploadSessionById(id: string): Promise<any | null>;
@@ -536,26 +540,89 @@ export class PostgresCentralRepository implements CentralRepository {
     };
   }
 
+  async createCloudProfileDelta(data: any): Promise<any> {
+    const deltaClient = (this.client as any).cloud_profile_deltas;
+    if (!deltaClient || typeof deltaClient.create !== 'function') {
+      return null;
+    }
+    try {
+      const delta = await deltaClient.create({
+        data: {
+          id: data.id,
+          cloud_profile_id: data.cloud_profile_id || data.cloudProfileId,
+          base_version: data.base_version ?? data.baseVersion ?? 1,
+          delta_version: data.delta_version ?? data.deltaVersion ?? 1,
+          delta_type: data.delta_type || data.deltaType || 'cookies_only',
+          manifest_hash: data.manifest_hash || data.manifestHash || null,
+          object_key: data.object_key || data.objectKey,
+          file_size: BigInt(data.file_size ?? data.fileSize ?? 0),
+          checksum_sha256: data.checksum_sha256 || data.checksumSha256,
+          encrypted_data_key: data.encrypted_data_key || data.encryptedDataKey,
+          iv: data.iv,
+          auth_tag: data.auth_tag || data.authTag,
+          source_device_id: data.source_device_id || data.sourceDeviceId,
+          source_device_name: data.source_device_name || data.sourceDeviceName || null,
+          created_at: data.created_at || new Date().toISOString(),
+        },
+      });
+      return {
+        ...delta,
+        file_size: Number(delta.file_size),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async getLatestCloudProfileDelta(cloudProfileId: string): Promise<any | null> {
+    const deltaClient = (this.client as any).cloud_profile_deltas;
+    if (!deltaClient || typeof deltaClient.findFirst !== 'function') {
+      return null;
+    }
+    try {
+      const delta = await deltaClient.findFirst({
+        where: { cloud_profile_id: cloudProfileId },
+        orderBy: { delta_version: 'desc' },
+      });
+      if (!delta) return null;
+      return {
+        ...delta,
+        file_size: Number(delta.file_size),
+      };
+    } catch {
+      return null;
+    }
+  }
+
   // --- Upload Sessions ---
   async createUploadSessionRecord(data: any): Promise<any> {
-    return this.client.cloud_sync_upload_sessions.create({
-      data: {
-        id: data.id,
-        user_id: data.user_id || data.userId,
-        cloud_profile_id: data.cloud_profile_id || data.cloudProfileId,
-        base_version: data.base_version ?? data.baseVersion ?? 0,
-        target_version: data.target_version ?? data.targetVersion ?? 1,
-        object_key: data.object_key || data.objectKey,
-        expected_size: BigInt(data.expected_size ?? data.expectedSize ?? 0),
-        expected_checksum: data.expected_checksum || data.expectedChecksum,
-        encrypted_data_key: data.encrypted_data_key || data.encryptedDataKey,
-        iv: data.iv,
-        auth_tag: data.auth_tag || data.authTag,
-        status: data.status || 'PENDING',
-        expires_at: data.expires_at || data.expiresAt,
-        created_at: data.created_at || new Date().toISOString(),
-      },
-    });
+    const baseData: any = {
+      id: data.id,
+      user_id: data.user_id || data.userId,
+      cloud_profile_id: data.cloud_profile_id || data.cloudProfileId,
+      base_version: data.base_version ?? data.baseVersion ?? 0,
+      target_version: data.target_version ?? data.targetVersion ?? 1,
+      object_key: data.object_key || data.objectKey,
+      expected_size: BigInt(data.expected_size ?? data.expectedSize ?? 0),
+      expected_checksum: data.expected_checksum || data.expectedChecksum,
+      encrypted_data_key: data.encrypted_data_key || data.encryptedDataKey,
+      iv: data.iv,
+      auth_tag: data.auth_tag || data.authTag,
+      status: data.status || 'PENDING',
+      expires_at: data.expires_at || data.expiresAt,
+      created_at: data.created_at || new Date().toISOString(),
+    };
+    try {
+      return await this.client.cloud_sync_upload_sessions.create({
+        data: {
+          ...baseData,
+          archive_format: data.archive_format || data.archiveFormat || 'full',
+          manifest_hash: data.manifest_hash || data.manifestHash || null,
+        } as any,
+      });
+    } catch {
+      return this.client.cloud_sync_upload_sessions.create({ data: baseData });
+    }
   }
 
   async findUploadSessionById(id: string): Promise<any | null> {
@@ -1214,20 +1281,60 @@ export class SqliteCentralRepository implements CentralRepository {
     return row || null;
   }
 
+  async createCloudProfileDelta(data: any): Promise<any> {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO cloud_profile_deltas (
+        id, cloud_profile_id, base_version, delta_version, delta_type, manifest_hash,
+        object_key, file_size, checksum_sha256, encrypted_data_key, iv, auth_tag,
+        source_device_id, source_device_name, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      data.id,
+      data.cloud_profile_id || data.cloudProfileId,
+      data.base_version ?? data.baseVersion ?? 1,
+      data.delta_version ?? data.deltaVersion ?? 1,
+      data.delta_type || data.deltaType || 'cookies_only',
+      data.manifest_hash || data.manifestHash || null,
+      data.object_key || data.objectKey,
+      data.file_size ?? data.fileSize ?? 0,
+      data.checksum_sha256 || data.checksumSha256,
+      data.encrypted_data_key || data.encryptedDataKey,
+      data.iv,
+      data.auth_tag || data.authTag,
+      data.source_device_id || data.sourceDeviceId,
+      data.source_device_name || data.sourceDeviceName || null,
+      data.created_at || now
+    );
+    return data;
+  }
+
+  async getLatestCloudProfileDelta(cloudProfileId: string): Promise<any | null> {
+    const row = this.db.prepare(`
+      SELECT * FROM cloud_profile_deltas
+      WHERE cloud_profile_id = ?
+      ORDER BY delta_version DESC
+      LIMIT 1
+    `).get(cloudProfileId);
+    return row || null;
+  }
+
   // --- Upload Sessions ---
   async createUploadSessionRecord(data: any): Promise<any> {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO cloud_sync_upload_sessions (
-        id, user_id, cloud_profile_id, base_version, target_version, object_key, expected_size, expected_checksum,
-        encrypted_data_key, iv, auth_tag, status, expires_at, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, user_id, cloud_profile_id, base_version, target_version, archive_format, manifest_hash,
+        object_key, expected_size, expected_checksum, encrypted_data_key, iv, auth_tag, status, expires_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       data.id,
       data.user_id || data.userId,
       data.cloud_profile_id || data.cloudProfileId,
       data.base_version ?? data.baseVersion ?? 0,
       data.target_version ?? data.targetVersion ?? 1,
+      data.archive_format || data.archiveFormat || 'full',
+      data.manifest_hash || data.manifestHash || null,
       data.object_key || data.objectKey,
       data.expected_size ?? data.expectedSize ?? 0,
       data.expected_checksum || data.expectedChecksum,

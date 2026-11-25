@@ -2400,9 +2400,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('sync:isAllowed', async () => isCloudSyncAllowed());
   ipcMain.handle('sync:getUsage', async () => getCloudSyncUsage());
   ipcMain.handle('sync:list', async () => getCloudSyncList());
-  ipcMain.handle('sync:upload', async (_e, profileId: string) => {
+  ipcMain.handle('sync:upload', async (_e, profileId: string, options?: { force?: boolean; baseVersion?: number; mode?: 'full' | 'cookies_only' }) => {
     assertCapability('cloud.sync');
-    return uploadProfileToCloud(profileId);
+    return uploadProfileToCloud(profileId, options);
   });
   ipcMain.handle('sync:restore', async (_e, cloudProfileId: string, options?: any) => {
     assertCapability('cloud.sync');

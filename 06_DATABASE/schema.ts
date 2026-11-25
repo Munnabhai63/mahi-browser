@@ -1545,4 +1545,30 @@ export async function initializeDatabase(): Promise<void> {
   addColumnIfNotExists(db, 'auth_users', 'terms_version', 'TEXT DEFAULT NULL');
   addColumnIfNotExists(db, 'oauth_states', 'accepted_terms', 'INTEGER DEFAULT NULL');
   addColumnIfNotExists(db, 'oauth_states', 'terms_version', 'TEXT DEFAULT NULL');
+
+  // Cookie-only delta sync snapshots & manifest metadata (additive idempotent schema)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cloud_profile_deltas (
+      id TEXT PRIMARY KEY,
+      cloud_profile_id TEXT NOT NULL,
+      base_version INTEGER NOT NULL,
+      delta_version INTEGER NOT NULL,
+      delta_type TEXT NOT NULL DEFAULT 'cookies_only',
+      manifest_hash TEXT,
+      object_key TEXT NOT NULL,
+      file_size INTEGER NOT NULL,
+      checksum_sha256 TEXT NOT NULL,
+      encrypted_data_key TEXT NOT NULL,
+      iv TEXT NOT NULL,
+      auth_tag TEXT NOT NULL,
+      source_device_id TEXT NOT NULL,
+      source_device_name TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (cloud_profile_id) REFERENCES cloud_profiles(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_cloud_deltas_profile ON cloud_profile_deltas(cloud_profile_id);
+    CREATE INDEX IF NOT EXISTS idx_cloud_deltas_profile_ver ON cloud_profile_deltas(cloud_profile_id, delta_version);
+  `);
+  addColumnIfNotExists(db, 'cloud_sync_upload_sessions', 'archive_format', "TEXT NOT NULL DEFAULT 'full'");
+  addColumnIfNotExists(db, 'cloud_sync_upload_sessions', 'manifest_hash', 'TEXT DEFAULT NULL');
 }

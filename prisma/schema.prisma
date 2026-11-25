@@ -349,6 +349,7 @@ model cloud_profiles {
 
   owner             auth_users              @relation(fields: [owner_id], references: [id], onDelete: Cascade)
   versions          cloud_profile_versions[]
+  deltas            cloud_profile_deltas[]
   lock              cloud_profile_locks?
   shares            team_profile_shares[]
 
@@ -376,6 +377,29 @@ model cloud_profile_versions {
   @@index([cloud_profile_id, version])
 }
 
+model cloud_profile_deltas {
+  id                 String         @id
+  cloud_profile_id   String
+  base_version       Int
+  delta_version      Int
+  delta_type         String         @default("cookies_only")
+  manifest_hash      String?
+  object_key         String
+  file_size          BigInt
+  checksum_sha256    String
+  encrypted_data_key String
+  iv                 String
+  auth_tag           String
+  source_device_id   String
+  source_device_name String?
+  created_at         String
+
+  profile            cloud_profiles @relation(fields: [cloud_profile_id], references: [id], onDelete: Cascade)
+
+  @@index([cloud_profile_id])
+  @@index([cloud_profile_id, delta_version])
+}
+
 model cloud_profile_locks {
   cloud_profile_id String         @id
   device_id        String
@@ -395,6 +419,8 @@ model cloud_sync_upload_sessions {
   user_id            String
   target_version     Int
   base_version       Int
+  archive_format     String     @default("full")
+  manifest_hash      String?
   object_key         String
   expected_size      BigInt
   expected_checksum  String

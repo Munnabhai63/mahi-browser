@@ -244,7 +244,9 @@ export async function handleCloudSyncRoutes(
     }
     try {
       const body = await parseBody(req);
-      const result = await createDownloadSession(user.userId, body.cloudProfileId, body.version);
+      const result = await createDownloadSession(user.userId, body.cloudProfileId, body.version, {
+        mode: body.mode,
+      });
       sendJSON(res, 200, { success: true, data: result });
     } catch (err: any) {
       sendJSON(res, 404, { success: false, error: err.message });

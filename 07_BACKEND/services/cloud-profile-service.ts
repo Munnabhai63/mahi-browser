@@ -138,7 +138,9 @@ export interface CreateUploadSessionParams {
   localProfileId: string;
   profileName: string;
   baseVersion: number;
+  mode?: 'full' | 'cookies_only';
   archiveFormat?: string;
+  manifestHash?: string;
   expectedSize: number;
   expectedChecksum: string;
   encryptedDataKey: string;
@@ -150,6 +152,8 @@ export interface CreateUploadSessionParams {
 
 export interface UploadSessionResult {
   conflict?: boolean;
+  fallbackToFull?: boolean;
+  syncMode?: 'full' | 'cookies_only';
   currentVersion?: number;
   message?: string;
   sessionId?: string;
@@ -157,6 +161,63 @@ export interface UploadSessionResult {
   objectKey?: string;
   targetVersion?: number;
   cloudProfileId?: string;
+}
+
+function getCookieDeltaPointerKey(ownerId: string, cloudProfileId: string): string {
+  return `profiles/${ownerId}/${cloudProfileId}/cookies-delta-latest.json`;
+}
+
+async function saveDeltaPointerObject(
+  ownerId: string,
+  cloudProfileId: string,
+  pointer: {
+    deltaVersion: number;
+    baseVersion: number;
+    objectKey: string;
+    fileSize: number;
+    checksumSha256: string;
+    encryptedDataKey: string;
+    iv: string;
+    authTag: string;
+    manifestHash?: string | null;
+    sourceDeviceId: string;
+    sourceDeviceName?: string | null;
+    createdAt: string;
+  }
+): Promise<void> {
+  try {
+    const storage = getStorageProvider();
+    await storage.putObject(
+      getCookieDeltaPointerKey(ownerId, cloudProfileId),
+      Buffer.from(JSON.stringify(pointer), 'utf8')
+    );
+  } catch {}
+}
+
+async function loadDeltaPointerObject(ownerId: string, cloudProfileId: string): Promise<any | null> {
+  try {
+    const storage = getStorageProvider();
+    const buf = await storage.getObject(getCookieDeltaPointerKey(ownerId, cloudProfileId));
+    if (!buf) return null;
+    const parsed = JSON.parse(buf.toString('utf8'));
+    return {
+      cloud_profile_id: cloudProfileId,
+      base_version: parsed.baseVersion,
+      delta_version: parsed.deltaVersion,
+      manifest_hash: parsed.manifestHash || null,
+      object_key: parsed.objectKey,
+      file_size: parsed.fileSize,
+      checksum_sha256: parsed.checksumSha256,
+      encrypted_data_key: parsed.encryptedDataKey,
+      iv: parsed.iv,
+      auth_tag: parsed.authTag,
+      source_device_id: parsed.sourceDeviceId,
+      source_device_name: parsed.sourceDeviceName || null,
+      created_at: parsed.createdAt,
+    };
+  } catch {
+    return null;
+  }
 }
 
 const MAX_INDIVIDUAL_ARCHIVE_BYTES = 200 * 1024 * 1024; // 200 MB
@@ -405,6 +466,9 @@ export async function createUploadSession(
   userId: string,
   params: CreateUploadSessionParams
 ): Promise<UploadSessionResult> {
+  const syncMode: 'full' | 'cookies_only' =
+    params.mode === 'cookies_only' || params.archiveFormat === 'cookies_only' ? 'cookies_only' : 'full';
+
   if (isPostgresConfigured()) {
     const repo = getCentralRepository();
     if (params.expectedSize > MAX_INDIVIDUAL_ARCHIVE_BYTES) {
@@ -418,6 +482,15 @@ export async function createUploadSession(
 
     const profiles = await repo.listCloudProfiles(userId);
     const existing = profiles.find((p: any) => p.local_profile_id === params.localProfileId && p.status !== 'DELETED');
+
+    if (syncMode === 'cookies_only' && !existing) {
+      return {
+        conflict: false,
+        fallbackToFull: true,
+        syncMode: 'cookies_only',
+        message: 'No base snapshot exists yet; full tarball sync required.',
+      };
+    }
 
     let cloudProfileId: string;
     let targetVersion: number;
@@ -433,7 +506,7 @@ export async function createUploadSession(
           message: `Version conflict: Cloud has version ${existing.current_version}, but upload was based on version ${params.baseVersion}.`,
         };
       }
-      targetVersion = existing.current_version + 1;
+      targetVersion = syncMode === 'cookies_only' ? existing.current_version : existing.current_version + 1;
     } else {
       if (usage.profile_count >= usage.max_profiles) {
         throw new Error(`Maximum allowed cloud profiles limit reached (${usage.max_profiles} profiles). Upgrade plan to sync more.`);
@@ -443,7 +516,10 @@ export async function createUploadSession(
     }
 
     const safeRandomId = crypto.randomBytes(16).toString('hex');
-    const objectKey = `profiles/${userId}/${cloudProfileId}/${safeRandomId}_v${targetVersion}.enc`;
+    const objectKey =
+      syncMode === 'cookies_only'
+        ? `profiles/${userId}/${cloudProfileId}/deltas/${safeRandomId}_b${targetVersion}.enc`
+        : `profiles/${userId}/${cloudProfileId}/${safeRandomId}_v${targetVersion}.enc`;
 
     const storage = getStorageProvider();
     const uploadUrl = await storage.createUploadUrl(objectKey, 'application/octet-stream', 900);
@@ -458,6 +534,8 @@ export async function createUploadSession(
       user_id: userId,
       target_version: targetVersion,
       base_version: params.baseVersion,
+      archive_format: syncMode,
+      manifest_hash: params.manifestHash || null,
       object_key: objectKey,
       expected_size: params.expectedSize,
       expected_checksum: params.expectedChecksum,
@@ -471,10 +549,17 @@ export async function createUploadSession(
       created_at: now,
     });
 
-    await logCloudAuditAsync(userId, 'UPLOAD_SESSION_CREATED', `Target version ${targetVersion}`, cloudProfileId, params.deviceId);
+    await logCloudAuditAsync(
+      userId,
+      syncMode === 'cookies_only' ? 'DELTA_UPLOAD_SESSION_CREATED' : 'UPLOAD_SESSION_CREATED',
+      syncMode === 'cookies_only' ? `Cookie delta for base v${targetVersion}` : `Target version ${targetVersion}`,
+      cloudProfileId,
+      params.deviceId
+    );
 
     return {
       conflict: false,
+      syncMode,
       sessionId,
       uploadUrl,
       objectKey,
@@ -502,6 +587,15 @@ export async function createUploadSession(
     WHERE owner_id = ? AND local_profile_id = ? AND status != 'DELETED'
   `).get(userId, params.localProfileId) as any;
 
+  if (syncMode === 'cookies_only' && !existing) {
+    return {
+      conflict: false,
+      fallbackToFull: true,
+      syncMode: 'cookies_only',
+      message: 'No base snapshot exists yet; full tarball sync required.',
+    };
+  }
+
   let cloudProfileId: string;
   let targetVersion: number;
 
@@ -520,7 +614,7 @@ export async function createUploadSession(
       };
     }
 
-    targetVersion = existing.current_version + 1;
+    targetVersion = syncMode === 'cookies_only' ? existing.current_version : existing.current_version + 1;
   } else {
     // New cloud profile
     if (usage.profile_count >= usage.max_profiles) {
@@ -533,7 +627,10 @@ export async function createUploadSession(
 
   // 3. Generate secure, opaque object key (never contains user email or plaintext profile name)
   const safeRandomId = crypto.randomBytes(16).toString('hex');
-  const objectKey = `profiles/${userId}/${cloudProfileId}/${safeRandomId}_v${targetVersion}.enc`;
+  const objectKey =
+    syncMode === 'cookies_only'
+      ? `profiles/${userId}/${cloudProfileId}/deltas/${safeRandomId}_b${targetVersion}.enc`
+      : `profiles/${userId}/${cloudProfileId}/${safeRandomId}_v${targetVersion}.enc`;
 
   // 4. Generate short-lived presigned upload URL
   const storage = getStorageProvider();
@@ -546,16 +643,18 @@ export async function createUploadSession(
 
   db.prepare(`
     INSERT INTO cloud_sync_upload_sessions (
-      id, cloud_profile_id, user_id, target_version, base_version,
+      id, cloud_profile_id, user_id, target_version, base_version, archive_format, manifest_hash,
       object_key, expected_size, expected_checksum, encrypted_data_key,
       iv, auth_tag, status, expires_at, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
   `).run(
     sessionId,
     cloudProfileId,
     userId,
     targetVersion,
     params.baseVersion,
+    syncMode,
+    params.manifestHash || null,
     objectKey,
     params.expectedSize,
     params.expectedChecksum,
@@ -566,10 +665,17 @@ export async function createUploadSession(
     now
   );
 
-  logCloudAudit(userId, 'UPLOAD_SESSION_CREATED', `Target version ${targetVersion}`, cloudProfileId, params.deviceId);
+  logCloudAudit(
+    userId,
+    syncMode === 'cookies_only' ? 'DELTA_UPLOAD_SESSION_CREATED' : 'UPLOAD_SESSION_CREATED',
+    syncMode === 'cookies_only' ? `Cookie delta for base v${targetVersion}` : `Target version ${targetVersion}`,
+    cloudProfileId,
+    params.deviceId
+  );
 
   return {
     conflict: false,
+    syncMode,
     sessionId,
     uploadUrl,
     objectKey,
@@ -580,7 +686,7 @@ export async function createUploadSession(
 
 /**
  * Finalize upload session: verify that object was actually uploaded with expected size.
- * Only then activates the new version atomically.
+ * Only then activates the new version (or cookie-only delta) atomically.
  */
 export async function finalizeUploadSession(
   userId: string,
@@ -589,7 +695,7 @@ export async function finalizeUploadSession(
   localProfileId: string,
   sourceDeviceId: string,
   sourceDeviceName?: string
-): Promise<{ success: boolean; cloudProfileId: string; version: number }> {
+): Promise<{ success: boolean; cloudProfileId: string; version: number; deltaVersion?: number; syncMode?: 'full' | 'cookies_only' }> {
   if (isPostgresConfigured()) {
     const repo = getCentralRepository();
     const session = await repo.findUploadSessionById(sessionId);
@@ -614,9 +720,79 @@ export async function finalizeUploadSession(
     }
 
     const now = new Date().toISOString();
-    const versionId = crypto.randomUUID();
-
     const existing = await repo.findCloudProfileById(session.cloud_profile_id);
+    const isCookiesDelta =
+      session.archive_format === 'cookies_only' ||
+      (typeof session.object_key === 'string' && session.object_key.includes('/deltas/'));
+
+    if (isCookiesDelta) {
+      if (!existing) {
+        throw new Error('Base cloud profile snapshot not found for cookie-only delta');
+      }
+      const prevDelta =
+        (typeof repo.getLatestCloudProfileDelta === 'function'
+          ? await repo.getLatestCloudProfileDelta(session.cloud_profile_id)
+          : null) || (await loadDeltaPointerObject(userId, session.cloud_profile_id));
+      const deltaVersion = (prevDelta?.delta_version || 0) + 1;
+      const baseVersion = existing.current_version;
+
+      if (typeof repo.createCloudProfileDelta === 'function') {
+        await repo.createCloudProfileDelta({
+          id: crypto.randomUUID(),
+          cloud_profile_id: session.cloud_profile_id,
+          base_version: baseVersion,
+          delta_version: deltaVersion,
+          delta_type: 'cookies_only',
+          manifest_hash: session.manifest_hash || null,
+          object_key: session.object_key,
+          file_size: session.expected_size,
+          checksum_sha256: session.expected_checksum,
+          encrypted_data_key: session.encrypted_data_key,
+          iv: session.iv,
+          auth_tag: session.auth_tag,
+          source_device_id: sourceDeviceId,
+          source_device_name: sourceDeviceName || 'Unknown Device',
+          created_at: now,
+        });
+      }
+
+      await saveDeltaPointerObject(userId, session.cloud_profile_id, {
+        deltaVersion,
+        baseVersion,
+        objectKey: session.object_key,
+        fileSize: session.expected_size,
+        checksumSha256: session.expected_checksum,
+        encryptedDataKey: session.encrypted_data_key,
+        iv: session.iv,
+        authTag: session.auth_tag,
+        manifestHash: session.manifest_hash || null,
+        sourceDeviceId,
+        sourceDeviceName: sourceDeviceName || 'Unknown Device',
+        createdAt: now,
+      });
+
+      await repo.updateCloudProfile(session.cloud_profile_id, {
+        name: profileName,
+      });
+      await repo.updateUploadSessionRecord(sessionId, { status: 'COMPLETED' });
+      await logCloudAuditAsync(
+        userId,
+        'DELTA_UPLOAD_FINALIZED',
+        `Activated cookie delta d${deltaVersion} on base v${baseVersion}`,
+        session.cloud_profile_id,
+        sourceDeviceId
+      );
+
+      return {
+        success: true,
+        cloudProfileId: session.cloud_profile_id,
+        version: baseVersion,
+        deltaVersion,
+        syncMode: 'cookies_only',
+      };
+    }
+
+    const versionId = crypto.randomUUID();
     if (existing) {
       await repo.updateCloudProfile(session.cloud_profile_id, {
         name: profileName,
@@ -657,6 +833,7 @@ export async function finalizeUploadSession(
       success: true,
       cloudProfileId: session.cloud_profile_id,
       version: session.target_version,
+      syncMode: 'full',
     };
   }
 
@@ -691,8 +868,96 @@ export async function finalizeUploadSession(
     throw new Error(`Object size mismatch! Expected ${session.expected_size} bytes, got ${head.size} bytes.`);
   }
 
-  // 2. Perform atomic database updates
   const now = new Date().toISOString();
+  const isCookiesDelta =
+    session.archive_format === 'cookies_only' ||
+    (typeof session.object_key === 'string' && session.object_key.includes('/deltas/'));
+
+  if (isCookiesDelta) {
+    const existing = db.prepare('SELECT * FROM cloud_profiles WHERE id = ?').get(session.cloud_profile_id) as any;
+    if (!existing) {
+      throw new Error('Base cloud profile snapshot not found for cookie-only delta');
+    }
+
+    const prevDeltaRow = db
+      .prepare('SELECT MAX(delta_version) as max_ver FROM cloud_profile_deltas WHERE cloud_profile_id = ?')
+      .get(session.cloud_profile_id) as { max_ver?: number } | undefined;
+    const deltaVersion = (prevDeltaRow?.max_ver || 0) + 1;
+    const baseVersion = existing.current_version;
+    const deltaId = crypto.randomUUID();
+
+    const runDeltaUpdates = () => {
+      db.prepare(`
+        UPDATE cloud_profiles
+        SET name = ?, updated_at = ?
+        WHERE id = ?
+      `).run(profileName, now, session.cloud_profile_id);
+
+      db.prepare(`
+        INSERT INTO cloud_profile_deltas (
+          id, cloud_profile_id, base_version, delta_version, delta_type, manifest_hash,
+          object_key, file_size, checksum_sha256, encrypted_data_key, iv, auth_tag,
+          source_device_id, source_device_name, created_at
+        ) VALUES (?, ?, ?, ?, 'cookies_only', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        deltaId,
+        session.cloud_profile_id,
+        baseVersion,
+        deltaVersion,
+        session.manifest_hash || null,
+        session.object_key,
+        session.expected_size,
+        session.expected_checksum,
+        session.encrypted_data_key,
+        session.iv,
+        session.auth_tag,
+        sourceDeviceId,
+        sourceDeviceName || 'Unknown Device',
+        now
+      );
+
+      db.prepare("UPDATE cloud_sync_upload_sessions SET status = 'COMPLETED' WHERE id = ?").run(sessionId);
+    };
+
+    if (typeof db.transaction === 'function') {
+      db.transaction(runDeltaUpdates)();
+    } else {
+      runDeltaUpdates();
+    }
+
+    await saveDeltaPointerObject(userId, session.cloud_profile_id, {
+      deltaVersion,
+      baseVersion,
+      objectKey: session.object_key,
+      fileSize: session.expected_size,
+      checksumSha256: session.expected_checksum,
+      encryptedDataKey: session.encrypted_data_key,
+      iv: session.iv,
+      authTag: session.auth_tag,
+      manifestHash: session.manifest_hash || null,
+      sourceDeviceId,
+      sourceDeviceName: sourceDeviceName || 'Unknown Device',
+      createdAt: now,
+    });
+
+    logCloudAudit(
+      userId,
+      'DELTA_UPLOAD_FINALIZED',
+      `Activated cookie delta d${deltaVersion} on base v${baseVersion}`,
+      session.cloud_profile_id,
+      sourceDeviceId
+    );
+
+    return {
+      success: true,
+      cloudProfileId: session.cloud_profile_id,
+      version: baseVersion,
+      deltaVersion,
+      syncMode: 'cookies_only',
+    };
+  }
+
+  // 2. Perform atomic database updates for full tarball snapshot
   const versionId = crypto.randomUUID();
 
   const runUpdates = () => {
@@ -758,17 +1023,21 @@ export async function finalizeUploadSession(
     success: true,
     cloudProfileId: session.cloud_profile_id,
     version: session.target_version,
+    syncMode: 'full',
   };
 }
 
 /**
- * Request download session for a cloud profile.
+ * Request download session for a cloud profile (full tarball or cookie-only delta).
  */
 export async function createDownloadSession(
   userId: string,
   cloudProfileId: string,
-  targetVersion?: number
+  targetVersion?: number,
+  options?: { mode?: 'full' | 'cookies_only' }
 ) {
+  const requestedMode: 'full' | 'cookies_only' = options?.mode === 'cookies_only' ? 'cookies_only' : 'full';
+
   if (isPostgresConfigured()) {
     const access = await verifyUserProfileAccessAsync(userId, cloudProfileId, 'PROFILE_RUN');
     if (!access) {
@@ -776,6 +1045,36 @@ export async function createDownloadSession(
     }
     const repo = getCentralRepository();
     const profile = access.profile;
+    const storage = getStorageProvider();
+
+    const latestDelta =
+      (typeof repo.getLatestCloudProfileDelta === 'function'
+        ? await repo.getLatestCloudProfileDelta(cloudProfileId)
+        : null) || (await loadDeltaPointerObject(profile.owner_id, cloudProfileId));
+
+    if (requestedMode === 'cookies_only' && latestDelta) {
+      const deltaDownloadUrl = await storage.createDownloadUrl(latestDelta.object_key, 900);
+      await logCloudAuditAsync(
+        userId,
+        'DELTA_DOWNLOAD_REQUESTED',
+        `Cookie delta d${latestDelta.delta_version} (base v${latestDelta.base_version})`,
+        cloudProfileId
+      );
+      return {
+        downloadUrl: deltaDownloadUrl,
+        version: latestDelta.base_version,
+        deltaVersion: latestDelta.delta_version,
+        syncMode: 'cookies_only' as const,
+        checksumSha256: latestDelta.checksum_sha256,
+        encryptedDataKey: latestDelta.encrypted_data_key,
+        iv: latestDelta.iv,
+        authTag: latestDelta.auth_tag,
+        fileSize: latestDelta.file_size,
+        manifestHash: latestDelta.manifest_hash || undefined,
+        profileName: profile.name,
+        localProfileId: profile.local_profile_id,
+      };
+    }
 
     let verRow: any;
     if (targetVersion && targetVersion > 0) {
@@ -788,14 +1087,30 @@ export async function createDownloadSession(
       throw new Error('Requested profile version not found in storage');
     }
 
-    const storage = getStorageProvider();
     const downloadUrl = await storage.createDownloadUrl(verRow.object_key, 900);
+    let cookieDelta: any;
+    if ((!targetVersion || targetVersion <= 0) && latestDelta && latestDelta.base_version >= verRow.version) {
+      const deltaDownloadUrl = await storage.createDownloadUrl(latestDelta.object_key, 900);
+      cookieDelta = {
+        downloadUrl: deltaDownloadUrl,
+        version: latestDelta.base_version,
+        deltaVersion: latestDelta.delta_version,
+        checksumSha256: latestDelta.checksum_sha256,
+        encryptedDataKey: latestDelta.encrypted_data_key,
+        iv: latestDelta.iv,
+        authTag: latestDelta.auth_tag,
+        fileSize: latestDelta.file_size,
+        manifestHash: latestDelta.manifest_hash || undefined,
+      };
+    }
 
     await logCloudAuditAsync(userId, 'DOWNLOAD_REQUESTED', `Version ${verRow.version} (${access.isOwner ? 'owner' : 'team_member'})`, cloudProfileId);
 
     return {
       downloadUrl,
       version: verRow.version,
+      syncMode: 'full' as const,
+      ...(requestedMode === 'cookies_only' ? { fallbackToFull: true } : {}),
       checksumSha256: verRow.checksum_sha256,
       encryptedDataKey: access.sharedEnvelope || verRow.encrypted_data_key,
       iv: verRow.iv,
@@ -803,6 +1118,7 @@ export async function createDownloadSession(
       fileSize: verRow.file_size,
       profileName: profile.name,
       localProfileId: profile.local_profile_id,
+      ...(cookieDelta ? { cookieDelta } : {}),
     };
   }
 
@@ -813,6 +1129,43 @@ export async function createDownloadSession(
 
   const db = getDatabase();
   const profile = access.profile;
+  const storage = getStorageProvider();
+
+  let latestDelta: any = null;
+  try {
+    latestDelta = db.prepare(`
+      SELECT * FROM cloud_profile_deltas
+      WHERE cloud_profile_id = ?
+      ORDER BY delta_version DESC LIMIT 1
+    `).get(cloudProfileId);
+  } catch {}
+  if (!latestDelta) {
+    latestDelta = await loadDeltaPointerObject(profile.owner_id, cloudProfileId);
+  }
+
+  if (requestedMode === 'cookies_only' && latestDelta) {
+    const deltaDownloadUrl = await storage.createDownloadUrl(latestDelta.object_key, 900);
+    logCloudAudit(
+      userId,
+      'DELTA_DOWNLOAD_REQUESTED',
+      `Cookie delta d${latestDelta.delta_version} (base v${latestDelta.base_version})`,
+      cloudProfileId
+    );
+    return {
+      downloadUrl: deltaDownloadUrl,
+      version: latestDelta.base_version,
+      deltaVersion: latestDelta.delta_version,
+      syncMode: 'cookies_only' as const,
+      checksumSha256: latestDelta.checksum_sha256,
+      encryptedDataKey: latestDelta.encrypted_data_key,
+      iv: latestDelta.iv,
+      authTag: latestDelta.auth_tag,
+      fileSize: latestDelta.file_size,
+      manifestHash: latestDelta.manifest_hash || undefined,
+      profileName: profile.name,
+      localProfileId: profile.local_profile_id,
+    };
+  }
 
   let verRow: any;
   if (targetVersion && targetVersion > 0) {
@@ -832,14 +1185,31 @@ export async function createDownloadSession(
     throw new Error('Requested profile version not found in storage');
   }
 
-  const storage = getStorageProvider();
   const downloadUrl = await storage.createDownloadUrl(verRow.object_key, 900); // 15 mins
+
+  let cookieDelta: any;
+  if ((!targetVersion || targetVersion <= 0) && latestDelta && latestDelta.base_version >= verRow.version) {
+    const deltaDownloadUrl = await storage.createDownloadUrl(latestDelta.object_key, 900);
+    cookieDelta = {
+      downloadUrl: deltaDownloadUrl,
+      version: latestDelta.base_version,
+      deltaVersion: latestDelta.delta_version,
+      checksumSha256: latestDelta.checksum_sha256,
+      encryptedDataKey: latestDelta.encrypted_data_key,
+      iv: latestDelta.iv,
+      authTag: latestDelta.auth_tag,
+      fileSize: latestDelta.file_size,
+      manifestHash: latestDelta.manifest_hash || undefined,
+    };
+  }
 
   logCloudAudit(userId, 'DOWNLOAD_REQUESTED', `Version ${verRow.version} (${access.isOwner ? 'owner' : 'team_member'})`, cloudProfileId);
 
   return {
     downloadUrl,
     version: verRow.version,
+    syncMode: 'full' as const,
+    ...(requestedMode === 'cookies_only' ? { fallbackToFull: true } : {}),
     checksumSha256: verRow.checksum_sha256,
     encryptedDataKey: access.sharedEnvelope || verRow.encrypted_data_key,
     iv: verRow.iv,
@@ -847,6 +1217,7 @@ export async function createDownloadSession(
     fileSize: verRow.file_size,
     profileName: profile.name,
     localProfileId: profile.local_profile_id,
+    ...(cookieDelta ? { cookieDelta } : {}),
   };
 }
 
@@ -873,6 +1244,18 @@ export async function deleteCloudProfile(userId: string, cloudProfileId: string)
           }
         }
       }
+      const deltas = await (repo as any).client?.cloud_profile_deltas?.findMany({
+        where: { cloud_profile_id: cloudProfileId },
+        select: { object_key: true },
+      });
+      if (deltas) {
+        for (const d of deltas) {
+          if (d.object_key) {
+            await storage.deleteObject(d.object_key).catch(() => {});
+          }
+        }
+      }
+      await storage.deleteObject(getCookieDeltaPointerKey(userId, cloudProfileId)).catch(() => {});
     } catch {}
     await repo.deleteLock(cloudProfileId);
     await repo.deleteCloudProfile(cloudProfileId);
@@ -903,8 +1286,21 @@ export async function deleteCloudProfile(userId: string, cloudProfileId: string)
     }
   }
 
+  try {
+    const deltas = db.prepare(`
+      SELECT object_key FROM cloud_profile_deltas WHERE cloud_profile_id = ?
+    `).all(cloudProfileId) as any[];
+    for (const d of deltas) {
+      if (d.object_key) {
+        await storage.deleteObject(d.object_key).catch(() => {});
+      }
+    }
+    await storage.deleteObject(getCookieDeltaPointerKey(userId, cloudProfileId)).catch(() => {});
+  } catch {}
+
   // Delete DB records
   db.prepare('DELETE FROM cloud_profile_locks WHERE cloud_profile_id = ?').run(cloudProfileId);
+  try { db.prepare('DELETE FROM cloud_profile_deltas WHERE cloud_profile_id = ?').run(cloudProfileId); } catch {}
   db.prepare('DELETE FROM cloud_profile_versions WHERE cloud_profile_id = ?').run(cloudProfileId);
   db.prepare('DELETE FROM cloud_profiles WHERE id = ?').run(cloudProfileId);
 

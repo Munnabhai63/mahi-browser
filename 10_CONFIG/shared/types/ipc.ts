@@ -412,7 +412,7 @@ export interface MahiBrowserAPI {
   getCloudSyncAllowed: () => Promise<{ allowed: boolean; reason?: string }>;
   getCloudSyncUsage: () => Promise<any>;
   getCloudSyncList: () => Promise<any[]>;
-  uploadProfileToCloud: (profileId: string) => Promise<{ success: boolean; cloudProfile: any }>;
+  uploadProfileToCloud: (profileId: string, options?: { force?: boolean; baseVersion?: number; mode?: 'full' | 'cookies_only' }) => Promise<{ success: boolean; skipped?: boolean; reason?: 'unchanged'; mode?: 'full' | 'cookies_only'; cloudProfile?: any; conflict?: boolean }>;
   downloadAndRestoreProfile: (cloudProfileId: string, options?: any) => Promise<any>;
   deleteCloudProfile: (cloudProfileId: string) => Promise<boolean>;
   getCloudSyncConfig: () => Promise<any>;
