@@ -159,7 +159,10 @@ class ProcessManager {
   /**
    * Starts a profile quickly and reliably in the background without stealing user focus from MAHI.
    */
-  public async startProfile(profileId: string): Promise<{ success: boolean; pid?: number; error?: string }> {
+  public async startProfile(
+    profileId: string,
+    launchOptions?: { mode?: 'normal' | 'automation' }
+  ): Promise<{ success: boolean; pid?: number; error?: string }> {
     debugLog(`[ProcessManager] Request received to start profile ID: ${profileId}`);
 
     if (this.startingProfiles.has(profileId)) {
@@ -220,7 +223,7 @@ class ProcessManager {
       this.notifyStatus(profileId, 'STARTING');
 
       try {
-        const info = await launchBrowser(profile);
+        const info = await launchBrowser(profile, launchOptions);
         const child = info.process;
         const pid = info.pid;
 

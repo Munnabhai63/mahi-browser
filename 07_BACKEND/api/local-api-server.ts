@@ -355,47 +355,129 @@ function parseBody(req: http.IncomingMessage): Promise<any> {
   });
 }
 
-export function startApiServer(): void {
-  const settings = getAppSettings();
-  if (!settings.advanced.apiServerEnabled) {
+export interface CdpEndpointResolution {
+  httpEndpoint: string;
+  wsEndpoint: string;
+  live: boolean;
+}
+
+/**
+ * Resolves the live Chromium WebSocket debugger URL from /json/version on 127.0.0.1:<port>.
+ * Falls back cleanly to the canonical devtools browser base URL on timeout or unreachable port.
+ */
+export async function resolveCdpWebSocketEndpoint(
+  debugPort: number,
+  options: { timeoutMs?: number; pollIntervalMs?: number; probeTimeoutMs?: number } = {}
+): Promise<CdpEndpointResolution> {
+  const httpEndpoint = `http://127.0.0.1:${debugPort}`;
+  const fallbackWs = `ws://127.0.0.1:${debugPort}/devtools/browser`;
+  const timeoutMs = options.timeoutMs ?? 2500;
+  const pollIntervalMs = options.pollIntervalMs ?? 100;
+  const probeTimeoutMs = options.probeTimeoutMs ?? 600;
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() <= deadline) {
+    try {
+      const res = await fetch(`${httpEndpoint}/json/version`, {
+        signal: AbortSignal.timeout(probeTimeoutMs),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { webSocketDebuggerUrl?: string };
+        if (
+          typeof data?.webSocketDebuggerUrl === 'string' &&
+          (data.webSocketDebuggerUrl.startsWith('ws://') || data.webSocketDebuggerUrl.startsWith('wss://'))
+        ) {
+          return {
+            httpEndpoint,
+            wsEndpoint: data.webSocketDebuggerUrl,
+            live: true,
+          };
+        }
+      }
+    } catch {}
+
+    if (Date.now() + pollIntervalMs > deadline) {
+      break;
+    }
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+  }
+
+  return {
+    httpEndpoint,
+    wsEndpoint: fallbackWs,
+    live: false,
+  };
+}
+
+export async function handleLocalApiRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse
+): Promise<void> {
+  (res as any).__req = req;
+
+  // Host header validation — blocks DNS rebinding
+  if (!isValidHost(req.headers.host)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' });
+    res.end('Forbidden: Invalid Host header');
     return;
   }
 
-  if (apiServer) {
-    try { apiServer.close(); } catch {}
+  // CORS preflight
+  if (req.method === 'OPTIONS') {
+    const corsHeaders = getCorsHeaders(req);
+    res.writeHead(204, corsHeaders);
+    res.end();
+    return;
   }
 
-  const port = settings.advanced.apiPort || DEFAULT_LOCAL_DAEMON_PORT;
-  const token = settings.advanced.apiAuthToken;
+  const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  const pathname = parsedUrl.pathname;
+  const cleanPath = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+  const method = req.method?.toUpperCase() || 'GET';
 
-  apiServer = http.createServer(async (req, res) => {
-    (res as any).__req = req;
-
-    // Host header validation — blocks DNS rebinding
-    if (!isValidHost(req.headers.host)) {
-      res.writeHead(403, { 'Content-Type': 'text/plain' });
-      res.end('Forbidden: Invalid Host header');
+  // Local Developer CDP WebSocket Bridge: POST /api/v1/profiles/:id/start-automation
+  const startAutomationMatch = pathname.match(/^\/api\/v1\/profiles\/([^/]+)\/start-automation$/);
+  if (startAutomationMatch && method === 'POST') {
+    const body = await parseBody(req);
+    if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:launch')) return;
+    const id = decodeURIComponent(startAutomationMatch[1]);
+    const activeOwnerId = getLocalApiOwnerId();
+    const p = getProfileById(id, activeOwnerId);
+    if (!p) {
+      sendJSON(res, 404, { success: false, error: 'Profile not found or access denied' });
       return;
     }
-
-    // CORS preflight
-    if (req.method === 'OPTIONS') {
-      const corsHeaders = getCorsHeaders(req);
-      res.writeHead(204, corsHeaders);
-      res.end();
+    const alreadyRunning = processManager.isRunning(id);
+    const result = alreadyRunning
+      ? { success: true, pid: processManager.getActivePid(id) }
+      : await processManager.startProfile(id, { mode: 'automation' });
+    if (!result.success) {
+      sendJSON(res, 500, { success: false, error: result.error || 'Failed to start automation profile' });
       return;
     }
+    const debugPort = getProfileDebugPort(id);
+    const timeoutMs =
+      typeof body?.timeoutMs === 'number' && Number.isFinite(body.timeoutMs)
+        ? Math.min(Math.max(body.timeoutMs, 50), 15000)
+        : 2500;
+    const cdp = await resolveCdpWebSocketEndpoint(debugPort, { timeoutMs });
+    sendJSON(res, 200, {
+      success: true,
+      profileId: id,
+      pid: result.pid,
+      alreadyRunning,
+      debugPort,
+      httpEndpoint: cdp.httpEndpoint,
+      wsEndpoint: cdp.wsEndpoint,
+    });
+    return;
+  }
 
-    const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-    const pathname = parsedUrl.pathname;
-    const cleanPath = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
-    const method = req.method?.toUpperCase() || 'GET';
-
-    // Commercial API Layer (/api/v1/*)
-    const handledCommercial = await handleCommercialApiRoutes(req, res, pathname, method, parsedUrl);
-    if (handledCommercial) {
-      return;
-    }
+  // Commercial API Layer (/api/v1/*)
+  const handledCommercial = await handleCommercialApiRoutes(req, res, pathname, method, parsedUrl);
+  if (handledCommercial) {
+    return;
+  }
 
     // Super Admin dynamic secret verification endpoint
     if (pathname === '/api/v2/super-admin/auth/verify' && method === 'POST') {
@@ -677,7 +759,16 @@ export function startApiServer(): void {
       if (action === 'start') {
         const result = await processManager.startProfile(profileId);
         const cdpPort = getProfileDebugPort(profileId);
-        sendJSON(res, result.success ? 200 : 500, { ...result, cdpPort });
+        const cdp = result.success
+          ? await resolveCdpWebSocketEndpoint(cdpPort, { timeoutMs: 250 })
+          : { httpEndpoint: `http://127.0.0.1:${cdpPort}`, wsEndpoint: `ws://127.0.0.1:${cdpPort}/devtools/browser` };
+        sendJSON(res, result.success ? 200 : 500, {
+          ...result,
+          cdpPort,
+          debugPort: cdpPort,
+          httpEndpoint: cdp.httpEndpoint,
+          wsEndpoint: cdp.wsEndpoint,
+        });
         return;
       }
       if (action === 'stop') {
@@ -877,7 +968,16 @@ export function startApiServer(): void {
         if (!p) return sendJSON(res, 404, { success: false, error: 'Profile not found or access denied' });
         const result = await processManager.startProfile(id);
         const cdpPort = getProfileDebugPort(id);
-        return sendJSON(res, result.success ? 200 : 500, { ...result, cdpPort });
+        const cdp = result.success
+          ? await resolveCdpWebSocketEndpoint(cdpPort, { timeoutMs: 250 })
+          : { httpEndpoint: `http://127.0.0.1:${cdpPort}`, wsEndpoint: `ws://127.0.0.1:${cdpPort}/devtools/browser` };
+        return sendJSON(res, result.success ? 200 : 500, {
+          ...result,
+          cdpPort,
+          debugPort: cdpPort,
+          httpEndpoint: cdp.httpEndpoint,
+          wsEndpoint: cdp.wsEndpoint,
+        });
       }
 
       // MostLogin / GoLogin Compatibility Route: /api/v1/profile/start or /browser/start
@@ -895,6 +995,9 @@ export function startApiServer(): void {
         if (!p) return sendJSON(res, 404, { code: 404, success: false, error: 'Profile not found or access denied' });
         const result = await processManager.startProfile(id);
         const cdpPort = getProfileDebugPort(id);
+        const cdp = result.success
+          ? await resolveCdpWebSocketEndpoint(cdpPort, { timeoutMs: 250 })
+          : { httpEndpoint: `http://127.0.0.1:${cdpPort}`, wsEndpoint: `ws://127.0.0.1:${cdpPort}/devtools/browser` };
         return sendJSON(res, result.success ? 200 : 500, {
           code: result.success ? 0 : 500,
           success: result.success,
@@ -902,7 +1005,9 @@ export function startApiServer(): void {
             profileId: id,
             pid: result.pid,
             cdpPort,
-            wsEndpoint: `ws://127.0.0.1:${cdpPort}/devtools/browser`,
+            debugPort: cdpPort,
+            httpEndpoint: cdp.httpEndpoint,
+            wsEndpoint: cdp.wsEndpoint,
           },
           error: result.error,
         });
@@ -1237,7 +1342,25 @@ export function startApiServer(): void {
     } catch (err: unknown) {
       sendJSON(res, 500, { error: sanitizeError(err) });
     }
-  });
+}
+
+export function createLocalApiServer(): http.Server {
+  return http.createServer(handleLocalApiRequest);
+}
+
+export function startApiServer(): void {
+  const settings = getAppSettings();
+  if (!settings.advanced.apiServerEnabled) {
+    return;
+  }
+
+  if (apiServer) {
+    try { apiServer.close(); } catch {}
+  }
+
+  const port = settings.advanced.apiPort || DEFAULT_LOCAL_DAEMON_PORT;
+
+  apiServer = createLocalApiServer();
 
   apiServer.on('error', (err: any) => {
     if (err && err.code === 'EADDRINUSE') {
