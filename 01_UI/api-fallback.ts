@@ -252,6 +252,32 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
         return Array.isArray(r) ? r : (r.runningProfileIds || []);
       } catch { return []; }
     },
+    previewProfileCacheCleanup: async () => ({
+      dryRun: true,
+      baseDir: '.mahi_data',
+      cacheFoldersMatched: 0,
+      filesMatched: 0,
+      bytesReclaimable: 0,
+      mbReclaimable: 0,
+      gbReclaimable: 0,
+      deletedFolders: 0,
+      skippedLockedFolders: 0,
+      skippedProtectedCount: 0,
+      errors: [],
+    }),
+    applyProfileCacheCleanup: async () => ({
+      dryRun: false,
+      baseDir: '.mahi_data',
+      cacheFoldersMatched: 0,
+      filesMatched: 0,
+      bytesReclaimable: 0,
+      mbReclaimable: 0,
+      gbReclaimable: 0,
+      deletedFolders: 0,
+      skippedLockedFolders: 0,
+      skippedProtectedCount: 0,
+      errors: [],
+    }),
 
 
     // Dashboard

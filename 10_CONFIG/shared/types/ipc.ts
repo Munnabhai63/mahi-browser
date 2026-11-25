@@ -123,6 +123,20 @@ export interface AppDiagnostics {
   logTail: string;
 }
 
+export interface ProfileCacheCleanupResult {
+  dryRun: boolean;
+  baseDir: string;
+  cacheFoldersMatched: number;
+  filesMatched: number;
+  bytesReclaimable: number;
+  mbReclaimable: number;
+  gbReclaimable: number;
+  deletedFolders: number;
+  skippedLockedFolders: number;
+  skippedProtectedCount: number;
+  errors: string[];
+}
+
 export interface MahiBrowserAPI {
   // Profiles
   getProfiles: (filter?: ProfileFilterOptions) => Promise<Profile[]>;
@@ -151,6 +165,8 @@ export interface MahiBrowserAPI {
   quickSwitchProfile: (number: number) => Promise<{ success: boolean; action?: 'FOCUSED' | 'LAUNCHED'; profile?: Profile; error?: string }>;
   getProfileStatus: (id: string) => Promise<{ status: string; pid?: number }>;
   getRunningProfiles: () => Promise<string[]>;
+  previewProfileCacheCleanup: () => Promise<ProfileCacheCleanupResult>;
+  applyProfileCacheCleanup: () => Promise<ProfileCacheCleanupResult>;
 
   getProfileStats: (id: string) => Promise<{ totalSessions: number; totalUptimeSeconds: number; lastSessionStartedAt: string | null; lastSessionStoppedAt: string | null } | null>;
   warmProfile: (id: string, options?: any) => Promise<any>;

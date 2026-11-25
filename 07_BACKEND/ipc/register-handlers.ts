@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 import { getWritableUserDataDir } from '../utils/runtime-paths.js';
+import { cleanProfileCaches, CleanCacheResult } from '../services/profile-cache-cleaner.js';
 import { verifyLicense, getHWID } from '../../08_SECURITY/license-service.js';
 import { isOnlineRevoked, isGraceExpired, getOnlineStatusSummary, checkLicenseStatusOnline } from '../../08_SECURITY/license-status-service.js';
 import { assertCanCreateProfile, getPlanLimitsInfo, assertCapability } from '../../08_SECURITY/freemium-guard.js';
@@ -269,6 +270,22 @@ import {
 import { DashboardMetrics } from '../../10_CONFIG/shared/types/ipc.js';
 import { sanitizeError } from '../../08_SECURITY/sanitizer.js';
 import { getProfileStats } from '../services/stats-service.js';
+
+export async function handlePreviewCacheCleanup(baseDir?: string): Promise<CleanCacheResult> {
+  return cleanProfileCaches({
+    baseDir: baseDir || getWritableUserDataDir(),
+    apply: false,
+    silent: true,
+  });
+}
+
+export async function handleApplyCacheCleanup(baseDir?: string): Promise<CleanCacheResult> {
+  return cleanProfileCaches({
+    baseDir: baseDir || getWritableUserDataDir(),
+    apply: true,
+    silent: true,
+  });
+}
 
 export async function handleProxiesTest(dto: any) {
   try {
@@ -576,6 +593,22 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('profiles:getRunningProfiles', async () => {
     return processManager.getRunningProfileIds();
+  });
+
+  ipcMain.handle('profiles:previewCacheCleanup', async () => {
+    try {
+      return await handlePreviewCacheCleanup();
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('profiles:applyCacheCleanup', async () => {
+    try {
+      return await handleApplyCacheCleanup();
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
   });
 
 

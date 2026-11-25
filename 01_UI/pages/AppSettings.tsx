@@ -13,11 +13,14 @@ import {
   DownloadCloud,
   RefreshCw,
   AlertCircle,
+  HardDrive,
+  Trash2,
 } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { AppSettings } from '../../10_CONFIG/shared/types/settings.js';
 import { UpdateConfig, UpdateStatusEvent } from '../../10_CONFIG/shared/types/updater.js';
+import { ProfileCacheCleanupResult } from '../../10_CONFIG/shared/types/ipc.js';
 import { NavigationPage } from '../components/Sidebar.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
@@ -43,6 +46,12 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
   const [appVersion, setAppVersion] = useState<string>(APP_VERSION);
   const [engineStatus, setEngineStatus] = useState<{ installed: boolean; version: string } | null>(null);
   const [isRepairingEngine, setIsRepairingEngine] = useState(false);
+
+  // Browser Cache Maintenance state
+  const [cacheReport, setCacheReport] = useState<ProfileCacheCleanupResult | null>(null);
+  const [isScanningCache, setIsScanningCache] = useState(false);
+  const [isCleaningCache, setIsCleaningCache] = useState(false);
+  const [showCleanConfirm, setShowCleanConfirm] = useState(false);
 
   // App Lock PIN setup state
   const [newPin, setNewPin] = useState('');
@@ -147,6 +156,57 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
       showToast({ type: 'error', title: 'Repair Error', message: err.message || 'Unexpected error during engine repair.' });
     } finally {
       setIsRepairingEngine(false);
+    }
+  };
+
+  const handleScanCache = async () => {
+    setIsScanningCache(true);
+    setShowCleanConfirm(false);
+    try {
+      if (window.mahiAPI?.previewProfileCacheCleanup) {
+        const res = await window.mahiAPI.previewProfileCacheCleanup();
+        setCacheReport(res);
+        showToast({
+          type: 'info',
+          title: 'Cache Scan Complete',
+          message: `Found ${res.cacheFoldersMatched} cache folder(s) (${res.mbReclaimable.toLocaleString()} MB reclaimable).`,
+        });
+      }
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Cache Scan Failed',
+        message: err?.message || 'Could not scan profile caches.',
+      });
+    } finally {
+      setIsScanningCache(false);
+    }
+  };
+
+  const handleApplyCacheCleanup = async () => {
+    setIsCleaningCache(true);
+    setShowCleanConfirm(false);
+    try {
+      if (window.mahiAPI?.applyProfileCacheCleanup) {
+        const res = await window.mahiAPI.applyProfileCacheCleanup();
+        setCacheReport(res);
+        showToast({
+          type: res.skippedLockedFolders > 0 ? 'warning' : 'success',
+          title: 'Browser Caches Cleaned',
+          message:
+            res.skippedLockedFolders > 0
+              ? `Freed ${res.mbReclaimable.toLocaleString()} MB (${res.deletedFolders} deleted, ${res.skippedLockedFolders} locked by open browsers).`
+              : `Freed ${res.mbReclaimable.toLocaleString()} MB across ${res.deletedFolders} cache folder(s).`,
+        });
+      }
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Cache Cleanup Error',
+        message: err?.message || 'Unexpected error during cache cleanup.',
+      });
+    } finally {
+      setIsCleaningCache(false);
     }
   };
 
@@ -415,6 +475,135 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
               </div>
               <p className="text-[11px] text-slate-400">
                 If profiles fail to launch, use Repair Engine to restore the browser engine. This may take a few minutes.
+              </p>
+            </div>
+
+            {/* Browser Cache Maintenance */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  <HardDrive className="w-4 h-4 text-teal-500 mt-0.5 shrink-0" />
+                  <div>
+                    <span className="font-bold text-slate-800 dark:text-slate-100 block">
+                      Browser Cache Maintenance
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      Reclaim disk space by pruning temporary Chromium shader, GPU, and HTTP caches.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    id="btn-scan-cache"
+                    type="button"
+                    disabled={isScanningCache || isCleaningCache}
+                    onClick={handleScanCache}
+                    className="px-3.5 py-2 bg-slate-700 hover:bg-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-semibold rounded-xl flex items-center gap-1.5 transition active:scale-95 disabled:opacity-50 text-xs"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isScanningCache ? 'animate-spin' : ''}`} />
+                    <span>{isScanningCache ? 'Scanning…' : 'Scan Cache Size'}</span>
+                  </button>
+
+                  {!showCleanConfirm && (
+                    <button
+                      id="btn-clean-cache"
+                      type="button"
+                      disabled={
+                        isScanningCache ||
+                        isCleaningCache ||
+                        !cacheReport ||
+                        !cacheReport.dryRun ||
+                        cacheReport.bytesReclaimable <= 0
+                      }
+                      onClick={() => setShowCleanConfirm(true)}
+                      className="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl flex items-center gap-1.5 transition active:scale-95 disabled:opacity-40 text-xs"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{isCleaningCache ? 'Cleaning…' : 'Clean Browser Caches'}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {showCleanConfirm && cacheReport && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold text-rose-400">
+                    Delete {cacheReport.cacheFoldersMatched} temporary cache folder(s) ({cacheReport.mbReclaimable.toLocaleString()} MB)?
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      id="btn-confirm-clean-cache"
+                      type="button"
+                      disabled={isCleaningCache}
+                      onClick={handleApplyCacheCleanup}
+                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-lg text-[11px] transition active:scale-95"
+                    >
+                      Confirm Cleanup
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowCleanConfirm(false)}
+                      className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold rounded-lg text-[11px]"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {cacheReport && (
+                <div className="grid grid-cols-3 gap-3 pt-1">
+                  <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] uppercase tracking-wider text-slate-400 block">
+                      Cache Folders Found
+                    </span>
+                    <span className="font-mono font-bold text-sm text-slate-800 dark:text-slate-100">
+                      {cacheReport.cacheFoldersMatched.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] uppercase tracking-wider text-slate-400 block">
+                      Total Files Found
+                    </span>
+                    <span className="font-mono font-bold text-sm text-slate-800 dark:text-slate-100">
+                      {cacheReport.filesMatched.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] uppercase tracking-wider text-slate-400 block">
+                      {cacheReport.dryRun ? 'Reclaimable Space' : 'Space Freed'}
+                    </span>
+                    <span className="font-mono font-bold text-sm text-teal-500">
+                      {cacheReport.mbReclaimable.toLocaleString()} MB ({cacheReport.gbReclaimable} GB)
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {cacheReport && !cacheReport.dryRun && cacheReport.skippedLockedFolders > 0 && (
+                <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center gap-2 text-[11px] text-amber-400">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    Skipped {cacheReport.skippedLockedFolders} locked cache folder(s) because their browser profiles are currently open.
+                  </span>
+                </div>
+              )}
+
+              {cacheReport && !cacheReport.dryRun && cacheReport.deletedFolders > 0 && cacheReport.skippedLockedFolders === 0 && (
+                <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-2 text-[11px] text-emerald-400">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    Successfully deleted {cacheReport.deletedFolders} cache folder(s) and freed {cacheReport.mbReclaimable.toLocaleString()} MB.
+                  </span>
+                </div>
+              )}
+
+              <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                <span>
+                  Saved logins, cookies, Local Storage, IndexedDB, preferences, and SQLite databases are never touched.
+                </span>
               </p>
             </div>
           </div>

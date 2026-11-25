@@ -89,7 +89,8 @@ export function resolveCapabilitiesForPlan(
 export function evaluateUserEntitlements(
   userId: string,
   targetDeviceId?: string,
-  targetDeviceName?: string
+  targetDeviceName?: string,
+  legacyDeviceId?: string
 ): CommercialEntitlements {
   const db = getDatabase();
   const currentDeviceId = targetDeviceId || getDeviceId();
@@ -298,6 +299,7 @@ export function evaluateUserEntitlements(
     userId: user.id,
     licenseId: subscription?.licenseId,
     deviceId: currentDeviceId,
+    legacyDeviceId,
     deviceName: currentDeviceName,
     maxAllowedDevices: plan.limits.maxDevices,
   });

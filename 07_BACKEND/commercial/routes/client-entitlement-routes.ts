@@ -32,6 +32,7 @@ export async function handleClientEntitlementRoutes(
       return true;
     }
     const hwidParam = (parsedUrl.searchParams.get('hwid') || '').trim();
+    const legacyHwidParam = (parsedUrl.searchParams.get('legacyHwid') || parsedUrl.searchParams.get('legacyDeviceId') || '').trim() || undefined;
 
     // 1. Fetch authoritative central user record (Postgres/SQLite)
     let centralUser: any = null;
@@ -39,7 +40,7 @@ export async function handleClientEntitlementRoutes(
       centralUser = await getCentralUserByIdAsync(auth.userId);
     } catch {}
 
-    const entitlements = evaluateUserEntitlements(auth.userId, hwidParam);
+    const entitlements = evaluateUserEntitlements(auth.userId, hwidParam || undefined, undefined, legacyHwidParam);
 
     // 2. Resolve Plan
     let rawPlan = centralUser?.planId || entitlements?.plan?.id || entitlements?.planId || 'free';
@@ -117,10 +118,12 @@ export async function handleClientEntitlementRoutes(
       return true;
     }
     const hwid = body.hwid || '';
+    const legacyHwid = body.legacyHwid || body.legacyDeviceId || undefined;
     if (hwid) {
       registerOrUpdateDevice({
         userId,
         deviceId: hwid,
+        legacyDeviceId: legacyHwid,
         deviceName: body.deviceName || 'Windows Desktop',
         ipAddress: clientIp,
       });
@@ -222,7 +225,8 @@ export async function handleClientEntitlementRoutes(
     }
     const deviceId = parsedUrl.searchParams.get('deviceId') || undefined;
     const deviceName = parsedUrl.searchParams.get('deviceName') || undefined;
-    const entitlements = evaluateUserEntitlements(auth.userId, deviceId, deviceName);
+    const legacyDeviceId = parsedUrl.searchParams.get('legacyDeviceId') || undefined;
+    const entitlements = evaluateUserEntitlements(auth.userId, deviceId, deviceName, legacyDeviceId);
     sendJSON(res, 200, { success: true, data: entitlements });
     return true;
   }

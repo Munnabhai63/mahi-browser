@@ -2,7 +2,14 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { CommercialDevice, CommercialDeviceStatus, CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
-import { getDeviceId, getDeviceName } from '../../03_HARDWARE/device-id.js';
+import {
+  getDeviceId,
+  getLegacyDeviceId,
+  getDeviceName,
+  collectHardwareSignals,
+  isSameDevice,
+  HardwareSignals,
+} from '../../03_HARDWARE/device-id.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 
 function ensureDeviceColumns(db: any): void {
@@ -14,6 +21,8 @@ function ensureDeviceColumns(db: any): void {
     if (!colNames.has('os_info')) db.exec('ALTER TABLE commercial_devices ADD COLUMN os_info TEXT');
     if (!colNames.has('client_version')) db.exec('ALTER TABLE commercial_devices ADD COLUMN client_version TEXT');
     if (!colNames.has('activated_at')) db.exec('ALTER TABLE commercial_devices ADD COLUMN activated_at TEXT');
+    if (!colNames.has('legacy_device_id')) db.exec('ALTER TABLE commercial_devices ADD COLUMN legacy_device_id TEXT');
+    if (!colNames.has('hardware_signals_json')) db.exec('ALTER TABLE commercial_devices ADD COLUMN hardware_signals_json TEXT');
   } catch {}
 }
 
@@ -21,23 +30,45 @@ export function registerOrUpdateDevice(params: {
   userId: string;
   licenseId?: string;
   deviceId?: string;
+  legacyDeviceId?: string;
+  hardwareSignals?: Partial<HardwareSignals>;
   deviceName?: string;
   maxAllowedDevices?: number;
   ipAddress?: string;
 }): { success: boolean; device?: CommercialDevice; message?: string } {
   const db = getDatabase();
   ensureDeviceColumns(db);
+  const usingDefaultMachine = !params.deviceId;
   const deviceId = params.deviceId || getDeviceId();
+  const legacyDeviceId = params.legacyDeviceId ?? (usingDefaultMachine ? getLegacyDeviceId() : undefined);
+  const hardwareSignals = params.hardwareSignals ?? (usingDefaultMachine ? collectHardwareSignals() : undefined);
+  const signalsJson = hardwareSignals ? JSON.stringify(hardwareSignals) : null;
   const deviceName = params.deviceName || getDeviceName();
   const osInfo = `${os.type()} ${os.release()} (${os.arch()})`;
   const clientVersion = '1.0.0';
   const now = new Date().toISOString();
   const maxAllowed = params.maxAllowedDevices && params.maxAllowedDevices > 0 ? params.maxAllowedDevices : 1;
 
-  // Check if device already exists for this user
-  const existing = db.prepare(
-    'SELECT * FROM commercial_devices WHERE user_id = ? AND device_id = ?'
-  ).get(params.userId, deviceId) as any;
+  // Check if device already exists for this user (exact ID, legacy v1.2.2 ID, or 2-of-3 fuzzy hardware match)
+  const userRows = db.prepare(
+    'SELECT * FROM commercial_devices WHERE user_id = ?'
+  ).all(params.userId) as any[];
+
+  let existing: any = userRows.find((r) => r.device_id === deviceId);
+  if (!existing) {
+    existing = userRows.find((r) => {
+      let parsedSignals: Partial<HardwareSignals> | undefined;
+      if (r.hardware_signals_json) {
+        try {
+          parsedSignals = JSON.parse(r.hardware_signals_json);
+        } catch {}
+      }
+      return isSameDevice(
+        { deviceId, legacyDeviceId, signals: hardwareSignals },
+        { deviceId: r.device_id, legacyDeviceId: r.legacy_device_id || undefined, signals: parsedSignals }
+      );
+    });
+  }
 
   if (existing) {
     if (existing.status === 'REVOKED') {
@@ -47,12 +78,26 @@ export function registerOrUpdateDevice(params: {
       };
     }
 
-    // Update last seen & heartbeat
+    // Update last seen, heartbeat, and seamlessly upgrade legacy/fuzzy binding to current stable deviceId
     db.prepare(`
-      UPDATE commercial_devices 
-      SET last_seen_at = ?, device_name = ?, ip_address = ?, status = 'ACTIVE'
+      UPDATE commercial_devices
+      SET last_seen_at = ?,
+          device_id = ?,
+          legacy_device_id = COALESCE(?, legacy_device_id),
+          hardware_signals_json = COALESCE(?, hardware_signals_json),
+          device_name = ?,
+          ip_address = ?,
+          status = 'ACTIVE'
       WHERE id = ?
-    `).run(now, deviceName, params.ipAddress || existing.ip_address || '127.0.0.1', existing.id);
+    `).run(
+      now,
+      deviceId,
+      legacyDeviceId || null,
+      signalsJson,
+      deviceName,
+      params.ipAddress || existing.ip_address || '127.0.0.1',
+      existing.id
+    );
 
     return {
       success: true,
@@ -88,13 +133,15 @@ export function registerOrUpdateDevice(params: {
   const id = `dev_${crypto.randomUUID()}`;
   db.prepare(`
     INSERT INTO commercial_devices (
-      id, user_id, license_id, device_id, device_name, os_info, client_version, ip_address, activated_at, last_seen_at, status, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?)
+      id, user_id, license_id, device_id, legacy_device_id, hardware_signals_json, device_name, os_info, client_version, ip_address, activated_at, last_seen_at, status, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?)
   `).run(
     id,
     params.userId,
     params.licenseId || null,
     deviceId,
+    legacyDeviceId || null,
+    signalsJson,
     deviceName,
     osInfo,
     clientVersion,
