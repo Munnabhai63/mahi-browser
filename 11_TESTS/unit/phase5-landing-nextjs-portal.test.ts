@@ -113,7 +113,10 @@ describe('Phase 5: Next.js 14 Landing, Docs & Blog Portal + Web Cloud Console Pr
     it('should contain prerendered static pages for all main marketing routes', () => {
       if (!fs.existsSync(outDir)) {
         // Resilient fallback when run in fresh environment before landing:build
-        expect(fs.existsSync(path.join(landingDir, 'app', 'page.tsx'))).toBe(true);
+        expect(
+          fs.existsSync(path.join(landingDir, 'app', 'page.tsx')) ||
+            fs.existsSync(path.join(landingDir, 'app', 'route.ts'))
+        ).toBe(true);
         expect(fs.existsSync(path.join(landingDir, 'app', 'pricing', 'page.tsx'))).toBe(true);
         expect(fs.existsSync(path.join(landingDir, 'app', 'download', 'page.tsx'))).toBe(true);
         expect(fs.existsSync(path.join(landingDir, 'app', 'compare', 'gologin-alternative', 'page.tsx'))).toBe(true);

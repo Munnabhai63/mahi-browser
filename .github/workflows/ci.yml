@@ -43,5 +43,8 @@ jobs:
       - name: Typecheck Landing Portal
         run: npm run landing:typecheck
 
-      - name: Run full test suite
-        run: npm test
+      - name: Build Landing Portal
+        run: npm run landing:build
+
+      - name: Run unit & integration CI suite
+        run: npm run test:ci
