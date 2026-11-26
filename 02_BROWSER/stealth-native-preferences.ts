@@ -15,6 +15,7 @@ export type {
 
 import {
   getDeterministicSeed,
+  getDeterministicWebglLimits,
   getNoiseValueFromSeed,
   validateAndNormalizeFingerprintCoherence,
 } from '../10_CONFIG/shared/utils/fingerprint-coherence.js';
@@ -70,6 +71,7 @@ export function injectNativeStealthPreferences(
     const isMac = !isMobile && ua.includes('Macintosh');
     const isLinux = !isMobile && !isMac && (ua.includes('Linux') || ua.includes('X11'));
     const isMacM1 = Boolean(isMac && (fp.isM1 || fp.architecture === 'arm64'));
+    const glLimits = getDeterministicWebglLimits(seed, isMobile);
 
     // WebGL Vendor & Renderer
     const webglVendor = fp.webglVendor || (isMobile ? 'ARM' : 'Google Inc. (NVIDIA)');
@@ -132,11 +134,11 @@ export function injectNativeStealthPreferences(
         },
       },
       webGl: {
-        maxTextureSize: 16384,
-        maxRenderbufferSize: 16384,
-        maxVaryingVectors: 30,
-        maxVertexTextureImageUnits: 16,
-        maxVertexUniformVectors: 4096,
+        maxTextureSize: isMobile ? glLimits.maxTextureSize : 16384,
+        maxRenderbufferSize: isMobile ? glLimits.maxRenderbufferSize : 16384,
+        maxVaryingVectors: isMobile ? glLimits.maxVaryingVectors : 30,
+        maxVertexTextureImageUnits: isMobile ? glLimits.maxVertexAttribs : 16,
+        maxVertexUniformVectors: isMobile ? glLimits.maxVertexUniformVectors : 4096,
       },
 
       // 5. WebGPU High Performance Adapter Masking (Dawn Engine)

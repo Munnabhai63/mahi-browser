@@ -43,6 +43,7 @@ export interface LocaleConfig {
   language: string;
   timezone: string;
   languagesList: string[];
+  autoSyncFromIp?: boolean;
 }
 
 export interface NetworkConfig {

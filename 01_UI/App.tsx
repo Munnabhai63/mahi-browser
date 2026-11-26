@@ -96,6 +96,30 @@ export const App: React.FC = () => {
         useToastStore.getState().showToast(data);
       });
 
+      const unsubTimezoneMismatch = window.mahiAPI.onProfileTimezoneMismatch?.((data) => {
+        useToastStore.getState().showToast({
+          type: 'warning',
+          title: 'Timezone Mismatch Detected',
+          message: `Profile "${data.profileName}" uses ${data.profileTimezone}, but proxy exit is ${data.proxyTimezone}.`,
+          duration: 10000,
+          action: {
+            label: 'Sync Timezone',
+            onClick: () => {
+              const matchedProfile = useProfileStore.getState().profiles.find((p) => p.id === data.profileId);
+              useProfileStore.getState().updateProfile(data.profileId, {
+                settings: {
+                  locale: {
+                    timezone: data.proxyTimezone,
+                    language: data.suggestedLanguage || matchedProfile?.settings?.locale?.language || 'en-US',
+                    languagesList: data.suggestedLanguagesList || matchedProfile?.settings?.locale?.languagesList || [data.suggestedLanguage || 'en-US'],
+                  },
+                },
+              });
+            },
+          },
+        });
+      });
+
       const unsubAccount = window.mahiAPI.onAccountStatusChanged?.(() => {
         useAccountStore.getState().fetchPlanLimits({ force: true }).catch((err) => {
           console.debug('[App] Account limits sync notice:', err);
@@ -114,6 +138,7 @@ export const App: React.FC = () => {
         unsubStatus();
         unsubLogs();
         unsubToast?.();
+        unsubTimezoneMismatch?.();
         unsubAccount?.();
         window.removeEventListener('focus', handleWindowFocus);
       };

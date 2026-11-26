@@ -255,11 +255,18 @@ export const BrowserEnvironmentPage: React.FC<BrowserEnvironmentProps> = ({ onNa
                 }
                 className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl"
               >
-                <option value="default">Default WebRTC</option>
+                <option value="disable_non_proxied_udp">Disable Non-Proxied UDP (Recommended)</option>
+                <option value="default">Default WebRTC (Protected UDP)</option>
                 <option value="proxy_only">Proxy Only (Disable Non-Proxied UDP)</option>
                 <option value="public_interface_only">Public Interface Only</option>
                 <option value="disabled">Disable WebRTC</option>
+                <option value="allow_all">Allow All (Unprotected)</option>
               </select>
+              {(config.network.webrtc === 'allow_all' || (config.network.webrtc as string) === 'real') && (
+                <p className="mt-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                  WebRTC protection off — IP leak risk
+                </p>
+              )}
             </div>
           </div>
         </div>

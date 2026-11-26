@@ -274,7 +274,14 @@ export function createProfile(dto: CreateProfileDTO): Profile {
   const ownerId = (dto as any).ownerId || 'SYSTEM_OWNER';
 
   const defaultSettings = getDefaultProfileSettings();
-  const mergedSettings: ProfileSettings = deepMergeProfileSettings(defaultSettings, dto.settings);
+  const baseNewDefaults: ProfileSettings = {
+    ...defaultSettings,
+    locale: {
+      ...defaultSettings.locale,
+      autoSyncFromIp: true,
+    },
+  };
+  const mergedSettings: ProfileSettings = deepMergeProfileSettings(baseNewDefaults, dto.settings);
 
   const { normalizedSettings } = validateAndNormalizeFingerprintCoherence(mergedSettings);
 

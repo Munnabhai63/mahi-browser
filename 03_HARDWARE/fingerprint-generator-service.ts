@@ -4,6 +4,7 @@ import { ProfileSettings, StatisticalProfileOptions } from '../10_CONFIG/shared/
 import { MANAGED_ENGINE_VERSION } from '../10_CONFIG/engine-config.js';
 import {
   validateAndNormalizeFingerprintCoherence,
+  getDeterministicGreaseTriplet,
   getDeterministicSeed,
 } from '../10_CONFIG/shared/utils/fingerprint-coherence.js';
 
@@ -380,14 +381,15 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
         fullVersionList,
       };
     } else {
+      const { greaseBrand, greaseVersion } = getDeterministicGreaseTriplet(seedNum);
       const brands = engine === 'edge'
         ? [
-            { brand: 'Not/A)Brand', version: '8' },
+            { brand: greaseBrand, version: greaseVersion },
             { brand: 'Chromium', version: chromeMajor },
             { brand: 'Microsoft Edge', version: chromeMajor },
           ]
         : [
-            { brand: 'Not/A)Brand', version: '8' },
+            { brand: greaseBrand, version: greaseVersion },
             { brand: 'Chromium', version: chromeMajor },
             { brand: 'Google Chrome', version: chromeMajor },
           ];
@@ -426,7 +428,7 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
       webgl: 'noise',
       audio: 'noise',
       clientRects: 'noise',
-      webrtc: 'noise',
+      webrtc: 'disable_non_proxied_udp',
       webglVendor,
       webglRenderer,
       hardwareConcurrency,
@@ -451,10 +453,11 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
       language: localeKey,
       timezone: targetTimezone,
       languagesList: targetLanguagesList,
+      autoSyncFromIp: true,
     },
     network: {
       directConnection: true,
-      webrtc: 'default',
+      webrtc: 'disable_non_proxied_udp',
     },
     permissions: {
       camera: 'prompt',

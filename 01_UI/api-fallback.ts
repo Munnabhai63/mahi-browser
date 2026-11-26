@@ -738,6 +738,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     onUpdateStatusChanged: () => () => {},
     onFleetResourceUsage: () => () => {},
     onToastShow: () => () => {},
+    onProfileTimezoneMismatch: () => () => {},
     getManagedEngineStatus: async () => ({
       installed: true,
       version: '138.0.7204.0',

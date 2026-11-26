@@ -271,6 +271,13 @@ const api = {
       ipcRenderer.removeListener('toast:show', handler);
     };
   },
+  onProfileTimezoneMismatch: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('profile:timezoneMismatch', handler);
+    return () => {
+      ipcRenderer.removeListener('profile:timezoneMismatch', handler);
+    };
+  },
 
   // Folders & Locking (V2)
   getFolders: (workspaceId) => ipcRenderer.invoke('folders:get', workspaceId),

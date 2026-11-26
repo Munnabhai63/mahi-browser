@@ -28,6 +28,7 @@ export const LocaleConfigSchema = z
     language: z.string().min(2).default('en-US'),
     timezone: z.string().min(2).default('America/New_York'),
     languagesList: z.array(z.string()).default(['en-US', 'en']),
+    autoSyncFromIp: z.boolean().optional(),
   })
   .passthrough();
 

@@ -2,7 +2,14 @@ import { spawn, ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { chromium } from 'rebrowser-playwright-core';
+import { BrowserWindow } from '../08_SECURITY/electron-bridge.js';
 import { Profile } from '../10_CONFIG/shared/types/profile.js';
+import { deriveLocaleFromGeo } from '../10_CONFIG/shared/constants/defaults.js';
+import {
+  getDeterministicGreaseTriplet,
+  getDeterministicWebglLimits,
+} from '../10_CONFIG/shared/utils/fingerprint-coherence.js';
+import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { resolveExecutablePath } from './detector.js';
 import {
   isManagedEngineInstalled,
@@ -76,6 +83,36 @@ function pushUniqueFlag(args: string[], flag: string): void {
   }
 }
 
+/**
+ * Resolves effective runtime WebRTC handling policy without mutating stored profile settings.
+ * - Explicit 'allow_all' (and legacy explicit 'real' without proxy) keeps default unprotected WebRTC.
+ * - Legacy 'default', 'noise', undefined, null, or active proxy all enforce 'disable_non_proxied_udp'.
+ */
+export function resolveEffectiveWebrtcPolicy(
+  settings: any
+): 'disable_non_proxied_udp' | 'default_public_interface_only' | 'allow_all' {
+  const rawNetwork = settings?.network?.webrtc;
+  const hasActiveProxy = Boolean(
+    settings?.network &&
+      settings.network.directConnection === false &&
+      settings.network.proxyId
+  );
+
+  if (rawNetwork === 'allow_all') {
+    return 'allow_all';
+  }
+  if (rawNetwork === 'real' && !hasActiveProxy) {
+    return 'allow_all';
+  }
+  if (
+    rawNetwork === 'default_public_interface_only' ||
+    rawNetwork === 'public_interface_only'
+  ) {
+    return 'default_public_interface_only';
+  }
+  return 'disable_non_proxied_udp';
+}
+
 function applyStrictWebrtcArgs(
   args: string[],
   policy: 'disable_non_proxied_udp' | 'default_public_interface_only'
@@ -93,6 +130,15 @@ function applyStrictWebrtcArgs(
   pushUniqueFlag(args, '--enforce-webrtc-ip-permission-check');
 }
 
+export interface TimezoneMismatchWarning {
+  profileId: string;
+  profileName: string;
+  profileTimezone: string;
+  proxyTimezone: string;
+  suggestedLanguage?: string;
+  suggestedLanguagesList?: string[];
+}
+
 export interface LaunchedProcessInfo {
   process: ChildProcess;
   pid: number;
@@ -101,6 +147,7 @@ export interface LaunchedProcessInfo {
   executablePath: string;
   storageDir: string;
   proxyTunnel?: ProxyTunnelHandle;
+  timezoneMismatch?: TimezoneMismatchWarning;
 }
 
 /**
@@ -305,15 +352,70 @@ export function ensureProfileStealthExtension(
   const isEdge = settings?.browser?.engine === 'edge';
   const targetBrandName = isEdge ? 'Microsoft Edge' : 'Google Chrome';
 
-  let secChUaHeader = `"Not/A)Brand";v="8", "Chromium";v="${chromeMajorVer}", "${targetBrandName}";v="${chromeMajorVer}"`;
-  let secChUaFullVersionHeader = `"Not/A)Brand";v="8.0.0.0", "Chromium";v="${chromeFullVer}", "${targetBrandName}";v="${chromeFullVer}"`;
+  const storedSalt = fp?.fingerprintSeed ?? fp?.noiseSeed ?? fp?.seed ?? '';
+  const rawSeedInput = storedSalt
+    ? `${String(profileId || 'default')}:${String(storedSalt)}`
+    : String(profileId || 'default');
 
-  if (fp.clientHints?.brands && Array.isArray(fp.clientHints.brands) && fp.clientHints.brands.length > 0) {
-    secChUaHeader = fp.clientHints.brands.map((b: any) => `"${b.brand}";v="${b.version}"`).join(', ');
-  }
-  if (fp.clientHints?.fullVersionList && Array.isArray(fp.clientHints.fullVersionList) && fp.clientHints.fullVersionList.length > 0) {
-    secChUaFullVersionHeader = fp.clientHints.fullVersionList.map((b: any) => `"${b.brand}";v="${b.version}"`).join(', ');
-  }
+  const { greaseBrand, greaseVersion } = getDeterministicGreaseTriplet(rawSeedInput);
+  const glLimits = getDeterministicWebglLimits(rawSeedInput, isMobile);
+
+  const defaultOsFonts = isMobile
+    ? ['Roboto', 'Noto Sans', 'Droid Sans']
+    : isMac
+      ? ['Arial', 'Avenir', 'Avenir Next', 'Courier New', 'Geneva', 'Georgia', 'Helvetica', 'Helvetica Neue', 'Lucida Grande', 'Menlo', 'Monaco', 'SF Pro', 'Times New Roman', 'Verdana']
+      : isLinux
+        ? ['DejaVu Sans', 'DejaVu Serif', 'DejaVu Sans Mono', 'Liberation Sans', 'Liberation Serif', 'Liberation Mono', 'Ubuntu', 'FreeSans', 'FreeSerif']
+        : ['Arial', 'Calibri', 'Cambria', 'Consolas', 'Courier New', 'Georgia', 'Lucida Console', 'MS Sans Serif', 'Segoe UI', 'Tahoma', 'Times New Roman', 'Trebuchet MS', 'Verdana'];
+  const allowedFonts: string[] =
+    Array.isArray(fp.fonts) && fp.fonts.length > 0
+      ? fp.fonts.map((f: unknown) => String(f)).filter(Boolean)
+      : defaultOsFonts;
+
+  const hasCustomNonLegacyGrease = Boolean(
+    fp.clientHints?.brands &&
+      Array.isArray(fp.clientHints.brands) &&
+      fp.clientHints.brands.length > 0 &&
+      !fp.clientHints.brands.some((b: any) => b?.brand === 'Not/A)Brand' && String(b?.version) === '8')
+  );
+
+  const effectiveBrands = hasCustomNonLegacyGrease
+    ? fp.clientHints.brands.map((b: any) => ({
+        brand: String(b.brand),
+        version: (b.brand === 'Chromium' || b.brand === 'Google Chrome' || b.brand === 'Microsoft Edge')
+          ? chromeMajorVer
+          : String(b.version),
+      }))
+    : [
+        { brand: greaseBrand, version: greaseVersion },
+        { brand: 'Chromium', version: chromeMajorVer },
+        { brand: targetBrandName, version: chromeMajorVer },
+      ];
+
+  const effectiveFullVersionList =
+    hasCustomNonLegacyGrease &&
+    Array.isArray(fp.clientHints?.fullVersionList) &&
+    fp.clientHints.fullVersionList.length > 0
+      ? fp.clientHints.fullVersionList.map((b: any) => ({
+          brand: String(b.brand),
+          version: (b.brand === 'Chromium' || b.brand === 'Google Chrome' || b.brand === 'Microsoft Edge')
+            ? chromeFullVer
+            : String(b.version),
+        }))
+      : effectiveBrands.map((b: { brand: string; version: string }) => ({
+          brand: b.brand,
+          version:
+            b.brand === 'Chromium' || b.brand === 'Google Chrome' || b.brand === 'Microsoft Edge'
+              ? chromeFullVer
+              : `${b.version}.0.0.0`,
+        }));
+
+  const secChUaHeader = effectiveBrands
+    .map((b: { brand: string; version: string }) => `"${b.brand}";v="${b.version}"`)
+    .join(', ');
+  const secChUaFullVersionHeader = effectiveFullVersionList
+    .map((b: { brand: string; version: string }) => `"${b.brand}";v="${b.version}"`)
+    .join(', ');
 
   const dnrRequestHeaders = isCamoufox
     ? [
@@ -426,24 +528,16 @@ export function ensureProfileStealthExtension(
   const platformStr = isMobile ? 'Linux armv8l' : (isMac ? 'MacIntel' : (isLinux ? 'Linux x86_64' : 'Win32'));
   const maxTouchPoints = fp.maxTouchPoints !== undefined ? fp.maxTouchPoints : (isMobile ? 5 : 0);
   const displayDpr = settings?.display?.deviceScaleFactor || (isMobile ? 2.625 : 1);
-  const mobileWidth = settings?.display?.screenWidth || (isMobile ? 412 : 1920);
-  const mobileHeight = settings?.display?.screenHeight || (isMobile ? 915 : 1080);
+  const targetScreenWidth = settings?.display?.screenWidth || (isMobile ? 412 : 1920);
+  const targetScreenHeight = settings?.display?.screenHeight || (isMobile ? 915 : 1080);
+  const targetColorDepth = settings?.display?.colorDepth || 24;
   const targetTimezone = settings?.locale?.timezone || '';
   const canvasMode = fp.canvas || 'noise';
   const audioMode = fp.audio || 'noise';
   const webglMode = fp.webgl || 'noise';
   const clientRectsMode = fp.clientRects || 'noise';
-  const hasActiveProxy = Boolean(
-    settings?.network &&
-    settings.network.directConnection === false &&
-    settings.network.proxyId
-  );
-  const rawWebrtcOpt = settings?.network?.webrtc || fp.webrtc || 'default';
-  const webrtcOpt = hasActiveProxy ? 'proxy_only' : rawWebrtcOpt;
-  const storedSalt = fp?.fingerprintSeed ?? fp?.noiseSeed ?? fp?.seed ?? '';
-  const rawSeedInput = storedSalt
-    ? `${String(profileId || 'default')}:${String(storedSalt)}`
-    : String(profileId || 'default');
+  const webrtcOpt = resolveEffectiveWebrtcPolicy(settings);
+  const osVoiceProfile = isMobile ? 'android' : (isMac ? 'macos' : (isLinux ? 'linux' : 'windows'));
   // 1. Stealth Core Script (Runs in MAIN world at document_start)
   const stealthCoreJs = `
 (function() {
@@ -577,16 +671,16 @@ export function ensureProfileStealthExtension(
 
   var brandVersion = ${JSON.stringify(chromeMajorVer)};
   var chromeFullVer = ${JSON.stringify(chromeFullVer)};
-  var defaultBrands = [
-    { brand: "Not/A)Brand", version: "8" },
-    { brand: "Chromium", version: brandVersion },
-    { brand: "Google Chrome", version: brandVersion }
-  ];
-  var defaultFullVersionList = [
-    { brand: "Not/A)Brand", version: "8.0.0.0" },
-    { brand: "Chromium", version: chromeFullVer },
-    { brand: "Google Chrome", version: chromeFullVer }
-  ];
+  var defaultBrands = ${JSON.stringify(effectiveBrands)};
+  var defaultFullVersionList = ${JSON.stringify(effectiveFullVersionList)};
+  var allowedFontsList = ${JSON.stringify(allowedFonts)};
+  var glLimitsCfg = ${JSON.stringify(glLimits)};
+  var osVoiceMode = ${JSON.stringify(osVoiceProfile)};
+  var isMobileDevice = ${isMobile ? 'true' : 'false'};
+  var targetScreenW = ${targetScreenWidth};
+  var targetScreenH = ${targetScreenHeight};
+  var targetDprVal = ${displayDpr};
+  var targetColorD = ${targetColorDepth};
   var chPlatform = ${JSON.stringify(clientHintsPlatform)};
   var chMobile = ${isMobile ? 'true' : 'false'};
   var chModel = ${JSON.stringify(clientHintsModel)};
@@ -595,6 +689,464 @@ export function ensureProfileStealthExtension(
   var chBitness = "64";
   var targetTz = ${JSON.stringify(targetTimezone)};
   var mahiTzApplied = false;
+
+  var universalFontSet = {
+    'arial': true,
+    'courier new': true,
+    'georgia': true,
+    'times new roman': true,
+    'verdana': true,
+    'monospace': true,
+    'sans-serif': true,
+    'serif': true,
+    'cursive': true,
+    'fantasy': true,
+    'system-ui': true
+  };
+  var allowedFontLookup = {};
+  for (var afi = 0; afi < allowedFontsList.length; afi++) {
+    var afKey = String(allowedFontsList[afi] || '').trim().toLowerCase();
+    if (afKey) allowedFontLookup[afKey] = true;
+  }
+
+  function extractCssFontFamilies(spec) {
+    if (!spec || typeof spec !== 'string') return [];
+    var s = spec.trim();
+    var m = s.match(/(?:\\d+(?:\\.\\d+)?(?:px|pt|em|rem|%|ex|ch|vw|vh|vmin|vmax)|\\b(?:xx-small|x-small|small|medium|large|x-large|xx-large|smaller|larger)\\b)(?:\\s*\\/\\s*[\\d.]+(?:px|pt|em|rem|%)?)?\\s+(.+)$/i);
+    var famPart = m ? m[1] : s;
+    var parts = famPart.split(',');
+    var out = [];
+    for (var fi = 0; fi < parts.length; fi++) {
+      var clean = parts[fi].trim().replace(/^['"]+|['"]+$/g, '').trim();
+      if (clean) out.push(clean);
+    }
+    return out;
+  }
+
+  function isCssFontAllowed(spec) {
+    var fams = extractCssFontFamilies(spec);
+    if (fams.length === 0) return true;
+    for (var fi = 0; fi < fams.length; fi++) {
+      var low = fams[fi].toLowerCase();
+      if (allowedFontLookup[low] || universalFontSet[low]) {
+        return true;
+      }
+      return false;
+    }
+    return false;
+  }
+
+  function resolveAllowedFallbackFont(spec) {
+    var fams = extractCssFontFamilies(spec);
+    var firstLow = fams.length > 0 ? fams[0].toLowerCase() : '';
+    var hasKnown = false;
+    for (var fi = 0; fi < fams.length; fi++) {
+      var low = fams[fi].toLowerCase();
+      if (allowedFontLookup[low] || universalFontSet[low]) {
+        hasKnown = true;
+        break;
+      }
+    }
+    if (hasKnown) return null;
+    if (firstLow.indexOf('mono') !== -1 || firstLow.indexOf('code') !== -1 || firstLow.indexOf('console') !== -1) {
+      return 'Courier New';
+    }
+    if (firstLow.indexOf('serif') !== -1 && firstLow.indexOf('sans') === -1) {
+      return 'Georgia';
+    }
+    return allowedFontsList.length > 0 ? allowedFontsList[0] : 'Arial';
+  }
+
+  function replaceCssFontFamilies(spec, replacementFamily) {
+    if (!spec || typeof spec !== 'string') return spec;
+    var m = spec.match(/^(.*?(?:\\d+(?:\\.\\d+)?(?:px|pt|em|rem|%|ex|ch|vw|vh|vmin|vmax)|\\b(?:xx-small|x-small|small|medium|large|x-large|xx-large|smaller|larger)\\b)(?:\\s*\\/\\s*[\\d.]+(?:px|pt|em|rem|%)?)?\\s+)(.+)$/i);
+    if (m) {
+      return m[1] + JSON.stringify(replacementFamily);
+    }
+    return '16px ' + JSON.stringify(replacementFamily);
+  }
+
+  function applyFontMasking(targetWin) {
+    if (!targetWin) return;
+    try {
+      var fontProto = targetWin.FontFaceSet && targetWin.FontFaceSet.prototype;
+      if (fontProto && fontProto.check) {
+        var origFontCheck = fontProto.check;
+        var proxyFontCheck = new Proxy(origFontCheck, {
+          apply: function(target, thisArg, args) {
+            try {
+              if (!isCssFontAllowed(args[0])) return false;
+            } catch(e) {}
+            return target.apply(thisArg, args);
+          }
+        });
+        fontProto.check = proxyFontCheck;
+        registerNative(proxyFontCheck, 'check');
+        registerNative(origFontCheck, 'check');
+      } else if (targetWin.document && targetWin.document.fonts && targetWin.document.fonts.check) {
+        var docFonts = targetWin.document.fonts;
+        var origDocCheck = docFonts.check;
+        var proxyDocCheck = new Proxy(origDocCheck, {
+          apply: function(target, thisArg, args) {
+            try {
+              if (!isCssFontAllowed(args[0])) return false;
+            } catch(e) {}
+            return target.apply(thisArg, args);
+          }
+        });
+        docFonts.check = proxyDocCheck;
+        registerNative(proxyDocCheck, 'check');
+        registerNative(origDocCheck, 'check');
+      }
+    } catch(e) {}
+
+    try {
+      var ctx2dProto = targetWin.CanvasRenderingContext2D && targetWin.CanvasRenderingContext2D.prototype;
+      if (ctx2dProto && ctx2dProto.measureText) {
+        var origMeasureText = ctx2dProto.measureText;
+        var proxyMeasureText = new Proxy(origMeasureText, {
+          apply: function(target, thisArg, args) {
+            if (thisArg && typeof thisArg.font === 'string') {
+              var origFont = thisArg.font;
+              var fallbackFamily = null;
+              try { fallbackFamily = resolveAllowedFallbackFont(origFont); } catch(e) {}
+              if (fallbackFamily) {
+                try {
+                  thisArg.font = replaceCssFontFamilies(origFont, fallbackFamily);
+                  return target.apply(thisArg, args);
+                } finally {
+                  try { thisArg.font = origFont; } catch(e) {}
+                }
+              }
+            }
+            return target.apply(thisArg, args);
+          }
+        });
+        ctx2dProto.measureText = proxyMeasureText;
+        registerNative(proxyMeasureText, 'measureText');
+        registerNative(origMeasureText, 'measureText');
+      }
+      var offCtx2dProto = targetWin.OffscreenCanvasRenderingContext2D && targetWin.OffscreenCanvasRenderingContext2D.prototype;
+      if (offCtx2dProto && offCtx2dProto.measureText) {
+        var origOffMeasure = offCtx2dProto.measureText;
+        var proxyOffMeasure = new Proxy(origOffMeasure, {
+          apply: function(target, thisArg, args) {
+            if (thisArg && typeof thisArg.font === 'string') {
+              var origFont = thisArg.font;
+              var fallbackFamily = null;
+              try { fallbackFamily = resolveAllowedFallbackFont(origFont); } catch(e) {}
+              if (fallbackFamily) {
+                try {
+                  thisArg.font = replaceCssFontFamilies(origFont, fallbackFamily);
+                  return target.apply(thisArg, args);
+                } finally {
+                  try { thisArg.font = origFont; } catch(e) {}
+                }
+              }
+            }
+            return target.apply(thisArg, args);
+          }
+        });
+        offCtx2dProto.measureText = proxyOffMeasure;
+        registerNative(proxyOffMeasure, 'measureText');
+        registerNative(origOffMeasure, 'measureText');
+      }
+    } catch(e) {}
+  }
+
+  function spoofScreen(targetWin, sWidth, sHeight, sDpr, availOffsetY, orientType, sColorDepth) {
+    if (!targetWin) return;
+    var availH = Math.max(240, sHeight - (availOffsetY || 0));
+    var cDepth = sColorDepth || 24;
+    var orientationObj = { angle: 0, type: orientType || (sWidth >= sHeight ? 'landscape-primary' : 'portrait-primary'), onchange: null };
+    try {
+      var dprGetter = function() { return sDpr; };
+      Object.defineProperty(targetWin, 'devicePixelRatio', {
+        get: dprGetter,
+        configurable: true,
+        enumerable: true
+      });
+      registerNative(dprGetter, 'get devicePixelRatio');
+    } catch(e) {}
+
+    try {
+      var scr = targetWin.screen;
+      var scrProto = targetWin.Screen && targetWin.Screen.prototype;
+      var defScreenProp = function(prop, val) {
+        var getter = function() { return val; };
+        var applied = false;
+        if (scrProto) {
+          try {
+            Object.defineProperty(scrProto, prop, { get: getter, configurable: true, enumerable: true });
+            applied = true;
+          } catch(e) {}
+        }
+        if (scr) {
+          try {
+            Object.defineProperty(scr, prop, { get: getter, configurable: true, enumerable: true });
+            applied = true;
+          } catch(e) {}
+        }
+        if (applied) registerNative(getter, 'get ' + prop);
+      };
+      defScreenProp('width', sWidth);
+      defScreenProp('height', sHeight);
+      defScreenProp('availWidth', sWidth);
+      defScreenProp('availHeight', availH);
+      defScreenProp('availTop', 0);
+      defScreenProp('availLeft', 0);
+      defScreenProp('colorDepth', cDepth);
+      defScreenProp('pixelDepth', cDepth);
+      defScreenProp('orientation', orientationObj);
+    } catch(e) {}
+  }
+
+  function makeGroupHex(seedVal, saltInt) {
+    var r = createMulberry32((seedVal ^ saltInt) >>> 0);
+    var hex = '';
+    for (var hi = 0; hi < 16; hi++) {
+      var b = Math.floor(r() * 256);
+      hex += (b < 16 ? '0' : '') + b.toString(16);
+    }
+    return hex + hex;
+  }
+
+  function applyEnvironmentDeviceHooks(targetWin) {
+    if (!targetWin) return;
+    // 1. Plugins & MimeTypes & pdfViewerEnabled
+    try {
+      var tNavProto = targetWin.Navigator && targetWin.Navigator.prototype;
+      if (tNavProto) {
+        var fakePlugins = [];
+        var fakeMimes = [];
+        if (!isMobileDevice) {
+          var pdfPluginNames = [
+            'PDF Viewer',
+            'Chrome PDF Viewer',
+            'Chromium PDF Viewer',
+            'Microsoft Edge PDF Viewer',
+            'Web built-in PDF Viewer'
+          ];
+          var sharedMimes = [
+            { type: 'application/pdf', suffixes: 'pdf', description: 'Portable Document Format' },
+            { type: 'text/pdf', suffixes: 'pdf', description: 'Portable Document Format' }
+          ];
+          for (var pi = 0; pi < pdfPluginNames.length; pi++) {
+            var pName = pdfPluginNames[pi];
+            var pluginObj = {
+              name: pName,
+              filename: 'internal-pdf-viewer',
+              description: 'Portable Document Format',
+              length: sharedMimes.length
+            };
+            for (var mi = 0; mi < sharedMimes.length; mi++) {
+              var mClone = {
+                type: sharedMimes[mi].type,
+                suffixes: sharedMimes[mi].suffixes,
+                description: sharedMimes[mi].description,
+                enabledPlugin: pluginObj
+              };
+              pluginObj[mi] = mClone;
+              pluginObj[mClone.type] = mClone;
+              if (pi === 0) fakeMimes.push(mClone);
+            }
+            pluginObj.item = function(idx) { return this[idx] || null; };
+            pluginObj.namedItem = function(n) { return this[n] || null; };
+            if (typeof Symbol !== 'undefined' && Symbol.iterator) {
+              pluginObj[Symbol.iterator] = function() {
+                var idx = 0, self = this;
+                return { next: function() { return idx < self.length ? { value: self[idx++], done: false } : { done: true }; } };
+              };
+            }
+            fakePlugins.push(pluginObj);
+          }
+        }
+
+        var createArrayLikeObj = function(items, keyField, protoObj) {
+          var arrObj = protoObj ? Object.create(protoObj) : {};
+          try {
+            Object.defineProperty(arrObj, 'length', { value: items.length, enumerable: false, configurable: true });
+          } catch(e) { arrObj.length = items.length; }
+          for (var i = 0; i < items.length; i++) {
+            arrObj[i] = items[i];
+            if (items[i] && items[i][keyField]) {
+              arrObj[items[i][keyField]] = items[i];
+            }
+          }
+          arrObj.item = function(idx) { return items[idx] || null; };
+          arrObj.namedItem = function(n) { return arrObj[n] || null; };
+          arrObj.refresh = function() {};
+          if (typeof Symbol !== 'undefined' && Symbol.iterator) {
+            arrObj[Symbol.iterator] = function() {
+              var idx = 0;
+              return { next: function() { return idx < items.length ? { value: items[idx++], done: false } : { done: true }; } };
+            };
+          }
+          return arrObj;
+        };
+
+        var pluginsVal = createArrayLikeObj(fakePlugins, 'name', targetWin.PluginArray && targetWin.PluginArray.prototype);
+        var mimeTypesVal = createArrayLikeObj(fakeMimes, 'type', targetWin.MimeTypeArray && targetWin.MimeTypeArray.prototype);
+        var getPlugins = function() { return pluginsVal; };
+        var getMimes = function() { return mimeTypesVal; };
+        var pdfEnabled = !isMobileDevice;
+        var getPdfEnabled = function() { return pdfEnabled; };
+
+        if (targetWin.navigator) {
+          try { delete targetWin.navigator.plugins; } catch(e) {}
+          try { delete targetWin.navigator.mimeTypes; } catch(e) {}
+          try { delete targetWin.navigator.pdfViewerEnabled; } catch(e) {}
+          try { delete targetWin.navigator.getGamepads; } catch(e) {}
+        }
+        Object.defineProperty(tNavProto, 'plugins', { get: getPlugins, enumerable: true, configurable: true });
+        Object.defineProperty(tNavProto, 'mimeTypes', { get: getMimes, enumerable: true, configurable: true });
+        Object.defineProperty(tNavProto, 'pdfViewerEnabled', { get: getPdfEnabled, enumerable: true, configurable: true });
+        registerNative(getPlugins, 'get plugins');
+        registerNative(getMimes, 'get mimeTypes');
+        registerNative(getPdfEnabled, 'get pdfViewerEnabled');
+
+        // 2. navigator.getGamepads() -> [null, null, null, null]
+        var origGetGamepads = tNavProto.getGamepads;
+        var proxyGetGamepads = function getGamepads() {
+          return [null, null, null, null];
+        };
+        tNavProto.getGamepads = proxyGetGamepads;
+        registerNative(proxyGetGamepads, 'getGamepads');
+        if (origGetGamepads) registerNative(origGetGamepads, 'getGamepads');
+      }
+    } catch(e) {}
+
+    // 3. mediaDevices.enumerateDevices
+    try {
+      var mdProto = targetWin.MediaDevices && targetWin.MediaDevices.prototype;
+      var mdInst = targetWin.navigator && targetWin.navigator.mediaDevices;
+      var grpAudioIn = makeGroupHex(pSeed, 0x11223344);
+      var grpVideoIn = makeGroupHex(pSeed, 0x22334455);
+      var grpAudioOut1 = makeGroupHex(pSeed, 0x33445566);
+      var grpAudioOut2 = makeGroupHex(pSeed, 0x44556677);
+      var devicesList = [
+        { deviceId: '', kind: 'audioinput', label: '', groupId: grpAudioIn, toJSON: function() { return { deviceId: this.deviceId, kind: this.kind, label: this.label, groupId: this.groupId }; } },
+        { deviceId: '', kind: 'videoinput', label: '', groupId: grpVideoIn, toJSON: function() { return { deviceId: this.deviceId, kind: this.kind, label: this.label, groupId: this.groupId }; } },
+        { deviceId: '', kind: 'audiooutput', label: '', groupId: grpAudioOut1, toJSON: function() { return { deviceId: this.deviceId, kind: this.kind, label: this.label, groupId: this.groupId }; } }
+      ];
+      if (!isMobileDevice) {
+        devicesList.push({ deviceId: '', kind: 'audiooutput', label: '', groupId: grpAudioOut2, toJSON: function() { return { deviceId: this.deviceId, kind: this.kind, label: this.label, groupId: this.groupId }; } });
+      }
+      if (mdProto && mdProto.enumerateDevices) {
+        var origEnum = mdProto.enumerateDevices;
+        var proxyEnum = new Proxy(origEnum, {
+          apply: function() {
+            return Promise.resolve(devicesList.slice());
+          }
+        });
+        mdProto.enumerateDevices = proxyEnum;
+        registerNative(proxyEnum, 'enumerateDevices');
+        registerNative(origEnum, 'enumerateDevices');
+      }
+      if (mdInst && typeof mdInst.enumerateDevices === 'function' && (Object.prototype.hasOwnProperty.call(mdInst, 'enumerateDevices') || !mdProto || !mdProto.enumerateDevices)) {
+        var origInstEnum = mdInst.enumerateDevices;
+        var proxyInstEnum = new Proxy(origInstEnum, {
+          apply: function() {
+            return Promise.resolve(devicesList.slice());
+          }
+        });
+        mdInst.enumerateDevices = proxyInstEnum;
+        registerNative(proxyInstEnum, 'enumerateDevices');
+        registerNative(origInstEnum, 'enumerateDevices');
+      }
+    } catch(e) {}
+
+    // 4. speechSynthesis.getVoices() per OS
+    try {
+      var osVoices = osVoiceMode === 'android'
+        ? [
+            { voiceURI: 'Google US English', name: 'Google US English', lang: 'en-US', localService: false, default: true },
+            { voiceURI: 'Google UK English Female', name: 'Google UK English Female', lang: 'en-GB', localService: false, default: false }
+          ]
+        : osVoiceMode === 'macos'
+          ? [
+              { voiceURI: 'Alex', name: 'Alex', lang: 'en-US', localService: true, default: true },
+              { voiceURI: 'Samantha', name: 'Samantha', lang: 'en-US', localService: true, default: false },
+              { voiceURI: 'Victoria', name: 'Victoria', lang: 'en-US', localService: true, default: false }
+            ]
+          : osVoiceMode === 'linux'
+            ? [
+                { voiceURI: 'English (America)+default', name: 'English (America)+default', lang: 'en-US', localService: true, default: true },
+                { voiceURI: 'espeak-ng English', name: 'espeak-ng English', lang: 'en-GB', localService: true, default: false }
+              ]
+            : [
+                { voiceURI: 'Microsoft David - English (United States)', name: 'Microsoft David - English (United States)', lang: 'en-US', localService: true, default: true },
+                { voiceURI: 'Microsoft Zira - English (United States)', name: 'Microsoft Zira - English (United States)', lang: 'en-US', localService: true, default: false },
+                { voiceURI: 'Microsoft Mark - English (United States)', name: 'Microsoft Mark - English (United States)', lang: 'en-US', localService: true, default: false }
+              ];
+
+      var ssProto = targetWin.SpeechSynthesis && targetWin.SpeechSynthesis.prototype;
+      if (ssProto && ssProto.getVoices) {
+        var origGetVoices = ssProto.getVoices;
+        var proxyGetVoices = new Proxy(origGetVoices, {
+          apply: function() { return osVoices.slice(); }
+        });
+        ssProto.getVoices = proxyGetVoices;
+        registerNative(proxyGetVoices, 'getVoices');
+        registerNative(origGetVoices, 'getVoices');
+      } else if (targetWin.speechSynthesis && targetWin.speechSynthesis.getVoices) {
+        var origInstVoices = targetWin.speechSynthesis.getVoices;
+        var proxyInstVoices = new Proxy(origInstVoices, {
+          apply: function() { return osVoices.slice(); }
+        });
+        targetWin.speechSynthesis.getVoices = proxyInstVoices;
+        registerNative(proxyInstVoices, 'getVoices');
+        registerNative(origInstVoices, 'getVoices');
+      }
+      if (targetWin.speechSynthesis && typeof targetWin.speechSynthesis.dispatchEvent === 'function' && typeof targetWin.Event === 'function') {
+        try {
+          targetWin.speechSynthesis.dispatchEvent(new targetWin.Event('voiceschanged'));
+        } catch(e) {}
+      }
+    } catch(e) {}
+
+    // 5. Device Sensors: Accelerometer / Gyroscope / AbsoluteOrientationSensor (mobile only)
+    try {
+      var sensorNames = ['Accelerometer', 'Gyroscope', 'AbsoluteOrientationSensor'];
+      if (isMobileDevice) {
+        var sensorRng = createMulberry32(pSeed ^ 0x53454e53);
+        var sx = Math.round((sensorRng() - 0.5) * 0.2 * 1000) / 1000;
+        var sy = Math.round((sensorRng() - 0.5) * 0.2 * 1000) / 1000;
+        var sz = Math.round((9.78 + sensorRng() * 0.06) * 1000) / 1000;
+        for (var sni = 0; sni < sensorNames.length; sni++) {
+          (function(clsName) {
+            var SensorCtor = function() {
+              this.activated = false;
+              this.hasReading = true;
+              this.timestamp = 1;
+              if (clsName === 'AbsoluteOrientationSensor') {
+                this.quaternion = [0, 0, 0, 1];
+              } else {
+                this.x = sx;
+                this.y = sy;
+                this.z = clsName === 'Gyroscope' ? 0 : sz;
+              }
+            };
+            SensorCtor.prototype.start = function() { this.activated = true; };
+            SensorCtor.prototype.stop = function() { this.activated = false; };
+            SensorCtor.prototype.addEventListener = function() {};
+            SensorCtor.prototype.removeEventListener = function() {};
+            registerNative(SensorCtor, clsName);
+            Object.defineProperty(targetWin, clsName, { value: SensorCtor, configurable: true, writable: true });
+          })(sensorNames[sni]);
+        }
+      } else {
+        for (var dni = 0; dni < sensorNames.length; dni++) {
+          try { delete targetWin[sensorNames[dni]]; } catch(e) {}
+          try {
+            if (typeof targetWin[sensorNames[dni]] !== 'undefined') {
+              Object.defineProperty(targetWin, sensorNames[dni], { value: undefined, configurable: true, writable: true });
+            }
+          } catch(e) {}
+        }
+      }
+    } catch(e) {}
+  }
 
   // Synchronous Cross-Realm <iframe> Hooking & Comprehensive Stealth Propagation
   try {
@@ -869,21 +1421,38 @@ export function ensureProfileStealthExtension(
                   var param = args[0];
                   var pGpuVendor = ${JSON.stringify(gpuVendor)};
                   var pGpuRenderer = ${JSON.stringify(gpuRenderer)};
-                  if (pGpuVendor && param === 37445) return pGpuVendor;
-                  if (pGpuRenderer && param === 37446) return pGpuRenderer;
-                  if (param === 7936) return 'WebKit';
-                  if (param === 7937) return 'WebKit WebGL';
-                  return target.apply(thisArg, args);
-                }
-              });
-              glProto.getParameter = proxyGP;
-              registerNative(proxyGP, 'getParameter');
-              registerNative(origGP, 'getParameter');
-            }
-            if (targetWin.WebGLRenderingContext) spoofTargetWebGL(targetWin.WebGLRenderingContext.prototype);
-            if (targetWin.WebGL2RenderingContext) spoofTargetWebGL(targetWin.WebGL2RenderingContext.prototype);
-          } catch(e) {}
-        }
+                    if (pGpuVendor && param === 37445) return pGpuVendor;
+                    if (pGpuRenderer && param === 37446) return pGpuRenderer;
+                    if (param === 7936) return 'WebKit';
+                    if (param === 7937) return 'WebKit WebGL';
+                    if (param === 3379) return glLimitsCfg.maxTextureSize;
+                    if (param === 34024) return glLimitsCfg.maxRenderbufferSize;
+                    if (param === 36347) return glLimitsCfg.maxVertexUniformVectors;
+                    if (param === 36348) return glLimitsCfg.maxVaryingVectors;
+                    if (param === 34921) return glLimitsCfg.maxVertexAttribs;
+                    return target.apply(thisArg, args);
+                  }
+                });
+                glProto.getParameter = proxyGP;
+                registerNative(proxyGP, 'getParameter');
+                registerNative(origGP, 'getParameter');
+              }
+              if (targetWin.WebGLRenderingContext) spoofTargetWebGL(targetWin.WebGLRenderingContext.prototype);
+              if (targetWin.WebGL2RenderingContext) spoofTargetWebGL(targetWin.WebGL2RenderingContext.prototype);
+            } catch(e) {}
+          }
+
+          applyFontMasking(targetWin);
+          spoofScreen(
+            targetWin,
+            targetScreenW,
+            targetScreenH,
+            targetDprVal,
+            isMobileDevice ? 0 : 40,
+            isMobileDevice ? 'portrait-primary' : (targetScreenW >= targetScreenH ? 'landscape-primary' : 'portrait-primary'),
+            targetColorD
+          );
+          applyEnvironmentDeviceHooks(targetWin);
 
         // 5. Date & Timezone in targetWin
         if (!mahiTzApplied && targetTz && targetWin.Date && targetWin.Date.prototype) {
@@ -1331,6 +1900,31 @@ export function ensureProfileStealthExtension(
         '    var pCanvasSaltA = ' + canvasSaltA + ';',
         '    var pCanvasSaltB = ' + canvasSaltB + ';',
         '    var pCanvasChTable = ' + JSON.stringify(canvasChTable) + ';',
+        '    var pAllowedFonts = ' + JSON.stringify(allowedFontsList) + ';',
+        '    var pGlLimits = ' + JSON.stringify(glLimitsCfg) + ';',
+        '    var wUnivFonts = { "arial": true, "courier new": true, "georgia": true, "times new roman": true, "verdana": true, "monospace": true, "sans-serif": true, "serif": true, "cursive": true, "fantasy": true, "system-ui": true };',
+        '    var wAllowedLookup = {};',
+        '    for (var wafi = 0; wafi < pAllowedFonts.length; wafi++) { var wfk = String(pAllowedFonts[wafi] || "").trim().toLowerCase(); if (wfk) wAllowedLookup[wfk] = true; }',
+        '    function wResolveFallbackFont(spec) {',
+        '      if (!spec || typeof spec !== "string") return null;',
+        '      var s = spec.trim();',
+        '      var m = s.match(/(?:\\d+(?:\\.\\d+)?(?:px|pt|em|rem|%|ex|ch|vw|vh|vmin|vmax)|\\b(?:xx-small|x-small|small|medium|large|x-large|xx-large|smaller|larger)\\b)(?:\\s*\\/\\s*[\\d.]+(?:px|pt|em|rem|%)?)?\\s+(.+)$/i);',
+        '      var famPart = m ? m[1] : s;',
+        '      var parts = famPart.split(",");',
+        '      var firstLow = "";',
+        '      for (var fi = 0; fi < parts.length; fi++) {',
+        '        var cl = parts[fi].trim().replace(/^[\\x27"]+|[\\x27"]+$/g, "").trim().toLowerCase();',
+        '        if (!firstLow && cl) firstLow = cl;',
+        '        if (cl && (wAllowedLookup[cl] || wUnivFonts[cl])) return null;',
+        '      }',
+        '      if (firstLow.indexOf("mono") !== -1 || firstLow.indexOf("code") !== -1 || firstLow.indexOf("console") !== -1) return "Courier New";',
+        '      if (firstLow.indexOf("serif") !== -1 && firstLow.indexOf("sans") === -1) return "Georgia";',
+        '      return pAllowedFonts.length > 0 ? pAllowedFonts[0] : "Arial";',
+        '    }',
+        '    function wReplaceFont(spec, fam) {',
+        '      var m = spec.match(/^(.*?(?:\\d+(?:\\.\\d+)?(?:px|pt|em|rem|%|ex|ch|vw|vh|vmin|vmax)|\\b(?:xx-small|x-small|small|medium|large|x-large|xx-large|smaller|larger)\\b)(?:\\s*\\/\\s*[\\d.]+(?:px|pt|em|rem|%)?)?\\s+)(.+)$/i);',
+        '      return m ? (m[1] + JSON.stringify(fam)) : ("16px " + JSON.stringify(fam));',
+        '    }',
         '    function wApplyCanvasNoise(imgData, sx, sy, cw, ch) {',
         '      if (!imgData || !imgData.data) return imgData;',
         '      var sw = imgData.width, sh = imgData.height;',
@@ -1408,16 +2002,8 @@ export function ensureProfileStealthExtension(
         '      if (pUa) spoofWorkerNav("userAgent", pUa);',
         '      if (!' + ${isCamoufox} + ') {',
         '        try {',
-        '          var wBrands = [',
-        '            { brand: "Not/A)Brand", version: "8" },',
-        '            { brand: "Chromium", version: ' + JSON.stringify(${JSON.stringify(chromeMajorVer)}) + ' },',
-        '            { brand: "Google Chrome", version: ' + JSON.stringify(${JSON.stringify(chromeMajorVer)}) + ' }',
-        '          ];',
-        '          var wFullList = [',
-        '            { brand: "Not/A)Brand", version: "8.0.0.0" },',
-        '            { brand: "Chromium", version: ' + JSON.stringify(${JSON.stringify(chromeFullVer)}) + ' },',
-        '            { brand: "Google Chrome", version: ' + JSON.stringify(${JSON.stringify(chromeFullVer)}) + ' }',
-        '          ];',
+        '          var wBrands = ' + JSON.stringify(defaultBrands) + ';',
+        '          var wFullList = ' + JSON.stringify(defaultFullVersionList) + ';',
         '          var wUaObj = {',
         '            brands: wBrands,',
         '            mobile: ' + (${isMobile ? 'true' : 'false'}) + ',',
@@ -1461,6 +2047,24 @@ export function ensureProfileStealthExtension(
         '          wReg(proxyOffGetID, "getImageData");',
         '          wReg(origOffGetID, "getImageData");',
         '        }',
+        '        var origOffMeasure = OffscreenCanvasRenderingContext2D.prototype.measureText;',
+        '        if (origOffMeasure) {',
+        '          var proxyOffMeasure = new Proxy(origOffMeasure, {',
+        '            apply: function(target, thisArg, args) {',
+        '              if (thisArg && typeof thisArg.font === "string") {',
+        '                var origFont = thisArg.font;',
+        '                var fb = wResolveFallbackFont(origFont);',
+        '                if (fb) {',
+        '                  try { thisArg.font = wReplaceFont(origFont, fb); return target.apply(thisArg, args); } finally { try { thisArg.font = origFont; } catch(e) {} }',
+        '                }',
+        '              }',
+        '              return target.apply(thisArg, args);',
+        '            }',
+        '          });',
+        '          OffscreenCanvasRenderingContext2D.prototype.measureText = proxyOffMeasure;',
+        '          wReg(proxyOffMeasure, "measureText");',
+        '          wReg(origOffMeasure, "measureText");',
+        '        }',
         '      }',
         '      if (OffscreenCanvas.prototype.convertToBlob) {',
         '        var origOffBlob = OffscreenCanvas.prototype.convertToBlob;',
@@ -1497,6 +2101,11 @@ export function ensureProfileStealthExtension(
         '          if (pGpuRenderer && param === 37446) return pGpuRenderer;',
         '          if (param === 7936) return "WebKit";',
         '          if (param === 7937) return "WebKit WebGL";',
+        '          if (param === 3379 && pGlLimits && pGlLimits.maxTextureSize) return pGlLimits.maxTextureSize;',
+        '          if (param === 34024 && pGlLimits && pGlLimits.maxRenderbufferSize) return pGlLimits.maxRenderbufferSize;',
+        '          if (param === 36347 && pGlLimits && pGlLimits.maxVertexUniformVectors) return pGlLimits.maxVertexUniformVectors;',
+        '          if (param === 36348 && pGlLimits && pGlLimits.maxVaryingVectors) return pGlLimits.maxVaryingVectors;',
+        '          if (param === 34921 && pGlLimits && pGlLimits.maxVertexAttribs) return pGlLimits.maxVertexAttribs;',
         '          return target.apply(thisArg, args);',
         '        }',
         '      });',
@@ -1773,18 +2382,6 @@ export function ensureProfileStealthExtension(
     // -------------------------------------------------------------
     if (!${isCamoufox}) {
       try {
-        var brandVersion = ${JSON.stringify(chromeMajorVer)};
-        var chromeFullVer = ${JSON.stringify(chromeFullVer)};
-        var defaultBrands = [
-          { brand: "Not/A)Brand", version: "8" },
-          { brand: "Chromium", version: brandVersion },
-          { brand: "Google Chrome", version: brandVersion }
-        ];
-        var defaultFullVersionList = [
-          { brand: "Not/A)Brand", version: "8.0.0.0" },
-          { brand: "Chromium", version: chromeFullVer },
-          { brand: "Google Chrome", version: chromeFullVer }
-        ];
 
         var chPlatform = ${JSON.stringify(clientHintsPlatform)};
         var chMobile = ${isMobile ? 'true' : 'false'};
@@ -1918,50 +2515,25 @@ export function ensureProfileStealthExtension(
       } catch(e) {}
     }
 
+    try {
+      spoofScreen(
+        window,
+        targetScreenW,
+        targetScreenH,
+        targetDprVal,
+        isMobileDevice ? 0 : 40,
+        isMobileDevice ? 'portrait-primary' : (targetScreenW >= targetScreenH ? 'landscape-primary' : 'portrait-primary'),
+        targetColorD
+      );
+      applyFontMasking(window);
+      applyEnvironmentDeviceHooks(window);
+    } catch(e) {}
+
     if (${isMobile}) {
       try {
         if (!('ontouchstart' in window)) {
           window.ontouchstart = null;
         }
-        Object.defineProperty(window, 'devicePixelRatio', {
-          get: function() { return ${displayDpr}; },
-          configurable: true,
-          enumerable: true
-        });
-        Object.defineProperty(screen, 'width', {
-          get: function() { return ${mobileWidth}; },
-          configurable: true,
-          enumerable: true
-        });
-        Object.defineProperty(screen, 'height', {
-          get: function() { return ${mobileHeight}; },
-          configurable: true,
-          enumerable: true
-        });
-        Object.defineProperty(screen, 'availWidth', {
-          get: function() { return ${mobileWidth}; },
-          configurable: true,
-          enumerable: true
-        });
-        Object.defineProperty(screen, 'availHeight', {
-          get: function() { return ${mobileHeight}; },
-          configurable: true,
-          enumerable: true
-        });
-
-        try {
-          Object.defineProperty(screen, 'orientation', {
-            get: function() {
-              return {
-                angle: 0,
-                type: 'portrait-primary',
-                onchange: null
-              };
-            },
-            configurable: true,
-            enumerable: true
-          });
-        } catch(e) {}
 
         try {
           if (navigator.connection) {
@@ -2256,15 +2828,15 @@ export function ensureProfileStealthExtension(
             // RENDERER
             if (param === 7937) return 'WebKit WebGL';
             // MAX_TEXTURE_SIZE
-            if (param === 3379) return 16384;
+            if (param === 3379) return glLimitsCfg.maxTextureSize;
             // MAX_RENDERBUFFER_SIZE
-            if (param === 34024) return 16384;
+            if (param === 34024) return glLimitsCfg.maxRenderbufferSize;
             // MAX_VERTEX_UNIFORM_VECTORS
-            if (param === 36347) return 4096;
+            if (param === 36347) return glLimitsCfg.maxVertexUniformVectors;
             // MAX_VARYING_VECTORS
-            if (param === 36348) return 30;
+            if (param === 36348) return glLimitsCfg.maxVaryingVectors;
             // MAX_VERTEX_ATTRIBS
-            if (param === 34921) return 16;
+            if (param === 34921) return glLimitsCfg.maxVertexAttribs;
             return target.apply(thisArg, argumentsList);
           }
         });
@@ -3517,6 +4089,9 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
     // Elegant phone window dimensions for desktop usage
     w = 460;
     h = 920;
+  } else {
+    w = Math.max(400, Number(w) || 1280);
+    h = Math.max(400, Number(h) || 800);
   }
   const hasWindowSizeArg = settings?.browser?.additionalArgs?.some((arg: string) => arg.startsWith('--window-size='));
   if (!hasWindowSizeArg) {
@@ -3544,26 +4119,10 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
   }
   args.push('--password-store=basic');
 
-  // WebRTC Leak Prevention (Strict IPv6 & UDP Leak Guard)
-  const webrtcOpt = settings?.network?.webrtc;
-  const fpWebrtc = settings?.fingerprint?.webrtc;
-  const hasProxy = Boolean(
-    settings?.network &&
-    settings.network.directConnection === false &&
-    settings.network.proxyId
-  );
-
-  if (
-    hasProxy ||
-    webrtcOpt === 'disable_non_proxied_udp' ||
-    webrtcOpt === 'disabled' ||
-    webrtcOpt === 'proxy_only' ||
-    webrtcOpt === 'altered' ||
-    (webrtcOpt !== 'real' && (fpWebrtc === 'disabled' || fpWebrtc === 'altered'))
-  ) {
-    applyStrictWebrtcArgs(args, 'disable_non_proxied_udp');
-  } else if (webrtcOpt === 'default_public_interface_only' || webrtcOpt === 'public_interface_only') {
-    applyStrictWebrtcArgs(args, 'default_public_interface_only');
+  // WebRTC Leak Prevention (Strict IPv6 & UDP Leak Guard; never mutate stored settings)
+  const effectiveWebrtc = resolveEffectiveWebrtcPolicy(settings);
+  if (effectiveWebrtc === 'disable_non_proxied_udp' || effectiveWebrtc === 'default_public_interface_only') {
+    applyStrictWebrtcArgs(args, effectiveWebrtc);
   }
 
   // Hardware Acceleration
@@ -3959,9 +4518,63 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
     debugLog(`[Launcher Step 3/7] Session Persistence: Existing session detected = ${isExistingSession}`);
 
     // -------------------------------------------------------------
-    // Step 4: Build Core Chromium Arguments & Isolation Flags
+    // Step 4: Resolve Runtime Geo-Synced Locale (No Stored Mutation) & Build Args
     // -------------------------------------------------------------
-    const settings = profile.settings;
+    const effectiveSettings = JSON.parse(JSON.stringify(profile.settings || {}));
+    let cachedProxy = (!effectiveSettings?.network?.directConnection && effectiveSettings?.network?.proxyId)
+      ? getProxyById(effectiveSettings.network.proxyId)
+      : null;
+    let cachedCredentials = cachedProxy ? getDecryptedProxyCredentials(cachedProxy.id) : null;
+    let cachedHealthResult: { success: boolean; ip?: string; countryCode?: string; timezone?: string; latencyMs?: number; errorMessage?: string } | null = null;
+    let timezoneMismatchWarning: TimezoneMismatchWarning | undefined;
+
+    if (cachedProxy) {
+      try {
+        debugLog(`[Launcher Step 4/7] Running proxy geo lookup for ${cachedProxy.host}:${cachedProxy.port}...`);
+        cachedHealthResult = await testAndSaveProxyStatus(cachedProxy.id);
+      } catch (geoErr: any) {
+        debugLog(`[Launcher Step 4/7 WARNING] Proxy geo lookup failed: ${geoErr?.message || geoErr}`);
+      }
+
+      const geoCountry = cachedHealthResult?.countryCode || cachedProxy.countryRegion;
+      const geoTimezone = cachedHealthResult?.timezone || cachedProxy.timezone;
+      const derivedLocale = deriveLocaleFromGeo({ countryCode: geoCountry, timezone: geoTimezone });
+
+      if (effectiveSettings?.locale?.autoSyncFromIp === true && derivedLocale) {
+        effectiveSettings.locale = effectiveSettings.locale || {};
+        effectiveSettings.locale.timezone = derivedLocale.timezone;
+        effectiveSettings.locale.language = derivedLocale.language;
+        effectiveSettings.locale.languagesList = derivedLocale.languagesList;
+        debugLog(`[Launcher Step 4/7] Geo Locale Auto-Sync applied runtime timezone=${derivedLocale.timezone}, language=${derivedLocale.language} (stored JSON untouched).`);
+        try {
+          logActivity('PROFILE', 'INFO', 'Geo Locale Auto-Sync', `Runtime locale synced to ${derivedLocale.timezone} (${derivedLocale.language}) for "${profile.name}".`, profile.id);
+        } catch {}
+      } else if (
+        derivedLocale?.timezone &&
+        effectiveSettings?.locale?.timezone &&
+        derivedLocale.timezone !== effectiveSettings.locale.timezone
+      ) {
+        timezoneMismatchWarning = {
+          profileId: profile.id,
+          profileName: profile.name,
+          profileTimezone: effectiveSettings.locale.timezone,
+          proxyTimezone: derivedLocale.timezone,
+          suggestedLanguage: derivedLocale.language,
+          suggestedLanguagesList: derivedLocale.languagesList,
+        };
+        debugLog(`[Launcher Step 4/7 WARNING] Timezone mismatch for "${profile.name}": profile=${effectiveSettings.locale.timezone}, proxy=${derivedLocale.timezone}`);
+        try {
+          const wins = BrowserWindow?.getAllWindows?.() || [];
+          for (const win of wins) {
+            if (!win.isDestroyed()) {
+              win.webContents.send('profile:timezoneMismatch', timezoneMismatchWarning);
+            }
+          }
+        } catch {}
+      }
+    }
+
+    const settings = effectiveSettings;
     // 100% Native C++ Stealth: Inject verified Orbita schema into Default/Preferences (Zero extension footprint)
     injectNativeStealthPreferences(storageDir, profile, settings);
     const debugPort = getProfileDebugPort(profile.id);
@@ -4034,20 +4647,15 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
     // -------------------------------------------------------------
     debugLog(`[Launcher Step 5/7] Configuring network and proxy settings...`);
     if (!settings?.network?.directConnection && settings?.network?.proxyId) {
-      const proxy = getProxyById(settings.network.proxyId);
+      const proxy = cachedProxy || getProxyById(settings.network.proxyId);
       if (proxy) {
-        const credentials = getDecryptedProxyCredentials(proxy.id);
+        const credentials = cachedCredentials ?? getDecryptedProxyCredentials(proxy.id);
 
         if (credentials?.username && credentials?.password) {
-          debugLog(`[Launcher Step 5/7] Running fast proxy health check for ${proxy.host}:${proxy.port}...`);
-          try {
-            const healthResult = await testAndSaveProxyStatus(proxy.id);
-            if (!healthResult.success) {
-              throw new Error(healthResult.errorMessage || 'Proxy health check failed');
-            }
-            debugLog(`[Launcher Step 5/7] Proxy healthy. Actual IP: ${healthResult.ip || 'unknown'} | Country: ${healthResult.countryCode || 'unknown'} | Latency: ${healthResult.latencyMs}ms`);
-          } catch (healthErr: any) {
-            debugLog(`[Launcher Step 5/7 WARNING] Proxy health check failed: ${healthErr.message}. Attempting tunnel anyway...`);
+          if (cachedHealthResult?.success) {
+            debugLog(`[Launcher Step 5/7] Proxy healthy (cached check). Actual IP: ${cachedHealthResult.ip || 'unknown'} | Country: ${cachedHealthResult.countryCode || 'unknown'} | Latency: ${cachedHealthResult.latencyMs}ms`);
+          } else if (cachedHealthResult && !cachedHealthResult.success) {
+            debugLog(`[Launcher Step 5/7 WARNING] Proxy health check failed: ${cachedHealthResult.errorMessage || 'Unknown error'}. Attempting tunnel anyway...`);
           }
 
           proxyTunnel = await createProxyTunnel({
@@ -4062,13 +4670,17 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
           args.push(`--proxy-server=http://127.0.0.1:${proxyTunnel.port}`);
           args.push('--proxy-bypass-list=<-loopback>');
           args.push(`--host-resolver-rules=MAP * 0.0.0.0 , EXCLUDE ${proxy.host}`);
-          applyStrictWebrtcArgs(args, 'disable_non_proxied_udp');
+          if (resolveEffectiveWebrtcPolicy(settings) !== 'allow_all') {
+            applyStrictWebrtcArgs(args, 'disable_non_proxied_udp');
+          }
           debugLog(`[Launcher Step 5/7] Authenticating Tunnel ready: 127.0.0.1:${proxyTunnel.port} -> ${proxy.host}:${proxy.port}`);
         } else {
           args.push(`--proxy-server=${proxy.protocol}://${proxy.host}:${proxy.port}`);
           args.push('--proxy-bypass-list=<-loopback>');
           args.push(`--host-resolver-rules=MAP * 0.0.0.0 , EXCLUDE ${proxy.host}`);
-          applyStrictWebrtcArgs(args, 'disable_non_proxied_udp');
+          if (resolveEffectiveWebrtcPolicy(settings) !== 'allow_all') {
+            applyStrictWebrtcArgs(args, 'disable_non_proxied_udp');
+          }
           debugLog(`[Launcher Step 5/7] Direct Proxy Server: ${proxy.protocol}://${proxy.host}:${proxy.port}`);
         }
       } else {
@@ -4173,6 +4785,7 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
       executablePath,
       storageDir,
       proxyTunnel,
+      ...(timezoneMismatchWarning ? { timezoneMismatch: timezoneMismatchWarning } : {}),
     };
   } catch (err: unknown) {
     if (proxyTunnel) {

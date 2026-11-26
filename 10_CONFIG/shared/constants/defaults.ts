@@ -2,6 +2,7 @@ import { ProfileSettings, AppSettings, StatisticalProfileOptions } from '../type
 import { MANAGED_ENGINE_VERSION } from '../../engine-config.js';
 import {
   validateAndNormalizeFingerprintCoherence,
+  getDeterministicGreaseTriplet,
   getDeterministicSeed,
 } from '../utils/fingerprint-coherence.js';
 
@@ -127,6 +128,69 @@ const REGION_MAP: Record<string, { timezone: string; languagesList: string[] }> 
   'ru-RU': { timezone: 'Europe/Moscow', languagesList: ['ru-RU', 'ru', 'en'] },
 };
 
+const COUNTRY_TO_LOCALE: Record<string, string> = {
+  US: 'en-US',
+  GB: 'en-GB',
+  UK: 'en-GB',
+  DE: 'de-DE',
+  FR: 'fr-FR',
+  ES: 'es-ES',
+  JP: 'ja-JP',
+  CN: 'zh-CN',
+  BR: 'pt-BR',
+  RU: 'ru-RU',
+  IN: 'en-IN',
+  AE: 'en-AE',
+  SG: 'en-SG',
+  AU: 'en-AU',
+  CA: 'en-CA',
+  NL: 'nl-NL',
+  IT: 'it-IT',
+  KR: 'ko-KR',
+  TR: 'tr-TR',
+  ID: 'id-ID',
+  MX: 'es-MX',
+};
+
+const EXTENDED_REGION_MAP: Record<string, { timezone: string; languagesList: string[] }> = {
+  ...REGION_MAP,
+  'en-IN': { timezone: 'Asia/Kolkata', languagesList: ['en-IN', 'en', 'hi'] },
+  'en-AE': { timezone: 'Asia/Dubai', languagesList: ['en-AE', 'en', 'ar'] },
+  'en-SG': { timezone: 'Asia/Singapore', languagesList: ['en-SG', 'en'] },
+  'en-AU': { timezone: 'Australia/Sydney', languagesList: ['en-AU', 'en'] },
+  'en-CA': { timezone: 'America/Toronto', languagesList: ['en-CA', 'en'] },
+  'nl-NL': { timezone: 'Europe/Amsterdam', languagesList: ['nl-NL', 'nl', 'en'] },
+  'it-IT': { timezone: 'Europe/Rome', languagesList: ['it-IT', 'it', 'en'] },
+  'ko-KR': { timezone: 'Asia/Seoul', languagesList: ['ko-KR', 'ko', 'en'] },
+  'tr-TR': { timezone: 'Europe/Istanbul', languagesList: ['tr-TR', 'tr', 'en'] },
+  'id-ID': { timezone: 'Asia/Jakarta', languagesList: ['id-ID', 'id', 'en'] },
+  'es-MX': { timezone: 'America/Mexico_City', languagesList: ['es-MX', 'es', 'en'] },
+};
+
+/**
+ * Derives a coherent timezone and primary language tuple from proxy GeoIP metadata.
+ */
+export function deriveLocaleFromGeo(geo?: {
+  countryCode?: string;
+  timezone?: string;
+}): { timezone: string; language: string; languagesList: string[] } | null {
+  if (!geo || (!geo.countryCode && !geo.timezone)) {
+    return null;
+  }
+  const cc = (geo.countryCode || '').trim().toUpperCase();
+  const localeKey = COUNTRY_TO_LOCALE[cc] || 'en-US';
+  const regionEntry = EXTENDED_REGION_MAP[localeKey] || REGION_MAP['en-US'];
+  const timezone =
+    geo.timezone && geo.timezone.trim().length > 1
+      ? geo.timezone.trim()
+      : regionEntry.timezone;
+  return {
+    timezone,
+    language: regionEntry.languagesList[0] || localeKey,
+    languagesList: [...regionEntry.languagesList],
+  };
+}
+
 function createSeededRng(seed: number) {
   let a = seed;
   return function () {
@@ -163,7 +227,7 @@ export function getDefaultProfileSettings(_os?: 'windows' | 'mac' | 'linux' | st
     },
     network: {
       directConnection: true,
-      webrtc: 'default',
+      webrtc: 'disable_non_proxied_udp',
     },
     permissions: {
       camera: 'prompt',
@@ -389,14 +453,15 @@ export function generateConsistentEnvironmentSettings(options: StatisticalProfil
 
   let clientHints: any = undefined;
   if (engine !== 'camoufox') {
+    const { greaseBrand, greaseVersion } = getDeterministicGreaseTriplet(seedNum);
     const brands = engine === 'edge'
       ? [
-          { brand: 'Not/A)Brand', version: '8' },
+          { brand: greaseBrand, version: greaseVersion },
           { brand: 'Chromium', version: chromeMajor },
           { brand: 'Microsoft Edge', version: chromeMajor },
         ]
       : [
-          { brand: 'Not/A)Brand', version: '8' },
+          { brand: greaseBrand, version: greaseVersion },
           { brand: 'Chromium', version: chromeMajor },
           { brand: 'Google Chrome', version: chromeMajor },
         ];
@@ -429,7 +494,7 @@ export function generateConsistentEnvironmentSettings(options: StatisticalProfil
       webgl: 'noise',
       audio: 'noise',
       clientRects: 'noise',
-      webrtc: 'noise',
+      webrtc: 'disable_non_proxied_udp',
       webglVendor,
       webglRenderer,
       hardwareConcurrency,
@@ -454,10 +519,11 @@ export function generateConsistentEnvironmentSettings(options: StatisticalProfil
       language: localeKey,
       timezone: targetTimezone,
       languagesList: targetLanguagesList,
+      autoSyncFromIp: true,
     },
     network: {
       directConnection: true,
-      webrtc: 'default',
+      webrtc: 'disable_non_proxied_udp',
     },
     permissions: {
       camera: 'prompt',

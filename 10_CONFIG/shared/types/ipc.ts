@@ -465,6 +465,7 @@ export interface MahiBrowserAPI {
   onLicenseStatusChanged: (callback: (status: any) => void) => () => void;
   onLicenseStatusToast: (callback: (toast: { title: string; message: string; type: string }) => void) => () => void;
   onToastShow: (callback: (toast: { type: 'info' | 'warning' | 'error' | 'success'; title: string; message: string }) => void) => () => void;
+  onProfileTimezoneMismatch?: (callback: (data: { profileId: string; profileName: string; profileTimezone: string; proxyTimezone: string; suggestedLanguage?: string; suggestedLanguagesList?: string[] }) => void) => () => void;
   isDesktop?: boolean;
 }
 

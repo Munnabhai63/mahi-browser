@@ -273,6 +273,13 @@ const api: MahiBrowserAPI = {
       ipcRenderer.removeListener('toast:show', handler);
     };
   },
+  onProfileTimezoneMismatch: (callback: (data: { profileId: string; profileName: string; profileTimezone: string; proxyTimezone: string; suggestedLanguage?: string; suggestedLanguagesList?: string[] }) => void) => {
+    const handler = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('profile:timezoneMismatch', handler);
+    return () => {
+      ipcRenderer.removeListener('profile:timezoneMismatch', handler);
+    };
+  },
 
   // Folders & Locking (V2)
   getFolders: (workspaceId?: string) => ipcRenderer.invoke('folders:get', workspaceId),

@@ -18,6 +18,61 @@ export function getDeterministicSeed(seedStr: string): number {
   return Math.abs(hash) || 12345;
 }
 
+export interface GreaseBrandTriplet {
+  greaseBrand: string;
+  greaseVersion: string;
+}
+
+const GREASE_CANDIDATES: ReadonlyArray<GreaseBrandTriplet> = [
+  { greaseBrand: 'Not/A)Brand', greaseVersion: '8' },
+  { greaseBrand: 'Not/A)Brand', greaseVersion: '24' },
+  { greaseBrand: 'Not A;Brand', greaseVersion: '99' },
+  { greaseBrand: 'Not A;Brand', greaseVersion: '24' },
+  { greaseBrand: 'Not.A/Brand', greaseVersion: '8' },
+  { greaseBrand: 'Not.A/Brand', greaseVersion: '99' },
+  { greaseBrand: 'Not)A;Brand', greaseVersion: '99' },
+];
+
+/**
+ * Deterministically selects a realistic Chrome GREASE brand/version from profile seed.
+ */
+export function getDeterministicGreaseTriplet(seedInput: string | number): GreaseBrandTriplet {
+  const seed = typeof seedInput === 'number' ? Math.abs(seedInput) : getDeterministicSeed(String(seedInput || 'default'));
+  const idx = seed % GREASE_CANDIDATES.length;
+  return GREASE_CANDIDATES[idx];
+}
+
+export interface WebglDeterministicLimits {
+  maxTextureSize: number;
+  maxRenderbufferSize: number;
+  maxVertexUniformVectors: number;
+  maxVaryingVectors: number;
+  maxVertexAttribs: number;
+}
+
+/**
+ * Deterministically picks realistic WebGL parameter limits per profile seed and device tier.
+ */
+export function getDeterministicWebglLimits(
+  seedInput: string | number,
+  isMobile: boolean
+): WebglDeterministicLimits {
+  const seed = typeof seedInput === 'number' ? Math.abs(seedInput) : getDeterministicSeed(String(seedInput || 'default'));
+  const maxTextureSize = (seed & 1) === 0 ? 16384 : 8192;
+  const maxRenderbufferSize = ((seed >>> 1) & 1) === 0 ? maxTextureSize : 8192;
+  const maxVertexUniformVectors = isMobile
+    ? (((seed >>> 2) & 1) === 0 ? 4096 : 1024)
+    : (((seed >>> 2) & 1) === 0 ? 4096 : 8192);
+  const maxVaryingVectors = ((seed >>> 3) & 1) === 0 ? 30 : 16;
+  return {
+    maxTextureSize,
+    maxRenderbufferSize,
+    maxVertexUniformVectors,
+    maxVaryingVectors,
+    maxVertexAttribs: 16,
+  };
+}
+
 /**
  * Converts a numeric seed into a micro-jitter noise floating point value (e.g. 0.0000124)
  */

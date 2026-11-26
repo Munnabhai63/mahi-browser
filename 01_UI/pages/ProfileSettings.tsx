@@ -489,11 +489,18 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
                 }}
                 className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500"
               >
-                <option value="default">Default</option>
+                <option value="disable_non_proxied_udp">Disable Non-Proxied UDP (Recommended)</option>
+                <option value="default">Default (Protected UDP)</option>
                 <option value="proxy_only">Proxy Only (Disable Non-Proxied UDP)</option>
                 <option value="public_interface_only">Public Interface Only</option>
                 <option value="disabled">Disable WebRTC Completely</option>
+                <option value="allow_all">Allow All (Unprotected)</option>
               </select>
+              {(settings.network.webrtc === 'allow_all' || (settings.network.webrtc as string) === 'real') && (
+                <p className="mt-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                  WebRTC protection off — IP leak risk
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -585,6 +592,29 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
                   ))}
                 </select>
               </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                  Auto-Sync Locale from Proxy IP on Launch
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Automatically align runtime timezone and language to the active proxy&apos;s exit IP without overwriting stored profile settings.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={Boolean(settings.locale.autoSyncFromIp)}
+                onChange={(e) => {
+                  setSettings({
+                    ...settings,
+                    locale: { ...settings.locale, autoSyncFromIp: e.target.checked },
+                  });
+                  setIsDirty(true);
+                }}
+                className="mt-1 h-4 w-4 accent-teal-600 rounded cursor-pointer"
+              />
             </div>
           </div>
         )}

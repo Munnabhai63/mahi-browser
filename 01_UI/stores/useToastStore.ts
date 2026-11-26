@@ -6,6 +6,10 @@ export interface ToastItem {
   title: string;
   message?: string;
   duration?: number;
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
 }
 
 interface ToastState {

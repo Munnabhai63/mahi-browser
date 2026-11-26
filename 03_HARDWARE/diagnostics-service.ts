@@ -26,20 +26,28 @@ export function auditProfileFingerprint(profileId: string): ProfileAuditReport {
   const checks: DiagnosticCheck[] = [];
 
   // 1. WebRTC Leak Shield
-  const webrtcMode: string = (net.webrtc as string) || (fp.webrtc as string) || 'noise';
+  const explicitFpOff = (fp.webrtc as string) === 'off' || (fp.webrtc as string) === 'real';
+  const netWebrtc = (net.webrtc as string) || '';
+  const webrtcMode: string = explicitFpOff ? (fp.webrtc as string) : (netWebrtc || (fp.webrtc as string) || 'noise');
   const hasProxy = Boolean(net.proxyId && !net.directConnection);
   let webrtcStatus: DiagnosticCheck['status'] = 'PASS';
   let webrtcScore = 100;
   let webrtcRec: string | undefined;
 
-  if (hasProxy && (webrtcMode === 'off' || webrtcMode === 'default')) {
+  const isUnprotectedWebrtc =
+    webrtcMode === 'off' ||
+    webrtcMode === 'default' ||
+    webrtcMode === 'allow_all' ||
+    webrtcMode === 'real';
+
+  if (hasProxy && isUnprotectedWebrtc) {
     webrtcStatus = 'FAIL';
     webrtcScore = 30;
-    webrtcRec = 'WebRTC is disabled or default while using a proxy — your real public IP may leak over STUN/TURN UDP requests. Enable WebRTC Noise or proxy_only mode.';
-  } else if (webrtcMode === 'off' || webrtcMode === 'default') {
+    webrtcRec = 'WebRTC is disabled or unprotected while using a proxy — your real public IP may leak over STUN/TURN UDP requests. Enable Disable Non-Proxied UDP or proxy_only mode.';
+  } else if (isUnprotectedWebrtc) {
     webrtcStatus = 'WARN';
     webrtcScore = 60;
-    webrtcRec = 'WebRTC protection is off or default. Enable WebRTC noise spoofing.';
+    webrtcRec = 'WebRTC protection is off or unprotected. Enable Disable Non-Proxied UDP protection.';
   }
 
   checks.push({
