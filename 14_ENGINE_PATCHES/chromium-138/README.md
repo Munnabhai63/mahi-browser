@@ -1,7 +1,10 @@
 # MAHI BROWSER — Custom C++ Chromium 138 Anti-Detect Patchset
 
+> **Current Shipping Status (Honest Reality Note):**
+> This directory contains an **uncompiled C++ patchset blueprint** against Chromium `138.0.7204.0` (`Commit Position 1465706`). Default desktop releases and `.mahi_data/engines/138.0.7204.0/` bundle an **unmodified, unbranded Google Chromium snapshot** (not compiled from this C++ patchset). Unless a binary is explicitly built with these patches and paired with a matching verified `mahi-engine.json`, MAHI Browser automatically enforces its JS stealth core (`stealth-core.js`) and Chromium runtime flags.
+
 Target Chromium Milestone: **`138.0.7204.0`** (Commit Position: `1465706`)  
-Architecture: **Native C++ Blink/V8/Content Hooks (Zero JavaScript Prototype Monkey-Patching Footprint)**
+Architecture: **Native C++ Blink/V8/Content Hooks (When Compiled & Verified with `mahi-engine.json`)**
 
 ---
 

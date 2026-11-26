@@ -1,5 +1,12 @@
 # Decisions Log
 
+## 2026-11-26 - Major Update Hardening & Non-Destructive Upgrade Policy (Layers 0–5)
+- **Context**: Hardened stealth, network proxy support (authenticated SOCKS5), localhost CDP exposure, engine maintenance, competitor importers, and sync encryption key derivation ahead of shipping a major auto-updater release to existing v1.2.x users.
+- **Key Decisions**:
+  1. **Zero Destructive Migration on Existing Settings**: Kept `app_schema_version` separate from `schema_migrations` (`1..25`), backed up SQLite + sync configs pre-migration, and applied new defaults (`disable_non_proxied_udp`, `autoSyncFromIp` for new profiles only, legacy `'mahi-cloud-sync'` fallback compatibility, v2 per-envelope salted sync keys opt-in) at runtime without rewriting stored user JSON.
+  2. **Authenticated SOCKS5 & Ephemeral CDP Ports**: Added `02_BROWSER/socks-tunnel.ts` so Chromium connects via an authenticating local HTTP proxy tunnel bridging to upstream RFC 1928/1929 SOCKS5 with remote `ATYP=0x03` DNS resolution. Stopped opening predictable fixed `--remote-debugging-port` flags on normal launches unless explicitly enabled (`security.allowCdpDebugPort`) or started via automation APIs using an ephemeral port.
+  3. **Strict Native Patch Loader & Dynamic Engine Bump**: Scoped `resolveEngineManifest` strictly to the launched binary's bundle directory with path/version/capability checks so stock Chrome builds never skip `stealth-core.js`, while bumping CfT to `158.0.8127.88` and Camoufox pin to `v159.0-beta.43` and guarding `cleanOldEngineVersions()` against deleting active profile versions.
+
 ## 2026-11-19 - Block 1: UPI Payment Wiring to Commercial Backend API
 - **Context**: Code review revealed a P0 flaw in `landing/components/PricingView.tsx` where UTR form submissions only altered client state (`setUtrSubmitted(true)`) without making any API request to persist payments. The backend endpoint `/api/v1/account/payments/upi/submit` existed but was never invoked.
 - **Implementation**:

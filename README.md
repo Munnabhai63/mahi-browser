@@ -3,9 +3,9 @@
 > **Professional Multi-Profile Browser Manager & Workspace Isolation Platform**
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/mahi-browser)
-[![Tests](https://img.shields.io/badge/tests-25%2F25%20passing-success.svg)](https://github.com/mahi-browser)
+[![Tests](https://img.shields.io/badge/tests-vitest_ci-success.svg)](https://github.com/mahi-browser)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Electron](https://img.shields.io/badge/Electron-33.4-informational.svg)](https://www.electronjs.org/)
+[![Electron](https://img.shields.io/badge/Electron-33.2-informational.svg)](https://www.electronjs.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ---
@@ -42,11 +42,11 @@
 - **Desktop Framework**: Electron 33 (TypeScript, Context Isolation, Secure IPC)
 - **Frontend Architecture**: React 18 + TypeScript + Vite + Tailwind CSS + Lucide Icons
 - **State Management**: Zustand
-- **Database**: Local SQLite with automated migrations and WAL mode (`node:sqlite`)
-- **Cryptography**: Node.js `node:crypto` (AES-256-GCM, PBKDF2 with 100,000 iterations)
-- **Browser Automation**: Playwright Core
-- **Validation**: Zod (100% typed runtime validation on all IPC and API payloads)
-- **Testing**: Vitest test runner
+- **Database**: Local SQLite (`sql.js` WebAssembly engine with atomic writes and schema versioning)
+- **Cryptography**: Node.js `node:crypto` (AES-256-GCM, PBKDF2-SHA256 with 100,000 iterations)
+- **Browser Automation**: `rebrowser-playwright-core` (with opt-in ephemeral loopback CDP ports)
+- **Validation**: Zod (typed runtime validation with forward-compatible schema preservation)
+- **Testing**: Vitest (`npm run test:ci`) + Biome linter (`npm run lint`)
 
 ---
 
@@ -87,19 +87,21 @@ MAHI BROWSER uses a **dedicated, version-pinned Chromium engine ("Chrome for Tes
 
 ### Key Benefits
 - **Zero Fingerprint Drift**: Every profile on every machine runs on the exact same Chromium binary version, preventing OS browser update discrepancies from breaking stealth flags.
-- **User-Agent Baseline Consistency**: The browser's default user-agent string strictly matches the engine version (`138.0.7204.183`), ensuring JavaScript feature availability (`navigator`, DOM APIs) perfectly aligns with the reported user agent.
-- **Fail-Safe Integrity**: Binary downloads are validated against official Google SHA-256 checksums and unpacked atomically.
+- **User-Agent Baseline Consistency**: Default Chrome-for-Testing metadata tracks `MANAGED_ENGINE_VERSION` (`158.0.8127.88` in [`10_CONFIG/engine-config.ts`](10_CONFIG/engine-config.ts)), while bundled offline installer builds ship Chromium snapshot `138.0.7204.0` unless compiled/updated.
+- **Runtime Stealth Architecture**: Stock unbranded Chromium builds run with the JS stealth core (`stealth-core.js`, deterministic seeded canvas/audio/WebGL/fonts/screen/Client Hints & strict `disable_non_proxied_udp` WebRTC protection) unless a verified native binary with matching `mahi-engine.json` is explicitly provided.
+- **Authenticated Proxies (HTTP / HTTPS / SOCKS5)**: Built-in local authenticating tunnel (`127.0.0.1`) bridges Chrome and Camoufox over authenticated HTTP/HTTPS/SOCKS5 proxies (RFC 1928/1929 with remote DNS `ATYP=0x03`).
+- **Fail-Safe Integrity**: Binary downloads are validated against SHA-256 checksums and unpacked atomically.
 
 ### Engine Storage Location
-- Path: `<userData>/engines/<VERSION>/chrome-win64/chrome.exe`
-- Pre-flight check: Requires at least 1 GB free disk space prior to download.
+- Path: `<userData>/engines/<VERSION>/...`
+- Pre-flight check: Requires at least `600 MB` free disk space prior to download (`MANAGED_ENGINE_REQUIRED_DISK_SPACE_BYTES`).
 
 ### Version Bump Procedure
-To update the pinned engine version:
-1. Open [`10_CONFIG/engine-config.ts`](file:///c:/Users/munaf/Desktop/mahai%20brouser/10_CONFIG/engine-config.ts).
-2. Change `MANAGED_ENGINE_VERSION` (and update `MANAGED_ENGINE_SHA256` from [Google CfT Manifest](https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json)).
-3. Rebuild and release: `npm run build && npm run dist`.
-4. Client behavior: Every client automatically downloads the newly pinned engine on their next profile launch. Deprecated older engine folders are automatically purged via `cleanOldEngineVersions` to preserve disk space.
+To check or update the pinned Chrome for Testing engine version:
+1. Run `node 12_SCRIPTS/engine-bump.cjs` to query Google's official `last-known-good-versions-with-downloads.json` manifest.
+2. Run `node 12_SCRIPTS/engine-bump.cjs --apply` (with `--sha256=<hex>` after verifying the zip digest) or edit [`10_CONFIG/engine-config.ts`](10_CONFIG/engine-config.ts).
+3. Rebuild and verify: `npm run lint && npm run typecheck && npm run test:ci && npm run build`.
+4. Cleanup safety: `cleanOldEngineVersions()` preserves profile-referenced versions and keeps at least the 2 newest installed versions.
 
 ### Media Codec & DRM (Widevine) Status
 - **Standard Video & Audio**: Supported natively (YouTube VP9/AV1/Opus/WebM).
@@ -136,10 +138,10 @@ MAHI BROWSER is developed exclusively for legitimate development, testing, multi
 
 ## 📄 Documentation Links
 
-- [Architecture & Design (`ARCHITECTURE.md`)](ARCHITECTURE.md)
-- [Security & Encryption Model (`SECURITY.md`)](SECURITY.md)
-- [Testing & Quality Assurance Report (`TESTING.md`)](TESTING.md)
-- [Local REST API Reference (`API.md`)](API.md)
+- [Project Progress Log (`docs/progress.md`)](docs/progress.md)
+- [Engineering Decisions Log (`docs/decisions.md`)](docs/decisions.md)
+- [Custom C++ Patchset Guide (`14_ENGINE_PATCHES/chromium-138/README.md`)](14_ENGINE_PATCHES/chromium-138/README.md)
+- [License (`LICENSE`)](LICENSE)
 
 ---
 

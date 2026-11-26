@@ -157,6 +157,14 @@ export function broadcastStatus(status: UpdateStatusEvent): void {
   }
 }
 
+/**
+ * IN-PLACE AUTO-UPDATE & USER DATA SAFETY CHECKLIST (v1.2.x -> Major Update)
+ * - Existing user profiles, cookies, extensions, licenses, and settings JSON are never deleted or rewritten destructively on load.
+ * - `initializeDatabase()` calls `backupDatabaseBeforeMigration()` (retaining up to 5 timestamped pre-upgrade snapshots) and tracks `app_schema_version`.
+ * - `snapshotSyncConfigFirstRun()` preserves `cloud-sync-config.json` & `cloud-profile-bindings.json` once before updates touch sync settings.
+ * - `parseStoredProfileSettings()` treats missing/legacy fields with runtime fallbacks without mutating stored DB rows.
+ * - Shutdown hook stops running browsers cleanly (`processManager`) and flushes SQLite (`flushDatabaseToDisk()`) before `quitAndInstall()`.
+ */
 export function initAutoUpdater(): void {
   if (isInitialized) return;
   isInitialized = true;

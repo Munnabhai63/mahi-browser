@@ -1,5 +1,24 @@
 # Progress Tracker
 
+## Round 1 — Major Hardening & Backward-Compatible Update (2026-11-26, Layers 0–5)
+- [x] **Layer 0 — Safety Rails (`99e8ec2`):**
+  - Added pre-migration SQLite backup (`backupDatabaseBeforeMigration` retaining 5 snapshots) + `app_schema_version` tracking in `06_DATABASE/schema.ts` & `06_DATABASE/connection.ts`.
+  - Added one-time sync config/bindings backup (`snapshotSyncConfigFirstRun`) in `07_BACKEND/index.ts`.
+  - Switched profile loading to tolerant `.passthrough()` validation + `parseStoredProfileSettings` (runtime fallbacks without mutating stored JSON).
+- [x] **Layer 1 — Stealth & Fingerprint Coherence Fixes (`5d600d9`):**
+  - Enforced `disable_non_proxied_udp` WebRTC protection by default on legacy `'default'`/`'noise'` profiles unless explicitly `'allow_all'`; added UI leak-risk warning banner.
+  - Added Font masking (`FontFaceSet.prototype.check` & `CanvasRenderingContext2D.prototype.measureText`), desktop+mobile `spoofScreen` symmetry, OS-coherent `plugins`/`pdfViewerEnabled`/`mediaDevices`/`speechSynthesis`/`getGamepads`/sensors, IP->Geo locale runtime derivation (`locale.autoSyncFromIp`) with mismatch toast action, and deterministic per-seed GREASE Client Hints & WebGL limits.
+- [x] **Layer 2 — Network & CDP Security Hardening (`977aa42`):**
+  - Implemented RFC 1928/1929 authenticating SOCKS5 tunnel (`02_BROWSER/socks-tunnel.ts`) wired into `proxy-tunnel.ts` + real TLS exit-IP verification in `proxy-test-service.ts`.
+  - Disabled fixed predictable CDP debugging ports on normal launches unless explicitly enabled (`security.allowCdpDebugPort` in `AppSettings.tsx`) or launched via automation APIs using ephemeral loopback ports.
+- [x] **Layer 3 — Engine Maintenance & Strict Manifest Loader (`49bc476`):**
+  - Created `12_SCRIPTS/engine-bump.cjs`, bumped `MANAGED_ENGINE_VERSION` to `158.0.8127.88` (verified win64 SHA-256) and `PINNED_CAMOUFOX_VERSION` to `v159.0-beta.43`, made `stage-packaging-resources.cjs` read version dynamically, guarded `cleanOldEngineVersions()` to keep profile-referenced + last 2 versions, and hardened `hasNativeStealthEngine()` to reject global/mismatched `mahi-engine.json`.
+- [x] **Layer 4 — Importers & Opt-In Sync Key Derivation v2 (`265be1e`):**
+  - Added auto-detection and structured import for GoLogin, AdsPower, and Dolphin{anty} JSON/CSV exports in `02_BROWSER/services/universal-importer-service.ts` + `UniversalBulkImportModal.tsx`.
+  - Added backward-compatible v2 random-salt PBKDF2 wrapping in `08_SECURITY/cloud-profile-crypto.ts` + weak-key warning banner and opt-in upgrade in `CloudSyncSection.tsx`.
+- [x] **Layer 5 — Documentation Truthfulness, Update QA & Verification:**
+  - Corrected `README.md`, `14_ENGINE_PATCHES/chromium-138/README.md`, added `LICENSE`, added `11_TESTS/unit/phase-update-major.test.ts` simulating v1.2.2 -> major upgrade over existing user DB/cookies/sync state, and added upgrade checklist comments in `07_BACKEND/services/updater-service.ts`.
+
 ## Current Status Banner (2026-11-20 — Blocks F, G, H & Release v1.2.0)
 - [x] **Desktop App v1.2.0 Packaging & Release Feed Deployment:**
   - **Version Bump:** Synchronized v1.2.0 across `package.json`, `landing/package.json`, `landing/lib/brand.ts`, and fallback constants via `sync-landing-version.cjs`.
