@@ -531,10 +531,21 @@ export function collectEssentialStorageFiles(profileId: string): Record<string, 
 }
 
 export function restoreStorageFiles(profileId: string, filesMap: Record<string, string>): void {
-  const baseDir = getProfileStoragePath(profileId);
+  const baseDir = path.resolve(getProfileStoragePath(profileId));
   for (const [relPath, b64Data] of Object.entries(filesMap)) {
     try {
-      const targetPath = path.join(baseDir, relPath);
+      if (!relPath || relPath.includes('\0') || path.isAbsolute(relPath) || /^[A-Za-z]:/.test(relPath)) {
+        console.warn(`[ArchiveService] Blocked unsafe restore path: ${relPath}`);
+        continue;
+      }
+      const targetPath = path.resolve(baseDir, relPath);
+      if (targetPath !== baseDir && !targetPath.startsWith(baseDir + path.sep)) {
+        console.warn(`[ArchiveService] Blocked path traversal during restore: ${relPath}`);
+        continue;
+      }
+      if (targetPath === baseDir) {
+        continue;
+      }
       const parentDir = path.dirname(targetPath);
       if (!fs.existsSync(parentDir)) {
         fs.mkdirSync(parentDir, { recursive: true });
@@ -591,13 +602,12 @@ export function exportProfileToArchive(options: ExportProfileOptions): { success
       payload: encryptedPayload,
     };
   } else {
-    // Unencrypted or master-encrypted
-    const encryptedPayload = encryptData(jsonStr);
+    // Portable unencrypted archive when no passphrase is supplied (legacy master-encrypted archives still decode on import)
     fileStructure = {
       magic: 'MAHI_PROFILE_ARCHIVE',
       version: '1.0',
       isEncrypted: false,
-      payload: encryptedPayload,
+      payload: Buffer.from(jsonStr, 'utf8').toString('base64'),
     };
   }
 

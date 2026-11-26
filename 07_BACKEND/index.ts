@@ -240,7 +240,7 @@ function createWindow(): void {
     show: false,
     webPreferences: {
       preload: preloadPath,
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -323,10 +323,25 @@ function createWindow(): void {
     return { action: 'deny' };
   });
 
+  function isAllowedAppNavigation(targetUrl: string): boolean {
+    try {
+      const parsed = new URL(targetUrl);
+      if (parsed.protocol === 'file:') return true;
+      if (
+        (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+        (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')
+      ) {
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   // Strict Navigation Lock: Main Window must NEVER navigate away from MAHI UI
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    // Only allow local app bundle or dev server
-    if (url.startsWith('file:') || url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) {
+    if (isAllowedAppNavigation(url)) {
       return;
     }
     event.preventDefault();
@@ -336,7 +351,7 @@ function createWindow(): void {
   });
 
   mainWindow.webContents.on('will-redirect', (event, url) => {
-    if (url.startsWith('file:') || url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) {
+    if (isAllowedAppNavigation(url)) {
       return;
     }
     event.preventDefault();

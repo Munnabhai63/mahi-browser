@@ -9,6 +9,7 @@ import {
   CaptchaProvider,
 } from '../10_CONFIG/shared/types/captcha.js';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
+import { encryptData, decryptData } from '../08_SECURITY/encryption.js';
 
 const DEFAULT_CONFIG: CaptchaConfig = {
   enabled: false,
@@ -73,23 +74,36 @@ export function getCaptchaConfig(): CaptchaConfig {
   try {
     const row = db.prepare("SELECT value_json FROM app_settings WHERE key = 'captcha_config'").get() as { value_json: string } | undefined;
     if (row && row.value_json) {
-      return { ...DEFAULT_CONFIG, ...JSON.parse(row.value_json) };
+      const parsed = { ...DEFAULT_CONFIG, ...JSON.parse(row.value_json) };
+      if (parsed.apiKey && typeof parsed.apiKey === 'string' && parsed.apiKey.includes(':')) {
+        try {
+          const decrypted = decryptData(parsed.apiKey);
+          if (decrypted) parsed.apiKey = decrypted;
+        } catch {
+          // Legacy unencrypted value fallback
+        }
+      }
+      return parsed;
     }
   } catch {}
   return DEFAULT_CONFIG;
 }
 
 /**
- * Saves the Captcha configuration to database.
+ * Saves the Captcha configuration to database (encrypts API key at rest).
  */
 export function saveCaptchaConfig(config: Partial<CaptchaConfig>): boolean {
   const db = getDatabase();
   const current = getCaptchaConfig();
   const merged = { ...current, ...config };
+  const persisted: CaptchaConfig = {
+    ...merged,
+    apiKey: merged.apiKey && merged.apiKey.trim() ? encryptData(merged.apiKey) : '',
+  };
   const now = new Date().toISOString();
 
   db.prepare("INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES ('captcha_config', ?, ?)").run(
-    JSON.stringify(merged),
+    JSON.stringify(persisted),
     now
   );
 

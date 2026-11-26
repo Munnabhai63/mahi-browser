@@ -125,30 +125,31 @@ export class BrowserWorkerManager {
     // 2. Resource class memory limits
     const maxMemoryMb = resourceClass === 'HIGH_PERF' ? 4096 : resourceClass === 'PRO' ? 2048 : 1024;
 
-    // 3. Setup Proxy Tunnel if profile has configured proxy
+    // 3. Setup Proxy Tunnel if profile has configured proxy (fail closed — never leak worker IP)
     let proxyTunnel: ProxyTunnelHandle | undefined;
     const proxyArgs: string[] = [];
 
     if (!settings?.network?.directConnection && settings?.network?.proxyId) {
       const proxy = getProxyById(settings.network.proxyId);
-      if (proxy) {
-        const creds = getDecryptedProxyCredentials(proxy.id);
-        if (creds?.username && creds?.password) {
-          try {
-            proxyTunnel = await createProxyTunnel({
-              upstreamHost: proxy.host,
-              upstreamPort: proxy.port,
-              upstreamProtocol: proxy.protocol,
-              username: creds.username,
-              password: creds.password,
-              profileId: `cloud_${sessionId}`,
-            });
-            proxyArgs.push(`--proxy-server=http://127.0.0.1:${proxyTunnel.port}`);
-            proxyArgs.push('--proxy-bypass-list=<-loopback>');
-          } catch (proxyErr) {
-            // Tunnel fallback
-          }
-        }
+      if (!proxy) {
+        throw new Error(`WORKER_PROXY_NOT_FOUND: Assigned proxy ${settings.network.proxyId} does not exist.`);
+      }
+      const creds = getDecryptedProxyCredentials(proxy.id);
+      if ((creds?.username !== undefined && creds.username !== '') || (proxy.protocol || '').toLowerCase() === 'socks4') {
+        proxyTunnel = await createProxyTunnel({
+          upstreamHost: proxy.host,
+          upstreamPort: proxy.port,
+          upstreamProtocol: proxy.protocol,
+          username: creds?.username || undefined,
+          password: creds?.password || undefined,
+          profileId: `cloud_${sessionId}`,
+        });
+        proxyArgs.push(`--proxy-server=http://127.0.0.1:${proxyTunnel.port}`);
+        proxyArgs.push('--proxy-bypass-list=<-loopback>');
+      } else {
+        const scheme = (proxy.protocol || 'http').toLowerCase();
+        proxyArgs.push(`--proxy-server=${scheme}://${proxy.host}:${proxy.port}`);
+        proxyArgs.push('--proxy-bypass-list=<-loopback>');
       }
     }
 
@@ -179,8 +180,8 @@ export class BrowserWorkerManager {
       '--force-webrtc-ip-handling-policy',
       '--webrtc-ip-handling-policy=disable_non_proxied_udp',
 
-      // Network Egress & SSRF Protection: Block cloud metadata endpoints
-      '--host-rules=MAP 169.254.169.254 ~NOTFOUND, MAP metadata.google.internal ~NOTFOUND, MAP 100.100.100.200 ~NOTFOUND',
+      // Network Egress & SSRF Protection: Block cloud metadata & IPv6 IMDS endpoints
+      '--host-rules=MAP 169.254.169.254 ~NOTFOUND, MAP 169.254.170.2 ~NOTFOUND, MAP 169.254.169.253 ~NOTFOUND, MAP [fd00:ec2::254] ~NOTFOUND, MAP fd00:ec2::254 ~NOTFOUND, MAP metadata.google.internal ~NOTFOUND, MAP metadata.goog ~NOTFOUND, MAP 100.100.100.200 ~NOTFOUND, MAP 0.0.0.0 ~NOTFOUND',
     ];
 
     if (settings?.browser?.userAgent) {

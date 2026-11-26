@@ -76,9 +76,9 @@ export const CloudPhoneManager: React.FC<CloudPhoneManagerProps> = ({ onNavigate
   const handleLaunchCloud = (p: Profile) => {
     setSelectedProfileForStream(p);
     showToast({
-      type: 'info',
-      title: 'Cloud Android Session',
-      message: `Allocating remote cloud worker for "${p.name}"...`,
+      type: 'warning',
+      title: 'Cloud Phone Virtualizer Unavailable',
+      message: `Remote Redroid/Cloud Gateway streaming for "${p.name}" requires an active self-hosted cloud worker deployment. Use "Run Android Mode" locally instead.`,
     });
   };
 
@@ -469,17 +469,17 @@ export const CloudPhoneManager: React.FC<CloudPhoneManagerProps> = ({ onNavigate
                   <div className="w-16 h-3 bg-slate-800 rounded-full" />
                 </div>
 
-                {/* Simulated Screen Content / Stream Canvas */}
+                {/* Cloud Worker Connection Status */}
                 <div className="flex-1 bg-slate-900 p-4 flex flex-col items-center justify-center text-center">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 mb-3 animate-pulse">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-400 mb-3">
                     <Cloud className="w-6 h-6" />
                   </div>
-                  <h4 className="text-xs font-bold text-slate-100 mb-1">Connecting Cloud Gateway...</h4>
+                  <h4 className="text-xs font-bold text-slate-100 mb-1">Cloud Phone Worker Not Configured</h4>
                   <p className="text-[11px] text-slate-400 max-w-[220px]">
-                    Allocating isolated container on Hetzner/AWS edge node for profile ID {selectedProfileForStream.id.slice(0, 8)}.
+                    No remote Redroid container node is connected for profile {selectedProfileForStream.id.slice(0, 8)}.
                   </p>
-                  <div className="mt-4 px-3 py-1 rounded-full text-[10px] font-mono bg-slate-800 text-emerald-400">
-                    Latency: ~18ms • SSE Stream
+                  <div className="mt-4 px-3 py-1 rounded-full text-[10px] font-mono bg-slate-800 text-amber-300">
+                    Use local Android Mobile Mode on desktop
                   </div>
                 </div>
 

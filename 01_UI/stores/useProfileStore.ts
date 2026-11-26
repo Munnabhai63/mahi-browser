@@ -32,6 +32,19 @@ interface ProfileState {
   cloneProfile: (dto: CloneProfileDTO) => Promise<Profile | null>;
 
   startProfile: (id: string) => Promise<boolean>;
+  startProfileDetailed: (
+    id: string,
+    options?: { suppressConflictToast?: boolean }
+  ) => Promise<{
+    success: boolean;
+    pid?: number;
+    error?: string;
+    code?: 'MOBILE_MODE_CONFLICT' | 'MOBILE_MODE_ROTATION_FAILED' | 'MOBILE_MODE_IP_UNCHANGED';
+    runningProfileId?: string;
+    runningProfileName?: string;
+    rotatedIp?: string;
+    notesUpdated?: boolean;
+  }>;
   stopProfile: (id: string) => Promise<boolean>;
   bulkStartProfiles: (ids: string[], delayMs?: number) => Promise<{ results: { profileId: string; success: boolean; pid?: number; error?: string }[] }>;
   bulkStopProfiles: (ids: string[]) => Promise<boolean>;
@@ -294,18 +307,23 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     }
   },
 
-  startProfile: async (id) => {
+  startProfileDetailed: async (id, options) => {
     try {
       const res = await window.mahiAPI.startProfile(id);
-      if (!res.success) {
-        useToastStore.getState().showToast({
-          type: 'error',
-          title: 'Launch Failed',
-          message: res.error || 'Could not start browser process',
-        });
-        return false;
+      if (res.notesUpdated) {
+        await get().fetchProfiles();
       }
-      return true;
+      if (!res.success) {
+        if (!(options?.suppressConflictToast && res.code === 'MOBILE_MODE_CONFLICT')) {
+          useToastStore.getState().showToast({
+            type: 'error',
+            title: res.code === 'MOBILE_MODE_CONFLICT' ? 'Mobile Mode: 1 Profile Limit' : 'Launch Failed',
+            message: res.error || 'Could not start browser process',
+          });
+        }
+        return res;
+      }
+      return res;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       useToastStore.getState().showToast({
@@ -313,8 +331,13 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         title: 'Launch Failed',
         message: msg,
       });
-      return false;
+      return { success: false, error: msg };
     }
+  },
+
+  startProfile: async (id) => {
+    const res = await get().startProfileDetailed(id);
+    return Boolean(res.success);
   },
 
   stopProfile: async (id) => {

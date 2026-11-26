@@ -190,7 +190,7 @@ function testHttpsConnectThroughProxy(
               const tlsSocket = tls.connect({
                 socket: rawSocket,
                 servername: 'api.ipify.org',
-                rejectUnauthorized: false,
+                rejectUnauthorized: true,
               }, () => {
                 tlsSocket.write(`GET /?format=json HTTP/1.1\r\nHost: api.ipify.org\r\nUser-Agent: Mozilla/5.0\r\nConnection: close\r\n\r\n`);
               });
@@ -239,7 +239,7 @@ function testHttpsConnectThroughProxy(
       const tlsOpts: tls.ConnectionOptions = {
         host,
         port,
-        rejectUnauthorized: false,
+        rejectUnauthorized: process.env.MAHI_ALLOW_SELF_SIGNED_PROXY !== '1',
       };
       if (!net.isIP(host)) {
         tlsOpts.servername = host;

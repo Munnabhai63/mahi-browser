@@ -129,15 +129,16 @@ export function getMahiCustomCorePath(): string | null {
     } catch {}
   }
 
-  // Check Drive F ai-power-tools ungoogled-chromium / custom core candidates
-  if (os.platform() === 'win32') {
-    const fDriveCandidates = [
-      'F:\\UserData\\Downloads\\ai-power-tools\\ungoogled-chromium\\chrome.exe',
-      'F:\\UserData\\Downloads\\ai-power-tools\\ungoogled-chromium\\chromium.exe',
-      'F:\\UserData\\Downloads\\ai-power-tools\\claude-seo\\ms-playwright\\chromium-1248\\chrome-win64\\chrome.exe',
-    ];
-    for (const fc of fDriveCandidates) {
-      if (fs.existsSync(fc)) return fc;
+  // Optional env-configured custom core directories
+  const envCoreDirs = (process.env.MAHI_CUSTOM_CORE_DIRS || '')
+    .split(path.delimiter)
+    .map((d) => d.trim())
+    .filter(Boolean);
+  for (const dir of envCoreDirs) {
+    const exeNames = os.platform() === 'win32' ? ['chrome.exe', 'chromium.exe'] : ['chrome', 'chromium'];
+    for (const exe of exeNames) {
+      const candidate = path.join(dir, exe);
+      if (fs.existsSync(candidate)) return candidate;
     }
   }
 
@@ -235,9 +236,6 @@ export function getCamoufoxExecutablePath(): string | null {
       path.join(getEnginesBaseDir(), 'camoufox', 'camoufox.exe'),
       path.join(programFiles, 'Camoufox', 'camoufox.exe'),
       path.join(home, 'AppData', 'Local', 'Programs', 'Camoufox', 'camoufox.exe'),
-      'F:\\UserData\\Downloads\\ai-power-tools\\camoufox\\browser\\camoufox.exe',
-      'F:\\UserData\\Downloads\\ai-power-tools\\camoufox\\camoufox.exe',
-      'F:\\UserData\\Downloads\\ai-power-tools\\camoufox\\python\\camoufox\\browser\\camoufox.exe',
     ];
     for (const c of candidates) {
       if (fs.existsSync(c)) return c;

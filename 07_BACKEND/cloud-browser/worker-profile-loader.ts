@@ -14,9 +14,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { execSync } from 'node:child_process';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getStorageProvider } from '../../08_SECURITY/storage-provider.js';
+import { getJwtSecret } from '../../08_SECURITY/install-secrets.js';
 import {
   encryptProfileArchive,
   decryptProfileArchive,
@@ -73,7 +73,12 @@ export class WorkerProfileLoader {
       fs.mkdirSync(targetDir, { recursive: true });
     }
 
-    const effectivePassphrase = passphrase || `mahi-cloud-session-${userId}`;
+    const effectivePassphrase =
+      passphrase ||
+      crypto
+        .createHmac('sha256', process.env.MAHI_CLOUD_ARCHIVE_SECRET || getJwtSecret())
+        .update(`mahi-cloud-session:${userId}`)
+        .digest('hex');
 
     // 1. Check if there is an existing cloud profile in cloud_profiles
     const cloudProf = db.prepare(`
@@ -186,7 +191,12 @@ export class WorkerProfileLoader {
   }): Promise<{ success: boolean; newVersion: number }> {
     const { sessionId, userId, profileId, targetDir, baseVersion, passphrase } = options;
     const db = getDatabase();
-    const effectivePassphrase = passphrase || `mahi-cloud-session-${userId}`;
+    const effectivePassphrase =
+      passphrase ||
+      crypto
+        .createHmac('sha256', process.env.MAHI_CLOUD_ARCHIVE_SECRET || getJwtSecret())
+        .update(`mahi-cloud-session:${userId}`)
+        .digest('hex');
 
     // 1. Flush and ensure directory exists
     if (!fs.existsSync(targetDir)) {
@@ -324,13 +334,6 @@ export class WorkerProfileLoader {
         }
         if (!fs.existsSync(targetDir)) return;
       } catch {}
-
-      if (process.platform === 'win32' && fs.existsSync(targetDir)) {
-        try {
-          execSync(`rmdir /s /q "${targetDir}"`, { stdio: 'ignore' });
-          if (!fs.existsSync(targetDir)) return;
-        } catch {}
-      }
 
       try {
         const start = Date.now();

@@ -172,6 +172,8 @@ jobs:
         run: node 12_SCRIPTS/stamp-build-info.cjs
 
       - name: Pre-Stage Packaging Resources
+        env:
+          MAHI_REQUIRE_BUNDLED_ADB: '1'
         run: node 12_SCRIPTS/stage-packaging-resources.cjs
 
       - name: Package Target (${{ matrix.platform }})

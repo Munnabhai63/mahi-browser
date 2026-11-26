@@ -3,9 +3,23 @@ const path = require('path');
 const crypto = require('crypto');
 const initSqlJs = require('sql.js');
 
+const os = require('os');
+
+function resolveDatabasePath() {
+  if (process.env.MAHI_DB_PATH) return process.env.MAHI_DB_PATH;
+  const dataDir =
+    process.env.MAHI_DATA_DIR ||
+    (process.platform === 'win32'
+      ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'mahi-browser')
+      : process.platform === 'darwin'
+        ? path.join(os.homedir(), 'Library', 'Application Support', 'mahi-browser')
+        : path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'mahi-browser'));
+  return path.join(dataDir, 'mahi_browser.sqlite');
+}
+
 async function main() {
   const SQL = await initSqlJs();
-  const dbPath = path.join(process.env.APPDATA, 'mahi-browser', 'mahi_browser.sqlite');
+  const dbPath = resolveDatabasePath();
   
   if (!fs.existsSync(dbPath)) {
     console.log('Database not found at', dbPath);

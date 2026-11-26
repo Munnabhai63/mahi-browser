@@ -560,22 +560,30 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
                   <span>Launch Verified Desktop Application:</span>
                 </span>
                 <code className="block p-2 rounded-xl bg-slate-900 border border-slate-800 text-[10px] font-mono text-teal-300 break-all select-all">
-                  C:\Users\munaf\AppData\Local\Programs\MAHI BROWSER\MAHI Browser.exe
+                  {typeof navigator !== 'undefined' && /mac/i.test(navigator.userAgent)
+                    ? '/Applications/MAHI BROWSER.app'
+                    : typeof navigator !== 'undefined' && /linux/i.test(navigator.userAgent)
+                      ? 'mahi-browser'
+                      : '%LOCALAPPDATA%\\Programs\\MAHI BROWSER\\MAHI Browser.exe'}
                 </code>
               </div>
             </div>
 
             <div className="p-5 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between">
               <span className="text-[10px] text-slate-500 font-medium">
-                Or launch from Start Menu / Desktop shortcut
+                Or launch from Applications / Start Menu / Desktop shortcut
               </span>
               <div className="flex items-center space-x-2">
                 <button
                   onClick={() => {
+                    const launchTarget =
+                      typeof navigator !== 'undefined' && /mac/i.test(navigator.userAgent)
+                        ? '/Applications/MAHI BROWSER.app'
+                        : typeof navigator !== 'undefined' && /linux/i.test(navigator.userAgent)
+                          ? 'mahi-browser'
+                          : '%LOCALAPPDATA%\\Programs\\MAHI BROWSER\\MAHI Browser.exe';
                     if (navigator.clipboard) {
-                      navigator.clipboard.writeText(
-                        'C:\\Users\\munaf\\AppData\\Local\\Programs\\MAHI BROWSER\\MAHI Browser.exe'
-                      );
+                      navigator.clipboard.writeText(launchTarget);
                       setCopiedAppPath(true);
                       setTimeout(() => setCopiedAppPath(false), 2000);
                     }

@@ -1,5 +1,20 @@
 # Progress Tracker
 
+## Round 2 — Mobile 4G/5G IP Rotator End-to-End Remediation (2026-11-26)
+- [x] **Profile Tab Mobile Mode (`01_UI/pages/ProfilesList.tsx`, `02_BROWSER/process-manager.ts`, `01_UI/stores/useProfileStore.ts`):**
+  - Added persistent `mobileModeEnabled` toggle pill & status banner inside Browser Profiles toolbar (`Mobile Mode ON/OFF`), enforcing a strict **1 running profile limit** with `"Stop & Run Profile"` conflict dialog and blocking batch multi-launches.
+  - On launching Direct (non-proxy) profiles in Mobile Mode: forces fresh mobile IP rotation bypassing cooldown, blocks launch on ADB failure or unchanged IP, and writes the new IP directly into `profile.notes`, refreshing the UI table. Proxied profiles (`proxyId` active) skip phone IP rotation and preserve existing notes.
+- [x] **Bundled Official ADB Package & Dependencies (`electron-builder.json`, `12_SCRIPTS/stage-packaging-resources.cjs`):**
+  - Updated `stage-packaging-resources.cjs` + `.github/workflows/cross-platform-release.yml` (`MAHI_REQUIRE_BUNDLED_ADB=1`) to stage official Google Android Platform Tools (`adb.exe`, `AdbWinApi.dll`, `AdbWinUsbApi.dll`, `NOTICE.txt`, `source.properties` on Windows; `adb`, `lib64/`, `NOTICE.txt`, `source.properties` on macOS/Linux) into `.mahi_data/platform-tools/` and bundle them via `electron-builder.json` (`extraResources` -> `platform-tools/`) so end users work out-of-the-box without external installs.
+- [x] **ADB Resolution & Official One-Click Installer (`03_HARDWARE/mobile-rotator-service.ts`):**
+  - Replaced unsafe `exec('adb ...')` shell string interpolation with `execFile` + `validateAdbDeviceId`, added `resolveAdbExecutable()` checking bundled resources first (`process.resourcesPath/platform-tools`, `.mahi_data/platform-tools`), then managed `<userData>/tools/platform-tools`, Android SDK, Scoop/Choco, and `PATH` with Windows DLL dependency validation (`hasCompleteAdbBundle`) and writable `ANDROID_USER_HOME` fallback, plus one-click `installAdbPlatformTools()`.
+  - Added clear detection/actionable errors for missing `adb` binary, `unauthorized` phones (Allow USB Debugging prompt), and `offline` cables, plus 3-step Android radio toggle fallback (`cmd connectivity airplane-mode` -> `settings put global airplane_mode_on` + broadcast -> `svc data disable/enable`).
+- [x] **Wired Auto-Rotate on Launch & Cooldown (`02_BROWSER/process-manager.ts`):**
+  - Wired `maybeAutoRotateOnProfileStart(profileId)` into `ProcessManager.startProfile()` respecting `minIntervalSeconds` cooldown (`lastRotationTimestamp`), emitting non-blocking UI toast notices without breaking launches on disconnected phones.
+- [x] **IPC, Local API Server & Honest UI (`07_BACKEND/`, `01_UI/pages/MobileRotator.tsx`):**
+  - Added `mobileRotator:*` endpoints on `07_BACKEND/api/local-api-server.ts`, plus `mobileRotatorGetAdbStatus`, `mobileRotatorInstallAdb`, `mobileRotatorGetHistory`, `mobileRotatorClearHistory` across Electron IPC, `preload/index.ts`, `preload.cjs`, `ipc.ts`, and `api-fallback.ts`.
+  - Removed hardcoded synthetic fallback labels (`'Reliance Jio / Mobile Carrier'`, `'India'`, `'100% Residential Trust Score'`) in `MobileRotator.tsx`, added ADB install/unauthorized banners, `minIntervalSeconds` input, honest `IP Changed` vs `Same IP` tracking, and persisted rotation history (`MAX_HISTORY_ENTRIES = 30`).
+
 ## Round 1 — Major Hardening & Backward-Compatible Update (2026-11-26, Layers 0–5)
 - [x] **Layer 0 — Safety Rails (`99e8ec2`):**
   - Added pre-migration SQLite backup (`backupDatabaseBeforeMigration` retaining 5 snapshots) + `app_schema_version` tracking in `06_DATABASE/schema.ts` & `06_DATABASE/connection.ts`.
@@ -290,3 +305,25 @@ pipeline now gates against with six live checks, including a sha512 recomputatio
 artefact actually served.
 
 The old claim is therefore downgraded to: **UNVERIFIED - superseded by audit 5b1cf3a.**
+
+## 2026-11-27 — Comprehensive Audit & Hardening Remediation (P0/P1/P2)
+- [x] **P0 Security Hardening:**
+  - Added `.dockerignore` and excluded `_to_delete/` in `.gitignore`.
+  - Failed closed on `/api/v1/storage/{upload,download,delete}` when remote S3/R2 storage is active (`07_BACKEND/commercial/routes/cloud-sync-routes.ts`) and enforced canonical `path.resolve` containment in `LocalStorageProvider.resolveFilePath` (`08_SECURITY/storage-provider.ts`).
+  - Prevented silent overwrite of unreadable `SAFE_STORAGE_V1:` master key and install secrets (`08_SECURITY/encryption.ts`, `08_SECURITY/install-secrets.ts`) and switched token/secret checks to `crypto.timingSafeEqual`.
+  - Fixed Zip-Slip containment in `restoreStorageFiles` + made passwordless `.mahi-profile` exports portable (`02_BROWSER/services/archive-service.ts`); enforced ZIP Central Directory traversal/symlink validation, `execFileSync`, and profile-root-scoped deletion in `02_BROWSER/services/extension-service.ts`; guarded `getProfileStoragePath` and allowlisted `ORDER BY` direction in `02_BROWSER/services/profile-service.ts`.
+  - Removed raw shell/PowerShell string interpolation via Base64 `-EncodedCommand` / `execFile` in `02_BROWSER/services/platform-adapter.ts`, `02_BROWSER/process-manager.ts`, and `03_HARDWARE/distribution-service.ts`, and awaited process termination on stop.
+  - Added async DNS SSRF validation + resolved-IP pinning, hex/length guards on `timingSafeEqual`, and removed `secretHash` decrypt fallback in `07_BACKEND/services/webhook-service.ts`.
+  - Replaced substring/suffix CORS matching with `URL`-parsed exact hostname checks in `cloud-gateway.ts` and rejected untrusted preflights instead of `Access-Control-Allow-Origin: *` in `commercial-api-router.ts`.
+  - Enforced route scopes, owner checks, packaged-mode admin lockout, and rate limits across `local-api-server.ts` while preserving scoped packaged client daemon tokens for browser extensions.
+  - Enabled Electron `sandbox: true` and `URL` navigation checks (`07_BACKEND/index.ts`), encrypted Captcha API keys at rest (`09_AUTOMATION/captcha-service.ts`), stopped writing plaintext imported passwords into `profiles.notes`, removed SSR `ADMIN_BOOTSTRAP_TOKEN` prefill + escaped HTML/handler contexts across `web-admin`, `owner-admin`, and `super-admin` templates.
+  - Enforced per-install HMAC + `grace_expires_at` + expiry verification in `license-engine.ts` and RSA signature + deleted-cache grace anchoring in `license-status-service.ts`.
+- [x] **P1 Portability & Cross-OS Independence:**
+  - Removed `F:\` candidates (`detector.ts`), removed `C:\Users\munaf\...` (`StarterProfilesSection.tsx`), disabled default auto-login and `munaf@mahibrowser.com` (`MobileApp.tsx`), replaced Windows-only `rmdir /s /q` and predictable cloud session passphrase fallback (`worker-profile-loader.ts`), made `mint-master-owner.cjs` / `db-parity-check.cjs` / `Start-Super-Admin.bat` / `sign.cjs` / `updater-provider.ts` OS-agnostic and fail-safe, cleaned `electron-builder.json`, aligned `.github/workflows/ci.yml` to Node 22, and fixed Nginx child-location security header inheritance + removed desktop `:32123` backup upstream.
+- [x] **P2 Proxy, Stealth, Automation & Cleanup:**
+  - Added strict TLS verification default, empty-password Basic auth, HTTPS upstream HTTP forwarding, SOCKS4/4a support, and stream abort cleanup (`proxy-tunnel.ts`, `socks-tunnel.ts`, `proxy-test-service.ts`); made `browser-worker.ts` fail closed on proxy failure and expanded metadata `--host-rules`.
+  - Hardened `launcher.ts` (`SensorCtor` `new` enforcement & native registration, iframe `patchRealm` depth 4 + Audio/Timezone propagation, Worker `getHighEntropyValues` parity, coordinate-seeded WebGL `readPixels`, WebGL/WebGPU vendor coherence, Camoufox WebRTC proxy/ICE lock) and updated `build-chromium-patches.cjs` + Chromium `0004` patch for seeded ClientRects jitter.
+  - Routed automation workflows and Cookie Warmer cleanly through `processManager.startProfile(..., { mode: 'automation', allowCdpDebugPort: true })` (`automation-engine.ts`, `cookie-warmer-service.ts`), hardened `connection.ts` atomic save FD cleanup & cross-OS test guards, quarantined `13_ASSETS/interface` + `13_ASSETS/cookie-editor.js` into `_to_delete/`, replaced mock UI/fallback responses with honest unavailable states, and pruned `clsx`, `tailwind-merge`, `pg`, `@types/pg` + applied semver-safe `npm audit fix`.
+
+## 2026-11-27 — v1.4.0 Release Preparation
+- Bumped package version from `1.2.2` to `1.4.0`, synchronized landing/brand assets (`npm run sync:version`), updated release manifest notes (`mandatory: false`), and prepared fast-forward merge to `main` + `v1.4.0` tag push for automated CI packaging, GitHub Release publishing, VPS rollout, and 6-gate live verification.

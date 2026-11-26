@@ -2,11 +2,90 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import https from 'node:https';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { ExtensionItem, InstallExtensionDTO } from '../../10_CONFIG/shared/types/extension.js';
-import { getProfileById } from './profile-service.js';
+import { getProfileById, getProfilesDirectory } from './profile-service.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
+
+function assertSafeZipBuffer(zipBuffer: Buffer, targetDir: string): void {
+  const minEocdLen = 22;
+  const maxCommentLen = 65535;
+  const searchStart = Math.max(0, zipBuffer.length - minEocdLen - maxCommentLen);
+  let eocdOffset = -1;
+  for (let i = zipBuffer.length - minEocdLen; i >= searchStart; i--) {
+    if (
+      zipBuffer[i] === 0x50 &&
+      zipBuffer[i + 1] === 0x4b &&
+      zipBuffer[i + 2] === 0x05 &&
+      zipBuffer[i + 3] === 0x06
+    ) {
+      eocdOffset = i;
+      break;
+    }
+  }
+  if (eocdOffset < 0) {
+    throw new Error('Invalid ZIP archive: End of Central Directory not found');
+  }
+
+  const totalEntries = zipBuffer.readUInt16LE(eocdOffset + 10);
+  const cdOffset = zipBuffer.readUInt32LE(eocdOffset + 16);
+  const resolvedRoot = path.resolve(targetDir);
+  let cursor = cdOffset;
+
+  for (let idx = 0; idx < totalEntries; idx++) {
+    if (cursor + 46 > zipBuffer.length) {
+      throw new Error('Corrupted ZIP Central Directory');
+    }
+    if (
+      zipBuffer[cursor] !== 0x50 ||
+      zipBuffer[cursor + 1] !== 0x4b ||
+      zipBuffer[cursor + 2] !== 0x01 ||
+      zipBuffer[cursor + 3] !== 0x02
+    ) {
+      throw new Error('Invalid ZIP Central Directory entry signature');
+    }
+
+    const nameLen = zipBuffer.readUInt16LE(cursor + 28);
+    const extraLen = zipBuffer.readUInt16LE(cursor + 30);
+    const commentLen = zipBuffer.readUInt16LE(cursor + 32);
+    const extAttrs = zipBuffer.readUInt32LE(cursor + 38);
+    const nameStart = cursor + 46;
+    const nameEnd = nameStart + nameLen;
+    if (nameEnd > zipBuffer.length) {
+      throw new Error('Truncated ZIP filename entry');
+    }
+
+    // Reject POSIX symlinks stored in ZIP external attributes
+    const unixMode = (extAttrs >>> 16) & 0o170000;
+    if (unixMode === 0o120000) {
+      throw new Error('Blocked unsafe symlink entry inside CRX/ZIP archive');
+    }
+
+    const entryName = zipBuffer.subarray(nameStart, nameEnd).toString('utf8');
+    if (
+      !entryName ||
+      entryName.includes('\0') ||
+      entryName.startsWith('/') ||
+      entryName.startsWith('\\') ||
+      /^[A-Za-z]:/.test(entryName)
+    ) {
+      throw new Error(`Blocked unsafe ZIP entry path: ${entryName}`);
+    }
+
+    const segments = entryName.split(/[\\/]+/).filter(Boolean);
+    if (segments.includes('..')) {
+      throw new Error(`Blocked ZIP path traversal entry: ${entryName}`);
+    }
+
+    const resolvedEntry = path.resolve(resolvedRoot, ...segments);
+    if (resolvedEntry !== resolvedRoot && !resolvedEntry.startsWith(resolvedRoot + path.sep)) {
+      throw new Error(`ZIP entry escapes extraction root: ${entryName}`);
+    }
+
+    cursor = nameEnd + extraLen + commentLen;
+  }
+}
 
 function downloadBuffer(url: string, maxRedirects = 5): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -88,13 +167,21 @@ export async function downloadAndExtractCrx(extensionStoreId: string, targetDir:
         fs.mkdirSync(targetDir, { recursive: true });
       }
 
+      assertSafeZipBuffer(zipBuffer, targetDir);
+
       const tempZipPath = path.join(targetDir, '__temp_pkg.zip');
       fs.writeFileSync(tempZipPath, zipBuffer);
 
       try {
-        execSync(`tar -xf "${tempZipPath}" -C "${targetDir}"`, { stdio: 'ignore' });
+        execFileSync('tar', ['-xf', tempZipPath, '-C', targetDir], { stdio: 'ignore' });
       } catch {
-        execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${tempZipPath}' -DestinationPath '${targetDir}' -Force"`, { stdio: 'ignore' });
+        if (process.platform === 'win32') {
+          const psScript = `Expand-Archive -LiteralPath '${tempZipPath.replace(/'/g, "''")}' -DestinationPath '${targetDir.replace(/'/g, "''")}' -Force`;
+          const encodedPs = Buffer.from(psScript, 'utf16le').toString('base64');
+          execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedPs], { stdio: 'ignore' });
+        } else {
+          execFileSync('unzip', ['-q', '-o', tempZipPath, '-d', targetDir], { stdio: 'ignore' });
+        }
       } finally {
         if (fs.existsSync(tempZipPath)) {
           fs.rmSync(tempZipPath, { force: true });
@@ -287,7 +374,7 @@ export function installExtension(dto: InstallExtensionDTO): ExtensionItem {
     description: description || undefined,
     enabled: true,
     sourceType: 'unpacked',
-    sourcePath: dto.sourcePath,
+    sourcePath: srcPath,
     iconPath,
     installedAt: now,
   };
@@ -307,7 +394,7 @@ export async function installFromWebStoreUrl(profileId: string, webStoreUrl: str
     extId = urlMatch[1].toLowerCase();
   }
 
-  if (extId.length !== 32) {
+  if (!/^[a-z]{32}$/.test(extId)) {
     throw new Error('Invalid Chrome Web Store URL or 32-character extension ID');
   }
 
@@ -350,6 +437,13 @@ export function toggleExtension(profileId: string, extensionId: string, enabled:
   return true;
 }
 
+function isStrictlyInsideRoot(candidate: string, root: string): boolean {
+  const resolvedCandidate = path.resolve(candidate);
+  const resolvedRoot = path.resolve(root);
+  const rel = path.relative(resolvedRoot, resolvedCandidate);
+  return Boolean(rel && !rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
 export function removeExtension(profileId: string, extensionId: string): boolean {
   const db = getDatabase();
   const row = db.prepare('SELECT * FROM extensions WHERE profile_id = ? AND id = ?').get(profileId, extensionId) as {
@@ -360,11 +454,22 @@ export function removeExtension(profileId: string, extensionId: string): boolean
 
   if (row?.source_path && fs.existsSync(row.source_path)) {
     try {
-      if (row.source_path.includes(path.join('Default', 'Extensions'))) {
-        const extParent = path.dirname(row.source_path);
-        fs.rmSync(extParent, { recursive: true, force: true });
-      } else {
-        fs.rmSync(row.source_path, { recursive: true, force: true });
+      const profile = getProfileById(profileId);
+      const allowedRoots = [path.resolve(getProfilesDirectory())];
+      if (profile?.storagePath) {
+        allowedRoots.push(path.resolve(profile.storagePath));
+      }
+      const resolvedSrc = path.resolve(row.source_path);
+      const isManagedProfilePath = allowedRoots.some((root) => isStrictlyInsideRoot(resolvedSrc, root));
+      if (isManagedProfilePath) {
+        if (resolvedSrc.includes(path.join('Default', 'Extensions'))) {
+          const extParent = path.dirname(resolvedSrc);
+          if (allowedRoots.some((root) => isStrictlyInsideRoot(extParent, root))) {
+            fs.rmSync(extParent, { recursive: true, force: true });
+          }
+        } else {
+          fs.rmSync(resolvedSrc, { recursive: true, force: true });
+        }
       }
     } catch (rmErr) {
       console.warn(`[ExtensionService] Could not remove files at ${row.source_path}:`, rmErr);

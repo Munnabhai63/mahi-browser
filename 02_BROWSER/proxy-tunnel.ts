@@ -1,6 +1,7 @@
 import net from 'node:net';
 import tls from 'node:tls';
 import http from 'node:http';
+import https from 'node:https';
 import stream from 'node:stream';
 import { bridgeConnectOverSocks5, forwardHttpRequestOverSocks5 } from './socks-tunnel.js';
 
@@ -58,12 +59,15 @@ export function checkUpstreamReachability(
 
     let socket: net.Socket;
     if (protocol === 'https') {
-      socket = tls.connect({
+      const tlsOpts: tls.ConnectionOptions = {
         host,
         port,
-        rejectUnauthorized: false,
-        servername: host,
-      }, onConnected);
+        rejectUnauthorized: process.env.MAHI_ALLOW_SELF_SIGNED_PROXY !== '1',
+      };
+      if (!net.isIP(host)) {
+        tlsOpts.servername = host;
+      }
+      socket = tls.connect(tlsOpts, onConnected);
     } else {
       socket = net.connect(port, host, onConnected);
     }
@@ -94,10 +98,13 @@ export async function createProxyTunnel(options: ProxyTunnelOptions): Promise<Pr
   const protoLower = upstreamProtocol.toLowerCase();
   const isHttpsUpstream = protoLower === 'https';
   const isSocksUpstream = protoLower === 'socks5' || protoLower === 'socks4';
+  const socksVersion: 4 | 5 = protoLower === 'socks4' ? 4 : 5;
+  const allowInsecureTls = process.env.MAHI_ALLOW_SELF_SIGNED_PROXY === '1';
 
-  const authHeader = username && password
-    ? `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`
-    : null;
+  const authHeader =
+    username !== undefined && username !== ''
+      ? `Basic ${Buffer.from(`${username}:${password ?? ''}`).toString('base64')}`
+      : null;
 
   debugLog(`[ProxyTunnel] Initializing authenticating tunnel for profile "${profileId}" -> ${upstreamProtocol}://${upstreamHost}:${upstreamPort}`);
 
@@ -109,7 +116,7 @@ export async function createProxyTunnel(options: ProxyTunnelOptions): Promise<Pr
       const tlsOpts: tls.ConnectionOptions = {
         host: upstreamHost,
         port: upstreamPort,
-        rejectUnauthorized: false,
+        rejectUnauthorized: !allowInsecureTls,
       };
       if (!net.isIP(upstreamHost)) {
         tlsOpts.servername = upstreamHost;
@@ -129,28 +136,47 @@ export async function createProxyTunnel(options: ProxyTunnelOptions): Promise<Pr
         proxyPort: upstreamPort,
         username,
         password,
+        socksVersion,
         socketTimeoutMs: SOCKET_TIMEOUT,
         log: debugLog,
       });
       return;
     }
 
-    // Plain HTTP Request Forwarding
+    // Plain HTTP Request Forwarding (supports HTTP or TLS-encrypted HTTPS upstream proxies)
     const headers = { ...clientReq.headers };
     if (authHeader) {
       headers['proxy-authorization'] = authHeader;
     }
 
-    const proxyReq = http.request({
+    const reqOptions: https.RequestOptions = {
       host: upstreamHost,
       port: upstreamPort,
       method: clientReq.method,
       path: clientReq.url,
       headers,
       timeout: SOCKET_TIMEOUT,
-    }, (proxyRes) => {
+      ...(isHttpsUpstream
+        ? {
+            rejectUnauthorized: !allowInsecureTls,
+            ...(!net.isIP(upstreamHost) ? { servername: upstreamHost } : {}),
+          }
+        : {}),
+    };
+
+    const proxyReq = (isHttpsUpstream ? https : http).request(reqOptions, (proxyRes) => {
       clientRes.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
       proxyRes.pipe(clientRes);
+    });
+
+    const destroyUpstream = () => {
+      if (!proxyReq.destroyed) {
+        try { proxyReq.destroy(); } catch {}
+      }
+    };
+    clientReq.on('aborted', destroyUpstream);
+    clientRes.on('close', () => {
+      if (!clientRes.writableEnded) destroyUpstream();
     });
 
     proxyReq.on('error', (err) => {
@@ -180,6 +206,7 @@ export async function createProxyTunnel(options: ProxyTunnelOptions): Promise<Pr
         proxyPort: upstreamPort,
         username,
         password,
+        socksVersion,
         activeSockets,
         socketTimeoutMs: SOCKET_TIMEOUT,
         log: debugLog,

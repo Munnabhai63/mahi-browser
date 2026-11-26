@@ -19,9 +19,9 @@ function generateReleaseManifest(options = {}) {
   const pkgPath = path.join(__dirname, '..', 'package.json');
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 
-  const version = options.version || pkg.version || '1.1.1';
+  const version = options.version || pkg.version || '1.4.0';
   const channel = options.channel || (version.includes('beta') ? 'BETA' : 'STABLE');
-  const releaseNotes = options.releaseNotes || 'Production release with multi-user workspaces and performance optimizations.';
+  const releaseNotes = options.releaseNotes || 'MAHI Browser v1.4.0: Delta cloud sync, Mobile 4G/5G IP Rotator, local CDP automation bridge, anti-detect engine hardening & P0/P1/P2 security updates.';
 
   if (!fs.existsSync(releaseDir)) {
     fs.mkdirSync(releaseDir, { recursive: true });

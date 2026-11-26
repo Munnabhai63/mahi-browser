@@ -56,6 +56,17 @@ import { getWebAdminHtml } from '../server/web-admin-html.js';
 import { getSuperAdminHtml } from '../server/super-admin-html.js';
 import { getDownloadPortalHtml } from '../server/download-portal-html.js';
 import { getDistributionInfo } from '../../03_HARDWARE/distribution-service.js';
+import {
+  checkPublicIp,
+  getConnectedAdbDevices,
+  getAdbEnvironmentStatus,
+  installAdbPlatformTools,
+  rotateMobileIp,
+  getRotatorConfig,
+  saveRotatorConfig,
+  getRotationHistory,
+  clearRotationHistory,
+} from '../../03_HARDWARE/mobile-rotator-service.js';
 import { getFolders, createFolder } from '../../02_BROWSER/services/folder-service.js';
 import { getFeatureFlags, updateFeatureFlag } from '../services/feature-flag-service.js';
 import { getFleetDevices, getLiveTelemetry, revokeDevice } from '../services/fleet-service.js';
@@ -202,7 +213,13 @@ export function authenticateRequest(req: http.IncomingMessage, parsedUrl: URL, b
   if (tokenToTest) {
     if (isValidApiToken(tokenToTest)) {
       if (isAppPackaged() && process.env.MAHI_ENABLE_LOCAL_SUPER_ADMIN !== '1') {
-        return { authenticated: false };
+        // In packaged builds, local daemon token grants scoped automation/extension client access only (never master_admin).
+        return {
+          authenticated: true,
+          role: 'user',
+          userId: getLocalApiOwnerId(),
+          scopes: ['profiles:read', 'profiles:write', 'profiles:launch', 'proxies:read', 'proxies:write', 'automation:run', 'sync:read', 'sync:write', 'rotator:read', 'rotator:write'],
+        };
       }
       return { authenticated: true, role: 'master_admin', userId: 'MASTER_ADMIN', scopes: ['*'] };
     }
@@ -1089,7 +1106,13 @@ export async function handleLocalApiRequest(
       // /profiles/:id/warmer-queue
       const queueMatch = pathname.match(/^\/profiles\/([^/]+)\/warmer-queue$/);
       if (queueMatch && method === 'GET') {
-        const id = queueMatch[1];
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:read')) return;
+        const id = decodeURIComponent(queueMatch[1]);
+        const activeOwnerId = getLocalApiOwnerId();
+        const existing = getProfileById(id, activeOwnerId);
+        if (!existing) {
+          return sendJSON(res, 404, { success: false, error: 'Profile not found or access denied' });
+        }
         const storageDir = getProfileStoragePath(id);
         const qFile = path.join(storageDir, 'mahi_warmer_queue.json');
         if (fs.existsSync(qFile)) {
@@ -1110,6 +1133,7 @@ export async function handleLocalApiRequest(
       // MostLogin Parity & 1-Click Extraction: /proxy/extract/third/proxy and /api/v1/proxy/extract
       if ((pathname === '/proxy/extract/third/proxy' || pathname === '/api/v1/proxy/extract') && method === 'POST') {
         const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'proxies:write')) return;
         const providerName = (body.provider || 'smartproxy').toLowerCase();
         const count = Math.min(Math.max(Number(body.count) || 1, 1), 50);
         const country = body.country || 'US';
@@ -1159,6 +1183,7 @@ export async function handleLocalApiRequest(
       }
 
       if (pathname === '/proxies' && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'proxies:read')) return;
         const proxies = getProxies();
         sendJSON(res, 200, { success: true, data: proxies });
         return;
@@ -1166,6 +1191,7 @@ export async function handleLocalApiRequest(
 
       if (pathname === '/proxies' && method === 'POST') {
         const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'proxies:write')) return;
         const proxy = createProxy(body);
         sendJSON(res, 201, { success: true, data: proxy });
         return;
@@ -1175,16 +1201,19 @@ export async function handleLocalApiRequest(
       if (proxyMatch) {
         const id = proxyMatch[1];
         if (method === 'GET') {
+          if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'proxies:read')) return;
           const proxy = getProxyById(id);
           if (!proxy) return sendJSON(res, 404, { error: 'Proxy not found' });
           return sendJSON(res, 200, { success: true, data: proxy });
         }
         if (method === 'PUT') {
           const body = await parseBody(req);
+          if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'proxies:write')) return;
           const proxy = updateProxy(id, body);
           return sendJSON(res, 200, { success: true, data: proxy });
         }
         if (method === 'DELETE') {
+          if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'proxies:write')) return;
           const ok = deleteProxy(id);
           return sendJSON(res, 200, { success: ok });
         }
@@ -1193,6 +1222,7 @@ export async function handleLocalApiRequest(
       // AUTOMATION RUN
       if (pathname === '/automation/run' && method === 'POST') {
         const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'automation:run')) return;
         const result = await runWorkflow(body);
         return sendJSON(res, 200, { success: true, data: result });
       }
@@ -1253,10 +1283,19 @@ export async function handleLocalApiRequest(
 
 
       if (pathname === '/admin/licenses' && method === 'GET') {
+        if (!isLocalSuperAdminEnabled()) {
+          return sendJSON(res, 403, { error: 'Forbidden. Local admin license operations are disabled.' });
+        }
+        const clientIp = getClientIp(req);
+        if (!checkSuperAdminRateLimit(clientIp)) {
+          return sendJSON(res, 429, { error: 'Too many failed authentication attempts. Try again later.' });
+        }
         const adminSecret = req.headers['x-admin-secret'] as string || parsedUrl.searchParams.get('adminSecret') || '';
         if (!verifyAdminAccess(adminSecret)) {
+          recordFailedSuperAdminAttempt(clientIp);
           return sendJSON(res, 403, { error: 'Forbidden. Admin authentication required.' });
         }
+        recordSuccessfulSuperAdminAttempt(clientIp);
         const status = parsedUrl.searchParams.get('status') || undefined;
         const search = parsedUrl.searchParams.get('search') || undefined;
         const licenses = getLicenses({ status, searchQuery: search });
@@ -1264,10 +1303,20 @@ export async function handleLocalApiRequest(
       }
 
       if (pathname === '/admin/license/revoke' && method === 'POST') {
+        if (!isLocalSuperAdminEnabled()) {
+          return sendJSON(res, 403, { error: 'Forbidden. Local admin license operations are disabled.' });
+        }
+        const clientIp = getClientIp(req);
+        if (!checkSuperAdminRateLimit(clientIp)) {
+          return sendJSON(res, 429, { error: 'Too many failed authentication attempts. Try again later.' });
+        }
         const body = await parseBody(req);
-        if (!verifyAdminAccess(body.adminSecret)) {
+        const adminSecret = (req.headers['x-admin-secret'] as string) || body.adminSecret || '';
+        if (!verifyAdminAccess(adminSecret)) {
+          recordFailedSuperAdminAttempt(clientIp);
           return sendJSON(res, 403, { error: 'Forbidden. Admin authentication required.' });
         }
+        recordSuccessfulSuperAdminAttempt(clientIp);
         try {
           const ok = await revokeLicense(body.licenseId, body.reason);
           return sendJSON(res, ok ? 200 : 404, { success: ok });
@@ -1278,10 +1327,20 @@ export async function handleLocalApiRequest(
       }
 
       if (pathname === '/admin/license/extend' && method === 'POST') {
+        if (!isLocalSuperAdminEnabled()) {
+          return sendJSON(res, 403, { error: 'Forbidden. Local admin license operations are disabled.' });
+        }
+        const clientIp = getClientIp(req);
+        if (!checkSuperAdminRateLimit(clientIp)) {
+          return sendJSON(res, 429, { error: 'Too many failed authentication attempts. Try again later.' });
+        }
         const body = await parseBody(req);
-        if (!verifyAdminAccess(body.adminSecret)) {
+        const adminSecret = (req.headers['x-admin-secret'] as string) || body.adminSecret || '';
+        if (!verifyAdminAccess(adminSecret)) {
+          recordFailedSuperAdminAttempt(clientIp);
           return sendJSON(res, 403, { error: 'Forbidden. Admin authentication required.' });
         }
+        recordSuccessfulSuperAdminAttempt(clientIp);
         try {
           const record = await extendLicense(body);
           if (!record) return sendJSON(res, 404, { error: 'License not found' });
@@ -1294,19 +1353,38 @@ export async function handleLocalApiRequest(
 
       const devicesMatch = pathname.match(/^\/admin\/license\/([^/]+)\/devices$/);
       if (devicesMatch && method === 'GET') {
+        if (!isLocalSuperAdminEnabled()) {
+          return sendJSON(res, 403, { error: 'Forbidden. Local admin license operations are disabled.' });
+        }
+        const clientIp = getClientIp(req);
+        if (!checkSuperAdminRateLimit(clientIp)) {
+          return sendJSON(res, 429, { error: 'Too many failed authentication attempts. Try again later.' });
+        }
         const adminSecret = req.headers['x-admin-secret'] as string || parsedUrl.searchParams.get('adminSecret') || '';
         if (!verifyAdminAccess(adminSecret)) {
+          recordFailedSuperAdminAttempt(clientIp);
           return sendJSON(res, 403, { error: 'Forbidden. Admin authentication required.' });
         }
+        recordSuccessfulSuperAdminAttempt(clientIp);
         const devices = getLicenseDevices(devicesMatch[1]);
         return sendJSON(res, 200, { success: true, data: devices });
       }
 
       if (pathname === '/admin/license/deactivate-device' && method === 'POST') {
+        if (!isLocalSuperAdminEnabled()) {
+          return sendJSON(res, 403, { error: 'Forbidden. Local admin license operations are disabled.' });
+        }
+        const clientIp = getClientIp(req);
+        if (!checkSuperAdminRateLimit(clientIp)) {
+          return sendJSON(res, 429, { error: 'Too many failed authentication attempts. Try again later.' });
+        }
         const body = await parseBody(req);
-        if (!verifyAdminAccess(body.adminSecret)) {
+        const adminSecret = (req.headers['x-admin-secret'] as string) || body.adminSecret || '';
+        if (!verifyAdminAccess(adminSecret)) {
+          recordFailedSuperAdminAttempt(clientIp);
           return sendJSON(res, 403, { error: 'Forbidden. Admin authentication required.' });
         }
+        recordSuccessfulSuperAdminAttempt(clientIp);
         const ok = deactivateDevice(body.licenseId, body.deviceId);
         return sendJSON(res, ok ? 200 : 404, { success: ok });
       }
@@ -1315,11 +1393,13 @@ export async function handleLocalApiRequest(
       // ACTION SYNCHRONIZER (MULTI-WINDOW MIRROR) ROUTES
       // -------------------------------------------------------------
       if ((pathname === '/sync/status' || pathname === '/synchronizer/status') && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'sync:read')) return;
         return sendJSON(res, 200, synchronizerHub.getState());
       }
 
       if ((pathname === '/sync/start' || pathname === '/synchronizer/start') && method === 'POST') {
         const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'sync:write')) return;
         const masterId = body.masterProfileId || body.masterId;
         const active = body.activeProfiles || body.active;
         const state = synchronizerHub.startSync(masterId, active, body.config);
@@ -1327,18 +1407,21 @@ export async function handleLocalApiRequest(
       }
 
       if ((pathname === '/sync/stop' || pathname === '/synchronizer/stop') && method === 'POST') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'sync:write')) return;
         const state = synchronizerHub.stopSync();
         return sendJSON(res, 200, { success: true, state });
       }
 
       if ((pathname === '/sync/config' || pathname === '/synchronizer/config') && method === 'PUT') {
         const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'sync:write')) return;
         const state = synchronizerHub.updateConfig(body);
         return sendJSON(res, 200, { success: true, state });
       }
 
       if ((pathname === '/sync/broadcast' || pathname === '/synchronizer/broadcast') && method === 'POST') {
         const body = await parseBody(req) as { sourceProfileId: string; action: SyncAction };
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'sync:write')) return;
         if (body.sourceProfileId && body.action) {
           synchronizerHub.broadcastAction(body.sourceProfileId, body.action);
         }
@@ -1346,13 +1429,75 @@ export async function handleLocalApiRequest(
       }
 
       if ((pathname === '/sync/events' || pathname === '/synchronizer/events') && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'sync:read')) return;
         const profileId = parsedUrl.searchParams.get('profileId') || 'unknown';
         synchronizerHub.registerClient(profileId, res);
         return;
       }
 
       if ((pathname === '/sync/running-profiles' || pathname === '/synchronizer/running-profiles') && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'sync:read')) return;
         return sendJSON(res, 200, { success: true, runningProfileIds: processManager.getRunningProfileIds() });
+      }
+
+      // -------------------------------------------------------------
+      // MOBILE 4G/5G IP ROTATOR ROUTES
+      // -------------------------------------------------------------
+      if ((pathname === '/mobile-rotator/check-ip' || pathname === '/api/v1/mobile-rotator/check-ip') && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'rotator:read')) return;
+        const ipInfo = await checkPublicIp();
+        return sendJSON(res, 200, ipInfo);
+      }
+
+      if ((pathname === '/mobile-rotator/devices' || pathname === '/api/v1/mobile-rotator/devices') && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'rotator:read')) return;
+        const devices = await getConnectedAdbDevices();
+        return sendJSON(res, 200, devices);
+      }
+
+      if ((pathname === '/mobile-rotator/adb-status' || pathname === '/api/v1/mobile-rotator/adb-status') && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'rotator:read')) return;
+        const status = await getAdbEnvironmentStatus();
+        return sendJSON(res, 200, status);
+      }
+
+      if ((pathname === '/mobile-rotator/install-adb' || pathname === '/api/v1/mobile-rotator/install-adb') && method === 'POST') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'rotator:write')) return;
+        const installResult = await installAdbPlatformTools();
+        return sendJSON(res, installResult.success ? 200 : 500, installResult);
+      }
+
+      if ((pathname === '/mobile-rotator/rotate' || pathname === '/api/v1/mobile-rotator/rotate') && method === 'POST') {
+        const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'rotator:write')) return;
+        try {
+          const result = await rotateMobileIp(body && typeof body === 'object' ? body : undefined);
+          return sendJSON(res, 200, result);
+        } catch (err: unknown) {
+          return sendJSON(res, 400, { success: false, error: sanitizeError(err) });
+        }
+      }
+
+      if ((pathname === '/mobile-rotator/config' || pathname === '/api/v1/mobile-rotator/config') && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'rotator:read')) return;
+        return sendJSON(res, 200, getRotatorConfig());
+      }
+
+      if ((pathname === '/mobile-rotator/config' || pathname === '/api/v1/mobile-rotator/config') && (method === 'POST' || method === 'PUT')) {
+        const body = await parseBody(req);
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'rotator:write')) return;
+        const saved = saveRotatorConfig(body && typeof body === 'object' ? body : {});
+        return sendJSON(res, 200, saved);
+      }
+
+      if ((pathname === '/mobile-rotator/history' || pathname === '/api/v1/mobile-rotator/history') && method === 'GET') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'rotator:read')) return;
+        return sendJSON(res, 200, getRotationHistory());
+      }
+
+      if ((pathname === '/mobile-rotator/history' || pathname === '/api/v1/mobile-rotator/history') && method === 'DELETE') {
+        if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'rotator:write')) return;
+        return sendJSON(res, 200, { success: clearRotationHistory() });
       }
 
       sendJSON(res, 404, { error: `Endpoint ${method} ${pathname} not found` });

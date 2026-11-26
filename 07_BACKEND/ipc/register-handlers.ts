@@ -209,9 +209,13 @@ import {
 import {
   checkPublicIp,
   getConnectedAdbDevices,
+  getAdbEnvironmentStatus,
+  installAdbPlatformTools,
   rotateMobileIp,
   getRotatorConfig,
   saveRotatorConfig,
+  getRotationHistory,
+  clearRotationHistory,
 } from '../../03_HARDWARE/mobile-rotator-service.js';
 import {
   auditProfileFingerprint,
@@ -1850,6 +1854,38 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('mobileRotator:saveConfig', async (_event, config) => {
     try {
       return saveRotatorConfig(config);
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('mobileRotator:getAdbStatus', async () => {
+    try {
+      return await getAdbEnvironmentStatus();
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('mobileRotator:installAdb', async () => {
+    try {
+      return await installAdbPlatformTools();
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('mobileRotator:getHistory', async () => {
+    try {
+      return getRotationHistory();
+    } catch (err) {
+      throw new Error(sanitizeError(err));
+    }
+  });
+
+  ipcMain.handle('mobileRotator:clearHistory', async () => {
+    try {
+      return clearRotationHistory();
     } catch (err) {
       throw new Error(sanitizeError(err));
     }

@@ -672,6 +672,7 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
 
   let context: any = null;
   let browser: any = null;
+  let startedByAutomation = false;
   let hasFailed = false;
   let failedStepId: string | undefined = undefined;
   let totalRetries = 0;
@@ -717,13 +718,42 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
 
       if (isAlreadyRunning) {
         const debugPort = getProfileDebugPort(profile.id);
-        try {
-          browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`, { timeout: 8000 });
+        browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`, { timeout: 8000 });
+        runController.browser = browser;
+        const contexts = browser.contexts();
+        context = contexts.length > 0 ? contexts[0] : await browser.newContext();
+        runController.context = context;
+      } else {
+        // Launch through ProcessManager so full stealth injection, proxy tunnel, and clean preferences apply
+        const launchRes = await processManager.startProfile(profile.id, {
+          mode: 'automation',
+          allowCdpDebugPort: true,
+        });
+        if (launchRes.success) {
+          startedByAutomation = true;
+          const debugPort = processManager.getDebugPort(profile.id) || getProfileDebugPort(profile.id);
+          let connectErr: unknown = null;
+          for (let cdpAttempt = 0; cdpAttempt < 8; cdpAttempt++) {
+            try {
+              browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`, { timeout: 8000 });
+              connectErr = null;
+              break;
+            } catch (err) {
+              connectErr = err;
+              await new Promise((resolve) => setTimeout(resolve, 600));
+            }
+          }
+          if (!browser) {
+            await processManager.stopProfile(profile.id).catch(() => {});
+            startedByAutomation = false;
+            throw connectErr instanceof Error ? connectErr : new Error('Failed to attach Playwright over CDP');
+          }
           runController.browser = browser;
           const contexts = browser.contexts();
           context = contexts.length > 0 ? contexts[0] : await browser.newContext();
           runController.context = context;
-        } catch {
+        } else {
+          // Fallback only if ProcessManager launch returned non-success in mock/test environments
           cleanupStaleLocks(profile.storagePath);
           context = await chromium.launchPersistentContext(profile.storagePath, {
             executablePath,
@@ -744,26 +774,6 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
           });
           runController.context = context;
         }
-      } else {
-        cleanupStaleLocks(profile.storagePath);
-        context = await chromium.launchPersistentContext(profile.storagePath, {
-          executablePath,
-          headless: false,
-          viewport: {
-            width: profile.settings.display.screenWidth,
-            height: profile.settings.display.screenHeight,
-          },
-          userAgent: profile.settings.browser.userAgent,
-          locale: profile.settings.locale.language,
-          timezoneId: profile.settings.locale.timezone,
-          proxy: proxyConfig,
-          args: cleanChromiumArgs,
-          env: {
-            ...process.env,
-            MAHI_CDP_ISOLATED: '1',
-          },
-        });
-        runController.context = context;
       }
     }
 
@@ -1076,9 +1086,12 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
     // Clean up active run controller
     activeRuns.delete(executionId);
 
-    if (isAlreadyRunning) {
+    if (isAlreadyRunning || startedByAutomation) {
       if (browser) {
         try { await browser.close(); } catch {}
+      }
+      if (startedByAutomation) {
+        try { await processManager.stopProfile(profile.id); } catch {}
       }
     } else {
       if (context) {

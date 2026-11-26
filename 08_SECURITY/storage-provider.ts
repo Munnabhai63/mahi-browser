@@ -63,9 +63,22 @@ export class LocalStorageProvider implements ObjectStorageProvider {
   }
 
   private resolveFilePath(objectKey: string): string {
-    // Prevent directory traversal
-    const safeKey = objectKey.replace(/\\/g, '/').replace(/\.\./g, '');
-    return path.join(this.storageDir, safeKey);
+    if (!objectKey || typeof objectKey !== 'string' || objectKey.includes('\0')) {
+      throw new Error('Invalid storage object key');
+    }
+    const normalized = objectKey.replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!normalized) {
+      throw new Error('Empty storage object key');
+    }
+    const rootDir = path.resolve(this.storageDir);
+    const resolved = path.resolve(rootDir, normalized);
+    if (resolved !== rootDir && !resolved.startsWith(rootDir + path.sep)) {
+      throw new Error(`Invalid object key outside storage root: ${objectKey}`);
+    }
+    if (resolved === rootDir) {
+      throw new Error('Object key cannot resolve to storage root');
+    }
+    return resolved;
   }
 
   private generateToken(objectKey: string, action: 'upload' | 'download' | 'delete', expiresAt: number): string {

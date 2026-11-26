@@ -419,11 +419,15 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     openSaveDialog: async () => null,
 
     // Mobile IP Rotator
-    mobileRotatorCheckIp: async () => { try { return await apiGet('/mobile-rotator/check-ip'); } catch { return { ip: '127.0.0.1' }; } },
+    mobileRotatorCheckIp: async () => { try { return await apiGet('/mobile-rotator/check-ip'); } catch { return { ip: 'Unknown', error: 'Local API daemon unavailable' }; } },
     mobileRotatorGetDevices: async () => { try { return await apiGet('/mobile-rotator/devices'); } catch { return []; } },
     mobileRotatorRotate: async (config) => { const r = await apiPost('/mobile-rotator/rotate', config || {}); return r.data || r; },
     mobileRotatorGetConfig: async () => { try { return await apiGet('/mobile-rotator/config'); } catch { return {}; } },
     mobileRotatorSaveConfig: async (config) => { const r = await apiPost('/mobile-rotator/config', config); return r.data || r; },
+    mobileRotatorGetAdbStatus: async () => { try { return await apiGet('/mobile-rotator/adb-status'); } catch { return { installed: false, adbPath: null, source: 'missing' }; } },
+    mobileRotatorInstallAdb: async () => { return await apiPost('/mobile-rotator/install-adb', {}); },
+    mobileRotatorGetHistory: async () => { try { return await apiGet('/mobile-rotator/history'); } catch { return []; } },
+    mobileRotatorClearHistory: async () => { try { await apiDelete('/mobile-rotator/history'); return true; } catch { return false; } },
 
     // Universal Bulk Importer
     importerParsePreview: async (rawText) => { try { return (await apiPost('/importer/preview', { rawText })).data || []; } catch { return []; } },
@@ -853,101 +857,95 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
       },
     }),
     accountCreateCheckoutSession: async () => ({
-      success: true,
-      session: {
-        sessionId: 'sim_cs_mock',
-        checkoutUrl: 'https://checkout.mahibrowser.com/sim/pay/mock',
-        orderId: 'sim_ord_mock',
-        amountCents: 299900,
-        currency: 'INR',
-        provider: 'simulation',
-        planId: 'professional_50',
-        billingCycle: 'ANNUAL',
-        createdAt: new Date().toISOString(),
-      },
+      success: false,
+      error: 'DESKTOP_OR_SERVER_REQUIRED: Checkout session creation requires desktop runtime or live payment backend.',
     }),
     accountSubmitManualUpiPayment: async () => ({
-      success: true,
-      payment_id: 'pay_mock_123',
-      status: 'PENDING_VERIFICATION',
-      message: 'Submitted for verification',
+      success: false,
+      error: 'DESKTOP_OR_SERVER_REQUIRED: Manual UPI submission requires desktop runtime or live billing API.',
     }),
     accountGetPaymentStatus: async () => ({
-      success: true,
+      success: false,
       payments: [],
+      error: 'DESKTOP_OR_SERVER_REQUIRED: Payment status unavailable offline.',
     }),
-    accountGetPlanLimits: async (dto?: { force?: boolean }) => ({ isPro: false, plan: 'free', maxProfiles: 15, expiresAt: null }),
-    accountRefreshPlanLimits: async () => ({ isPro: false, plan: 'free', maxProfiles: 15, expiresAt: null }),
-    accountVerifyEmail: async () => ({ success: true }),
-    accountResendVerification: async () => ({ success: true }),
-    accountForgotPassword: async () => ({ success: true, message: 'Password reset link sent.' }),
-    accountResetPassword: async () => ({ success: true }),
-    accountListSessions: async () => ({ success: true, sessions: [{ id: 'sess-1', device_name: 'Current PC', is_current: true, last_used_at: new Date().toISOString() }] }),
-    accountRevokeSession: async () => ({ success: true }),
-    accountRevokeAllSessions: async () => ({ success: true }),
+    accountGetPlanLimits: async (_dto?: { force?: boolean }) => ({ isPro: false, plan: 'free', maxProfiles: 1, expiresAt: null }),
+    accountRefreshPlanLimits: async () => ({ isPro: false, plan: 'free', maxProfiles: 1, expiresAt: null }),
+    accountVerifyEmail: async () => ({ success: false, error: 'SERVER_UNAVAILABLE: Email verification requires live auth server.' }),
+    accountResendVerification: async () => ({ success: false, error: 'SERVER_UNAVAILABLE: Verification resend requires live auth server.' }),
+    accountForgotPassword: async () => ({ success: false, message: 'Password reset requires live auth server or desktop connection.' }),
+    accountResetPassword: async () => ({ success: false, error: 'SERVER_UNAVAILABLE: Password reset requires live auth server.' }),
+    accountListSessions: async () => ({ success: false, sessions: [], error: 'SERVER_UNAVAILABLE: Active sessions require live auth server.' }),
+    accountRevokeSession: async () => ({ success: false, error: 'SERVER_UNAVAILABLE: Session revocation requires live auth server.' }),
+    accountRevokeAllSessions: async () => ({ success: false, error: 'SERVER_UNAVAILABLE: Session revocation requires live auth server.' }),
     accountRefreshToken: async () => ({ success: false, error: 'NO_SESSION: No active account session to refresh.' }),
     accountStartDesktopOAuth: async () => ({ success: false, ticket: '', authUrl: '', error: 'DESKTOP_REQUIRED: Desktop OAuth requires native desktop runtime.' }),
     accountExchangeDesktopCode: async () => ({ success: false, error: 'DESKTOP_REQUIRED: Code exchange requires native desktop runtime.' }),
     accountActivateTrial: async () => ({ success: false, message: 'DESKTOP_REQUIRED: Trial activation requires native desktop runtime.' }),
-    accountGetTrialStatus: async () => ({ success: true, isTrialActive: false, daysRemaining: 0, isEligibleForTrial: true }),
+    accountGetTrialStatus: async () => ({ success: false, isTrialActive: false, daysRemaining: 0, isEligibleForTrial: false }),
     onAccountStatusChanged: () => () => {},
 
     // Commercial Proxy Provider Platform (Phase 5)
-    getProxyCatalog: async () => ({
-      providers: [],
-      availableCountries: [
-        { code: 'US', name: 'United States', supportedTypes: ['RESIDENTIAL', 'MOBILE', 'DATACENTER', 'ISP'] },
-        { code: 'GB', name: 'United Kingdom', supportedTypes: ['RESIDENTIAL', 'MOBILE', 'DATACENTER'] },
-        { code: 'DE', name: 'Germany', supportedTypes: ['RESIDENTIAL', 'DATACENTER'] },
-      ],
-      supportedNetworkTypes: ['RESIDENTIAL', 'MOBILE', 'DATACENTER', 'ISP'],
-      supportedSessionTypes: ['STICKY', 'ROTATING'],
-    }),
-    getProxyProviders: async () => [],
-    generateProxySession: async () => ({
-      session: {
-        id: 'mock-sess-1',
-        providerId: 'mock',
-        proxyId: 'mock-proxy-1',
-        userId: 'default-user',
-        networkType: 'RESIDENTIAL',
-        country: 'US',
-        sessionType: 'STICKY',
-        sessionId: 'mock_sess_1',
-        rotatable: true,
-        rotationCount: 0,
-        status: 'ACTIVE',
-        bytesUsed: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      proxy: {
-        id: 'mock-proxy-1',
-        name: 'Mock Proxy',
-        protocol: 'http',
-        host: '127.0.0.1',
-        port: 8080,
-        status: 'CONNECTED',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    }),
-    rotateProxySession: async () => ({
-      success: true,
-      sessionId: 'mock-sess-1',
-      newIp: '185.220.101.5',
-      rotationCount: 1,
-    }),
-    releaseProxySession: async () => true,
-    getProxySessions: async () => [],
-    getProxyUsage: async () => ({
-      userId: 'default-user',
-      bytesUsed: 0,
-      bytesLimit: 53687091200,
-      bytesRemaining: 53687091200,
-      activeSessionCount: 0,
-      lastUpdated: new Date().toISOString(),
-    }),
+    getProxyCatalog: async () => {
+      try {
+        const r = await apiGet('/api/v1/remote/proxies/catalog');
+        return r.data || r;
+      } catch {
+        return {
+          providers: [],
+          availableCountries: [],
+          supportedNetworkTypes: [],
+          supportedSessionTypes: [],
+        };
+      }
+    },
+    getProxyProviders: async () => {
+      try {
+        const r = await apiGet('/api/v1/remote/proxies/providers');
+        return Array.isArray(r) ? r : (r.data || []);
+      } catch {
+        return [];
+      }
+    },
+    generateProxySession: async (req) => {
+      const r = await apiPost('/api/v1/remote/proxies/generate', req);
+      return r.data || r;
+    },
+    rotateProxySession: async (sessionId) => {
+      const r = await apiPost(`/api/v1/remote/proxies/${encodeURIComponent(sessionId)}/rotate`, {});
+      return r.data || r;
+    },
+    releaseProxySession: async (sessionId) => {
+      try {
+        await apiDelete(`/api/v1/remote/proxies/${encodeURIComponent(sessionId)}`);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    getProxySessions: async () => {
+      try {
+        const r = await apiGet('/api/v1/remote/proxies/sessions');
+        return Array.isArray(r) ? r : (r.data || []);
+      } catch {
+        return [];
+      }
+    },
+    getProxyUsage: async () => {
+      try {
+        const r = await apiGet('/api/v1/remote/proxies/usage');
+        return r.data || r;
+      } catch {
+        return {
+          userId: 'offline',
+          bytesUsed: 0,
+          bytesLimit: 0,
+          bytesRemaining: 0,
+          activeSessionCount: 0,
+          lastUpdated: new Date().toISOString(),
+        };
+      }
+    },
   isDesktop: false,
 };
 

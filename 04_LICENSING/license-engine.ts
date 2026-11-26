@@ -14,6 +14,20 @@ import {
 } from '../10_CONFIG/shared/types/license.js';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { getDeviceId, getLegacyDeviceId, getDeviceName } from '../03_HARDWARE/device-id.js';
+import { getInstallSecrets } from '../08_SECURITY/install-secrets.js';
+
+function signLocalLicenseCache(licenseId: string, status: string, graceExpires: string): string {
+  const hmacKey = getInstallSecrets().adminSalt || getInstallSecrets().jwtSecret;
+  return crypto.createHmac('sha256', hmacKey).update(`${licenseId}|${status}|${graceExpires}`).digest('hex');
+}
+
+function verifyLocalLicenseCacheSignature(licenseId: string, status: string, graceExpires: string, signature: string): boolean {
+  if (!signature || !/^[0-9a-f]+$/i.test(signature)) return false;
+  const expected = signLocalLicenseCache(licenseId, status, graceExpires);
+  const sigBuf = Buffer.from(signature, 'hex');
+  const expBuf = Buffer.from(expected, 'hex');
+  return sigBuf.length > 0 && sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf);
+}
 
 // Offline grace period in milliseconds (72 hours)
 const OFFLINE_GRACE_PERIOD_MS = 72 * 60 * 60 * 1000;
@@ -293,7 +307,7 @@ export function activateLicense(
   // Update validation timestamp
   db.prepare("UPDATE licenses SET status = 'ACTIVE', last_validation_at = ? WHERE id = ?").run(now, row.id);
 
-  // Cache locally
+  // Cache locally using per-install HMAC key
   const graceExpires = new Date(Date.now() + OFFLINE_GRACE_PERIOD_MS).toISOString();
   db.prepare('DELETE FROM local_license_cache').run();
   db.prepare(`
@@ -306,7 +320,7 @@ export function activateLicense(
     deviceId,
     now,
     graceExpires,
-    crypto.createHmac('sha256', 'mahi_salt').update(`${row.id}|ACTIVE|${graceExpires}`).digest('hex')
+    signLocalLicenseCache(row.id, 'ACTIVE', graceExpires)
   );
 
   logActivity('SECURITY', 'SUCCESS', 'Activate License', `Device "${deviceName}" activated for "${row.customer_name}"`, undefined, row.customer_name);
@@ -336,12 +350,48 @@ export function validateCurrentLicense(targetDeviceId?: string): LicenseValidati
     return { isValid: false, status: 'NOT_ACTIVATED', message: 'License record not found.' };
   }
 
+  if (
+    !verifyLocalLicenseCacheSignature(
+      cache.license_id,
+      cache.cached_status || 'ACTIVE',
+      cache.grace_expires_at || '',
+      cache.signature || ''
+    )
+  ) {
+    return {
+      isValid: false,
+      status: 'SUSPENDED',
+      license,
+      message: 'Local license cache signature invalid. Please re-activate your license.',
+    };
+  }
+
+  if (cache.grace_expires_at) {
+    const graceTime = Date.parse(cache.grace_expires_at);
+    if (Number.isFinite(graceTime) && graceTime < Date.now()) {
+      return {
+        isValid: false,
+        status: 'EXPIRED',
+        license,
+        message: 'Offline license validation grace period expired. Please reconnect to re-verify.',
+      };
+    }
+  }
+
   if (license.status === 'REVOKED') {
     return { isValid: false, status: 'REVOKED', license, message: 'Your MAHI Pro license has been revoked.' };
   }
 
-  if (license.status === 'EXPIRED') {
-    return { isValid: false, status: 'EXPIRED', license, message: 'Your MAHI Pro license has expired.' };
+  if (license.status === 'EXPIRED' || (license.expiresAt && Date.parse(license.expiresAt) <= Date.now())) {
+    if (license.status !== 'EXPIRED') {
+      db.prepare("UPDATE licenses SET status = 'EXPIRED' WHERE id = ?").run(license.id);
+    }
+    return {
+      isValid: false,
+      status: 'EXPIRED',
+      license: { ...license, status: 'EXPIRED' },
+      message: 'Your MAHI Pro license has expired.',
+    };
   }
 
   // Check device status (backward-compatible against stable HWID, cached device_id, and legacy v1.2.2 ID)

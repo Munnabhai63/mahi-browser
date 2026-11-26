@@ -18,11 +18,21 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
-import { exec, execSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { BrowserEngine, Profile } from '../../10_CONFIG/shared/types/profile.js';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+const winCpuPrevSamples = new Map<number, { totalCpuSec: number; timestampMs: number }>();
+
+function encodePowerShellScript(script: string): string {
+  return Buffer.from(script, 'utf16le').toString('base64');
+}
+
+function toPsFromBase64Expr(value: string): string {
+  const b64 = Buffer.from(value, 'utf8').toString('base64');
+  return `[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${b64}'))`;
+}
 
 export type SupportedOs = 'win32' | 'darwin' | 'linux';
 export type SupportedArch = 'x64' | 'arm64' | 'ia32';
@@ -177,9 +187,15 @@ export class PlatformAdapter {
   // ==========================================================================
 
   public async terminateProcess(pid: number, gracefulTimeoutMs = 1500): Promise<boolean> {
+    const safePid = Math.trunc(Number(pid));
+    if (!Number.isFinite(safePid) || safePid <= 0) {
+      return false;
+    }
+
     if (this.isWindows()) {
       try {
-        execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' });
+        await execFileAsync('taskkill', ['/F', '/T', '/PID', String(safePid)], { timeout: 5000 });
+        winCpuPrevSamples.delete(safePid);
         return true;
       } catch {
         return false;
@@ -189,17 +205,17 @@ export class PlatformAdapter {
     // POSIX (macOS & Linux): kill process group
     try {
       try {
-        process.kill(-pid, 'SIGTERM');
+        process.kill(-safePid, 'SIGTERM');
       } catch {
-        process.kill(pid, 'SIGTERM');
+        process.kill(safePid, 'SIGTERM');
       }
 
       await new Promise((r) => setTimeout(r, gracefulTimeoutMs));
 
       try {
-        process.kill(-pid, 'SIGKILL');
+        process.kill(-safePid, 'SIGKILL');
       } catch {
-        try { process.kill(pid, 'SIGKILL'); } catch {}
+        try { process.kill(safePid, 'SIGKILL'); } catch {}
       }
       return true;
     } catch {
@@ -208,14 +224,24 @@ export class PlatformAdapter {
   }
 
   public async focusWindow(pid: number, profileName: string): Promise<boolean> {
+    const safePid = Math.trunc(Number(pid));
+    if (!Number.isFinite(safePid) || safePid <= 0) {
+      return false;
+    }
+
     if (this.isWindows()) {
       try {
-        const script = `
-          $wshell = New-Object -ComObject WScript.Shell
-          $ok = $wshell.AppActivate(${pid})
-          if (-not $ok) { $wshell.AppActivate("${profileName}") }
-        `;
-        exec(`powershell -NoProfile -NonInteractive -Command "${script.replace(/\r?\n\s*/g, ' ')}"`, () => {});
+        const script = [
+          '$wshell = New-Object -ComObject WScript.Shell',
+          `$profName = ${toPsFromBase64Expr(profileName)}`,
+          `$ok = $wshell.AppActivate(${safePid})`,
+          'if (-not $ok) { [void]$wshell.AppActivate($profName) }',
+        ].join('\n');
+        execFile(
+          'powershell',
+          ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodePowerShellScript(script)],
+          () => {}
+        );
         return true;
       } catch {
         return false;
@@ -224,8 +250,8 @@ export class PlatformAdapter {
 
     if (this.isMac()) {
       try {
-        const script = `tell application "System Events" to set frontmost of (first process whose unix id is ${pid}) to true`;
-        exec(`osascript -e '${script}'`, () => {});
+        const script = `tell application "System Events" to set frontmost of (first process whose unix id is ${safePid}) to true`;
+        execFile('osascript', ['-e', script], () => {});
         return true;
       } catch {
         return false;
@@ -234,8 +260,16 @@ export class PlatformAdapter {
 
     // Linux X11/Wayland fallback
     try {
-      exec(`wmctrl -i -a $(wmctrl -lp | awk -v pid=${pid} '$3==pid {print $1; exit}')`, () => {});
-      return true;
+      const { stdout } = await execFileAsync('wmctrl', ['-lp'], { timeout: 2000 });
+      const lines = stdout.split('\n');
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 3 && Number(parts[2]) === safePid) {
+          await execFileAsync('wmctrl', ['-i', '-a', parts[0]], { timeout: 2000 });
+          return true;
+        }
+      }
+      return false;
     } catch {
       return false;
     }
@@ -252,17 +286,16 @@ export class PlatformAdapter {
 
     // 1. Try native bsdtar (Available on Windows 10/11, macOS, and Linux)
     try {
-      await execAsync(`tar -xf "${zipPath}" -C "${destDir}"`);
+      await execFileAsync('tar', ['-xf', zipPath, '-C', destDir]);
       return;
     } catch {}
 
     // 2. Platform-specific fallback
     if (this.isWindows()) {
-      await execAsync(
-        `powershell -NoProfile -NonInteractive -Command "Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${destDir}' -Force"`
-      );
+      const psScript = `Expand-Archive -LiteralPath ${toPsFromBase64Expr(zipPath)} -DestinationPath ${toPsFromBase64Expr(destDir)} -Force`;
+      await execFileAsync('powershell', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodePowerShellScript(psScript)]);
     } else {
-      await execAsync(`unzip -q -o "${zipPath}" -d "${destDir}"`);
+      await execFileAsync('unzip', ['-q', '-o', zipPath, '-d', destDir]);
     }
   }
 
@@ -277,22 +310,33 @@ export class PlatformAdapter {
     iconPath: string
   ): Promise<{ success: boolean; shortcutPath: string; error?: string }> {
     const desktopDir = path.join(os.homedir(), 'Desktop');
-    const safeName = profileName.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'Profile';
+    const safeName = profileName.replace(/[\r\n/\\?%*:|"<>]/g, '-').trim() || 'Profile';
+    const safeProfileId = profileId.replace(/[^a-zA-Z0-9_-]/g, '');
 
     if (this.isWindows()) {
       const shortcutPath = path.join(desktopDir, `MAHI - ${safeName}.lnk`);
       try {
-        const psScript = `
-          $WshShell = New-Object -ComObject WScript.Shell
-          $s = $WshShell.CreateShortcut("${shortcutPath.replace(/\\/g, '\\\\')}")
-          $s.TargetPath = "${appExecutablePath.replace(/\\/g, '\\\\')}"
-          $s.Arguments = "--profile-id=${profileId}"
-          $s.WorkingDirectory = "${process.cwd().replace(/\\/g, '\\\\')}"
-          $s.Description = "Launch MAHI Profile: ${safeName}"
-          if (Test-Path "${iconPath.replace(/\\/g, '\\\\')}") { $s.IconLocation = "${iconPath.replace(/\\/g, '\\\\')},0" }
-          $s.Save()
-        `;
-        execSync(`powershell -NoProfile -ExecutionPolicy Bypass -Command "${psScript.replace(/\r?\n\s*/g, ' ')}"`, { stdio: 'ignore' });
+        const psScript = [
+          '$WshShell = New-Object -ComObject WScript.Shell',
+          `$shortcutPath = ${toPsFromBase64Expr(shortcutPath)}`,
+          `$targetPath = ${toPsFromBase64Expr(appExecutablePath)}`,
+          `$arguments = ${toPsFromBase64Expr(`--profile-id=${safeProfileId}`)}`,
+          `$workDir = ${toPsFromBase64Expr(process.cwd())}`,
+          `$desc = ${toPsFromBase64Expr(`Launch MAHI Profile: ${safeName}`)}`,
+          `$iconFile = ${toPsFromBase64Expr(iconPath || '')}`,
+          '$s = $WshShell.CreateShortcut($shortcutPath)',
+          '$s.TargetPath = $targetPath',
+          '$s.Arguments = $arguments',
+          '$s.WorkingDirectory = $workDir',
+          '$s.Description = $desc',
+          'if ($iconFile -and (Test-Path -LiteralPath $iconFile)) { $s.IconLocation = "$iconFile,0" }',
+          '$s.Save()',
+        ].join('\n');
+        execFileSync(
+          'powershell',
+          ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodePowerShellScript(psScript)],
+          { stdio: 'ignore' }
+        );
         return { success: true, shortcutPath };
       } catch (err: any) {
         return { success: false, shortcutPath: '', error: err.message };
@@ -300,15 +344,17 @@ export class PlatformAdapter {
     }
 
     if (this.isLinux()) {
-      const shortcutPath = path.join(desktopDir, `mahi-${profileId}.desktop`);
+      const shortcutPath = path.join(desktopDir, `mahi-${safeProfileId}.desktop`);
       try {
+        const safeExec = appExecutablePath.replace(/[\r\n"]/g, '');
+        const safeIcon = (iconPath || 'mahi-browser').replace(/[\r\n]/g, '');
         const content = [
           '[Desktop Entry]',
           'Type=Application',
           `Name=MAHI — ${safeName}`,
           `Comment=Launch MAHI Browser Profile ${safeName}`,
-          `Exec="${appExecutablePath}" --profile-id=${profileId}`,
-          `Icon=${iconPath || 'mahi-browser'}`,
+          `Exec="${safeExec}" --profile-id=${safeProfileId}`,
+          `Icon=${safeIcon}`,
           'Terminal=false',
           'Categories=Network;WebBrowser;',
         ].join('\n') + '\n';
@@ -323,7 +369,8 @@ export class PlatformAdapter {
     // macOS: Shell launch script in Desktop
     const shortcutPath = path.join(desktopDir, `MAHI - ${safeName}.command`);
     try {
-      const scriptContent = `#!/bin/bash\n"${appExecutablePath}" --profile-id=${profileId} &\nexit 0\n`;
+      const safeExecShell = appExecutablePath.replace(/'/g, "'\\''").replace(/[\r\n]/g, '');
+      const scriptContent = `#!/bin/bash\n'${safeExecShell}' --profile-id=${safeProfileId} &\nexit 0\n`;
       fs.writeFileSync(shortcutPath, scriptContent, { encoding: 'utf8', mode: 0o755 });
       return { success: true, shortcutPath };
     } catch (err: any) {
@@ -337,33 +384,50 @@ export class PlatformAdapter {
 
   public async sampleProcessResources(pids: number[]): Promise<Record<number, { memoryMB: number; cpuPercent: number }>> {
     const result: Record<number, { memoryMB: number; cpuPercent: number }> = {};
-    if (pids.length === 0) return result;
+    const safePids = pids.map((p) => Math.trunc(Number(p))).filter((p) => Number.isFinite(p) && p > 0);
+    if (safePids.length === 0) return result;
 
     if (this.isWindows()) {
       try {
-        const pidList = pids.join(',');
-        const cmd = `powershell -NoProfile -NonInteractive -Command "Get-Process -Id ${pidList} -ErrorAction SilentlyContinue | Select-Object Id, WorkingSet64, CPU | ConvertTo-Json -Compress"`;
-        const { stdout } = await execAsync(cmd, { timeout: 3000 });
-        const parsed = JSON.parse(stdout.trim());
+        const nowMs = Date.now();
+        const cpuCount = Math.max(1, os.cpus().length);
+        const psScript = `Get-Process -Id ${safePids.join(',')} -ErrorAction SilentlyContinue | Select-Object Id, WorkingSet64, CPU | ConvertTo-Json -Compress`;
+        const { stdout } = await execFileAsync(
+          'powershell',
+          ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodePowerShellScript(psScript)],
+          { timeout: 3000 }
+        );
+        const raw = stdout.trim();
+        if (!raw) return result;
+        const parsed = JSON.parse(raw);
         const items = Array.isArray(parsed) ? parsed : [parsed];
         for (const item of items) {
           if (item && item.Id) {
-            result[item.Id] = {
-              memoryMB: Math.round((item.WorkingSet64 || 0) / (1024 * 1024)) || 120,
-              cpuPercent: item.CPU ? Number((item.CPU % 10).toFixed(1)) : 0.5,
+            const pidNum = Number(item.Id);
+            const totalCpuSec = typeof item.CPU === 'number' && Number.isFinite(item.CPU) ? item.CPU : 0;
+            let cpuPercent = 0;
+            const prev = winCpuPrevSamples.get(pidNum);
+            if (prev && nowMs > prev.timestampMs && totalCpuSec >= prev.totalCpuSec) {
+              const dtSec = (nowMs - prev.timestampMs) / 1000;
+              cpuPercent = Math.min(100, Number((((totalCpuSec - prev.totalCpuSec) / (dtSec * cpuCount)) * 100).toFixed(1)));
+            }
+            winCpuPrevSamples.set(pidNum, { totalCpuSec, timestampMs: nowMs });
+            result[pidNum] = {
+              memoryMB: Math.round((item.WorkingSet64 || 0) / (1024 * 1024)),
+              cpuPercent,
             };
           }
         }
         return result;
       } catch {
-        pids.forEach((p) => { result[p] = { memoryMB: 125, cpuPercent: 0.5 }; });
+        safePids.forEach((p) => { result[p] = { memoryMB: 0, cpuPercent: 0 }; });
         return result;
       }
     }
 
     // POSIX (macOS & Linux) via ps
     try {
-      const { stdout } = await execAsync(`ps -p ${pids.join(',')} -o pid=,rss=,%cpu=`, { timeout: 3000 });
+      const { stdout } = await execFileAsync('ps', ['-p', safePids.join(','), '-o', 'pid=,rss=,%cpu='], { timeout: 3000 });
       const lines = stdout.trim().split('\n');
       for (const line of lines) {
         const parts = line.trim().split(/\s+/);
@@ -373,14 +437,14 @@ export class PlatformAdapter {
           const cpu = parseFloat(parts[2]);
           if (!isNaN(pid)) {
             result[pid] = {
-              memoryMB: Math.round(rssKB / 1024) || 120,
-              cpuPercent: !isNaN(cpu) ? cpu : 0.5,
+              memoryMB: Math.round(rssKB / 1024),
+              cpuPercent: !isNaN(cpu) ? cpu : 0,
             };
           }
         }
       }
     } catch {
-      pids.forEach((p) => { result[p] = { memoryMB: 120, cpuPercent: 0.5 }; });
+      safePids.forEach((p) => { result[p] = { memoryMB: 0, cpuPercent: 0 }; });
     }
     return result;
   }

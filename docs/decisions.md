@@ -1,5 +1,12 @@
 # Decisions Log
 
+## 2026-11-26 - Mobile 4G/5G IP Rotator Architecture & Honesty Fixes
+- **Context**: Audit revealed Windows host lacked `adb.exe` on `PATH` (making the screen show "No ADB device detected" with no install option), `autoRotateOnProfileStart` / `minIntervalSeconds` were unwired on profile launch, `/mobile-rotator/*` routes were missing in `local-api-server.ts`, `rotateViaAdb` used unquoted `exec()` strings, and `MobileRotator.tsx` showed synthetic static fallback strings (`Reliance Jio / Mobile Carrier`, `100% Residential Trust Score`) and lost session history on navigation.
+- **Key Decisions**:
+  3. **Profiles Tab Mobile Mode Semantics**: Added `mobileModeEnabled` flag to `MobileRotatorConfig` and enforced single-profile concurrency inside `ProcessManager.startProfile()` & `startProfilesBatch()`. Direct profiles bypass cooldown (`respectCooldown: false`), fail closed if rotation errors or IP does not change, and overwrite `profile.notes` with the fresh IP (`updateProfile(id, { notes: newIp })`), while proxied profiles skip mobile rotation and preserve notes.
+  1. **Bundled ADB + Safe Binary Resolution + Fallback Installer**: Staged OS-native official Google Android Platform Tools (`adb.exe` + `AdbWinApi.dll` + `AdbWinUsbApi.dll` + `NOTICE.txt` on Windows; `adb` + `lib64/` on POSIX) into `.mahi_data/platform-tools/` via `stage-packaging-resources.cjs` and mapped it into `electron-builder.json` `extraResources -> platform-tools`. Added `hasCompleteAdbBundle()` DLL verification, `ANDROID_USER_HOME` fallback for restricted Windows home directories, `execFile` + `validateAdbDeviceId`, and retained `installAdbPlatformTools()` as a backup recovery path.
+  2. **Non-Blocking Pre-Launch Auto-Rotate**: Wired `maybeAutoRotateOnProfileStart()` into `ProcessManager.startProfile()` respecting `minIntervalSeconds`, using single-flight locking (`activeRotationPromise`) and surfacing warnings via Electron `toast:show` rather than bricking launches when the tethered phone is unplugged.
+
 ## 2026-11-26 - Major Update Hardening & Non-Destructive Upgrade Policy (Layers 0–5)
 - **Context**: Hardened stealth, network proxy support (authenticated SOCKS5), localhost CDP exposure, engine maintenance, competitor importers, and sync encryption key derivation ahead of shipping a major auto-updater release to existing v1.2.x users.
 - **Key Decisions**:
@@ -253,3 +260,10 @@
 ## Dual-Tone Logo Architecture for Dynamic Framer Variants
 - Context: Framer sticky navbar dynamically transitions between Transparent/Dark and Light modes based on scroll position.
 - Decision: Created two synchronized vector logos: mahi_logo_vector.svg (white fills for dark hero/footer) and mahi_logo_vector_dark.svg (black/dark-grey fills for white intro section sticky navbar). Enforce both via asset replacement, CSS content fallback, and DOM observer.
+
+## 2026-11-27 — Audit Remediation Scope & Architecture Decisions
+- **In-Place Hardening over Monorepo Shuffle:** Patched all P0/P1/P2 vulnerabilities directly in the existing numbered module layout (`01_UI`..`14_ENGINE_PATCHES`) to avoid high-risk churn across build/packaging scripts while preserving uncommitted Round 2 Mobile 4G/5G IP Rotator work.
+- **SQLite (`sql.js`) + Hardened Atomic Writes:** Kept `sql.js` WASM to guarantee zero native N-API cross-platform ABI failures across Windows/macOS/Linux builds, fixing FD leaks, `.tmp` orphan cleanup, Windows `EPERM`/`EBUSY` rename retries, and cross-OS test isolation guards in `06_DATABASE/connection.ts`.
+- **Backward-Compatible Portability & Security:** Replaced `'mahi_salt'` with per-install `adminSalt` HMAC verification and RSA signature checks on `license-status-cache.json`; switched passwordless `.mahi-profile` exports to portable Base64 (keeping legacy decrypt-then-base64 read compatibility).
+- **Safe Quarantine (`_to_delete/`):** Quarantined unused third-party `13_ASSETS/interface` (affiliate ads) and `13_ASSETS/cookie-editor.js` to gitignored `_to_delete/`, while keeping fallback `landing/*.html` and `10_CONFIG/preload/preload.cjs` referenced by `app.ts`, Vite build scripts, and unit tests.
+- **v1.4.0 Release Rollout Strategy:** Bumped desktop & portal versions to `1.4.0` (`mandatory: false`), fast-forwarding `main` with `feat/v1.4-delta-cloud-sync`, Round 2 Mobile 4G/5G IP Rotator, and P0/P1/P2 hardening commits, then tagging `v1.4.0` so `.github/workflows/cross-platform-release.yml` builds signed/verified Windows installers, publishes the GitHub Release, deploys to `mahibrowser.com`, and runs all 6 live verification gates.

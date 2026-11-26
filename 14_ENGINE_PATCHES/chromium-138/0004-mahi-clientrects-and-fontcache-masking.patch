@@ -21,7 +21,7 @@ index f7f8c07..c8a2914 100644
  #include "base/feature_list.h"
  #include "cc/input/snap_selection_strategy.h"
  #include "third_party/blink/public/common/features.h"
-@@ -2959,5 +2964,23 @@
+@@ -2959,5 +2964,32 @@
    DCHECK(element_layout_object);
    GetDocument().AdjustQuadsForScrollAndAbsoluteZoom(quads,
                                                      *element_layout_object);
@@ -36,16 +36,25 @@ index f7f8c07..c8a2914 100644
 +  if (s_config->has_value()) {
 +    bool noise = (*s_config)->FindBool("client_rects_noise_enable").value_or(true);
 +    if (noise) {
++      double raw_seed = (*s_config)->FindDouble("clientRectsNoise")
++                            .value_or((*s_config)->FindDouble("canvasNoise").value_or(0.00001));
++      uint32_t seed = static_cast<uint32_t>(raw_seed * 1000000.0) ^ 0x43524543;
++      uint32_t h1 = base::PersistentHash(&seed, sizeof(seed));
++      uint32_t h2 = base::PersistentHash(&h1, sizeof(h1));
++      float jx = (static_cast<int>(h1 % 19) - 9) * 0.00002f;
++      if (jx == 0.0f) jx = 0.00002f;
++      float jy = (static_cast<int>(h2 % 19) - 9) * 0.00002f;
++      if (jy == 0.0f) jy = -0.00002f;
 +      for (auto& quad : quads) {
 +        gfx::PointF p1 = quad.p1();
-+        p1.Offset(0.0001f, 0.0001f);
++        p1.Offset(jx, jy);
 +        quad.set_p1(p1);
 +      }
 +    }
 +  }
    return MakeGarbageCollected<DOMRectList>(quads);
  }
-@@ -2992,5 +3015,23 @@
+@@ -2992,5 +3015,32 @@
  DOMRect* Element::GetBoundingClientRect() {
    GetDocument().EnsurePaintLocationDataValidForNode(
        this, DocumentUpdateReason::kJavaScript);
@@ -63,8 +72,17 @@ index f7f8c07..c8a2914 100644
 +    if (s_config->has_value()) {
 +      bool noise = (*s_config)->FindBool("client_rects_noise_enable").value_or(true);
 +      if (noise) {
-+        rect->setX(rect->x() + 0.0001);
-+        rect->setWidth(rect->width() + 0.0001);
++        double raw_seed = (*s_config)->FindDouble("clientRectsNoise")
++                              .value_or((*s_config)->FindDouble("canvasNoise").value_or(0.00001));
++        uint32_t seed = static_cast<uint32_t>(raw_seed * 1000000.0) ^ 0x43524543;
++        uint32_t h1 = base::PersistentHash(&seed, sizeof(seed));
++        uint32_t h2 = base::PersistentHash(&h1, sizeof(h1));
++        double dx = (static_cast<int>(h1 % 19) - 9) * 0.00002;
++        if (dx == 0.0) dx = 0.00002;
++        double dw = (static_cast<int>(h2 % 19) - 9) * 0.00002;
++        if (dw == 0.0) dw = -0.00002;
++        rect->setX(rect->x() + dx);
++        rect->setWidth(rect->width() + dw);
 +      }
 +    }
 +  }

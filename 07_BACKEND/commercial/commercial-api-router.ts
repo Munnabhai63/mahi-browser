@@ -49,8 +49,13 @@ export async function handleCommercialApiRoutes(
     if (origin && isTrustedOrigin(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Vary', 'Origin');
+    } else if (!origin) {
+      res.setHeader('Vary', 'Origin');
     } else {
-      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.writeHead(403);
+      res.end();
+      return true;
     }
     res.setHeader(
       'Access-Control-Allow-Headers',

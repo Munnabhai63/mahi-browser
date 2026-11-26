@@ -148,6 +148,10 @@ export class ProxyProviderService {
       throw new Error('No eligible proxy provider available for the requested parameters.');
     }
 
+    if (provider.id === 'mock' && process.env.NODE_ENV === 'production' && process.env.MAHI_ALLOW_MOCK_PROXY !== '1') {
+      throw new Error('Mock proxy provider is disabled in production. Configure real commercial proxy credentials.');
+    }
+
     if (!provider.isConfigured() && provider.id !== 'mock') {
       throw new Error(`Provider "${provider.name}" requires production environment credentials.`);
     }

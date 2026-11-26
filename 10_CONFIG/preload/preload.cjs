@@ -145,6 +145,10 @@ const api = {
   mobileRotatorRotate: (config) => ipcRenderer.invoke('mobileRotator:rotate', config),
   mobileRotatorGetConfig: () => ipcRenderer.invoke('mobileRotator:getConfig'),
   mobileRotatorSaveConfig: (config) => ipcRenderer.invoke('mobileRotator:saveConfig', config),
+  mobileRotatorGetAdbStatus: () => ipcRenderer.invoke('mobileRotator:getAdbStatus'),
+  mobileRotatorInstallAdb: () => ipcRenderer.invoke('mobileRotator:installAdb'),
+  mobileRotatorGetHistory: () => ipcRenderer.invoke('mobileRotator:getHistory'),
+  mobileRotatorClearHistory: () => ipcRenderer.invoke('mobileRotator:clearHistory'),
 
   // Universal Bulk Importer
   importerParsePreview: (rawText) => ipcRenderer.invoke('importer:parsePreview', rawText),

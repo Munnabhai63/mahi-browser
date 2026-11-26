@@ -85,10 +85,16 @@ export function getInstallSecrets(): InstallSecrets {
 
   const filePath = getSecretsFilePath();
   if (fs.existsSync(filePath)) {
-    const stored = readSecretsFile(filePath);
-    if (stored && stored.jwtSecret && stored.apiAuthToken && stored.adminSalt) {
-      cachedSecrets = stored;
-      return cachedSecrets!;
+    const raw = fs.readFileSync(filePath, 'utf8').trim();
+    if (raw.length > 0) {
+      const stored = readSecretsFile(filePath);
+      if (stored && stored.jwtSecret && stored.apiAuthToken && stored.adminSalt) {
+        cachedSecrets = stored;
+        return cachedSecrets;
+      }
+      throw new Error(
+        '[SECURITY] Existing install-secrets.json could not be decrypted or validated (safeStorage unavailable or corrupted). Refusing to overwrite existing install secrets.'
+      );
     }
   }
 
@@ -144,6 +150,15 @@ export function getAdminWebSecret(): string {
   return getInstallSecrets().adminWebSecret;
 }
 
+function constantTimeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 /**
  * Validates local API tokens strictly against dynamic per-install secret. Fail closed.
  */
@@ -151,7 +166,7 @@ export function isValidApiToken(token: string | null | undefined): boolean {
   if (!token) return false;
   const currentToken = getApiAuthToken();
   if (!currentToken) return false;
-  return token === currentToken;
+  return constantTimeEqual(token, currentToken);
 }
 
 /**
@@ -161,5 +176,5 @@ export function isValidAdminWebSecret(secret: string | null | undefined): boolea
   if (!secret) return false;
   const currentSecret = getAdminWebSecret();
   if (!currentSecret) return false;
-  return secret === currentSecret;
+  return constantTimeEqual(secret, currentSecret);
 }

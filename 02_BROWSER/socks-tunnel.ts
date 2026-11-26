@@ -9,6 +9,7 @@ export interface Socks5ConnectOptions {
   targetPort: number;
   username?: string;
   password?: string;
+  socksVersion?: 4 | 5;
   timeoutMs?: number;
 }
 
@@ -96,9 +97,107 @@ function getSocks5ReplyFrameLength(buf: Buffer): number | null {
  * Returns the connected socket ready for TLS/HTTP payload streaming plus any
  * trailing bytes received right after the CONNECT reply frame.
  */
+export function openSocks4TunnelSocket(
+  options: Socks5ConnectOptions
+): Promise<{ socket: net.Socket; initialData: Buffer }> {
+  const {
+    proxyHost,
+    proxyPort,
+    targetHost,
+    targetPort,
+    username,
+    timeoutMs = 10000,
+  } = options;
+
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(proxyPort, proxyHost);
+    let settled = false;
+    let buffer: Buffer = Buffer.alloc(0);
+
+    const fail = (err: Socks5Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.removeListener('data', onData);
+      try { socket.destroy(); } catch {}
+      reject(err);
+    };
+
+    const timer = setTimeout(() => {
+      fail(new Socks5Error('TIMEOUT', `SOCKS4 proxy connection timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    socket.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'ECONNREFUSED') {
+        fail(new Socks5Error('CONNECTION_REFUSED', `SOCKS4 proxy refused connection at ${proxyHost}:${proxyPort}`));
+      } else if (err.code === 'ENOTFOUND') {
+        fail(new Socks5Error('DNS_FAILURE', `Could not resolve SOCKS4 proxy hostname: ${proxyHost}`));
+      } else {
+        fail(new Socks5Error('CONNECTION_FAILED', err.message || 'SOCKS4 connection failed'));
+      }
+    });
+
+    socket.on('close', () => {
+      if (!settled) {
+        fail(new Socks5Error('CONNECTION_FAILED', 'SOCKS4 proxy closed connection before handshake completed'));
+      }
+    });
+
+    socket.on('connect', () => {
+      const cleanHost = targetHost.replace(/^\[|\]$/g, '').trim();
+      const portBuf = Buffer.allocUnsafe(2);
+      portBuf.writeUInt16BE(targetPort & 0xffff, 0);
+      const userBuf = Buffer.from(username || '', 'utf8');
+
+      if (net.isIP(cleanHost) === 4) {
+        const octets = cleanHost.split('.').map((n) => parseInt(n, 10) & 0xff);
+        socket.write(Buffer.concat([Buffer.from([0x04, 0x01]), portBuf, Buffer.from(octets), userBuf, Buffer.from([0x00])]));
+      } else if (net.isIP(cleanHost) === 6) {
+        fail(new Socks5Error('PROXY_REJECTED', 'SOCKS4 does not support raw IPv6 targets'));
+      } else {
+        // SOCKS4a domain extension: DSTIP = 0.0.0.1 + NUL + HOSTNAME + NUL
+        const hostBuf = Buffer.from(cleanHost, 'utf8');
+        socket.write(
+          Buffer.concat([
+            Buffer.from([0x04, 0x01]),
+            portBuf,
+            Buffer.from([0x00, 0x00, 0x00, 0x01]),
+            userBuf,
+            Buffer.from([0x00]),
+            hostBuf,
+            Buffer.from([0x00]),
+          ])
+        );
+      }
+    });
+
+    const onData = (chunk: Buffer) => {
+      buffer = buffer.length > 0 ? Buffer.concat([buffer, chunk]) : chunk;
+      if (buffer.length < 8) return;
+
+      const replyCode = buffer[1];
+      const trailing = buffer.subarray(8);
+      if (replyCode !== 0x5a) {
+        fail(new Socks5Error('PROXY_REJECTED', `SOCKS4 CONNECT failed with code 0x${replyCode.toString(16)}`));
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timer);
+      socket.removeListener('data', onData);
+      resolve({ socket, initialData: trailing });
+    };
+
+    socket.on('data', onData);
+  });
+}
+
 export function openSocks5TunnelSocket(
   options: Socks5ConnectOptions
 ): Promise<{ socket: net.Socket; initialData: Buffer }> {
+  if (options.socksVersion === 4) {
+    return openSocks4TunnelSocket(options);
+  }
   const {
     proxyHost,
     proxyPort,
@@ -257,6 +356,7 @@ export async function bridgeConnectOverSocks5(params: {
   proxyPort: number;
   username?: string;
   password?: string;
+  socksVersion?: 4 | 5;
   activeSockets: Set<stream.Duplex | net.Socket>;
   socketTimeoutMs: number;
   log?: (msg: string) => void;
@@ -269,6 +369,7 @@ export async function bridgeConnectOverSocks5(params: {
     proxyPort,
     username,
     password,
+    socksVersion = 5,
     activeSockets,
     socketTimeoutMs,
     log,
@@ -278,7 +379,7 @@ export async function bridgeConnectOverSocks5(params: {
   let upstreamSocket: net.Socket | undefined;
 
   const cleanup = (reason?: string) => {
-    if (reason && log) log(`[ProxyTunnel SOCKS5 CONNECT] Cleanup (${reason})`);
+    if (reason && log) log(`[ProxyTunnel SOCKS${socksVersion} CONNECT] Cleanup (${reason})`);
     activeSockets.delete(clientSocket);
     if (upstreamSocket) activeSockets.delete(upstreamSocket);
     try { clientSocket.destroy(); } catch {}
@@ -299,6 +400,7 @@ export async function bridgeConnectOverSocks5(params: {
       targetPort: rawPort,
       username,
       password,
+      socksVersion,
       timeoutMs: socketTimeoutMs,
     });
     upstreamSocket = conn.socket;
@@ -339,10 +441,11 @@ export async function forwardHttpRequestOverSocks5(params: {
   proxyPort: number;
   username?: string;
   password?: string;
+  socksVersion?: 4 | 5;
   socketTimeoutMs: number;
   log?: (msg: string) => void;
 }): Promise<void> {
-  const { clientReq, clientRes, proxyHost, proxyPort, username, password, socketTimeoutMs, log } = params;
+  const { clientReq, clientRes, proxyHost, proxyPort, username, password, socksVersion = 5, socketTimeoutMs, log } = params;
 
   try {
     const parsedUrl = new URL(clientReq.url || '/', `http://${clientReq.headers.host || 'localhost'}`);
@@ -356,6 +459,7 @@ export async function forwardHttpRequestOverSocks5(params: {
       targetPort,
       username,
       password,
+      socksVersion,
       timeoutMs: socketTimeoutMs,
     });
     if (initialData.length > 0) {
@@ -389,12 +493,25 @@ export async function forwardHttpRequestOverSocks5(params: {
       }
     );
 
+    const abortUpstream = () => {
+      if (!proxyReq.destroyed) {
+        try { proxyReq.destroy(); } catch {}
+      }
+      if (!socket.destroyed) {
+        try { socket.destroy(); } catch {}
+      }
+    };
+    clientReq.on('aborted', abortUpstream);
+    clientRes.on('close', () => {
+      if (!clientRes.writableEnded) abortUpstream();
+    });
+
     proxyReq.on('error', (err) => {
-      if (log) log(`[ProxyTunnel SOCKS5 HTTP ERROR] ${err.message}`);
+      if (log) log(`[ProxyTunnel SOCKS${socksVersion} HTTP ERROR] ${err.message}`);
       try { socket.destroy(); } catch {}
       if (!clientRes.headersSent) {
         clientRes.writeHead(502, { 'Content-Type': 'text/plain' });
-        clientRes.end('SOCKS5 Proxy Tunnel Error: ' + err.message);
+        clientRes.end(`SOCKS${socksVersion} Proxy Tunnel Error: ${err.message}`);
       }
     });
 

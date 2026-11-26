@@ -161,7 +161,7 @@ export function getWebAdminTemplateHtml(): string {
       <div class="flex items-center space-x-3">
         <div class="flex items-center space-x-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
           <span class="text-slate-500 font-medium">Admin Key:</span>
-          <input type="password" id="admin-secret-input" value="${process.env.ADMIN_BOOTSTRAP_TOKEN || ''}" placeholder="Enter Admin Secret" onkeydown="if(event.key==='Enter')refreshData()" class="bg-transparent text-slate-800 font-mono text-xs focus:outline-none w-36">
+          <input type="password" id="admin-secret-input" value="" placeholder="Enter Admin Secret" onkeydown="if(event.key==='Enter')refreshData()" class="bg-transparent text-slate-800 font-mono text-xs focus:outline-none w-36">
         </div>
         <button onclick="refreshData()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center space-x-1.5">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
@@ -179,6 +179,8 @@ export function getWebAdminTemplateHtml(): string {
   <script>
     let currentPage = 'dashboard';
     let dashboardData = null;
+    let cachedAdminUsers = [];
+    let cachedAdminTickets = [];
 
     function getAdminSecret() {
       const inputEl = document.getElementById('admin-secret-input');
@@ -220,7 +222,7 @@ export function getWebAdminTemplateHtml(): string {
       toast.className = \`px-4 py-2.5 rounded-xl shadow-lg text-xs font-bold flex items-center space-x-2 pointer-events-auto transform transition duration-200 \${
         type === 'success' ? 'bg-emerald-600 text-white' : type === 'error' ? 'bg-rose-600 text-white' : 'bg-slate-800 text-white'
       }\`;
-      toast.innerHTML = \`<span>\${type === 'success' ? '✓' : '⚠️'}</span><span>\${message}</span>\`;
+      toast.innerHTML = \`<span>\${type === 'success' ? '✓' : '⚠️'}</span><span>\${escapeHtml(message)}</span>\`;
       container.appendChild(toast);
       setTimeout(() => toast.remove(), 3500);
     }
@@ -300,7 +302,7 @@ export function getWebAdminTemplateHtml(): string {
           if (ticketBadge) ticketBadge.innerText = res.data.openTickets || 0;
           renderDashboard(res.data);
         } else {
-          container.innerHTML = \`<div class="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs font-bold">Error loading dashboard: \${res.error || 'Failed to authenticate'}</div>\`;
+          container.innerHTML = \`<div class="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs font-bold">Error loading dashboard: \${escapeHtml(res.error || 'Failed to authenticate')}</div>\`;
         }
       } else if (currentPage === 'users') {
         title.innerText = 'Commercial Users Management';
@@ -421,9 +423,10 @@ export function getWebAdminTemplateHtml(): string {
         apiFetch('/api/v1/admin/terms-compliance')
       ]);
       if (!res.success) {
-        container.innerHTML = \`<div class="p-4 bg-rose-50 text-rose-700 text-xs font-bold rounded-xl">\${res.error || 'Failed to load users'}</div>\`;
+        container.innerHTML = \`<div class="p-4 bg-rose-50 text-rose-700 text-xs font-bold rounded-xl">\${escapeHtml(res.error || 'Failed to load users')}</div>\`;
         return;
       }
+      cachedAdminUsers = Array.isArray(res.data) ? res.data : [];
       const termsData = (termsRes && termsRes.success && termsRes.data) || { totalUsers: 0, accepted: 0, missing: 0, byVersion: {} };
 
       container.innerHTML = \`
@@ -459,7 +462,7 @@ export function getWebAdminTemplateHtml(): string {
             <div class="flex flex-wrap gap-2">
               \${termsData.byVersion && Object.keys(termsData.byVersion).length > 0 ? Object.entries(termsData.byVersion).map(([v, count]) => \`
                 <span class="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-mono text-slate-700">
-                  <strong class="text-slate-900">\${v}</strong>: \${count} users
+                  <strong class="text-slate-900">\${escapeHtml(v)}</strong>: \${Number(count)} users
                 </span>
               \`).join('') : '<span class="text-xs text-slate-400">No versioned records.</span>'}
             </div>
@@ -495,35 +498,35 @@ export function getWebAdminTemplateHtml(): string {
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
-                \${res.data && res.data.length > 0 ? res.data.map(u => \`
+                \${cachedAdminUsers.length > 0 ? cachedAdminUsers.map((u, idx) => \`
                   <tr class="hover:bg-slate-50 transition" data-user-row="true">
                     <td class="p-3" style="user-select: text;">
                       <div class="flex items-start space-x-3">
                         <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs uppercase">
-                          \${(u.name || u.email || 'U').charAt(0)}
+                          \${escapeHtml((u.name || u.email || 'U').charAt(0))}
                         </div>
                         <div class="space-y-1 min-w-0">
                           <div class="font-bold text-slate-900 text-xs flex items-center space-x-1.5">
-                            <span class="truncate">\${u.name || 'Unnamed User'}</span>
-                            <button onclick="copyToClipboard('\${(u.name || '').replace(/'/g, \"\\\\'\")}', this, 'Name copied!')" class="text-slate-400 hover:text-slate-700 text-[10px] p-0.5" title="Copy Name">📋</button>
+                            <span class="truncate">\${escapeHtml(u.name || 'Unnamed User')}</span>
+                            <button onclick="copyUserFieldByIndex(\${idx}, 'name', this)" class="text-slate-400 hover:text-slate-700 text-[10px] p-0.5" title="Copy Name">📋</button>
                           </div>
                           <div class="flex items-center space-x-1.5">
-                            <span class="text-[11px] text-slate-700 font-mono font-medium truncate">\${u.email}</span>
-                            <button onclick="copyToClipboard('\${u.email}', this, 'Email copied!')" class="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold border border-slate-200 transition shrink-0" title="Click to copy email">
+                            <span class="text-[11px] text-slate-700 font-mono font-medium truncate">\${escapeHtml(u.email)}</span>
+                            <button onclick="copyUserFieldByIndex(\${idx}, 'email', this)" class="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold border border-slate-200 transition shrink-0" title="Click to copy email">
                               📋 Copy Email
                             </button>
                           </div>
                           <div class="flex items-center space-x-1">
-                            <span class="text-[10px] text-slate-400 font-mono truncate">ID: \${u.id}</span>
-                            <button onclick="copyToClipboard('\${u.id}', this, 'User ID copied!')" class="text-slate-400 hover:text-slate-700 text-[10px] p-0.5 shrink-0" title="Copy User ID">📋</button>
+                            <span class="text-[10px] text-slate-400 font-mono truncate">ID: \${escapeHtml(u.id)}</span>
+                            <button onclick="copyUserFieldByIndex(\${idx}, 'id', this)" class="text-slate-400 hover:text-slate-700 text-[10px] p-0.5 shrink-0" title="Copy User ID">📋</button>
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td class="p-3"><span class="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-700">\${u.role}</span></td>
+                    <td class="p-3"><span class="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-700">\${escapeHtml(u.role)}</span></td>
                     <td class="p-3">
-                      <div class="font-semibold text-emerald-700">\${u.planId}</div>
-                      \${u.bonusProfiles > 0 ? \`<div class="text-[10px] text-amber-600 font-bold font-mono">+\${u.bonusProfiles} Boosted Profiles</div>\` : ''}
+                      <div class="font-semibold text-emerald-700">\${escapeHtml(u.planId)}</div>
+                      \${u.bonusProfiles > 0 ? \`<div class="text-[10px] text-amber-600 font-bold font-mono">+\${Number(u.bonusProfiles)} Boosted Profiles</div>\` : ''}
                       \${u.bonusProxyBytes > 0 ? \`<div class="text-[10px] text-sky-600 font-bold font-mono">+\${Math.round(u.bonusProxyBytes / (1024*1024*1024))} GB Proxy</div>\` : ''}
                     </td>
                     <td class="p-3">
@@ -539,22 +542,22 @@ export function getWebAdminTemplateHtml(): string {
                       <span class="px-2 py-0.5 rounded-full text-[10px] font-bold \${
                         u.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
                         u.status === 'SUSPENDED' ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
-                      }">\${u.status}</span>
+                      }">\${escapeHtml(u.status)}</span>
                     </td>
-                    <td class="p-3 text-slate-400 text-[11px] font-mono">\${new Date(u.createdAt).toLocaleDateString()}</td>
+                    <td class="p-3 text-slate-400 text-[11px] font-mono">\${escapeHtml(new Date(u.createdAt).toLocaleDateString())}</td>
                     <td class="p-3 text-right space-x-1 whitespace-nowrap">
-                      <button onclick="openGrantPremiumModal('\${u.id}', '\${(u.name || '').replace(/'/g, \"\\\\'\")}', '\${u.email}')" class="px-2.5 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg font-bold text-[10px] shadow-xs transition active:scale-95 inline-flex items-center space-x-1" title="Direct 1-Click Premium License Grant">
+                      <button onclick="openGrantPremiumByIndex(\${idx})" class="px-2.5 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg font-bold text-[10px] shadow-xs transition active:scale-95 inline-flex items-center space-x-1" title="Direct 1-Click Premium License Grant">
                         <span>👑</span>
                         <span>Grant Premium</span>
                       </button>
-                      <button onclick="openBoostModal('\${u.id}', '\${u.email}', \${u.bonusProfiles || 0})" class="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg font-bold text-[10px] border border-amber-200 transition" title="GoLogin-Style Quick Quota Boost">⚡ Boost</button>
-                      <button onclick='openFeaturesModal("\${u.id}", "\${u.email}", \${JSON.stringify(u.featureOverrides || {})})' class="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-800 rounded-lg font-bold text-[10px] border border-purple-200 transition" title="MostLogin-Style Feature Overrides">⚙️ Features</button>
-                      <button onclick="resetUserHardware('\${u.id}', '\${u.email}')" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-[10px] transition" title="1-Click Machine / HWID Unbind">🔓 HWID</button>
+                      <button onclick="openBoostByIndex(\${idx})" class="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg font-bold text-[10px] border border-amber-200 transition" title="GoLogin-Style Quick Quota Boost">⚡ Boost</button>
+                      <button onclick="openFeaturesByIndex(\${idx})" class="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-800 rounded-lg font-bold text-[10px] border border-purple-200 transition" title="MostLogin-Style Feature Overrides">⚙️ Features</button>
+                      <button onclick="resetUserHwidByIndex(\${idx})" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-[10px] transition" title="1-Click Machine / HWID Unbind">🔓 HWID</button>
                       \${u.status === 'ACTIVE' ? \`
-                        <button onclick="changeUserStatus('\${u.id}', 'SUSPENDED')" class="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg font-bold text-[10px] transition">Suspend</button>
-                        <button onclick="changeUserStatus('\${u.id}', 'BANNED')" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-bold text-[10px] transition">Ban</button>
+                        <button onclick="changeUserStatusByIndex(\${idx}, 'SUSPENDED')" class="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg font-bold text-[10px] transition">Suspend</button>
+                        <button onclick="changeUserStatusByIndex(\${idx}, 'BANNED')" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-bold text-[10px] transition">Ban</button>
                       \` : \`
-                        <button onclick="changeUserStatus('\${u.id}', 'ACTIVE')" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg font-bold text-[10px] transition">Activate</button>
+                        <button onclick="changeUserStatusByIndex(\${idx}, 'ACTIVE')" class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg font-bold text-[10px] transition">Activate</button>
                       \`}
                     </td>
                   </tr>
@@ -573,6 +576,39 @@ export function getWebAdminTemplateHtml(): string {
         const text = r.innerText.toLowerCase();
         r.style.display = text.includes(q) ? '' : 'none';
       });
+    }
+
+    function copyUserFieldByIndex(idx, field, el) {
+      const u = cachedAdminUsers[idx];
+      if (!u) return;
+      const val = field === 'name' ? (u.name || '') : field === 'email' ? (u.email || '') : (u.id || '');
+      const label = field === 'name' ? 'Name copied!' : field === 'email' ? 'Email copied!' : 'User ID copied!';
+      copyToClipboard(val, el, label);
+    }
+
+    function openGrantPremiumByIndex(idx) {
+      const u = cachedAdminUsers[idx];
+      if (u) openGrantPremiumModal(u.id, u.name || '', u.email || '');
+    }
+
+    function openBoostByIndex(idx) {
+      const u = cachedAdminUsers[idx];
+      if (u) openBoostModal(u.id, u.email || '', u.bonusProfiles || 0);
+    }
+
+    function openFeaturesByIndex(idx) {
+      const u = cachedAdminUsers[idx];
+      if (u) openFeaturesModal(u.id, u.email || '', u.featureOverrides || {});
+    }
+
+    function resetUserHwidByIndex(idx) {
+      const u = cachedAdminUsers[idx];
+      if (u) resetUserHardware(u.id, u.email || '');
+    }
+
+    function changeUserStatusByIndex(idx, status) {
+      const u = cachedAdminUsers[idx];
+      if (u) changeUserStatus(u.id, status);
     }
 
     function openGrantPremiumModal(userId, name, email) {
@@ -597,20 +633,20 @@ export function getWebAdminTemplateHtml(): string {
           <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5 text-xs">
             <div class="flex items-center justify-between">
               <span class="text-slate-500 font-medium">Target User:</span>
-              <span class="font-bold text-slate-900 font-mono">\${name || 'User'}</span>
+              <span class="font-bold text-slate-900 font-mono">\${escapeHtml(name || 'User')}</span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-slate-500 font-medium">Email:</span>
               <div class="flex items-center space-x-1">
-                <span class="font-mono text-slate-800 font-medium">\${email}</span>
-                <button onclick="copyToClipboard('\${email}', this, 'Copied!')" class="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] text-slate-600 hover:bg-slate-100 transition">📋 Copy</button>
+                <span class="font-mono text-slate-800 font-medium">\${escapeHtml(email)}</span>
+                <button data-copy="\${escapeHtml(email)}" onclick="copyToClipboard(this.dataset.copy, this, 'Copied!')" class="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] text-slate-600 hover:bg-slate-100 transition">📋 Copy</button>
               </div>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-slate-500 font-medium">User ID:</span>
               <div class="flex items-center space-x-1">
-                <span class="font-mono text-slate-500 text-[11px] truncate max-w-[200px]">\${userId}</span>
-                <button onclick="copyToClipboard('\${userId}', this, 'Copied!')" class="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] text-slate-600 hover:bg-slate-100 transition">📋 Copy</button>
+                <span class="font-mono text-slate-500 text-[11px] truncate max-w-[200px]">\${escapeHtml(userId)}</span>
+                <button data-copy="\${escapeHtml(userId)}" onclick="copyToClipboard(this.dataset.copy, this, 'Copied!')" class="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] text-slate-600 hover:bg-slate-100 transition">📋 Copy</button>
               </div>
             </div>
           </div>
@@ -781,7 +817,7 @@ export function getWebAdminTemplateHtml(): string {
                 <span class="text-amber-500">⚡</span>
                 <span>Instant Quota Booster (GoLogin Parity)</span>
               </h3>
-              <p class="text-[11px] text-slate-500 font-mono mt-0.5">\${email}</p>
+              <p class="text-[11px] text-slate-500 font-mono mt-0.5">\${escapeHtml(email)}</p>
             </div>
             <button onclick="document.getElementById('boost-modal').remove()" class="text-slate-400 hover:text-slate-700 font-bold text-sm">✕</button>
           </div>
@@ -789,7 +825,7 @@ export function getWebAdminTemplateHtml(): string {
           <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
             <div class="flex justify-between">
               <span class="font-semibold">Current Bonus Profiles:</span>
-              <span class="font-mono font-bold text-amber-600">+\${currentBonus} Profiles</span>
+              <span class="font-mono font-bold text-amber-600">+\${Number(currentBonus || 0)} Profiles</span>
             </div>
             <p class="text-[10px] text-slate-400">Boosters immediately expand balance without changing subscription tier.</p>
           </div>
@@ -797,13 +833,13 @@ export function getWebAdminTemplateHtml(): string {
           <div class="space-y-2">
             <div class="text-xs font-bold text-slate-700">1-Click Quick Boost:</div>
             <div class="grid grid-cols-3 gap-2">
-              <button onclick="executeBoost('\${userId}', 'PROFILES', 10)" class="p-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold text-center transition">
+              <button data-uid="\${escapeHtml(userId)}" onclick="executeBoost(this.dataset.uid, 'PROFILES', 10)" class="p-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold text-center transition">
                 +10 Profiles
               </button>
-              <button onclick="executeBoost('\${userId}', 'PROFILES', 50)" class="p-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold text-center transition">
+              <button data-uid="\${escapeHtml(userId)}" onclick="executeBoost(this.dataset.uid, 'PROFILES', 50)" class="p-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold text-center transition">
                 +50 Profiles
               </button>
-              <button onclick="executeBoost('\${userId}', 'PROXY_GB', 5)" class="p-2.5 bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 rounded-xl text-xs font-bold text-center transition">
+              <button data-uid="\${escapeHtml(userId)}" onclick="executeBoost(this.dataset.uid, 'PROXY_GB', 5)" class="p-2.5 bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 rounded-xl text-xs font-bold text-center transition">
                 +5 GB Proxy
               </button>
             </div>
@@ -813,7 +849,7 @@ export function getWebAdminTemplateHtml(): string {
             <label class="text-xs font-bold text-slate-700 block">Custom Profile Amount:</label>
             <div class="flex space-x-2">
               <input type="number" id="custom-boost-input" min="1" max="1000" placeholder="e.g. 25" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-emerald-500 font-mono">
-              <button onclick="const val = parseInt(document.getElementById('custom-boost-input').value, 10); if (val > 0) executeBoost('\${userId}', 'PROFILES', val);" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition">
+              <button data-uid="\${escapeHtml(userId)}" onclick="const val = parseInt(document.getElementById('custom-boost-input').value, 10); if (val > 0) executeBoost(this.dataset.uid, 'PROFILES', val);" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition">
                 Grant
               </button>
             </div>
@@ -824,7 +860,7 @@ export function getWebAdminTemplateHtml(): string {
     }
 
     async function executeBoost(userId, type, amount) {
-      const res = await apiFetch(\`/api/v1/admin/users/\${userId}/boost\`, {
+      const res = await apiFetch(\`/api/v1/admin/users/\${encodeURIComponent(userId)}/boost\`, {
         method: 'POST',
         body: JSON.stringify({ type, amount })
       });
@@ -851,7 +887,7 @@ export function getWebAdminTemplateHtml(): string {
                 <span class="text-purple-600">⚙️</span>
                 <span>Enterprise Feature Overrides (MostLogin Parity)</span>
               </h3>
-              <p class="text-[11px] text-slate-500 font-mono mt-0.5">\${email}</p>
+              <p class="text-[11px] text-slate-500 font-mono mt-0.5">\${escapeHtml(email)}</p>
             </div>
             <button onclick="document.getElementById('features-modal').remove()" class="text-slate-400 hover:text-slate-700 font-bold text-sm">✕</button>
           </div>
@@ -949,11 +985,12 @@ export function getWebAdminTemplateHtml(): string {
 
       const res = await apiFetch(url);
       if (!res.success) {
-        container.innerHTML = \`<div class="p-4 bg-rose-50 text-rose-700 text-xs font-bold rounded-xl">\${res.error || 'Failed to load tickets'}</div>\`;
+        container.innerHTML = \`<div class="p-4 bg-rose-50 text-rose-700 text-xs font-bold rounded-xl">\${escapeHtml(res.error || 'Failed to load tickets')}</div>\`;
         return;
       }
 
       const tickets = res.data || [];
+      cachedAdminTickets = tickets;
       const openCount = tickets.filter(t => t.status === 'OPEN').length;
       const inProgCount = tickets.filter(t => t.status === 'IN_PROGRESS').length;
       const paymentCount = tickets.filter(t => t.category === 'PAYMENT').length;
@@ -1028,34 +1065,34 @@ export function getWebAdminTemplateHtml(): string {
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
-                  \${tickets.length > 0 ? tickets.map(t => \`
+                  \${tickets.length > 0 ? tickets.map((t, idx) => \`
                     <tr class="hover:bg-slate-50 transition">
-                      <td class="p-3 font-mono font-bold text-slate-900">\${t.ticketNumber}</td>
+                      <td class="p-3 font-mono font-bold text-slate-900">\${escapeHtml(t.ticketNumber)}</td>
                       <td class="p-3">
-                        <div class="font-bold text-slate-800">\${t.userName || 'Anonymous'}</div>
-                        <div class="text-[11px] text-slate-400 font-mono">\${t.userEmail || 'No email provided'}</div>
+                        <div class="font-bold text-slate-800">\${escapeHtml(t.userName || 'Anonymous')}</div>
+                        <div class="text-[11px] text-slate-400 font-mono">\${escapeHtml(t.userEmail || 'No email provided')}</div>
                       </td>
                       <td class="p-3">
                         <span class="px-2 py-0.5 rounded-full text-[10px] font-bold \${
                           t.category === 'PAYMENT' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
                           t.category === 'PRICING' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
                           'bg-slate-100 text-slate-700 border border-slate-200'
-                        }">\${t.category}</span>
+                        }">\${escapeHtml(t.category)}</span>
                         \${t.isEscalated ? '<span class="ml-1 text-[9px] font-extrabold text-rose-600">⚡ ESCALATED</span>' : ''}
                       </td>
-                      <td class="p-3 text-slate-600 max-w-xs truncate" title="\${(t.message || '').replace(/"/g, '&quot;')}">
-                        \${t.message}
+                      <td class="p-3 text-slate-600 max-w-xs truncate" title="\${escapeHtml(t.message || '')}">
+                        \${escapeHtml(t.message)}
                       </td>
                       <td class="p-3">
                         <span class="px-2 py-0.5 rounded-full text-[10px] font-bold \${
                           t.status === 'OPEN' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
                           t.status === 'IN_PROGRESS' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
                           'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        }">\${t.status}</span>
+                        }">\${escapeHtml(t.status)}</span>
                       </td>
-                      <td class="p-3 text-slate-400 text-[11px] font-mono">\${new Date(t.createdAt).toLocaleDateString()} \${new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                      <td class="p-3 text-slate-400 text-[11px] font-mono">\${escapeHtml(new Date(t.createdAt).toLocaleDateString())} \${escapeHtml(new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</td>
                       <td class="p-3 text-right">
-                        <button onclick='openTicketReplyModal(\${JSON.stringify(t)})' class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-[10px] transition shadow-xs">
+                        <button onclick="openTicketReplyModalByIndex(\${idx})" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-[10px] transition shadow-xs">
                           Reply & Manage
                         </button>
                       </td>
@@ -1069,6 +1106,11 @@ export function getWebAdminTemplateHtml(): string {
       \`;
     }
 
+    function openTicketReplyModalByIndex(idx) {
+      const t = cachedAdminTickets[idx];
+      if (t) openTicketReplyModal(t);
+    }
+
     function openTicketReplyModal(ticket) {
       const modal = document.createElement('div');
       modal.id = 'ticket-reply-modal';
@@ -1078,10 +1120,10 @@ export function getWebAdminTemplateHtml(): string {
           <div class="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
               <h3 class="text-sm font-extrabold text-slate-900 flex items-center space-x-2">
-                <span>Ticket: \${ticket.ticketNumber}</span>
-                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">\${ticket.category}</span>
+                <span>Ticket: \${escapeHtml(ticket.ticketNumber)}</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">\${escapeHtml(ticket.category)}</span>
               </h3>
-              <p class="text-[11px] text-slate-500 font-mono mt-0.5">From: \${ticket.userName || 'User'} (\${ticket.userEmail || 'No email'})</p>
+              <p class="text-[11px] text-slate-500 font-mono mt-0.5">From: \${escapeHtml(ticket.userName || 'User')} (\${escapeHtml(ticket.userEmail || 'No email')})</p>
             </div>
             <button onclick="document.getElementById('ticket-reply-modal').remove()" class="text-slate-400 hover:text-slate-700 font-bold text-sm">✕</button>
           </div>
@@ -1089,13 +1131,13 @@ export function getWebAdminTemplateHtml(): string {
           <div class="space-y-3">
             <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
               <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Customer Message:</div>
-              <div class="text-xs text-slate-800 whitespace-pre-wrap">\${ticket.message}</div>
+              <div class="text-xs text-slate-800 whitespace-pre-wrap">\${escapeHtml(ticket.message)}</div>
             </div>
 
             \${ticket.reply ? \`
               <div class="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200">
                 <div class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Last Sent Reply:</div>
-                <div class="text-xs text-emerald-950 whitespace-pre-wrap">\${ticket.reply}</div>
+                <div class="text-xs text-emerald-950 whitespace-pre-wrap">\${escapeHtml(ticket.reply)}</div>
               </div>
             \` : ''}
 
@@ -1426,7 +1468,7 @@ export function getWebAdminTemplateHtml(): string {
       ]);
 
       if (!catRes.success || !actRes.success) {
-        container.innerHTML = \`<div class="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs font-bold">Failed to load pricing engine: \${catRes.error || actRes.error}</div>\`;
+        container.innerHTML = \`<div class="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs font-bold">Failed to load pricing engine: \${escapeHtml(catRes.error || actRes.error)}</div>\`;
         return;
       }
 
@@ -1458,9 +1500,9 @@ export function getWebAdminTemplateHtml(): string {
           <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
             <div>
               <div class="flex items-center space-x-2">
-                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-white shadow-xs">LIVE VERSION v\${activeVer.version}</span>
-                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200 font-mono">Policy: \${activeVer.existingSubscriberPolicy}</span>
-                <span class="text-xs text-slate-400">Published \${new Date(activeVer.publishedAt).toLocaleDateString()} by \${activeVer.publishedBy}</span>
+                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-white shadow-xs">LIVE VERSION v\${escapeHtml(activeVer.version)}</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200 font-mono">Policy: \${escapeHtml(activeVer.existingSubscriberPolicy)}</span>
+                <span class="text-xs text-slate-400">Published \${escapeHtml(new Date(activeVer.publishedAt).toLocaleDateString())} by \${escapeHtml(activeVer.publishedBy)}</span>
               </div>
               <h2 class="text-lg font-black text-slate-900 mt-1 tracking-tight">Admin Pricing & Plan Tiers Control Suite</h2>
               <p class="text-xs text-slate-500">Edit monthly price once — annual price auto-computes with 50% discount. Entitlements are strictly preserved.</p>
@@ -1703,19 +1745,19 @@ export function getWebAdminTemplateHtml(): string {
             <tbody class="divide-y divide-slate-100">
               \${res.data.map(l => \`
                 <tr class="hover:bg-slate-50">
-                  <td class="p-3 font-bold text-slate-800">\${l.customerName}</td>
-                  <td class="p-3 font-mono font-bold text-emerald-700">\${l.keyMasked}</td>
-                  <td class="p-3 text-slate-600">\${l.durationType}</td>
-                  <td class="p-3 text-slate-600">\${l.activeDevicesCount || 0} / \${l.maxDevices}</td>
+                  <td class="p-3 font-bold text-slate-800">\${escapeHtml(l.customerName)}</td>
+                  <td class="p-3 font-mono font-bold text-emerald-700">\${escapeHtml(l.keyMasked)}</td>
+                  <td class="p-3 text-slate-600">\${escapeHtml(l.durationType)}</td>
+                  <td class="p-3 text-slate-600">\${Number(l.activeDevicesCount || 0)} / \${Number(l.maxDevices || 0)}</td>
                   <td class="p-3">
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-bold \${
                       l.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
-                    }">\${l.status}</span>
+                    }">\${escapeHtml(l.status)}</span>
                   </td>
-                  <td class="p-3 text-slate-400 text-[11px]">\${l.expiresAt ? new Date(l.expiresAt).toLocaleDateString() : 'Lifetime'}</td>
+                  <td class="p-3 text-slate-400 text-[11px]">\${l.expiresAt ? escapeHtml(new Date(l.expiresAt).toLocaleDateString()) : 'Lifetime'}</td>
                   <td class="p-3 text-right space-x-1.5">
                     \${l.status === 'ACTIVE' ? \`
-                      <button onclick="revokeLicenseKey('\${l.id}')" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-bold text-[10px]">Revoke</button>
+                      <button data-lid="\${escapeHtml(l.id)}" onclick="revokeLicenseKey(this.dataset.lid)" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-bold text-[10px]">Revoke</button>
                     \` : ''}
                   </td>
                 </tr>
@@ -1781,18 +1823,18 @@ export function getWebAdminTemplateHtml(): string {
             <tbody class="divide-y divide-slate-100">
               \${res.data.map(d => \`
                 <tr class="hover:bg-slate-50">
-                  <td class="p-3 font-bold text-slate-800">\${d.deviceName}</td>
-                  <td class="p-3 font-mono text-[11px] text-slate-500">\${d.deviceId}</td>
-                  <td class="p-3 text-slate-600">\${d.osInfo}</td>
+                  <td class="p-3 font-bold text-slate-800">\${escapeHtml(d.deviceName)}</td>
+                  <td class="p-3 font-mono text-[11px] text-slate-500">\${escapeHtml(d.deviceId)}</td>
+                  <td class="p-3 text-slate-600">\${escapeHtml(d.osInfo)}</td>
                   <td class="p-3">
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-bold \${
                       d.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
-                    }">\${d.status}</span>
+                    }">\${escapeHtml(d.status)}</span>
                   </td>
-                  <td class="p-3 text-slate-400 text-[11px]">\${new Date(d.lastSeenAt).toLocaleString()}</td>
+                  <td class="p-3 text-slate-400 text-[11px]">\${escapeHtml(new Date(d.lastSeenAt).toLocaleString())}</td>
                   <td class="p-3 text-right">
                     \${d.status === 'ACTIVE' ? \`
-                      <button onclick="revokeDevice('\${d.deviceId}')" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-bold text-[10px]">Revoke Access</button>
+                      <button data-did="\${escapeHtml(d.deviceId)}" onclick="revokeDevice(this.dataset.did)" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-bold text-[10px]">Revoke Access</button>
                     \` : ''}
                   </td>
                 </tr>
@@ -1901,12 +1943,12 @@ export function getWebAdminTemplateHtml(): string {
             <tbody class="divide-y divide-slate-100">
               \${res.data.map(l => \`
                 <tr class="hover:bg-slate-50">
-                  <td class="p-3 font-mono text-[11px] text-slate-400">\${new Date(l.createdAt).toLocaleString()}</td>
-                  <td class="p-3 font-bold text-slate-700">\${l.actorName} <span class="text-[10px] text-slate-400">(\${l.actorRole})</span></td>
-                  <td class="p-3 font-mono font-semibold text-emerald-700">\${l.action}</td>
-                  <td class="p-3 font-mono text-[11px] text-slate-500">\${l.targetType}</td>
-                  <td class="p-3 text-slate-600">\${l.details}</td>
-                  <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[9px] font-bold \${l.result === 'SUCCESS' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}">\${l.result}</span></td>
+                  <td class="p-3 font-mono text-[11px] text-slate-400">\${escapeHtml(new Date(l.createdAt).toLocaleString())}</td>
+                  <td class="p-3 font-bold text-slate-700">\${escapeHtml(l.actorName)} <span class="text-[10px] text-slate-400">(\${escapeHtml(l.actorRole)})</span></td>
+                  <td class="p-3 font-mono font-semibold text-emerald-700">\${escapeHtml(l.action)}</td>
+                  <td class="p-3 font-mono text-[11px] text-slate-500">\${escapeHtml(l.targetType)}</td>
+                  <td class="p-3 text-slate-600">\${escapeHtml(l.details)}</td>
+                  <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[9px] font-bold \${l.result === 'SUCCESS' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}">\${escapeHtml(l.result)}</span></td>
                 </tr>
               \`).join('')}
             </tbody>
@@ -1955,19 +1997,19 @@ export function getWebAdminTemplateHtml(): string {
               <tbody class="divide-y divide-slate-100">
                 \${leads.length === 0 ? '<tr><td colspan="7" class="p-8 text-center text-slate-400">No demo requests found</td></tr>' : leads.map(lead => \`
                   <tr class="hover:bg-slate-50">
-                    <td class="p-3 font-mono text-[11px] text-slate-400 whitespace-nowrap">\${new Date(lead.createdAt).toLocaleDateString()}</td>
+                    <td class="p-3 font-mono text-[11px] text-slate-400 whitespace-nowrap">\${escapeHtml(new Date(lead.createdAt).toLocaleDateString())}</td>
                     <td class="p-3">
-                      <div class="font-bold text-slate-900">\${lead.fullName}</div>
-                      <div class="text-[11px] text-slate-500 font-mono">\${lead.email}</div>
+                      <div class="font-bold text-slate-900">\${escapeHtml(lead.fullName)}</div>
+                      <div class="text-[11px] text-slate-500 font-mono">\${escapeHtml(lead.email)}</div>
                     </td>
                     <td class="p-3">
-                      <div class="font-bold text-slate-800">\${lead.companyName || '—'}</div>
-                      <div class="text-[11px] text-slate-500">\${lead.teamSize} members</div>
+                      <div class="font-bold text-slate-800">\${escapeHtml(lead.companyName || '—')}</div>
+                      <div class="text-[11px] text-slate-500">\${escapeHtml(lead.teamSize)} members</div>
                     </td>
-                    <td class="p-3 text-slate-700 max-w-xs truncate">\${lead.useCase}</td>
+                    <td class="p-3 text-slate-700 max-w-xs truncate">\${escapeHtml(lead.useCase)}</td>
                     <td class="p-3">
-                      <div class="text-slate-800 font-medium">\${lead.contactMethod}</div>
-                      \${lead.preferredDatetime ? \`<div class="text-[10px] text-slate-400">\${lead.preferredDatetime}</div>\` : ''}
+                      <div class="text-slate-800 font-medium">\${escapeHtml(lead.contactMethod)}</div>
+                      \${lead.preferredDatetime ? \`<div class="text-[10px] text-slate-400">\${escapeHtml(lead.preferredDatetime)}</div>\` : ''}
                     </td>
                     <td class="p-3">
                       <span class="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase \${
@@ -1976,10 +2018,10 @@ export function getWebAdminTemplateHtml(): string {
                         lead.status === 'COMPLETED' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
                         lead.status === 'CONTACTED' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
                         'bg-slate-100 text-slate-600 border border-slate-200'
-                      }">\${lead.status}</span>
+                      }">\${escapeHtml(lead.status)}</span>
                     </td>
                     <td class="p-3 text-right">
-                      <select onchange="updateDemoStatus('\${lead.id}', this.value)" class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-700 outline-none">
+                      <select data-lead-id="\${escapeHtml(lead.id)}" onchange="updateDemoStatus(this.dataset.leadId, this.value)" class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-700 outline-none">
                         \${statuses.map(s => \`<option value="\${s}" \${lead.status === s ? 'selected' : ''}>\${s}</option>\`).join('')}
                       </select>
                     </td>
@@ -2081,7 +2123,7 @@ export function getWebAdminTemplateHtml(): string {
       container.innerHTML = '<div class="text-slate-400 text-xs animate-pulse">Loading payments and verification queue...</div>';
       const res = await apiFetch('/api/v1/admin/payments');
       if (!res.success) {
-        container.innerHTML = \`<div class="p-4 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs">Failed to load payments: \${res.error || 'Unauthorized'}</div>\`;
+        container.innerHTML = \`<div class="p-4 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs">Failed to load payments: \${escapeHtml(res.error || 'Unauthorized')}</div>\`;
         return;
       }
       const list = res.data || res.payments || [];

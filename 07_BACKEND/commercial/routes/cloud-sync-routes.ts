@@ -56,12 +56,14 @@ export async function handleCloudSyncRoutes(
     }
 
     const storage = getStorageProvider();
-    if (storage instanceof LocalStorageProvider) {
-      const valid = storage.verifyToken(key, 'upload', expires, token);
-      if (!valid) {
-        sendJSON(res, 403, { success: false, error: 'Invalid or expired upload signature' });
-        return true;
-      }
+    if (!(storage instanceof LocalStorageProvider)) {
+      sendJSON(res, 403, { success: false, error: 'Direct storage upload endpoint is disabled for remote providers' });
+      return true;
+    }
+    const valid = storage.verifyToken(key, 'upload', expires, token);
+    if (!valid) {
+      sendJSON(res, 403, { success: false, error: 'Invalid or expired upload signature' });
+      return true;
     }
 
     try {
@@ -84,12 +86,14 @@ export async function handleCloudSyncRoutes(
     }
 
     const storage = getStorageProvider();
-    if (storage instanceof LocalStorageProvider) {
-      const valid = storage.verifyToken(key, 'download', expires, token);
-      if (!valid) {
-        sendJSON(res, 403, { success: false, error: 'Invalid or expired download signature' });
-        return true;
-      }
+    if (!(storage instanceof LocalStorageProvider)) {
+      sendJSON(res, 403, { success: false, error: 'Direct storage download endpoint is disabled for remote providers' });
+      return true;
+    }
+    const valid = storage.verifyToken(key, 'download', expires, token);
+    if (!valid) {
+      sendJSON(res, 403, { success: false, error: 'Invalid or expired download signature' });
+      return true;
     }
 
     try {
@@ -101,7 +105,6 @@ export async function handleCloudSyncRoutes(
       res.writeHead(200, {
         'Content-Type': 'application/octet-stream',
         'Content-Length': buffer.length,
-        'Access-Control-Allow-Origin': '*',
       });
       res.end(buffer);
     } catch (err: any) {
@@ -120,12 +123,14 @@ export async function handleCloudSyncRoutes(
     }
 
     const storage = getStorageProvider();
-    if (storage instanceof LocalStorageProvider) {
-      const valid = storage.verifyToken(key, 'delete', expires, token);
-      if (!valid) {
-        sendJSON(res, 403, { success: false, error: 'Invalid or expired signature' });
-        return true;
-      }
+    if (!(storage instanceof LocalStorageProvider)) {
+      sendJSON(res, 403, { success: false, error: 'Direct storage delete endpoint is disabled for remote providers' });
+      return true;
+    }
+    const valid = storage.verifyToken(key, 'delete', expires, token);
+    if (!valid) {
+      sendJSON(res, 403, { success: false, error: 'Invalid or expired signature' });
+      return true;
     }
 
     try {

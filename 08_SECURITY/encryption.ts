@@ -85,10 +85,16 @@ export function getOrCreateMasterKey(): Buffer {
 
   const keyPath = getMasterKeyPath();
   if (fs.existsSync(keyPath)) {
-    const stored = readMasterKeyFile(keyPath);
-    if (stored && stored.length === KEY_LENGTH) {
-      cachedMasterKey = stored;
-      return cachedMasterKey;
+    const raw = fs.readFileSync(keyPath, 'utf8').trim();
+    if (raw.length > 0) {
+      const stored = readMasterKeyFile(keyPath);
+      if (stored && stored.length === KEY_LENGTH) {
+        cachedMasterKey = stored;
+        return cachedMasterKey;
+      }
+      throw new Error(
+        '[SECURITY] Existing .mahi_master.key could not be decrypted or validated (safeStorage unavailable or corrupted). Refusing to overwrite existing master key.'
+      );
     }
   }
 

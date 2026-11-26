@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { app, shell } from '../08_SECURITY/electron-bridge.js';
 
 export interface DistributionInfo {
@@ -56,10 +56,9 @@ export function getReleaseDirectory(): string {
     return relInApp;
   }
   const candidateDirs = [
-    path.join(os.homedir(), 'Desktop', 'MAHI_BROWSER_UPGRADE_INSTALLER'),
-    path.join(os.homedir(), 'Desktop', 'mahai brouser', 'release'),
-    path.join(os.homedir(), 'Desktop', 'mahi browser', 'release'),
-    '/var/www/mahibrowser.com/release',
+    path.join(appDir, 'resources', 'release'),
+    '/var/www/mahibrowser.com/releases',
+    '/var/www/mahibrowser/releases',
     '/var/www/mahibrowser/release',
   ];
   for (const cand of candidateDirs) {
@@ -171,6 +170,10 @@ export async function openDistributionFolder(): Promise<boolean> {
   return true;
 }
 
+function psB64(value: string): string {
+  return `[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${Buffer.from(value, 'utf8').toString('base64')}'))`;
+}
+
 export async function fixDesktopShortcuts(): Promise<{ success: boolean; message: string; shortcuts: string[] }> {
   return new Promise((resolve) => {
     if (process.platform !== 'win32') {
@@ -196,15 +199,20 @@ export async function fixDesktopShortcuts(): Promise<{ success: boolean; message
 $desktop = [System.Environment]::GetFolderPath('Desktop')
 $WshShell = New-Object -ComObject WScript.Shell
 $created = @()
+$appExe = ${psB64(appExe)}
+$cwdPath = ${psB64(cwd)}
+$iconFile = ${psB64(iconPath)}
+$superBat = ${psB64(superAdminBat)}
+$webBat = ${psB64(webAdminBat)}
 
 # 1. Main App Shortcut
 $appLnk = Join-Path $desktop "MAHI BROWSER.lnk"
 $s1 = $WshShell.CreateShortcut($appLnk)
-$s1.TargetPath = "${appExe.replace(/\\/g, '\\\\')}"
-$s1.WorkingDirectory = "${cwd.replace(/\\/g, '\\\\')}"
+$s1.TargetPath = $appExe
+$s1.WorkingDirectory = $cwdPath
 $s1.Description = "MAHI BROWSER - Multi-Profile Browser & Automation Engine"
-if (Test-Path "${iconPath.replace(/\\/g, '\\\\')}") {
-  $s1.IconLocation = "${iconPath.replace(/\\/g, '\\\\')},0"
+if (Test-Path -LiteralPath $iconFile) {
+  $s1.IconLocation = "$iconFile,0"
 }
 $s1.Save()
 $created += "MAHI BROWSER.lnk"
@@ -212,15 +220,15 @@ $created += "MAHI BROWSER.lnk"
 # 2. Super Admin Shortcut
 $superLnk = Join-Path $desktop "MAHI Super Admin Console.lnk"
 $s2 = $WshShell.CreateShortcut($superLnk)
-if (Test-Path "${superAdminBat.replace(/\\/g, '\\\\')}") {
-  $s2.TargetPath = "${superAdminBat.replace(/\\/g, '\\\\')}"
+if (Test-Path -LiteralPath $superBat) {
+  $s2.TargetPath = $superBat
 } else {
   $s2.TargetPath = "http://127.0.0.1:32123/super-admin"
 }
-$s2.WorkingDirectory = "${cwd.replace(/\\/g, '\\\\')}"
+$s2.WorkingDirectory = $cwdPath
 $s2.Description = "MAHI BROWSER Secret Super Admin Console"
-if (Test-Path "${iconPath.replace(/\\/g, '\\\\')}") {
-  $s2.IconLocation = "${iconPath.replace(/\\/g, '\\\\')},0"
+if (Test-Path -LiteralPath $iconFile) {
+  $s2.IconLocation = "$iconFile,0"
 }
 $s2.Save()
 $created += "MAHI Super Admin Console.lnk"
@@ -228,15 +236,15 @@ $created += "MAHI Super Admin Console.lnk"
 # 3. Web Admin Shortcut
 $webLnk = Join-Path $desktop "MAHI Web Admin.lnk"
 $s3 = $WshShell.CreateShortcut($webLnk)
-if (Test-Path "${webAdminBat.replace(/\\/g, '\\\\')}") {
-  $s3.TargetPath = "${webAdminBat.replace(/\\/g, '\\\\')}"
+if (Test-Path -LiteralPath $webBat) {
+  $s3.TargetPath = $webBat
 } else {
   $s3.TargetPath = "http://127.0.0.1:32123/admin"
 }
-$s3.WorkingDirectory = "${cwd.replace(/\\/g, '\\\\')}"
+$s3.WorkingDirectory = $cwdPath
 $s3.Description = "MAHI BROWSER Enterprise Web Admin Control Center"
-if (Test-Path "${iconPath.replace(/\\/g, '\\\\')}") {
-  $s3.IconLocation = "${iconPath.replace(/\\/g, '\\\\')},0"
+if (Test-Path -LiteralPath $iconFile) {
+  $s3.IconLocation = "$iconFile,0"
 }
 $s3.Save()
 $created += "MAHI Web Admin.lnk"
@@ -244,7 +252,8 @@ $created += "MAHI Web Admin.lnk"
 Write-Output ($created -join ",")
 `;
 
-    exec(`powershell -NoProfile -ExecutionPolicy Bypass -Command "${psScript.replace(/"/g, '\\"')}"`, (error, stdout) => {
+    const encodedCommand = Buffer.from(psScript, 'utf16le').toString('base64');
+    execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedCommand], (error, stdout) => {
       if (error) {
         return resolve({
           success: false,
@@ -287,19 +296,26 @@ export async function createProfileShortcut(profileId: string, profileName: stri
 
     const psScript = `
 $WshShell = New-Object -ComObject WScript.Shell
-$s = $WshShell.CreateShortcut("${shortcutPath.replace(/\\/g, '\\\\')}")
-$s.TargetPath = "${appExe.replace(/\\/g, '\\\\')}"
-$s.Arguments = "--profile-id=${profileId}"
-$s.WorkingDirectory = "${cwd.replace(/\\/g, '\\\\')}"
-$s.Description = "Launch MAHI Profile: ${safeName}"
-if (Test-Path "${iconPath.replace(/\\/g, '\\\\')}") {
-  $s.IconLocation = "${iconPath.replace(/\\/g, '\\\\')},0"
+$lnkPath = ${psB64(shortcutPath)}
+$appExe = ${psB64(appExe)}
+$profileArg = ${psB64(`--profile-id=${profileId}`)}
+$cwdPath = ${psB64(cwd)}
+$desc = ${psB64(`Launch MAHI Profile: ${safeName}`)}
+$iconFile = ${psB64(iconPath)}
+$s = $WshShell.CreateShortcut($lnkPath)
+$s.TargetPath = $appExe
+$s.Arguments = $profileArg
+$s.WorkingDirectory = $cwdPath
+$s.Description = $desc
+if (Test-Path -LiteralPath $iconFile) {
+  $s.IconLocation = "$iconFile,0"
 }
 $s.Save()
 Write-Output "OK"
 `;
 
-    exec(`powershell -NoProfile -ExecutionPolicy Bypass -Command "${psScript.replace(/"/g, '\\"')}"`, (error) => {
+    const encodedCommand = Buffer.from(psScript, 'utf16le').toString('base64');
+    execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedCommand], (error) => {
       if (error) {
         return resolve({ success: false, path: '' });
       }

@@ -28,8 +28,14 @@ export function getProfilesDirectory(): string {
 }
 
 export function getProfileStoragePath(profileId: string): string {
-  const base = getProfilesDirectory();
-  const dir = path.join(base, profileId);
+  if (!profileId || typeof profileId !== 'string' || profileId.includes('\0') || /[\\/]/.test(profileId) || profileId === '.' || profileId === '..') {
+    throw new Error(`Invalid profile ID for storage path: ${String(profileId)}`);
+  }
+  const base = path.resolve(getProfilesDirectory());
+  const dir = path.resolve(base, profileId);
+  if (!dir.startsWith(base + path.sep)) {
+    throw new Error(`Profile path escaped profiles root: ${profileId}`);
+  }
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -75,7 +81,7 @@ export function getProfiles(filter: ProfileFilterOptions = {}): Profile[] {
 
   // Sorting
   const sortBy = filter.sortBy || 'createdAt';
-  const dir = (filter.sortDirection || 'desc').toUpperCase();
+  const dir = filter.sortDirection?.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
   const columnMap: Record<string, string> = {
     name: 'p.name',
     createdAt: 'p.created_at',

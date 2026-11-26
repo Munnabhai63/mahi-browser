@@ -36,7 +36,7 @@ export function getOwnerAdminTemplateHtml(): string {
     <div class="flex items-center space-x-4">
       <div class="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700/60">
         <span class="text-[10px] text-slate-400 uppercase font-semibold">Admin Key:</span>
-        <input type="password" id="owner-admin-secret" value="${process.env.ADMIN_BOOTSTRAP_TOKEN || ''}" placeholder="Admin Secret" class="bg-transparent text-white font-mono text-xs focus:outline-none w-32">
+        <input type="password" id="owner-admin-secret" value="" placeholder="Admin Secret" class="bg-transparent text-white font-mono text-xs focus:outline-none w-32">
       </div>
       <button id="lock-console-btn" onclick="lockConsole()" class="px-3.5 py-1.5 bg-rose-900/30 hover:bg-rose-900/50 text-rose-300 border border-rose-700/50 rounded-xl text-xs font-bold transition flex items-center space-x-1.5">
         <span>🔒</span>
@@ -349,6 +349,17 @@ export function getOwnerAdminTemplateHtml(): string {
     let cachedPlans = [];
     let searchDebounceTimers = {};
     const selectedUsers = {};
+    const searchUserCache = {};
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
 
     function getAdminSecret() {
       const secretInput = document.getElementById('owner-admin-secret');
@@ -459,10 +470,10 @@ export function getOwnerAdminTemplateHtml(): string {
       const grantSelect = document.getElementById('grant-plan-id');
       const setplanSelect = document.getElementById('setplan-plan-id');
       if (grantSelect) {
-        grantSelect.innerHTML = cachedPlans.map(p => \`<option value="\${p.id}">\${p.name} (\${p.tier || p.id})</option>\`).join('');
+        grantSelect.innerHTML = cachedPlans.map(p => \`<option value="\${escapeHtml(p.id)}">\${escapeHtml(p.name)} (\${escapeHtml(p.tier || p.id)})</option>\`).join('');
       }
       if (setplanSelect) {
-        setplanSelect.innerHTML = cachedPlans.map(p => \`<option value="\${p.id}">\${p.name} (\${p.tier || p.id})</option>\`).join('');
+        setplanSelect.innerHTML = cachedPlans.map(p => \`<option value="\${escapeHtml(p.id)}">\${escapeHtml(p.name)} (\${escapeHtml(p.tier || p.id)})</option>\`).join('');
       }
     }
 
@@ -505,17 +516,25 @@ export function getOwnerAdminTemplateHtml(): string {
           return;
         }
 
-        resultsDiv.innerHTML = res.data.map(u => {
-          const displayEmail = u.email || 'N/A';
-          const escapedName = (u.name || u.email || 'User').replace(/"/g, '&quot;');
-          const safeEmail = (u.email || '').replace(/"/g, '&quot;');
-          return \`<div onclick="selectUser('\${context}', '\${u.id}', '\${escapedName}', '\${safeEmail}', '\${u.status || 'ACTIVE'}')"
+        searchUserCache[context] = res.data;
+        resultsDiv.innerHTML = res.data.map((u, idx) => {
+          const displayEmail = escapeHtml(u.email || 'N/A');
+          const escapedName = escapeHtml(u.name || u.email || 'User');
+          const escapedId = escapeHtml(u.id || '');
+          return \`<div onclick="selectUserByIndex('\${escapeHtml(context)}', \${idx})"
             class="p-2.5 hover:bg-slate-800 cursor-pointer border-b border-slate-800/60 last:border-0 text-xs transition">
             <div class="font-bold text-white">\${escapedName}</div>
-            <div class="text-[11px] text-slate-300 font-mono">\${displayEmail} <span class="text-slate-500">(\${u.id})</span></div>
+            <div class="text-[11px] text-slate-300 font-mono">\${displayEmail} <span class="text-slate-500">(\${escapedId})</span></div>
           </div>\`;
         }).join('');
       }, 250);
+    }
+
+    function selectUserByIndex(context, idx) {
+      const list = searchUserCache[context] || [];
+      const u = list[idx];
+      if (!u) return;
+      selectUser(context, u.id || '', u.name || u.email || 'User', u.email || '', u.status || 'ACTIVE');
     }
 
     function selectUser(context, id, name, email, status) {

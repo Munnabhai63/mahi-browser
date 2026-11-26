@@ -1159,6 +1159,9 @@ export function ensureProfileStealthExtension(
         for (var sni = 0; sni < sensorNames.length; sni++) {
           (function(clsName) {
             var SensorCtor = function() {
+              if (!(this instanceof SensorCtor)) {
+                throw new TypeError("Failed to construct '" + clsName + "': Please use the 'new' operator, this DOM object constructor cannot be called as a function.");
+              }
               this.activated = false;
               this.hasReading = true;
               this.timestamp = 1;
@@ -1170,11 +1173,22 @@ export function ensureProfileStealthExtension(
                 this.z = clsName === 'Gyroscope' ? 0 : sz;
               }
             };
-            SensorCtor.prototype.start = function() { this.activated = true; };
-            SensorCtor.prototype.stop = function() { this.activated = false; };
-            SensorCtor.prototype.addEventListener = function() {};
-            SensorCtor.prototype.removeEventListener = function() {};
+            var fnStart = function start() { this.activated = true; };
+            var fnStop = function stop() { this.activated = false; };
+            var fnAdd = function addEventListener() {};
+            var fnRem = function removeEventListener() {};
+            SensorCtor.prototype.start = fnStart;
+            SensorCtor.prototype.stop = fnStop;
+            SensorCtor.prototype.addEventListener = fnAdd;
+            SensorCtor.prototype.removeEventListener = fnRem;
+            if (typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+              try { Object.defineProperty(SensorCtor.prototype, Symbol.toStringTag, { value: clsName, configurable: true }); } catch(e) {}
+            }
             registerNative(SensorCtor, clsName);
+            registerNative(fnStart, 'start');
+            registerNative(fnStop, 'stop');
+            registerNative(fnAdd, 'addEventListener');
+            registerNative(fnRem, 'removeEventListener');
             Object.defineProperty(targetWin, clsName, { value: SensorCtor, configurable: true, writable: true });
           })(sensorNames[sni]);
         }
@@ -1197,7 +1211,7 @@ export function ensureProfileStealthExtension(
     var patchedFramesRealms = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
     var patchRealm = function(targetWin, depth) {
       if (!targetWin || (patchedWindows && patchedWindows.has(targetWin))) return;
-      if (depth && depth > 1) return;
+      if (depth && depth > 4) return;
       var nextDepth = (depth || 0) + 1;
       try {
         if (patchedWindows) patchedWindows.add(targetWin);
@@ -1497,7 +1511,7 @@ export function ensureProfileStealthExtension(
           );
           applyEnvironmentDeviceHooks(targetWin);
 
-        // 5. Date & Timezone in targetWin
+        // 5. Date, Timezone & Intl in targetWin
         if (!mahiTzApplied && targetTz && targetWin.Date && targetWin.Date.prototype) {
           try {
             var origDateTz = targetWin.Date.prototype.getTimezoneOffset;
@@ -1511,6 +1525,41 @@ export function ensureProfileStealthExtension(
             });
             targetWin.Date.prototype.getTimezoneOffset = proxyDateTz;
             registerNative(proxyDateTz, 'getTimezoneOffset');
+          } catch(e) {}
+        }
+
+        // 5b. AudioBuffer & AudioWorklet jitter propagation in targetWin
+        if (${audioMode !== 'off'} && targetWin.AudioBuffer && targetWin.AudioBuffer.prototype) {
+          try {
+            var tPerturbedBufs = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+            var tAudioRng = createMulberry32(pSeed ^ 0x41554449);
+            var tAudioOffsets = [];
+            for (var tai = 0; tai < 64; tai++) {
+              var tao = (tAudioRng() - 0.5) * 2e-6;
+              tAudioOffsets.push(tao === 0 ? 1e-7 : tao);
+            }
+            var tOrigGetChannelData = targetWin.AudioBuffer.prototype.getChannelData;
+            if (tOrigGetChannelData) {
+              var tProxyGetChannelData = new Proxy(tOrigGetChannelData, {
+                apply: function(target, thisArg, args) {
+                  var buf = target.apply(thisArg, args);
+                  if (tPerturbedBufs && !tPerturbedBufs.has(buf)) {
+                    tPerturbedBufs.add(buf);
+                    var silent = true;
+                    for (var si = 0; si < buf.length; si++) { if (buf[si] !== 0) { silent = false; break; } }
+                    if (!silent) {
+                      for (var i = 0, step = 0; i < buf.length; i += 100, step++) {
+                        buf[i] += tAudioOffsets[step & 63];
+                      }
+                    }
+                  }
+                  return buf;
+                }
+              });
+              targetWin.AudioBuffer.prototype.getChannelData = tProxyGetChannelData;
+              registerNative(tProxyGetChannelData, 'getChannelData');
+              registerNative(tOrigGetChannelData, 'getChannelData');
+            }
           } catch(e) {}
         }
 
@@ -2055,6 +2104,11 @@ export function ensureProfileStealthExtension(
         '              var res = { brands: wBrands, mobile: ' + (${isMobile ? 'true' : 'false'}) + ', platform: ' + JSON.stringify(${JSON.stringify(clientHintsPlatform)}) + ' };',
         '              if (Array.isArray(hints)) {',
         '                for (var wi = 0; wi < hints.length; wi++) {',
+        '                  if (hints[wi] === "architecture") res.architecture = ' + JSON.stringify(${JSON.stringify(clientHintsArch)}) + ';',
+        '                  if (hints[wi] === "bitness") res.bitness = "64";',
+        '                  if (hints[wi] === "model") res.model = ' + JSON.stringify(${JSON.stringify(clientHintsModel)}) + ';',
+        '                  if (hints[wi] === "platformVersion") res.platformVersion = ' + JSON.stringify(${JSON.stringify(clientHintsPlatformVersion)}) + ';',
+        '                  if (hints[wi] === "uaFullVersion") res.uaFullVersion = ' + JSON.stringify(${JSON.stringify(chromeFullVer)}) + ';',
         '                  if (hints[wi] === "fullVersionList") res.fullVersionList = wFullList;',
         '                }',
         '              }',
@@ -2914,7 +2968,7 @@ export function ensureProfileStealthExtension(
         registerNative(proxyGetExtension, 'getExtension');
         registerNative(origGetExtension, 'getExtension');
 
-        // Deterministic readPixels micro-jitter if webgl noise is enabled
+        // Deterministic coordinate-seeded readPixels micro-jitter if webgl noise is enabled
         if (proto.readPixels) {
           var origReadPixels = proto.readPixels;
           var proxyReadPixels = new Proxy(origReadPixels, {
@@ -2922,10 +2976,23 @@ export function ensureProfileStealthExtension(
               var res = target.apply(thisArg, args);
               var pixels = args[6];
               if (pixels && (pixels instanceof Uint8Array || (typeof Uint8ClampedArray !== 'undefined' && pixels instanceof Uint8ClampedArray)) && pixels.length >= 16) {
-                var step = Math.max(16, (pixels.length >> 4) & ~3);
-                for (var i = 0; i < pixels.length; i += step) {
-                  if ((i + 3) < pixels.length && pixels[i + 3] === 0) continue;
-                  pixels[i] ^= 1;
+                var rx = (Number(args[0]) || 0) | 0;
+                var ry = (Number(args[1]) || 0) | 0;
+                var rw = Math.max(1, (Number(args[2]) || Math.floor(pixels.length / 4)) | 0);
+                var maxPx = Math.floor(pixels.length / 4);
+                for (var pi = 0; pi < maxPx; pi++) {
+                  var baseIdx = pi * 4;
+                  if (pixels[baseIdx + 3] === 0) continue;
+                  var px = rx + (pi % rw);
+                  var py = ry + Math.floor(pi / rw);
+                  var ph = Math.imul((px + canvasSaltA) | 0, 0x85ebca6b) ^
+                           Math.imul((py + canvasSaltB) | 0, 0xc2b2ae35) ^ pSeed;
+                  ph ^= ph >>> 15; ph = Math.imul(ph, 0x2545f491);
+                  ph ^= ph >>> 13;
+                  if ((ph & 63) === 0) {
+                    var chOffset = canvasChTable[(ph >>> 6) & 63];
+                    pixels[baseIdx + chOffset] ^= 1;
+                  }
                 }
               }
               return res;
@@ -2943,13 +3010,38 @@ export function ensureProfileStealthExtension(
   }
 
   // -------------------------------------------------------------
-  // 4.5 WebGPU Hardware Descriptors (Dawn Engine)
+  // 4.5 WebGPU Hardware Descriptors (Coherent with WebGL Vendor/Renderer)
   // -------------------------------------------------------------
   try {
     if (${gpuSpoofOn} && navigator.gpu && navigator.gpu.requestAdapter) {
+      var glHint = (${JSON.stringify(gpuVendor)} + ' ' + ${JSON.stringify(gpuRenderer)}).toLowerCase();
+      var inferredGpuVendor = ${JSON.stringify(isMobile ? 'arm' : (isMacArm ? 'apple' : 'NVIDIA'))};
+      var inferredGpuArch = ${JSON.stringify(isMobile ? 'valhall' : (isMacArm ? 'apple-m1' : 'ampere'))};
+      if (glHint.indexOf('intel') !== -1) {
+        inferredGpuVendor = 'intel';
+        inferredGpuArch = 'gen-12lp';
+      } else if (glHint.indexOf('amd') !== -1 || glHint.indexOf('radeon') !== -1 || glHint.indexOf('ati') !== -1) {
+        inferredGpuVendor = 'amd';
+        inferredGpuArch = 'rdna-2';
+      } else if (glHint.indexOf('apple') !== -1) {
+        inferredGpuVendor = 'apple';
+        inferredGpuArch = 'apple-m2';
+      } else if (glHint.indexOf('adreno') !== -1 || glHint.indexOf('qualcomm') !== -1) {
+        inferredGpuVendor = 'qualcomm';
+        inferredGpuArch = 'adreno-6xx';
+      } else if (glHint.indexOf('mali') !== -1 || glHint.indexOf('arm') !== -1) {
+        inferredGpuVendor = 'arm';
+        inferredGpuArch = 'valhall';
+      } else if (glHint.indexOf('nvidia') !== -1 || glHint.indexOf('geforce') !== -1 || glHint.indexOf('rtx') !== -1) {
+        inferredGpuVendor = 'nvidia';
+        inferredGpuArch = 'ampere';
+      } else if (${isLinux ? 'true' : 'false'}) {
+        inferredGpuVendor = 'mesa';
+        inferredGpuArch = 'gen-12lp';
+      }
       var gpuInfo = {
-        architecture: ${JSON.stringify(isMobile ? 'valhall' : (isMacArm ? 'apple-m1' : 'ampere'))},
-        vendor: ${JSON.stringify(isMobile ? 'arm' : (isMacArm ? 'apple' : (isLinux ? 'mesa' : 'NVIDIA')))},
+        architecture: inferredGpuArch,
+        vendor: inferredGpuVendor,
         device: ${JSON.stringify(gpuRenderer)},
         description: ${JSON.stringify(gpuRenderer)},
       };
@@ -4300,13 +4392,23 @@ export async function launchCamoufoxProfile(
       firefoxPrefs['network.proxy.type'] = 0;
     }
 
-    // WebRTC policy
-    const webrtcOpt = settings?.network?.webrtc || 'default';
+    // WebRTC policy (enforce proxy-only / disable UDP host candidates whenever masked, altered, proxy_only, or behind proxy)
+    const webrtcOpt: string = String(settings?.network?.webrtc || 'default');
     if (webrtcOpt === 'disabled') {
       firefoxPrefs['media.peerconnection.enabled'] = false;
-    } else if (webrtcOpt === 'proxy_only' || (!resolvedPublicIp && firefoxPrefs['network.proxy.type'] === 1)) {
+    } else if (
+      webrtcOpt === 'proxy_only' ||
+      webrtcOpt === 'masked' ||
+      webrtcOpt === 'altered' ||
+      webrtcOpt === 'disable_non_proxied_udp' ||
+      webrtcOpt === 'default_public_interface_only' ||
+      webrtcOpt === 'public_interface_only' ||
+      webrtcOpt === 'noise' ||
+      (webrtcOpt !== 'real' && webrtcOpt !== 'allow_all' && firefoxPrefs['network.proxy.type'] === 1)
+    ) {
       firefoxPrefs['media.peerconnection.ice.proxy_only_if_behind_proxy'] = true;
       firefoxPrefs['media.peerconnection.ice.default_address_only'] = true;
+      firefoxPrefs['media.peerconnection.ice.no_host'] = true;
     }
 
     // Synchronize Firefox user.js prefs in profile storage

@@ -20,11 +20,11 @@ export const MobileCloudViewer: React.FC<MobileCloudViewerProps> = ({
 }) => {
   const [currentUrl, setCurrentUrl] = useState('https://www.google.com');
   const [urlInput, setUrlInput] = useState('https://www.google.com');
-  const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'RECONNECTING' | 'DISCONNECTED'>('CONNECTED');
+  const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'RECONNECTING' | 'DISCONNECTED'>('DISCONNECTED');
   const [qualityMode, setQualityMode] = useState<'auto' | 'low' | 'balanced' | 'high'>('balanced');
-  const [latencyMs, setLatencyMs] = useState(42);
-  const [fps, setFps] = useState(30);
-  const [bytesReceived, setBytesReceived] = useState(3840000); // 3.84 MB
+  const [latencyMs, setLatencyMs] = useState(0);
+  const [fps, setFps] = useState(0);
+  const [bytesReceived, setBytesReceived] = useState(0);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [softKeyBuffer, setSoftKeyBuffer] = useState('');
   const [isLandscape, setIsLandscape] = useState(false);
@@ -42,69 +42,33 @@ export const MobileCloudViewer: React.FC<MobileCloudViewerProps> = ({
     return () => window.removeEventListener('resize', checkOrientation);
   }, []);
 
-  // Simulate remote video stream render on canvas
+  // Draw honest disconnected/standby status canvas until a live WebRTC/CDP frame stream attaches
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let animId: number;
-    let frameCount = 0;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.fillStyle = '#0F172A';
+    ctx.fillRect(0, 0, w, h);
 
-    const renderMockFrame = () => {
-      frameCount++;
-      const w = canvas.width;
-      const h = canvas.height;
+    ctx.fillStyle = '#1E293B';
+    ctx.fillRect(0, 0, w, 40);
+    ctx.fillStyle = '#CBD5E1';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.fillText(`URL: ${currentUrl}`, 16, 25);
 
-      // Remote browser background
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#F8FAFC';
+    ctx.font = 'bold 16px system-ui, sans-serif';
+    ctx.fillText('Cloud Screencast Not Connected', 28, 92);
 
-      // Browser mock header
-      ctx.fillStyle = '#F1F5F9';
-      ctx.fillRect(0, 0, w, 40);
-      ctx.fillStyle = '#334155';
-      ctx.font = '12px system-ui, sans-serif';
-      ctx.fillText(`🔒 ${currentUrl}`, 16, 25);
-
-      // Web content canvas simulation
-      ctx.fillStyle = '#0F172A';
-      ctx.font = '18px system-ui, sans-serif';
-      ctx.fillText(`MAHI Cloud Browser — Interactive Session`, 30, 90);
-
-      ctx.fillStyle = '#64748B';
-      ctx.font = '13px system-ui, sans-serif';
-      ctx.fillText(`Profile: ${profileName} (${profileId})`, 30, 116);
-      ctx.fillText(`Rendering via Phase 10 Cloud Worker us-east-1`, 30, 136);
-
-      // Mock interactive webpage button
-      ctx.fillStyle = '#4F46E5';
-      ctx.beginPath();
-      ctx.roundRect(30, 160, 160, 38, 8);
-      ctx.fill();
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = '13px system-ui, sans-serif';
-      ctx.fillText('Interactive Target Button', 42, 184);
-
-      // Mock search box
-      ctx.strokeStyle = '#CBD5E1';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(30, 220, w - 60, 36);
-      ctx.fillStyle = '#94A3B8';
-      ctx.fillText('Type anywhere with virtual keyboard toolbar...', 42, 244);
-
-      // Simulated network activity tick
-      if (frameCount % 60 === 0) {
-        setLatencyMs(35 + Math.floor(Math.random() * 15));
-        setBytesReceived((prev) => prev + 12800);
-      }
-
-      animId = requestAnimationFrame(renderMockFrame);
-    };
-
-    renderMockFrame();
-    return () => cancelAnimationFrame(animId);
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = '13px system-ui, sans-serif';
+    ctx.fillText(`Profile: ${profileName} (${profileId})`, 28, 122);
+    ctx.fillText('No live remote worker WebRTC/CDP stream is attached.', 28, 146);
+    ctx.fillText('Configure MAHI Cloud Gateway to stream live remote sessions.', 28, 168);
   }, [currentUrl, profileName, profileId]);
 
   // Touch down / start

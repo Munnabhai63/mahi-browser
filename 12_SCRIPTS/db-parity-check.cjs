@@ -4,7 +4,8 @@
  * Compares record counts and user terms state side-by-side between SQLite and PostgreSQL.
  */
 
-const { execSync } = require('node:child_process');
+const { execFileSync } = require('node:child_process');
+const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs');
 
@@ -15,7 +16,21 @@ function maskEmail(email) {
   return `${local[0]}***@${domain}`;
 }
 
-const sqlitePath = process.env.SQLITE_PATH || '/var/lib/mahibrowser/mahi_browser.sqlite';
+function getDefaultSqlitePath() {
+  if (process.env.SQLITE_PATH) return process.env.SQLITE_PATH;
+  if (fs.existsSync('/var/lib/mahibrowser/mahi_browser.sqlite')) {
+    return '/var/lib/mahibrowser/mahi_browser.sqlite';
+  }
+  const appDir =
+    process.platform === 'win32'
+      ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'mahi-browser')
+      : process.platform === 'darwin'
+        ? path.join(os.homedir(), 'Library', 'Application Support', 'mahi-browser')
+        : path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'mahi-browser');
+  return path.join(appDir, 'mahi_browser.sqlite');
+}
+
+const sqlitePath = getDefaultSqlitePath();
 const pgImage = process.env.PG_IMAGE || 'postgres:17-alpine';
 
 function getPgUrl() {
@@ -23,7 +38,7 @@ function getPgUrl() {
     return process.env.DATABASE_URL.trim().replace(/^["']|["']$/g, '').split('?')[0];
   }
   try {
-    const raw = execSync('docker exec mahibrowser_gateway printenv DATABASE_URL', { encoding: 'utf-8' });
+    const raw = execFileSync('docker', ['exec', 'mahibrowser_gateway', 'printenv', 'DATABASE_URL'], { encoding: 'utf-8' });
     return raw.trim().replace(/^["']|["']$/g, '').split('?')[0];
   } catch (err) {
     console.error('Failed to retrieve DATABASE_URL from container:', err.message);
@@ -35,9 +50,10 @@ const cleanPgUrl = getPgUrl();
 
 function queryPg(sql) {
   try {
-    return execSync(
-      `docker run --rm -i -e DATABASE_URL="${cleanPgUrl}" ${pgImage} sh -c 'psql "$DATABASE_URL" -tA'`,
-      { input: sql, encoding: 'utf-8' }
+    return execFileSync(
+      'docker',
+      ['run', '--rm', '-i', '-e', 'DATABASE_URL', pgImage, 'sh', '-c', 'psql "$DATABASE_URL" -tA'],
+      { input: sql, encoding: 'utf-8', env: { ...process.env, DATABASE_URL: cleanPgUrl } }
     ).trim();
   } catch (err) {
     return `ERROR: ${err.message.split('\n')[0]}`;
@@ -49,7 +65,7 @@ function querySqlite(sql) {
     if (!fs.existsSync(sqlitePath)) {
       return 'N/A (file not found)';
     }
-    return execSync(`sqlite3 "${sqlitePath}"`, { input: sql, encoding: 'utf-8' }).trim();
+    return execFileSync('sqlite3', [sqlitePath], { input: sql, encoding: 'utf-8' }).trim();
   } catch (err) {
     return `ERROR: ${err.message.split('\n')[0]}`;
   }

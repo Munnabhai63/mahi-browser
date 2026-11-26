@@ -52,7 +52,7 @@ exports.default = async function sign(configuration) {
       return;
     } catch (err) {
       console.error(`[Authenticode:ERROR] Signtool signing failed: ${err.message}`);
-      console.error('[Authenticode:WARN] Continuing with UNSIGNED artifact.');
+      throw err;
     }
   }
 
@@ -66,7 +66,7 @@ exports.default = async function sign(configuration) {
       return;
     } catch (err) {
       console.error(`[Authenticode:ERROR] Signtool signing failed: ${err.message}`);
-      console.error('[Authenticode:WARN] Continuing with UNSIGNED artifact.');
+      throw err;
     }
   }
 

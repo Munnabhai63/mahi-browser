@@ -88,7 +88,9 @@ export class ProxyProviderRegistry {
     });
 
     if (eligible.length === 0) {
-      // Fallback to mock provider
+      if (process.env.NODE_ENV === 'production' && process.env.MAHI_ALLOW_MOCK_PROXY !== '1') {
+        throw new Error('NO_CONFIGURED_PROXY_PROVIDER: No proxy provider matches the requested capabilities in production.');
+      }
       return this.mockProvider;
     }
 
@@ -102,8 +104,11 @@ export class ProxyProviderRegistry {
       return a.defaultPriority - b.defaultPriority;
     });
 
+    const isProd = process.env.NODE_ENV === 'production' && process.env.MAHI_ALLOW_MOCK_PROXY !== '1';
+
     // Check health of top candidate; if down, failover to next eligible
     for (const candidate of eligible) {
+      if (isProd && candidate.id === 'mock') continue;
       if (candidate.isConfigured() || candidate.id === 'mock') {
         try {
           const health = await candidate.healthCheck();
@@ -117,7 +122,15 @@ export class ProxyProviderRegistry {
       }
     }
 
-    // Default safe fallback
+    if (isProd) {
+      const firstReal = eligible.find((p) => p.id !== 'mock' && p.isConfigured());
+      if (!firstReal) {
+        throw new Error('PROXY_PROVIDER_UNCONFIGURED: Configure commercial proxy provider credentials in production.');
+      }
+      return firstReal;
+    }
+
+    // Default safe fallback for dev/test environments
     return eligible[0] || this.mockProvider;
   }
 

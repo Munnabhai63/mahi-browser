@@ -13,7 +13,8 @@ import { MobileOfflineCache } from './offline/offline-cache';
 
 export const MobileApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState<MobileTab>('home');
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string>('');
   const [isBiometricLocked, setIsBiometricLocked] = useState<boolean>(false);
   const [biometricEnabled, setBiometricEnabled] = useState<boolean>(false);
   const [isOffline, setIsOffline] = useState<boolean>(false);
@@ -75,7 +76,7 @@ export const MobileApp: React.FC = () => {
       memberCount: 4,
       sharedProfileCount: 18,
       members: [
-        { id: 'usr_owner_01', email: 'munaf@mahibrowser.com', name: 'Munaf (Owner)', role: 'OWNER', joinedAt: '2026-01-01' },
+        { id: 'usr_owner_01', email: 'owner@workspace.local', name: 'Workspace Owner', role: 'OWNER', joinedAt: '2026-01-01' },
         { id: 'usr_admin_02', email: 'sarah@agency.com', name: 'Sarah Admin', role: 'ADMIN', joinedAt: '2026-02-15' },
         { id: 'usr_op_03', email: 'alex@agency.com', name: 'Alex Operator', role: 'OPERATOR', joinedAt: '2026-03-10' },
         { id: 'usr_view_04', email: 'client@brand.com', name: 'Client Auditor', role: 'VIEWER', joinedAt: '2026-03-20' },
@@ -88,7 +89,7 @@ export const MobileApp: React.FC = () => {
       memberCount: 1,
       sharedProfileCount: 6,
       members: [
-        { id: 'usr_owner_01', email: 'munaf@mahibrowser.com', name: 'Munaf', role: 'OWNER', joinedAt: '2026-01-01' },
+        { id: 'usr_owner_01', email: 'owner@workspace.local', name: 'Workspace Owner', role: 'OWNER', joinedAt: '2026-01-01' },
       ],
     },
   ]);
@@ -128,8 +129,18 @@ export const MobileApp: React.FC = () => {
   });
 
 
-  // Check biometric lock on launch
+  // Restore authenticated session and check biometric lock on launch
   useEffect(() => {
+    let mounted = true;
+    MobileSecureStorage.getTokens()
+      .then((existingTokens) => {
+        if (mounted && existingTokens?.accessToken && existingTokens?.email) {
+          setIsAuthenticated(true);
+          setCurrentUserEmail(existingTokens.email);
+        }
+      })
+      .catch(() => {});
+
     const isBioActive = MobileSecureStorage.isBiometricLockActive();
     setBiometricEnabled(isBioActive);
     if (isBioActive) {
@@ -142,6 +153,7 @@ export const MobileApp: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     return () => {
+      mounted = false;
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
@@ -218,6 +230,7 @@ export const MobileApp: React.FC = () => {
       storedAt: new Date().toISOString(),
     });
     setIsAuthenticated(true);
+    setCurrentUserEmail(loginEmail);
     setAuthError('');
   };
 
@@ -611,10 +624,10 @@ export const MobileApp: React.FC = () => {
         )}
         {activeTab === 'account' && (
           <MobileAccountTab
-            userEmail="munaf@mahibrowser.com"
-            planName="ENTERPRISE PRO"
-            cloudHoursUsed={14}
-            cloudHoursLimit={50}
+            userEmail={currentUserEmail || 'Not Signed In'}
+            planName="STANDARD"
+            cloudHoursUsed={0}
+            cloudHoursLimit={10}
             devices={devices}
             notificationPrefs={notificationPrefs}
             biometricLockEnabled={biometricEnabled}

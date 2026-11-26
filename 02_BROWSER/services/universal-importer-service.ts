@@ -427,7 +427,7 @@ function parseCsvLine(line: string, headers: string[], rowIdx: number): ParsedAc
     cookies,
     userAgent: data.useragent || data.user_agent || data.ua,
     timezone: data.timezone || undefined,
-    notes: data.notes || data.remark || (data.password ? `Email/User: ${data.email || data.username}\nPassword: ${data.password}` : undefined),
+    notes: data.notes || data.remark || ((data.email || data.username) ? `Email/User: ${data.email || data.username}` : undefined),
     tags: data.tags ? data.tags.split(/[;|]/).map((t) => t.trim()).filter(Boolean) : ['Imported'],
     rawLine: line,
   };
@@ -541,7 +541,7 @@ function parseDelimitedLine(line: string, index: number): ParsedAccountItem | nu
     password,
     proxy,
     cookies,
-    notes: password ? `Email/Username: ${usernameOrEmail}\nPassword: ${password}` : undefined,
+    notes: usernameOrEmail ? `Email/Username: ${usernameOrEmail}` : undefined,
     tags: ['Imported', 'Batch-Import'],
     rawLine: line,
   };

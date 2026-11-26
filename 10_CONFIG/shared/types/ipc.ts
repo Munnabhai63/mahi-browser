@@ -137,6 +137,17 @@ export interface ProfileCacheCleanupResult {
   errors: string[];
 }
 
+export interface StartProfileResult {
+  success: boolean;
+  pid?: number;
+  error?: string;
+  code?: 'MOBILE_MODE_CONFLICT' | 'MOBILE_MODE_ROTATION_FAILED' | 'MOBILE_MODE_IP_UNCHANGED';
+  runningProfileId?: string;
+  runningProfileName?: string;
+  rotatedIp?: string;
+  notesUpdated?: boolean;
+}
+
 export interface MahiBrowserAPI {
   // Profiles
   getProfiles: (filter?: ProfileFilterOptions) => Promise<Profile[]>;
@@ -160,7 +171,7 @@ export interface MahiBrowserAPI {
   getUnassignedLegacy: () => Promise<Profile[]>;
 
 
-  startProfile: (id: string) => Promise<{ success: boolean; pid?: number; error?: string }>;
+  startProfile: (id: string) => Promise<StartProfileResult>;
   stopProfile: (id: string) => Promise<{ success: boolean; error?: string }>;
   quickSwitchProfile: (number: number) => Promise<{ success: boolean; action?: 'FOCUSED' | 'LAUNCHED'; profile?: Profile; error?: string }>;
   getProfileStatus: (id: string) => Promise<{ status: string; pid?: number }>;
@@ -278,6 +289,10 @@ export interface MahiBrowserAPI {
   mobileRotatorRotate: (config?: any) => Promise<any>;
   mobileRotatorGetConfig: () => Promise<any>;
   mobileRotatorSaveConfig: (config: any) => Promise<any>;
+  mobileRotatorGetAdbStatus: () => Promise<any>;
+  mobileRotatorInstallAdb: () => Promise<any>;
+  mobileRotatorGetHistory: () => Promise<any[]>;
+  mobileRotatorClearHistory: () => Promise<boolean>;
 
   // Universal Bulk Importer
   importerParsePreview: (rawText: string) => Promise<any[]>;

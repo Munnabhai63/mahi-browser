@@ -54,10 +54,14 @@ export function assertPathIsNotProduction(targetPath: string): void {
   const norm = targetPath.toLowerCase().replace(/\\/g, '/');
   if (
     norm.includes('/appdata/roaming/mahi-browser') ||
-    norm.includes('/appdata/local/programs/mahi browser')
+    norm.includes('/appdata/local/programs/mahi browser') ||
+    norm.includes('/library/application support/mahi-browser') ||
+    norm.includes('/.config/mahi-browser') ||
+    norm.includes('/.local/share/mahi-browser') ||
+    norm.includes('/var/lib/mahibrowser')
   ) {
     throw new Error(
-      `[GLOBAL TEST SAFETY GUARD VIOLATION] Automated tests must NEVER target production user database in AppData! Attempted path: "${targetPath}". Please use setCustomDatabasePath(...) with an isolated test directory or let the safety guard route to temporary storage.`
+      `[GLOBAL TEST SAFETY GUARD VIOLATION] Automated tests must NEVER target production user database! Attempted path: "${targetPath}". Please use setCustomDatabasePath(...) with an isolated test directory or let the safety guard route to temporary storage.`
     );
   }
 }
@@ -137,6 +141,8 @@ export function saveDatabaseToDisk(): void {
     return;
   }
   isSaving = true;
+  let tmpPath: string | null = null;
+  let fd: number | null = null;
   try {
     const data = dbInstance.export();
     const buffer = Buffer.from(data);
@@ -144,17 +150,41 @@ export function saveDatabaseToDisk(): void {
     const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-    // Atomic write pattern: write to tmp file with fsync, then atomic rename
-    const tmpPath = `${dbPath}.tmp.${process.pid}.${Date.now()}`;
-    const fd = fs.openSync(tmpPath, 'w');
+    // Atomic write pattern: write to tmp file with fsync, then atomic rename (with transient Windows EPERM/EBUSY retry)
+    tmpPath = `${dbPath}.tmp.${process.pid}.${Date.now()}`;
+    fd = fs.openSync(tmpPath, 'w');
     fs.writeSync(fd, buffer);
     fs.fsyncSync(fd);
     fs.closeSync(fd);
+    fd = null;
 
-    fs.renameSync(tmpPath, dbPath);
+    let renameErr: unknown = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        fs.renameSync(tmpPath, dbPath);
+        renameErr = null;
+        break;
+      } catch (err: any) {
+        renameErr = err;
+        if (err && (err.code === 'EPERM' || err.code === 'EBUSY') && attempt < 3) {
+          const until = Date.now() + 25 * (attempt + 1);
+          while (Date.now() < until) {}
+          continue;
+        }
+        throw err;
+      }
+    }
+    if (renameErr) throw renameErr;
+    tmpPath = null;
   } catch (err) {
     console.error('[DATABASE ATOMIC SAVE ERROR] Failed to save SQLite database to disk:', err);
   } finally {
+    if (fd !== null) {
+      try { fs.closeSync(fd); } catch {}
+    }
+    if (tmpPath && fs.existsSync(tmpPath)) {
+      try { fs.unlinkSync(tmpPath); } catch {}
+    }
     isSaving = false;
     if (savePending) {
       savePending = false;

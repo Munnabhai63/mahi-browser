@@ -69,11 +69,16 @@ describe('Step 7: Packaged Desktop App Hardening & Writable Paths', () => {
     expect(fs.existsSync(builderJsonPath)).toBe(true);
     const builderConfig = JSON.parse(fs.readFileSync(builderJsonPath, 'utf8'));
 
-    // Check extraResources includes landing
+    // Check extraResources includes landing and bundled ADB platform-tools
     const hasLanding = builderConfig.extraResources.some(
       (r: any) => (r.from === 'landing' && r.to === 'landing')
     );
     expect(hasLanding).toBe(true);
+
+    const hasPlatformTools = builderConfig.extraResources.some(
+      (r: any) => (r.from === '.mahi_data/platform-tools' && r.to === 'platform-tools')
+    );
+    expect(hasPlatformTools).toBe(true);
 
     // Verify electron-updater is NOT excluded in files
     const filesList = builderConfig.files || [];

@@ -12,6 +12,8 @@
  */
 
 import crypto from 'node:crypto';
+import dns from 'node:dns';
+import net from 'node:net';
 import http from 'node:http';
 import https from 'https';
 import { URL } from 'node:url';
@@ -62,7 +64,79 @@ function isPrivateIPv4(ip: string): boolean {
   // 100.64.0.0/10 (Carrier-grade NAT: 100.64.0.0 - 100.127.255.255)
   if (a === 100 && b >= 64 && b <= 127) return true;
 
+  // 192.0.0.0/24, 192.0.2.0/24, 198.18.0.0/15, 224.0.0.0/4 (Multicast/Benchmark/Reserved)
+  if (a >= 224) return true;
+
   return false;
+}
+
+function isPrivateIpAddress(ip: string): boolean {
+  const cleaned = ip.trim().replace(/^\[|\]$/g, '').split('%')[0].toLowerCase();
+  const ver = net.isIP(cleaned);
+  if (ver === 4) {
+    return isPrivateIPv4(cleaned);
+  }
+  if (ver === 6) {
+    if (cleaned === '::' || cleaned === '::1') return true;
+    // Handle IPv4-mapped IPv6 in dotted (::ffff:127.0.0.1) or hex (::ffff:7f00:1) notation
+    if (cleaned.startsWith('::ffff:')) {
+      const rest = cleaned.slice('::ffff:'.length);
+      if (net.isIP(rest) === 4) {
+        return isPrivateIPv4(rest);
+      }
+      const hexParts = rest.split(':');
+      if (hexParts.length === 2) {
+        const hi = parseInt(hexParts[0], 16);
+        const lo = parseInt(hexParts[1], 16);
+        if (!Number.isNaN(hi) && !Number.isNaN(lo)) {
+          const v4 = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+          return isPrivateIPv4(v4);
+        }
+      }
+      return true;
+    }
+    if (cleaned.startsWith('fe80:') || cleaned.startsWith('fe9') || cleaned.startsWith('fea') || cleaned.startsWith('feb')) {
+      return true;
+    }
+    if (cleaned.startsWith('fc') || cleaned.startsWith('fd')) {
+      return true;
+    }
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Resolves destination DNS and blocks hostnames pointing to internal/private/metadata IPs.
+ */
+async function resolveAndValidateSafeIp(
+  hostname: string,
+  allowHttp = false
+): Promise<{ valid: boolean; reason?: string; address?: string; family?: 4 | 6 }> {
+  const bareHost = hostname.replace(/^\[|\]$/g, '');
+  if (net.isIP(bareHost)) {
+    if (!allowHttp && isPrivateIpAddress(bareHost)) {
+      return { valid: false, reason: `SSRF_BLOCKED: Private IP ${bareHost} is forbidden.` };
+    }
+    return { valid: true, address: bareHost, family: net.isIP(bareHost) === 6 ? 6 : 4 };
+  }
+  if (allowHttp) {
+    return { valid: true };
+  }
+  try {
+    const records = await dns.promises.lookup(bareHost, { all: true });
+    if (!records || records.length === 0) {
+      return { valid: false, reason: 'SSRF_BLOCKED: Hostname failed DNS resolution.' };
+    }
+    for (const rec of records) {
+      if (isPrivateIpAddress(rec.address)) {
+        return { valid: false, reason: `SSRF_BLOCKED: DNS resolved to forbidden private IP (${rec.address}).` };
+      }
+    }
+    return { valid: true, address: records[0].address, family: records[0].family === 6 ? 6 : 4 };
+  } catch {
+    return { valid: false, reason: 'SSRF_BLOCKED: Hostname DNS resolution failed.' };
+  }
 }
 
 /**
@@ -93,10 +167,15 @@ export function validateWebhookUrl(rawUrl: string, allowHttp = false): { valid: 
     }
   }
 
-  const hostname = parsed.hostname.toLowerCase();
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+
+  // Reject integer/hex/octal obfuscated IP representations (e.g. 2130706433, 0x7f000001, 0177.0.0.1)
+  if (!allowHttp && (/^\d+$/.test(hostname) || /^0x[0-9a-f]+$/i.test(hostname) || /^0\d+\./.test(hostname))) {
+    return { valid: false, reason: 'SSRF_BLOCKED: Obfuscated numeric hostnames are forbidden.' };
+  }
 
   // Explicit blocked hostnames
-  const blockedHostnames = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]'];
+  const blockedHostnames = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '::'];
   if (blockedHostnames.includes(hostname)) {
     if (!allowHttp) {
       return { valid: false, reason: 'SSRF_BLOCKED: Localhost and loopback endpoints are forbidden.' };
@@ -115,24 +194,8 @@ export function validateWebhookUrl(rawUrl: string, allowHttp = false): { valid: 
     }
   }
 
-  // Check IPv4 addresses
-  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
-  if (ipv4Regex.test(hostname)) {
-    if (isPrivateIPv4(hostname)) {
-      if (!allowHttp) {
-        return { valid: false, reason: `SSRF_BLOCKED: IP address ${hostname} belongs to a private, loopback, or metadata range.` };
-      }
-    }
-  }
-
-  // Check IPv6 addresses
-  if (hostname.startsWith('[') || hostname.includes(':')) {
-    const cleanIpv6 = hostname.replace(/[\[\]]/g, '');
-    if (cleanIpv6 === '::1' || cleanIpv6.startsWith('fe80:') || cleanIpv6.startsWith('fc') || cleanIpv6.startsWith('fd')) {
-      if (!allowHttp) {
-        return { valid: false, reason: 'SSRF_BLOCKED: IPv6 loopback, link-local, or unique-local address is forbidden.' };
-      }
-    }
+  if (net.isIP(hostname) && !allowHttp && isPrivateIpAddress(hostname)) {
+    return { valid: false, reason: `SSRF_BLOCKED: IP address ${hostname} belongs to a private, loopback, or metadata range.` };
   }
 
   return { valid: true };
@@ -183,8 +246,17 @@ export function verifyWebhookSignature(
     return { verified: false, reason: 'Webhook timestamp outside tolerance window (replay protection)' };
   }
 
+  if (!/^[0-9a-f]+$/i.test(signatureHex)) {
+    return { verified: false, reason: 'Malformed signature encoding' };
+  }
+
   const expectedSignature = generateWebhookSignature(secret, timestamp, payloadString);
-  const isValid = crypto.timingSafeEqual(Buffer.from(signatureHex, 'hex'), Buffer.from(expectedSignature, 'hex'));
+  const sigBuf = Buffer.from(signatureHex, 'hex');
+  const expBuf = Buffer.from(expectedSignature, 'hex');
+  if (sigBuf.length === 0 || sigBuf.length !== expBuf.length) {
+    return { verified: false, reason: 'Signature mismatch' };
+  }
+  const isValid = crypto.timingSafeEqual(sigBuf, expBuf);
 
   return { verified: isValid, reason: isValid ? undefined : 'Signature mismatch' };
 }
@@ -516,12 +588,15 @@ export class WebhookService {
     payload: WebhookPayload,
     allowHttp = false
   ): Promise<WebhookDeliveryRecord> {
-    // Decrypt secret
+    // Decrypt secret (never fall back to one-way hash as signing secret)
     let secret: string;
     try {
       secret = decryptData(endpoint.secretEncrypted);
     } catch {
-      secret = endpoint.secretHash;
+      throw new Error('Failed to decrypt webhook signing secret; delivery aborted');
+    }
+    if (!secret) {
+      throw new Error('Webhook signing secret missing; delivery aborted');
     }
 
     const payloadString = JSON.stringify(payload);
@@ -617,7 +692,7 @@ export class WebhookService {
     };
   }
 
-  private performHttpDelivery(
+  private async performHttpDelivery(
     destinationUrl: string,
     payloadString: string,
     secret: string,
@@ -625,25 +700,39 @@ export class WebhookService {
     eventType: string,
     allowHttp = false
   ): Promise<{ statusCode: number; body: string }> {
-    return new Promise((resolve, reject) => {
-      // Re-validate SSRF
-      const validation = validateWebhookUrl(destinationUrl, allowHttp);
-      if (!validation.valid) {
-        return reject(new Error(validation.reason));
-      }
+    // Re-validate SSRF synchronously and resolve safe IP before connecting (DNS-rebinding protection)
+    const validation = validateWebhookUrl(destinationUrl, allowHttp);
+    if (!validation.valid) {
+      throw new Error(validation.reason);
+    }
 
-      const parsed = new URL(destinationUrl);
+    const parsed = new URL(destinationUrl);
+    const dnsCheck = await resolveAndValidateSafeIp(parsed.hostname, allowHttp);
+    if (!dnsCheck.valid) {
+      throw new Error(dnsCheck.reason);
+    }
+
+    return new Promise((resolve, reject) => {
       const isHttps = parsed.protocol === 'https:';
       const transport = isHttps ? https : http;
 
       const timestamp = Math.floor(Date.now() / 1000);
       const signature = generateWebhookSignature(secret, timestamp, payloadString);
 
+      const pinnedAddress = dnsCheck.address;
+      const pinnedFamily = dnsCheck.family;
       const reqOptions: http.RequestOptions = {
-        hostname: parsed.hostname,
+        hostname: parsed.hostname.replace(/^\[|\]$/g, ''),
         port: parsed.port || (isHttps ? 443 : 80),
         path: parsed.pathname + (parsed.search || ''),
         method: 'POST',
+        ...(pinnedAddress && pinnedFamily
+          ? {
+              lookup: (_hostname: string, _options: any, callback: any) => {
+                callback(null, pinnedAddress, pinnedFamily);
+              },
+            }
+          : {}),
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(payloadString),

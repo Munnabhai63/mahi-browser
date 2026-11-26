@@ -391,6 +391,18 @@ export function getSuperAdminTemplateHtml(): string {
   <!-- SUPER ADMIN CLIENT SCRIPT -->
   <script>
     let currentTab = 'license-mint';
+    let cachedMasterLicenses = [];
+    let cachedMasterDevices = [];
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
 
     function getAuthHeaders() {
       const token = sessionStorage.getItem('mahi_api_token') || '';
@@ -413,8 +425,8 @@ export function getSuperAdminTemplateHtml(): string {
       t.innerHTML = \`
         <span class="text-base">\${type === 'success' ? '' : type === 'error' ? '' : ''}</span>
         <div>
-          <h5 class="font-bold text-slate-900">\${title}</h5>
-          <p class="text-slate-500 text-[11px]">\${message}</p>
+          <h5 class="font-bold text-slate-900">\${escapeHtml(title)}</h5>
+          <p class="text-slate-500 text-[11px]">\${escapeHtml(message)}</p>
         </div>
       \`;
       c.appendChild(t);
@@ -535,47 +547,63 @@ export function getSuperAdminTemplateHtml(): string {
         const res = await fetch('/api/v2/super-admin/licenses/list', { headers: getAuthHeaders() });
         const json = await res.json();
         if (json.success && json.data) {
+          cachedMasterLicenses = json.data;
           if (json.data.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-slate-400">No licenses minted yet.</td></tr>';
             return;
           }
           
-          tbody.innerHTML = json.data.map(l => {
+          tbody.innerHTML = json.data.map((l, idx) => {
             const isBanned = l.status === 'DISABLED';
             const statusBadge = isBanned 
               ? '<span class="px-2.5 py-1 rounded-md text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300/50 shadow-sm">DISABLED</span>'
               : '<span class="px-2.5 py-1 rounded-md text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300/50 shadow-sm">ACTIVE</span>';
             
             const actionBtn = isBanned
-              ? '<button onclick="actionLicense(\\'' + l.id + '\\', \\'activate\\')" class="px-2 py-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded text-[10px] font-bold transition-colors border border-emerald-200">Active</button>'
-              : '<button onclick="actionLicense(\\'' + l.id + '\\', \\'disable\\')" class="px-2 py-1 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded text-[10px] font-bold transition-colors border border-amber-200">Ban</button>';
+              ? '<button onclick="actionLicenseByIndex(' + idx + ', \\'activate\\')" class="px-2 py-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded text-[10px] font-bold transition-colors border border-emerald-200">Active</button>'
+              : '<button onclick="actionLicenseByIndex(' + idx + ', \\'disable\\')" class="px-2 py-1 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded text-[10px] font-bold transition-colors border border-amber-200">Ban</button>';
 
-            const name = l.customer_name || 'Student';
+            const name = escapeHtml(l.customer_name || 'Student');
             const fullHash = l.license_key_hash || '';
-            const hash = fullHash ? fullHash.substring(0,25) + '...' : 'MAHI-...';
-            const dur = l.duration_type || 'PRO';
-            const devs = l.max_devices || 5;
-            const exp = l.expires_at ? new Date(l.expires_at).toLocaleDateString() : 'Lifetime';
+            const hash = escapeHtml(fullHash ? fullHash.substring(0,25) + '...' : 'MAHI-...');
+            const dur = escapeHtml(l.duration_type || 'PRO');
+            const devs = Number(l.max_devices || 5);
+            const exp = escapeHtml(l.expires_at ? new Date(l.expires_at).toLocaleDateString() : 'Lifetime');
             const rowClass = 'hover:bg-emerald-50/40 hover:shadow-sm cursor-default transition-all duration-300 border-b border-slate-100 last:border-0 group ' + (isBanned ? 'opacity-75' : '');
 
             return '<tr class="' + rowClass + '">' +
               '<td class="px-6 py-4 font-bold text-slate-800">' + name + '</td>' +
               '<td class="px-6 py-4"><div class="flex items-center space-x-2">' +
               '<span class="font-mono font-bold text-emerald-700 text-[10px] group-hover:text-emerald-600 transition-colors">' + hash + '</span>' +
-              '<button onclick="copyToClip(\\'' + fullHash + '\\')" class="text-slate-400 hover:text-emerald-600 transition-colors" title="Copy Key">' +
+              '<button onclick="copyLicenseHashByIndex(' + idx + ')" class="text-slate-400 hover:text-emerald-600 transition-colors" title="Copy Key">' +
               '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div></td>' +
               '<td class="px-6 py-4 mono font-semibold text-slate-600 text-[10px]">' + dur + ' | ' + devs + ' Dev</td>' +
               '<td class="px-6 py-4 mono text-slate-500 text-[10px]">' + exp + '</td>' +
               '<td class="px-6 py-4">' + statusBadge + '</td>' +
               '<td class="px-6 py-4 text-right space-x-1">' +
-              '<button onclick="actionLicense(\\'' + l.id + '\\', \\'extend\\')" class="px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded text-[10px] font-bold transition-colors border border-blue-200" title="+30 Days">+30D</button>' +
+              '<button onclick="actionLicenseByIndex(' + idx + ', \\'extend\\')" class="px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded text-[10px] font-bold transition-colors border border-blue-200" title="+30 Days">+30D</button>' +
               actionBtn +
-              '<button onclick="actionLicense(\\'' + l.id + '\\', \\'delete\\')" class="px-2 py-1 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded text-[10px] font-bold transition-colors border border-rose-200">Del</button></td></tr>';
+              '<button onclick="actionLicenseByIndex(' + idx + ', \\'delete\\')" class="px-2 py-1 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded text-[10px] font-bold transition-colors border border-rose-200">Del</button></td></tr>';
           }).join('');
         }
       } catch (e) {
         tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-rose-500 font-bold">Failed to load licenses. Database error.</td></tr>';
       }
+    }
+
+    function actionLicenseByIndex(idx, act) {
+      const l = cachedMasterLicenses[idx];
+      if (l && l.id) return actionLicense(l.id, act);
+    }
+
+    function copyLicenseHashByIndex(idx) {
+      const l = cachedMasterLicenses[idx];
+      if (l && l.license_key_hash) copyToClip(l.license_key_hash);
+    }
+
+    function revokeMasterDeviceByIndex(idx) {
+      const d = cachedMasterDevices[idx];
+      if (d && d.id) return revokeMasterDevice(d.id);
     }
 
     async function loadMasterFleet() {
@@ -585,18 +613,19 @@ export function getSuperAdminTemplateHtml(): string {
         const json = await res.json();
         if (json.success && json.data) {
           const devices = json.data;
+          cachedMasterDevices = devices;
           if (devices.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-slate-400">No fleet devices enrolled yet.</td></tr>';
             return;
           }
-          tbody.innerHTML = devices.map(d => \`
+          tbody.innerHTML = devices.map((d, idx) => \`
             <tr class="hover:bg-slate-50 transition">
-              <td class="px-6 py-4 font-mono text-emerald-700 font-bold">\${d.id}</td>
-              <td class="px-6 py-4 font-bold text-slate-900">\${d.hostname} (\${d.ipAddress || '127.0.0.1'})</td>
-              <td class="px-6 py-4 text-slate-600">\${d.osType}</td>
-              <td class="px-6 py-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold \${d.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-rose-100 text-rose-800 border border-rose-300'}">\${d.status}</span></td>
+              <td class="px-6 py-4 font-mono text-emerald-700 font-bold">\${escapeHtml(d.id)}</td>
+              <td class="px-6 py-4 font-bold text-slate-900">\${escapeHtml(d.hostname)} (\${escapeHtml(d.ipAddress || '127.0.0.1')})</td>
+              <td class="px-6 py-4 text-slate-600">\${escapeHtml(d.osType)}</td>
+              <td class="px-6 py-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold \${d.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-rose-100 text-rose-800 border border-rose-300'}">\${escapeHtml(d.status)}</span></td>
               <td class="px-6 py-4 text-right">
-                <button onclick="revokeMasterDevice('\${d.id}')" class="px-3 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 transition">Force Revoke</button>
+                <button onclick="revokeMasterDeviceByIndex(\${idx})" class="px-3 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 transition">Force Revoke</button>
               </td>
             </tr>
           \`).join('');
@@ -608,7 +637,7 @@ export function getSuperAdminTemplateHtml(): string {
 
     async function revokeMasterDevice(id) {
       if (!confirm('Are you sure you want to FORCE REVOKE this device from the master network?')) return;
-      await fetch('/api/v2/fleet/devices/' + id, { method: 'DELETE', headers: getAuthHeaders() });
+      await fetch('/api/v2/fleet/devices/' + encodeURIComponent(id), { method: 'DELETE', headers: getAuthHeaders() });
       showSuperToast('Device Revoked', 'Hardware access permanently severed.', 'error');
       loadMasterFleet();
     }
@@ -616,14 +645,14 @@ export function getSuperAdminTemplateHtml(): string {
     async function inspectTable() {
       const tableName = document.getElementById('db-table-select').value;
       const out = document.getElementById('table-inspector-output');
-      out.innerHTML = '<span class="text-slate-400">Querying SQLite table ' + tableName + '...</span>';
+      out.innerHTML = '<span class="text-slate-400">Querying SQLite table ' + escapeHtml(tableName) + '...</span>';
       try {
-        const res = await fetch('/api/v2/super-admin/db/table/' + tableName, { headers: getAuthHeaders() });
+        const res = await fetch('/api/v2/super-admin/db/table/' + encodeURIComponent(tableName), { headers: getAuthHeaders() });
         const json = await res.json();
         if (json.success) {
-          out.innerHTML = '<pre class="text-xs text-emerald-400">' + JSON.stringify(json.data, null, 2) + '</pre>';
+          out.innerHTML = '<pre class="text-xs text-emerald-400">' + escapeHtml(JSON.stringify(json.data, null, 2)) + '</pre>';
         } else {
-          out.innerHTML = '<span class="text-rose-400">Error: ' + (json.error || 'Failed to query table') + '</span>';
+          out.innerHTML = '<span class="text-rose-400">Error: ' + escapeHtml(json.error || 'Failed to query table') + '</span>';
         }
       } catch (e) {
         out.innerHTML = '<span class="text-rose-400">Failed to query database.</span>';

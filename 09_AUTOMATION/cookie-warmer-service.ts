@@ -402,7 +402,10 @@ export async function warmProfile(
       });
     } else {
       if (!wasRunning) {
-        await processManager.startProfile(profileId);
+        await processManager.startProfile(profileId, {
+          mode: 'automation',
+          allowCdpDebugPort: true,
+        });
         // Wait for browser to initialize
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }

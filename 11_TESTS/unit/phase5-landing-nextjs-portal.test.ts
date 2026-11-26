@@ -276,9 +276,9 @@ describe('Phase 5: Next.js 14 Landing, Docs & Blog Portal + Web Cloud Console Pr
       expect(content).toContain('return 302 https://$host/admin;');
       expect(content).not.toContain('proxy_pass http://127.0.0.1:3000;');
 
-      // stream upstream
+      // stream upstream (never route public gateway traffic to desktop loopback port 32123)
       expect(content).toContain('server 127.0.0.1:8989 max_fails=3 fail_timeout=10s;');
-      expect(content).toContain('server 127.0.0.1:32123 backup;');
+      expect(content).not.toContain('server 127.0.0.1:32123');
 
       // direct setup download
       expect(content).toContain('location = /download/MAHI-Setup.exe');

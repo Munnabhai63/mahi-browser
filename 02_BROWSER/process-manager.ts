@@ -1,7 +1,8 @@
-import { ChildProcess, exec } from 'node:child_process';
+import { ChildProcess } from 'node:child_process';
 import { BrowserWindow } from '../08_SECURITY/electron-bridge.js';
 import { Profile, ProfileStatus } from '../10_CONFIG/shared/types/profile.js';
-import { getProfileById, updateProfileStatus, findProfileByNumber } from './services/profile-service.js';
+import { getProfileById, updateProfile, updateProfileStatus, findProfileByNumber } from './services/profile-service.js';
+import { getProxyById } from './services/proxy-service.js';
 
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { recordSessionStart, recordSessionStop } from '../07_BACKEND/services/stats-service.js';
@@ -167,7 +168,17 @@ class ProcessManager {
   public async startProfile(
     profileId: string,
     launchOptions?: { mode?: 'normal' | 'automation'; allowCdpDebugPort?: boolean }
-  ): Promise<{ success: boolean; pid?: number; debugPort?: number; error?: string }> {
+  ): Promise<{
+    success: boolean;
+    pid?: number;
+    debugPort?: number;
+    error?: string;
+    code?: 'MOBILE_MODE_CONFLICT' | 'MOBILE_MODE_ROTATION_FAILED' | 'MOBILE_MODE_IP_UNCHANGED';
+    runningProfileId?: string;
+    runningProfileName?: string;
+    rotatedIp?: string;
+    notesUpdated?: boolean;
+  }> {
     debugLog(`[ProcessManager] Request received to start profile ID: ${profileId}`);
 
     if (this.startingProfiles.has(profileId)) {
@@ -184,6 +195,49 @@ class ProcessManager {
     this.startingProfiles.add(profileId);
 
     try {
+      // Mobile Mode: Enforce strict single-profile concurrency before launching or changing DB status
+      let isMobileMode = false;
+      let rotatorConfig: Awaited<ReturnType<typeof import('../03_HARDWARE/mobile-rotator-service.js').getRotatorConfig>> | null = null;
+      try {
+        const rotatorMod = await import('../03_HARDWARE/mobile-rotator-service.js');
+        rotatorConfig = rotatorMod.getRotatorConfig();
+        isMobileMode = Boolean(rotatorConfig?.mobileModeEnabled);
+      } catch {
+        isMobileMode = false;
+      }
+
+      if (isMobileMode) {
+        for (const [otherId, entry] of this.activeProcesses.entries()) {
+          if (otherId !== profileId) {
+            const msg = `Mobile Mode is active: "${entry.profileName}" is already running. Stop it first before launching another profile.`;
+            debugLog(`[ProcessManager] Mobile Mode single-profile guard blocked "${profileId}": ${msg}`);
+            return {
+              success: false,
+              code: 'MOBILE_MODE_CONFLICT',
+              runningProfileId: entry.profileId,
+              runningProfileName: entry.profileName,
+              error: msg,
+            };
+          }
+        }
+
+        for (const startingId of this.startingProfiles) {
+          if (startingId !== profileId) {
+            const runningProfile = getProfileById(startingId);
+            const runningName = runningProfile?.name || startingId;
+            const msg = `Mobile Mode is active: "${runningName}" is currently starting. Wait or stop it first before launching another profile.`;
+            debugLog(`[ProcessManager] Mobile Mode starting guard blocked "${profileId}": ${msg}`);
+            return {
+              success: false,
+              code: 'MOBILE_MODE_CONFLICT',
+              runningProfileId: startingId,
+              runningProfileName: runningName,
+              error: msg,
+            };
+          }
+        }
+      }
+
       const profile = getProfileById(profileId);
       if (!profile) {
         const errorMsg = `Profile ${profileId} not found in database.`;
@@ -226,6 +280,125 @@ class ProcessManager {
       }
 
       this.notifyStatus(profileId, 'STARTING');
+
+      let mobileRotatedIp: string | undefined;
+      let mobileNotesUpdated = false;
+
+      if (isMobileMode && rotatorConfig) {
+        const hasAssignedProxy = Boolean(
+          !profile.settings?.network?.directConnection &&
+          profile.settings?.network?.proxyId &&
+          getProxyById(profile.settings.network.proxyId)
+        );
+
+        if (hasAssignedProxy) {
+          debugLog(`[ProcessManager] Mobile Mode: "${profile.name}" uses an attached proxy — skipping mobile IP rotation and keeping existing notes.`);
+        } else {
+          debugLog(`[ProcessManager] Mobile Mode: forcing fresh mobile IP rotation for Direct profile "${profile.name}"...`);
+          try {
+            const { rotateMobileIp } = await import('../03_HARDWARE/mobile-rotator-service.js');
+            const rotRes = await rotateMobileIp(rotatorConfig, {
+              respectCooldown: false,
+              triggerSource: 'profile-start',
+              profileId,
+            });
+
+            if (!rotRes.newIp || rotRes.newIp === 'Unknown' || !rotRes.ipChanged) {
+              const unchangedMsg = `Mobile Mode blocked launch: public IP did not change (current IP: ${rotRes.newIp || 'Unknown'}). Check that your phone is connected via USB Tethering/Hotspot and try increasing Airplane Delay.`;
+              debugLog(`[ProcessManager ERROR] ${unchangedMsg}`);
+              this.notifyStatus(profileId, 'ERROR', undefined, unchangedMsg);
+              logActivity('PROFILE', 'ERROR', 'Mobile Mode Launch Blocked', unchangedMsg, profileId, profile.name);
+              return {
+                success: false,
+                code: 'MOBILE_MODE_IP_UNCHANGED',
+                error: unchangedMsg,
+              };
+            }
+
+            mobileRotatedIp = rotRes.newIp;
+            updateProfile(profileId, { notes: mobileRotatedIp }, profile.ownerId);
+            profile.notes = mobileRotatedIp;
+            mobileNotesUpdated = true;
+
+            debugLog(`[ProcessManager] Mobile Mode: rotated IP -> ${mobileRotatedIp} and updated notes for "${profile.name}".`);
+            logActivity(
+              'PROFILE',
+              'SUCCESS',
+              'Mobile Mode IP Updated',
+              `Rotated IP to ${mobileRotatedIp} and updated notes for "${profile.name}".`,
+              profileId,
+              profile.name
+            );
+            try {
+              for (const win of BrowserWindow.getAllWindows()) {
+                if (!win.isDestroyed()) {
+                  win.webContents?.send('toast:show', {
+                    type: 'success',
+                    title: 'Mobile IP Rotated & Logged',
+                    message: `New IP ${mobileRotatedIp} saved to "${profile.name}" Notes.`,
+                  });
+                }
+              }
+            } catch {}
+          } catch (rotErr: unknown) {
+            const errMsg = rotErr instanceof Error ? rotErr.message : String(rotErr);
+            const fullMsg = `Mobile Mode blocked launch: ${errMsg}`;
+            debugLog(`[ProcessManager ERROR] ${fullMsg}`);
+            this.notifyStatus(profileId, 'ERROR', undefined, fullMsg);
+            logActivity('PROFILE', 'ERROR', 'Mobile Mode Launch Blocked', fullMsg, profileId, profile.name);
+            return {
+              success: false,
+              code: 'MOBILE_MODE_ROTATION_FAILED',
+              error: fullMsg,
+            };
+          }
+        }
+      } else {
+        // Optional non-blocking pre-launch Mobile IP auto-rotation (when enabled in Mobile Rotator settings)
+        try {
+          const { maybeAutoRotateOnProfileStart } = await import('../03_HARDWARE/mobile-rotator-service.js');
+          const autoRotate = await maybeAutoRotateOnProfileStart(profileId);
+          if (autoRotate.triggered) {
+            if (autoRotate.error) {
+              debugLog(`[ProcessManager] Auto-rotate mobile IP failed before launch: ${autoRotate.error}`);
+              try {
+                for (const win of BrowserWindow.getAllWindows()) {
+                  if (!win.isDestroyed()) {
+                    win.webContents?.send('toast:show', {
+                      type: 'warning',
+                      title: 'Mobile IP Auto-Rotate Warning',
+                      message: autoRotate.error,
+                    });
+                  }
+                }
+              } catch {}
+            } else if (autoRotate.result?.skippedByCooldown) {
+              debugLog(
+                `[ProcessManager] Mobile IP auto-rotate skipped by cooldown (${autoRotate.result.cooldownRemainingSeconds}s remaining).`
+              );
+            } else if (autoRotate.result) {
+              debugLog(
+                `[ProcessManager] Mobile IP auto-rotate completed: ${autoRotate.result.oldIp} -> ${autoRotate.result.newIp} (changed=${autoRotate.result.ipChanged}).`
+              );
+              try {
+                for (const win of BrowserWindow.getAllWindows()) {
+                  if (!win.isDestroyed()) {
+                    win.webContents?.send('toast:show', {
+                      type: autoRotate.result.ipChanged ? 'success' : 'info',
+                      title: autoRotate.result.ipChanged ? 'Mobile IP Rotated' : 'Mobile IP Unchanged',
+                      message: autoRotate.result.ipChanged
+                        ? `New IP ${autoRotate.result.newIp} ready for "${profile.name}".`
+                        : `Public IP stayed ${autoRotate.result.newIp}.`,
+                    });
+                  }
+                }
+              } catch {}
+            }
+          }
+        } catch (autoRotateImportErr) {
+          debugLog(`[ProcessManager] Mobile IP auto-rotate check skipped: ${autoRotateImportErr}`);
+        }
+      }
 
       try {
         let resolvedAllowCdp = launchOptions?.allowCdpDebugPort;
@@ -281,7 +454,13 @@ class ProcessManager {
           this.handleProcessClosed(profileId, entry, err.message);
         });
 
-        return { success: true, pid, ...(info.debugPort ? { debugPort: info.debugPort } : {}) };
+        return {
+          success: true,
+          pid,
+          ...(info.debugPort ? { debugPort: info.debugPort } : {}),
+          ...(mobileRotatedIp ? { rotatedIp: mobileRotatedIp } : {}),
+          ...(mobileNotesUpdated ? { notesUpdated: true } : {}),
+        };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         debugLog(`[ProcessManager ERROR] Failed to start profile "${profile.name}": ${message}`);
@@ -319,11 +498,10 @@ class ProcessManager {
     try {
       markCleanExit(entry.storageDir, entry.profileName);
 
-      if (process.platform === 'win32') {
-        exec(`taskkill /F /T /PID ${entry.pid}`, () => {});
-      } else {
-        platformAdapter.terminateProcess(entry.pid).catch(() => {});
-      }
+      await Promise.race([
+        platformAdapter.terminateProcess(entry.pid).catch(() => false),
+        new Promise((resolve) => setTimeout(resolve, 4000)),
+      ]);
 
       this.handleProcessClosed(profileId, entry);
       return { success: true };
@@ -344,24 +522,10 @@ class ProcessManager {
 
     debugLog(`[ProcessManager] Focusing existing profile window for "${entry.profileName}" (PID: ${entry.pid})`);
 
-    if (process.platform === 'win32') {
-      try {
-        const script = `
-          $wshell = New-Object -ComObject WScript.Shell
-          $ok = $wshell.AppActivate(${entry.pid})
-          if (-not $ok) {
-            $wshell.AppActivate("${entry.profileName}")
-          }
-        `;
-        exec(`powershell -NoProfile -NonInteractive -Command "${script.replace(/\r?\n\s*/g, ' ')}"`, () => {});
-        return true;
-      } catch (err) {
-        debugLog(`[ProcessManager] Note: AppActivate threw: ${err}`);
-      }
-    } else {
-      platformAdapter.focusWindow(entry.pid, entry.profileName).catch(() => {});
-    }
-    return true;
+    return platformAdapter.focusWindow(entry.pid, entry.profileName).catch((err) => {
+      debugLog(`[ProcessManager] Note: focusWindow failed: ${err}`);
+      return false;
+    });
   }
 
   /**
@@ -407,6 +571,23 @@ class ProcessManager {
     onProgress?: (info: { completed: number; total: number; profileId: string; success: boolean; pid?: number; error?: string }) => void
   ): Promise<{ results: { profileId: string; success: boolean; pid?: number; error?: string }[] }> {
     debugLog(`[ProcessManager] Staggered batch launch requested for ${profileIds.length} profiles with ${delayMs}ms delay.`);
+
+    if (profileIds.length > 1) {
+      try {
+        const { getRotatorConfig } = await import('../03_HARDWARE/mobile-rotator-service.js');
+        if (getRotatorConfig().mobileModeEnabled) {
+          const blockMsg = 'Mobile Mode allows only 1 profile at a time. Batch launching multiple profiles is disabled while Mobile Mode is ON.';
+          return {
+            results: profileIds.map((pid) => ({
+              profileId: pid,
+              success: false,
+              error: blockMsg,
+            })),
+          };
+        }
+      } catch {}
+    }
+
     const results: { profileId: string; success: boolean; pid?: number; error?: string }[] = [];
 
     for (let i = 0; i < profileIds.length; i++) {
@@ -476,11 +657,7 @@ class ProcessManager {
     for (const [profileId, entry] of this.activeProcesses.entries()) {
       try {
         markCleanExit(entry.storageDir, entry.profileName);
-        if (process.platform === 'win32') {
-          exec(`taskkill /F /T /PID ${entry.pid}`, () => {});
-        } else {
-          platformAdapter.terminateProcess(entry.pid).catch(() => {});
-        }
+        platformAdapter.terminateProcess(entry.pid).catch(() => {});
         if (entry.proxyTunnel) {
           try { entry.proxyTunnel.close(); } catch {}
         }

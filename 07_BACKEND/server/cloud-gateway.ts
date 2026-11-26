@@ -24,30 +24,35 @@ let activeGatewayInstance: FastifyInstance | null = null;
 export function isTrustedOrigin(origin?: string): boolean {
   if (!origin) return true;
   const clean = origin.trim().replace(/\/+$/, '');
-  if (
-    clean.startsWith('http://localhost') ||
-    clean.startsWith('https://localhost') ||
-    clean.startsWith('http://127.0.0.1') ||
-    clean.startsWith('https://127.0.0.1') ||
-    clean.startsWith('mahibrowser://') ||
-    clean.startsWith('mahi://') ||
-    clean === 'https://mahibrowser.com' ||
-    clean === 'http://mahibrowser.com' ||
-    clean === 'https://www.mahibrowser.com' ||
-    clean === 'http://www.mahibrowser.com' ||
-    clean.endsWith('.mahibrowser.com')
-  ) {
-    return true;
-  }
   const customOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
     .split(',')
-    .map((o) => o.trim())
+    .map((o) => o.trim().replace(/\/+$/, ''))
     .filter(Boolean);
   if (customOrigins.includes(clean)) {
     return true;
   }
   if (process.env.NODE_ENV === 'development' && process.env.CORS_ALLOW_ALL === 'true') {
     return true;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(clean);
+  } catch {
+    return false;
+  }
+
+  const proto = parsed.protocol.toLowerCase();
+  const host = parsed.hostname.toLowerCase();
+
+  if (proto === 'mahibrowser:' || proto === 'mahi:') {
+    return true;
+  }
+  if ((proto === 'http:' || proto === 'https:') && (host === 'localhost' || host === '127.0.0.1' || host === '[::1]')) {
+    return true;
+  }
+  if (host === 'mahibrowser.com' || host.endsWith('.mahibrowser.com')) {
+    return proto === 'https:' || process.env.NODE_ENV !== 'production';
   }
   return false;
 }

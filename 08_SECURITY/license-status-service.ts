@@ -121,13 +121,34 @@ export function verifyStatusSignature(
   }
 }
 
+function getEarliestOfflineLicenseMtime(): number | null {
+  try {
+    const userDataDir = getUserDataPath();
+    const candidates = [
+      path.join(userDataDir, 'offline-license.key'),
+      path.join(userDataDir, 'claimed-licenses.json'),
+    ];
+    let earliest: number | null = null;
+    for (const file of candidates) {
+      if (fs.existsSync(file)) {
+        const stat = fs.statSync(file);
+        const ts = stat.birthtimeMs && stat.birthtimeMs > 0 ? Math.min(stat.birthtimeMs, stat.mtimeMs) : stat.mtimeMs;
+        if (earliest === null || ts < earliest) earliest = ts;
+      }
+    }
+    return earliest;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Checks whether the license is currently flagged as revoked.
  */
 export function isOnlineRevoked(): boolean {
   if (isRevokedMemory) return true;
   const cache = readStatusCache();
-  if (cache && cache.status === 'revoked') {
+  if (cache && cache.status === 'revoked' && verifyStatusSignature(cache, cache.sig)) {
     isRevokedMemory = true;
     return true;
   }
@@ -136,15 +157,27 @@ export function isOnlineRevoked(): boolean {
 
 /**
  * Checks whether the offline grace period has exceeded 7 days.
+ * Fails closed when cached status fails RSA signature verification or has been deleted past license activation window.
  */
 export function isGraceExpired(): boolean {
   if (!hasOfflineLicenseKey()) return false;
   const cache = readStatusCache();
-  if (!cache || !cache.verified_at) {
-    // If no verified check has ever run, allow initial grace
-    return false;
+  if (cache) {
+    if (!verifyStatusSignature(cache, cache.sig)) {
+      return true;
+    }
+    if (!cache.verified_at || cache.verified_at > Date.now() + 3600_000) {
+      return true;
+    }
+    const anchorTime = cache.server_time && cache.server_time < cache.verified_at ? cache.server_time : cache.verified_at;
+    return (Date.now() - anchorTime) > GRACE_PERIOD_MS;
   }
-  return (Date.now() - cache.verified_at) > GRACE_PERIOD_MS;
+  // Cache deleted or never populated: bind initial offline grace to key file creation/modification timestamp
+  const earliestMtime = getEarliestOfflineLicenseMtime();
+  if (earliestMtime !== null && (Date.now() - earliestMtime) > GRACE_PERIOD_MS) {
+    return true;
+  }
+  return false;
 }
 
 /**

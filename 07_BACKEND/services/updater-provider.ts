@@ -1,9 +1,14 @@
 import http from 'node:http';
 import https from 'node:https';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { UpdateChannel, UpdateReleaseManifest, UpdateProgress } from '../../10_CONFIG/shared/types/updater.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
+
+function getUpdaterUserAgent(): string {
+  return `MAHI-Browser-Updater/${APP_VERSION} (${os.platform()}; ${os.arch()})`;
+}
 
 export interface UpdateProvider {
   name: string;
@@ -29,55 +34,69 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
     const manifestFile = channel === 'BETA' ? 'latest-beta.json' : 'latest.json';
     const targetUrl = new URL(manifestFile, baseUrl).toString();
 
-    return new Promise((resolve, reject) => {
-      try {
-        const urlObj = new URL(targetUrl);
-        const client = urlObj.protocol === 'https:' ? https : http;
-
-        const req = client.get(
-          targetUrl,
-          {
-            headers: {
-              'User-Agent': `MAHI-Browser-Updater/${APP_VERSION} (Windows NT 10.0; Win64; x64)`,
-              Accept: 'application/json',
-            },
-            timeout: 10000,
-          },
-          (res) => {
-            if (res.statusCode !== 200) {
-              res.resume(); // Consume stream to free memory
-              reject(new Error(`Failed to fetch update manifest: HTTP ${res.statusCode}`));
-              return;
-            }
-
-            let data = '';
-            res.setEncoding('utf8');
-            res.on('data', (chunk) => {
-              data += chunk;
-            });
-            res.on('end', () => {
-              try {
-                const parsed = JSON.parse(data);
-                resolve(parsed);
-              } catch (parseErr: any) {
-                reject(new Error(`Failed to parse update manifest JSON: ${parseErr?.message || parseErr}`));
-              }
-            });
+    const fetchWithRedirect = (currentUrl: string, redirectsLeft: number): Promise<UpdateReleaseManifest | null> =>
+      new Promise((resolve, reject) => {
+        try {
+          const urlObj = new URL(currentUrl);
+          if (urlObj.protocol !== 'https:' && urlObj.protocol !== 'http:') {
+            return reject(new Error(`Unsupported update feed protocol: ${urlObj.protocol}`));
           }
-        );
+          const client = urlObj.protocol === 'https:' ? https : http;
 
-        req.on('timeout', () => {
-          req.destroy(new Error('Update check request timed out'));
-          reject(new Error('Update check request timed out'));
-        });
+          const req = client.get(
+            currentUrl,
+            {
+              headers: {
+                'User-Agent': getUpdaterUserAgent(),
+                Accept: 'application/json',
+              },
+              timeout: 10000,
+            },
+            (res) => {
+              if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                res.resume();
+                if (redirectsLeft <= 0) {
+                  return reject(new Error('Too many redirects fetching update manifest'));
+                }
+                const nextUrl = new URL(res.headers.location, currentUrl).toString();
+                return fetchWithRedirect(nextUrl, redirectsLeft - 1).then(resolve).catch(reject);
+              }
+              if (res.statusCode !== 200) {
+                res.resume(); // Consume stream to free memory
+                reject(new Error(`Failed to fetch update manifest: HTTP ${res.statusCode}`));
+                return;
+              }
 
-        req.on('error', (err) => {
-          reject(new Error(`Update check network failure: ${err.message}`));
-        });
-      } catch (err: any) {
-        reject(err instanceof Error ? err : new Error(String(err)));
-      }
-    });
+              let data = '';
+              res.setEncoding('utf8');
+              res.on('data', (chunk) => {
+                data += chunk;
+              });
+              res.on('end', () => {
+                try {
+                  const parsed = JSON.parse(data);
+                  resolve(parsed);
+                } catch (parseErr: any) {
+                  reject(new Error(`Failed to parse update manifest JSON: ${parseErr?.message || parseErr}`));
+                }
+              });
+            }
+          );
+
+          req.on('timeout', () => {
+            req.destroy(new Error('Update check request timed out'));
+            reject(new Error('Update check request timed out'));
+          });
+
+          req.on('error', (err) => {
+            reject(new Error(`Update check network failure: ${err.message}`));
+          });
+        } catch (err: any) {
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
+      });
+
+    return fetchWithRedirect(targetUrl, 5);
   }
 
   async downloadFile(
@@ -85,94 +104,110 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
     destinationPath: string,
     onProgress?: (progress: UpdateProgress) => void
   ): Promise<{ path: string; size: number }> {
-    return new Promise((resolve, reject) => {
-      try {
-        const destDir = path.dirname(destinationPath);
-        if (!fs.existsSync(destDir)) {
-          fs.mkdirSync(destDir, { recursive: true });
-        }
+    const destDir = path.dirname(destinationPath);
+    if (!fs.existsSync(destDir)) {
+      fs.mkdirSync(destDir, { recursive: true });
+    }
 
-        const tempFile = `${destinationPath}.tmp_${Date.now()}`;
-        const fileStream = fs.createWriteStream(tempFile);
-        const urlObj = new URL(fileUrl);
-        const client = urlObj.protocol === 'https:' ? https : http;
+    const downloadWithRedirect = (currentUrl: string, redirectsLeft: number): Promise<{ path: string; size: number }> =>
+      new Promise((resolve, reject) => {
+        try {
+          const urlObj = new URL(currentUrl);
+          if (urlObj.protocol !== 'https:' && urlObj.protocol !== 'http:') {
+            return reject(new Error(`Unsupported download protocol: ${urlObj.protocol}`));
+          }
+          const client = urlObj.protocol === 'https:' ? https : http;
+          const tempFile = `${destinationPath}.tmp_${Date.now()}`;
+          const fileStream = fs.createWriteStream(tempFile);
 
-        const startTime = Date.now();
-        let transferred = 0;
+          const startTime = Date.now();
+          let transferred = 0;
 
-        const req = client.get(
-          fileUrl,
-          {
-            headers: {
-              'User-Agent': `MAHI-Browser-Updater/${APP_VERSION} (Windows NT 10.0; Win64; x64)`,
+          const req = client.get(
+            currentUrl,
+            {
+              headers: {
+                'User-Agent': getUpdaterUserAgent(),
+              },
+              timeout: 60000,
             },
-            timeout: 60000,
-          },
-          (res) => {
-            if (res.statusCode !== 200) {
-              fileStream.close();
-              try { fs.unlinkSync(tempFile); } catch {}
-              reject(new Error(`Failed to download update binary. HTTP Status: ${res.statusCode}`));
-              return;
-            }
-
-            const total = parseInt(res.headers['content-length'] || '0', 10);
-
-            res.on('data', (chunk: Buffer) => {
-              transferred += chunk.length;
-              fileStream.write(chunk);
-
-              if (onProgress) {
-                const elapsedSec = Math.max(0.001, (Date.now() - startTime) / 1000);
-                const bytesPerSecond = Math.round(transferred / elapsedSec);
-                const percent = total > 0 ? Math.round((transferred / total) * 100) : 0;
-                onProgress({
-                  bytesPerSecond,
-                  percent,
-                  total,
-                  transferred,
-                });
+            (res) => {
+              if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                res.resume();
+                fileStream.close();
+                try { fs.unlinkSync(tempFile); } catch {}
+                if (redirectsLeft <= 0) {
+                  return reject(new Error('Too many redirects downloading update binary'));
+                }
+                const nextUrl = new URL(res.headers.location, currentUrl).toString();
+                return downloadWithRedirect(nextUrl, redirectsLeft - 1).then(resolve).catch(reject);
               }
-            });
+              if (res.statusCode !== 200) {
+                fileStream.close();
+                try { fs.unlinkSync(tempFile); } catch {}
+                reject(new Error(`Failed to download update binary. HTTP Status: ${res.statusCode}`));
+                return;
+              }
 
-            res.on('end', () => {
-              fileStream.end(() => {
-                try {
-                  if (fs.existsSync(destinationPath)) {
-                    fs.unlinkSync(destinationPath);
-                  }
-                  fs.renameSync(tempFile, destinationPath);
-                  resolve({ path: destinationPath, size: transferred });
-                } catch (err) {
-                  reject(err);
+              const total = parseInt(res.headers['content-length'] || '0', 10);
+
+              res.on('data', (chunk: Buffer) => {
+                transferred += chunk.length;
+                fileStream.write(chunk);
+
+                if (onProgress) {
+                  const elapsedSec = Math.max(0.001, (Date.now() - startTime) / 1000);
+                  const bytesPerSecond = Math.round(transferred / elapsedSec);
+                  const percent = total > 0 ? Math.round((transferred / total) * 100) : 0;
+                  onProgress({
+                    bytesPerSecond,
+                    percent,
+                    total,
+                    transferred,
+                  });
                 }
               });
-            });
 
-            res.on('error', (err) => {
-              fileStream.close();
-              try { fs.unlinkSync(tempFile); } catch {}
-              reject(err);
-            });
-          }
-        );
+              res.on('end', () => {
+                fileStream.end(() => {
+                  try {
+                    if (fs.existsSync(destinationPath)) {
+                      fs.unlinkSync(destinationPath);
+                    }
+                    fs.renameSync(tempFile, destinationPath);
+                    resolve({ path: destinationPath, size: transferred });
+                  } catch (err) {
+                    reject(err);
+                  }
+                });
+              });
 
-        req.on('timeout', () => {
-          req.destroy(new Error('Update download request timed out'));
-          fileStream.close();
-          try { fs.unlinkSync(tempFile); } catch {}
-          reject(new Error('Update download timed out'));
-        });
+              res.on('error', (err) => {
+                fileStream.close();
+                try { fs.unlinkSync(tempFile); } catch {}
+                reject(err);
+              });
+            }
+          );
 
-        req.on('error', (err) => {
-          fileStream.close();
-          try { fs.unlinkSync(tempFile); } catch {}
+          req.on('timeout', () => {
+            req.destroy(new Error('Update download request timed out'));
+            fileStream.close();
+            try { fs.unlinkSync(tempFile); } catch {}
+            reject(new Error('Update download timed out'));
+          });
+
+          req.on('error', (err) => {
+            fileStream.close();
+            try { fs.unlinkSync(tempFile); } catch {}
+            reject(err);
+          });
+        } catch (err) {
           reject(err);
-        });
-      } catch (err) {
-        reject(err);
-      }
-    });
+        }
+      });
+
+    return downloadWithRedirect(fileUrl, 5);
   }
 }
 

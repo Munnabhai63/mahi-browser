@@ -12,6 +12,7 @@ Thumbs.db
 .env
 .env.*
 !.env*.example
+_to_delete/
 keys.json
 _ADMIN_KEYGEN/
 *.pem
