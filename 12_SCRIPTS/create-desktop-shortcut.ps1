@@ -1,4 +1,4 @@
-# =========================================================
+﻿# =========================================================
 # MAHI BROWSER — Windows Desktop & Start Menu Shortcut Generator
 # Automatically configures high-res icons and direct fast execution
 # =========================================================
@@ -10,11 +10,12 @@ $currentDir = Split-Path -Parent $scriptDir
 if (-not (Test-Path (Join-Path $currentDir "package.json"))) { $currentDir = $scriptDir }
 
 $iconPath = Join-Path $currentDir "13_ASSETS\resources\icon.ico"
-$unpackedExe = Join-Path $currentDir "release\win-unpacked\MAHI BROWSER.exe"
+$unpackedExe = Join-Path $currentDir "release\win-unpacked\MAHI Browser.exe"
+$legacyUnpackedExe = Join-Path $currentDir "release\win-unpacked\MAHI BROWSER.exe"
 $startAppBat = Join-Path $currentDir "12_SCRIPTS\start-app.bat"
 
 # Prefer native compiled exe if it exists, otherwise use launcher bat
-$appTarget = if (Test-Path $unpackedExe) { $unpackedExe } else { $startAppBat }
+$appTarget = if (Test-Path $unpackedExe) { $unpackedExe } elseif (Test-Path $legacyUnpackedExe) { $legacyUnpackedExe } else { $startAppBat }
 
 $WScriptShell = New-Object -ComObject WScript.Shell
 

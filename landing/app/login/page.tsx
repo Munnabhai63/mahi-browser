@@ -26,7 +26,9 @@ export default function LoginPage() {
       if (resp.ok && data.token) {
         localStorage.setItem('mahi_auth_token', data.token);
         localStorage.setItem('mahi_access_token', data.token);
-        window.location.href = `${BRAND.appUrl}/overview?token=${data.token}`;
+        // Pass token via URL fragment (#token=) so it is never sent in HTTP requests/logs;
+        // full HttpOnly cookie session migration is scheduled for Phase 3.
+        window.location.href = `${BRAND.appUrl}/overview#token=${encodeURIComponent(data.token)}`;
       } else {
         const errorText =
           typeof data.error === 'string'
@@ -52,7 +54,7 @@ export default function LoginPage() {
   return (
     <div className="relative min-h-screen flex items-center justify-center bg-[#030303] text-white selection:bg-white selection:text-black px-4 py-24 sm:py-32 overflow-hidden">
       
-      {/* Subtle Atmospheric Background Overlay matching Lateral Hero */}
+      {/* Subtle Atmospheric Background Overlay */}
       <div className="absolute inset-0 z-0 pointer-events-none">
         <img
           src="/assets/company/hero_walking.jpg"

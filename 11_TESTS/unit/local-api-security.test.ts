@@ -6,6 +6,7 @@ import { initSqlEngine, setCustomDatabasePath, closeDatabase, getDatabase } from
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { createCentralApiServer } from '../../07_BACKEND/server/app.js';
 import {
+  createLocalApiServer,
   resetSuperAdminRateLimitForTesting,
   isOriginAllowed,
   getCorsHeaders,
@@ -13,6 +14,8 @@ import {
   isLocalSuperAdminEnabled,
 } from '../../07_BACKEND/api/local-api-server.js';
 import { generateApiKey } from '../../07_BACKEND/services/api-v2-service.js';
+import { checkAdminAuth } from '../../07_BACKEND/commercial/routes/router-shared.js';
+import { signToken } from '../../07_BACKEND/commercial/commercial-auth-service.js';
 import { createProfile, deleteProfile } from '../../02_BROWSER/services/profile-service.js';
 import { getProfileDebugPort } from '../../02_BROWSER/launcher.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
@@ -275,6 +278,115 @@ describe('TASK 2: Local REST API Lockdown, RBAC & Encrypted Secrets Storage', ()
     const isPackaged = isAppPackaged();
     if (!isPackaged) {
       expect(isLocalSuperAdminEnabled()).toBe(true);
+    }
+  });
+
+  // 12. SUB-STEP 1A: QUERY-PARAM SECRETS REJECTED, API KEY SCOPE/IDOR LOCKDOWN, & SHORTCUTS AUTH
+  it('12. rejects URL query-param credentials (?token, ?apiKey, ?adminSecret) and requires auth on fix-shortcuts', async () => {
+    const resQueryToken = await request(`/api/v2/profiles?token=${encodeURIComponent(testApiKey)}`);
+    expect(resQueryToken.status).toBe(401);
+
+    const resQueryApiKey = await request(`/api/v2/profiles?apiKey=${encodeURIComponent(testApiKey)}`);
+    expect(resQueryApiKey.status).toBe(401);
+
+    const resQueryAdmin = await request(`/api/v2/super-admin/db/table/profiles?adminSecret=${encodeURIComponent(adminSecret)}`);
+    expect(resQueryAdmin.status).toBe(401);
+
+    const localDaemon = createLocalApiServer();
+    await new Promise<void>((resolve) => localDaemon.listen(0, '127.0.0.1', () => resolve()));
+    const daemonAddr = localDaemon.address() as any;
+    const daemonBase = `http://127.0.0.1:${daemonAddr.port}`;
+    try {
+      const resQueryLegacyAdmin = await fetch(`${daemonBase}/admin/licenses?adminSecret=${encodeURIComponent(adminSecret)}`);
+      expect(resQueryLegacyAdmin.status).toBe(401);
+
+      const resDaemonDlUnauth = await fetch(`${daemonBase}/download/setup`);
+      expect(resDaemonDlUnauth.status).toBe(401);
+
+      const resDaemonQueryToken = await fetch(`${daemonBase}/api/v2/profiles?token=${encodeURIComponent(testApiKey)}`);
+      expect(resDaemonQueryToken.status).toBe(401);
+    } finally {
+      await new Promise<void>((resolve) => localDaemon.close(() => resolve()));
+    }
+
+    const resUnauthShortcut = await request('/api/v2/system/fix-shortcuts', { method: 'POST' });
+    expect(resUnauthShortcut.status).toBe(401);
+
+    const resUserShortcut = await request('/api/v2/system/fix-shortcuts', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${testApiKey}` },
+    });
+    expect(resUserShortcut.status).toBe(403);
+  });
+
+  it('13. enforces api_keys:read/write scopes and prevents cross-user minting/revocation on /api/v2/api-keys', async () => {
+    // Low-privilege key (without api_keys:write) cannot mint API keys
+    const lowPrivCreate = await request('/api/v2/api-keys', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${testApiKey}` },
+      body: { name: 'Escalated', userId: 'victim_user', scopes: ['*'] },
+    });
+    expect(lowPrivCreate.status).toBe(403);
+
+    // Master admin creates keys for userA and userB (with api_keys:read/write for userA)
+    const userAKeyRes = await request('/api/v2/api-keys', {
+      method: 'POST',
+      headers: { 'X-Admin-Secret': adminSecret },
+      body: {
+        name: 'UserA Manager',
+        userId: 'user_alpha',
+        scopes: ['api_keys:read', 'api_keys:write', 'profiles:read'],
+      },
+    });
+    expect(userAKeyRes.status).toBe(201);
+    const userASecret = userAKeyRes.data.data.secretKey as string;
+
+    const userBKeyRes = await request('/api/v2/api-keys', {
+      method: 'POST',
+      headers: { 'X-Admin-Secret': adminSecret },
+      body: { name: 'UserB Victim', userId: 'user_beta', scopes: ['profiles:read'] },
+    });
+    expect(userBKeyRes.status).toBe(201);
+    const userBKeyId = userBKeyRes.data.data.keyRecord.id as string;
+
+    // userA cannot mint keys for user_beta or escalate scopes beyond its own
+    const crossMint = await request('/api/v2/api-keys', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${userASecret}` },
+      body: { name: 'Forged', userId: 'user_beta', scopes: ['profiles:read'] },
+    });
+    expect(crossMint.status).toBe(403);
+
+    const scopeEscalation = await request('/api/v2/api-keys', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${userASecret}` },
+      body: { name: 'Wildcard', scopes: ['*'] },
+    });
+    expect(scopeEscalation.status).toBe(403);
+
+    // userA cannot revoke user_beta's key
+    const crossDelete = await request(`/api/v2/api-keys/${userBKeyId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${userASecret}` },
+    });
+    expect(crossDelete.status).toBe(403);
+  });
+
+  it('14. restricts checkAdminAuth so SUPPORT and BILLING roles cannot pass admin gate', () => {
+    const roles: Array<{ role: 'USER' | 'SUPPORT' | 'BILLING' | 'ADMIN' | 'SUPER_ADMIN'; expected: boolean }> = [
+      { role: 'USER', expected: false },
+      { role: 'SUPPORT', expected: false },
+      { role: 'BILLING', expected: false },
+      { role: 'ADMIN', expected: true },
+      { role: 'SUPER_ADMIN', expected: true },
+    ];
+
+    for (const tc of roles) {
+      const jwt = signToken({ userId: `u_${tc.role}`, email: `${tc.role.toLowerCase()}@mahibrowser.com`, role: tc.role });
+      const mockReq = {
+        headers: { authorization: `Bearer ${jwt}` },
+      } as unknown as http.IncomingMessage;
+      expect(checkAdminAuth(mockReq).isAdmin).toBe(tc.expected);
     }
   });
 });

@@ -19,7 +19,7 @@ export default function MarkdownView({ content }: MarkdownViewProps) {
       elements.push(
         <ul key={key} className="my-4 list-disc list-inside space-y-1.5 text-slate-300 text-sm sm:text-base leading-relaxed pl-2">
           {listItems.map((item, i) => (
-            <li key={i} dangerouslySetInnerHTML={{ __html: renderInline(item) }} />
+            <li key={i}>{renderInlineNodes(item, `${key}-li-${i}`)}</li>
           ))}
         </ul>
       );
@@ -28,12 +28,76 @@ export default function MarkdownView({ content }: MarkdownViewProps) {
     }
   };
 
-  const renderInline = (text: string): string => {
-    return text
-      .replace(/`([^`]+)`/g, '<code class="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-red-300 text-xs">$1</code>')
-      .replace(/\*\*([^*]+)\*\*/g, '<strong class="font-bold text-white">$1</strong>')
-      .replace(/\*([^*]+)\*/g, '<em class="italic text-slate-200">$1</em>')
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-red-400 underline hover:text-red-300 transition">$1</a>');
+  const isSafeLinkHref = (href: string): boolean => {
+    const trimmed = href.trim();
+    return (
+      trimmed.startsWith('https://') ||
+      trimmed.startsWith('http://') ||
+      trimmed.startsWith('/') ||
+      trimmed.startsWith('#') ||
+      trimmed.startsWith('./') ||
+      trimmed.startsWith('../') ||
+      trimmed.startsWith('mailto:')
+    );
+  };
+
+  const renderInlineNodes = (text: string, keyPrefix: string): React.ReactNode[] => {
+    const nodes: React.ReactNode[] = [];
+    const tokenRe = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
+    let lastIndex = 0;
+    let tokenIdx = 0;
+
+    for (const match of text.matchAll(tokenRe)) {
+      const idx = match.index ?? 0;
+      if (idx > lastIndex) {
+        nodes.push(text.slice(lastIndex, idx));
+      }
+
+      const token = match[0];
+      const key = `${keyPrefix}-${tokenIdx++}`;
+      if (token.startsWith('`') && token.endsWith('`')) {
+        nodes.push(
+          <code key={key} className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-red-300 text-xs">
+            {token.slice(1, -1)}
+          </code>
+        );
+      } else if (token.startsWith('**') && token.endsWith('**')) {
+        nodes.push(
+          <strong key={key} className="font-bold text-white">
+            {token.slice(2, -2)}
+          </strong>
+        );
+      } else if (token.startsWith('*') && token.endsWith('*')) {
+        nodes.push(
+          <em key={key} className="italic text-slate-200">
+            {token.slice(1, -1)}
+          </em>
+        );
+      } else if (token.startsWith('[')) {
+        const splitIdx = token.indexOf('](');
+        const label = splitIdx > 0 ? token.slice(1, splitIdx) : token;
+        const href = splitIdx > 0 ? token.slice(splitIdx + 2, -1) : '';
+        if (isSafeLinkHref(href)) {
+          nodes.push(
+            <a key={key} href={href.trim()} className="text-red-400 underline hover:text-red-300 transition">
+              {label}
+            </a>
+          );
+        } else {
+          nodes.push(label);
+        }
+      } else {
+        nodes.push(token);
+      }
+
+      lastIndex = idx + token.length;
+    }
+
+    if (lastIndex < text.length) {
+      nodes.push(text.slice(lastIndex));
+    }
+
+    return nodes;
   };
 
   for (let idx = 0; idx < lines.length; idx++) {
@@ -111,7 +175,7 @@ export default function MarkdownView({ content }: MarkdownViewProps) {
     if (line.startsWith('> ')) {
       elements.push(
         <blockquote key={`bq-${idx}`} className="my-4 border-l-4 border-red-500 bg-red-950/20 py-2.5 px-4 text-sm text-slate-300 italic rounded-r-lg">
-          <span dangerouslySetInnerHTML={{ __html: renderInline(line.replace(/^> /, '')) }} />
+          <span>{renderInlineNodes(line.replace(/^> /, ''), `bq-${idx}`)}</span>
         </blockquote>
       );
       continue;
@@ -124,11 +188,9 @@ export default function MarkdownView({ content }: MarkdownViewProps) {
 
     // Regular paragraph
     elements.push(
-      <p
-        key={`p-${idx}`}
-        className="my-3 text-sm sm:text-base text-slate-300 leading-relaxed"
-        dangerouslySetInnerHTML={{ __html: renderInline(line) }}
-      />
+      <p key={`p-${idx}`} className="my-3 text-sm sm:text-base text-slate-300 leading-relaxed">
+        {renderInlineNodes(line, `p-${idx}`)}
+      </p>
     );
   }
 

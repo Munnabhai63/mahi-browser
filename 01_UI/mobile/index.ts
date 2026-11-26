@@ -1,4 +1,3 @@
-export * from './MobileApp';
 export * from './tabs/MobileHomeTab';
 export * from './tabs/MobileProfilesTab';
 export * from './tabs/MobileCloudViewer';

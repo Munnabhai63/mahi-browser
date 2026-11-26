@@ -17,6 +17,16 @@ on:
         type: boolean
         required: false
         default: false
+      engine_release_tag:
+        description: 'Optional engine-v* GitHub Release tag providing custom nativeStealth Chromium archives (empty = auto-detect latest)'
+        type: string
+        required: false
+        default: ''
+      require_native_engine:
+        description: 'Fail instead of falling back to stock Chromium if no engine-v* nativeStealth asset is published'
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -35,12 +45,12 @@ jobs:
     steps:
       - id: matrix
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.include_all_platforms }}" = "true" ]; then
+          if [[ "${{ github.ref }}" == refs/tags/v* ]] || { [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.include_all_platforms }}" = "true" ]; }; then
             echo 'test_os=["windows-latest", "macos-latest", "ubuntu-latest"]' >> $GITHUB_OUTPUT
-            echo 'package_matrix=[{"os":"windows-latest","platform":"win","arch":"x64","artifact_pattern":"release/*.exe"},{"os":"macos-latest","platform":"mac","arch":"arm64","artifact_pattern":"release/*.dmg"},{"os":"ubuntu-latest","platform":"linux","arch":"x64","artifact_pattern":"release/*.AppImage"}]' >> $GITHUB_OUTPUT
+            echo 'package_matrix=[{"os":"windows-latest","platform":"win","arch":"x64","engine_target":"win64","engine_asset":"chrome-win.zip","engine_subdir":"chrome-win"},{"os":"macos-latest","platform":"mac","arch":"arm64","engine_target":"mac-arm64","engine_asset":"chrome-mac-arm64.zip","engine_subdir":"chrome-mac-arm64"},{"os":"ubuntu-latest","platform":"linux","arch":"x64","engine_target":"linux64","engine_asset":"chrome-linux64.zip","engine_subdir":"chrome-linux64"}]' >> $GITHUB_OUTPUT
           else
             echo 'test_os=["windows-latest"]' >> $GITHUB_OUTPUT
-            echo 'package_matrix=[{"os":"windows-latest","platform":"win","arch":"x64","artifact_pattern":"release/*.exe"}]' >> $GITHUB_OUTPUT
+            echo 'package_matrix=[{"os":"windows-latest","platform":"win","arch":"x64","engine_target":"win64","engine_asset":"chrome-win.zip","engine_subdir":"chrome-win"}]' >> $GITHUB_OUTPUT
           fi
 
   test-and-verify:
@@ -132,41 +142,90 @@ jobs:
           npm run build
         shell: bash
 
-      - name: Provision Chromium 138 Engine
-        if: runner.os == 'Windows'
-        shell: pwsh
+      - name: Provision Chromium 138 Engine (nativeStealth Release or Verified Fallback)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ENGINE_ASSET: ${{ matrix.engine_asset }}
+          ENGINE_SUBDIR: ${{ matrix.engine_subdir }}
+          ENGINE_TARGET: ${{ matrix.engine_target }}
+          REQUESTED_ENGINE_TAG: ${{ inputs.engine_release_tag }}
+          REQUIRE_NATIVE: ${{ inputs.require_native_engine || vars.STRICT_NATIVE_ENGINE == 'true' }}
         run: |
-          $engineDir = ".mahi_data/engines/138.0.7204.0"
-          New-Item -ItemType Directory -Path $engineDir -Force
-          $zipPath = "$env:TEMP/chrome-win.zip"
-          $primaryUrl = "https://commondatastorage.googleapis.com/chromium-browser-snapshots/Win_x64/1465706/chrome-win.zip"
-          # Fallback is Pin A (Chromium snapshot), served as chromium-138-win64.zip.
-          # Do NOT point this at chrome-138.zip - that is Chrome for Testing (Pin B), a
-          # different archive with a different sha256.
-          $fallbackUrl = "https://mahibrowser.com/engine/chromium-138-win64.zip"
-          $expectedSha256 = "26237e603d68f909f2ba62162a30c51fa1ba94683ca61358e5489b0a08461bc2"
+          set -euo pipefail
+          ENGINE_DIR=".mahi_data/engines/138.0.7204.0"
+          mkdir -p "$ENGINE_DIR"
+          TMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "$TMP_DIR"' EXIT
 
-          Write-Host "Downloading Chromium 138 engine from $primaryUrl..."
-          try {
-            Invoke-WebRequest -Uri $primaryUrl -OutFile $zipPath -TimeoutSec 180
-          } catch {
-            Write-Host "Primary download failed, attempting fallback to $fallbackUrl..."
-            Invoke-WebRequest -Uri $fallbackUrl -OutFile $zipPath -TimeoutSec 180
-          }
+          ENGINE_TAG="${REQUESTED_ENGINE_TAG}"
+          if [ -z "$ENGINE_TAG" ]; then
+            ENGINE_TAG=$(gh release list --limit 30 --json tagName --jq '[.[] | select(.tagName | startswith("engine-v"))][0].tagName // ""' 2>/dev/null || true)
+          fi
 
-          $hash = (Get-FileHash -Algorithm SHA256 $zipPath).Hash.ToLower()
-          Write-Host "Downloaded hash: $hash"
-          if ($hash -ne $expectedSha256) {
-            throw "FATAL: Engine archive SHA-256 mismatch ($hash vs $expectedSha256)"
-          }
+          PROVISIONED_NATIVE=0
+          if [ -n "$ENGINE_TAG" ]; then
+            echo "Checking custom nativeStealth release '$ENGINE_TAG' for ${ENGINE_ASSET}..."
+            if gh release download "$ENGINE_TAG" --pattern "$ENGINE_ASSET" --pattern "${ENGINE_ASSET}.sha256" --dir "$TMP_DIR" 2>/dev/null; then
+              if [ -f "$TMP_DIR/${ENGINE_ASSET}.sha256" ]; then
+                EXPECTED_CUSTOM=$(awk '{print $1}' "$TMP_DIR/${ENGINE_ASSET}.sha256" | tr '[:upper:]' '[:lower:]')
+                ACTUAL_CUSTOM=$(sha256sum "$TMP_DIR/$ENGINE_ASSET" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
+                if [ "$ACTUAL_CUSTOM" != "$EXPECTED_CUSTOM" ]; then
+                  echo "FATAL: Custom engine SHA-256 mismatch ($ACTUAL_CUSTOM vs $EXPECTED_CUSTOM)"
+                  exit 1
+                fi
+              fi
+              unzip -q -o "$TMP_DIR/$ENGINE_ASSET" -d "$TMP_DIR/extract" 2>/dev/null || tar -xf "$TMP_DIR/$ENGINE_ASSET" -C "$TMP_DIR/extract"
+              if [ -d "$TMP_DIR/extract/${ENGINE_SUBDIR}" ]; then
+                cp -R "$TMP_DIR/extract/${ENGINE_SUBDIR}/." "$ENGINE_DIR/"
+              else
+                cp -R "$TMP_DIR/extract/." "$ENGINE_DIR/"
+              fi
+              if [ ! -f "$ENGINE_DIR/mahi-engine.json" ]; then
+                echo "FATAL: Custom engine asset ${ENGINE_ASSET} missing mahi-engine.json"
+                exit 1
+              fi
+              echo "[ENGINE] Provisioned verified custom nativeStealth engine (${ENGINE_TAG} -> ${ENGINE_ASSET})."
+              PROVISIONED_NATIVE=1
+            fi
+          fi
 
-          Write-Host "Extracting engine to $engineDir..."
-          Expand-Archive -Path $zipPath -DestinationPath "$env:TEMP/engine_extract" -Force
-          Copy-Item -Path "$env:TEMP/engine_extract/chrome-win/*" -Destination $engineDir -Recurse -Force
-          if (-not (Test-Path "$engineDir/chrome.exe")) {
-            throw "FATAL: chrome.exe not found after engine extraction"
-          }
-          Write-Host "Chromium 138 engine successfully provisioned ($(Get-Item "$engineDir/chrome.exe").Length bytes)"
+          if [ "$PROVISIONED_NATIVE" -eq 0 ]; then
+            if [ "$REQUIRE_NATIVE" = "true" ]; then
+              echo "::error::No nativeStealth engine asset '${ENGINE_ASSET}' found in any engine-v* GitHub Release (run build-mahi-chromium.yml first)."
+              exit 1
+            fi
+
+            echo "::warning::No custom nativeStealth engine asset '${ENGINE_ASSET}' published yet; using fallback Chromium provisioning (JS stealth core active). Trigger .github/workflows/build-mahi-chromium.yml for native C++ stealth."
+
+            if [ "${RUNNER_OS}" = "Windows" ]; then
+              ZIP_PATH="$TMP_DIR/chrome-win.zip"
+              PRIMARY_URL="https://commondatastorage.googleapis.com/chromium-browser-snapshots/Win_x64/1465706/chrome-win.zip"
+              FALLBACK_URL="https://mahibrowser.com/engine/chromium-138-win64.zip"
+              EXPECTED_SHA256="26237e603d68f909f2ba62162a30c51fa1ba94683ca61358e5489b0a08461bc2"
+
+              echo "Downloading stock Chromium 138 Windows snapshot from $PRIMARY_URL..."
+              if ! curl -fsSL --max-time 180 -o "$ZIP_PATH" "$PRIMARY_URL"; then
+                echo "Primary download failed, attempting fallback to $FALLBACK_URL..."
+                curl -fsSL --max-time 180 -o "$ZIP_PATH" "$FALLBACK_URL"
+              fi
+
+              ACTUAL_SHA256=$(sha256sum "$ZIP_PATH" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
+              if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+                echo "FATAL: Engine archive SHA-256 mismatch ($ACTUAL_SHA256 vs $EXPECTED_SHA256)"
+                exit 1
+              fi
+
+              mkdir -p "$TMP_DIR/stock"
+              unzip -q -o "$ZIP_PATH" -d "$TMP_DIR/stock" 2>/dev/null || tar -xf "$ZIP_PATH" -C "$TMP_DIR/stock"
+              cp -R "$TMP_DIR/stock/chrome-win/." "$ENGINE_DIR/"
+              if [ ! -f "$ENGINE_DIR/chrome.exe" ]; then
+                echo "FATAL: chrome.exe not found after engine extraction"
+                exit 1
+              fi
+              echo "Stock Chromium 138 Windows snapshot provisioned ($(wc -c < "$ENGINE_DIR/chrome.exe") bytes)."
+            fi
+          fi
 
       - name: Run Build Info Stamp
         run: node 12_SCRIPTS/stamp-build-info.cjs
@@ -197,7 +256,8 @@ jobs:
       - name: Generate Checksums (Linux / macOS)
         if: runner.os != 'Windows'
         run: |
-          cd release && shasum -a 256 * > SHA256SUMS.txt || true
+          cd release
+          find . -maxdepth 1 -type f ! -name 'SHA256SUMS*' -exec shasum -a 256 {} + > "SHA256SUMS-${{ matrix.platform }}-${{ matrix.arch }}.txt" || true
 
       - name: Normalise release filenames
         if: runner.os == 'Windows'
@@ -309,8 +369,20 @@ jobs:
           path: release/*
           if-no-files-found: error
 
+  publish-release:
+    name: Publish Cross-Platform GitHub Release
+    needs: [test-and-verify, build-and-package]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Platform Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mahi-browser-*
+          merge-multiple: true
+          path: release
+
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') && runner.os == 'Windows'
         uses: softprops/action-gh-release@v2
         with:
           name: MAHI Browser ${{ github.ref_name }}
@@ -319,16 +391,20 @@ jobs:
           files: |
             release/MAHI-Browser-Setup-*.exe
             release/MAHI-Browser-Portable-*.exe
-            release/latest.yml
+            release/MAHI-Browser-*.dmg
+            release/MAHI-Browser-*-macOS-*.zip
+            release/MAHI-Browser-*.AppImage
+            release/MAHI-Browser-*.deb
+            release/latest*.yml
             release/latest.json
             release/*.blockmap
-            release/SHA256SUMS.txt
+            release/SHA256SUMS*.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   deploy-vps:
     name: Deploy Release to Production VPS
-    needs: [test-and-verify, build-and-package]
+    needs: [test-and-verify, build-and-package, publish-release]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: production
@@ -341,6 +417,14 @@ jobs:
         with:
           name: mahi-browser-win-x64
           path: release
+
+      - name: Download Cross-Platform Optional Artifacts (macOS / Linux)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: mahi-browser-*
+          merge-multiple: true
+          path: release-all
 
       - name: Setup SSH Authentication
         env:
@@ -390,7 +474,16 @@ jobs:
           scp -P "$PORT" "release/SHA256SUMS.txt"                             "$USER@$HOST:/var/www/mahibrowser/releases/"
           scp -P "$PORT" "release/SHA256SUMS.txt"                             "$USER@$HOST:/var/www/mahibrowser/updates/"
 
-          # 2. manifests last, via temp file + atomic rename
+          # 2. optional macOS / Linux installers alongside Windows releases
+          if [ -d release-all ]; then
+            for xf in release-all/MAHI-Browser-*.dmg release-all/MAHI-Browser-*.AppImage release-all/MAHI-Browser-*.deb release-all/SHA256SUMS-*.txt; do
+              if [ -f "$xf" ]; then
+                scp -P "$PORT" "$xf" "$USER@$HOST:/var/www/mahibrowser/releases/"
+              fi
+            done
+          fi
+
+          # 3. manifests last, via temp file + atomic rename
           scp -P "$PORT" "release/latest.json" "$USER@$HOST:/var/www/mahibrowser/updates/latest.json.tmp"
           scp -P "$PORT" "release/latest.yml"  "$USER@$HOST:/var/www/mahibrowser/updates/latest.yml.tmp"
           ssh -p "$PORT" "$USER@$HOST" "mv /var/www/mahibrowser/updates/latest.json.tmp /var/www/mahibrowser/updates/latest.json && mv /var/www/mahibrowser/updates/latest.yml.tmp /var/www/mahibrowser/updates/latest.yml"

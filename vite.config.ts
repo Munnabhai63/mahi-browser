@@ -1,11 +1,39 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import electron from 'vite-plugin-electron';
 import renderer from 'vite-plugin-electron-renderer';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
 
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'));
+
+/**
+ * Authorizes Vite React Refresh's inline preamble in `vite dev` via its SHA-256 digest
+ * so `index.html` and `app.html` enforce strict `script-src 'self'` without `'unsafe-inline'`.
+ */
+function devReactRefreshCspPlugin(): Plugin {
+  return {
+    name: 'mahi-dev-csp-hash',
+    apply: 'serve',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        const hashes: string[] = [];
+        const inlineScriptRe = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi;
+        for (const match of html.matchAll(inlineScriptRe)) {
+          const body = match[1];
+          if (body && body.includes('/@react-refresh')) {
+            const digest = crypto.createHash('sha256').update(body, 'utf8').digest('base64');
+            hashes.push(`'sha256-${digest}'`);
+          }
+        }
+        if (hashes.length === 0) return html;
+        return html.replace("script-src 'self';", `script-src 'self' ${hashes.join(' ')};`);
+      },
+    },
+  };
+}
 
 export default defineConfig({
   define: {
@@ -13,6 +41,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    devReactRefreshCspPlugin(),
     electron([
       {
         entry: '07_BACKEND/index.ts',
@@ -46,8 +75,9 @@ export default defineConfig({
                 '@fastify/cors',
                 'ioredis',
                 '@prisma/client',
-                '.prisma/client',
+                '@prisma/adapter-pg',
                 'pg',
+                '.prisma/client',
               ],
             },
           },
@@ -84,6 +114,10 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        app: path.resolve(__dirname, 'app.html'),
+      },
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],

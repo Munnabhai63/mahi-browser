@@ -9,11 +9,11 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint"
+    "lint": "node ../node_modules/@biomejs/biome/bin/biome lint --diagnostic-level=error app components lib"
   },
   "dependencies": {
     "gray-matter": "^4.0.3",
-    "next": "^14.2.24",
+    "next": "^16.4.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

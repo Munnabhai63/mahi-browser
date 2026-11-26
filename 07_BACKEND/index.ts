@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { initializeDatabase } from '../06_DATABASE/schema.js';
+import { redactSensitiveTokens } from './utils/http-security.js';
 import {
   closeDatabase,
   setCustomDatabasePath,
@@ -48,13 +49,15 @@ const crashLogPaths = (isAppPackaged() || isTestEnv)
 
 export function writeCrashLog(type: string, message: string, stack?: string): void {
   const timestamp = new Date().toISOString();
+  const safeMessage = redactSensitiveTokens(message);
+  const safeStack = stack ? redactSensitiveTokens(stack) : undefined;
   const entry = [
     `\n==================== [CRASH / ERROR EVENT: ${type}] ====================`,
     `Timestamp: ${timestamp}`,
     `Process: Main Process (PID: ${process.pid})`,
     `Platform: ${process.platform} (${process.arch}) Node: ${process.version} Electron: ${process.versions.electron}`,
-    `Message: ${message}`,
-    stack ? `Stack Trace:\n${stack}` : 'Stack Trace: None available',
+    `Message: ${safeMessage}`,
+    safeStack ? `Stack Trace:\n${safeStack}` : 'Stack Trace: None available',
     `========================================================================\n`,
   ].join('\n');
 
@@ -71,7 +74,9 @@ export function writeCrashLog(type: string, message: string, stack?: string): vo
 
 export function logCheckpoint(stepName: string, detail?: string): void {
   const timestamp = new Date().toISOString();
-  const line = `[${timestamp}] [CHECKPOINT] ${stepName}${detail ? ' - ' + detail : ''}\n`;
+  const safeStep = redactSensitiveTokens(stepName);
+  const safeDetail = detail ? redactSensitiveTokens(detail) : undefined;
+  const line = `[${timestamp}] [CHECKPOINT] ${safeStep}${safeDetail ? ' - ' + safeDetail : ''}\n`;
   console.log(line.trim());
   for (const logPath of crashLogPaths) {
     try {
@@ -211,6 +216,7 @@ function createSplashWindow(): void {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
+        sandbox: true,
       },
     });
 
@@ -517,7 +523,7 @@ if ((gotTheLock || isSmokeTest) && app?.whenReady) {
 
 export async function handleDeepLinkUrl(urlStr: string): Promise<boolean> {
   try {
-    logCheckpoint('DeepLink: Processing auth handoff signal', urlStr);
+    logCheckpoint('DeepLink: Processing auth handoff signal', redactSensitiveTokens(urlStr));
     const parsed = new URL(urlStr);
     const isValidProtocol = parsed.protocol === 'mahibrowser:' || parsed.protocol === 'mahi:';
     const isValidHost = parsed.hostname === 'auth' || parsed.hostname === 'auth-callback';

@@ -1,7 +1,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { URL } from 'node:url';
-import { sendJSON, parseBody, checkAdminAuth, getAuthUser } from './router-shared.js';
+import { sendJSON, parseBody, checkAdminAuth, getAuthUser, resolveTrustedClientIp } from './router-shared.js';
 import {
   adminGetDashboardSummary,
   adminListUsers,
@@ -898,7 +898,7 @@ export async function handleAdminOwnerRoutes(
       sendJSON(res, 503, { success: false, error: 'Owner console not configured.' });
       return true;
     }
-    const clientIp = ((req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
+    const clientIp = resolveTrustedClientIp(req);
     if (!checkOwnerVerifyRateLimit(clientIp)) {
       sendJSON(res, 429, { success: false, error: 'Too many failed verification attempts. Please try again later.' });
       return true;
@@ -950,7 +950,7 @@ export async function handleAdminOwnerRoutes(
       return true;
     }
 
-    const clientIp = ((req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
+    const clientIp = resolveTrustedClientIp(req);
     const rawTarget = body?.userId ? String(body.userId).trim() : '';
     if (!rawTarget) {
       sendJSON(res, 400, { success: false, error: 'userId is required' });
@@ -1179,7 +1179,7 @@ export async function handleAdminOwnerRoutes(
       return true;
     }
 
-    const clientIp = ((req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
+    const clientIp = resolveTrustedClientIp(req);
     const rawTarget = body?.userId ? String(body.userId).trim() : '';
     if (!rawTarget) {
       sendJSON(res, 400, { success: false, error: 'userId is required' });
@@ -1305,7 +1305,7 @@ export async function handleAdminOwnerRoutes(
       return true;
     }
 
-    const clientIp = ((req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
+    const clientIp = resolveTrustedClientIp(req);
     const rawTarget = body?.userId ? String(body.userId).trim() : '';
     if (!rawTarget) {
       sendJSON(res, 400, { success: false, error: 'userId is required' });
@@ -1479,7 +1479,7 @@ export async function handleAdminOwnerRoutes(
       return true;
     }
 
-    const clientIp = ((req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
+    const clientIp = resolveTrustedClientIp(req);
     const rawTarget = body?.userId ? String(body.userId).trim() : '';
     if (!rawTarget) {
       sendJSON(res, 400, { success: false, error: 'userId is required' });
@@ -1599,7 +1599,7 @@ export async function handleAdminOwnerRoutes(
       return true;
     }
 
-    const clientIp = ((req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
+    const clientIp = resolveTrustedClientIp(req);
     const rawTarget = body?.userId ? String(body.userId).trim() : '';
     if (!rawTarget) {
       sendJSON(res, 400, { success: false, error: 'userId is required' });
@@ -1739,7 +1739,7 @@ export async function handleAdminOwnerRoutes(
       return true;
     }
 
-    const clientIp = ((req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
+    const clientIp = resolveTrustedClientIp(req);
     const rawTarget = body?.userId ? String(body.userId).trim() : '';
     if (!rawTarget) {
       sendJSON(res, 400, { success: false, error: 'userId is required' });

@@ -6,9 +6,9 @@ import DocsSidebar from '../../../components/DocsSidebar';
 import MarkdownView from '../../../components/MarkdownView';
 
 interface DocPageProps {
-  params: {
+  params: Promise<{
     slug: string;
-  };
+  }>;
 }
 
 export function generateStaticParams() {
@@ -18,8 +18,9 @@ export function generateStaticParams() {
   }));
 }
 
-export function generateMetadata({ params }: DocPageProps): Metadata {
-  const doc = getDocBySlug(params.slug);
+export async function generateMetadata({ params }: DocPageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const doc = getDocBySlug(slug);
   if (!doc) {
     return { title: 'Documentation Guide | MAHI Browser' };
   }
@@ -29,9 +30,10 @@ export function generateMetadata({ params }: DocPageProps): Metadata {
   };
 }
 
-export default function SingleDocPage({ params }: DocPageProps) {
+export default async function SingleDocPage({ params }: DocPageProps) {
+  const { slug } = await params;
   const docs = getAllDocs();
-  const doc = getDocBySlug(params.slug);
+  const doc = getDocBySlug(slug);
 
   if (!doc) {
     notFound();

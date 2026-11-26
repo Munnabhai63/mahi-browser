@@ -68,7 +68,8 @@ export default function FaqAccordion({ items = DEFAULT_FAQS }: { items?: FaqItem
       {/* Schema.org FAQPage structured data */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD structured data script with '<' escaped
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema).replace(/</g, '\\u003c') }}
       />
 
       <div className="space-y-3">

@@ -53,7 +53,8 @@ export default function SignupPage() {
         if (token) {
           localStorage.setItem('mahi_auth_token', token);
           localStorage.setItem('mahi_access_token', token);
-          window.location.href = `/download?token=${token}`;
+          // Token already persisted to same-origin localStorage; avoid exposing raw JWT in URL query params.
+          window.location.href = `/download`;
         } else {
           window.location.href = `/download`;
         }
@@ -86,7 +87,7 @@ export default function SignupPage() {
   return (
     <div className="relative min-h-screen flex items-center justify-center bg-[#030303] text-white selection:bg-white selection:text-black px-4 py-24 sm:py-32 overflow-hidden">
       
-      {/* Subtle Atmospheric Background Overlay matching Lateral Hero */}
+      {/* Subtle Atmospheric Background Overlay */}
       <div className="absolute inset-0 z-0 pointer-events-none">
         <img
           src="/assets/company/hero_walking.jpg"

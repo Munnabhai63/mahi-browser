@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { getDatabase } from '../06_DATABASE/connection.js';
 import { getAdminSalt, getMasterAdminSecret } from '../08_SECURITY/install-secrets.js';
+import { constantTimeEqualStrings } from '../07_BACKEND/utils/http-security.js';
 
 /**
  * Hashes a PIN or password using scrypt-v1 (N=16384, r=8, p=1, keylen=64).
@@ -82,7 +83,7 @@ export function verifyAdminAccess(providedSecretOrKey: string): boolean {
       }
 
       // 3. Plaintext Legacy PIN — Verify and Auto-Upgrade
-      if (typeof storedHash === 'string' && storedHash === providedSecretOrKey) {
+      if (typeof storedHash === 'string' && constantTimeEqualStrings(storedHash, providedSecretOrKey)) {
         const upgraded = hashPinScrypt(providedSecretOrKey);
         const now = new Date().toISOString();
         const newValueJson = JSON.stringify({

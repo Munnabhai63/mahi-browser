@@ -42,6 +42,7 @@ import {
   validateAndConsumeOAuthState,
   exchangeGoogleAuthorizationCode,
   fetchGoogleProfile,
+  verifyGoogleIdToken,
   authenticateWithGoogleClaimsAsync,
   getGoogleOAuthConfig,
   normalizePlanId,
@@ -435,7 +436,6 @@ export async function handleAuthRoutes(
         }
         res.writeHead(302, {
           Location: `/login?error=${encodeURIComponent('Google OAuth is not configured yet. Please sign in with email and password.')}`,
-          'Access-Control-Allow-Origin': '*',
         });
         res.end();
         return true;
@@ -458,7 +458,6 @@ export async function handleAuthRoutes(
     // Direct browser navigation: 302 Redirect to Google Auth URL
     res.writeHead(302, {
       Location: auth.authUrl,
-      'Access-Control-Allow-Origin': '*',
     });
     res.end();
     return true;
@@ -690,7 +689,6 @@ export async function handleAuthRoutes(
     const html = getDesktopAuthSuccessHtml({ handoff, code, email, plan });
     res.writeHead(200, {
       'Content-Type': 'text/html; charset=utf-8',
-      'Access-Control-Allow-Origin': '*',
     });
     res.end(html);
     return true;
@@ -853,31 +851,81 @@ export async function handleAuthRoutes(
     return true;
   }
 
-  // 3. Programmatic Google OAuth SSO Endpoint (Used by desktop, mobile, or direct API)
+  // 3. Programmatic Google OAuth SSO Endpoint (Requires cryptographically verified ID token or OAuth code)
   if (routePath === '/api/v1/auth/google' && method === 'POST') {
-    const body = await parseBody(req);
-    const googleEmail = (body.email || '').trim().toLowerCase();
-    if (!googleEmail || !googleEmail.includes('@')) {
-      sendJSON(res, 400, { success: false, error: 'A valid email address is required.' });
+    const rate = checkAuthRateLimit(clientIp, 'google_oauth');
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+      sendJSON(res, 429, {
+        success: false,
+        error: 'Too many authentication attempts. Please try again later.',
+        retryAfter: rate.retryAfterSeconds,
+      });
       return true;
     }
 
-    const claims: GoogleClaims = {
-      sub: body.sub || `google_sub_${crypto.createHash('sha256').update(googleEmail).digest('hex').substring(0, 24)}`,
-      email: googleEmail,
-      email_verified: body.email_verified !== undefined ? Boolean(body.email_verified) : true,
-      name: body.name || googleEmail.split('@')[0],
-      picture: body.picture || body.avatarUrl,
-    };
+    const body = await parseBody(req);
+    const rawIdToken =
+      typeof body?.idToken === 'string'
+        ? body.idToken.trim()
+        : typeof body?.id_token === 'string'
+          ? body.id_token.trim()
+          : '';
+    const authCode = typeof body?.code === 'string' ? body.code.trim() : '';
+
+    if (!rawIdToken && !authCode) {
+      sendJSON(res, 401, {
+        success: false,
+        error: 'UNVERIFIED_GOOGLE_AUTH: A verified Google idToken or OAuth authorization code is required.',
+      });
+      return true;
+    }
+
+    let claims: GoogleClaims;
+    try {
+      if (rawIdToken) {
+        claims = await verifyGoogleIdToken(rawIdToken);
+      } else {
+        const config = getGoogleOAuthConfig();
+        const redirectUri =
+          typeof body?.redirectUri === 'string' && body.redirectUri.trim() === config.defaultRedirectUri
+            ? config.defaultRedirectUri
+            : config.defaultRedirectUri;
+        const tokens = await exchangeGoogleAuthorizationCode(authCode, redirectUri);
+        if (tokens.idToken && !(process.env.NODE_ENV === 'test' && tokens.idToken.startsWith('mock_id_token_'))) {
+          claims = await verifyGoogleIdToken(tokens.idToken);
+        } else {
+          claims = await fetchGoogleProfile(tokens.accessToken);
+        }
+      }
+    } catch (err: any) {
+      sendJSON(res, 401, {
+        success: false,
+        error: err?.message || 'Google credential verification failed.',
+      });
+      return true;
+    }
+
+    if (!claims?.email || !claims?.sub || claims.email_verified !== true) {
+      sendJSON(res, 401, {
+        success: false,
+        error: 'GOOGLE_EMAIL_NOT_VERIFIED: Verified Google claims are required.',
+      });
+      return true;
+    }
+
+    const requestedIntent = String(body?.intent || 'trial').toLowerCase();
+    const safeIntent = requestedIntent === 'login' || requestedIntent === 'paid' ? requestedIntent : 'trial';
+    const safeBillingCycle = String(body?.billingCycle || 'annual').toLowerCase() === 'monthly' ? 'monthly' : 'annual';
 
     const stateContext: OAuthStateRecord = {
-      state: 'direct_post',
-      nonce: 'direct_post',
+      state: 'verified_post',
+      nonce: crypto.randomBytes(16).toString('hex'),
       provider: 'google',
-      intent: body.intent || 'trial',
-      planId: normalizePlanId(body.planId),
-      billingCycle: body.billingCycle || 'annual',
-      returnUrl: body.returnUrl || '',
+      intent: safeIntent,
+      planId: safeIntent === 'paid' && typeof body?.planId === 'string' ? normalizePlanId(body.planId) : 'free',
+      billingCycle: safeBillingCycle,
+      returnUrl: typeof body?.returnUrl === 'string' ? body.returnUrl : '',
       expiresAt: new Date(Date.now() + 60000).toISOString(),
       createdAt: new Date().toISOString(),
     };

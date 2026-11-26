@@ -141,14 +141,15 @@ export default function RootLayout({
         <link rel="stylesheet" href="/assets/css/framer-theme.css" />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD structured data script with '<' escaped
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }}
         />
       </head>
       <body className="min-h-screen flex flex-col bg-[#030303] text-[#ededed] antialiased selection:bg-white selection:text-black">
         <Navbar />
         <main className="flex-1 w-full">{children}</main>
         <Footer />
-        {/* ChatWidget disabled for 1:1 Lateral aesthetic */}
+        {/* ChatWidget disabled on landing pages */}
       </body>
     </html>
   );

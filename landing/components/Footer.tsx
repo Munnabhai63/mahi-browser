@@ -6,6 +6,7 @@ export default function Footer() {
   return (
     <div
       className="w-full"
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: Static compile-time footer markup
       dangerouslySetInnerHTML={{ __html: EXACT_HOMEPAGE_FOOTER_HTML }}
     />
   );

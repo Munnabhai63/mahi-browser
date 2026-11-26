@@ -1,5 +1,20 @@
 # Progress Tracker
 
+## Post-v1.4.0 Audit Remediation — Phases 1–3 (2026-11-27)
+- [x] **Phase 1 — Hardcoded Literals, Path Bugs & Config Drift:**
+  - Replaced personal temp path in `12_SCRIPTS/tz-probe.ts` with portable `os.tmpdir()` / `MAHI_TZ_PROBE_DEBUG_FILE`.
+  - Standardized Windows installer/executable names (`MAHI Browser.exe`, `MAHI-Browser-Setup-${version}.exe`) across scripts and `download-portal-html.ts`.
+  - Imported `LEGAL_SELLER_NAME`, `UPI_ID`, and `WHATSAPP_RAW_NUMBER` from `10_CONFIG/contact-config.ts` in `landing/components/PricingView.tsx`, refreshed `landing/download.html` release notes, removed stale `"Lateral"` comments, self-hosted Framer assets into `landing/public/assets/`, updated `12_SCRIPTS/verify-doc-numbers.cjs` + `docs/LAUNCH_READINESS.md`, and restricted `localhost:32123` OAuth redirect fallback in `07_BACKEND/commercial/google-oauth-service.ts` to non-production.
+- [x] **Phase 2 — Orphaned, Duplicate & Unused Files Cleanup:**
+  - Removed orphaned icon sets (`13_ASSETS/icons`, unused `M*.ico` in `13_ASSETS/resources`, `13_ASSETS/brand/generated`), duplicate root favicons (`favicon-*.png`, `apple-touch-icon.png`), duplicate `10_CONFIG/brand-assets.json`, stale `docs/AUDIT_REPORT.md`, and `_to_delete/`.
+  - Updated `stage-packaging-resources.cjs` to sync `public/` and `public/brand/` from `13_ASSETS/brand/`, removed unused `'pg'` Rollup external initially before Prisma 7, and wired `app.html` + `01_UI/web/init-web-mode.ts` cleanly as a multi-entry Vite target (`dist/app.html`).
+- [x] **Phase 3 — Electron CSP, Dependency Upgrades & CI/CD Workflows:**
+  - Tightened CSP in `index.html` and `app.html` (`script-src 'self'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, narrowed `img-src`/`connect-src`) while injecting exact SHA-256 hashes only during `vite dev` (`devReactRefreshCspPlugin` in `vite.config.ts`). Zero Electron CSP warnings on `--smoke-test`.
+  - Upgraded `landing/` to Next.js `16.4.6` (`0` vulnerabilities; async `params` in `blog/[slug]` and `docs/[slug]`, `force-static` exports, `turbopack.root`, `landing/biome.json`, JSX `MarkdownView` inline nodes).
+  - Upgraded root `zod` to `4.6.7` (`10_CONFIG/shared/validation/schemas.ts` using `z.looseObject` & `z.url`) and `prisma` / `@prisma/client` to `7.10.1` (`prisma.config.ts`, `prisma/schema.prisma` URL removal, `06_DATABASE/prisma-client.ts` dynamic `@prisma/adapter-pg` + `pg`, `Dockerfile.gateway`, `vite.config.ts` externals).
+  - Enabled macOS & Linux builds on `refs/tags/v*` in `.github/workflows/cross-platform-release.yml` with `engine-v*` `nativeStealth` provisioning + atomic multi-platform `publish-release` job, and added `.github/workflows/deploy-gateway.yml` (`Dockerfile.gateway`) and `.github/workflows/deploy-landing.yml` (`landing/out`).
+  - **Verification:** `npm run test:ci` -> `1372 passed | 0 failed | 22 skipped` (`157` files passed, `2` skipped across `159` files), `40` exported HTML files in `landing/out`.
+
 ## Round 2 — Mobile 4G/5G IP Rotator End-to-End Remediation (2026-11-26)
 - [x] **Profile Tab Mobile Mode (`01_UI/pages/ProfilesList.tsx`, `02_BROWSER/process-manager.ts`, `01_UI/stores/useProfileStore.ts`):**
   - Added persistent `mobileModeEnabled` toggle pill & status banner inside Browser Profiles toolbar (`Mobile Mode ON/OFF`), enforcing a strict **1 running profile limit** with `"Stop & Run Profile"` conflict dialog and blocking batch multi-launches.
@@ -325,5 +340,6 @@ The old claim is therefore downgraded to: **UNVERIFIED - superseded by audit 5b1
   - Hardened `launcher.ts` (`SensorCtor` `new` enforcement & native registration, iframe `patchRealm` depth 4 + Audio/Timezone propagation, Worker `getHighEntropyValues` parity, coordinate-seeded WebGL `readPixels`, WebGL/WebGPU vendor coherence, Camoufox WebRTC proxy/ICE lock) and updated `build-chromium-patches.cjs` + Chromium `0004` patch for seeded ClientRects jitter.
   - Routed automation workflows and Cookie Warmer cleanly through `processManager.startProfile(..., { mode: 'automation', allowCdpDebugPort: true })` (`automation-engine.ts`, `cookie-warmer-service.ts`), hardened `connection.ts` atomic save FD cleanup & cross-OS test guards, quarantined `13_ASSETS/interface` + `13_ASSETS/cookie-editor.js` into `_to_delete/`, replaced mock UI/fallback responses with honest unavailable states, and pruned `clsx`, `tailwind-merge`, `pg`, `@types/pg` + applied semver-safe `npm audit fix`.
 
-## 2026-11-27 — v1.4.0 Release Preparation
-- Bumped package version from `1.2.2` to `1.4.0`, synchronized landing/brand assets (`npm run sync:version`), updated release manifest notes (`mandatory: false`), and prepared fast-forward merge to `main` + `v1.4.0` tag push for automated CI packaging, GitHub Release publishing, VPS rollout, and 6-gate live verification.
+## 2026-11-27 — v1.4.0 Release Preparation & Live Rollout
+- Bumped package version from `1.2.2` to `1.4.0`, synchronized landing/brand assets (`npm run sync:version`), updated release manifest notes (`mandatory: false`), fast-forwarded `main`, and tagged `v1.4.0`.
+- Verified `npm run test:ci` at `v1.4.0` (`1368 passed | 0 failed | 22 skipped` across `159` test files), fixed `CI Verification` (`3f1da67`), and verified live `https://mahibrowser.com/update/latest.json` & `/download/setup` (`347,095,590` bytes).

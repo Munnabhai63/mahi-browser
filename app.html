@@ -2,10 +2,10 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://api.mahibrowser.com https://*.mahibrowser.com http://localhost:* ws://localhost:* https: http:;"
+      content="default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://flagcdn.com; connect-src 'self' https://api.mahibrowser.com https://*.mahibrowser.com http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss://api.mahibrowser.com wss://*.mahibrowser.com;"
     />
     <title>MAHI Cloud — Web Management Console</title>
     <meta name="description" content="Production Web Management Dashboard for MAHI Browser. Remotely coordinate browser profile fleets, team workspaces, commercial proxy allocations, and developer webhooks." />
@@ -16,12 +16,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    <script>
-      // Ensure web dashboard mode is explicitly set for app.html
-      try {
-        localStorage.setItem('mahi_app_mode', 'web');
-      } catch (e) {}
-    </script>
+    <script type="module" src="/01_UI/web/init-web-mode.ts"></script>
   </head>
   <body class="bg-[#080d18] text-slate-100 antialiased overflow-hidden select-none">
     <div id="root"></div>

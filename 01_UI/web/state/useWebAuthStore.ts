@@ -64,14 +64,23 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
       });
     });
 
-    // 1. Hydrate token from URL query string (?token= or ?accessToken=) when redirected from login
+    // 1. Hydrate token from URL fragment (#token=) or legacy query params when redirected from login
     if (typeof window !== 'undefined') {
       try {
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
         const urlParams = new URLSearchParams(window.location.search);
-        const urlToken = urlParams.get('token') || urlParams.get('accessToken');
+        const urlToken =
+          hashParams.get('token') ||
+          hashParams.get('accessToken') ||
+          urlParams.get('token') ||
+          urlParams.get('accessToken');
         if (urlToken) {
-          // Clean the query string without reloading the page
-          const cleanUrl = window.location.pathname + (window.location.hash || '');
+          // Strip token from fragment/query without reloading the page
+          const cleanSearchParams = new URLSearchParams(window.location.search);
+          cleanSearchParams.delete('token');
+          cleanSearchParams.delete('accessToken');
+          const qs = cleanSearchParams.toString();
+          const cleanUrl = window.location.pathname + (qs ? `?${qs}` : '');
           window.history.replaceState({}, document.title, cleanUrl);
 
           let decodedUser: WebUser = {

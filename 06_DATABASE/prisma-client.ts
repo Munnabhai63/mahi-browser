@@ -9,7 +9,17 @@ import type { PrismaClient as PrismaClientType } from '@prisma/client';
 const nodeRequire = createRequire(import.meta.url);
 
 let prismaInstance: PrismaClientType | null = null;
+let pgPoolInstance: { end?: () => Promise<void> } | null = null;
 let testPrismaInstance: any = null;
+
+function getNormalizedPostgresUrl(): string {
+  const rawUrl = process.env.DATABASE_URL;
+  const url = rawUrl ? rawUrl.trim().replace(/^["']|["']$/g, '') : '';
+  if (rawUrl && rawUrl !== url) {
+    process.env.DATABASE_URL = url;
+  }
+  return url;
+}
 
 /**
  * Returns true if DATABASE_URL environment variable is configured for PostgreSQL
@@ -21,11 +31,7 @@ export function isPostgresConfigured(): boolean {
   if ((typeof process !== 'undefined' && process.versions?.electron) || (process.env.VITEST && !testPrismaInstance)) {
     return false;
   }
-  const rawUrl = process.env.DATABASE_URL;
-  const url = rawUrl ? rawUrl.trim().replace(/^["']|["']$/g, '') : '';
-  if (rawUrl && rawUrl !== url) {
-    process.env.DATABASE_URL = url;
-  }
+  const url = getNormalizedPostgresUrl();
   return Boolean(
     url &&
     (url.startsWith('postgres://') || url.startsWith('postgresql://'))
@@ -47,9 +53,24 @@ export function getPrismaClient(): PrismaClientType | null {
 
   if (!prismaInstance) {
     try {
+      const connectionString = getNormalizedPostgresUrl();
       const prismaMod = nodeRequire('@prisma/client');
+      const adapterMod = nodeRequire('@prisma/adapter-pg');
+      const pgMod = nodeRequire('pg');
+
       const PrismaCtor = prismaMod.PrismaClient || prismaMod.default?.PrismaClient || prismaMod;
+      const PrismaPgCtor = adapterMod.PrismaPg || adapterMod.default?.PrismaPg;
+      const PoolCtor = pgMod.Pool || pgMod.default?.Pool;
+
+      const pool = new PoolCtor({
+        connectionString,
+        connectionTimeoutMillis: 10000,
+      });
+      const adapter = new PrismaPgCtor(pool, { disposeExternalPool: true });
+
+      pgPoolInstance = pool;
       prismaInstance = new PrismaCtor({
+        adapter,
         log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
       });
     } catch (err: any) {
@@ -115,6 +136,12 @@ export async function disconnectPrisma(): Promise<void> {
       await prismaInstance.$disconnect();
     } catch {}
     prismaInstance = null;
+  }
+  if (pgPoolInstance?.end) {
+    try {
+      await pgPoolInstance.end();
+    } catch {}
+    pgPoolInstance = null;
   }
 }
 

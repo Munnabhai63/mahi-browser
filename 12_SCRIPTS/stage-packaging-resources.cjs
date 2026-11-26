@@ -172,6 +172,21 @@ async function stageAdbPlatformTools() {
   }
 }
 
+function syncFileIfChanged(srcFile, destFile) {
+  if (!fs.existsSync(srcFile)) return;
+  const srcBuf = fs.readFileSync(srcFile);
+  if (fs.existsSync(destFile)) {
+    const destBuf = fs.readFileSync(destFile);
+    if (destBuf.length === srcBuf.length && Buffer.compare(destBuf, srcBuf) === 0) {
+      return;
+    }
+    try {
+      fs.chmodSync(destFile, 0o644);
+    } catch {}
+  }
+  fs.writeFileSync(destFile, srcBuf);
+}
+
 async function stagePackagingResources() {
   console.log('[STAGE_PACKAGING] Verifying packaging resources...');
 
@@ -183,12 +198,13 @@ async function stagePackagingResources() {
     console.log(`[STAGE_PACKAGING] Created missing engine directory: ${engineDir}`);
   }
 
-  // Ensure stock Chromium snapshots do NOT inherit custom C++ engine manifest
+  // Preserve verified nativeStealth engine manifests (build-mahi-chromium.yml); remove only malformed/spurious placeholders
   const engineManifestDest = path.join(engineDir, 'mahi-engine.json');
   if (fs.existsSync(engineManifestDest)) {
     try {
       const parsed = JSON.parse(fs.readFileSync(engineManifestDest, 'utf8'));
-      if (!parsed?.executablePath) {
+      const isVerifiedNative = parsed?.engine === 'mahi-chromium' && parsed?.nativeStealth === true;
+      if (!isVerifiedNative && !parsed?.executablePath) {
         fs.unlinkSync(engineManifestDest);
         console.log(`[STAGE_PACKAGING] Removed spurious mahi-engine.json from stock engine folder: ${engineManifestDest}`);
       }
@@ -202,7 +218,36 @@ async function stagePackagingResources() {
   // 2. Stage Android Platform Tools (ADB + DLL dependencies) for out-of-the-box Mobile IP Rotator
   await stageAdbPlatformTools();
 
-  // 3. Verify landing directory exists
+  // 3. Synchronize public/ static favicons & brand assets from canonical 13_ASSETS/brand
+  const brandSrcDir = path.join(rootDir, '13_ASSETS', 'brand');
+  const approvedSrcDir = path.join(brandSrcDir, 'approved');
+  const publicDir = path.join(rootDir, 'public');
+  const publicBrandDir = path.join(publicDir, 'brand');
+  if (fs.existsSync(brandSrcDir)) {
+    fs.mkdirSync(publicBrandDir, { recursive: true });
+    for (const fileName of ['favicon.ico', 'favicon-16x16.png', 'favicon-32x32.png', 'apple-touch-icon.png']) {
+      const srcFile = path.join(brandSrcDir, fileName);
+      if (fs.existsSync(srcFile)) {
+        syncFileIfChanged(srcFile, path.join(publicDir, fileName));
+        syncFileIfChanged(srcFile, path.join(publicBrandDir, fileName));
+      }
+    }
+    for (const entry of fs.readdirSync(brandSrcDir, { withFileTypes: true })) {
+      if (entry.isFile() && /\.(png|ico)$/i.test(entry.name)) {
+        syncFileIfChanged(path.join(brandSrcDir, entry.name), path.join(publicBrandDir, entry.name));
+      }
+    }
+    if (fs.existsSync(approvedSrcDir)) {
+      for (const entry of fs.readdirSync(approvedSrcDir, { withFileTypes: true })) {
+        if (entry.isFile() && /\.(png|ico)$/i.test(entry.name)) {
+          syncFileIfChanged(path.join(approvedSrcDir, entry.name), path.join(publicBrandDir, entry.name));
+        }
+      }
+    }
+    console.log('[STAGE_PACKAGING] Synchronized public/ and public/brand/ from 13_ASSETS/brand/.');
+  }
+
+  // 4. Verify landing directory exists
   const landingDir = path.join(rootDir, 'landing');
   if (!fs.existsSync(landingDir)) {
     console.warn(`[STAGE_PACKAGING WARNING] Landing directory not found at ${landingDir}`);

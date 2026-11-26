@@ -833,7 +833,7 @@ export default function FeaturesPage() {
               </div>
             </div>
 
-            {/* 3 Security Cards Grid matching Lateral 1:1 */}
+            {/* 3 Security Cards Grid */}
             <div className="mt-16 sm:mt-20 lg:mt-24 grid grid-cols-1 md:grid-cols-3 border border-[#1f2123] rounded-[4px] overflow-hidden">
               
               {/* Card 1: Rebrowser CDP Isolation */}

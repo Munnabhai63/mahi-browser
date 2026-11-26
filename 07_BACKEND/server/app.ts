@@ -9,6 +9,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { URL } from 'node:url';
+import { parseBoundedJson, getErrorStatusCode } from '../utils/http-security.js';
 import { getProfiles, getProfileById, createProfile, updateProfile, deleteProfile, cloneProfile } from '../../02_BROWSER/services/profile-service.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
 import { getProxies, createProxy, updateProxy, deleteProxy, testProxyConnection } from '../../02_BROWSER/services/proxy-service.js';
@@ -16,7 +17,6 @@ import { getFolders, createFolder, updateFolder, deleteFolder } from '../../02_B
 import { getProfileLock, acquireProfileLock, releaseProfileLock } from '../../02_BROWSER/services/profile-lock-service.js';
 import { getFeatureFlags, isFeatureEnabled, updateFeatureFlag } from '../services/feature-flag-service.js';
 import { getFleetDevices, getLiveTelemetry, revokeDevice } from '../services/fleet-service.js';
-import { getApiKeys, generateApiKey, validateApiKey, revokeApiKey } from '../services/api-v2-service.js';
 import { validateCurrentLicense, activateLicense, createLicense, getLicenses, revokeLicense, extendLicense } from '../../04_LICENSING/license-engine.js';
 import fs from 'node:fs';
 import { getActivityLogs } from '../services/audit-service.js';
@@ -31,6 +31,8 @@ import { assertCanCreateProfile } from '../../08_SECURITY/freemium-guard.js';
 import { getLandingBaseDir } from '../utils/runtime-paths.js';
 import {
   authenticateRequest,
+  verifyDownloadAccess,
+  handleApiKeysV2Route,
   isLocalSuperAdminEnabled,
   getLocalApiOwnerId,
   getCorsHeaders,
@@ -78,8 +80,7 @@ function sendFile(res: http.ServerResponse, filePath: string, filename: string) 
     'Content-Disposition': `attachment; filename="${filename}"`,
     ...corsHeaders,
   });
-  const stream = fs.createReadStream(filePath);
-  stream.pipe(res);
+  pipeReadStream(filePath, res);
 }
 
 function requireUserOrAdminAuth(
@@ -95,11 +96,10 @@ function requireUserOrAdminAuth(
     return null;
   }
   if (requiredScope && auth.role !== 'master_admin') {
-    if (auth.scopes && auth.scopes.length > 0 && !auth.scopes.includes('*')) {
-      if (!auth.scopes.includes(requiredScope)) {
-        sendJSON(res, 403, { success: false, error: `Forbidden. Missing required scope: ${requiredScope}` });
-        return null;
-      }
+    const scopes = Array.isArray(auth.scopes) ? auth.scopes : [];
+    if (!scopes.includes('*') && !scopes.includes(requiredScope)) {
+      sendJSON(res, 403, { success: false, error: `Forbidden. Missing required scope: ${requiredScope}` });
+      return null;
     }
   }
   return auth;
@@ -118,36 +118,27 @@ function requireMasterAdminAuth(req: http.IncomingMessage, res: http.ServerRespo
   return auth;
 }
 
-function parseBody(req: http.IncomingMessage): Promise<any> {
-  if ((req as any).body !== undefined && typeof (req as any).body === 'object') {
-    return Promise.resolve((req as any).body);
-  }
-  if ((req as any).rawBuffer !== undefined && Buffer.isBuffer((req as any).rawBuffer)) {
-    try {
-      const str = (req as any).rawBuffer.toString('utf8');
-      return Promise.resolve(str ? JSON.parse(str) : {});
-    } catch {
-      return Promise.reject(new Error('Invalid JSON payload'));
+function pipeReadStream(filePath: string, res: http.ServerResponse): http.ServerResponse {
+  const stream = fs.createReadStream(filePath);
+  stream.on('error', (err: NodeJS.ErrnoException) => {
+    console.error('[StaticStream] Error streaming file:', filePath, err?.message || err);
+    if (!res.headersSent) {
+      res.writeHead(err?.code === 'ENOENT' ? 404 : 500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Failed to read file' }));
+    } else if (!res.writableEnded && !res.destroyed) {
+      res.destroy(err);
     }
-  }
-  if (req.readableEnded) {
-    return Promise.resolve({});
-  }
-  return new Promise((resolve, reject) => {
-    let body = '';
-    req.on('data', (chunk) => {
-      body += chunk;
-    });
-    req.on('end', () => {
-      if (!body) return resolve({});
-      try {
-        resolve(JSON.parse(body));
-      } catch (err) {
-        reject(new Error('Invalid JSON payload'));
-      }
-    });
-    req.on('error', reject);
   });
+  res.on('close', () => {
+    if (!stream.destroyed) {
+      stream.destroy();
+    }
+  });
+  return stream.pipe(res);
+}
+
+function parseBody(req: http.IncomingMessage): Promise<any> {
+  return parseBoundedJson(req, { invalidJsonMessage: 'Invalid JSON payload' });
 }
 
 export async function handleCentralApiRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<any> {
@@ -221,7 +212,7 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
             'Cache-Control': 'public, max-age=3600',
             ...getCorsHeaders(req),
           });
-          return fs.createReadStream(assetFilePath).pipe(res);
+          return pipeReadStream(assetFilePath, res);
         }
       }
 
@@ -253,7 +244,7 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
             'Cache-Control': 'public, max-age=31536000, immutable',
             ...getCorsHeaders(req),
           });
-          return fs.createReadStream(nextFilePath).pipe(res);
+          return pipeReadStream(nextFilePath, res);
         }
       }
 
@@ -433,22 +424,23 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
         return sendHTML(res, 200, getDownloadPortalHtml(info));
       }
 
-      // 0. Direct File Downloads: Setup, Portable executables, and MAHI-Setup.exe (Gated to authenticated visitors)
+      // 0. Direct File Downloads: Setup, Portable executables, and MAHI-Setup.exe (Verified token & entitlement required)
       if (
         cleanPath === '/download/setup' ||
         cleanPath === '/api/v2/download/setup' ||
         cleanPath === '/download/MAHI-Setup.exe'
       ) {
-        const authHeader = (req.headers['authorization'] as string) || '';
-        const cookieToken = req.headers['cookie']?.match(/mahi_token=([^;]+)/)?.[1];
-        const queryToken = parsedUrl.searchParams.get('token');
-        const token = authHeader.replace('Bearer ', '').trim() || cookieToken || queryToken;
-
-        const acceptHeader = req.headers['accept'] || '';
-        // If an anonymous user navigates directly via browser without token, redirect to signup onboarding
-        if (!token && acceptHeader.includes('text/html')) {
-          res.writeHead(302, { Location: '/signup?intent=trial&returnUrl=/download' });
-          return res.end();
+        const dlAuth = await verifyDownloadAccess(req, parsedUrl);
+        if (!dlAuth.authorized) {
+          const acceptHeader = req.headers['accept'] || '';
+          if (acceptHeader.includes('text/html') && dlAuth.status === 401) {
+            res.writeHead(302, { Location: '/signup?intent=trial&returnUrl=/download' });
+            return res.end();
+          }
+          return sendJSON(res, dlAuth.status, {
+            success: false,
+            error: dlAuth.reason || 'Unauthorized. Authentication required to download installer.',
+          });
         }
 
         const info = getDistributionInfo();
@@ -456,15 +448,17 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
       }
 
       if (cleanPath === '/download/portable' || cleanPath === '/api/v2/download/portable') {
-        const authHeader = (req.headers['authorization'] as string) || '';
-        const cookieToken = req.headers['cookie']?.match(/mahi_token=([^;]+)/)?.[1];
-        const queryToken = parsedUrl.searchParams.get('token');
-        const token = authHeader.replace('Bearer ', '').trim() || cookieToken || queryToken;
-
-        const acceptHeader = req.headers['accept'] || '';
-        if (!token && acceptHeader.includes('text/html')) {
-          res.writeHead(302, { Location: '/signup?intent=trial&returnUrl=/download' });
-          return res.end();
+        const dlAuth = await verifyDownloadAccess(req, parsedUrl);
+        if (!dlAuth.authorized) {
+          const acceptHeader = req.headers['accept'] || '';
+          if (acceptHeader.includes('text/html') && dlAuth.status === 401) {
+            res.writeHead(302, { Location: '/signup?intent=trial&returnUrl=/download' });
+            return res.end();
+          }
+          return sendJSON(res, dlAuth.status, {
+            success: false,
+            error: dlAuth.reason || 'Unauthorized. Authentication required to download portable executable.',
+          });
         }
 
         const info = getDistributionInfo();
@@ -477,8 +471,9 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
         return sendJSON(res, 200, { success: true, data: getDistributionInfo() });
       }
 
-      // 0. Shortcut Repair API
+      // 0. Shortcut Repair API (Authenticated master admin required)
       if (pathname === '/api/v2/system/fix-shortcuts' && method === 'POST') {
+        if (!requireMasterAdminAuth(req, res, parsedUrl)) return;
         const result = await fixDesktopShortcuts();
         return sendJSON(res, 200, result);
       }
@@ -525,7 +520,7 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
           const profile = createProfile({ ...body, ownerId: effectiveOwnerId });
           return sendJSON(res, 201, { success: true, data: profile });
         } catch (err: any) {
-          return sendJSON(res, 400, { success: false, error: err.message });
+          return sendJSON(res, getErrorStatusCode(err, 400), { success: false, error: err.message });
         }
       }
 
@@ -634,27 +629,9 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
         return sendJSON(res, 200, { success: ok });
       }
 
-      // 7. Developer API Keys
-      if (pathname === '/api/v2/api-keys' && method === 'GET') {
-        if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
-        return sendJSON(res, 200, { success: true, data: getApiKeys() });
-      }
-      if (pathname === '/api/v2/api-keys' && method === 'POST') {
-        const body = await parseBody(req);
-        if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return;
-        const result = generateApiKey(
-          body.name || 'API-Key',
-          body.userId || 'default-user',
-          body.scopes || ['profiles:read', 'profiles:write', 'profiles:launch']
-        );
-        return sendJSON(res, 201, { success: true, data: result });
-      }
-      const apiKeyMatch = pathname.match(/^\/api\/v2\/api-keys\/([a-zA-Z0-9_-]+)$/);
-      if (apiKeyMatch && method === 'DELETE') {
-        if (!requireUserOrAdminAuth(req, res, parsedUrl)) return;
-        const keyId = apiKeyMatch[1];
-        const ok = revokeApiKey(keyId);
-        return sendJSON(res, 200, { success: ok });
+      // 7. Developer API Keys (Shared scope + ownership hardened handler)
+      if (await handleApiKeysV2Route(req, res, pathname, method, parsedUrl)) {
+        return;
       }
 
       // 8. License Management & Minting Endpoints (Web Admin & Super Admin)
@@ -727,7 +704,7 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
 
           return sendJSON(res, 200, { success: true });
         } catch (err: any) {
-          return sendJSON(res, 500, { success: false, error: err.message });
+          return sendJSON(res, getErrorStatusCode(err, 500), { success: false, error: err.message });
         }
       }
 
@@ -768,7 +745,7 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
       // 404 Route Not Found
       return sendJSON(res, 404, { success: false, error: `Route ${method} ${pathname} not found` });
     } catch (err: any) {
-      return sendJSON(res, 500, { success: false, error: err.message || 'Internal Server Error' });
+      return sendJSON(res, getErrorStatusCode(err, 500), { success: false, error: err.message || 'Internal Server Error' });
     }
 }
 

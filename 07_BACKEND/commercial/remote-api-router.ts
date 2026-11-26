@@ -26,6 +26,12 @@ import { isPostgresConfigured, getCentralRepository } from '../../06_DATABASE/ce
 import { getUserDevices } from './commercial-device-service.js';
 import { isTrustedOrigin } from '../server/cloud-gateway.js';
 import {
+  readBoundedText,
+  parseBoundedJson,
+  getErrorStatusCode,
+  BoundedBodyOptions,
+} from '../utils/http-security.js';
+import {
   getProfiles,
   createProfile,
   getProfileById,
@@ -80,57 +86,12 @@ import { TeamPermission, TeamRole } from '../../10_CONFIG/shared/types/workspace
 // HTTP HELPERS & PARSING
 // ============================================================================
 
-export function parseRawBody(req: http.IncomingMessage): Promise<string> {
-  if ((req as any).rawBuffer !== undefined && Buffer.isBuffer((req as any).rawBuffer)) {
-    return Promise.resolve((req as any).rawBuffer.toString('utf8'));
-  }
-  if ((req as any).body !== undefined) {
-    if (typeof (req as any).body === 'string') return Promise.resolve((req as any).body);
-    return Promise.resolve(JSON.stringify((req as any).body));
-  }
-  if (req.readableEnded) {
-    return Promise.resolve('');
-  }
-  return new Promise((resolve, reject) => {
-    let body = '';
-    req.on('data', (chunk) => {
-      body += chunk;
-    });
-    req.on('end', () => resolve(body));
-    req.on('error', reject);
-  });
+export function parseRawBody(req: http.IncomingMessage, options: BoundedBodyOptions = {}): Promise<string> {
+  return readBoundedText(req, options);
 }
 
-export function parseBody(req: http.IncomingMessage): Promise<any> {
-  if ((req as any).body !== undefined && typeof (req as any).body === 'object') {
-    return Promise.resolve((req as any).body);
-  }
-  if ((req as any).rawBuffer !== undefined && Buffer.isBuffer((req as any).rawBuffer)) {
-    try {
-      const str = (req as any).rawBuffer.toString('utf8');
-      return Promise.resolve(str ? JSON.parse(str) : {});
-    } catch {
-      return Promise.reject(new Error('Invalid JSON payload'));
-    }
-  }
-  if (req.readableEnded) {
-    return Promise.resolve({});
-  }
-  return new Promise((resolve, reject) => {
-    let body = '';
-    req.on('data', (chunk) => {
-      body += chunk;
-    });
-    req.on('end', () => {
-      if (!body) return resolve({});
-      try {
-        resolve(JSON.parse(body));
-      } catch {
-        reject(new Error('Invalid JSON payload'));
-      }
-    });
-    req.on('error', reject);
-  });
+export function parseBody(req: http.IncomingMessage, options: BoundedBodyOptions = {}): Promise<any> {
+  return parseBoundedJson(req, options);
 }
 
 export function sendRemoteJSON(
@@ -379,11 +340,22 @@ export async function handleRemoteApiRoutes(
 
   // Handle CORS Preflight
   if (method === 'OPTIONS') {
-    res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
+    const origin = (req.headers.origin as string) || '';
+    const corsHeaders: Record<string, string> = {
+      'Vary': 'Origin',
       'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-API-Key, Idempotency-Key, X-Request-Id',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    });
+    };
+    if (origin) {
+      if (!isTrustedOrigin(origin)) {
+        res.writeHead(403, { Vary: 'Origin' });
+        res.end();
+        return true;
+      }
+      corsHeaders['Access-Control-Allow-Origin'] = origin;
+      corsHeaders['Access-Control-Allow-Credentials'] = 'true';
+    }
+    res.writeHead(204, corsHeaders);
     res.end();
     return true;
   }
@@ -447,10 +419,11 @@ export async function handleRemoteApiRoutes(
     } catch (err: any) {
       const isSig = err.message && err.message.includes('INVALID_WEBHOOK_SIGNATURE');
       const isTamper = err.message && err.message.includes('AMOUNT_TAMPERING_DETECTED');
+      const status = getErrorStatusCode(err, isSig || isTamper ? 400 : 500);
       sendRemoteJSON(
         req,
         res,
-        isSig || isTamper ? 400 : 500,
+        status,
         {
           success: false,
           error: {
@@ -1692,13 +1665,19 @@ export async function handleRemoteApiRoutes(
       }
 
       // Establish SSE stream
-      res.writeHead(200, {
+      const sseOrigin = (req.headers.origin as string) || '';
+      const sseHeaders: Record<string, string> = {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
         'X-Accel-Buffering': 'no',
-        'Access-Control-Allow-Origin': req.headers.origin || '*',
-      });
+        'Vary': 'Origin',
+      };
+      if (sseOrigin && isTrustedOrigin(sseOrigin)) {
+        sseHeaders['Access-Control-Allow-Origin'] = sseOrigin;
+        sseHeaders['Access-Control-Allow-Credentials'] = 'true';
+      }
+      res.writeHead(200, sseHeaders);
 
       res.write(': stream-connected\n\n');
 
@@ -1898,14 +1877,15 @@ export async function handleRemoteApiRoutes(
     );
     return true;
   } catch (err: any) {
+    const status = getErrorStatusCode(err, 500);
     sendRemoteJSON(
       req,
       res,
-      500,
+      status,
       {
         success: false,
         error: {
-          code: 'INTERNAL_ERROR',
+          code: err?.code || 'INTERNAL_ERROR',
           message: err.message || 'An unexpected server error occurred.',
         },
       },

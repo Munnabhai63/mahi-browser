@@ -99,12 +99,22 @@ export default function DownloadButtons() {
       }
 
       const urlParams = new URLSearchParams(window.location.search);
-      const urlToken = urlParams.get('token') || urlParams.get('access_token') || urlParams.get('auth_token');
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const urlToken =
+        hashParams.get('token') ||
+        hashParams.get('access_token') ||
+        urlParams.get('token') ||
+        urlParams.get('access_token') ||
+        urlParams.get('auth_token');
       if (urlToken) {
         setAuthToken(urlToken);
         try {
           localStorage.setItem('mahi_auth_token', urlToken);
+          localStorage.setItem('mahi_access_token', urlToken);
         } catch {}
+        if (window.location.hash) {
+          window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+        }
       } else {
         try {
           const stored = localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token');

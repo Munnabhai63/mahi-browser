@@ -13,7 +13,9 @@ echo [1/3] Checking MAHI Core Engine status...
 netstat -ano | findstr /i "LISTENING" | findstr ":32123" >nul
 if %errorlevel% neq 0 (
     echo [2/3] Starting MAHI Core Engine in background...
-    if exist "release\win-unpacked\MAHI BROWSER.exe" (
+    if exist "release\win-unpacked\MAHI Browser.exe" (
+        start "" "release\win-unpacked\MAHI Browser.exe"
+    ) else if exist "release\win-unpacked\MAHI BROWSER.exe" (
         start "" "release\win-unpacked\MAHI BROWSER.exe"
     ) else (
         start "" cmd /c "npm start"

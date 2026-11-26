@@ -170,7 +170,9 @@ async function runProbe() {
       console.log('[TZ Probe] stealth-core.js syntax is VALID!');
     } catch (err: any) {
       console.error('[TZ Probe] stealth-core.js SYNTAX ERROR:', err.message);
-      fs.writeFileSync('C:/Users/munaf/.gemini/antigravity/brain/9095e766-f32f-4560-92f4-94cf01606a71/scratch/bad_stealth.js', code);
+      const debugFile = process.env.MAHI_TZ_PROBE_DEBUG_FILE || path.join(os.tmpdir(), 'mahi_bad_stealth.js');
+      fs.writeFileSync(debugFile, code);
+      console.error('[TZ Probe] Saved invalid stealth-core.js to:', debugFile);
     }
   } else {
     console.log('[TZ Probe] stealth-core.js DOES NOT EXIST at', coreJsPath);

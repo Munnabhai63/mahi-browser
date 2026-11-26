@@ -55,6 +55,20 @@ describe('Phase 18: Complete CTA → Auth → Trial/Plan → Download Onboarding
     expect(anonDlRes.status).toBe(302);
     expect(anonDlRes.headers.get('location')).toBe('/signup?intent=trial&returnUrl=/download');
 
+    // 1b. Non-HTML anonymous requests must NOT bypass auth and must receive 401
+    const anonCliRes = await fetch(`${baseUrl}/download/setup`, {
+      headers: { 'Accept': 'application/json' },
+      redirect: 'manual',
+    });
+    expect(anonCliRes.status).toBe(401);
+
+    // 1c. Invalid/forged bearer tokens must also be rejected with 401
+    const forgedDlRes = await fetch(`${baseUrl}/download/MAHI-Setup.exe`, {
+      headers: { 'Authorization': 'Bearer forged_invalid_token' },
+      redirect: 'manual',
+    });
+    expect(forgedDlRes.status).toBe(401);
+
     // 2. Signup page is accessible with 200 OK
     const signupPageRes = await fetch(`${baseUrl}/signup?intent=trial`);
     expect(signupPageRes.status).toBe(200);
@@ -97,12 +111,20 @@ describe('Phase 18: Complete CTA → Auth → Trial/Plan → Download Onboarding
     expect(trialStatus.isTrialActive).toBe(true);
     expect(trialStatus.daysRemaining).toBe(7);
 
-    // 5. Authenticated user can now download installer via token
-    const authDlRes = await fetch(`${baseUrl}/download/setup?token=${token}`, {
+    // 5. Authenticated user can now download installer via Authorization header (not URL query string)
+    const authDlRes = await fetch(`${baseUrl}/download/setup`, {
+      headers: { 'Authorization': `Bearer ${token}` },
       redirect: 'manual'
     });
-    // Either returns 200 with octet-stream or 404 if physical mock binary absent in dev environment, but never 302 redirect to signup
+    // Either returns 200 with octet-stream or 404 if physical mock binary absent in dev environment, but never 302 or 401
     expect(authDlRes.status).not.toBe(302);
+    expect(authDlRes.status).not.toBe(401);
+
+    // 5b. Unauthenticated non-HTML portable download request is rejected with 401
+    const unauthPortableRes = await fetch(`${baseUrl}/download/portable`, {
+      redirect: 'manual'
+    });
+    expect(unauthPortableRes.status).toBe(401);
   });
 
   // =========================================================================

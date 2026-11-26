@@ -1,0 +1,115 @@
+name: Deploy Landing Portal
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'landing/**'
+      - '10_CONFIG/contact-config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-landing.yml'
+  workflow_dispatch:
+    inputs:
+      deploy_to_vps:
+        description: 'Sync built static portal to production VPS nginx docroot'
+        type: boolean
+        required: false
+        default: true
+
+concurrency:
+  group: deploy-landing
+  cancel-in-progress: true
+
+jobs:
+  build-landing:
+    name: Lint, Typecheck & Build Landing (Next.js 16)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Root & Landing Dependencies
+        run: |
+          npm ci
+          npm --prefix landing ci
+
+      - name: Lint Landing with Biome
+        run: npm --prefix landing run lint
+
+      - name: Typecheck Landing
+        run: npm run landing:typecheck
+
+      - name: Build Static Export
+        run: npm run landing:build
+
+      - name: Assert Static Export Output
+        run: |
+          test -f landing/out/index.html
+          test -f landing/out/pricing.html || test -f landing/out/pricing/index.html
+          test -f landing/out/download.html || test -f landing/out/download/index.html
+
+      - name: Upload Landing Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: landing-static-export
+          path: landing/out/
+          if-no-files-found: error
+
+  deploy-vps:
+    name: Deploy Static Portal to Production VPS
+    needs: [build-landing]
+    if: github.event_name == 'push' || inputs.deploy_to_vps == true
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Download Landing Static Export
+        uses: actions/download-artifact@v4
+        with:
+          name: landing-static-export
+          path: landing/out
+
+      - name: Verify VPS Secrets Configured
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ] || [ -z "$VPS_SSH_KEY" ]; then
+            echo "FATAL: Missing required VPS secrets (VPS_HOST, VPS_USER, VPS_SSH_KEY)."
+            exit 1
+          fi
+
+      - name: Setup SSH Authentication
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT || '22' }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload Static Site & Verify Live HTTP 200
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT || '22' }}
+          USER: ${{ secrets.VPS_USER }}
+          LANDING_DIR: ${{ vars.VPS_LANDING_DIR || '/var/www/mahibrowser/landing/out' }}
+        run: |
+          STAGE_DIR="${LANDING_DIR}.staging.$$"
+          ssh -p "$PORT" "$USER@$HOST" "mkdir -p '$(dirname "$LANDING_DIR")' '$STAGE_DIR'"
+          rsync -avz --delete -e "ssh -p $PORT" landing/out/ "$USER@$HOST:$STAGE_DIR/"
+          ssh -p "$PORT" "$USER@$HOST" "if [ -d '$LANDING_DIR/.well-known' ]; then cp -a '$LANDING_DIR/.well-known' '$STAGE_DIR/.well-known'; fi && rm -rf '${LANDING_DIR}.prev' && if [ -d '$LANDING_DIR' ]; then mv '$LANDING_DIR' '${LANDING_DIR}.prev'; fi && mv '$STAGE_DIR' '$LANDING_DIR' && chown -R www-data:www-data '$LANDING_DIR' && chmod -R a+rX '$LANDING_DIR' && rm -rf '${LANDING_DIR}.prev'"
+
+          STATUS_CODE=$(curl -sS -o /dev/null -w "%{http_code}" https://mahibrowser.com/)
+          echo "https://mahibrowser.com/ -> HTTP $STATUS_CODE"
+          test "$STATUS_CODE" = "200"

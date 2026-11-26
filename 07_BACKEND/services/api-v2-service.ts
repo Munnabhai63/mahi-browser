@@ -44,11 +44,8 @@ export function generateApiKey(
   return { keyRecord, secretKey };
 }
 
-export function getApiKeys(userId = 'owner'): ApiKeyRecord[] {
-  const db = getDatabase();
-  const rows = db.prepare('SELECT * FROM api_keys_v2 WHERE user_id = ? AND revoked_at IS NULL ORDER BY created_at DESC').all(userId) as any[];
-
-  return rows.map((r) => ({
+function mapApiKeyRow(r: any): ApiKeyRecord {
+  return {
     id: r.id,
     userId: r.user_id,
     name: r.name,
@@ -61,7 +58,25 @@ export function getApiKeys(userId = 'owner'): ApiKeyRecord[] {
     expiresAt: r.expires_at,
     createdAt: r.created_at,
     revokedAt: r.revoked_at,
-  }));
+  };
+}
+
+export function getApiKeys(userId?: string): ApiKeyRecord[] {
+  const db = getDatabase();
+  const rows = (
+    userId
+      ? db.prepare('SELECT * FROM api_keys_v2 WHERE user_id = ? AND revoked_at IS NULL ORDER BY created_at DESC').all(userId)
+      : db.prepare('SELECT * FROM api_keys_v2 WHERE revoked_at IS NULL ORDER BY created_at DESC').all()
+  ) as any[];
+
+  return rows.map(mapApiKeyRow);
+}
+
+export function getApiKeyById(keyId: string): ApiKeyRecord | null {
+  if (!keyId) return null;
+  const db = getDatabase();
+  const row = db.prepare('SELECT * FROM api_keys_v2 WHERE id = ? AND revoked_at IS NULL').get(keyId) as any;
+  return row ? mapApiKeyRow(row) : null;
 }
 
 export function validateApiKey(secretKey: string): ApiKeyRecord | null {
@@ -91,9 +106,15 @@ export function validateApiKey(secretKey: string): ApiKeyRecord | null {
   };
 }
 
-export function revokeApiKey(keyId: string): boolean {
+export function revokeApiKey(keyId: string, ownerUserId?: string): boolean {
   const db = getDatabase();
-  db.prepare('UPDATE api_keys_v2 SET revoked_at = ? WHERE id = ?').run(new Date().toISOString(), keyId);
+  const now = new Date().toISOString();
+  const info = ownerUserId
+    ? db.prepare('UPDATE api_keys_v2 SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL').run(now, keyId, ownerUserId)
+    : db.prepare('UPDATE api_keys_v2 SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL').run(now, keyId);
+  if ((info?.changes ?? 0) === 0) {
+    return false;
+  }
   logActivity('API', 'WARNING', 'Revoke API Key', `Revoked API Key ID: ${keyId}`);
   return true;
 }

@@ -148,7 +148,15 @@ export function hashPin(pin: string, saltHex?: string): { hash: string; salt: st
 }
 
 export function verifyPin(pin: string, storedHash: string, saltHex: string): boolean {
+  if (!pin || !storedHash || !saltHex || !/^[0-9a-fA-F]+$/.test(storedHash)) {
+    return false;
+  }
   const salt = Buffer.from(saltHex, 'hex');
   const computedHash = crypto.pbkdf2Sync(pin, salt, ITERATIONS, 32, 'sha256').toString('hex');
-  return crypto.timingSafeEqual(Buffer.from(computedHash, 'hex'), Buffer.from(storedHash, 'hex'));
+  const computedBuf = Buffer.from(computedHash, 'hex');
+  const storedBuf = Buffer.from(storedHash, 'hex');
+  if (computedBuf.length === 0 || computedBuf.length !== storedBuf.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(computedBuf, storedBuf);
 }

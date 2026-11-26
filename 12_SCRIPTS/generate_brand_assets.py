@@ -265,7 +265,7 @@ def main():
     app_icon_512.save(res_ico, format='ICO', sizes=ico_sizes)
     print('Saved multi-resolution Windows ICOs:', brand_ico, res_ico)
 
-    # 8. Web Favicons
+    # 8. Web Favicons (canonical source in 13_ASSETS/brand, copied to root favicon.ico & public/ during build)
     # favicon.ico (16, 32, 48)
     favicon_ico_path = os.path.join(BRAND_DIR, 'favicon.ico')
     root_favicon_path = 'favicon.ico'
@@ -276,11 +276,10 @@ def main():
     app_icon_512.save(landing_favicon_path, format='ICO', sizes=[(16, 16), (32, 32), (48, 48)])
     app_icon_512.save(landing_pub_fav_path, format='ICO', sizes=[(16, 16), (32, 32), (48, 48)])
 
-    # PNG favicons
+    # PNG favicons (stored canonically in 13_ASSETS/brand)
     for size, name in [(16, 'favicon-16x16.png'), (32, 'favicon-32x32.png'), (180, 'apple-touch-icon.png')]:
         fav_png = app_icon_512.resize((size, size), Image.Resampling.LANCZOS)
         fav_png.save(os.path.join(BRAND_DIR, name), 'PNG')
-        fav_png.save(name, 'PNG')
 
     # Landing page logo
     landing_logo_path = os.path.join(LANDING_IMG_DIR, 'mahi-browser-logo.png')

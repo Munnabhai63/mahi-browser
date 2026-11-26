@@ -69,22 +69,29 @@ export interface OAuthStateRecord {
 
 export function getGoogleOAuthConfig(): GoogleOAuthConfig {
   const isProd = process.env.NODE_ENV === 'production';
+  const envRedirectUri = process.env.GOOGLE_REDIRECT_URI?.trim();
+
+  if (isProd && !envRedirectUri) {
+    throw new Error('GOOGLE_OAUTH_NOT_CONFIGURED: GOOGLE_REDIRECT_URI is required in production.');
+  }
+
   return {
     clientId: process.env.GOOGLE_CLIENT_ID || '',
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-    defaultRedirectUri: process.env.GOOGLE_REDIRECT_URI || (isProd
-      ? 'https://mahibrowser.com/api/v1/auth/google/callback'
-      : 'http://localhost:32123/api/v1/auth/google/callback'),
+    defaultRedirectUri: envRedirectUri || 'http://localhost:32123/api/v1/auth/google/callback',
   };
 }
 
 export function isGoogleOAuthConfigured(): boolean {
-  const config = getGoogleOAuthConfig();
+  const isProd = process.env.NODE_ENV === 'production';
+  const clientId = process.env.GOOGLE_CLIENT_ID || '';
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+  const hasRedirectInProd = !isProd || Boolean(process.env.GOOGLE_REDIRECT_URI?.trim());
+
   return Boolean(
-    config.clientId &&
-    config.clientSecret &&
-    config.clientId.trim().length > 10 &&
-    config.clientSecret.trim().length > 10
+    hasRedirectInProd &&
+    clientId.trim().length > 10 &&
+    clientSecret.trim().length > 10
   );
 }
 
@@ -456,6 +463,159 @@ export async function fetchGoogleProfile(accessToken: string): Promise<GoogleCla
   });
 }
 
+interface GoogleJwkKey {
+  kid?: string;
+  kty?: string;
+  alg?: string;
+  use?: string;
+  n?: string;
+  e?: string;
+}
+
+const GOOGLE_JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs';
+let cachedGoogleJwks: { keys: GoogleJwkKey[]; expiresAt: number } | null = null;
+let overrideGoogleJwksForTesting: GoogleJwkKey[] | null = null;
+
+export function _setGoogleJwksForTesting(keys: GoogleJwkKey[] | null): void {
+  overrideGoogleJwksForTesting = keys;
+  if (!keys) {
+    cachedGoogleJwks = null;
+  }
+}
+
+async function fetchGoogleJwks(forceRefresh = false): Promise<GoogleJwkKey[]> {
+  if (overrideGoogleJwksForTesting) {
+    return overrideGoogleJwksForTesting;
+  }
+  const now = Date.now();
+  if (!forceRefresh && cachedGoogleJwks && cachedGoogleJwks.expiresAt > now) {
+    return cachedGoogleJwks.keys;
+  }
+
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      GOOGLE_JWKS_URL,
+      { headers: { Accept: 'application/json' }, timeout: 5000 },
+      (res) => {
+        let body = '';
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          try {
+            if (res.statusCode && res.statusCode >= 400) {
+              return reject(new Error(`GOOGLE_JWKS_HTTP_${res.statusCode}`));
+            }
+            const data = JSON.parse(body);
+            const keys = Array.isArray(data?.keys) ? (data.keys as GoogleJwkKey[]) : [];
+            if (keys.length === 0) {
+              return reject(new Error('GOOGLE_JWKS_EMPTY'));
+            }
+            const cc = String(res.headers['cache-control'] || '');
+            const maxAgeMatch = cc.match(/max-age=(\d+)/i);
+            const ttlMs = maxAgeMatch ? Math.min(Math.max(parseInt(maxAgeMatch[1], 10) * 1000, 60_000), 3_600_000) : 300_000;
+            cachedGoogleJwks = { keys, expiresAt: Date.now() + ttlMs };
+            resolve(keys);
+          } catch (err: any) {
+            reject(new Error(`GOOGLE_JWKS_PARSE_ERROR: ${err?.message || 'invalid json'}`));
+          }
+        });
+      }
+    );
+    req.on('timeout', () => {
+      req.destroy(new Error('GOOGLE_JWKS_TIMEOUT'));
+    });
+    req.on('error', reject);
+  });
+}
+
+/**
+ * Cryptographically verifies a Google OIDC ID token against Google's RS256 JWKS,
+ * strictly enforcing signature, issuer, audience (GOOGLE_CLIENT_ID), expiry, and email_verified.
+ */
+export async function verifyGoogleIdToken(idToken: string): Promise<GoogleClaims> {
+  if (!idToken || typeof idToken !== 'string') {
+    throw new Error('GOOGLE_ID_TOKEN_INVALID: Missing ID token.');
+  }
+  const parts = idToken.trim().split('.');
+  if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
+    throw new Error('GOOGLE_ID_TOKEN_INVALID: Malformed JWT format.');
+  }
+
+  const config = getGoogleOAuthConfig();
+  if (!config.clientId) {
+    throw new Error('GOOGLE_OAUTH_NOT_CONFIGURED: Missing Google Client ID for audience verification.');
+  }
+
+  let header: any;
+  let payload: any;
+  try {
+    header = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+    payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+  } catch {
+    throw new Error('GOOGLE_ID_TOKEN_INVALID: Corrupt JWT encoding.');
+  }
+
+  if (header?.alg !== 'RS256' || typeof header?.kid !== 'string' || !header.kid.trim()) {
+    throw new Error('GOOGLE_ID_TOKEN_INVALID: Unsupported algorithm or missing key ID.');
+  }
+
+  let keys = await fetchGoogleJwks(false);
+  let jwk = keys.find((k) => k.kid === header.kid && k.kty === 'RSA');
+  if (!jwk) {
+    keys = await fetchGoogleJwks(true);
+    jwk = keys.find((k) => k.kid === header.kid && k.kty === 'RSA');
+  }
+  if (!jwk) {
+    throw new Error('GOOGLE_ID_TOKEN_INVALID: Signing key not found in Google JWKS.');
+  }
+
+  const publicKey = crypto.createPublicKey({ key: jwk as crypto.JsonWebKey, format: 'jwk' });
+  const signingInput = Buffer.from(`${parts[0]}.${parts[1]}`, 'utf8');
+  const signature = Buffer.from(parts[2], 'base64url');
+  const verified = crypto.verify('RSA-SHA256', signingInput, publicKey, signature);
+  if (!verified) {
+    throw new Error('GOOGLE_ID_TOKEN_INVALID: Cryptographic signature verification failed.');
+  }
+
+  const allowedIssuers = new Set(['accounts.google.com', 'https://accounts.google.com']);
+  if (!allowedIssuers.has(String(payload?.iss || ''))) {
+    throw new Error('GOOGLE_ID_TOKEN_INVALID: Untrusted token issuer.');
+  }
+
+  const audMatch = Array.isArray(payload?.aud)
+    ? payload.aud.includes(config.clientId)
+    : payload?.aud === config.clientId;
+  if (!audMatch) {
+    throw new Error('GOOGLE_ID_TOKEN_INVALID: Token audience mismatch.');
+  }
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (typeof payload?.exp !== 'number' || payload.exp <= nowSec) {
+    throw new Error('GOOGLE_ID_TOKEN_EXPIRED: Google ID token has expired.');
+  }
+  if (payload?.nbf !== undefined && (typeof payload.nbf !== 'number' || payload.nbf > nowSec + 60)) {
+    throw new Error('GOOGLE_ID_TOKEN_INVALID: Token not yet valid.');
+  }
+
+  const emailVerified = payload?.email_verified === true || payload?.email_verified === 'true';
+  const email = typeof payload?.email === 'string' ? payload.email.trim().toLowerCase() : '';
+  const sub = typeof payload?.sub === 'string' ? payload.sub.trim() : '';
+  if (!sub || !email || !email.includes('@') || !emailVerified) {
+    throw new Error('GOOGLE_EMAIL_NOT_VERIFIED: Token lacks verified Google subject or email.');
+  }
+
+  return {
+    sub,
+    email,
+    email_verified: true,
+    name: typeof payload.name === 'string' ? payload.name : undefined,
+    given_name: typeof payload.given_name === 'string' ? payload.given_name : undefined,
+    family_name: typeof payload.family_name === 'string' ? payload.family_name : undefined,
+    picture: typeof payload.picture === 'string' ? payload.picture : undefined,
+  };
+}
+
 /**
  * Unifies Google OAuth identity with Central Auth, preserving plan/trial intent
  * Asynchronous version that synchronizes to Supabase PostgreSQL (auth_users) and local SQLite.
@@ -467,14 +627,21 @@ export async function authenticateWithGoogleClaimsAsync(
 ): Promise<GoogleAuthResult> {
   const db = getDatabase();
 
-  if (!claims.email_verified) {
+  if (
+    !claims ||
+    claims.email_verified !== true ||
+    typeof claims.sub !== 'string' ||
+    !claims.sub.trim() ||
+    typeof claims.email !== 'string' ||
+    !claims.email.includes('@')
+  ) {
     return {
       success: false,
       isNewAccount: false,
       isLinked: false,
       trialActive: false,
       returnUrl: '/signup',
-      error: 'GOOGLE_EMAIL_NOT_VERIFIED: Your Google account email is not verified.',
+      error: 'GOOGLE_EMAIL_NOT_VERIFIED: Verified Google subject and email are required.',
     };
   }
 
@@ -516,6 +683,21 @@ export async function authenticateWithGoogleClaimsAsync(
   let existingUser = db.prepare('SELECT * FROM commercial_users WHERE google_sub = ?').get(claims.sub) as any;
   if (!existingUser) {
     existingUser = db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(cleanEmail) as any;
+  }
+
+  // Prevent overwriting an account already bound to a different Google subject ID
+  if (
+    (pgUser?.google_sub && pgUser.google_sub !== claims.sub) ||
+    (existingUser?.google_sub && existingUser.google_sub !== claims.sub)
+  ) {
+    return {
+      success: false,
+      isNewAccount: false,
+      isLinked: false,
+      trialActive: false,
+      returnUrl: '/signup',
+      error: 'GOOGLE_SUB_MISMATCH: This account is already linked to a different Google identity.',
+    };
   }
 
   // Step 3: Enforce account status BEFORE updating or issuing a token

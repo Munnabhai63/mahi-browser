@@ -8,6 +8,7 @@ import { initializeDatabase } from '../06_DATABASE/schema.js';
 import { isPostgresConfigured, checkPostgresHealth } from '../06_DATABASE/prisma-client.js';
 import { isRedisConfigured, checkRedisHealth } from '../08_SECURITY/redis-lock-service.js';
 import { getStorageProvider } from '../08_SECURITY/storage-provider.js';
+import { validateProductionSecrets } from '../08_SECURITY/install-secrets.js';
 import { startFastifyCloudGateway, stopFastifyCloudGateway } from '../07_BACKEND/server/cloud-gateway.js';
 import { DEFAULT_CLOUD_GATEWAY_PORT } from '../10_CONFIG/shared/network-endpoints.js';
 
@@ -15,6 +16,9 @@ async function main() {
   console.log('===================================================');
   console.log('  MAHI BROWSER V2 — FASTIFY CLOUD GATEWAY STARTUP  ');
   console.log('===================================================');
+
+  // Fail fast in non-Electron production if required secrets or status keys are missing/weak
+  validateProductionSecrets();
 
   // Initialize SQLite schema fallback for local desktop mode
   console.log('[Gateway] Initializing local database schema...');

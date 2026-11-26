@@ -67,11 +67,12 @@ export async function handleCloudSyncRoutes(
     }
 
     try {
-      const buffer = await parseRawBuffer(req);
+      const buffer = await parseRawBuffer(req, { maxBytes: 250 * 1024 * 1024, timeoutMs: 120_000 });
       const putResult = await storage.putObject(key, buffer);
       sendJSON(res, 200, { success: true, size: putResult.size });
     } catch (err: any) {
-      sendJSON(res, 500, { success: false, error: err.message });
+      const status = typeof err?.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : 500;
+      sendJSON(res, status, { success: false, error: err.message });
     }
     return true;
   }

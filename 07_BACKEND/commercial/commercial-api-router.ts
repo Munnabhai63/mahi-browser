@@ -2,6 +2,7 @@ import http from 'node:http';
 import { URL } from 'node:url';
 import { sendJSON } from './routes/router-shared.js';
 import { isTrustedOrigin } from '../server/cloud-gateway.js';
+import { resolveTrustedClientIp } from '../utils/http-security.js';
 import { handleRemoteApiRoutes } from './remote-api-router.js';
 import { handleClientEntitlementRoutes } from './routes/client-entitlement-routes.js';
 import { handlePaymentRoutes } from './routes/payment-routes.js';
@@ -92,7 +93,7 @@ export async function handleCommercialApiRoutes(
   }
 
   const routePath = isDirectAuth || isDirectMe ? `/api/v1${pathname}` : isDirectSync ? `/api${pathname}` : pathname;
-  const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || '127.0.0.1';
+  const clientIp = resolveTrustedClientIp(req);
 
   // 1. Client Entitlement & Device Endpoints
   if (await handleClientEntitlementRoutes(req, res, pathname, method, parsedUrl, routePath, clientIp)) {

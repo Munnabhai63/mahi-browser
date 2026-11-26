@@ -78,6 +78,7 @@ npm test
 ```bash
 npm run build
 ```
+This outputs both desktop/client entrypoints to `dist/index.html` and the Web Management Console SPA (`WebDashboardApp`) to `dist/app.html`.
 
 ---
 

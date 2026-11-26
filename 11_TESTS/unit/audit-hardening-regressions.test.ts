@@ -52,6 +52,10 @@ import { getCaptchaConfig, saveCaptchaConfig } from '../../09_AUTOMATION/captcha
 import { detectAndParseAccountData } from '../../02_BROWSER/services/universal-importer-service.js';
 import { createProxyTunnel } from '../../02_BROWSER/proxy-tunnel.js';
 import { ProxyProviderRegistry } from '../../08_SECURITY/proxy-providers/proxy-provider-registry.js';
+import {
+  getGoogleOAuthConfig,
+  isGoogleOAuthConfigured,
+} from '../../07_BACKEND/commercial/google-oauth-service.js';
 
 describe('Audit Hardening Regressions (P0/P1/P2)', () => {
   const rootTemp = path.join(os.tmpdir(), `mahi-audit-reg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
@@ -416,5 +420,92 @@ describe('Audit Hardening Regressions (P0/P1/P2)', () => {
       process.env.NODE_ENV = prevEnv;
       if (prevAllow !== undefined) process.env.MAHI_ALLOW_MOCK_PROXY = prevAllow;
     }
+  });
+
+  it('requires GOOGLE_REDIRECT_URI in production while preserving localhost fallback only in non-production', () => {
+    const prevEnv = process.env.NODE_ENV;
+    const prevRedirect = process.env.GOOGLE_REDIRECT_URI;
+    const prevClient = process.env.GOOGLE_CLIENT_ID;
+    const prevSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+    try {
+      process.env.GOOGLE_CLIENT_ID = 'test-client-id-12345';
+      process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret-12345';
+
+      process.env.NODE_ENV = 'development';
+      delete process.env.GOOGLE_REDIRECT_URI;
+      expect(getGoogleOAuthConfig().defaultRedirectUri).toBe('http://localhost:32123/api/v1/auth/google/callback');
+      expect(isGoogleOAuthConfigured()).toBe(true);
+
+      process.env.NODE_ENV = 'production';
+      expect(isGoogleOAuthConfigured()).toBe(false);
+      expect(() => getGoogleOAuthConfig()).toThrow(/GOOGLE_REDIRECT_URI/i);
+
+      process.env.GOOGLE_REDIRECT_URI = 'https://mahibrowser.com/api/v1/auth/google/callback';
+      expect(isGoogleOAuthConfigured()).toBe(true);
+      expect(getGoogleOAuthConfig().defaultRedirectUri).toBe('https://mahibrowser.com/api/v1/auth/google/callback');
+    } finally {
+      process.env.NODE_ENV = prevEnv;
+      if (prevRedirect !== undefined) process.env.GOOGLE_REDIRECT_URI = prevRedirect;
+      else delete process.env.GOOGLE_REDIRECT_URI;
+      if (prevClient !== undefined) process.env.GOOGLE_CLIENT_ID = prevClient;
+      else delete process.env.GOOGLE_CLIENT_ID;
+      if (prevSecret !== undefined) process.env.GOOGLE_CLIENT_SECRET = prevSecret;
+      else delete process.env.GOOGLE_CLIENT_SECRET;
+    }
+  });
+
+  it('enforces strict CSP without unsafe-inline scripts in index.html and app.html', () => {
+    for (const fileName of ['index.html', 'app.html']) {
+      const html = fs.readFileSync(path.resolve(process.cwd(), fileName), 'utf8');
+      const cspMatch = html.match(/http-equiv=["']Content-Security-Policy["'][\s\S]*?content="([^"]+)"/i);
+      expect(cspMatch?.[1]).toBeTruthy();
+      const policy = cspMatch![1];
+      const scriptDirective = policy
+        .split(';')
+        .map((d) => d.trim())
+        .find((d) => d.startsWith('script-src'));
+      expect(scriptDirective).toBe("script-src 'self'");
+      expect(policy).not.toContain("'unsafe-eval'");
+      expect(policy).toContain("object-src 'none'");
+      expect(policy).not.toMatch(/connect-src[^;]*(?:\shttps:|\shttp:)(?:;|\s|$)/);
+    }
+  });
+
+  it('wires Prisma 7 adapter-pg cleanly via prisma.config.ts without schema url literals', () => {
+    const schemaText = fs.readFileSync(path.resolve(process.cwd(), 'prisma/schema.prisma'), 'utf8');
+    expect(schemaText).not.toMatch(/^\s*url\s*=/m);
+    expect(schemaText).not.toMatch(/^\s*directUrl\s*=/m);
+    expect(fs.existsSync(path.resolve(process.cwd(), 'prisma.config.ts'))).toBe(true);
+
+    const prismaClientTs = fs.readFileSync(path.resolve(process.cwd(), '06_DATABASE/prisma-client.ts'), 'utf8');
+    expect(prismaClientTs).toContain("nodeRequire('@prisma/adapter-pg')");
+    expect(prismaClientTs).toContain("nodeRequire('pg')");
+  });
+
+  it('configures cross-platform tag releases, nativeStealth engine provisioning, and gateway/landing deploys', () => {
+    const releaseYml = fs.readFileSync(
+      path.resolve(process.cwd(), '.github/workflows/cross-platform-release.yml'),
+      'utf8'
+    );
+    expect(releaseYml).toContain("startsWith(github.ref, 'refs/tags/v')");
+    expect(releaseYml).toContain('macos-latest');
+    expect(releaseYml).toContain('ubuntu-latest');
+    expect(releaseYml).toContain('engine-v');
+    expect(releaseYml).toContain('publish-release:');
+
+    const gatewayYml = fs.readFileSync(
+      path.resolve(process.cwd(), '.github/workflows/deploy-gateway.yml'),
+      'utf8'
+    );
+    expect(gatewayYml).toContain('Dockerfile.gateway');
+    expect(gatewayYml).toContain('docker-compose.production.yml');
+
+    const landingYml = fs.readFileSync(
+      path.resolve(process.cwd(), '.github/workflows/deploy-landing.yml'),
+      'utf8'
+    );
+    expect(landingYml).toContain('landing/out');
+    expect(landingYml).toContain('VPS_SSH_KEY');
   });
 });

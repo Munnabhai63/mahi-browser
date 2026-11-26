@@ -321,7 +321,7 @@ export async function handlePaymentRoutes(
     method === 'POST'
   ) {
     try {
-      const rawBody = (await parseRawBuffer(req)).toString('utf-8');
+      const rawBody = (await parseRawBuffer(req, { maxBytes: 2 * 1024 * 1024, timeoutMs: 30_000 })).toString('utf-8');
       const signature = (
         req.headers['x-gateway-signature'] ||
         req.headers['x-gateway-signature-v2'] ||
@@ -359,7 +359,9 @@ export async function handlePaymentRoutes(
       return true;
     } catch (err: any) {
       const isSig = err.message && err.message.includes('INVALID_WEBHOOK_SIGNATURE');
-      sendJSON(res, isSig ? 400 : 500, { success: false, error: err.message });
+      const fallbackStatus = isSig ? 400 : 500;
+      const status = typeof err?.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : fallbackStatus;
+      sendJSON(res, status, { success: false, error: err.message });
       return true;
     }
   }

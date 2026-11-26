@@ -24,13 +24,14 @@ if %errorlevel% neq 0 (
 
 echo.
 echo Step 3: Copying fresh installer packages to Desktop for easy sharing...
-if exist "release\MAHI BROWSER-1.0.0-Setup.exe" (
-    copy /y "release\MAHI BROWSER-1.0.0-Setup.exe" "%USERPROFILE%\Desktop\MAHI BROWSER-1.0.0-Setup.exe" >nul
-    echo  [OK] Copied MAHI BROWSER-1.0.0-Setup.exe to Desktop
+for /f "delims=" %%v in ('node -p "require('./package.json').version"') do set "APP_VER=%%v"
+if exist "release\MAHI-Browser-Setup-%APP_VER%.exe" (
+    copy /y "release\MAHI-Browser-Setup-%APP_VER%.exe" "%USERPROFILE%\Desktop\MAHI-Browser-Setup-%APP_VER%.exe" >nul
+    echo  [OK] Copied MAHI-Browser-Setup-%APP_VER%.exe to Desktop
 )
-if exist "release\MAHI BROWSER-1.0.0-Portable.exe" (
-    copy /y "release\MAHI BROWSER-1.0.0-Portable.exe" "%USERPROFILE%\Desktop\MAHI BROWSER-1.0.0-Portable.exe" >nul
-    echo  [OK] Copied MAHI BROWSER-1.0.0-Portable.exe to Desktop
+if exist "release\MAHI-Browser-Portable-%APP_VER%.exe" (
+    copy /y "release\MAHI-Browser-Portable-%APP_VER%.exe" "%USERPROFILE%\Desktop\MAHI-Browser-Portable-%APP_VER%.exe" >nul
+    echo  [OK] Copied MAHI-Browser-Portable-%APP_VER%.exe to Desktop
 )
 
 echo.

@@ -7,6 +7,15 @@ import { verifyAdminAccess } from '../../../05_AUTH/admin-auth.js';
 import { isValidAdminWebSecret } from '../../../08_SECURITY/install-secrets.js';
 import { CommercialRole } from '../../../10_CONFIG/shared/types/commercial.js';
 import { getDatabase } from '../../../06_DATABASE/connection.js';
+import {
+  resolveTrustedClientIp,
+  normalizeIp,
+  readBoundedBuffer,
+  parseBoundedJson,
+  BoundedBodyOptions,
+} from '../../utils/http-security.js';
+
+export { resolveTrustedClientIp };
 
 export function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown): void {
   const existingOrigin = typeof res?.getHeader === 'function' ? res.getHeader('Access-Control-Allow-Origin') : undefined;
@@ -29,55 +38,12 @@ export function sendJSON(res: http.ServerResponse, statusCode: number, data: unk
   res.end(JSON.stringify(data));
 }
 
-export function parseBody(req: http.IncomingMessage): Promise<any> {
-  if ((req as any).body !== undefined && typeof (req as any).body === 'object') {
-    return Promise.resolve((req as any).body);
-  }
-  return new Promise((resolve, reject) => {
-    let body = '';
-    req.on('data', (chunk) => {
-      body += chunk;
-    });
-    req.on('end', () => {
-      if (!body) return resolve({});
-      try {
-        resolve(JSON.parse(body));
-      } catch (err) {
-        reject(new Error('Invalid JSON payload'));
-      }
-    });
-    req.on('error', reject);
-  });
+export function parseBody(req: http.IncomingMessage, options: BoundedBodyOptions = {}): Promise<any> {
+  return parseBoundedJson(req, options);
 }
 
-export function parseRawBuffer(req: http.IncomingMessage): Promise<Buffer> {
-  if ((req as any).rawBuffer !== undefined && Buffer.isBuffer((req as any).rawBuffer)) {
-    return Promise.resolve((req as any).rawBuffer);
-  }
-  if ((req as any).body !== undefined) {
-    if (Buffer.isBuffer((req as any).body)) {
-      return Promise.resolve((req as any).body);
-    }
-    if (typeof (req as any).body === 'string') {
-      return Promise.resolve(Buffer.from((req as any).body, 'utf-8'));
-    }
-    if (typeof (req as any).body === 'object' && (req as any).body !== null) {
-      return Promise.resolve(Buffer.from(JSON.stringify((req as any).body), 'utf-8'));
-    }
-  }
-  if (req.readableEnded || (req as any)._readableState?.ended) {
-    return Promise.resolve(Buffer.alloc(0));
-  }
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk) => {
-      chunks.push(chunk);
-    });
-    req.on('end', () => {
-      resolve(Buffer.concat(chunks));
-    });
-    req.on('error', reject);
-  });
+export function parseRawBuffer(req: http.IncomingMessage, options: BoundedBodyOptions = {}): Promise<Buffer> {
+  return readBoundedBuffer(req, options);
 }
 
 export function getAuthUser(req: http.IncomingMessage): { userId: string; email: string; role: CommercialRole; sessionId?: string } | null {
@@ -98,10 +64,16 @@ export function getAuthUser(req: http.IncomingMessage): { userId: string; email:
   return null;
 }
 
-export function checkAdminAuth(req: http.IncomingMessage, body?: any): { isAdmin: boolean; actor: { id: string; name: string; role: CommercialRole } } {
-  // 1. Check JWT role
+export function checkAdminAuth(
+  req: http.IncomingMessage,
+  body?: any,
+  options?: { allowedRoles?: CommercialRole[] }
+): { isAdmin: boolean; actor: { id: string; name: string; role: CommercialRole } } {
+  const allowedRoles = options?.allowedRoles ?? ['SUPER_ADMIN', 'ADMIN'];
+
+  // 1. Check JWT role (strictly forbid SUPPORT / BILLING from admin mutations by default)
   const user = getAuthUser(req);
-  if (user && (user.role === 'SUPER_ADMIN' || user.role === 'ADMIN' || user.role === 'SUPPORT' || user.role === 'BILLING')) {
+  if (user && allowedRoles.includes(user.role)) {
     return {
       isAdmin: true,
       actor: { id: user.userId, name: user.email, role: user.role },
@@ -126,17 +98,25 @@ export function checkAdminAuth(req: http.IncomingMessage, body?: any): { isAdmin
 
 export function signAccountStatus(canonical: string): string {
   const privateKey = process.env.MAHI_STATUS_PRIVATE_KEY || process.env.RSA_PRIVATE_KEY;
-  if (privateKey) {
-    try {
-      const formatted = privateKey.includes('\\n') ? privateKey.replace(/\\n/g, '\n') : privateKey;
-      const signer = crypto.createSign('SHA256');
-      signer.update(canonical);
-      return signer.sign(formatted, 'base64');
-    } catch (err: any) {
-      console.warn('[AccountStatus] sign error:', err?.message);
+  const isProdNonElectron = process.env.NODE_ENV === 'production' && !process.versions?.electron;
+  if (!privateKey || !privateKey.trim()) {
+    if (isProdNonElectron) {
+      throw new Error('[AccountStatus] MAHI_STATUS_PRIVATE_KEY (or RSA_PRIVATE_KEY) is required in production.');
     }
+    return '';
   }
-  return '';
+  try {
+    const formatted = privateKey.includes('\\n') ? privateKey.replace(/\\n/g, '\n') : privateKey;
+    const signer = crypto.createSign('SHA256');
+    signer.update(canonical);
+    return signer.sign(formatted, 'base64');
+  } catch (err: any) {
+    if (isProdNonElectron) {
+      throw new Error(`[AccountStatus] Failed to sign account status in production: ${err?.message || err}`);
+    }
+    console.warn('[AccountStatus] sign error:', err?.message);
+    return '';
+  }
 }
 
 // ============================================================================
@@ -409,8 +389,19 @@ export interface AuthRateLimitEntry {
 export const authRateLimitMap = new Map<string, AuthRateLimitEntry>();
 
 export function checkAuthRateLimit(clientIp: string, action: string = 'auth'): { allowed: boolean; remaining: number; retryAfterSeconds: number } {
-  const key = `${clientIp}:${action}`;
+  const normalizedIp = normalizeIp(clientIp) || '127.0.0.1';
+  const key = `${normalizedIp}:${action}`;
   const now = Date.now();
+
+  // Bound in-memory rate-limit map size by pruning expired entries when large
+  if (authRateLimitMap.size > 2000) {
+    for (const [k, v] of authRateLimitMap.entries()) {
+      if (v.resetAt <= now) {
+        authRateLimitMap.delete(k);
+      }
+    }
+  }
+
   const entry = authRateLimitMap.get(key);
 
   if (!entry || entry.resetAt <= now) {

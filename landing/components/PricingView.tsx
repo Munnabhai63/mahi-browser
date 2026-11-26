@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { BRAND } from '../lib/brand';
+import { LEGAL_SELLER_NAME, UPI_ID, WHATSAPP_RAW_NUMBER } from '../../10_CONFIG/contact-config';
 
 interface PlanTier {
   id: string;
@@ -168,7 +169,7 @@ const PRICING_FAQS = [
   {
     question: 'How does 0% fee Indian UPI payment work?',
     answer:
-      'You can pay directly via any Indian UPI app (PhonePe, Google Pay, Paytm, CRED, BHIM) to our registered merchant VPA 6375823589@slc. There are zero international credit card markups or foreign transaction fees. Your license key is verified and activated promptly.',
+      `You can pay directly via any Indian UPI app (PhonePe, Google Pay, Paytm, CRED, BHIM) to our registered merchant VPA ${UPI_ID}. There are zero international credit card markups or foreign transaction fees. Your license key is verified and activated promptly.`,
   },
   {
     question: 'Can I import my existing GoLogin or AdsPower profiles and cookies?',
@@ -307,7 +308,7 @@ export default function PricingView() {
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
         navigator.clipboard
-          .writeText('6375823589@slc')
+          .writeText(UPI_ID)
           .then(() => {
             setCopiedUpi(true);
             setTimeout(() => setCopiedUpi(false), 2500);
@@ -948,13 +949,13 @@ export default function PricingView() {
             <div className="space-y-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 p-3.5 text-xs">
               <div className="flex items-center justify-between text-zinc-400">
                 <span>Account Holder:</span>
-                <span className="font-semibold text-white">Mahipal Choudhary</span>
+                <span className="font-semibold text-white">{LEGAL_SELLER_NAME}</span>
               </div>
               <div className="flex items-center justify-between text-zinc-400 pt-1 border-t border-zinc-800">
                 <span>Official Merchant VPA:</span>
                 <div className="flex items-center gap-2">
                   <code className="font-mono text-zinc-200 bg-zinc-800 px-2 py-0.5 rounded border border-zinc-700">
-                    6375823589@slc
+                    {UPI_ID}
                   </code>
                   <button
                     type="button"
@@ -1013,7 +1014,7 @@ export default function PricingView() {
                 </p>
                 <div className="pt-2">
                   <a
-                    href={`https://wa.me/919376343629?text=Hi%20Mahipal,%20I%20have%20paid%20INR%20${selectedUpiPlan.price}%20via%20UPI%20for%20MAHI%20Browser%20${encodeURIComponent(selectedUpiPlan.name)}%20Plan.%20UTR:%20${encodeURIComponent(utrInput)}${submittedPaymentId ? `%20Ref:%20${encodeURIComponent(submittedPaymentId)}` : ''}`}
+                    href={`https://wa.me/${WHATSAPP_RAW_NUMBER}?text=Hi%20${encodeURIComponent(LEGAL_SELLER_NAME.split(' ')[0])},%20I%20have%20paid%20INR%20${selectedUpiPlan.price}%20via%20UPI%20for%20MAHI%20Browser%20${encodeURIComponent(selectedUpiPlan.name)}%20Plan.%20UTR:%20${encodeURIComponent(utrInput)}${submittedPaymentId ? `%20Ref:%20${encodeURIComponent(submittedPaymentId)}` : ''}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-center gap-2 rounded-full bg-white text-black px-4 py-2 text-xs font-semibold hover:bg-zinc-200 transition-colors"
@@ -1028,7 +1029,7 @@ export default function PricingView() {
             <div className="text-center text-[11px] text-zinc-500 pt-1">
               Need instant activation help?{' '}
               <a
-                href="https://wa.me/919376343629"
+                href={`https://wa.me/${WHATSAPP_RAW_NUMBER}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-zinc-300 hover:text-white underline"

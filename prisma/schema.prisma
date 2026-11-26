@@ -1,10 +1,8 @@
 // MAHI Browser Central Database — PostgreSQL Schema
-// Powered by Prisma v6 for Central Cloud Gateway & Supabase/Hosted Postgres
+// Powered by Prisma v7 for Central Cloud Gateway & Supabase/Hosted Postgres
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 generator client {

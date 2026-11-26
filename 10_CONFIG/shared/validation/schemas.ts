@@ -1,39 +1,36 @@
 import { z } from 'zod';
 
 export const BrowserConfigSchema = z
-  .object({
+  .looseObject({
     engine: z.enum(['chromium', 'chrome', 'edge', 'camoufox']),
     version: z.string().default('131.0.0.0'),
     customExecutablePath: z.string().optional(),
     userAgent: z.string().min(5),
-    startupUrl: z.string().url().or(z.string().min(1)).optional().default('about:blank'),
-    homepage: z.string().url().or(z.string().min(1)).optional().default('about:blank'),
+    startupUrl: z.url().or(z.string().min(1)).optional().default('about:blank'),
+    homepage: z.url().or(z.string().min(1)).optional().default('about:blank'),
     additionalArgs: z.array(z.string()).default([]),
     enableExtensions: z.boolean().default(true),
     hardwareAcceleration: z.boolean().default(true),
-  })
-  .passthrough();
+  });
 
 export const DisplayConfigSchema = z
-  .object({
+  .looseObject({
     screenWidth: z.number().int().min(320).max(7680).default(1920),
     screenHeight: z.number().int().min(240).max(4320).default(1080),
     deviceScaleFactor: z.number().min(0.5).max(4).default(1),
     colorDepth: z.number().int().default(24),
-  })
-  .passthrough();
+  });
 
 export const LocaleConfigSchema = z
-  .object({
+  .looseObject({
     language: z.string().min(2).default('en-US'),
     timezone: z.string().min(2).default('America/New_York'),
     languagesList: z.array(z.string()).default(['en-US', 'en']),
     autoSyncFromIp: z.boolean().optional(),
-  })
-  .passthrough();
+  });
 
 export const NetworkConfigSchema = z
-  .object({
+  .looseObject({
     proxyId: z.string().optional(),
     directConnection: z.boolean().default(true),
     webrtc: z
@@ -48,21 +45,19 @@ export const NetworkConfigSchema = z
       ])
       .default('default'),
     dnsServer: z.string().optional(),
-  })
-  .passthrough();
+  });
 
 export const PermissionsConfigSchema = z
-  .object({
+  .looseObject({
     camera: z.enum(['prompt', 'allow', 'block']).default('prompt'),
     microphone: z.enum(['prompt', 'allow', 'block']).default('prompt'),
     geolocation: z.enum(['prompt', 'allow', 'block']).default('prompt'),
     notifications: z.enum(['prompt', 'allow', 'block']).default('prompt'),
     midi: z.enum(['prompt', 'allow', 'block']).default('prompt'),
-  })
-  .passthrough();
+  });
 
 export const FingerprintConfigSchema = z
-  .object({
+  .looseObject({
     canvas: z.string().optional(),
     webgl: z.string().optional(),
     audio: z.string().optional(),
@@ -78,29 +73,26 @@ export const FingerprintConfigSchema = z
     fonts: z.array(z.string()).optional(),
     isM1: z.boolean().optional(),
   })
-  .passthrough()
   .optional();
 
 export const FakeVideoCaptureSchema = z
-  .object({
+  .looseObject({
     enable: z.boolean().optional(),
     filePath: z.string().optional(),
   })
-  .passthrough()
   .optional();
 
 export const MobileConfigSchema = z
-  .object({
+  .looseObject({
     enable: z.boolean().optional(),
     width: z.number().optional(),
     height: z.number().optional(),
     deviceScaleFactor: z.number().optional(),
   })
-  .passthrough()
   .optional();
 
 export const ProfileSettingsSchema = z
-  .object({
+  .looseObject({
     settingsVersion: z.number().int().min(0).optional(),
     browser: BrowserConfigSchema,
     fingerprint: FingerprintConfigSchema,
@@ -110,8 +102,7 @@ export const ProfileSettingsSchema = z
     permissions: PermissionsConfigSchema,
     fakeVideoCapture: FakeVideoCaptureSchema,
     mobile: MobileConfigSchema,
-  })
-  .passthrough();
+  });
 
 export const CreateProfileDTOSchema = z.object({
   name: z.string().min(1, 'Profile name is required').max(100),

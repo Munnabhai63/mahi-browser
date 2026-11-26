@@ -346,7 +346,7 @@ export function getSuperAdminTemplateHtml(): string {
                 <h4 class="text-sm font-bold text-slate-900">MAHI BROWSER Setup (.exe)</h4>
                 <p class="text-xs text-slate-500 mt-0.5">Full Windows NSIS installer with desktop shortcuts & auto-update</p>
               </div>
-              <a href="/download/setup" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-sm transition">Download</a>
+              <button onclick="downloadBinary('/download/setup', 'MAHI-Setup.exe')" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-sm transition">Download</button>
             </div>
 
             <div class="p-5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
@@ -354,7 +354,7 @@ export function getSuperAdminTemplateHtml(): string {
                 <h4 class="text-sm font-bold text-slate-900">MAHI BROWSER Portable (.exe)</h4>
                 <p class="text-xs text-slate-500 mt-0.5">Zero-install standalone executable for fast deployment</p>
               </div>
-              <a href="/download/portable" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition">Download</a>
+              <button onclick="downloadBinary('/download/portable', 'MAHI-Portable.exe')" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition">Download</button>
             </div>
           </div>
 
@@ -659,9 +659,34 @@ export function getSuperAdminTemplateHtml(): string {
       }
     }
 
+    async function downloadBinary(endpoint, fallbackName) {
+      try {
+        const res = await fetch(endpoint, { headers: getAuthHeaders() });
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({}));
+          showSuperToast('Download Blocked', errJson.error || 'Failed to download binary.', 'error');
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fallbackName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        showSuperToast('Error', 'Download request failed.', 'error');
+      }
+    }
+
     async function rebuildSystemShortcuts() {
       try {
-        const res = await fetch('/api/v2/system/fix-shortcuts', { method: 'POST' });
+        const res = await fetch('/api/v2/system/fix-shortcuts', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+        });
         const json = await res.json();
         if (json.success) {
           showSuperToast('Shortcuts Rebuilt', 'All workstation desktop shortcuts and icons refreshed successfully.', 'success');

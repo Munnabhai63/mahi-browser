@@ -118,9 +118,44 @@ export function getInstallSecrets(): InstallSecrets {
   return newSecrets;
 }
 
+const KNOWN_WEAK_SECRETS = new Set([
+  'changeme',
+  'change-me',
+  'default',
+  'secret',
+  'password',
+  'admin',
+  'mahi-secret',
+  'mahi-dev-secret',
+  'jwt-secret',
+  'test-secret',
+]);
+
+function isNonElectronProduction(): boolean {
+  return process.env.NODE_ENV === 'production' && !process.versions?.electron;
+}
+
+export function isWeakSecret(secret: string | null | undefined, minLength = 32): boolean {
+  if (!secret) return true;
+  const trimmed = secret.trim();
+  if (trimmed.length < minLength) return true;
+  if (KNOWN_WEAK_SECRETS.has(trimmed.toLowerCase())) return true;
+  // Reject trivial single-character or tiny repeating patterns
+  if (new Set(trimmed).size < 4) return true;
+  return false;
+}
+
 export function getJwtSecret(): string {
   if (!process.versions?.electron) {
     const envJwt = process.env.JWT_SECRET?.trim();
+    if (isNonElectronProduction()) {
+      if (isWeakSecret(envJwt, 32)) {
+        throw new Error(
+          '[Security] Production startup requires a strong JWT_SECRET (>= 32 chars) via environment; disk fallback is disabled.'
+        );
+      }
+      return envJwt!;
+    }
     if (envJwt && envJwt.length >= 16) {
       return envJwt;
     }
@@ -139,11 +174,47 @@ export function getAdminSalt(): string {
 export function getMasterAdminSecret(): string {
   if (!process.versions?.electron) {
     const envAdmin = (process.env.ADMIN_BOOTSTRAP_TOKEN || process.env.MAHI_MASTER_ADMIN_SECRET)?.trim();
+    if (isNonElectronProduction()) {
+      if (isWeakSecret(envAdmin, 32)) {
+        throw new Error(
+          '[Security] Production startup requires a strong ADMIN_BOOTSTRAP_TOKEN (>= 32 chars) via environment; disk fallback is disabled.'
+        );
+      }
+      return envAdmin!;
+    }
     if (envAdmin && envAdmin.length >= 16) {
       return envAdmin;
     }
   }
   return getInstallSecrets().masterAdminSecret;
+}
+
+export function validateProductionSecrets(): void {
+  if (!isNonElectronProduction()) {
+    return;
+  }
+  getJwtSecret();
+  getMasterAdminSecret();
+
+  const rawPrivateKey = (process.env.MAHI_STATUS_PRIVATE_KEY || process.env.RSA_PRIVATE_KEY)?.trim();
+  if (!rawPrivateKey) {
+    throw new Error(
+      '[Security] Production startup requires MAHI_STATUS_PRIVATE_KEY (or RSA_PRIVATE_KEY) for status signing.'
+    );
+  }
+  const formatted = rawPrivateKey.includes('\\n') ? rawPrivateKey.replace(/\\n/g, '\n') : rawPrivateKey;
+  let keyObj: crypto.KeyObject;
+  try {
+    keyObj = crypto.createPrivateKey(formatted);
+  } catch (err: any) {
+    throw new Error(`[Security] Production status signing private key is invalid: ${err?.message || 'parse failed'}`);
+  }
+  if (keyObj.asymmetricKeyType === 'rsa') {
+    const bits = keyObj.asymmetricKeyDetails?.modulusLength ?? 0;
+    if (bits < 2048) {
+      throw new Error(`[Security] Production RSA status signing key is too weak (${bits} bits; minimum 2048 bits).`);
+    }
+  }
 }
 
 export function getAdminWebSecret(): string {

@@ -189,8 +189,11 @@ export async function fixDesktopShortcuts(): Promise<{ success: boolean; message
     const iconPath = path.join(cwd, '13_ASSETS', 'resources', 'icon.ico');
 
     // Prefer native unpacked exe if available, fallback to start-app.bat
-    const unpackedExe = path.join(cwd, 'release', 'win-unpacked', 'MAHI BROWSER.exe');
-    const appExe = fs.existsSync(unpackedExe) ? unpackedExe : path.join(cwd, '12_SCRIPTS', 'start-app.bat');
+    const unpackedExe = path.join(cwd, 'release', 'win-unpacked', 'MAHI Browser.exe');
+    const legacyUnpackedExe = path.join(cwd, 'release', 'win-unpacked', 'MAHI BROWSER.exe');
+    const appExe = fs.existsSync(unpackedExe)
+      ? unpackedExe
+      : (fs.existsSync(legacyUnpackedExe) ? legacyUnpackedExe : path.join(cwd, '12_SCRIPTS', 'start-app.bat'));
 
     const superAdminBat = path.join(cwd, '12_SCRIPTS', 'Start-Super-Admin.bat');
     const webAdminBat = path.join(cwd, '12_SCRIPTS', 'Start-Web-Admin.bat');
@@ -291,8 +294,11 @@ export async function createProfileShortcut(profileId: string, profileName: stri
     const shortcutPath = path.join(desktopDir, `MAHI - ${safeName}.lnk`);
     const iconPath = path.join(cwd, '13_ASSETS', 'resources', 'icon.ico');
 
-    const unpackedExe = path.join(cwd, 'release', 'win-unpacked', 'MAHI BROWSER.exe');
-    const appExe = fs.existsSync(unpackedExe) ? unpackedExe : path.join(cwd, '12_SCRIPTS', 'start-app.bat');
+    const unpackedExe = path.join(cwd, 'release', 'win-unpacked', 'MAHI Browser.exe');
+    const legacyUnpackedExe = path.join(cwd, 'release', 'win-unpacked', 'MAHI BROWSER.exe');
+    const appExe = fs.existsSync(unpackedExe)
+      ? unpackedExe
+      : (fs.existsSync(legacyUnpackedExe) ? legacyUnpackedExe : path.join(cwd, '12_SCRIPTS', 'start-app.bat'));
 
     const psScript = `
 $WshShell = New-Object -ComObject WScript.Shell

@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 import { getWritableUserDataDir } from '../utils/runtime-paths.js';
+import { redactSensitiveTokens } from '../utils/http-security.js';
 import { cleanProfileCaches, CleanCacheResult } from '../services/profile-cache-cleaner.js';
 import { verifyLicense, getHWID } from '../../08_SECURITY/license-service.js';
 import { isOnlineRevoked, isGraceExpired, getOnlineStatusSummary, checkLicenseStatusOnline } from '../../08_SECURITY/license-status-service.js';
@@ -2636,7 +2637,7 @@ export function registerIpcHandlers(): void {
       if (fs.existsSync(crashLogPath)) {
         const content = fs.readFileSync(crashLogPath, 'utf-8');
         const lines = content.split('\n');
-        logTail = lines.slice(-200).join('\n');
+        logTail = redactSensitiveTokens(lines.slice(-200).join('\n'));
         if (logTail.length > 20000) {
           logTail = logTail.slice(-20000);
         }

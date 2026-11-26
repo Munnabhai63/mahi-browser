@@ -1,0 +1,121 @@
+name: Deploy Cloud Gateway
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '06_DATABASE/**'
+      - '07_BACKEND/**'
+      - '08_SECURITY/**'
+      - '10_CONFIG/**'
+      - '12_SCRIPTS/docker-entrypoint.sh'
+      - '12_SCRIPTS/start-gateway.ts'
+      - 'prisma/**'
+      - 'prisma.config.ts'
+      - 'Dockerfile.gateway'
+      - 'docker-compose.production.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-gateway.yml'
+  workflow_dispatch:
+    inputs:
+      deploy_to_vps:
+        description: 'Deploy rebuilt Docker container to production VPS'
+        type: boolean
+        required: false
+        default: true
+
+concurrency:
+  group: deploy-gateway
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify:
+    name: Typecheck & Docker Build (Dockerfile.gateway)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client v7
+        run: npx prisma generate --no-hints
+
+      - name: Typecheck Cloud Gateway
+        run: npm run build:gateway
+
+      - name: Build Gateway Docker Image
+        run: docker build -f Dockerfile.gateway -t mahibrowser-gateway:${{ github.sha }} .
+
+  deploy-vps:
+    name: Deploy Gateway to Production VPS
+    needs: [build-and-verify]
+    if: github.event_name == 'push' || inputs.deploy_to_vps == true
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Verify VPS Secrets Configured
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ] || [ -z "$VPS_SSH_KEY" ]; then
+            echo "FATAL: Missing required VPS secrets (VPS_HOST, VPS_USER, VPS_SSH_KEY)."
+            exit 1
+          fi
+
+      - name: Setup SSH Authentication
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT || '22' }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts
+
+      - name: Sync Gateway Source & Rebuild Container on VPS
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT || '22' }}
+          USER: ${{ secrets.VPS_USER }}
+          GATEWAY_DIR: ${{ vars.VPS_GATEWAY_DIR || '/opt/mahi-browser' }}
+        run: |
+          ssh -p "$PORT" "$USER@$HOST" "test -d '$GATEWAY_DIR' && test -f '$GATEWAY_DIR/.env' || (echo 'FATAL: $GATEWAY_DIR/.env missing on VPS'; exit 1)"
+          rsync -avz \
+            --exclude '.env' \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude 'release' \
+            --exclude 'landing/out' \
+            --exclude 'landing/.next' \
+            -e "ssh -p $PORT" \
+            Dockerfile.gateway docker-compose.production.yml package.json package-lock.json \
+            prisma.config.ts tsconfig.json tsconfig.electron.json tsconfig.gateway.json \
+            prisma 02_BROWSER 03_HARDWARE 04_LICENSING 05_AUTH 06_DATABASE 07_BACKEND 08_SECURITY 09_AUTOMATION 10_CONFIG 12_SCRIPTS \
+            "$USER@$HOST:$GATEWAY_DIR/"
+
+          ssh -p "$PORT" "$USER@$HOST" "cd '$GATEWAY_DIR' && docker compose -f docker-compose.production.yml up -d --build"
+
+      - name: Verify Gateway Health Endpoint
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT || '22' }}
+          USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -p "$PORT" "$USER@$HOST" "for i in 1 2 3 4 5 6; do curl -fsS http://127.0.0.1:8989/health && exit 0; sleep 3; done; exit 1"
+          curl -fsS https://api.mahibrowser.com/health

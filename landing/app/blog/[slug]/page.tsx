@@ -12,9 +12,9 @@ import { getAllBlogPosts, getBlogPostBySlug } from '../../../lib/mdx';
 import MarkdownView from '../../../components/MarkdownView';
 
 interface BlogPostPageProps {
-  params: {
+  params: Promise<{
     slug: string;
-  };
+  }>;
 }
 
 export function generateStaticParams() {
@@ -23,8 +23,9 @@ export function generateStaticParams() {
   return [...lateralSlugs, ...mdxSlugs];
 }
 
-export function generateMetadata({ params }: BlogPostPageProps): Metadata {
-  const lateralPost = getPostBySlug(params.slug);
+export async function generateMetadata({ params }: BlogPostPageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const lateralPost = getPostBySlug(slug);
   if (lateralPost) {
     return {
       title: `${lateralPost.title} — MAHI Browser Blog`,
@@ -39,7 +40,7 @@ export function generateMetadata({ params }: BlogPostPageProps): Metadata {
     };
   }
 
-  const mdxPost = getBlogPostBySlug(params.slug);
+  const mdxPost = getBlogPostBySlug(slug);
   if (mdxPost) {
     return {
       title: `${mdxPost.title} — MAHI Browser Blog`,
@@ -50,12 +51,13 @@ export function generateMetadata({ params }: BlogPostPageProps): Metadata {
   return { title: 'Blog Post — MAHI Browser' };
 }
 
-export default function SingleBlogPostPage({ params }: BlogPostPageProps) {
-  const post = getPostBySlug(params.slug);
+export default async function SingleBlogPostPage({ params }: BlogPostPageProps) {
+  const { slug } = await params;
+  const post = getPostBySlug(slug);
 
   // If this is a legacy MDX post, render cleanly inside the same light theme wrapper
   if (!post) {
-    const mdxPost = getBlogPostBySlug(params.slug);
+    const mdxPost = getBlogPostBySlug(slug);
     if (!mdxPost) {
       notFound();
     }

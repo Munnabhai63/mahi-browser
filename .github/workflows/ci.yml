@@ -34,6 +34,9 @@ jobs:
       - name: Lint codebase with Biome
         run: npm run lint
 
+      - name: Lint landing portal with Biome
+        run: npm --prefix landing run lint
+
       - name: Typecheck Desktop & Electron
         run: npm run typecheck
 

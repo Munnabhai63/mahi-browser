@@ -1,8 +1,8 @@
 # MAHI Browser — Production Launch Readiness Checklist
 
 **Document Status:** Live Operational Checklist  
-**Version Target:** v1.2.0  
-**Last Updated:** November 20, 2026  
+**Version Target:** v1.4.0  
+**Last Updated:** November 27, 2026  
 **Audience:** Owner (Mahipal Choudhary), Lead Engineers, DevOps  
 
 ---
@@ -12,27 +12,21 @@
 The following components are fully tested, integrated, and verified working in code and deployed infrastructure:
 
 - [x] **Automated Regression Suite Green**
-  - **Evidence:** `npm run test:ci` -> `1237 passed | 0 failed | 16 skipped` tests across 134 test files. All unit, integration, and security tests green with 0 failures.
-  - **Components Covered:** Pricing calculation, YouPI adapter, manual UPI UTR flow, webhook HMAC verification, anti-detect launcher, cloud sync, and commercial auth.
+  - **Evidence:** `npm run test:ci` -> `1372 passed | 0 failed | 22 skipped` tests across `159` test files (`157` passing files, `2` environment-gated E2E suites skipped). All unit, integration, and security regression suites pass with `0 failed`.
+  - **Components Covered:** Pricing calculation, YouPI adapter, manual UPI UTR flow, webhook HMAC verification, anti-detect launcher, delta cloud sync, mobile IP rotator, strict Electron CSP, Prisma 7 adapter wiring, Zod 4 schemas, and commercial auth.
 - [x] **Typecheck & Static Build Pass Cleanly**
-  - **Evidence:** Root `npx tsc --noEmit` exits with code 0; Landing `npx tsc --noEmit` and `npm run build` exit with code 0 across all 39 static pages.
-- [x] **Windows Installer Produced by CI**
-  - **Evidence:** GitHub Actions workflow run `44470164303`, artifact `mahi-browser-win-x64` (404,983,992 bytes / 386 MB).
-    NOTE: 386 MB is the uncompressed CI artifact. The published installer is 118,750,984 bytes (~113 MB) — see the GitHub Release section below.
-- [x] **GitHub Release v1.1.9 Published**
-  - **Evidence:** Public release tag `v1.1.9` on `Munnabhai63/mahi-browser` hosting 6 release assets:
-    - `MAHI-Browser-Setup-1.1.9.exe` (118,750,984 bytes / ~113 MB)
-    - `MAHI-Browser-Setup-latest.exe` (118,750,984 bytes / ~113 MB)
-    - `MAHI-Browser-Portable-1.1.9.exe` (118,290,725 bytes / ~113 MB)
-    - `MAHI-Browser-Portable-latest.exe` (118,290,725 bytes / ~113 MB)
-    - `latest.yml` (auto-update manifest pointing to 1.1.9)
-    - `SHA256SUMS.txt`
+  - **Evidence:** Root `npm run typecheck`, `npm run build:gateway`, `npm run landing:typecheck`, `npm run landing:build`, `npm run lint`, and `npm --prefix landing run lint` exit cleanly with code `0` (Next.js `16.4.6`: `41` static pages generated, `40` exported HTML files in `landing/out`).
+- [x] **GitHub Release v1.4.0 Published & Verified Live**
+  - **Evidence:** Public release tag `v1.4.0` on `Munnabhai63/mahi-browser` hosting all 8 Windows release assets:
+    - `MAHI-Browser-Setup-1.4.0.exe` & `MAHI-Browser-Setup-latest.exe` (`347,095,590` bytes)
+    - `MAHI-Browser-Portable-1.4.0.exe` & `MAHI-Browser-Portable-latest.exe` (`298,567,767` bytes)
+    - `MAHI-Browser-Setup-1.4.0.exe.blockmap`, `latest.yml`, `latest.json` (`mandatory: false`), and `SHA256SUMS.txt`
 - [x] **Production Download & Auto-Update Endpoints (Verified Live)**
   - **Status:** [x] VERIFIED WORKING
-  - **Evidence:** Tested live against production Nginx endpoints on `https://mahibrowser.com`:
-    - `curl.exe -ILs https://mahibrowser.com/download/setup` -> HTTP 200 OK (315,782,958 bytes / ~301 MB, byte-ranges supported).
-    - `curl.exe -ILs https://mahibrowser.com/download/portable` -> HTTP 200 OK (315,322,697 bytes / ~300 MB).
-    - `curl.exe -s https://mahibrowser.com/update/latest.yml` -> HTTP 200 OK (serves `version: 1.2.0`, exact sha512 checksum).
+  - **Evidence:** Live production endpoints on `https://mahibrowser.com`:
+    - `https://mahibrowser.com/download/setup` -> HTTP 200 OK (`347,095,590` bytes)
+    - `https://mahibrowser.com/update/latest.json` -> HTTP 200 OK (`version: "1.4.0"`, `primaryArtifact: "MAHI-Browser-Setup-1.4.0.exe"`)
+    - `https://mahibrowser.com/update/latest.yml` -> HTTP 200 OK (`version: 1.4.0`, exact SHA-512 checksum)
 - [x] **YouPI Gateway Adapter Wired as INR Default**
   - **Evidence:** Sovereign 0% fee YouPI gateway adapter configured as primary provider for INR transactions; verified in `11_TESTS/unit/youpi-gateway-contract.test.ts` (6 tests passed).
 - [x] **Fault-Tolerant Payment Notifications**

@@ -3,6 +3,8 @@ import { BRAND } from '../lib/brand';
 import { getAllDocs, getAllBlogPosts } from '../lib/mdx';
 import { getAllLateralPosts } from '../lib/blogData';
 
+export const dynamic = 'force-static';
+
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = BRAND.website;
   const now = new Date();

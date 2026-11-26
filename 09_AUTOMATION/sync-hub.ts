@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { EventEmitter } from 'node:events';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
+import { isTrustedOrigin } from '../07_BACKEND/server/cloud-gateway.js';
 import { cdpSynchronizer } from './cdp-synchronizer.js';
 
 
@@ -160,20 +161,31 @@ class SynchronizerHub extends EventEmitter {
   }
 
 
-  public registerClient(profileId: string, res: http.ServerResponse): void {
+  public registerClient(profileId: string, res: http.ServerResponse, origin?: string): void {
     if (!this.sseClients.has(profileId)) {
       this.sseClients.set(profileId, new Set());
     }
     const clientSet = this.sseClients.get(profileId)!;
     clientSet.add(res);
 
-    res.writeHead(200, {
+    const requestOrigin =
+      origin ||
+      ((res as any).__req?.headers?.origin as string | undefined) ||
+      ((res as any).req?.headers?.origin as string | undefined) ||
+      '';
+    const headers: Record<string, string> = {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': '*',
-    });
+      'Vary': 'Origin',
+    };
+    if (requestOrigin && isTrustedOrigin(requestOrigin)) {
+      headers['Access-Control-Allow-Origin'] = requestOrigin;
+      headers['Access-Control-Allow-Credentials'] = 'true';
+      headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type, X-API-Key, X-Mahi-Token';
+    }
+
+    res.writeHead(200, headers);
 
     const isMaster = this.state.masterProfileId === profileId;
     res.write(`data: ${JSON.stringify({ type: 'CONNECTED', profileId, isMaster, syncEnabled: this.state.enabled })}\n\n`);

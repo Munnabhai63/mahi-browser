@@ -631,19 +631,19 @@
         <ul class="release-list">
           <li>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            <span><strong>Direct Public Download:</strong> Zero pre-download registration hurdle. Download and run setup immediately.</span>
+            <span><strong>Delta Cloud Sync & Local CDP Bridge:</strong> Manifest-hashed cookie-only delta synchronization alongside a hardened local CDP automation & humanizer pipeline.</span>
           </li>
           <li>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            <span><strong>In-App Onboarding & Google OAuth:</strong> Seamless account registration directly inside the desktop application with persistent session retention.</span>
+            <span><strong>Mobile 4G/5G IP Rotator:</strong> Bundled Android ADB integration for per-profile cellular carrier IP rotation and subnet/ASN telemetry.</span>
           </li>
           <li>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            <span><strong>Preload IPC & Profile Engine Repair:</strong> Eliminated authorization error on Quick Profile and Create & Run; unbranded Chromium launch hardened.</span>
+            <span><strong>Anti-Detect & Proxy Hardening:</strong> Worker Client Hints parity, WebGL/WebGPU coherence, Camoufox WebRTC ICE lock, strict TLS verification, and full SOCKS4/4a/SOCKS5/HTTP tunneling.</span>
           </li>
           <li>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            <span><strong>Zero-Leak Proxy Engine:</strong> Full HTTP, SOCKS5, and SSH tunnel proxy support with automated DNS leak prevention.</span>
+            <span><strong>Sandboxed Security & Portability:</strong> Enabled Electron renderer sandbox, Zip-Slip/SSRF protections, HMAC/RSA offline license validation, and cross-OS path independence.</span>
           </li>
         </ul>
       </div>
@@ -893,9 +893,7 @@
           })
         }).catch(() => {});
 
-        const downloadUrl = type === 'portable' 
-          ? (token ? `/download/portable?token=${encodeURIComponent(token)}` : '/download/portable')
-          : (token ? `/download/setup?token=${encodeURIComponent(token)}` : '/download/setup');
+        const downloadUrl = type === 'portable' ? '/download/portable' : '/download/setup';
 
         window.location.href = downloadUrl;
 

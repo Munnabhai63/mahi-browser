@@ -399,7 +399,7 @@ export function getDownloadPortalHtml(info?: {
       </div>
 
       <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs font-mono text-emerald-400">
-        MAHI BROWSER-${version}-Setup.exe
+        MAHI-Browser-Setup-${version}.exe
       </div>
 
       <!-- Windows SmartScreen 1-Click Guide -->

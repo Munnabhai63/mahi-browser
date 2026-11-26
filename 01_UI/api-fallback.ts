@@ -8,13 +8,14 @@ import { DEFAULT_LOCAL_DAEMON_PORT, getLocalDaemonBaseUrl } from '../10_CONFIG/s
 const API_BASE = getLocalDaemonBaseUrl();
 const getAuthToken = () => (typeof localStorage !== 'undefined' && localStorage.getItem('mahi_local_api_token')) || '';
 
-const authHeaders = (): Record<string, string> => ({
+const authHeaders = (extra?: Record<string, string>): Record<string, string> => ({
   'Authorization': `Bearer ${getAuthToken()}`,
   'Content-Type': 'application/json',
+  ...(extra || {}),
 });
 
-async function apiGet(path: string) {
-  const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
+async function apiGet(path: string, extraHeaders?: Record<string, string>) {
+  const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders(extraHeaders) });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || body.message || `API ${res.status}: ${res.statusText}`);
@@ -368,8 +369,8 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     },
     adminGetLicenses: async (secret, filter) => {
       try {
-        const query = filter?.status ? `&status=${filter.status}` : '';
-        const r = await apiGet(`/admin/licenses?adminSecret=${encodeURIComponent(secret)}${query}`);
+        const query = filter?.status ? `?status=${encodeURIComponent(filter.status)}` : '';
+        const r = await apiGet(`/admin/licenses${query}`, { 'X-Admin-Secret': secret });
         return Array.isArray(r) ? r : (r.data || []);
       } catch { return []; }
     },
@@ -383,7 +384,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     },
     adminGetLicenseDevices: async (id, secret) => {
       try {
-        const r = await apiGet(`/admin/license/${id}/devices?adminSecret=${encodeURIComponent(secret)}`);
+        const r = await apiGet(`/admin/license/${encodeURIComponent(id)}/devices`, { 'X-Admin-Secret': secret });
         return Array.isArray(r) ? r : (r.data || []);
       } catch { return []; }
     },
