@@ -9,11 +9,24 @@ const path = require('node:path');
 
 const rootDir = path.resolve(__dirname, '..');
 
+function resolveAuthoritativeEngineVersion() {
+  try {
+    const engineConfigPath = path.join(rootDir, '10_CONFIG', 'engine-config.ts');
+    const raw = fs.readFileSync(engineConfigPath, 'utf8');
+    const prodMatch = raw.match(/export const AUTHORITATIVE_PRODUCTION_VERSION\s*=\s*'([^']+)'/);
+    if (prodMatch && prodMatch[1]) return prodMatch[1];
+    const managedMatch = raw.match(/export const MANAGED_ENGINE_VERSION\s*=\s*'([^']+)'/);
+    if (managedMatch && managedMatch[1]) return managedMatch[1];
+  } catch {}
+  return '138.0.7204.0';
+}
+
 function stagePackagingResources() {
   console.log('[STAGE_PACKAGING] Verifying packaging resources...');
 
-  // 1. Stage Chromium Engine Directory (.mahi_data/engines/138.0.7204.0)
-  const engineDir = path.join(rootDir, '.mahi_data', 'engines', '138.0.7204.0');
+  // 1. Stage Chromium Engine Directory (.mahi_data/engines/<AUTHORITATIVE_PRODUCTION_VERSION>)
+  const productionVersion = resolveAuthoritativeEngineVersion();
+  const engineDir = path.join(rootDir, '.mahi_data', 'engines', productionVersion);
   if (!fs.existsSync(engineDir)) {
     fs.mkdirSync(engineDir, { recursive: true });
     console.log(`[STAGE_PACKAGING] Created missing engine directory: ${engineDir}`);
@@ -23,9 +36,16 @@ function stagePackagingResources() {
   const engineManifestDest = path.join(engineDir, 'mahi-engine.json');
   if (fs.existsSync(engineManifestDest)) {
     try {
-      fs.unlinkSync(engineManifestDest);
-      console.log(`[STAGE_PACKAGING] Removed spurious mahi-engine.json from stock engine folder: ${engineManifestDest}`);
-    } catch {}
+      const parsed = JSON.parse(fs.readFileSync(engineManifestDest, 'utf8'));
+      if (!parsed?.executablePath) {
+        fs.unlinkSync(engineManifestDest);
+        console.log(`[STAGE_PACKAGING] Removed spurious mahi-engine.json from stock engine folder: ${engineManifestDest}`);
+      }
+    } catch {
+      try {
+        fs.unlinkSync(engineManifestDest);
+      } catch {}
+    }
   }
 
   // 2. Verify landing directory exists

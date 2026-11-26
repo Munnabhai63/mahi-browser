@@ -251,8 +251,8 @@ describe('Cloud Profile Sync & Engine Mirror Suite', () => {
   // 5. Engine Mirror Fallback & SHA-256 Checksum Verification
   // --------------------------------------------------------------------------
   it('should verify engine mirror configuration and integrity checksum match', () => {
-    expect(MANAGED_ENGINE_FALLBACK_URL).toBe('https://mahibrowser.com/engine/chrome-138.zip');
-    expect(MANAGED_ENGINE_SHA256).toBe('10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68');
+    expect(MANAGED_ENGINE_FALLBACK_URL).toBe('https://mahibrowser.com/engine/chrome-158.zip');
+    expect(MANAGED_ENGINE_SHA256).toBe('fda73ca9ffc7f02c5c85165cb472152540a76a7cecd8ec11314ea781e4454109');
   });
 
   // --------------------------------------------------------------------------

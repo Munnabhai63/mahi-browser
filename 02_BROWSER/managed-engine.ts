@@ -24,6 +24,7 @@ import {
   type MahiEngineManifest,
 } from '../10_CONFIG/engine-config.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
+import { getDatabase } from '../06_DATABASE/connection.js';
 
 const execAsync = promisify(exec);
 
@@ -474,27 +475,100 @@ export async function extractZipArchive(zipPath: string, destDir: string): Promi
   }
 }
 
+function collectProfileReferencedEngineVersionsSafe(): Set<string> {
+  const referenced = new Set<string>();
+  try {
+    const db = getDatabase();
+    if (!db) return referenced;
+    const rows = db
+      .prepare('SELECT ps.settings_json FROM profile_settings ps JOIN profiles p ON p.id = ps.profile_id WHERE p.deleted_at IS NULL')
+      .all() as Array<{ settings_json?: string }>;
+    for (const row of rows) {
+      try {
+        const s = row.settings_json ? JSON.parse(row.settings_json) : null;
+        if (s?.browser?.version) referenced.add(String(s.browser.version));
+      } catch {}
+    }
+    try {
+      const execRows = db
+        .prepare('SELECT custom_executable_path FROM profiles WHERE deleted_at IS NULL AND custom_executable_path IS NOT NULL')
+        .all() as Array<{ custom_executable_path?: string }>;
+      for (const r of execRows) {
+        const match = (r.custom_executable_path || '').match(/engines[\\/](\d+\.\d+\.\d+\.\d+)[\\/]/i);
+        if (match?.[1]) referenced.add(match[1]);
+      }
+    } catch {
+      // Optional column in older test schemas
+    }
+  } catch {
+    // Headless/unit test without active SQLite DB
+  }
+  return referenced;
+}
+
+function compareSemverDesc(a: string, b: string): number {
+  const pa = a.split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = b.split('.').map((n) => parseInt(n, 10) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const diff = (pb[i] || 0) - (pa[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return b.localeCompare(a);
+}
+
 /**
- * Cleans up old engine versions that do not match the current pinned version.
- * Keeps disk usage tight and predictable.
+ * Safely cleans up stale `.tmp-*` engine directories and old unreferenced versions.
+ * Never deletes versions referenced by existing profiles, active pinned versions,
+ * or the 2 newest installed versions.
  */
 export function cleanOldEngineVersions(keepVersion: string = MANAGED_ENGINE_VERSION): void {
   try {
     const enginesDir = getEnginesBaseDir();
     if (!fs.existsSync(enginesDir)) return;
 
-    const entries = fs.readdirSync(enginesDir, { withFileTypes: true });
+    const protectedVersions = new Set<string>([
+      keepVersion,
+      CHROMIUM_PRODUCTION_VERSION,
+      MANAGED_ENGINE_VERSION,
+      'camoufox',
+    ]);
+    for (const refVer of collectProfileReferencedEngineVersionsSafe()) {
+      protectedVersions.add(refVer);
+    }
+
+    const entries = fs.readdirSync(enginesDir, { withFileTypes: true }).filter((e) => e.isDirectory());
+    const installedVersionDirs: string[] = [];
+
     for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const folderName = entry.name;
-        // Clean up stale interrupted .tmp folders or previous unpinned versions
-        if (folderName.includes('.tmp-') || (folderName !== keepVersion && folderName !== CHROMIUM_PRODUCTION_VERSION && folderName !== MANAGED_ENGINE_VERSION)) {
-          debugLog(`[ManagedEngine] Removing old engine version directory: ${folderName}`);
-          try {
-            fs.rmSync(path.join(enginesDir, folderName), { recursive: true, force: true });
-          } catch (err) {
-            debugLog(`[ManagedEngine] Warning: Could not remove old engine folder ${folderName}: ${err}`);
-          }
+      const folderName = entry.name;
+      if (folderName.includes('.tmp-')) {
+        debugLog(`[ManagedEngine] Removing stale temp engine directory: ${folderName}`);
+        try {
+          fs.rmSync(path.join(enginesDir, folderName), { recursive: true, force: true });
+        } catch (err) {
+          debugLog(`[ManagedEngine] Warning: Could not remove temp engine folder ${folderName}: ${err}`);
+        }
+        continue;
+      }
+      if (/^\d+(?:\.\d+)+/.test(folderName)) {
+        installedVersionDirs.push(folderName);
+      }
+    }
+
+    // Always retain the 2 newest installed version directories for rollback safety
+    const sortedNewest = [...installedVersionDirs].sort(compareSemverDesc);
+    for (const kept of sortedNewest.slice(0, 2)) {
+      protectedVersions.add(kept);
+    }
+
+    for (const folderName of installedVersionDirs) {
+      if (!protectedVersions.has(folderName)) {
+        debugLog(`[ManagedEngine] Removing old engine version directory: ${folderName}`);
+        try {
+          fs.rmSync(path.join(enginesDir, folderName), { recursive: true, force: true });
+        } catch (err) {
+          debugLog(`[ManagedEngine] Warning: Could not remove old engine folder ${folderName}: ${err}`);
         }
       }
     }
@@ -873,6 +947,11 @@ export async function repairManagedEngine(): Promise<{
  * Resolves the MahiEngineManifest (`mahi-engine.json`) associated with a given executable path.
  * Checks alongside the binary (and parent directories up to 3 levels for macOS bundle structures).
  */
+function normalizeComparablePath(p: string): string {
+  const resolved = path.resolve(p);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
 export function resolveEngineManifest(executablePath: string): MahiEngineManifest | null {
   if (!executablePath || typeof executablePath !== 'string') return null;
 
@@ -884,42 +963,23 @@ export function resolveEngineManifest(executablePath: string): MahiEngineManifes
       }
     } catch {}
 
+    const normalizedExe = normalizeComparablePath(realPath);
+    const engineFolderVersionMatch = realPath.match(/engines[\\/](\d+\.\d+\.\d+\.\d+)[\\/]/i);
+    const inferredBinaryVersion = engineFolderVersionMatch?.[1];
+
+    // Inspect ONLY direct directory and immediate bundle ancestors (up to 2 levels),
+    // never scanning global ~/.mahi/cores or ~/.mahi/engines trees for unrelated binaries.
     const candidateDirs: string[] = [];
     const directDir = path.dirname(realPath);
     candidateDirs.push(directDir);
 
-    // Parent and grandparent directories up to 3 levels up across all platforms
     let cur = directDir;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) {
       const parent = path.dirname(cur);
       if (parent && parent !== cur) {
         candidateDirs.push(parent);
         cur = parent;
       }
-    }
-
-    // Check ~/.mahi/cores/ and ~/.mahi/engines/
-    const home = os.homedir();
-    const mahiCoresDir = path.join(home, '.mahi', 'cores');
-    if (fs.existsSync(mahiCoresDir)) {
-      candidateDirs.push(mahiCoresDir);
-      try {
-        const sub = fs.readdirSync(mahiCoresDir);
-        for (const s of sub) {
-          candidateDirs.push(path.join(mahiCoresDir, s));
-        }
-      } catch {}
-    }
-
-    const mahiEnginesDir = path.join(home, '.mahi', 'engines');
-    if (fs.existsSync(mahiEnginesDir)) {
-      candidateDirs.push(mahiEnginesDir);
-      try {
-        const sub = fs.readdirSync(mahiEnginesDir);
-        for (const s of sub) {
-          candidateDirs.push(path.join(mahiEnginesDir, s));
-        }
-      } catch {}
     }
 
     const visitedDirs = new Set<string>();
@@ -932,7 +992,30 @@ export function resolveEngineManifest(executablePath: string): MahiEngineManifes
         try {
           const raw = fs.readFileSync(manifestPath, 'utf8');
           const data = JSON.parse(raw);
-          if (data && (data.engine === 'mahi-chromium' || data.nativeStealth === true)) {
+          if (!data || data.nativeStealth !== true) continue;
+
+          // If manifest declares an explicit executablePath, enforce strict match to this binary
+          if (typeof data.executablePath === 'string' && data.executablePath.trim()) {
+            const declaredExe = path.isAbsolute(data.executablePath)
+              ? data.executablePath
+              : path.resolve(dir, data.executablePath);
+            if (normalizeComparablePath(declaredExe) !== normalizedExe) {
+              continue;
+            }
+          }
+
+          // Reject manifests whose declared chromiumVersion contradicts the engine dir version
+          if (typeof data.chromiumVersion === 'string' && inferredBinaryVersion && data.chromiumVersion !== inferredBinaryVersion) {
+            continue;
+          }
+
+          // If capabilities object is declared, require at least one enabled capability flag
+          if (data.capabilities && typeof data.capabilities === 'object') {
+            const hasAnyCapability = Object.values(data.capabilities).some((v) => v === true);
+            if (!hasAnyCapability) continue;
+          }
+
+          if (data.engine === 'mahi-chromium' || data.nativeStealth === true) {
             return data as MahiEngineManifest;
           }
         } catch {}

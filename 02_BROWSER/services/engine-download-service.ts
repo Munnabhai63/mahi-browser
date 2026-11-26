@@ -33,7 +33,7 @@ export interface CamoufoxReleaseInfo {
   manifestUrl?: string;
 }
 
-export const PINNED_CAMOUFOX_VERSION = 'v135.0.1-beta.24';
+export const PINNED_CAMOUFOX_VERSION = 'v159.0-beta.43';
 
 export function getCamoufoxPlatformArch(): { plat: 'win' | 'lin' | 'mac'; arch: 'x86_64' | 'arm64' | 'i686' } {
   const p = os.platform();
@@ -45,7 +45,8 @@ export function getCamoufoxPlatformArch(): { plat: 'win' | 'lin' | 'mac'; arch: 
 
 export function getPinnedCamoufoxRelease(): CamoufoxReleaseInfo {
   const { plat, arch } = getCamoufoxPlatformArch();
-  const assetName = `camoufox-135.0.1-beta.24-${plat}.${arch}.zip`;
+  const verClean = PINNED_CAMOUFOX_VERSION.replace(/^v/i, '');
+  const assetName = `camoufox-${verClean}-${plat}.${arch}.zip`;
   return {
     tag: PINNED_CAMOUFOX_VERSION,
     assetName,

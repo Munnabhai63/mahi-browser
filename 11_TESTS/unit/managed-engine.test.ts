@@ -31,11 +31,15 @@ describe('Managed Version-Pinned Browser Engine Suite', () => {
     try { fs.rmSync(testMockDir, { recursive: true, force: true }); } catch {}
   });
 
-  it('should have a pinned, immutable engine version and valid Google CDN and mirror URLs', () => {
-    expect(MANAGED_ENGINE_VERSION).toBe('138.0.7204.183');
-    expect(MANAGED_ENGINE_SHA256).toBe('10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68');
-    expect(MANAGED_ENGINE_DOWNLOAD_URL).toContain('storage.googleapis.com/chrome-for-testing-public/138.0.7204.183/win64/chrome-win64.zip');
-    expect(MANAGED_ENGINE_FALLBACK_URL).toBe('https://mahibrowser.com/engine/chrome-138.zip');
+  it('should have a pinned, current engine version and valid Google CDN and mirror URLs', () => {
+    expect(MANAGED_ENGINE_VERSION).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
+    expect(MANAGED_ENGINE_VERSION).not.toBe('138.0.7204.183');
+    expect(MANAGED_ENGINE_SHA256).toMatch(/^[a-f0-9]{64}$/i);
+    expect(MANAGED_ENGINE_DOWNLOAD_URL).toContain(
+      `storage.googleapis.com/chrome-for-testing-public/${MANAGED_ENGINE_VERSION}/win64/chrome-win64.zip`
+    );
+    const major = MANAGED_ENGINE_VERSION.split('.')[0];
+    expect(MANAGED_ENGINE_FALLBACK_URL).toBe(`https://mahibrowser.com/engine/chrome-${major}.zip`);
     expect(GOOGLE_CFT_MANIFEST_URL).toBe('https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json');
     expect(MANAGED_ENGINE_REQUIRED_DISK_SPACE_BYTES).toBe(600 * 1024 * 1024);
   });
@@ -69,29 +73,32 @@ describe('Managed Version-Pinned Browser Engine Suite', () => {
     expect(corruptedHash).not.toBe(validHash);
   });
 
-  it('should clean up stale temporary folders and old engine versions on version switch', () => {
+  it('should clean up stale temporary folders and versions older than the last 2 installed', () => {
     const baseEngines = getEnginesBaseDir();
     try { fs.mkdirSync(baseEngines, { recursive: true }); } catch {}
 
-    const oldVersionDir = path.join(baseEngines, '130.0.6723.58');
-    const staleTmpDir = path.join(baseEngines, '138.0.7204.183.tmp-1710000000000');
+    const oldestVersionDir = path.join(baseEngines, '128.0.6613.10');
+    const prevVersionDir = path.join(baseEngines, '130.0.6723.58');
+    const staleTmpDir = path.join(baseEngines, `${MANAGED_ENGINE_VERSION}.tmp-1710000000000`);
     const currentVersionDir = path.join(baseEngines, MANAGED_ENGINE_VERSION);
 
-    try { fs.mkdirSync(oldVersionDir, { recursive: true }); } catch {}
+    try { fs.mkdirSync(oldestVersionDir, { recursive: true }); } catch {}
+    try { fs.mkdirSync(prevVersionDir, { recursive: true }); } catch {}
     try { fs.mkdirSync(staleTmpDir, { recursive: true }); } catch {}
     try { fs.mkdirSync(currentVersionDir, { recursive: true }); } catch {}
 
-    expect(fs.existsSync(oldVersionDir)).toBe(true);
+    expect(fs.existsSync(oldestVersionDir)).toBe(true);
+    expect(fs.existsSync(prevVersionDir)).toBe(true);
     expect(fs.existsSync(staleTmpDir)).toBe(true);
     expect(fs.existsSync(currentVersionDir)).toBe(true);
 
-    // Run cleanup keeping only MANAGED_ENGINE_VERSION
+    // Run cleanup: stale tmp and >2-old version must be removed; last 2 versions stay
     cleanOldEngineVersions(MANAGED_ENGINE_VERSION);
 
-    // Old and tmp directories must be gone; current version must remain
-    expect(fs.existsSync(oldVersionDir)).toBe(false);
+    expect(fs.existsSync(oldestVersionDir)).toBe(false);
     expect(fs.existsSync(staleTmpDir)).toBe(false);
     expect(fs.existsSync(currentVersionDir)).toBe(true);
+    try { fs.rmSync(prevVersionDir, { recursive: true, force: true }); } catch {}
   });
 
   it('should report progress states correctly', () => {

@@ -9,8 +9,8 @@
  */
 
 export const AUTHORITATIVE_PRODUCTION_VERSION = '138.0.7204.0';
-export const MANAGED_ENGINE_VERSION = '138.0.7204.183';
-export const LEGACY_CFT_VERSION = '138.0.7204.183';
+export const MANAGED_ENGINE_VERSION = '158.0.8127.88';
+export const LEGACY_CFT_VERSION = '158.0.8127.88';
 
 /**
  * Manifest schema for compiled MAHI C++ Chromium Engine (`mahi-engine.json`).
@@ -111,8 +111,8 @@ export const CHROMIUM_PRODUCTION_DOWNLOAD_URL = CHROMIUM_PRODUCTION_CONFIG.downl
  */
 // Pin B - see the pin block above. Do NOT compare this hash against anything
 // downloaded from chromium-138-win64.zip, which is Pin A.
-export const MANAGED_ENGINE_SHA256 = '10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68';
-export const LEGACY_CFT_SHA256 = '10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68';
+export const MANAGED_ENGINE_SHA256 = 'fda73ca9ffc7f02c5c85165cb472152540a76a7cecd8ec11314ea781e4454109';
+export const LEGACY_CFT_SHA256 = 'fda73ca9ffc7f02c5c85165cb472152540a76a7cecd8ec11314ea781e4454109';
 
 /**
  * Official Google Cloud CDN download URL for Chrome for Testing public release (Windows baseline).
@@ -125,8 +125,8 @@ export const LEGACY_CFT_DOWNLOAD_URL = `https://storage.googleapis.com/chrome-fo
  * Authoritative VPS Engine Mirror URL.
  * Used as fallback if official Google CDN is blocked, unavailable, or version removed.
  */
-export const MANAGED_ENGINE_FALLBACK_URL = 'https://mahibrowser.com/engine/chrome-138.zip';
-export const LEGACY_CFT_FALLBACK_URL = 'https://mahibrowser.com/engine/chrome-138.zip';
+export const MANAGED_ENGINE_FALLBACK_URL = 'https://mahibrowser.com/engine/chrome-158.zip';
+export const LEGACY_CFT_FALLBACK_URL = 'https://mahibrowser.com/engine/chrome-158.zip';
 
 /**
  * Official Google Chrome for Testing Manifest listing all known-good versions & downloads.
@@ -157,8 +157,8 @@ export const MANAGED_ENGINE_PLATFORMS: Record<SupportedPlatformKey, ManagedEngin
     arch: 'x64',
     platformKey: 'win64',
     downloadUrl: `https://storage.googleapis.com/chrome-for-testing-public/${MANAGED_ENGINE_VERSION}/win64/chrome-win64.zip`,
-    fallbackUrl: 'https://mahibrowser.com/engine/chrome-138.zip',
-    sha256: '10a9fa695a9e4c05b336aebdc553f92c2351b2e9b962b00dc00612c8dcaacd68',
+    fallbackUrl: 'https://mahibrowser.com/engine/chrome-158.zip',
+    sha256: 'fda73ca9ffc7f02c5c85165cb472152540a76a7cecd8ec11314ea781e4454109',
     archiveSubdir: 'chrome-win64',
     executableRelativePath: 'chrome.exe',
   },
@@ -167,7 +167,7 @@ export const MANAGED_ENGINE_PLATFORMS: Record<SupportedPlatformKey, ManagedEngin
     arch: 'arm64',
     platformKey: 'mac-arm64',
     downloadUrl: `https://storage.googleapis.com/chrome-for-testing-public/${MANAGED_ENGINE_VERSION}/mac-arm64/chrome-mac-arm64.zip`,
-    fallbackUrl: 'https://mahibrowser.com/engine/chrome-138-mac-arm64.zip',
+    fallbackUrl: 'https://mahibrowser.com/engine/chrome-158-mac-arm64.zip',
     archiveSubdir: 'chrome-mac-arm64',
     executableRelativePath: 'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
   },
@@ -176,7 +176,7 @@ export const MANAGED_ENGINE_PLATFORMS: Record<SupportedPlatformKey, ManagedEngin
     arch: 'x64',
     platformKey: 'mac-x64',
     downloadUrl: `https://storage.googleapis.com/chrome-for-testing-public/${MANAGED_ENGINE_VERSION}/mac-x64/chrome-mac-x64.zip`,
-    fallbackUrl: 'https://mahibrowser.com/engine/chrome-138-mac-x64.zip',
+    fallbackUrl: 'https://mahibrowser.com/engine/chrome-158-mac-x64.zip',
     archiveSubdir: 'chrome-mac-x64',
     executableRelativePath: 'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
   },
@@ -185,7 +185,7 @@ export const MANAGED_ENGINE_PLATFORMS: Record<SupportedPlatformKey, ManagedEngin
     arch: 'x64',
     platformKey: 'linux64',
     downloadUrl: `https://storage.googleapis.com/chrome-for-testing-public/${MANAGED_ENGINE_VERSION}/linux64/chrome-linux64.zip`,
-    fallbackUrl: 'https://mahibrowser.com/engine/chrome-138-linux64.zip',
+    fallbackUrl: 'https://mahibrowser.com/engine/chrome-158-linux64.zip',
     archiveSubdir: 'chrome-linux64',
     executableRelativePath: 'chrome',
   },
