@@ -1,7 +1,9 @@
 import { spawn, ChildProcess } from 'node:child_process';
+import net from 'node:net';
 import path from 'node:path';
 import fs from 'node:fs';
 import { chromium } from 'rebrowser-playwright-core';
+import { getDatabase } from '../06_DATABASE/connection.js';
 import { BrowserWindow } from '../08_SECURITY/electron-bridge.js';
 import { Profile } from '../10_CONFIG/shared/types/profile.js';
 import { deriveLocaleFromGeo } from '../10_CONFIG/shared/constants/defaults.js';
@@ -147,6 +149,7 @@ export interface LaunchedProcessInfo {
   executablePath: string;
   storageDir: string;
   proxyTunnel?: ProxyTunnelHandle;
+  debugPort?: number;
   timezoneMismatch?: TimezoneMismatchWarning;
 }
 
@@ -220,6 +223,41 @@ export function getProfileDebugPort(profileId: string): number {
 }
 
 /**
+ * Allocates an ephemeral loopback TCP port for CDP automation sessions so
+ * concurrent launches and non-automation profiles never expose predictable fixed ports.
+ */
+export async function allocateEphemeralDebugPort(): Promise<number> {
+  return await new Promise<number>((resolve, reject) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const addr = srv.address();
+      const port = addr && typeof addr === 'object' ? addr.port : 0;
+      srv.close(() => {
+        if (port > 0) resolve(port);
+        else reject(new Error('Failed to allocate ephemeral loopback port'));
+      });
+    });
+  });
+}
+
+function readAllowCdpDebugPortSettingSafe(): boolean {
+  try {
+    const db = getDatabase();
+    if (!db) return false;
+    const row = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get('main_config') as
+      | { value_json: string }
+      | undefined;
+    if (!row?.value_json) return false;
+    const parsed = JSON.parse(row.value_json);
+    return parsed?.security?.allowCdpDebugPort === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Creates or updates the MAHI Anti-Detect & Fingerprint Guard Extension in the profile directory.
 
  * Injects deterministic Canvas, WebGL, Audio noise, and removes all automation traces.
@@ -229,9 +267,10 @@ export function ensureProfileStealthExtension(
   profileId: string,
   profileName: string,
   settings?: any,
-  options?: { nativeStealthActive?: boolean } | boolean
+  options?: { nativeStealthActive?: boolean; debugPort?: number } | boolean
 ): string {
   const isNativeStealth = typeof options === 'boolean' ? options : Boolean(options?.nativeStealthActive);
+  const explicitDebugPort = typeof options === 'object' ? options?.debugPort : undefined;
   const extDir = path.join(storageDir, 'mahi_title_extension');
   if (!fs.existsSync(extDir)) {
     fs.mkdirSync(extDir, { recursive: true });
@@ -291,7 +330,7 @@ export function ensureProfileStealthExtension(
       : ['en-US', 'en']);
   const acceptLanguageHeader = languagesList.map((l: string, idx: number) => idx === 0 ? l : `${l};q=${Math.max(0.1, 1 - idx * 0.1).toFixed(1)}`).join(', ');
 
-  const profileDebugPort = getProfileDebugPort(profileId);
+  const profileDebugPort = explicitDebugPort !== undefined ? explicitDebugPort : getProfileDebugPort(profileId);
 
   // Manifest V3 Extension with declarativeNetRequest Client Hints spoofing
   const manifest = {
@@ -481,42 +520,46 @@ export function ensureProfileStealthExtension(
         ],
       },
     },
-    {
-      id: 3,
-      priority: 2,
-      action: {
-        type: 'block',
-      },
-      condition: {
-        urlFilter: `||127.0.0.1:${profileDebugPort}`,
-        resourceTypes: [
-          'xmlhttprequest',
-          'websocket',
-          'script',
-          'image',
-          'sub_frame',
-          'other',
-        ],
-      },
-    },
-    {
-      id: 4,
-      priority: 2,
-      action: {
-        type: 'block',
-      },
-      condition: {
-        urlFilter: `||localhost:${profileDebugPort}`,
-        resourceTypes: [
-          'xmlhttprequest',
-          'websocket',
-          'script',
-          'image',
-          'sub_frame',
-          'other',
-        ],
-      },
-    },
+    ...(profileDebugPort > 0
+      ? [
+          {
+            id: 3,
+            priority: 2,
+            action: {
+              type: 'block',
+            },
+            condition: {
+              urlFilter: `||127.0.0.1:${profileDebugPort}`,
+              resourceTypes: [
+                'xmlhttprequest',
+                'websocket',
+                'script',
+                'image',
+                'sub_frame',
+                'other',
+              ],
+            },
+          },
+          {
+            id: 4,
+            priority: 2,
+            action: {
+              type: 'block',
+            },
+            condition: {
+              urlFilter: `||localhost:${profileDebugPort}`,
+              resourceTypes: [
+                'xmlhttprequest',
+                'websocket',
+                'script',
+                'image',
+                'sub_frame',
+                'other',
+              ],
+            },
+          },
+        ]
+      : []),
   ];
 
   const gpuSpoofOn = Boolean(fp?.webglVendor && fp?.webglRenderer);
@@ -4009,11 +4052,12 @@ export function markCleanExit(storageDir: string, profileName?: string): void {
  */
 export interface SanitizedLaunchArgsOptions {
   storageDir: string;
-  debugPort: number;
+  debugPort?: number;
   loadExtensionsArg?: string;
   settings?: any;
   mode?: 'normal' | 'automation';
   isNativeStealth?: boolean;
+  allowCdpDebugPort?: boolean;
 }
 
 /**
@@ -4023,15 +4067,29 @@ export interface SanitizedLaunchArgsOptions {
  * - Enables session restore and normal exit recovery
  * - Enforces WebRTC IP handling and proxy isolation
  * - Ensures normal user browsing NEVER carries test automation switches (--enable-automation)
+ *   and NEVER opens a predictable localhost CDP debugging port unless automation mode or explicit opt-in is active
  */
 export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): string[] {
-  const { storageDir, debugPort, loadExtensionsArg, settings, mode = 'normal', isNativeStealth = false } = options;
+  const {
+    storageDir,
+    debugPort,
+    loadExtensionsArg,
+    settings,
+    mode = 'normal',
+    isNativeStealth = false,
+    allowCdpDebugPort = false,
+  } = options;
 
   const args: string[] = [
     `--user-data-dir=${storageDir}`,
     '--new-window',
-    `--remote-debugging-port=${debugPort}`,
   ];
+
+  const shouldExposeCdp = (mode === 'automation' || allowCdpDebugPort === true) && typeof debugPort === 'number' && debugPort > 0;
+  if (shouldExposeCdp) {
+    args.push(`--remote-debugging-port=${debugPort}`);
+    args.push('--remote-debugging-address=127.0.0.1');
+  }
 
   if (loadExtensionsArg) {
     const cleanedExts = Array.from(
@@ -4441,7 +4499,10 @@ async function applyCdpOverrides(debugPort: number, tz: string, locale: string):
 /**
  * Launches an isolated browser instance with full error handling and step-by-step logging.
  */
-export async function launchBrowser(profile: Profile, launchOptions?: { mode?: 'normal' | 'automation' }): Promise<LaunchedProcessInfo> {
+export async function launchBrowser(
+  profile: Profile,
+  launchOptions?: { mode?: 'normal' | 'automation'; allowCdpDebugPort?: boolean }
+): Promise<LaunchedProcessInfo> {
   debugLog(`=======================================================`);
   debugLog(`[Launcher] Starting launch sequence for profile: "${profile.name}" (ID: ${profile.id})`);
 
@@ -4577,13 +4638,18 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
     const settings = effectiveSettings;
     // 100% Native C++ Stealth: Inject verified Orbita schema into Default/Preferences (Zero extension footprint)
     injectNativeStealthPreferences(storageDir, profile, settings);
-    const debugPort = getProfileDebugPort(profile.id);
+
+    const exposeCdpPort =
+      launchOptions?.mode === 'automation' ||
+      Boolean(launchOptions?.allowCdpDebugPort ?? readAllowCdpDebugPortSettingSafe());
+    const debugPort = exposeCdpPort ? await allocateEphemeralDebugPort() : 0;
 
     // Ensure the stealth extension (Client Hints, Canvas/WebGL Guard, Shortcuts) is loaded
     // When native C++ stealth engine is active via mahi-engine.json, omit stealth-core.js (zero double noise)
     const isNativeStealth = hasNativeStealthEngine(executablePath);
     const titleExtDir = ensureProfileStealthExtension(storageDir, profile.id, profile.name, settings, {
       nativeStealthActive: isNativeStealth,
+      ...(debugPort > 0 ? { debugPort } : {}),
     });
 
     // Gather user-enabled extensions
@@ -4611,11 +4677,12 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
 
     const args = buildSanitizedLaunchArgs({
       storageDir,
-      debugPort,
+      debugPort: debugPort > 0 ? debugPort : undefined,
       loadExtensionsArg,
       settings,
       mode: launchOptions?.mode || 'normal',
       isNativeStealth,
+      allowCdpDebugPort: exposeCdpPort,
     });
 
     // Virtual Video Capture Injection (KYC Facial Verification Bypass)
@@ -4756,7 +4823,7 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
       debugLog(`[TZ DEBUG] args = ${args.filter(a => a.startsWith('--tz=') || a.startsWith('--lang=') || a.startsWith('--user-agent=')).join(' | ')}`);
     }
 
-    if (settings?.locale?.timezone) {
+    if (exposeCdpPort && debugPort > 0 && settings?.locale?.timezone) {
       const targetLocale =
         (Array.isArray(settings?.locale?.languagesList)
           ? settings.locale.languagesList[0]
@@ -4785,6 +4852,7 @@ export async function launchBrowser(profile: Profile, launchOptions?: { mode?: '
       executablePath,
       storageDir,
       proxyTunnel,
+      ...(exposeCdpPort && debugPort > 0 ? { debugPort } : {}),
       ...(timezoneMismatchWarning ? { timezoneMismatch: timezoneMismatchWarning } : {}),
     };
   } catch (err: unknown) {

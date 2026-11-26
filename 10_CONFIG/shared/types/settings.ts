@@ -19,6 +19,7 @@ export interface SecuritySettings {
   sessionTimeoutMinutes: number;
   autoLockOnMinimize: boolean;
   encryptionAlgorithm: 'AES-256-GCM';
+  allowCdpDebugPort?: boolean;
 }
 
 export interface PerformanceSettings {

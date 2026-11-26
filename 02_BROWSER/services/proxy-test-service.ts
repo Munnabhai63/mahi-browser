@@ -3,6 +3,7 @@ import tls from 'node:tls';
 import http from 'node:http';
 import https from 'node:https';
 import { CreateProxyDTO, ProxyTestResult } from '../../10_CONFIG/shared/types/proxy.js';
+import { openSocks5TunnelSocket, Socks5Error } from '../socks-tunnel.js';
 
 function debugLog(msg: string) {
   const fn = (globalThis as any).__mahiDebugLog;
@@ -269,9 +270,10 @@ function testHttpsConnectThroughProxy(
 }
 
 /**
- * Performs native RFC 1928 SOCKS5 handshake through the proxy to verify internet connectivity.
+ * Performs native RFC 1928 / RFC 1929 SOCKS5 handshake through the proxy, then
+ * upgrades to TLS to retrieve the real public exit IP visible to websites.
  */
-function testSocks5ThroughProxy(
+async function testSocks5ThroughProxy(
   host: string,
   port: number,
   username?: string,
@@ -279,136 +281,98 @@ function testSocks5ThroughProxy(
   timeoutMs = 7000
 ): Promise<{ success: boolean; latencyMs: number; publicIp?: string; error?: string; errorCode?: string }> {
   const startTime = Date.now();
-  return new Promise((resolve) => {
-    let isResolved = false;
-    const socket = net.connect(port, host);
+  try {
+    const { socket, initialData } = await openSocks5TunnelSocket({
+      proxyHost: host,
+      proxyPort: port,
+      targetHost: 'api.ipify.org',
+      targetPort: 443,
+      username,
+      password,
+      timeoutMs,
+    });
+    if (initialData.length > 0) {
+      socket.unshift(initialData);
+    }
 
-    const timer = setTimeout(() => {
-      if (!isResolved) {
-        isResolved = true;
+    return await new Promise((resolve) => {
+      let settled = false;
+      const done = (res: { success: boolean; latencyMs: number; publicIp?: string }) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(tlsTimer);
+        try { tlsSocket.destroy(); } catch {}
         try { socket.destroy(); } catch {}
-        resolve({
-          success: false,
-          latencyMs: Date.now() - startTime,
-          errorCode: 'TIMEOUT',
-          error: `SOCKS5 proxy connection timed out after ${timeoutMs}ms`,
-        });
-      }
-    }, timeoutMs);
+        resolve(res);
+      };
 
-    const finish = (result: { success: boolean; latencyMs: number; publicIp?: string; error?: string; errorCode?: string }) => {
-      if (!isResolved) {
-        isResolved = true;
-        clearTimeout(timer);
+      const tlsTimer = setTimeout(() => {
+        // SOCKS5 CONNECT succeeded; return success even if exit IP lookup stalled
+        done({ success: true, latencyMs: Date.now() - startTime });
+      }, Math.min(3500, timeoutMs));
+
+      let tlsSocket: tls.TLSSocket;
+      try {
+        tlsSocket = tls.connect(
+          {
+            socket,
+            servername: 'api.ipify.org',
+            rejectUnauthorized: false,
+          },
+          () => {
+            tlsSocket.write(
+              'GET /?format=json HTTP/1.1\r\nHost: api.ipify.org\r\nUser-Agent: Mozilla/5.0\r\nConnection: close\r\n\r\n'
+            );
+          }
+        );
+      } catch {
+        clearTimeout(tlsTimer);
         try { socket.destroy(); } catch {}
-        resolve(result);
+        resolve({ success: true, latencyMs: Date.now() - startTime });
+        return;
       }
-    };
 
-    socket.on('error', (err: any) => {
-      let code = 'CONNECTION_FAILED';
-      let msg = err.message || 'Connection failed';
-      if (err.code === 'ECONNREFUSED') {
-        code = 'CONNECTION_REFUSED';
-        msg = `SOCKS5 proxy server refused connection at ${host}:${port}`;
-      } else if (err.code === 'ENOTFOUND') {
-        code = 'DNS_FAILURE';
-        msg = `Could not resolve SOCKS5 proxy hostname: ${host}`;
-      }
-      finish({
+      let body = '';
+      tlsSocket.on('data', (d: Buffer) => {
+        body += d.toString('utf-8');
+      });
+      tlsSocket.on('end', () => {
+        const latency = Date.now() - startTime;
+        try {
+          const jsonStart = body.indexOf('{');
+          if (jsonStart !== -1) {
+            const parsed = JSON.parse(body.slice(jsonStart));
+            done({
+              success: true,
+              latencyMs: latency,
+              publicIp: parsed.ip || undefined,
+            });
+            return;
+          }
+        } catch {}
+        done({ success: true, latencyMs: latency });
+      });
+      tlsSocket.on('error', () => {
+        // CONNECT succeeded; proxy is reachable even if local test endpoint closed TLS
+        done({ success: true, latencyMs: Date.now() - startTime });
+      });
+    });
+  } catch (err: any) {
+    if (err instanceof Socks5Error) {
+      return {
         success: false,
         latencyMs: Date.now() - startTime,
-        errorCode: code,
-        error: msg,
-      });
-    });
-
-    socket.on('connect', () => {
-      // Step 1: Version negotiation
-      if (username && password) {
-        socket.write(Buffer.from([0x05, 0x02, 0x00, 0x02]));
-      } else {
-        socket.write(Buffer.from([0x05, 0x01, 0x00]));
-      }
-
-      let state: 'AUTH_METHOD' | 'AUTH_SUBNEG' | 'CONNECT_RESP' = 'AUTH_METHOD';
-      socket.on('data', (data: Buffer) => {
-        if (state === 'AUTH_METHOD') {
-          if (data.length < 2 || data[0] !== 0x05) {
-            finish({
-              success: false,
-              latencyMs: Date.now() - startTime,
-              errorCode: 'PROXY_REJECTED',
-              error: 'Invalid SOCKS5 version in server response',
-            });
-            return;
-          }
-          const method = data[1];
-          if (method === 0xff) {
-            finish({
-              success: false,
-              latencyMs: Date.now() - startTime,
-              errorCode: 'AUTHENTICATION_FAILED',
-              error: 'SOCKS5 authentication method rejected by server',
-            });
-            return;
-          }
-          if (method === 0x02 && username && password) {
-            state = 'AUTH_SUBNEG';
-            const uBuf = Buffer.from(username, 'utf8');
-            const pBuf = Buffer.from(password, 'utf8');
-            const authPacket = Buffer.concat([
-              Buffer.from([0x01, uBuf.length]),
-              uBuf,
-              Buffer.from([pBuf.length]),
-              pBuf,
-            ]);
-            socket.write(authPacket);
-            return;
-          }
-          sendConnect();
-        } else if (state === 'AUTH_SUBNEG') {
-          if (data.length < 2 || data[1] !== 0x00) {
-            finish({
-              success: false,
-              latencyMs: Date.now() - startTime,
-              errorCode: 'AUTHENTICATION_FAILED',
-              error: 'SOCKS5 credentials rejected by proxy',
-            });
-            return;
-          }
-          sendConnect();
-        } else if (state === 'CONNECT_RESP') {
-          if (data.length >= 2 && data[1] === 0x00) {
-            finish({
-              success: true,
-              latencyMs: Date.now() - startTime,
-            });
-          } else {
-            const errByte = data.length >= 2 ? data[1] : 0x01;
-            finish({
-              success: false,
-              latencyMs: Date.now() - startTime,
-              errorCode: 'PROXY_REJECTED',
-              error: `SOCKS5 CONNECT failed with status code 0x${errByte.toString(16)}`,
-            });
-          }
-        }
-      });
-
-      function sendConnect() {
-        state = 'CONNECT_RESP';
-        // Connect to api.ipify.org:443 via domain name (ATYP = 0x03)
-        const targetDomain = Buffer.from('api.ipify.org', 'utf8');
-        const connectPacket = Buffer.concat([
-          Buffer.from([0x05, 0x01, 0x00, 0x03, targetDomain.length]),
-          targetDomain,
-          Buffer.from([0x01, 0xbb]), // port 443 (0x01bb)
-        ]);
-        socket.write(connectPacket);
-      }
-    });
-  });
+        errorCode: err.errorCode,
+        error: err.message,
+      };
+    }
+    return {
+      success: false,
+      latencyMs: Date.now() - startTime,
+      errorCode: 'CONNECTION_FAILED',
+      error: err?.message || 'SOCKS5 connection failed',
+    };
+  }
 }
 
 /**

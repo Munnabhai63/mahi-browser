@@ -455,7 +455,7 @@ export async function handleLocalApiRequest(
       sendJSON(res, 500, { success: false, error: result.error || 'Failed to start automation profile' });
       return;
     }
-    const debugPort = getProfileDebugPort(id);
+    const debugPort = processManager.getDebugPort(id) ?? getProfileDebugPort(id);
     const timeoutMs =
       typeof body?.timeoutMs === 'number' && Number.isFinite(body.timeoutMs)
         ? Math.min(Math.max(body.timeoutMs, 50), 15000)
@@ -758,17 +758,25 @@ export async function handleLocalApiRequest(
       }
       if (action === 'start') {
         const result = await processManager.startProfile(profileId);
-        const cdpPort = getProfileDebugPort(profileId);
-        const cdp = result.success
-          ? await resolveCdpWebSocketEndpoint(cdpPort, { timeoutMs: 250 })
-          : { httpEndpoint: `http://127.0.0.1:${cdpPort}`, wsEndpoint: `ws://127.0.0.1:${cdpPort}/devtools/browser` };
-        sendJSON(res, result.success ? 200 : 500, {
-          ...result,
-          cdpPort,
-          debugPort: cdpPort,
-          httpEndpoint: cdp.httpEndpoint,
-          wsEndpoint: cdp.wsEndpoint,
-        });
+        const activeDebugPort = processManager.getDebugPort(profileId);
+        const cdpPort = activeDebugPort ?? (processManager.isRunning(profileId) ? undefined : getProfileDebugPort(profileId));
+        if (cdpPort) {
+          const cdp = result.success
+            ? await resolveCdpWebSocketEndpoint(cdpPort, { timeoutMs: 250 })
+            : { httpEndpoint: `http://127.0.0.1:${cdpPort}`, wsEndpoint: `ws://127.0.0.1:${cdpPort}/devtools/browser` };
+          sendJSON(res, result.success ? 200 : 500, {
+            ...result,
+            cdpPort,
+            debugPort: cdpPort,
+            httpEndpoint: cdp.httpEndpoint,
+            wsEndpoint: cdp.wsEndpoint,
+          });
+        } else {
+          sendJSON(res, result.success ? 200 : 500, {
+            ...result,
+            cdpDisabled: true,
+          });
+        }
         return;
       }
       if (action === 'stop') {
@@ -967,16 +975,22 @@ export async function handleLocalApiRequest(
         const p = getProfileById(id, activeOwnerId);
         if (!p) return sendJSON(res, 404, { success: false, error: 'Profile not found or access denied' });
         const result = await processManager.startProfile(id);
-        const cdpPort = getProfileDebugPort(id);
-        const cdp = result.success
-          ? await resolveCdpWebSocketEndpoint(cdpPort, { timeoutMs: 250 })
-          : { httpEndpoint: `http://127.0.0.1:${cdpPort}`, wsEndpoint: `ws://127.0.0.1:${cdpPort}/devtools/browser` };
+        const cdpPort = processManager.getDebugPort(id) ?? (processManager.isRunning(id) ? undefined : getProfileDebugPort(id));
+        if (cdpPort) {
+          const cdp = result.success
+            ? await resolveCdpWebSocketEndpoint(cdpPort, { timeoutMs: 250 })
+            : { httpEndpoint: `http://127.0.0.1:${cdpPort}`, wsEndpoint: `ws://127.0.0.1:${cdpPort}/devtools/browser` };
+          return sendJSON(res, result.success ? 200 : 500, {
+            ...result,
+            cdpPort,
+            debugPort: cdpPort,
+            httpEndpoint: cdp.httpEndpoint,
+            wsEndpoint: cdp.wsEndpoint,
+          });
+        }
         return sendJSON(res, result.success ? 200 : 500, {
           ...result,
-          cdpPort,
-          debugPort: cdpPort,
-          httpEndpoint: cdp.httpEndpoint,
-          wsEndpoint: cdp.wsEndpoint,
+          cdpDisabled: true,
         });
       }
 
@@ -994,20 +1008,26 @@ export async function handleLocalApiRequest(
         const p = getProfileById(id, activeOwnerId);
         if (!p) return sendJSON(res, 404, { code: 404, success: false, error: 'Profile not found or access denied' });
         const result = await processManager.startProfile(id);
-        const cdpPort = getProfileDebugPort(id);
-        const cdp = result.success
-          ? await resolveCdpWebSocketEndpoint(cdpPort, { timeoutMs: 250 })
-          : { httpEndpoint: `http://127.0.0.1:${cdpPort}`, wsEndpoint: `ws://127.0.0.1:${cdpPort}/devtools/browser` };
+        const cdpPort = processManager.getDebugPort(id) ?? (processManager.isRunning(id) ? undefined : getProfileDebugPort(id));
+        const cdp = cdpPort
+          ? (result.success
+              ? await resolveCdpWebSocketEndpoint(cdpPort, { timeoutMs: 250 })
+              : { httpEndpoint: `http://127.0.0.1:${cdpPort}`, wsEndpoint: `ws://127.0.0.1:${cdpPort}/devtools/browser` })
+          : undefined;
         return sendJSON(res, result.success ? 200 : 500, {
           code: result.success ? 0 : 500,
           success: result.success,
           data: {
             profileId: id,
             pid: result.pid,
-            cdpPort,
-            debugPort: cdpPort,
-            httpEndpoint: cdp.httpEndpoint,
-            wsEndpoint: cdp.wsEndpoint,
+            ...(cdpPort && cdp
+              ? {
+                  cdpPort,
+                  debugPort: cdpPort,
+                  httpEndpoint: cdp.httpEndpoint,
+                  wsEndpoint: cdp.wsEndpoint,
+                }
+              : { cdpDisabled: true }),
           },
           error: result.error,
         });

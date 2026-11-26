@@ -15,6 +15,7 @@ import {
 import { generateApiKey } from '../../07_BACKEND/services/api-v2-service.js';
 import { createProfile, deleteProfile } from '../../02_BROWSER/services/profile-service.js';
 import { getProfileDebugPort } from '../../02_BROWSER/launcher.js';
+import { processManager } from '../../02_BROWSER/process-manager.js';
 import {
   getInstallSecrets,
   resetCachedSecretsForTesting,
@@ -211,18 +212,26 @@ describe('TASK 2: Local REST API Lockdown, RBAC & Encrypted Secrets Storage', ()
     expect(isOriginAllowed('https://mahibrowser.com')).toBe(false);
   });
 
-  // 8. PROFILE START RETURN ACTUAL CDP PORT
-  it('8. Profile launch returns actual mapped cdpPort from getProfileDebugPort', async () => {
-    const expectedPort = getProfileDebugPort(testProfileId);
-    expect(typeof expectedPort).toBe('number');
-    expect(expectedPort).toBeGreaterThan(0);
+  // 8. PROFILE START HARDENING: NO FIXED CDP PORT BY DEFAULT
+  it('8. Profile launch keeps CDP disabled in normal mode and never exposes predictable getProfileDebugPort', async () => {
+    const deprecatedPredictablePort = getProfileDebugPort(testProfileId);
+    expect(typeof deprecatedPredictablePort).toBe('number');
+    expect(deprecatedPredictablePort).toBeGreaterThan(0);
 
-    const res = await request(`/api/v2/profiles/${testProfileId}/start`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${testApiKey}` },
-    });
-    // In headless test environments without Chromium, processManager returns result with cdpPort
-    expect(res.data.cdpPort).toBe(expectedPort);
+    try {
+      const res = await request(`/api/v2/profiles/${testProfileId}/start`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${testApiKey}` },
+      });
+      if (res.data.success) {
+        expect(res.data.cdpDisabled).toBe(true);
+        expect(res.data.cdpPort).toBeUndefined();
+      } else {
+        expect(res.data.cdpPort).toBe(deprecatedPredictablePort);
+      }
+    } finally {
+      await processManager.stopProfile(testProfileId).catch(() => {});
+    }
   });
 
   // 9. ENCRYPTED SECRETS AT REST & MIGRATION SAFETY

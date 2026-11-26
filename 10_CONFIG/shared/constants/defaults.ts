@@ -565,6 +565,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     sessionTimeoutMinutes: 30,
     autoLockOnMinimize: false,
     encryptionAlgorithm: 'AES-256-GCM',
+    allowCdpDebugPort: false,
   },
   performance: {
     maxConcurrentProfiles: 10,

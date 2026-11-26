@@ -574,8 +574,8 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
 
         if (action === 'start') {
           const result = await processManager.startProfile(profileId);
-          const cdpPort = getProfileDebugPort(profileId);
-          return sendJSON(res, result.success ? 200 : 500, { ...result, cdpPort });
+          const cdpPort = processManager.getDebugPort(profileId) ?? (processManager.isRunning(profileId) ? undefined : getProfileDebugPort(profileId));
+          return sendJSON(res, result.success ? 200 : 500, cdpPort ? { ...result, cdpPort } : { ...result, cdpDisabled: true });
         }
         if (action === 'stop') {
           const result = await processManager.stopProfile(profileId);

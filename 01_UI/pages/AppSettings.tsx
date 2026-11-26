@@ -377,6 +377,29 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
               </p>
             </div>
 
+            {/* CDP Debugging Port Hardening Toggle */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-start justify-between gap-4">
+              <div>
+                <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm">
+                  Allow Remote CDP Debugging Port
+                </h4>
+                <p className="text-slate-400 mt-0.5 leading-relaxed">
+                  Keep disabled (recommended) to launch normal profiles with zero open localhost debugging ports. Enable only when external Puppeteer/Playwright tools need CDP access on an ephemeral loopback port.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={Boolean(formData.security.allowCdpDebugPort)}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    security: { ...formData.security, allowCdpDebugPort: e.target.checked },
+                  })
+                }
+                className="mt-1 h-4 w-4 accent-teal-600 rounded cursor-pointer"
+              />
+            </div>
+
             {/* Set / Change PIN Form */}
             <form onSubmit={handleSetPin} className="space-y-4 p-5 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
               <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm">

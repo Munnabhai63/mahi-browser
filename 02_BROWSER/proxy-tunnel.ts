@@ -2,6 +2,7 @@ import net from 'node:net';
 import tls from 'node:tls';
 import http from 'node:http';
 import stream from 'node:stream';
+import { bridgeConnectOverSocks5, forwardHttpRequestOverSocks5 } from './socks-tunnel.js';
 
 function debugLog(msg: string) {
   const fn = (globalThis as any).__mahiDebugLog;
@@ -90,7 +91,9 @@ export function checkUpstreamReachability(
  */
 export async function createProxyTunnel(options: ProxyTunnelOptions): Promise<ProxyTunnelHandle> {
   const { upstreamHost, upstreamPort, upstreamProtocol = 'http', username, password, profileId } = options;
-  const isHttpsUpstream = upstreamProtocol === 'https';
+  const protoLower = upstreamProtocol.toLowerCase();
+  const isHttpsUpstream = protoLower === 'https';
+  const isSocksUpstream = protoLower === 'socks5' || protoLower === 'socks4';
 
   const authHeader = username && password
     ? `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`
@@ -118,6 +121,20 @@ export async function createProxyTunnel(options: ProxyTunnelOptions): Promise<Pr
   };
 
   const server = http.createServer((clientReq, clientRes) => {
+    if (isSocksUpstream) {
+      void forwardHttpRequestOverSocks5({
+        clientReq,
+        clientRes,
+        proxyHost: upstreamHost,
+        proxyPort: upstreamPort,
+        username,
+        password,
+        socketTimeoutMs: SOCKET_TIMEOUT,
+        log: debugLog,
+      });
+      return;
+    }
+
     // Plain HTTP Request Forwarding
     const headers = { ...clientReq.headers };
     if (authHeader) {
@@ -152,6 +169,22 @@ export async function createProxyTunnel(options: ProxyTunnelOptions): Promise<Pr
     activeSockets.add(clientSocket);
     if ('setTimeout' in clientSocket && typeof (clientSocket as any).setTimeout === 'function') {
       (clientSocket as any).setTimeout(SOCKET_TIMEOUT);
+    }
+
+    if (isSocksUpstream) {
+      void bridgeConnectOverSocks5({
+        reqUrl: req.url || '',
+        clientSocket,
+        head,
+        proxyHost: upstreamHost,
+        proxyPort: upstreamPort,
+        username,
+        password,
+        activeSockets,
+        socketTimeoutMs: SOCKET_TIMEOUT,
+        log: debugLog,
+      });
+      return;
     }
 
     let isEstablished = false;

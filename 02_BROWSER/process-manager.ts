@@ -23,6 +23,7 @@ interface ActiveProcessEntry {
   profileName: string;
   storageDir: string;
   proxyTunnel?: ProxyTunnelHandle;
+  debugPort?: number;
   launchedAt: number;
   closed?: boolean;
 }
@@ -77,6 +78,10 @@ class ProcessManager {
 
   public getActivePid(profileId: string): number | undefined {
     return this.activeProcesses.get(profileId)?.pid;
+  }
+
+  public getDebugPort(profileId: string): number | undefined {
+    return this.activeProcesses.get(profileId)?.debugPort;
   }
 
   public getRunningCount(): number {
@@ -161,8 +166,8 @@ class ProcessManager {
    */
   public async startProfile(
     profileId: string,
-    launchOptions?: { mode?: 'normal' | 'automation' }
-  ): Promise<{ success: boolean; pid?: number; error?: string }> {
+    launchOptions?: { mode?: 'normal' | 'automation'; allowCdpDebugPort?: boolean }
+  ): Promise<{ success: boolean; pid?: number; debugPort?: number; error?: string }> {
     debugLog(`[ProcessManager] Request received to start profile ID: ${profileId}`);
 
     if (this.startingProfiles.has(profileId)) {
@@ -223,7 +228,19 @@ class ProcessManager {
       this.notifyStatus(profileId, 'STARTING');
 
       try {
-        const info = await launchBrowser(profile, launchOptions);
+        let resolvedAllowCdp = launchOptions?.allowCdpDebugPort;
+        if (resolvedAllowCdp === undefined) {
+          try {
+            const { getAppSettings } = await import('../07_BACKEND/services/settings-service.js');
+            resolvedAllowCdp = getAppSettings()?.security?.allowCdpDebugPort === true;
+          } catch {
+            resolvedAllowCdp = false;
+          }
+        }
+        const info = await launchBrowser(profile, {
+          ...launchOptions,
+          allowCdpDebugPort: resolvedAllowCdp,
+        });
         const child = info.process;
         const pid = info.pid;
 
@@ -234,6 +251,7 @@ class ProcessManager {
           profileName: profile.name,
           storageDir: info.storageDir,
           proxyTunnel: info.proxyTunnel,
+          debugPort: info.debugPort,
           launchedAt: Date.now(),
         };
 
@@ -263,7 +281,7 @@ class ProcessManager {
           this.handleProcessClosed(profileId, entry, err.message);
         });
 
-        return { success: true, pid };
+        return { success: true, pid, ...(info.debugPort ? { debugPort: info.debugPort } : {}) };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         debugLog(`[ProcessManager ERROR] Failed to start profile "${profile.name}": ${message}`);
