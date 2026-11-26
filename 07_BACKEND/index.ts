@@ -3,7 +3,11 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { initializeDatabase } from '../06_DATABASE/schema.js';
-import { closeDatabase, setCustomDatabasePath } from '../06_DATABASE/connection.js';
+import {
+  closeDatabase,
+  setCustomDatabasePath,
+  snapshotSyncConfigFirstRun,
+} from '../06_DATABASE/connection.js';
 import { registerIpcHandlers } from './ipc/register-handlers.js';
 import { processManager } from '../02_BROWSER/process-manager.js';
 import { startApiServer, stopApiServer } from './api/local-api-server.js';
@@ -368,6 +372,7 @@ if ((gotTheLock || isSmokeTest) && app?.whenReady) {
     const dbPath = path.join(userDataPath, 'mahi_browser.sqlite');
     logCheckpoint('Step 3: Setting Database Path', dbPath);
     setCustomDatabasePath(dbPath);
+    snapshotSyncConfigFirstRun({ userDataDir: userDataPath });
 
     logCheckpoint('Step 3: Initializing SQLite Engine & Tables');
     await initializeDatabase();

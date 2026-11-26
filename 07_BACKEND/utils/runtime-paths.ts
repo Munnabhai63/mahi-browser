@@ -193,3 +193,32 @@ export function getLandingBaseDir(): string {
   }
   return path.join(process.cwd(), 'landing');
 }
+
+/**
+ * Resolves the safe base directory for pre-update DB and config backups.
+ * In test runs without MAHI_USER_DATA_DIR, routes backups next to the test DB
+ * so real AppData user data is never touched.
+ */
+export function resolveBackupBaseDir(dbPath?: string): string {
+  const isTestEnv = Boolean(
+    process.env.NODE_ENV === 'test' ||
+      process.env.VITEST ||
+      process.env.VITEST_WORKER_ID ||
+      process.env.JEST_WORKER_ID
+  );
+  if (isTestEnv && !process.env.MAHI_USER_DATA_DIR) {
+    if (dbPath) {
+      return path.dirname(path.resolve(dbPath));
+    }
+    return path.join(process.cwd(), '.mahi_data', 'test-auto-isolated');
+  }
+  return getWritableUserDataDir();
+}
+
+export function getDbBackupsDir(dbPath?: string): string {
+  return path.join(resolveBackupBaseDir(dbPath), 'backups', 'db');
+}
+
+export function getConfigBackupsDir(): string {
+  return path.join(resolveBackupBaseDir(), 'backups', 'config');
+}

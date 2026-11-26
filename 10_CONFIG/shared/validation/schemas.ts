@@ -1,84 +1,116 @@
 import { z } from 'zod';
 
-export const BrowserConfigSchema = z.object({
-  engine: z.enum(['chromium', 'chrome', 'edge']),
-  version: z.string().default('131.0.0.0'),
-  customExecutablePath: z.string().optional(),
-  userAgent: z.string().min(5),
-  startupUrl: z.string().url().or(z.string().min(1)).optional().default('about:blank'),
-  homepage: z.string().url().or(z.string().min(1)).optional().default('about:blank'),
-  additionalArgs: z.array(z.string()).default([]),
-  enableExtensions: z.boolean().default(true),
-  hardwareAcceleration: z.boolean().default(true),
-});
+export const BrowserConfigSchema = z
+  .object({
+    engine: z.enum(['chromium', 'chrome', 'edge', 'camoufox']),
+    version: z.string().default('131.0.0.0'),
+    customExecutablePath: z.string().optional(),
+    userAgent: z.string().min(5),
+    startupUrl: z.string().url().or(z.string().min(1)).optional().default('about:blank'),
+    homepage: z.string().url().or(z.string().min(1)).optional().default('about:blank'),
+    additionalArgs: z.array(z.string()).default([]),
+    enableExtensions: z.boolean().default(true),
+    hardwareAcceleration: z.boolean().default(true),
+  })
+  .passthrough();
 
-export const DisplayConfigSchema = z.object({
-  screenWidth: z.number().int().min(320).max(7680).default(1920),
-  screenHeight: z.number().int().min(240).max(4320).default(1080),
-  deviceScaleFactor: z.number().min(0.5).max(4).default(1),
-  colorDepth: z.number().int().default(24),
-});
+export const DisplayConfigSchema = z
+  .object({
+    screenWidth: z.number().int().min(320).max(7680).default(1920),
+    screenHeight: z.number().int().min(240).max(4320).default(1080),
+    deviceScaleFactor: z.number().min(0.5).max(4).default(1),
+    colorDepth: z.number().int().default(24),
+  })
+  .passthrough();
 
-export const LocaleConfigSchema = z.object({
-  language: z.string().min(2).default('en-US'),
-  timezone: z.string().min(2).default('America/New_York'),
-  languagesList: z.array(z.string()).default(['en-US', 'en']),
-});
+export const LocaleConfigSchema = z
+  .object({
+    language: z.string().min(2).default('en-US'),
+    timezone: z.string().min(2).default('America/New_York'),
+    languagesList: z.array(z.string()).default(['en-US', 'en']),
+  })
+  .passthrough();
 
-export const NetworkConfigSchema = z.object({
-  proxyId: z.string().optional(),
-  directConnection: z.boolean().default(true),
-  webrtc: z.enum(['default', 'disabled', 'public_interface_only', 'proxy_only']).default('default'),
-  dnsServer: z.string().optional(),
-});
+export const NetworkConfigSchema = z
+  .object({
+    proxyId: z.string().optional(),
+    directConnection: z.boolean().default(true),
+    webrtc: z
+      .enum([
+        'default',
+        'disabled',
+        'public_interface_only',
+        'proxy_only',
+        'disable_non_proxied_udp',
+        'allow_all',
+        'noise',
+      ])
+      .default('default'),
+    dnsServer: z.string().optional(),
+  })
+  .passthrough();
 
-export const PermissionsConfigSchema = z.object({
-  camera: z.enum(['prompt', 'allow', 'block']).default('prompt'),
-  microphone: z.enum(['prompt', 'allow', 'block']).default('prompt'),
-  geolocation: z.enum(['prompt', 'allow', 'block']).default('prompt'),
-  notifications: z.enum(['prompt', 'allow', 'block']).default('prompt'),
-  midi: z.enum(['prompt', 'allow', 'block']).default('prompt'),
-});
+export const PermissionsConfigSchema = z
+  .object({
+    camera: z.enum(['prompt', 'allow', 'block']).default('prompt'),
+    microphone: z.enum(['prompt', 'allow', 'block']).default('prompt'),
+    geolocation: z.enum(['prompt', 'allow', 'block']).default('prompt'),
+    notifications: z.enum(['prompt', 'allow', 'block']).default('prompt'),
+    midi: z.enum(['prompt', 'allow', 'block']).default('prompt'),
+  })
+  .passthrough();
 
-export const FingerprintConfigSchema = z.object({
-  canvas: z.string().optional(),
-  webgl: z.string().optional(),
-  audio: z.string().optional(),
-  clientRects: z.string().optional(),
-  webrtc: z.string().optional(),
-  webglVendor: z.string().optional(),
-  webglRenderer: z.string().optional(),
-  hardwareConcurrency: z.number().optional(),
-  deviceMemory: z.number().optional(),
-  canvasNoise: z.boolean().optional(),
-  audioContextNoise: z.boolean().optional(),
-  maxTouchPoints: z.number().optional(),
-  fonts: z.array(z.string()).optional(),
-  isM1: z.boolean().optional(),
-}).optional();
+export const FingerprintConfigSchema = z
+  .object({
+    canvas: z.string().optional(),
+    webgl: z.string().optional(),
+    audio: z.string().optional(),
+    clientRects: z.string().optional(),
+    webrtc: z.string().optional(),
+    webglVendor: z.string().optional(),
+    webglRenderer: z.string().optional(),
+    hardwareConcurrency: z.number().optional(),
+    deviceMemory: z.number().optional(),
+    canvasNoise: z.boolean().optional(),
+    audioContextNoise: z.boolean().optional(),
+    maxTouchPoints: z.number().optional(),
+    fonts: z.array(z.string()).optional(),
+    isM1: z.boolean().optional(),
+  })
+  .passthrough()
+  .optional();
 
-export const FakeVideoCaptureSchema = z.object({
-  enable: z.boolean().optional(),
-  filePath: z.string().optional(),
-}).optional();
+export const FakeVideoCaptureSchema = z
+  .object({
+    enable: z.boolean().optional(),
+    filePath: z.string().optional(),
+  })
+  .passthrough()
+  .optional();
 
-export const MobileConfigSchema = z.object({
-  enable: z.boolean().optional(),
-  width: z.number().optional(),
-  height: z.number().optional(),
-  deviceScaleFactor: z.number().optional(),
-}).optional();
+export const MobileConfigSchema = z
+  .object({
+    enable: z.boolean().optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    deviceScaleFactor: z.number().optional(),
+  })
+  .passthrough()
+  .optional();
 
-export const ProfileSettingsSchema = z.object({
-  browser: BrowserConfigSchema,
-  fingerprint: FingerprintConfigSchema,
-  display: DisplayConfigSchema,
-  locale: LocaleConfigSchema,
-  network: NetworkConfigSchema,
-  permissions: PermissionsConfigSchema,
-  fakeVideoCapture: FakeVideoCaptureSchema,
-  mobile: MobileConfigSchema,
-});
+export const ProfileSettingsSchema = z
+  .object({
+    settingsVersion: z.number().int().min(0).optional(),
+    browser: BrowserConfigSchema,
+    fingerprint: FingerprintConfigSchema,
+    display: DisplayConfigSchema,
+    locale: LocaleConfigSchema,
+    network: NetworkConfigSchema,
+    permissions: PermissionsConfigSchema,
+    fakeVideoCapture: FakeVideoCaptureSchema,
+    mobile: MobileConfigSchema,
+  })
+  .passthrough();
 
 export const CreateProfileDTOSchema = z.object({
   name: z.string().min(1, 'Profile name is required').max(100),

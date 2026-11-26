@@ -2,7 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
-import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
+import {
+  getConfigBackupsDir,
+  getDbBackupsDir,
+  getWritableUserDataDir,
+} from '../07_BACKEND/utils/runtime-paths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -336,6 +340,206 @@ export function closeDatabase(): void {
       dbInstance.close();
     } catch {}
     dbInstance = null;
+  }
+}
+
+export interface DbBackupResult {
+  backedUp: boolean;
+  backupPath?: string;
+  removedCount: number;
+}
+
+function readPreMigrationVersionFromFile(dbPath: string): number {
+  if (!SQL) return 0;
+  try {
+    const fileBuffer = fs.readFileSync(dbPath);
+    if (fileBuffer.length === 0) return 0;
+    const probeDb = new SQL.Database(fileBuffer);
+    try {
+      const appVerRes = probeDb.exec(
+        "SELECT MAX(version) FROM app_schema_version;"
+      );
+      const appVer = Number(appVerRes?.[0]?.values?.[0]?.[0] ?? 0);
+      if (Number.isFinite(appVer) && appVer > 0) {
+        return appVer;
+      }
+    } catch {
+      // app_schema_version does not exist yet
+    }
+    try {
+      const migRes = probeDb.exec(
+        "SELECT MAX(version) FROM schema_migrations;"
+      );
+      const migVer = Number(migRes?.[0]?.values?.[0]?.[0] ?? 0);
+      if (Number.isFinite(migVer) && migVer > 0) {
+        return migVer;
+      }
+    } catch {
+      // schema_migrations does not exist yet
+    } finally {
+      probeDb.close();
+    }
+  } catch {}
+  return 0;
+}
+
+/**
+ * Copies the active SQLite database (plus WAL/SHM sidecars if present) into
+ * `<userData>/backups/db/pre-<version>-<timestamp>.sqlite` BEFORE any migration runs.
+ * Keeps the `keepCount` (default 5) newest backups and deletes older ones.
+ * Never throws so startup is never blocked by read-only or unavailable backup storage.
+ */
+export function backupDatabaseBeforeMigration(options?: {
+  dbPath?: string;
+  backupsDir?: string;
+  keepCount?: number;
+}): DbBackupResult {
+  try {
+    const dbPath = options?.dbPath ? path.resolve(options.dbPath) : getDatabasePath();
+    if (!fs.existsSync(dbPath)) {
+      return { backedUp: false, removedCount: 0 };
+    }
+    const stat = fs.statSync(dbPath);
+    if (!stat.isFile() || stat.size === 0) {
+      return { backedUp: false, removedCount: 0 };
+    }
+
+    const backupsDir = options?.backupsDir
+      ? path.resolve(options.backupsDir)
+      : getDbBackupsDir(dbPath);
+    fs.mkdirSync(backupsDir, { recursive: true });
+
+    const preVersion = readPreMigrationVersionFromFile(dbPath);
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const uniqueSuffix = `${ts}-${process.pid}`;
+    let backupFileName = `pre-v${preVersion}-${uniqueSuffix}.sqlite`;
+    let backupPath = path.join(backupsDir, backupFileName);
+    let seq = 1;
+    while (fs.existsSync(backupPath)) {
+      backupFileName = `pre-v${preVersion}-${uniqueSuffix}-${seq}.sqlite`;
+      backupPath = path.join(backupsDir, backupFileName);
+      seq++;
+    }
+
+    fs.copyFileSync(dbPath, backupPath);
+
+    for (const sidecar of ['-wal', '-shm']) {
+      const srcSidecar = `${dbPath}${sidecar}`;
+      if (fs.existsSync(srcSidecar)) {
+        try {
+          fs.copyFileSync(srcSidecar, `${backupPath}${sidecar}`);
+        } catch {}
+      }
+    }
+
+    const keepCount = Math.max(1, options?.keepCount ?? 5);
+    const entries = fs
+      .readdirSync(backupsDir, { withFileTypes: true })
+      .filter((e) => e.isFile() && /^pre-.*\.sqlite$/i.test(e.name))
+      .map((e) => {
+        const full = path.join(backupsDir, e.name);
+        let mtimeMs = 0;
+        try {
+          mtimeMs = fs.statSync(full).mtimeMs;
+        } catch {}
+        return { name: e.name, full, mtimeMs };
+      })
+      .sort((a, b) => {
+        if (b.mtimeMs !== a.mtimeMs) return b.mtimeMs - a.mtimeMs;
+        return b.name.localeCompare(a.name);
+      });
+
+    let removedCount = 0;
+    for (const stale of entries.slice(keepCount)) {
+      try {
+        fs.unlinkSync(stale.full);
+        removedCount++;
+      } catch {}
+      for (const sidecar of ['-wal', '-shm']) {
+        try {
+          if (fs.existsSync(`${stale.full}${sidecar}`)) {
+            fs.unlinkSync(`${stale.full}${sidecar}`);
+          }
+        } catch {}
+      }
+    }
+
+    return { backedUp: true, backupPath, removedCount };
+  } catch {
+    return { backedUp: false, removedCount: 0 };
+  }
+}
+
+export interface ConfigSnapshotResult {
+  snapshotted: boolean;
+  snapshotDir?: string;
+  filesCopied: string[];
+}
+
+const FIRST_RUN_CONFIG_FILES = [
+  'cloud-sync-config.json',
+  'cloud-profile-bindings.json',
+  'cloud-sync-status.json',
+] as const;
+
+/**
+ * On first run after update, snapshots cloud sync JSON files into
+ * `<userData>/backups/config/<timestamp>/`. Never throws or blocks startup.
+ */
+export function snapshotSyncConfigFirstRun(options?: {
+  userDataDir?: string;
+  backupsConfigDir?: string;
+  markerName?: string;
+}): ConfigSnapshotResult {
+  try {
+    const userDataDir = options?.userDataDir
+      ? path.resolve(options.userDataDir)
+      : getWritableUserDataDir();
+    const backupsConfigDir = options?.backupsConfigDir
+      ? path.resolve(options.backupsConfigDir)
+      : getConfigBackupsDir();
+    const markerPath = path.join(
+      backupsConfigDir,
+      options?.markerName || '.first-run-snapshot-v1.done'
+    );
+
+    if (fs.existsSync(markerPath)) {
+      return { snapshotted: false, filesCopied: [] };
+    }
+
+    const existingSources = FIRST_RUN_CONFIG_FILES.map((fileName) => ({
+      fileName,
+      srcPath: path.join(userDataDir, fileName),
+    })).filter((entry) => fs.existsSync(entry.srcPath));
+
+    fs.mkdirSync(backupsConfigDir, { recursive: true });
+
+    if (existingSources.length === 0) {
+      try {
+        fs.writeFileSync(markerPath, new Date().toISOString(), 'utf8');
+      } catch {}
+      return { snapshotted: false, filesCopied: [] };
+    }
+
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const snapshotDir = path.join(backupsConfigDir, ts);
+    fs.mkdirSync(snapshotDir, { recursive: true });
+
+    const filesCopied: string[] = [];
+    for (const item of existingSources) {
+      try {
+        fs.copyFileSync(item.srcPath, path.join(snapshotDir, item.fileName));
+        filesCopied.push(item.fileName);
+      } catch {}
+    }
+
+    try {
+      fs.writeFileSync(markerPath, new Date().toISOString(), 'utf8');
+    } catch {}
+
+    return { snapshotted: filesCopied.length > 0, snapshotDir, filesCopied };
+  } catch {
+    return { snapshotted: false, filesCopied: [] };
   }
 }
 

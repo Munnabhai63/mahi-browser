@@ -1,6 +1,15 @@
-import { getDatabase, initSqlEngine } from './connection.js';
+import {
+  backupDatabaseBeforeMigration,
+  getDatabase,
+  initSqlEngine,
+} from './connection.js';
 
 export const INITIAL_SCHEMA = `
+CREATE TABLE IF NOT EXISTS app_schema_version (
+  version INTEGER PRIMARY KEY,
+  appliedAt TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY,
   applied_at TEXT NOT NULL
@@ -245,10 +254,36 @@ export function runMigration(db: any, version: number, name: string, fn: () => v
   }
 }
 
+export function getAppSchemaVersion(db?: any): number {
+  try {
+    const conn = db || getDatabase();
+    const row = conn.prepare('SELECT MAX(version) as ver FROM app_schema_version').get() as
+      | { ver?: number | null }
+      | undefined;
+    return Number(row?.ver || 0);
+  } catch {
+    return 0;
+  }
+}
+
+export function stampAppSchemaVersion(db: any, version: number): void {
+  const existing = db
+    .prepare('SELECT version FROM app_schema_version WHERE version = ?')
+    .get(version);
+  if (!existing) {
+    db.prepare('INSERT INTO app_schema_version (version, appliedAt) VALUES (?, ?)').run(
+      version,
+      new Date().toISOString()
+    );
+  }
+}
+
 export async function initializeDatabase(): Promise<void> {
   await initSqlEngine();
+  backupDatabaseBeforeMigration();
   const db = getDatabase();
   db.exec(INITIAL_SCHEMA);
+  stampAppSchemaVersion(db, 1);
   
   const checkMigration = db.prepare('SELECT version FROM schema_migrations WHERE version = 1').get();
   if (!checkMigration) {

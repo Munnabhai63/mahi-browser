@@ -139,6 +139,7 @@ function createSeededRng(seed: number) {
 
 export function getDefaultProfileSettings(_os?: 'windows' | 'mac' | 'linux' | string): ProfileSettings {
   return {
+    settingsVersion: 0,
     browser: {
       engine: 'chrome',
       version: MANAGED_ENGINE_VERSION,
@@ -172,6 +173,79 @@ export function getDefaultProfileSettings(_os?: 'windows' | 'mac' | 'linux' | st
       midi: 'prompt',
     },
   };
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function deepMergeRecords(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>,
+  preserveBaseOnUndefined = true
+): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...base };
+  for (const key of Object.keys(override)) {
+    const overrideVal = override[key];
+    if (overrideVal === undefined) {
+      if (!preserveBaseOnUndefined) {
+        delete result[key];
+      }
+      continue;
+    }
+    const baseVal = result[key];
+    if (isPlainObject(baseVal) && isPlainObject(overrideVal)) {
+      result[key] = deepMergeRecords(baseVal, overrideVal, preserveBaseOnUndefined);
+    } else if (Array.isArray(overrideVal)) {
+      result[key] = [...overrideVal];
+    } else if (isPlainObject(overrideVal)) {
+      result[key] = deepMergeRecords({}, overrideVal, preserveBaseOnUndefined);
+    } else {
+      result[key] = overrideVal;
+    }
+  }
+  return result;
+}
+
+/**
+ * Deep-merges partial/stored settings over base defaults without stripping or mutating unknown fields.
+ */
+export function deepMergeProfileSettings(
+  base: ProfileSettings,
+  override: unknown,
+  options?: { preserveBaseOnUndefined?: boolean }
+): ProfileSettings {
+  if (!isPlainObject(override)) {
+    return deepMergeRecords({}, base as unknown as Record<string, unknown>) as unknown as ProfileSettings;
+  }
+  return deepMergeRecords(
+    base as unknown as Record<string, unknown>,
+    override,
+    options?.preserveBaseOnUndefined ?? true
+  ) as unknown as ProfileSettings;
+}
+
+/**
+ * Tolerantly parses stored ProfileSettings JSON/object on read without ever writing back to disk.
+ * Missing fields fall back to defaults; unknown future fields are preserved untouched.
+ */
+export function parseStoredProfileSettings(
+  settingsJsonOrObj: unknown,
+  fallbackOs?: string
+): ProfileSettings {
+  const defaults = getDefaultProfileSettings(fallbackOs);
+  if (settingsJsonOrObj === null || settingsJsonOrObj === undefined || settingsJsonOrObj === '') {
+    return defaults;
+  }
+  if (typeof settingsJsonOrObj === 'string') {
+    try {
+      const parsed = JSON.parse(settingsJsonOrObj);
+      return deepMergeProfileSettings(defaults, parsed);
+    } catch {
+      return defaults;
+    }
+  }
+  return deepMergeProfileSettings(defaults, settingsJsonOrObj);
 }
 
 /**

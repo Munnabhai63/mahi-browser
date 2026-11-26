@@ -11,7 +11,14 @@ export interface StatisticalProfileOptions {
   deviceCategory?: 'desktop' | 'mobile';
 }
 
-export type WebRTCMode = 'default' | 'disabled' | 'public_interface_only' | 'proxy_only';
+export type WebRTCMode =
+  | 'default'
+  | 'disabled'
+  | 'public_interface_only'
+  | 'proxy_only'
+  | 'disable_non_proxied_udp'
+  | 'allow_all'
+  | 'noise';
 
 export interface BrowserConfig {
   engine: BrowserEngine;
@@ -84,6 +91,7 @@ export interface FingerprintConfig {
 }
 
 export interface ProfileSettings {
+  settingsVersion?: number;
   browser: BrowserConfig;
   fingerprint?: FingerprintConfig;
   display: DisplayConfig;

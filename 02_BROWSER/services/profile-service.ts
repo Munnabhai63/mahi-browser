@@ -12,7 +12,11 @@ import {
   ProfileFilterOptions,
   ProfileStatus,
 } from '../../10_CONFIG/shared/types/profile.js';
-import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
+import {
+  deepMergeProfileSettings,
+  getDefaultProfileSettings,
+  parseStoredProfileSettings,
+} from '../../10_CONFIG/shared/constants/defaults.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
 import { getAllProfileStats, getProfileStats, deleteProfileStats } from '../../07_BACKEND/services/stats-service.js';
 import { getPlanLimitsInfo } from '../../08_SECURITY/freemium-guard.js';
@@ -118,14 +122,7 @@ export function getProfiles(filter: ProfileFilterOptions = {}): Profile[] {
       continue;
     }
 
-    let settings: ProfileSettings = getDefaultProfileSettings();
-    if (r.settings_json) {
-      try {
-        settings = { ...settings, ...JSON.parse(r.settings_json) };
-      } catch {
-        // use default
-      }
-    }
+    const settings: ProfileSettings = parseStoredProfileSettings(r.settings_json);
 
     const profileStats = statsMap.get(r.id);
 
@@ -233,14 +230,7 @@ export function getProfileById(id: string, ownerId?: string, options?: { include
   }[];
   const tags = tagRows.map((t) => t.tag_name);
 
-  let settings: ProfileSettings = getDefaultProfileSettings();
-  if (row.settings_json) {
-    try {
-      settings = { ...settings, ...JSON.parse(row.settings_json) };
-    } catch {
-      // default
-    }
-  }
+  const settings: ProfileSettings = parseStoredProfileSettings(row.settings_json);
 
   const profileStats = getProfileStats(id);
 
@@ -284,14 +274,7 @@ export function createProfile(dto: CreateProfileDTO): Profile {
   const ownerId = (dto as any).ownerId || 'SYSTEM_OWNER';
 
   const defaultSettings = getDefaultProfileSettings();
-  const mergedSettings: ProfileSettings = {
-    browser: { ...defaultSettings.browser, ...(dto.settings?.browser || {}) },
-    display: { ...defaultSettings.display, ...(dto.settings?.display || {}) },
-    locale: { ...defaultSettings.locale, ...(dto.settings?.locale || {}) },
-    network: { ...defaultSettings.network, ...(dto.settings?.network || {}) },
-    permissions: { ...defaultSettings.permissions, ...(dto.settings?.permissions || {}) },
-    fingerprint: dto.settings?.fingerprint ? { ...(dto.settings?.fingerprint || {}) } : undefined,
-  };
+  const mergedSettings: ProfileSettings = deepMergeProfileSettings(defaultSettings, dto.settings);
 
   const { normalizedSettings } = validateAndNormalizeFingerprintCoherence(mergedSettings);
 
@@ -358,14 +341,9 @@ export function updateProfile(id: string, dto: UpdateProfileDTO, ownerId?: strin
   db.prepare(`UPDATE profiles SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
   if (dto.settings) {
-    const mergedSettings: ProfileSettings = {
-      browser: { ...existing.settings.browser, ...(dto.settings.browser || {}) },
-      fingerprint: { ...existing.settings.fingerprint, ...(dto.settings.fingerprint || {}) },
-      display: { ...existing.settings.display, ...(dto.settings.display || {}) },
-      locale: { ...existing.settings.locale, ...(dto.settings.locale || {}) },
-      network: { ...existing.settings.network, ...(dto.settings.network || {}) },
-      permissions: { ...existing.settings.permissions, ...(dto.settings.permissions || {}) },
-    };
+    const mergedSettings: ProfileSettings = deepMergeProfileSettings(existing.settings, dto.settings, {
+      preserveBaseOnUndefined: false,
+    });
 
     const { normalizedSettings } = validateAndNormalizeFingerprintCoherence(mergedSettings);
 
@@ -804,12 +782,7 @@ export function getTrashProfiles(ownerId?: string): Profile[] {
 
   for (const r of rows) {
     const tags = tagMap.get(r.id) || [];
-    let settings: ProfileSettings = getDefaultProfileSettings();
-    if (r.settings_json) {
-      try {
-        settings = { ...settings, ...JSON.parse(r.settings_json) };
-      } catch {}
-    }
+    const settings: ProfileSettings = parseStoredProfileSettings(r.settings_json);
 
     const profileStats = statsMap.get(r.id);
     profiles.push({
