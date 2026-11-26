@@ -29,6 +29,8 @@ interface ParsedAccountItem {
   };
   cookies?: any[];
   userAgent?: string;
+  timezone?: string;
+  sourceFormat?: 'gologin' | 'adspower' | 'dolphin' | 'generic';
   notes?: string;
   tags?: string[];
   rawLine?: string;
@@ -193,6 +195,30 @@ export const UniversalBulkImportModal: React.FC<UniversalBulkImportModalProps> =
               className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg font-mono text-[10px]"
             >
               CSV Header Format
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setRawText(
+                  JSON.stringify(
+                    {
+                      profiles: [
+                        {
+                          name: 'GoLogin Profile 1',
+                          navigator: { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/158.0.0.0 Safari/537.36', language: 'en-US', resolution: '1920x1080' },
+                          proxy: { mode: 'socks5', host: '157.240.1.10', port: 1080, username: 'usr', password: 'pwd' },
+                          timezone: { id: 'America/New_York' },
+                        },
+                      ],
+                    },
+                    null,
+                    2
+                  )
+                )
+              }
+              className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg font-mono text-[10px]"
+            >
+              GoLogin / AdsPower / Dolphin JSON
             </button>
           </div>
 

@@ -53,6 +53,7 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
   const [cloudProfiles, setCloudProfiles] = useState<CloudProfile[]>([]);
   const [autoSync, setAutoSync] = useState(true);
   const [passphrase, setPassphrase] = useState('');
+  const [keyDerivationVersion, setKeyDerivationVersion] = useState<1 | 2>(1);
   const [showPassphrase, setShowPassphrase] = useState(false);
 
   const [syncingId, setSyncingId] = useState<string | null>(null);
@@ -88,6 +89,7 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
       if (cfg) {
         setAutoSync(cfg.autoSync !== false);
         setPassphrase(cfg.syncPassphrase || 'mahi-cloud-sync');
+        setKeyDerivationVersion((cfg as any).keyDerivationVersion === 2 ? 2 : 1);
       }
     } catch (err: any) {
       showToast({ type: 'error', title: 'Cloud Sync', message: err.message || 'Failed to connect to cloud service' });
@@ -137,10 +139,33 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
       return;
     }
     try {
-      await window.mahiAPI.setCloudSyncConfig({ autoSync, syncPassphrase: passphrase.trim() });
+      await window.mahiAPI.setCloudSyncConfig({ autoSync, syncPassphrase: passphrase.trim(), keyDerivationVersion });
       showToast({ type: 'success', title: 'Passphrase Updated', message: 'Encryption passphrase updated.' });
     } catch (err: any) {
       showToast({ type: 'error', title: 'Settings Error', message: err.message });
+    }
+  };
+
+  const handleUpgradeToV2 = async () => {
+    const cleanPass = passphrase.trim();
+    if (!cleanPass || cleanPass === 'mahi-cloud-sync' || cleanPass.length < 8) {
+      showToast({
+        type: 'warning',
+        title: 'Strong Personal Passphrase Required',
+        message: 'Set a custom passphrase (at least 8 characters, not the default key) before upgrading to v2.',
+      });
+      return;
+    }
+    try {
+      await window.mahiAPI.setCloudSyncConfig({ autoSync, syncPassphrase: cleanPass, keyDerivationVersion: 2 } as any);
+      setKeyDerivationVersion(2);
+      showToast({
+        type: 'success',
+        title: 'Upgraded to Key Derivation v2',
+        message: 'New backups use randomized per-backup PBKDF2 salts while legacy v1 backups remain decryptable.',
+      });
+    } catch (err: any) {
+      showToast({ type: 'error', title: 'Upgrade Error', message: err.message });
     }
   };
 
@@ -337,6 +362,20 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
               Save
             </button>
           </div>
+          {(passphrase.trim() === 'mahi-cloud-sync' || keyDerivationVersion !== 2) && (
+            <div className="mt-2.5 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-700 dark:text-amber-300 flex items-center justify-between gap-2">
+              <span>
+                Using legacy default encryption key — set a personal passphrase for stronger protection
+              </span>
+              <button
+                type="button"
+                onClick={handleUpgradeToV2}
+                className="shrink-0 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 font-semibold transition"
+              >
+                Upgrade (v2)
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

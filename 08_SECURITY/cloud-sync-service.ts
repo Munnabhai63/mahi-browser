@@ -380,18 +380,25 @@ export function getSyncConfig(): CloudSyncConfig {
       const data = JSON.parse(fs.readFileSync(file, 'utf8'));
       return {
         autoSync: data.autoSync !== false,
-        syncPassphrase: data.syncPassphrase || DEFAULT_PASSPHRASE
+        syncPassphrase: data.syncPassphrase || DEFAULT_PASSPHRASE,
+        keyDerivationVersion: data.keyDerivationVersion === 2 ? 2 : 1,
       };
     }
   } catch {}
-  return { autoSync: true, syncPassphrase: DEFAULT_PASSPHRASE };
+  return { autoSync: true, syncPassphrase: DEFAULT_PASSPHRASE, keyDerivationVersion: 1 };
 }
 
 export function setSyncConfig(config: Partial<CloudSyncConfig>): CloudSyncConfig {
   const current = getSyncConfig();
   const updated: CloudSyncConfig = {
     autoSync: config.autoSync !== undefined ? config.autoSync : current.autoSync,
-    syncPassphrase: config.syncPassphrase !== undefined ? config.syncPassphrase : current.syncPassphrase
+    syncPassphrase: config.syncPassphrase !== undefined ? config.syncPassphrase : current.syncPassphrase,
+    keyDerivationVersion:
+      config.keyDerivationVersion === 2
+        ? 2
+        : config.keyDerivationVersion === 1
+          ? 1
+          : current.keyDerivationVersion || 1,
   };
   try {
     fs.writeFileSync(getSyncConfigPath(), JSON.stringify(updated, null, 2), 'utf8');
@@ -399,6 +406,10 @@ export function setSyncConfig(config: Partial<CloudSyncConfig>): CloudSyncConfig
     console.error('[CloudSync] Failed to save sync config:', err);
   }
   return updated;
+}
+
+export function isLegacyWeakPassphraseActive(config: CloudSyncConfig = getSyncConfig()): boolean {
+  return !config.syncPassphrase || config.syncPassphrase === DEFAULT_PASSPHRASE || config.keyDerivationVersion !== 2;
 }
 
 export function getActiveLicenseKey(): string | null {
@@ -785,7 +796,8 @@ export async function uploadProfileToCloud(
           message: 'Encrypting archive with client-side zero-knowledge envelope encryption...'
         });
 
-        return encryptProfileArchive(rawPayloadBuffer, effectivePassphrase);
+        const keyVer = getSyncConfig().keyDerivationVersion === 2 ? 2 : 1;
+        return encryptProfileArchive(rawPayloadBuffer, effectivePassphrase, { keyVersion: keyVer });
       };
 
       let activeMode: CloudSyncMode = syncMode;

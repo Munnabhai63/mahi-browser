@@ -24,6 +24,11 @@ export interface ParsedAccountItem {
   proxy?: ParsedProxyInfo;
   cookies?: CookieItem[];
   userAgent?: string;
+  timezone?: string;
+  language?: string;
+  screenWidth?: number;
+  screenHeight?: number;
+  sourceFormat?: 'gologin' | 'adspower' | 'dolphin' | 'generic';
   notes?: string;
   tags?: string[];
   rawLine?: string;
@@ -141,17 +146,191 @@ export function parseJsonCookies(rawJson: string | any[], profileId = ''): Cooki
   return cookies;
 }
 
+export type DetectedImportFormat = 'gologin' | 'adspower' | 'dolphin' | 'json' | 'csv' | 'delimited';
+
+function normalizeProtocol(raw: unknown): ParsedProxyInfo['protocol'] {
+  const s = String(raw || '').trim().toLowerCase();
+  if (s === 'socks5' || s.startsWith('socks5')) return 'socks5';
+  if (s === 'socks4' || s.startsWith('socks4')) return 'socks4';
+  if (s === 'https') return 'https';
+  return 'http';
+}
+
+function mapCompetitorJsonItems(rawObj: any): { format: 'gologin' | 'adspower' | 'dolphin' | null; items: any[] } | null {
+  if (!rawObj || typeof rawObj !== 'object') return null;
+
+  // GoLogin object export: { profiles: [...] } or single GoLogin profile
+  if (Array.isArray(rawObj.profiles)) {
+    return { format: 'gologin', items: rawObj.profiles };
+  }
+  // AdsPower object export: { list: [...] } or { data: { list: [...] } }
+  if (Array.isArray(rawObj.list)) {
+    return { format: 'adspower', items: rawObj.list };
+  }
+  if (rawObj.data && Array.isArray(rawObj.data.list)) {
+    return { format: 'adspower', items: rawObj.data.list };
+  }
+  // Dolphin{anty} object export: { data: [...] }
+  if (Array.isArray(rawObj.data)) {
+    return { format: 'dolphin', items: rawObj.data };
+  }
+  if (!Array.isArray(rawObj)) return null;
+
+  const first = rawObj[0];
+  if (!first || typeof first !== 'object') return null;
+  if (first.user_proxy_config || first.fingerprint_config || first.user_id) {
+    return { format: 'adspower', items: rawObj };
+  }
+  if (first.browserType === 'anty' || (first.useragent && typeof first.useragent === 'object') || first.mainWebsite !== undefined) {
+    return { format: 'dolphin', items: rawObj };
+  }
+  if (first.navigator || first.webGLMetadata || first.proxyEnabled !== undefined) {
+    return { format: 'gologin', items: rawObj };
+  }
+  return null;
+}
+
+function parseCompetitorProfileEntry(item: any, idx: number, format: 'gologin' | 'adspower' | 'dolphin'): ParsedAccountItem {
+  if (format === 'gologin') {
+    const p = item.proxy;
+    let proxy: ParsedProxyInfo | undefined;
+    if (p && typeof p === 'object' && p.mode !== 'none' && p.host && p.port) {
+      proxy = {
+        protocol: normalizeProtocol(p.mode || p.protocol),
+        host: String(p.host),
+        port: Number(p.port) || 8080,
+        username: p.username || undefined,
+        password: p.password || undefined,
+      };
+    }
+    const ua = item.navigator?.userAgent || item.userAgent || undefined;
+    const screenRes = typeof item.navigator?.resolution === 'string' ? item.navigator.resolution.split('x') : [];
+    const sw = Number(screenRes[0]) || Number(item.navigator?.screenWidth) || undefined;
+    const sh = Number(screenRes[1]) || Number(item.navigator?.screenHeight) || undefined;
+    return {
+      name: item.name || item.profileName || `GoLogin Profile ${idx + 1}`,
+      proxy,
+      cookies: Array.isArray(item.cookies) ? parseJsonCookies(item.cookies) : undefined,
+      userAgent: ua,
+      timezone: item.timezone?.id || item.timezone || undefined,
+      language: item.navigator?.language || undefined,
+      screenWidth: sw,
+      screenHeight: sh,
+      sourceFormat: 'gologin',
+      notes: item.notes || undefined,
+      tags: Array.isArray(item.folders) && item.folders.length > 0
+        ? item.folders.map(String)
+        : (Array.isArray(item.tags) ? item.tags.map(String) : ['GoLogin', 'Imported']),
+      rawLine: JSON.stringify(item),
+    };
+  }
+
+  if (format === 'adspower') {
+    const upc = item.user_proxy_config || {};
+    let proxy: ParsedProxyInfo | undefined;
+    if (upc.proxy_type && upc.proxy_type !== 'noproxy' && upc.proxy_host && upc.proxy_port) {
+      proxy = {
+        protocol: normalizeProtocol(upc.proxy_type),
+        host: String(upc.proxy_host),
+        port: Number(upc.proxy_port) || 8080,
+        username: upc.proxy_user || undefined,
+        password: upc.proxy_password || undefined,
+      };
+    } else if (item.proxy && typeof item.proxy === 'string') {
+      proxy = parseProxyString(item.proxy);
+    }
+    const fp = item.fingerprint_config || {};
+    let cookies: CookieItem[] | undefined;
+    if (Array.isArray(item.cookie)) cookies = parseJsonCookies(item.cookie);
+    else if (typeof item.cookie === 'string' && item.cookie.trim()) cookies = parseJsonCookies(item.cookie);
+    else if (Array.isArray(item.cookies)) cookies = parseJsonCookies(item.cookies);
+    const langs = Array.isArray(fp.language) ? fp.language : undefined;
+    return {
+      name: item.name || item.user_id || item.username || `AdsPower Profile ${idx + 1}`,
+      usernameOrEmail: item.username || item.email || undefined,
+      password: item.password || undefined,
+      proxy,
+      cookies,
+      userAgent: fp.ua || item.ua || item.userAgent || undefined,
+      timezone: fp.timezone || item.timezone || undefined,
+      language: langs?.[0] || fp.page_language || undefined,
+      sourceFormat: 'adspower',
+      notes: item.remark || item.notes || undefined,
+      tags: Array.isArray(item.tags) ? item.tags.map(String) : [item.group_name || 'AdsPower', 'Imported'].filter(Boolean),
+      rawLine: JSON.stringify(item),
+    };
+  }
+
+  // Dolphin{anty}
+  const dp = item.proxy;
+  let proxy: ParsedProxyInfo | undefined;
+  if (dp && typeof dp === 'object' && dp.host && dp.port) {
+    proxy = {
+      protocol: normalizeProtocol(dp.type || dp.protocol),
+      host: String(dp.host),
+      port: Number(dp.port) || 8080,
+      username: dp.login || dp.username || undefined,
+      password: dp.password || undefined,
+    };
+  }
+  const ua = typeof item.useragent === 'object' ? item.useragent?.value : (item.useragent || item.userAgent);
+  const sw = Number(item.screen?.width) || undefined;
+  const sh = Number(item.screen?.height) || undefined;
+  let cookies: CookieItem[] | undefined;
+  if (Array.isArray(item.cookies)) cookies = parseJsonCookies(item.cookies);
+  else if (typeof item.cookies === 'string') cookies = parseJsonCookies(item.cookies);
+  return {
+    name: item.name || `Dolphin Profile ${idx + 1}`,
+    proxy,
+    cookies,
+    userAgent: ua || undefined,
+    timezone: item.timezone?.value || (typeof item.timezone === 'string' ? item.timezone : undefined),
+    language: item.locale?.value || undefined,
+    screenWidth: sw,
+    screenHeight: sh,
+    sourceFormat: 'dolphin',
+    notes: item.notes?.content || (typeof item.notes === 'string' ? item.notes : undefined),
+    tags: Array.isArray(item.tags) && item.tags.length > 0 ? item.tags.map(String) : ['Dolphin', 'Imported'],
+    rawLine: JSON.stringify(item),
+  };
+}
+
+export function detectCompetitorFormat(rawInput: string): DetectedImportFormat {
+  const trimmed = rawInput.trim();
+  if (!trimmed) return 'delimited';
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      const mapped = mapCompetitorJsonItems(parsed);
+      if (mapped?.format) return mapped.format;
+      if (Array.isArray(parsed)) return 'json';
+    } catch {}
+  }
+  const firstLine = trimmed.split(/\r?\n/)[0]?.toLowerCase() || '';
+  if (firstLine.includes(',') && (firstLine.includes('name') || firstLine.includes('proxy') || firstLine.includes('email') || firstLine.includes('proxy_host') || firstLine.includes('proxyhost'))) {
+    if (firstLine.includes('proxy_host') || firstLine.includes('user_id') || firstLine.includes('remark')) return 'adspower';
+    if (firstLine.includes('proxylogin') || firstLine.includes('proxytype')) return 'dolphin';
+    return 'csv';
+  }
+  return 'delimited';
+}
+
 /**
- * Intelligent Universal Account & Proxy Parser
+ * Intelligent Universal Account, GoLogin, AdsPower, Dolphin{anty} & Proxy Parser
  */
 export function detectAndParseAccountData(rawInput: string): ParsedAccountItem[] {
   const trimmedInput = rawInput.trim();
   if (!trimmedInput) return [];
 
-  // Check if input is a JSON array of accounts
-  if (trimmedInput.startsWith('[') && trimmedInput.endsWith(']')) {
+  // Check JSON exports (GoLogin, AdsPower, Dolphin{anty}, or generic array)
+  if ((trimmedInput.startsWith('[') && trimmedInput.endsWith(']')) || (trimmedInput.startsWith('{') && trimmedInput.endsWith('}'))) {
     try {
       const parsed = JSON.parse(trimmedInput);
+      const competitor = mapCompetitorJsonItems(parsed);
+      if (competitor && competitor.format && Array.isArray(competitor.items)) {
+        const fmt = competitor.format;
+        return competitor.items.map((item, idx) => parseCompetitorProfileEntry(item, idx, fmt));
+      }
       if (Array.isArray(parsed)) {
         return parsed.map((item, idx) => ({
           name: item.name || item.username || item.email || `Imported Profile ${idx + 1}`,
@@ -160,6 +339,7 @@ export function detectAndParseAccountData(rawInput: string): ParsedAccountItem[]
           proxy: item.proxy ? normalizeProxy(item.proxy) : undefined,
           cookies: Array.isArray(item.cookies) ? parseJsonCookies(item.cookies) : undefined,
           userAgent: item.userAgent,
+          sourceFormat: 'generic',
           notes: item.notes || (item.password ? `Username/Email: ${item.username || item.email}\nPassword: ${item.password}` : undefined),
           tags: Array.isArray(item.tags) ? item.tags : ['Imported'],
           rawLine: JSON.stringify(item),
@@ -168,14 +348,22 @@ export function detectAndParseAccountData(rawInput: string): ParsedAccountItem[]
     } catch {}
   }
 
-  // Parse Line-by-Line (TXT, CSV, Delimited)
+  // Parse Line-by-Line (TXT, CSV, Delimited, AdsPower/Dolphin CSV)
   const lines = trimmedInput.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const results: ParsedAccountItem[] = [];
 
   let isCsv = false;
   let headers: string[] = [];
 
-  if (lines.length > 0 && lines[0].toLowerCase().includes(',') && (lines[0].toLowerCase().includes('name') || lines[0].toLowerCase().includes('proxy') || lines[0].toLowerCase().includes('email'))) {
+  if (
+    lines.length > 0 &&
+    lines[0].includes(',') &&
+    (lines[0].toLowerCase().includes('name') ||
+      lines[0].toLowerCase().includes('proxy') ||
+      lines[0].toLowerCase().includes('email') ||
+      lines[0].toLowerCase().includes('host') ||
+      lines[0].toLowerCase().includes('remark'))
+  ) {
     isCsv = true;
     headers = lines[0].toLowerCase().split(',').map((h) => h.trim().replace(/^["']|["']$/g, ''));
   }
@@ -209,17 +397,25 @@ function parseCsvLine(line: string, headers: string[], rowIdx: number): ParsedAc
 
   const name = data.name || data.profilename || data.email || data.username || `Imported Profile ${rowIdx + 1}`;
   let proxy: ParsedProxyInfo | undefined;
-  if (data.proxy || data.host) {
-    const rawProxy = data.proxy || `${data.host}:${data.port || '8080'}:${data.proxyuser || ''}:${data.proxypass || ''}`;
+  const csvProxyHost = data.host || data.proxy_host || data.proxyhost;
+  const csvProxyPort = data.port || data.proxy_port || data.proxyport;
+  const csvProxyType = data.proxytype || data.proxy_type || data.protocol || 'http';
+  const csvProxyUser = data.proxyuser || data.proxy_user || data.proxylogin || '';
+  const csvProxyPass = data.proxypass || data.proxy_password || data.proxypassword || '';
+  if (data.proxy && data.proxy !== 'noproxy') {
+    proxy = parseProxyString(data.proxy);
+  } else if (csvProxyHost && csvProxyType !== 'noproxy') {
+    const rawProxy = `${normalizeProtocol(csvProxyType)}://${csvProxyHost}:${csvProxyPort || '8080'}:${csvProxyUser}:${csvProxyPass}`;
     proxy = parseProxyString(rawProxy);
   }
 
   let cookies: CookieItem[] | undefined;
-  if (data.cookies) {
-    if (data.cookies.startsWith('[')) {
-      cookies = parseJsonCookies(data.cookies);
+  const rawCookieCell = data.cookies || data.cookie;
+  if (rawCookieCell) {
+    if (rawCookieCell.startsWith('[')) {
+      cookies = parseJsonCookies(rawCookieCell);
     } else {
-      cookies = parseNetscapeCookies(data.cookies);
+      cookies = parseNetscapeCookies(rawCookieCell);
     }
   }
 
@@ -229,9 +425,10 @@ function parseCsvLine(line: string, headers: string[], rowIdx: number): ParsedAc
     password: data.password || data.pass,
     proxy,
     cookies,
-    userAgent: data.useragent || data.user_agent,
-    notes: data.notes || (data.password ? `Email/User: ${data.email || data.username}\nPassword: ${data.password}` : undefined),
-    tags: data.tags ? data.tags.split(';').map((t) => t.trim()) : ['Imported'],
+    userAgent: data.useragent || data.user_agent || data.ua,
+    timezone: data.timezone || undefined,
+    notes: data.notes || data.remark || (data.password ? `Email/User: ${data.email || data.username}\nPassword: ${data.password}` : undefined),
+    tags: data.tags ? data.tags.split(/[;|]/).map((t) => t.trim()).filter(Boolean) : ['Imported'],
     rawLine: line,
   };
 }
@@ -448,6 +645,17 @@ export async function executeBulkImport(
             ...baseDefaults.fingerprint,
             canvasNoise: true,
             audioContextNoise: true,
+          },
+          display: {
+            ...baseDefaults.display,
+            ...(acc.screenWidth && acc.screenHeight
+              ? { screenWidth: acc.screenWidth, screenHeight: acc.screenHeight }
+              : {}),
+          },
+          locale: {
+            ...baseDefaults.locale,
+            ...(acc.timezone ? { timezone: acc.timezone } : {}),
+            ...(acc.language ? { language: acc.language, languagesList: [acc.language, 'en'] } : {}),
           },
           network: {
             ...baseDefaults.network,

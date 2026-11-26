@@ -55,13 +55,18 @@ export function deriveUserSyncKey(
 /**
  * Wraps (encrypts) a 32-byte data key using the user's master key via AES-256-GCM.
  */
-export function wrapDataKey(dataKey: Buffer, userMasterKey: Buffer): string {
+export function wrapDataKey(
+  dataKey: Buffer,
+  userMasterKey: Buffer,
+  envelopeMeta?: { v?: 1 | 2; s?: string }
+): string {
   const keyIv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', userMasterKey, keyIv);
   const wrapped = Buffer.concat([cipher.update(dataKey), cipher.final()]);
   const tag = cipher.getAuthTag();
 
   return JSON.stringify({
+    ...(envelopeMeta?.v === 2 && envelopeMeta?.s ? { v: 2, s: envelopeMeta.s } : {}),
     w: wrapped.toString('hex'),
     iv: keyIv.toString('hex'),
     tag: tag.toString('hex'),
@@ -69,16 +74,27 @@ export function wrapDataKey(dataKey: Buffer, userMasterKey: Buffer): string {
 }
 
 /**
- * Unwraps (decrypts) the data key using the user's master key.
+ * Unwraps (decrypts) the data key using the user's master key (Buffer) or passphrase (derives v1 or v2 per-envelope salt).
  */
-export function unwrapDataKey(wrappedKeyJson: string, userMasterKey: Buffer): Buffer {
+export function unwrapDataKey(wrappedKeyJson: string, userMasterKey: Buffer | string): Buffer {
   try {
     const parsed = JSON.parse(wrappedKeyJson);
     const keyIv = Buffer.from(parsed.iv, 'hex');
     const keyTag = Buffer.from(parsed.tag, 'hex');
     const wrapped = Buffer.from(parsed.w, 'hex');
 
-    const decipher = crypto.createDecipheriv('aes-256-gcm', userMasterKey, keyIv);
+    let resolvedKey: Buffer;
+    if (typeof userMasterKey === 'string') {
+      if (parsed.v === 2 && typeof parsed.s === 'string' && parsed.s.length >= 16) {
+        resolvedKey = deriveUserSyncKey(userMasterKey, parsed.s);
+      } else {
+        resolvedKey = deriveUserSyncKey(userMasterKey);
+      }
+    } else {
+      resolvedKey = userMasterKey;
+    }
+
+    const decipher = crypto.createDecipheriv('aes-256-gcm', resolvedKey, keyIv);
     decipher.setAuthTag(keyTag);
     return Buffer.concat([decipher.update(wrapped), decipher.final()]);
   } catch (err: any) {
@@ -88,15 +104,26 @@ export function unwrapDataKey(wrappedKeyJson: string, userMasterKey: Buffer): Bu
 
 /**
  * Encrypts a profile archive buffer using envelope encryption (AES-256-GCM).
+ * Supports keyVersion 1 (legacy compatible) and keyVersion 2 (per-envelope random PBKDF2 salt).
  * Server and storage provider NEVER see plaintext.
  */
 export function encryptProfileArchive(
   archiveBuffer: Buffer,
-  passphraseOrMasterKey: string | Buffer
+  passphraseOrMasterKey: string | Buffer,
+  options?: { keyVersion?: 1 | 2 }
 ): EncryptedProfilePackage {
-  const masterKey = typeof passphraseOrMasterKey === 'string'
-    ? deriveUserSyncKey(passphraseOrMasterKey)
-    : passphraseOrMasterKey;
+  let masterKey: Buffer;
+  let envelopeMeta: { v?: 1 | 2; s?: string } | undefined;
+
+  if (typeof passphraseOrMasterKey === 'string' && options?.keyVersion === 2) {
+    const randomSaltHex = crypto.randomBytes(16).toString('hex');
+    masterKey = deriveUserSyncKey(passphraseOrMasterKey, randomSaltHex);
+    envelopeMeta = { v: 2, s: randomSaltHex };
+  } else if (typeof passphraseOrMasterKey === 'string') {
+    masterKey = deriveUserSyncKey(passphraseOrMasterKey);
+  } else {
+    masterKey = passphraseOrMasterKey;
+  }
 
   // 1. Generate fresh random 256-bit data key and 12-byte IV for the profile payload
   const dataKey = crypto.randomBytes(32);
@@ -108,7 +135,7 @@ export function encryptProfileArchive(
   const authTag = cipher.getAuthTag();
 
   // 3. Envelope: wrap data key with user's master key
-  const encryptedDataKey = wrapDataKey(dataKey, masterKey);
+  const encryptedDataKey = wrapDataKey(dataKey, masterKey, envelopeMeta);
 
   // 4. Calculate SHA-256 checksum of the resulting ciphertext
   const checksumSha256 = crypto.createHash('sha256').update(ciphertext).digest('hex');
@@ -123,8 +150,8 @@ export function encryptProfileArchive(
 }
 
 /**
- * Decrypts an encrypted profile package. Verifies checksum and auth tag.
- * Rejects corrupt or tampered payloads.
+ * Decrypts an encrypted profile package (supports both legacy v1 and random-salt v2 envelopes).
+ * Verifies checksum and auth tag; rejects corrupt or tampered payloads.
  */
 export function decryptProfileArchive(options: DecryptPackageOptions): Buffer {
   const { ciphertext, expectedChecksum, encryptedDataKey, iv, authTag, userMasterKey } = options;
@@ -135,13 +162,8 @@ export function decryptProfileArchive(options: DecryptPackageOptions): Buffer {
     throw new Error(`Checksum verification failed! Expected: ${expectedChecksum}, Actual: ${actualChecksum}`);
   }
 
-  // 2. Resolve Master Key
-  const masterKey = typeof userMasterKey === 'string'
-    ? deriveUserSyncKey(userMasterKey)
-    : userMasterKey;
-
-  // 3. Unwrap Data Key
-  const dataKey = unwrapDataKey(encryptedDataKey, masterKey);
+  // 2. Unwrap Data Key (auto-selects v1 or v2 per-envelope salt derivation)
+  const dataKey = unwrapDataKey(encryptedDataKey, userMasterKey);
 
   // 4. Decrypt payload
   try {

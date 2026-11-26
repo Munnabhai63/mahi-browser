@@ -21,6 +21,7 @@ export interface CloudSyncUsage {
 export interface CloudSyncConfig {
   autoSync: boolean;
   syncPassphrase: string;
+  keyDerivationVersion?: 1 | 2;
 }
 
 export interface CloudSyncProgressEvent {
