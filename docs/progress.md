@@ -1,5 +1,24 @@
 # Progress Tracker
 
+## Active Roadmap (`2026-11-28`)
+- [x] **Phase 5 (`docs/ENTERPRISE_PARITY_ROADMAP.md`):** Live VPS `.env`, Prisma `0003` + Supabase RLS (`53/53` tables), Nginx CSP/COOP parity, and CI-gated Web Dashboard deployment completed (`5A.3` R2 cutover remains pending user Cloudflare R2 credentials).
+- [ ] **Phases 6–9 (`docs/ENTERPRISE_PARITY_ROADMAP.md`):** Remaining step-by-step parity roadmap covering env-driven config & zero hardcodings (Phase 6), `: any` / silent `catch {}` / sync FS / logger / Biome warning cleanup (Phase 7), monolith splits / auth unification / legacy `.html` retirement (Phase 8), and `npm audit` / React 19 / Tailwind v4 / E2E CI gates (Phase 9).
+
+## Phase 5: Live VPS, Database Schema, Nginx CSP & Deploy Automation — P0 (2026-11-28)
+- [x] **Sub-Step 5A — VPS `.env` Security Completion (`07_BACKEND/commercial/routes/admin/owner-console-routes.ts`, `07_BACKEND/utils/cloud-env.ts`, VPS `/opt/mahi-browser/.env`):**
+  - Added `/api/v1/admin/owner/verify-totp` alias alongside `/api/v1/admin/owner/verify` and `MAHI_WEBSITE_URL` schema validation in `cloud-env.ts` (requiring `https://` in production).
+  - Configured 32-char Base32 `MAHI_OWNER_TOTP_SECRET` and `MAHI_WEBSITE_URL=https://mahibrowser.com` on VPS `/opt/mahi-browser/.env` (enrollment `otpauth://` URI saved locally outside the repo at `C:\Users\munaf\.mahi-owner-totp.uri` with user-only ACLs); kept `STORAGE_PROVIDER=local` (`5A.3` Cloudflare R2 cutover pending credentials).
+  - Verified `/api/v1/admin/owner/verify-totp` and `/api/v1/admin/owner/kill-switch` end-to-end on live `mahibrowser_gateway` (`127.0.0.1:8989`).
+- [x] **Sub-Step 5B — Prisma Migration `0003` & Live Supabase RLS (`prisma/schema.prisma`, `prisma/migrations/0003_sync_runtime_and_deltas/migration.sql`):**
+  - Added `system_runtime_state` and `system_runtime_flags` models to `prisma/schema.prisma` and created idempotent migration `0003_sync_runtime_and_deltas` covering `cloud_sync_upload_sessions.archive_format`/`manifest_hash`, `cloud_profile_deltas`, and `mobile_device_tokens.device_model`.
+  - Applied migration `0003` on live Supabase (`blpqtardobbxnepbegfn`), enforced RLS + `mahi_gateway_service_access` policies across all `53` `public` tables (`0` Supabase security advisor lints; `anon`/`authenticated` denied), synced to VPS, and verified live `POST /api/v1/sync/upload-session`, `cloud_profile_deltas`, and `system_runtime_state` reads/writes under `mahi_gateway`.
+- [x] **Sub-Step 5C — Nginx CSP/COOP Parity (`10_CONFIG/infrastructure/nginx-production.conf` + Live VPS):**
+  - Declared explicit `root /var/www/mahibrowser/dashboard/dist;` on `app.mahibrowser.com`, dropped unused `fonts.googleapis.com` / `fonts.gstatic.com` from `mahibrowser.com` CSP, tightened `app.mahibrowser.com` `script-src 'self'`, added `js|mjs|cjs` static caching/headers, added `proxy_hide_header` on `/api/`, `/v1/`, and `api.mahibrowser.com`, and enforced `Referrer-Policy`, `Permissions-Policy`, and `Cross-Origin-Opener-Policy: same-origin`.
+  - Synced to VPS `/etc/nginx/sites-available/mahibrowser.com`, validated `nginx -t`, reloaded Nginx, and verified live headers on `https://mahibrowser.com/pricing` and `https://app.mahibrowser.com/`.
+- [x] **Sub-Step 5D — CI-Gated & Automated Web Dashboard Deployment (`.github/actions/wait-for-ci/action.yml`, `.github/workflows/deploy-dashboard.yml`, `.github/workflows/deploy-gateway.yml`, `.github/workflows/deploy-landing.yml`):**
+  - Added reusable `wait-for-ci` composite action and `deploy-dashboard.yml` (`npm run build` with `MAHI_SKIP_ADB_STAGE=1` -> atomic rsync to `/var/www/mahibrowser/dashboard/dist` -> HTTP 200 smoke check on `https://app.mahibrowser.com/`).
+  - Gated `deploy-gateway.yml`, `deploy-landing.yml`, and `deploy-dashboard.yml` behind `ci-gate` requiring green `CI Verification` (`ci.yml`) on `${{ github.sha }}` while preserving the `production` GitHub environment reviewer gate (`Munnabhai63`).
+
 ## Phase 4: Frontend Performance, HttpOnly Web Auth, Landing SEO/UX & Hygiene — P1/P2 (2026-11-28)
 - [x] **Sub-Step 4A — `01_UI` Code-Splitting & `ProfilesList.tsx` Modularization (`01_UI/main.tsx`, `01_UI/App.tsx`, `01_UI/web/WebDashboardApp.tsx`, `01_UI/pages/ProfilesList.tsx`):**
   - Added `01_UI/components/PageFallback.tsx` and converted heavy pages/modals in `01_UI/main.tsx`, `01_UI/App.tsx`, and `01_UI/web/WebDashboardApp.tsx` to `React.lazy` + `<Suspense>`.

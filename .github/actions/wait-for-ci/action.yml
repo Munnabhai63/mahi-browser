@@ -1,0 +1,77 @@
+name: 'Wait for CI Verification'
+description: 'Requires CI Verification (ci.yml) to succeed on the target commit before production VPS deployment.'
+inputs:
+  workflow:
+    description: 'Workflow filename to require'
+    required: false
+    default: 'ci.yml'
+  timeout_seconds:
+    description: 'Maximum seconds to wait for CI Verification completion'
+    required: false
+    default: '900'
+runs:
+  using: 'composite'
+  steps:
+    - name: Verify CI Verification (ci.yml) Status for Commit
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        WORKFLOW_FILE: ${{ inputs.workflow }}
+        TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
+        TARGET_SHA: ${{ github.sha }}
+        EVENT_NAME: ${{ github.event_name }}
+      run: |
+        set -euo pipefail
+        DEADLINE=$(( $(date +%s) + TIMEOUT_SECONDS ))
+        APPEAR_DEADLINE=$(( $(date +%s) + 90 ))
+
+        echo "Checking $WORKFLOW_FILE for commit $TARGET_SHA (trigger: $EVENT_NAME)..."
+        while true; do
+          NOW=$(date +%s)
+          JSON=$(gh api "/repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW_FILE}/runs?head_sha=${TARGET_SHA}&per_page=20")
+
+          if [ "$EVENT_NAME" = "push" ]; then
+            RUN_INFO=$(printf '%s' "$JSON" | jq -r '
+              [.workflow_runs[] | select(.event == "push")]
+              | sort_by(.created_at)
+              | last // empty
+              | "\(.id // "")|\(.status // "")|\(.conclusion // "")|\(.html_url // "")"
+            ')
+          else
+            RUN_INFO=$(printf '%s' "$JSON" | jq -r '
+              [.workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch" or .event == "pull_request")]
+              | sort_by(.created_at)
+              | last // empty
+              | "\(.id // "")|\(.status // "")|\(.conclusion // "")|\(.html_url // "")"
+            ')
+          fi
+
+          if [ -z "$RUN_INFO" ]; then
+            if [ "$EVENT_NAME" != "push" ] || [ "$NOW" -ge "$APPEAR_DEADLINE" ]; then
+              echo "FATAL: No $WORKFLOW_FILE run found for commit $TARGET_SHA. Production deploy blocked."
+              exit 1
+            fi
+            echo "Waiting for $WORKFLOW_FILE run to register for $TARGET_SHA..."
+            sleep 10
+            continue
+          fi
+
+          IFS='|' read -r RUN_ID RUN_STATUS RUN_CONCLUSION RUN_URL <<< "$RUN_INFO"
+          echo "Observed $WORKFLOW_FILE run #$RUN_ID: status=$RUN_STATUS conclusion=$RUN_CONCLUSION ($RUN_URL)"
+
+          if [ "$RUN_STATUS" = "completed" ]; then
+            if [ "$RUN_CONCLUSION" = "success" ]; then
+              echo "CI Verification passed ($RUN_URL). Production deploy gate opened."
+              exit 0
+            fi
+            echo "FATAL: CI Verification did not succeed (conclusion=$RUN_CONCLUSION). Production deploy blocked: $RUN_URL"
+            exit 1
+          fi
+
+          if [ "$NOW" -ge "$DEADLINE" ]; then
+            echo "FATAL: Timed out waiting ${TIMEOUT_SECONDS}s for $WORKFLOW_FILE run #$RUN_ID ($RUN_URL)."
+            exit 1
+          fi
+
+          sleep 15
+        done

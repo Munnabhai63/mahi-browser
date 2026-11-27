@@ -19,6 +19,7 @@ const CloudEnvSchema = z.object({
   APP_URL: z.string().trim().optional(),
   API_URL: z.string().trim().optional(),
   WEBSITE_URL: z.string().trim().optional(),
+  MAHI_WEBSITE_URL: z.string().trim().optional(),
   CORS_ALLOW_ALL: z.string().trim().optional(),
   PAYMENT_ALLOW_TEST_ADAPTERS: z.string().trim().optional(),
   PAYMENT_PROVIDER: z.string().trim().optional(),
@@ -145,6 +146,9 @@ export function validateCloudEnv(rawEnv: NodeJS.ProcessEnv = process.env): Cloud
   }
   if (env.API_URL && !isValidHttpsUrl(env.API_URL)) {
     issues.push('API_URL must be a valid https:// URL in production.');
+  }
+  if (env.MAHI_WEBSITE_URL && !isValidHttpsUrl(env.MAHI_WEBSITE_URL)) {
+    issues.push('MAHI_WEBSITE_URL must be a valid https:// URL in production.');
   }
 
   if (issues.length > 0) {

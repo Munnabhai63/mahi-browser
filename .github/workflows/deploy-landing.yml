@@ -10,6 +10,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/deploy-landing.yml'
+      - '.github/actions/wait-for-ci/action.yml'
   workflow_dispatch:
     inputs:
       deploy_to_vps:
@@ -18,11 +19,26 @@ on:
         required: false
         default: true
 
+permissions:
+  contents: read
+  actions: read
+
 concurrency:
   group: deploy-landing
   cancel-in-progress: true
 
 jobs:
+  ci-gate:
+    name: Require Green CI Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout CI Gate Action
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions/wait-for-ci
+      - uses: ./.github/actions/wait-for-ci
+
   build-landing:
     name: Lint, Typecheck & Build Landing (Next.js 16)
     runs-on: ubuntu-latest
@@ -65,7 +81,7 @@ jobs:
 
   deploy-vps:
     name: Deploy Static Portal to Production VPS
-    needs: [build-landing]
+    needs: [ci-gate, build-landing]
     if: github.event_name == 'push' || inputs.deploy_to_vps == true
     runs-on: ubuntu-latest
     environment: production

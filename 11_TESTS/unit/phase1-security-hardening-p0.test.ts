@@ -245,6 +245,20 @@ describe('Phase 1 P0 Security Hardening — Steps 1 & 2 (TOTP Bypass, 404 Non-St
     expect(resRealGrant.status).not.toBe(401);
     expect(resRealGrant.status).not.toBe(403);
     expect(resRealGrant.status).toBe(200);
+
+    // 5. /api/v1/admin/owner/verify-totp alias behaves identically
+    const resVerifyAlias = await fetch(`${baseUrl}/api/v1/admin/owner/verify-totp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminJwt}`,
+      },
+      body: JSON.stringify({ code: liveCode }),
+    });
+    expect(resVerifyAlias.status).toBe(200);
+    const aliasCookie = resVerifyAlias.headers.get('set-cookie')?.match(/owner_session=([^;]+)/)?.[1];
+    expect(aliasCookie).toBeTruthy();
+    expect(isOwnerSession(aliasCookie!)).toBe(true);
   });
 
   it('returns real HTTP 404 for authenticated non-staff on admin/owner routes and unauthenticated on owner routes', async () => {

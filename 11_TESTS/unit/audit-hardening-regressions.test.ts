@@ -500,6 +500,8 @@ describe('Audit Hardening Regressions (P0/P1/P2)', () => {
     );
     expect(gatewayYml).toContain('Dockerfile.gateway');
     expect(gatewayYml).toContain('docker-compose.production.yml');
+    expect(gatewayYml).toContain('ci-gate');
+    expect(gatewayYml).toContain('wait-for-ci');
 
     const landingYml = fs.readFileSync(
       path.resolve(process.cwd(), '.github/workflows/deploy-landing.yml'),
@@ -507,5 +509,23 @@ describe('Audit Hardening Regressions (P0/P1/P2)', () => {
     );
     expect(landingYml).toContain('landing/out');
     expect(landingYml).toContain('VPS_SSH_KEY');
+    expect(landingYml).toContain('ci-gate');
+    expect(landingYml).toContain('wait-for-ci');
+
+    const dashboardYml = fs.readFileSync(
+      path.resolve(process.cwd(), '.github/workflows/deploy-dashboard.yml'),
+      'utf8'
+    );
+    expect(dashboardYml).toContain('npm run build');
+    expect(dashboardYml).toContain('/var/www/mahibrowser/dashboard/dist');
+    expect(dashboardYml).toContain('ci-gate');
+    expect(dashboardYml).toContain('wait-for-ci');
+
+    const ciGateAction = fs.readFileSync(
+      path.resolve(process.cwd(), '.github/actions/wait-for-ci/action.yml'),
+      'utf8'
+    );
+    expect(ciGateAction).toContain('ci.yml');
+    expect(ciGateAction).toContain('conclusion');
   });
 });

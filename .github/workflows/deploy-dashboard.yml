@@ -1,0 +1,139 @@
+name: Deploy Web Dashboard
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '01_UI/**'
+      - '08_SECURITY/**'
+      - '10_CONFIG/**'
+      - '13_ASSETS/brand/**'
+      - 'public/**'
+      - 'index.html'
+      - 'app.html'
+      - 'vite.config.ts'
+      - 'tailwind.config.js'
+      - 'postcss.config.js'
+      - 'tsconfig.json'
+      - 'tsconfig.electron.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-dashboard.yml'
+      - '.github/actions/wait-for-ci/action.yml'
+  workflow_dispatch:
+    inputs:
+      deploy_to_vps:
+        description: 'Sync built Vite dashboard dist/ to production VPS nginx docroot'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: deploy-dashboard
+  cancel-in-progress: true
+
+jobs:
+  ci-gate:
+    name: Require Green CI Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout CI Gate Action
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions/wait-for-ci
+      - uses: ./.github/actions/wait-for-ci
+
+  build-dashboard:
+    name: Typecheck & Build Vite Web Dashboard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci
+
+      - name: Build Dashboard Bundle (dist/)
+        env:
+          MAHI_SKIP_ADB_STAGE: '1'
+        run: npm run build
+
+      - name: Assert Dashboard Build Output
+        run: |
+          test -s dist/index.html
+          test -s dist/app.html
+          test -d dist/assets
+          ls -la dist/assets
+
+      - name: Upload Dashboard Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-dist
+          path: dist/
+          if-no-files-found: error
+
+  deploy-vps:
+    name: Deploy Web Dashboard to Production VPS
+    needs: [ci-gate, build-dashboard]
+    if: github.event_name == 'push' || inputs.deploy_to_vps == true
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Download Dashboard Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dashboard-dist
+          path: dist
+
+      - name: Verify VPS Secrets Configured
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ] || [ -z "$VPS_SSH_KEY" ]; then
+            echo "FATAL: Missing required VPS secrets (VPS_HOST, VPS_USER, VPS_SSH_KEY)."
+            exit 1
+          fi
+
+      - name: Setup SSH Authentication
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT || '22' }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "$PORT" -H "$HOST" >> ~/.ssh/known_hosts
+
+      - name: Atomic Rsync to VPS & Verify Live HTTP 200
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT || '22' }}
+          USER: ${{ secrets.VPS_USER }}
+          DASHBOARD_DIR: ${{ vars.VPS_DASHBOARD_DIR || '/var/www/mahibrowser/dashboard/dist' }}
+        run: |
+          STAGE_DIR="${DASHBOARD_DIR}.staging.$$"
+          ssh -p "$PORT" "$USER@$HOST" "mkdir -p '$(dirname "$DASHBOARD_DIR")' '$STAGE_DIR'"
+          rsync -avz --delete -e "ssh -p $PORT" dist/ "$USER@$HOST:$STAGE_DIR/"
+          ssh -p "$PORT" "$USER@$HOST" "rm -rf '${DASHBOARD_DIR}.prev' && if [ -d '$DASHBOARD_DIR' ]; then mv '$DASHBOARD_DIR' '${DASHBOARD_DIR}.prev'; fi && mv '$STAGE_DIR' '$DASHBOARD_DIR' && chown -R www-data:www-data '$DASHBOARD_DIR' && chmod -R a+rX '$DASHBOARD_DIR' && rm -rf '${DASHBOARD_DIR}.prev'"
+
+          STATUS_CODE=$(curl -sS -o /dev/null -w "%{http_code}" https://app.mahibrowser.com/)
+          echo "https://app.mahibrowser.com/ -> HTTP $STATUS_CODE"
+          test "$STATUS_CODE" = "200"
+          curl -fsS https://app.mahibrowser.com/ | grep -q 'assets/'

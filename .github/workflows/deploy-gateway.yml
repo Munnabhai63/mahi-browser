@@ -18,6 +18,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/deploy-gateway.yml'
+      - '.github/actions/wait-for-ci/action.yml'
   workflow_dispatch:
     inputs:
       deploy_to_vps:
@@ -26,11 +27,26 @@ on:
         required: false
         default: true
 
+permissions:
+  contents: read
+  actions: read
+
 concurrency:
   group: deploy-gateway
   cancel-in-progress: true
 
 jobs:
+  ci-gate:
+    name: Require Green CI Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout CI Gate Action
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions/wait-for-ci
+      - uses: ./.github/actions/wait-for-ci
+
   build-and-verify:
     name: Typecheck & Docker Build (Dockerfile.gateway)
     runs-on: ubuntu-latest
@@ -58,7 +74,7 @@ jobs:
 
   deploy-vps:
     name: Deploy Gateway to Production VPS
-    needs: [build-and-verify]
+    needs: [ci-gate, build-and-verify]
     if: github.event_name == 'push' || inputs.deploy_to_vps == true
     runs-on: ubuntu-latest
     environment: production

@@ -929,3 +929,23 @@ model mobile_notifications {
   @@index([user_id])
   @@index([category])
 }
+
+// ============================================================================
+// 9. DISTRIBUTED RUNTIME STATE & SYSTEM FLAGS
+// ============================================================================
+
+model system_runtime_state {
+  state_key     String  @id
+  value_json    String?
+  count         Int     @default(0)
+  expires_at_ms BigInt  @default(0)
+
+  @@index([expires_at_ms])
+}
+
+model system_runtime_flags {
+  flag_key   String  @id
+  value_json String
+  updated_by String?
+  updated_at String
+}

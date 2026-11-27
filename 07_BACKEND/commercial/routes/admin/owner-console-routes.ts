@@ -81,7 +81,10 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
   const { req, res, pathname, method } = ctx;
   if (!pathname.startsWith('/api/v1/admin/owner/')) return false;
 
-  if (pathname === '/api/v1/admin/owner/verify' && method === 'POST') {
+  if (
+    (pathname === '/api/v1/admin/owner/verify' || pathname === '/api/v1/admin/owner/verify-totp') &&
+    method === 'POST'
+  ) {
     const rawBody = await parseBody(req);
     const adminGate = await requireAdminAccess(req, res, rawBody, { hideUnauthenticated: true });
     if (!adminGate.ok) return true;
