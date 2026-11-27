@@ -87,7 +87,7 @@ export function registerUser(dto: RegisterUserDTO, ipAddress?: string, explicitI
 
   const intent = dto.intent || 'free';
   const isTrial = intent === 'trial';
-  const targetPlan = dto.planId || (isTrial ? 'professional_50' : 'plan_free');
+  const targetPlan = intent === 'paid' ? 'plan_free' : (dto.planId || (isTrial ? 'professional_50' : 'plan_free'));
   const trialUsed = isTrial ? 1 : 0;
   const trialStartedAt = isTrial ? now : null;
   const trialExpiresAt = isTrial ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;

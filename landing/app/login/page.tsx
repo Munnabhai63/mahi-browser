@@ -1,14 +1,30 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { BRAND } from '../../lib/brand';
+import { sanitizeSafeRedirect } from '../../lib/redirect';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [redirectPath, setRedirectPath] = useState<string | null>(null);
+  const [planParam, setPlanParam] = useState<string | null>(null);
+  const [currencyParam, setCurrencyParam] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const safe = sanitizeSafeRedirect(params.get('redirect'));
+      const plan = params.get('plan');
+      const currency = params.get('currency');
+      setRedirectPath(safe);
+      if (plan) setPlanParam(plan);
+      if (currency) setCurrencyParam(currency);
+    }
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,6 +42,10 @@ export default function LoginPage() {
       if (resp.ok && data.token) {
         localStorage.setItem('mahi_auth_token', data.token);
         localStorage.setItem('mahi_access_token', data.token);
+        if (redirectPath) {
+          window.location.href = redirectPath;
+          return;
+        }
         // Pass token via URL fragment (#token=) so it is never sent in HTTP requests/logs;
         // full HttpOnly cookie session migration is scheduled for Phase 3.
         window.location.href = `${BRAND.appUrl}/overview#token=${encodeURIComponent(data.token)}`;
@@ -46,10 +66,25 @@ export default function LoginPage() {
   };
 
   const handleGoogleOAuth = () => {
-    window.location.href = `${BRAND.apiUrl}/api/v1/auth/google/start?returnUrl=${encodeURIComponent(
-      `${BRAND.website}/download`
-    )}`;
+    const resolvedReturnUrl = redirectPath
+      ? (redirectPath.startsWith('https://') ? redirectPath : `${BRAND.website}${redirectPath}`)
+      : `${BRAND.website}/download`;
+    const query = new URLSearchParams();
+    query.set('returnUrl', resolvedReturnUrl);
+    if (planParam) {
+      query.set('plan', planParam);
+    }
+    if (redirectPath?.startsWith('/pricing')) {
+      query.set('intent', 'paid');
+    }
+    window.location.href = `${BRAND.apiUrl}/api/v1/auth/google/start?${query.toString()}`;
   };
+
+  const signupQuery = new URLSearchParams();
+  if (planParam) signupQuery.set('plan', planParam);
+  if (currencyParam) signupQuery.set('currency', currencyParam);
+  if (redirectPath) signupQuery.set('redirect', redirectPath);
+  const signupHref = signupQuery.toString() ? `/signup?${signupQuery.toString()}` : '/signup';
 
   return (
     <div className="relative min-h-screen flex items-center justify-center bg-[#030303] text-white selection:bg-white selection:text-black px-4 py-24 sm:py-32 overflow-hidden">
@@ -205,7 +240,7 @@ export default function LoginPage() {
         {/* Card Footer Link */}
         <p className="text-center text-[13px] text-zinc-400 mt-6 pt-4 border-t border-white/5">
           Don&apos;t have an account?{' '}
-          <Link href="/signup" className="text-white hover:underline underline-offset-4 font-medium transition-colors">
+          <Link href={signupHref} className="text-white hover:underline underline-offset-4 font-medium transition-colors">
             Create account
           </Link>
         </p>

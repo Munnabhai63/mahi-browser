@@ -16,6 +16,7 @@ import {
   PlanPrice,
   FeatureCapability,
   TrialConfig,
+  BillingCycleType,
 } from '../../10_CONFIG/shared/types/commercial.js';
 
 // ─── Capability Templates ──────────────────────────────────────────────────────
@@ -43,6 +44,12 @@ const FREE_CAPABILITIES: Record<FeatureCapability, boolean> = {
   'stealth.multiCore': false,
   'stealth.fakeVideoKYC': false,
   'api.localDaemon': false,
+};
+
+const MAHI_STARTER_CAPABILITIES: Record<FeatureCapability, boolean> = {
+  ...FREE_CAPABILITIES,
+  'profile.multiple': true,
+  'advanced.fingerprint': true,
 };
 
 const PRO_10_CAPABILITIES: Record<FeatureCapability, boolean> = {
@@ -138,6 +145,8 @@ export const CANONICAL_PLAN_CATALOG: Record<CanonicalPlanId, CanonicalPlanDefini
     automationConcurrency: 0,
     apiRequestsMonthly: 0,
     workspaceLimit: 0,
+    proxySlotLimit: 15,
+    cloudBackupLimit: 0,
     capabilities: FREE_CAPABILITIES,
     status: 'ACTIVE',
     displayOrder: 0,
@@ -338,7 +347,11 @@ export const CANONICAL_PLAN_CATALOG: Record<CanonicalPlanId, CanonicalPlanDefini
     automationConcurrency: 3,
     apiRequestsMonthly: 0,
     workspaceLimit: 0,
-    capabilities: PRO_25_CAPABILITIES,
+    durationDays: 30,
+    defaultBillingCycle: 'MONTHLY',
+    proxySlotLimit: 25,
+    cloudBackupLimit: 0,
+    capabilities: MAHI_STARTER_CAPABILITIES,
     status: 'ACTIVE',
     displayOrder: 10,
   },
@@ -358,6 +371,10 @@ export const CANONICAL_PLAN_CATALOG: Record<CanonicalPlanId, CanonicalPlanDefini
     automationConcurrency: 10,
     apiRequestsMonthly: 1000,
     workspaceLimit: 0,
+    durationDays: 180,
+    defaultBillingCycle: 'SEMI_ANNUAL',
+    proxySlotLimit: -1,
+    cloudBackupLimit: 25,
     capabilities: PRO_100_CAPABILITIES,
     status: 'ACTIVE',
     displayOrder: 11,
@@ -378,6 +395,10 @@ export const CANONICAL_PLAN_CATALOG: Record<CanonicalPlanId, CanonicalPlanDefini
     automationConcurrency: 25,
     apiRequestsMonthly: 10000,
     workspaceLimit: 2,
+    durationDays: 365,
+    defaultBillingCycle: 'ANNUAL',
+    proxySlotLimit: -1,
+    cloudBackupLimit: -1,
     capabilities: BUSINESS_ALL_CAPABILITIES,
     status: 'ACTIVE',
     displayOrder: 12,
@@ -585,40 +606,16 @@ export function resolveCapabilitiesForCanonicalPlan(
   planId: string
 ): Record<FeatureCapability, boolean> {
   const normId = (planId || '').toLowerCase().trim();
+  if (!normId) {
+    return { ...FREE_CAPABILITIES };
+  }
 
   // Direct canonical lookup
   const canonical = CANONICAL_PLAN_CATALOG[normId as CanonicalPlanId];
   if (canonical) return { ...canonical.capabilities };
 
-  // Comprehensive alias and legacy mapping
-  const legacyMap: Record<string, CanonicalPlanId> = {
-    'free': 'free',
-    'plan_free': 'free',
-    'starter': 'professional_10',
-    'pro_10': 'professional_10',
-    'pro_25': 'professional_25',
-    'pro_50': 'professional_50',
-    'pro_100': 'professional_100',
-    'pro': 'professional_100',
-    'trial': 'professional_100',
-    'plan_pro': 'professional_100',
-    'team': 'business_growth',
-    'team_50': 'business_starter',
-    'team_100': 'business_growth',
-    'team_200': 'business_scale',
-    'team_300': 'business_enterprise',
-    'business': 'business_growth',
-    'business_starter': 'business_starter',
-    'business_growth': 'business_growth',
-    'business_scale': 'business_scale',
-    'business_enterprise': 'business_enterprise',
-    'plan_business': 'business_growth',
-    'enterprise': 'business_enterprise',
-    'enterprise_custom': 'enterprise_custom',
-    'plan_enterprise': 'enterprise_custom',
-  };
-
-  const mappedId = legacyMap[normId];
+  // Resolve short & legacy aliases via canonical mapper
+  const mappedId = legacyPlanIdToCanonical(normId);
   if (mappedId && CANONICAL_PLAN_CATALOG[mappedId]) {
     return { ...CANONICAL_PLAN_CATALOG[mappedId].capabilities };
   }
@@ -693,7 +690,7 @@ export const INITIAL_PLAN_PRICES_USD: Record<CanonicalPlanId, { monthlyCents: nu
 
 export interface OrderTotalOptions {
   planId: string;
-  billingCycle: 'MONTHLY' | 'ANNUAL';
+  billingCycle: BillingCycleType | string;
   currency?: 'INR' | 'USD';
   extraMembers?: number;
   extraProxyGb?: number;
@@ -701,7 +698,7 @@ export interface OrderTotalOptions {
 
 export interface AuthoritativeOrderTotal {
   planId: CanonicalPlanId;
-  billingCycle: 'MONTHLY' | 'ANNUAL';
+  billingCycle: BillingCycleType;
   currency: 'INR' | 'USD';
   baseMonthlyRateMinor: number;
   discountedMonthlyRateMinor: number;
@@ -719,12 +716,66 @@ export interface AuthoritativeOrderTotal {
 }
 
 /**
+ * Normalizes billing cycle inputs (including 6-month / semi-annual aliases)
+ * against the target plan's canonical term structure.
+ */
+export function normalizeBillingCycle(rawCycle?: string, planId?: string): BillingCycleType {
+  const canonicalId = planId ? legacyPlanIdToCanonical(planId) : null;
+  const upper = (rawCycle || '').toUpperCase().trim();
+
+  if (upper === 'SEMI_ANNUAL' || upper === 'SEMIANNUAL' || upper === '6_MONTHS' || upper === '6MONTHS' || upper === '6M' || upper === 'HALF_YEARLY') {
+    return 'SEMI_ANNUAL';
+  }
+  if (upper === 'QUARTERLY' || upper === '3_MONTHS' || upper === '3MONTHS' || upper === '3M') {
+    return 'QUARTERLY';
+  }
+  if (upper === 'MONTHLY' || upper === '1_MONTH' || upper === '1MONTH' || upper === '1M') {
+    return canonicalId === 'mahi_growth' ? 'SEMI_ANNUAL' : 'MONTHLY';
+  }
+  if (upper === 'ANNUAL' || upper === 'YEARLY' || upper === '1_YEAR' || upper === '1YEAR' || upper === '1Y') {
+    if (canonicalId === 'mahi_growth') return 'SEMI_ANNUAL';
+    return 'ANNUAL';
+  }
+
+  if (canonicalId && CANONICAL_PLAN_CATALOG[canonicalId]?.defaultBillingCycle) {
+    return CANONICAL_PLAN_CATALOG[canonicalId].defaultBillingCycle!;
+  }
+  return 'MONTHLY';
+}
+
+/**
+ * Resolves exact subscription validity duration in days based on canonical plan and billing cycle.
+ */
+export function resolveSubscriptionDurationDays(planId: string, billingCycle?: string): number {
+  const canonicalId = legacyPlanIdToCanonical(planId) || 'free';
+  const cycle = normalizeBillingCycle(billingCycle, planId);
+
+  if (canonicalId === 'mahi_growth') {
+    return 180;
+  }
+  if (canonicalId === 'mahi_ultimate') {
+    return 365;
+  }
+  if (canonicalId === 'mahi_starter') {
+    if (cycle === 'QUARTERLY') return 90;
+    if (cycle === 'SEMI_ANNUAL') return 180;
+    return CANONICAL_PLAN_CATALOG.mahi_starter.durationDays || 30;
+  }
+
+  if (cycle === 'ANNUAL') return 365;
+  if (cycle === 'SEMI_ANNUAL') return 180;
+  if (cycle === 'QUARTERLY') return 90;
+  return 30;
+}
+
+/**
  * Authoritative minor-unit order total calculation.
- * 
+ *
  * Rules:
- * - Annual discount: 50% off monthly base rate: Math.round(monthlyBaseMinor * 0.5)
- * - Annual billed total: 12 months (baseChargeMinor = discountedMonthlyRateMinor * 12)
- * - Add-ons billed per month (multiplied by 12 on annual cycle)
+ * - Fixed-term MAHI plans (mahi_starter / mahi_growth / mahi_ultimate): read authoritative
+ *   term price directly from INITIAL_PLAN_PRICES / INITIAL_PLAN_PRICES_USD (zero double-discounting).
+ * - Legacy pro/business per-month plans: annual discount = 50% off monthly base rate × 12 months.
+ * - Add-ons billed per month × billingMonths.
  */
 export function calculateAuthoritativeOrderTotal(options: OrderTotalOptions): AuthoritativeOrderTotal {
   const resolved = legacyPlanIdToCanonical(options.planId);
@@ -736,31 +787,54 @@ export function calculateAuthoritativeOrderTotal(options: OrderTotalOptions): Au
   }
   const canonicalId = resolved;
   const currency = options.currency === 'USD' ? 'USD' : 'INR';
-  const billingCycle = options.billingCycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY';
+  const billingCycle = normalizeBillingCycle(options.billingCycle, canonicalId);
   const extraMembers = Math.max(0, Math.floor(options.extraMembers || 0));
   const extraProxyGb = Math.max(0, Math.floor(options.extraProxyGb || 0));
 
-  let baseMonthlyRateMinor = 0;
-  if (currency === 'INR') {
-    const entry = INITIAL_PLAN_PRICES.find((p) => p.planId === canonicalId);
-    baseMonthlyRateMinor = entry?.monthlyPricePaise || 0;
-  } else {
-    baseMonthlyRateMinor = INITIAL_PLAN_PRICES_USD[canonicalId]?.monthlyCents || 0;
-  }
+  const inrEntry = INITIAL_PLAN_PRICES.find((p) => p.planId === canonicalId);
+  const usdEntry = INITIAL_PLAN_PRICES_USD[canonicalId];
+
+  const baseMonthlyRateMinor =
+    currency === 'INR' ? (inrEntry?.monthlyPricePaise || 0) : (usdEntry?.monthlyCents || 0);
+  const authoritativeTermRateMinor =
+    currency === 'INR' ? (inrEntry?.annualPricePaise || 0) : (usdEntry?.annualCents || 0);
 
   const extraMemberMonthlyMinor =
     currency === 'USD' ? ADDON_PRICING.EXTRA_MEMBER.monthlyPriceCents : ADDON_PRICING.EXTRA_MEMBER.monthlyPricePaise;
   const extraProxyGbMonthlyMinor =
     currency === 'USD' ? ADDON_PRICING.EXTRA_PROXY_GB.monthlyPriceCents : ADDON_PRICING.EXTRA_PROXY_GB.monthlyPricePaise;
 
-  const discountPercent = billingCycle === 'ANNUAL' ? INITIAL_ANNUAL_DISCOUNT_PERCENT : 0;
-  const discountedMonthlyRateMinor =
-    billingCycle === 'ANNUAL'
-      ? Math.round(baseMonthlyRateMinor * (1 - discountPercent / 100))
-      : baseMonthlyRateMinor;
+  let discountPercent = 0;
+  let discountedMonthlyRateMinor = baseMonthlyRateMinor;
+  let billingMonths = 1;
+  let baseChargeMinor = baseMonthlyRateMinor;
 
-  const billingMonths = billingCycle === 'ANNUAL' ? 12 : 1;
-  const baseChargeMinor = discountedMonthlyRateMinor * billingMonths;
+  if (canonicalId === 'mahi_ultimate') {
+    billingMonths = 12;
+    baseChargeMinor = authoritativeTermRateMinor || baseMonthlyRateMinor * 12;
+    discountedMonthlyRateMinor = Math.round(baseChargeMinor / 12);
+    discountPercent = 79;
+  } else if (canonicalId === 'mahi_growth') {
+    billingMonths = 6;
+    baseChargeMinor = authoritativeTermRateMinor || baseMonthlyRateMinor * 6;
+    discountedMonthlyRateMinor = Math.round(baseChargeMinor / 6);
+    discountPercent = 72;
+  } else if (canonicalId === 'mahi_starter') {
+    billingMonths = billingCycle === 'QUARTERLY' ? 3 : billingCycle === 'SEMI_ANNUAL' ? 6 : 1;
+    discountedMonthlyRateMinor = baseMonthlyRateMinor;
+    baseChargeMinor = baseMonthlyRateMinor * billingMonths;
+    discountPercent = 0;
+  } else {
+    discountPercent = billingCycle === 'ANNUAL' ? INITIAL_ANNUAL_DISCOUNT_PERCENT : 0;
+    discountedMonthlyRateMinor =
+      billingCycle === 'ANNUAL'
+        ? Math.round(baseMonthlyRateMinor * (1 - discountPercent / 100))
+        : baseMonthlyRateMinor;
+    billingMonths =
+      billingCycle === 'ANNUAL' ? 12 : billingCycle === 'SEMI_ANNUAL' ? 6 : billingCycle === 'QUARTERLY' ? 3 : 1;
+    baseChargeMinor = discountedMonthlyRateMinor * billingMonths;
+  }
+
   const extraMembersTotalMinor = extraMembers * extraMemberMonthlyMinor * billingMonths;
   const extraProxyGbTotalMinor = extraProxyGb * extraProxyGbMonthlyMinor * billingMonths;
 

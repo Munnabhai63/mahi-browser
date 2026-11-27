@@ -9,6 +9,7 @@ import { getInstallSecrets } from './install-secrets.js';
 import { ADMIN_API_BASE_URL } from './license-status-service.js';
 import { CONTACT_CONFIG } from '../10_CONFIG/contact-config.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
+import { getCanonicalPlan, legacyPlanIdToCanonical } from '../07_BACKEND/commercial/canonical-plan-catalog.js';
 
 // ============================================================================
 // CONSTANTS & PUBLIC KEY FOR SIGNATURE VERIFICATION
@@ -1057,11 +1058,21 @@ export function getAccountPlanLimits(): {
   const plan = (cached && isValidSub) ? cached.plan.toLowerCase() : 'free';
   const isBiz = isValidSub && isBusinessPlan(plan);
   const isPro = isValidSub;
-  const tier: 'FREE' | 'PRO' | 'BUSINESS' = isBiz ? 'BUSINESS' : isPro ? 'PRO' : 'FREE';
+  const canonicalId = isValidSub ? legacyPlanIdToCanonical(plan) : 'free';
+  const canonicalDef = canonicalId ? getCanonicalPlan(canonicalId) : null;
+  const tier: 'FREE' | 'PRO' | 'BUSINESS' = isBiz
+    ? 'BUSINESS'
+    : canonicalDef?.tier === 'BUSINESS'
+      ? 'BUSINESS'
+      : isPro
+        ? 'PRO'
+        : 'FREE';
 
   let maxProfiles = 15;
   if (isValidSub && cached?.profile_limit && typeof cached.profile_limit === 'number' && cached.profile_limit > 0) {
     maxProfiles = cached.profile_limit;
+  } else if (isValidSub && canonicalDef && canonicalDef.profileLimit > 0) {
+    maxProfiles = canonicalDef.profileLimit;
   } else if (isBiz) {
     maxProfiles = 200;
   } else if (isPro) {

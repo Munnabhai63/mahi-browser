@@ -39,15 +39,53 @@ function getAdminApiBaseUrl(): string {
   );
 }
 
-const DESKTOP_PLANS = [
-  { id: 'professional_10', name: 'Professional 10', profiles: 10, rateMonthly: 599 },
-  { id: 'professional_25', name: 'Professional 25', profiles: 25, rateMonthly: 1499 },
-  { id: 'professional_50', name: 'Professional 50', profiles: 50, rateMonthly: 2999 },
-  { id: 'professional_100', name: 'Professional 100', profiles: 100, rateMonthly: 5999 },
-  { id: 'business_starter', name: 'Team 50 (5 Seats)', profiles: 50, rateMonthly: 2999 },
-  { id: 'business_growth', name: 'Team 100 (10 Seats)', profiles: 100, rateMonthly: 3999 },
-  { id: 'business_scale', name: 'Team 200 (20 Seats)', profiles: 200, rateMonthly: 4999 },
-  { id: 'business_enterprise', name: 'Team 300 (Unlimited)', profiles: 300, rateMonthly: 5999 },
+type CanonicalBillingCycle = 'MONTHLY' | 'SEMI_ANNUAL' | 'ANNUAL';
+
+interface DesktopPlanOption {
+  id: 'mahi_starter' | 'mahi_growth' | 'mahi_ultimate';
+  name: string;
+  profiles: number;
+  concurrent: number;
+  priceInr: number;
+  billingCycle: CanonicalBillingCycle;
+  durationLabel: string;
+  rateSubtext: string;
+  badge?: string;
+}
+
+const DESKTOP_PLANS: DesktopPlanOption[] = [
+  {
+    id: 'mahi_starter',
+    name: 'Starter',
+    profiles: 25,
+    concurrent: 3,
+    priceInr: 599,
+    billingCycle: 'MONTHLY',
+    durationLabel: '1 Month',
+    rateSubtext: '₹599/mo • 25 Proxy Slots',
+  },
+  {
+    id: 'mahi_growth',
+    name: 'Growth',
+    profiles: 100,
+    concurrent: 10,
+    priceInr: 999,
+    billingCycle: 'SEMI_ANNUAL',
+    durationLabel: '6 Months',
+    rateSubtext: '₹166/mo (Save 72%) • 25 Cloud Backups',
+    badge: 'Popular',
+  },
+  {
+    id: 'mahi_ultimate',
+    name: 'Ultimate',
+    profiles: 1000000,
+    concurrent: 25,
+    priceInr: 1499,
+    billingCycle: 'ANNUAL',
+    durationLabel: '1 Year',
+    rateSubtext: '₹125/mo (Save 79%) • Unlimited Backup & 2 Devices',
+    badge: 'Best Value',
+  },
 ];
 
 function formatAuthError(err: any): string {
@@ -140,8 +178,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
   const [myLicense, setMyLicense] = useState<MyLicenseResponse | null>(null);
 
   // Manual UPI payment submission states
-  const [selectedPlanId, setSelectedPlanId] = useState('professional_10');
-  const [selectedBillingCycle, setSelectedBillingCycle] = useState<'MONTHLY' | 'ANNUAL'>('ANNUAL');
+  const [selectedPlanId, setSelectedPlanId] = useState<'mahi_starter' | 'mahi_growth' | 'mahi_ultimate'>('mahi_growth');
+  const [selectedBillingCycle, setSelectedBillingCycle] = useState<CanonicalBillingCycle>('SEMI_ANNUAL');
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [utrInput, setUtrInput] = useState('');
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
@@ -168,33 +206,40 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
   const dynamicPlans = React.useMemo(() => {
     if (!pricingCatalog) return DESKTOP_PLANS;
-    const items: Array<{ id: string; name: string; profiles: number; rateMonthly: number }> = [];
-    if (Array.isArray(pricingCatalog.personal)) {
-      for (const p of pricingCatalog.personal) {
-        items.push({
-          id: p.planId,
-          name: p.displayName,
-          profiles: p.profileLimit,
-          rateMonthly: Math.round((p.monthlyPricePaise || 0) / 100),
-        });
-      }
-    }
-    if (Array.isArray(pricingCatalog.business)) {
-      for (const p of pricingCatalog.business) {
-        items.push({
-          id: p.planId,
-          name: `${p.displayName} (${p.seatLimit ? `${p.seatLimit} Seats` : 'Team'})`,
-          profiles: p.profileLimit,
-          rateMonthly: Math.round((p.monthlyPricePaise || 0) / 100),
-        });
-      }
-    }
-    return items.length > 0 ? items : DESKTOP_PLANS;
+    const remoteRows = [
+      ...(Array.isArray(pricingCatalog.personal) ? pricingCatalog.personal : []),
+      ...(Array.isArray(pricingCatalog.business) ? pricingCatalog.business : []),
+    ];
+    return DESKTOP_PLANS.map((basePlan) => {
+      const remote = remoteRows.find((r: any) => r?.planId === basePlan.id);
+      if (!remote) return basePlan;
+      const authoritativePaise =
+        basePlan.billingCycle === 'MONTHLY'
+          ? remote.monthlyPricePaise
+          : remote.annualPricePaise || remote.monthlyPricePaise;
+      const remotePriceInr =
+        typeof authoritativePaise === 'number' && authoritativePaise > 0
+          ? Math.round(authoritativePaise / 100)
+          : basePlan.priceInr;
+      return {
+        ...basePlan,
+        name: remote.displayName || basePlan.name,
+        profiles:
+          typeof remote.profileLimit === 'number' && remote.profileLimit > 0
+            ? remote.profileLimit
+            : basePlan.profiles,
+        priceInr: remotePriceInr,
+      };
+    });
   }, [pricingCatalog]);
 
-  const activePlanMeta = dynamicPlans.find(p => p.id === selectedPlanId) || dynamicPlans[0];
-  const effectiveMonthlyInr = selectedBillingCycle === 'ANNUAL' ? Math.round(activePlanMeta.rateMonthly * 0.5) : activePlanMeta.rateMonthly;
-  const priceInr = selectedBillingCycle === 'ANNUAL' ? effectiveMonthlyInr * 12 : effectiveMonthlyInr;
+  const activePlanMeta = dynamicPlans.find((p) => p.id === selectedPlanId) || dynamicPlans[1] || dynamicPlans[0];
+  const priceInr = activePlanMeta.priceInr;
+
+  const handleSelectPlan = (plan: DesktopPlanOption) => {
+    setSelectedPlanId(plan.id);
+    setSelectedBillingCycle(plan.billingCycle);
+  };
 
   const latestPayment = (paymentHistory && paymentHistory.length > 0) ? paymentHistory[0] : null;
 
@@ -224,9 +269,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
   useEffect(() => {
     if (selectedPlanTier === 'BUSINESS') {
-      setSelectedPlanId('business_starter');
+      setSelectedPlanId('mahi_ultimate');
+      setSelectedBillingCycle('ANNUAL');
     } else if (selectedPlanTier === 'PRO') {
-      setSelectedPlanId('professional_50');
+      setSelectedPlanId('mahi_growth');
+      setSelectedBillingCycle('SEMI_ANNUAL');
     }
   }, [selectedPlanTier]);
 
@@ -848,6 +895,21 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                         <Users size={13} /> {currentPlan.toUpperCase()} ACTIVE
                       </span>
                     )}
+                    {(currentPlan === 'mahi_ultimate' || currentPlan === 'ultimate') && (
+                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
+                        <Zap size={13} /> ULTIMATE ACTIVE
+                      </span>
+                    )}
+                    {(currentPlan === 'mahi_growth' || currentPlan === 'growth') && (
+                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                        <Zap size={13} /> GROWTH ACTIVE
+                      </span>
+                    )}
+                    {(currentPlan === 'mahi_starter' || currentPlan === 'starter') && (
+                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-teal-500/20 text-teal-300 border border-teal-500/30 flex items-center gap-1">
+                        <Zap size={13} /> STARTER ACTIVE
+                      </span>
+                    )}
                     {(currentPlan === 'pro' || currentPlan.startsWith('pro_') || currentPlan.startsWith('professional_')) && (
                       <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                         <Zap size={13} /> {currentPlan.startsWith('professional_') ? currentPlan.replace('_', ' ').toUpperCase() : 'PRO'} ACTIVE
@@ -858,18 +920,35 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                         <Sparkles size={13} /> 7-DAY TRIAL {trialStatus?.daysRemaining ? `(${trialStatus.daysRemaining}d left)` : ''}
                       </span>
                     )}
-                    {currentPlan !== 'pro' && currentPlan !== 'trial' && !currentPlan.startsWith('pro_') && !currentPlan.startsWith('professional_') && currentPlan !== 'business' && !currentPlan.startsWith('business_') && currentPlan !== 'team' && currentPlan !== 'enterprise' && (
-                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-700 text-slate-300 border border-slate-600">
-                        FREE PLAN ({planLimits?.maxProfiles || 15} Profiles)
-                      </span>
-                    )}
+                    {currentPlan !== 'pro' &&
+                      currentPlan !== 'trial' &&
+                      currentPlan !== 'starter' &&
+                      currentPlan !== 'mahi_starter' &&
+                      currentPlan !== 'growth' &&
+                      currentPlan !== 'mahi_growth' &&
+                      currentPlan !== 'ultimate' &&
+                      currentPlan !== 'mahi_ultimate' &&
+                      !currentPlan.startsWith('pro_') &&
+                      !currentPlan.startsWith('professional_') &&
+                      currentPlan !== 'business' &&
+                      !currentPlan.startsWith('business_') &&
+                      currentPlan !== 'team' &&
+                      currentPlan !== 'enterprise' && (
+                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-700 text-slate-300 border border-slate-600">
+                          FREE PLAN ({planLimits?.maxProfiles || 15} Profiles)
+                        </span>
+                      )}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-700/40 text-xs">
                   <div>
                     <span className="text-slate-400 block text-[11px]">Profile Capacity</span>
-                    <strong className="text-white font-mono">{planLimits?.maxProfiles || 15} Profiles</strong>
+                    <strong className="text-white font-mono">
+                      {(planLimits?.maxProfiles ?? 0) >= 100000 || planLimits?.maxProfiles === -1
+                        ? 'Unlimited Profiles'
+                        : `${planLimits?.maxProfiles || 15} Profiles`}
+                    </strong>
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[11px]">Expires On</span>
@@ -1003,61 +1082,66 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
               {/* Upgrade Pitch with UPI Manual Payment */}
               {!isProActive && (
                 <div className="p-4 rounded-2xl bg-gradient-to-b from-teal-950/40 to-slate-900 border border-teal-800/60 space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 text-teal-400">
                       <Sparkles size={16} />
-                      <h4 className="font-bold text-sm text-white">Upgrade to MAHI PRO (100 Profiles)</h4>
+                      <h4 className="font-bold text-sm text-white">
+                        Upgrade to MAHI {activePlanMeta.name} (
+                        {activePlanMeta.profiles >= 100000 ? 'Unlimited Profiles' : `${activePlanMeta.profiles} Profiles`})
+                      </h4>
                     </div>
-                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      ₹{priceInr}/year
+                    <span className="shrink-0 text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      ₹{priceInr.toLocaleString()} / {activePlanMeta.durationLabel}
                     </span>
                   </div>
 
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Unlock isolated anti-detect browser containers, automated profile warming, and encrypted cloud sync.
+                    Unlock isolated anti-detect browser containers, automated workflows, custom proxy routing, and encrypted cloud backup.
                   </p>
 
-                  {/* Plan Selector & Billing Cycle Toggle */}
+                  {/* Canonical 3-Tier Plan Selector (Starter / Growth / Ultimate) */}
                   <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-300">Choose Upgrade Tier</span>
-                      <select
-                        value={selectedPlanId}
-                        onChange={(e) => setSelectedPlanId(e.target.value)}
-                        className="bg-slate-900 border border-slate-700 text-teal-300 font-bold text-xs rounded-lg px-2.5 py-1.5 outline-none cursor-pointer"
-                      >
-                        {dynamicPlans.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} ({p.profiles} Profiles) — ₹{p.rateMonthly}/mo
-                          </option>
-                        ))}
-                      </select>
+                      <span className="text-xs font-bold text-slate-300">Choose Plan</span>
+                      <span className="text-[11px] font-mono text-teal-300">
+                        {activePlanMeta.concurrent} Concurrent Windows
+                      </span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedBillingCycle('ANNUAL')}
-                        className={`py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                          selectedBillingCycle === 'ANNUAL'
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-xs'
-                            : 'text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        <span>Annual Commitment</span>
-                        <span className="text-[9px] bg-emerald-500 text-slate-950 px-1 rounded font-extrabold">50% OFF</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedBillingCycle('MONTHLY')}
-                        className={`py-1.5 px-3 rounded-lg text-xs font-bold transition ${
-                          selectedBillingCycle === 'MONTHLY'
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-xs'
-                            : 'text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        Monthly Billing
-                      </button>
+                    <div className="grid grid-cols-1 gap-2">
+                      {dynamicPlans.map((p) => {
+                        const isSelected = p.id === activePlanMeta.id;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => handleSelectPlan(p)}
+                            className={`w-full text-left p-2.5 rounded-xl border transition flex items-center justify-between gap-2 ${
+                              isSelected
+                                ? 'bg-emerald-500/15 border-emerald-500/50 text-white shadow-xs'
+                                : 'bg-slate-900/70 border-slate-800 text-slate-300 hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-white">{p.name}</span>
+                                <span className="text-[10px] font-mono text-slate-400">• {p.durationLabel}</span>
+                                {p.badge && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                    {p.badge}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-400 mt-0.5">
+                                {p.profiles >= 100000 ? 'Unlimited Profiles' : `${p.profiles} Profiles`} • {p.rateSubtext}
+                              </div>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <div className="text-xs font-extrabold text-emerald-300">₹{p.priceInr.toLocaleString()}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 

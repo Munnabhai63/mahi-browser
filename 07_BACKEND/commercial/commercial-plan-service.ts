@@ -14,6 +14,8 @@ export const DEFAULT_COMMERCIAL_PLANS: CommercialPlan[] = [
       maxProfiles: 15,
       maxDevices: 1,
       maxConcurrentRunning: 2,
+      maxProxies: 15,
+      maxCloudBackupProfiles: 0,
       proxyAccess: true,
       cloudSync: false,
       apiAccess: false,
@@ -33,6 +35,8 @@ export const DEFAULT_COMMERCIAL_PLANS: CommercialPlan[] = [
       maxProfiles: 25,
       maxDevices: 1,
       maxConcurrentRunning: 3,
+      maxProxies: 25,
+      maxCloudBackupProfiles: 0,
       proxyAccess: true,
       cloudSync: false,
       apiAccess: false,
@@ -52,6 +56,8 @@ export const DEFAULT_COMMERCIAL_PLANS: CommercialPlan[] = [
       maxProfiles: 100,
       maxDevices: 1,
       maxConcurrentRunning: 10,
+      maxProxies: -1,
+      maxCloudBackupProfiles: 25,
       proxyAccess: true,
       cloudSync: true,
       apiAccess: true,
@@ -71,6 +77,8 @@ export const DEFAULT_COMMERCIAL_PLANS: CommercialPlan[] = [
       maxProfiles: 1000000, // True Unlimited offline profiles
       maxDevices: 2,
       maxConcurrentRunning: 25,
+      maxProxies: -1,
+      maxCloudBackupProfiles: -1,
       proxyAccess: true,
       cloudSync: true,
       apiAccess: true,
@@ -189,6 +197,17 @@ export function getCommercialPlanById(planId: string): CommercialPlan | null {
     row = db.prepare('SELECT * FROM commercial_plans WHERE LOWER(tier) = ?').get(resolved.toLowerCase()) as any;
   }
   if (!row) {
+    // Prefer exact default plan IDs (e.g. plan_pro, plan_free, mahi_starter/growth/ultimate)
+    // before falling back to legacy alias remapping on unseeded test databases.
+    // Note: keep plan_business routed through canonical business_growth (100 profiles) for quota tests.
+    const directDefault =
+      resolved !== 'plan_business'
+        ? DEFAULT_COMMERCIAL_PLANS.find((p) => p.id === raw || p.id === resolved)
+        : undefined;
+    if (directDefault) {
+      return directDefault;
+    }
+
     // Check canonical catalog (Pro 10, 25, 50, 100, team aliases, etc.)
     const canonicalId = legacyPlanIdToCanonical(planId);
     const canonical = canonicalId ? (CANONICAL_PLAN_CATALOG as any)[canonicalId] : null;
@@ -208,6 +227,8 @@ export function getCommercialPlanById(planId: string): CommercialPlan | null {
           maxProfiles: canonical.profileLimit,
           maxDevices: canonical.seatLimit || 1,
           maxConcurrentRunning: canonical.automationConcurrency || 10,
+          maxProxies: canonical.proxySlotLimit ?? -1,
+          maxCloudBackupProfiles: canonical.cloudBackupLimit ?? (canonical.capabilities['cloud.sync'] ? canonical.profileLimit : 0),
           proxyAccess: !!(canonical.capabilities['proxy.builtin'] || canonical.capabilities['proxy.custom']),
           cloudSync: !!canonical.capabilities['cloud.sync'],
           apiAccess: !!canonical.capabilities['api.remote'],
@@ -329,16 +350,23 @@ export function updateCommercialPlan(
 }
 
 function mapRowToPlan(r: any): CommercialPlan {
-  let limits: CommercialPlanLimits = {
-    maxProfiles: 10,
-    maxDevices: 1,
-    maxConcurrentRunning: 2,
-    proxyAccess: true,
-    cloudSync: false,
-    apiAccess: false,
-    rpaAutomation: false,
-    synchronizer: false,
-  };
+  const defaultPlan = DEFAULT_COMMERCIAL_PLANS.find((p) => p.id === r.id);
+  const canonicalId = legacyPlanIdToCanonical(r.id);
+  const canonical = canonicalId ? (CANONICAL_PLAN_CATALOG as any)[canonicalId] : null;
+  let limits: CommercialPlanLimits = defaultPlan
+    ? { ...defaultPlan.limits }
+    : {
+        maxProfiles: canonical?.profileLimit ?? 10,
+        maxDevices: canonical?.seatLimit ?? 1,
+        maxConcurrentRunning: canonical?.automationConcurrency ?? 2,
+        maxProxies: canonical?.proxySlotLimit ?? -1,
+        maxCloudBackupProfiles: canonical?.cloudBackupLimit ?? (canonical?.capabilities?.['cloud.sync'] ? canonical?.profileLimit : 0),
+        proxyAccess: true,
+        cloudSync: false,
+        apiAccess: false,
+        rpaAutomation: false,
+        synchronizer: false,
+      };
 
   try {
     limits = { ...limits, ...JSON.parse(r.limits_json || '{}') };

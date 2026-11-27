@@ -274,7 +274,14 @@ export function getUserSyncUsage(userId: string) {
   // Resolve plan limits via entitlements
   const entitlements = evaluateUserEntitlements(userId);
   const planLimits = entitlements.plan.limits;
-  const maxProfiles = planLimits.maxProfiles || 10;
+  const isFreePlan = entitlements.plan.id === 'plan_free' || entitlements.plan.id === 'free';
+  const cloudCap = isFreePlan ? undefined : planLimits.maxCloudBackupProfiles;
+  const maxProfiles =
+    typeof cloudCap === 'number'
+      ? cloudCap === -1
+        ? 1000000
+        : cloudCap
+      : planLimits.maxProfiles || 10;
   const totalBytes = DEFAULT_MAX_STORAGE_BYTES; // 1GB default quota
 
   return {
@@ -315,9 +322,26 @@ export async function getUserSyncUsageAsync(userId: string) {
       centralUser?.profile_quota === 1
     );
 
-    const localMax = (!isFreePlan && planLimits && typeof planLimits.maxProfiles === 'number') ? planLimits.maxProfiles : 0;
+    const cloudCap = hasLocalPaid ? planLimits?.maxCloudBackupProfiles : undefined;
+    const normalizedCentralPlan = centralUser?.plan_id ? String(centralUser.plan_id).toLowerCase().trim() : '';
+    let localMax = 0;
+    if (!isFreePlan && planLimits) {
+      if (typeof cloudCap === 'number') {
+        localMax = cloudCap === -1 ? 1000000 : cloudCap;
+      } else if (typeof planLimits.maxProfiles === 'number') {
+        localMax = planLimits.maxProfiles;
+      }
+    }
     const pgQuota = (centralUser && typeof centralUser.profile_quota === 'number') ? centralUser.profile_quota : 0;
-    const maxProfiles = isFreePlan ? (pgQuota || 1) : (Math.max(localMax, pgQuota) || 10);
+    const maxProfiles = isFreePlan
+      ? (pgQuota || 1)
+      : typeof cloudCap === 'number'
+        ? localMax
+        : normalizedCentralPlan === 'growth' || normalizedCentralPlan === 'mahi_growth'
+          ? 25
+          : normalizedCentralPlan === 'starter' || normalizedCentralPlan === 'mahi_starter'
+            ? 0
+            : (Math.max(localMax, pgQuota) || 10);
     const totalBytes = DEFAULT_MAX_STORAGE_BYTES;
     return {
       profile_count: profileCount,

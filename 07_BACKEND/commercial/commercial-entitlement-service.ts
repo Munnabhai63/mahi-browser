@@ -22,7 +22,7 @@ import { getProfiles } from '../../02_BROWSER/services/profile-service.js';
 import { getRealUserProfileCount } from '../../02_BROWSER/services/starter-profiles-service.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
 import { validateCurrentLicense, getLicenseById } from '../../04_LICENSING/license-engine.js';
-import { hasValidLicense } from '../../08_SECURITY/freemium-guard.js';
+import { hasValidLicense, resolveDefaultOwnerId } from '../../08_SECURITY/freemium-guard.js';
 import { hasValidAccountSubscription, readCachedStatus, getAccountSession, isBusinessPlan } from '../../08_SECURITY/account-service.js';
 
 export const CAPABILITY_REQUIREMENTS: Record<
@@ -114,9 +114,11 @@ export function evaluateUserEntitlements(
     if (isSubActive && cached?.plan) {
       const planNorm = cached.plan.toLowerCase().trim();
       const isBiz = isBusinessPlan(planNorm);
-      effectivePlan = isBiz
-        ? (getCommercialPlanById('plan_business') || DEFAULT_COMMERCIAL_PLANS[2])
-        : (getCommercialPlanById('plan_pro') || DEFAULT_COMMERCIAL_PLANS[1]);
+      effectivePlan =
+        getCommercialPlanById(planNorm) ||
+        (isBiz
+          ? (getCommercialPlanById('plan_business') || DEFAULT_COMMERCIAL_PLANS[2])
+          : (getCommercialPlanById('plan_pro') || DEFAULT_COMMERCIAL_PLANS[1]));
       capabilities = resolveCapabilitiesForCanonicalPlan(planNorm);
     } else if (isLicenseActive) {
       effectivePlan = getCommercialPlanById('plan_pro') || DEFAULT_COMMERCIAL_PLANS[1];
@@ -518,20 +520,30 @@ export function canCreateProfile(userId: string): { allowed: boolean; message?: 
 /**
  * Validates whether the user can launch another browser profile concurrently.
  */
-export function canLaunchProfile(userId: string): { allowed: boolean; message?: string } {
-  const user = getUserById(userId);
+export function canLaunchProfile(
+  userId?: string,
+  runningCountOverride?: number
+): { allowed: boolean; message?: string } {
+  const effectiveUserId = userId || resolveDefaultOwnerId();
+  const user = getUserById(effectiveUserId);
   if (user && (user.status === 'SUSPENDED' || user.status === 'BANNED')) {
     return { allowed: false, message: `Account is ${user.status.toLowerCase()}.` };
   }
 
-  const defaultFreePlan = DEFAULT_COMMERCIAL_PLANS[0];
-  const plan = user ? (getCommercialPlanById(user.planId) || defaultFreePlan) : defaultFreePlan;
+  const entitlements = evaluateUserEntitlements(effectiveUserId);
+  const maxConcurrent =
+    typeof entitlements.limits?.maxConcurrentRunning === 'number'
+      ? entitlements.limits.maxConcurrentRunning
+      : DEFAULT_COMMERCIAL_PLANS[0].limits.maxConcurrentRunning;
 
-  const runningCount = processManager.getRunningCount();
-  if (runningCount >= plan.limits.maxConcurrentRunning) {
+  const runningCount =
+    typeof runningCountOverride === 'number'
+      ? runningCountOverride
+      : processManager.getRunningCount();
+  if (maxConcurrent >= 0 && runningCount >= maxConcurrent) {
     return {
       allowed: false,
-      message: `Concurrent running limit reached (${runningCount}/${plan.limits.maxConcurrentRunning}). Please close an active profile or upgrade your plan.`,
+      message: `Concurrent running limit reached (${runningCount}/${maxConcurrent}). Please close an active profile or upgrade your plan.`,
     };
   }
 

@@ -3,22 +3,39 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { BRAND } from '../../lib/brand';
+import { sanitizeSafeRedirect } from '../../lib/redirect';
+
+function getBillingCycleForPlan(planId: string): 'MONTHLY' | 'SEMI_ANNUAL' | 'ANNUAL' {
+  const norm = planId.toLowerCase();
+  if (norm === 'starter' || norm === 'mahi_starter' || norm === 'plan_1month') return 'MONTHLY';
+  if (norm === 'growth' || norm === 'mahi_growth' || norm === 'plan_6months') return 'SEMI_ANNUAL';
+  return 'ANNUAL';
+}
 
 export default function SignupPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [planId, setPlanId] = useState('free');
+  const [currency, setCurrency] = useState<'INR' | 'USD' | null>(null);
+  const [redirectPath, setRedirectPath] = useState<string | null>(null);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const p = new URLSearchParams(window.location.search).get('plan');
+      const params = new URLSearchParams(window.location.search);
+      const p = params.get('plan');
+      const cur = (params.get('currency') || '').toUpperCase();
+      const safeRedir = sanitizeSafeRedirect(params.get('redirect'));
       if (p) setPlanId(p);
+      if (cur === 'USD' || cur === 'INR') setCurrency(cur);
+      if (safeRedir) setRedirectPath(safeRedir);
     }
   }, []);
+
+  const isUsdPaidFlow = currency === 'USD' && planId !== 'free';
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,6 +49,7 @@ export default function SignupPage() {
     setIsLoading(true);
 
     try {
+      const cycle = getBillingCycleForPlan(planId);
       const resp = await fetch(`${BRAND.apiUrl}/api/v1/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -41,7 +59,8 @@ export default function SignupPage() {
           password,
           planId,
           requestedPlan: planId,
-          intent: planId !== 'free' ? 'trial' : 'free',
+          billingCycle: cycle.toLowerCase(),
+          intent: isUsdPaidFlow ? 'paid' : (planId !== 'free' ? 'trial' : 'free'),
           acceptedTerms: true,
           termsVersion: BRAND.legal.lastUpdated,
         }),
@@ -53,11 +72,43 @@ export default function SignupPage() {
         if (token) {
           localStorage.setItem('mahi_auth_token', token);
           localStorage.setItem('mahi_access_token', token);
-          // Token already persisted to same-origin localStorage; avoid exposing raw JWT in URL query params.
-          window.location.href = `/download`;
-        } else {
-          window.location.href = `/download`;
         }
+
+        if (isUsdPaidFlow && token) {
+          const checkoutResp = await fetch(`${BRAND.apiUrl}/api/v1/billing/checkout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              planId,
+              billingCycle: cycle,
+              provider: 'stripe',
+              currency: 'USD',
+              successUrl: `${BRAND.website}/pricing?status=success&plan=${encodeURIComponent(planId)}&currency=USD`,
+              cancelUrl: `${BRAND.website}/pricing?plan=${encodeURIComponent(planId)}&currency=USD`,
+            }),
+          });
+          const checkoutData = await checkoutResp.json().catch(() => ({}));
+          if (checkoutResp.ok && checkoutData?.checkoutUrl) {
+            window.location.href = checkoutData.checkoutUrl;
+            return;
+          }
+          setErrorMsg(
+            typeof checkoutData?.error === 'string'
+              ? checkoutData.error
+              : 'Account created, but USD Stripe checkout could not be initialized. Return to Pricing or switch to INR UPI.'
+          );
+          return;
+        }
+
+        if (redirectPath) {
+          window.location.href = redirectPath;
+          return;
+        }
+
+        window.location.href = `/download`;
       } else {
         const errorText =
           typeof data.error === 'string'
@@ -79,10 +130,34 @@ export default function SignupPage() {
       setErrorMsg('Please accept the Terms of Service and Privacy Policy before continuing with Google.');
       return;
     }
-    window.location.href = `${BRAND.apiUrl}/api/v1/auth/google/start?returnUrl=${encodeURIComponent(
-      `${BRAND.website}/download`
-    )}&acceptedTerms=true&termsVersion=${encodeURIComponent(BRAND.legal.lastUpdated)}`;
+    const query = new URLSearchParams();
+    const targetReturn = isUsdPaidFlow
+      ? `${BRAND.website}/pricing?plan=${encodeURIComponent(planId)}&currency=USD&autoCheckout=1`
+      : redirectPath
+        ? (redirectPath.startsWith('https://') ? redirectPath : `${BRAND.website}${redirectPath}`)
+        : `${BRAND.website}/download`;
+    query.set('returnUrl', targetReturn);
+    query.set('acceptedTerms', 'true');
+    query.set('termsVersion', BRAND.legal.lastUpdated);
+    if (planId && planId !== 'free') {
+      query.set('plan', planId);
+      query.set('billing', getBillingCycleForPlan(planId).toLowerCase());
+      if (isUsdPaidFlow) {
+        query.set('intent', 'paid');
+      }
+    }
+    window.location.href = `${BRAND.apiUrl}/api/v1/auth/google/start?${query.toString()}`;
   };
+
+  const loginQuery = new URLSearchParams();
+  if (planId && planId !== 'free') loginQuery.set('plan', planId);
+  if (currency) loginQuery.set('currency', currency);
+  if (redirectPath) {
+    loginQuery.set('redirect', redirectPath);
+  } else if (isUsdPaidFlow) {
+    loginQuery.set('redirect', `/pricing?plan=${encodeURIComponent(planId)}&currency=USD&autoCheckout=1`);
+  }
+  const loginHref = loginQuery.toString() ? `/login?${loginQuery.toString()}` : '/login';
 
   return (
     <div className="relative min-h-screen flex items-center justify-center bg-[#030303] text-white selection:bg-white selection:text-black px-4 py-24 sm:py-32 overflow-hidden">
@@ -191,7 +266,13 @@ export default function SignupPage() {
             <div>
               <div className="font-mono text-[10px] uppercase text-[#969290]">Selected Tier</div>
               <div className="text-white font-medium capitalize mt-0.5">
-                {planId === 'free' ? 'Starter (15 Free Profiles)' : `${planId} Plan (7-Day Trial)`}
+                {planId === 'free'
+                  ? 'Free Plan (15 Offline Profiles)'
+                  : isUsdPaidFlow
+                    ? `${planId} Plan (USD Checkout)`
+                    : currency === 'INR'
+                      ? `${planId} Plan (INR / UPI Checkout)`
+                      : `${planId} Plan (Selected Tier)`}
               </div>
             </div>
             <Link href="/pricing" className="text-zinc-400 hover:text-white underline text-[11px] transition-colors">
@@ -283,7 +364,7 @@ export default function SignupPage() {
         {/* Card Footer Link */}
         <p className="text-center text-[13px] text-zinc-400 mt-6 pt-4 border-t border-white/5">
           Already have an account?{' '}
-          <Link href="/login" className="text-white hover:underline underline-offset-4 font-medium transition-colors">
+          <Link href={loginHref} className="text-white hover:underline underline-offset-4 font-medium transition-colors">
             Sign in
           </Link>
         </p>

@@ -44,7 +44,7 @@ const PRICING_PLANS: PlanTier[] = [
       'Zero CDP Artifacts (Rebrowser-Patches)',
       'Natural Bézier Curves & Typing Cadence',
       '3 Max Concurrent Browser Windows',
-      '0% Instant UPI Payments (slc VPA)',
+      '0% Instant UPI Payments (Slice UPI)',
     ],
     ctaText: 'Start 1 Month',
     ctaHref: '/signup?plan=starter',
@@ -147,7 +147,7 @@ const COMPARISON_CATEGORIES = [
   {
     name: 'Governance, Sync & Support',
     features: [
-      { name: '0% Fee Instant Indian UPI Payments (slc VPA)', starter: true, growth: true, ultimate: true },
+      { name: '0% Fee Instant Indian UPI Payments (Slice UPI)', starter: true, growth: true, ultimate: true },
       { name: 'Authorized Device Workspaces', starter: '1 Device', growth: '1 Device', ultimate: '2 Devices' },
       { name: 'Encrypted Cloud Backup & Session Sync', starter: false, growth: '25 Profiles', ultimate: 'Included' },
       { name: 'Support SLA', starter: 'Standard Email', growth: 'Priority Chat', ultimate: '24/7 Dedicated WhatsApp' },
@@ -188,6 +188,14 @@ const PRICING_FAQS = [
   },
 ];
 
+type BillingCycle = 'MONTHLY' | 'SEMI_ANNUAL' | 'ANNUAL';
+
+function getPlanBillingCycle(planId: string): BillingCycle {
+  if (planId === 'starter') return 'MONTHLY';
+  if (planId === 'growth') return 'SEMI_ANNUAL';
+  return 'ANNUAL';
+}
+
 export default function PricingView() {
   const [currency, setCurrency] = useState<'INR' | 'USD'>('INR');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -199,7 +207,7 @@ export default function PricingView() {
     name: string;
     price: number;
     billingLabel: string;
-    cycle: 'MONTHLY' | 'ANNUAL';
+    cycle: BillingCycle;
   } | null>(null);
   const [copiedUpi, setCopiedUpi] = useState(false);
   const [utrInput, setUtrInput] = useState('');
@@ -208,10 +216,73 @@ export default function PricingView() {
   const [utrError, setUtrError] = useState<string | null>(null);
   const [submittedPaymentId, setSubmittedPaymentId] = useState<string | null>(null);
   const [isYoupiEnabled, setIsYoupiEnabled] = useState(false);
+  const [gatewaysLoaded, setGatewaysLoaded] = useState(false);
+  const [hasAuthToken, setHasAuthToken] = useState(false);
+  const [activeCheckoutPlanId, setActiveCheckoutPlanId] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [checkoutNotice, setCheckoutNotice] = useState<string | null>(null);
 
-  // Probe payment gateways on mount
+  const openManualUpiModal = (plan: PlanTier) => {
+    setSelectedUpiPlan({
+      id: plan.id,
+      name: plan.name,
+      price: plan.priceINR,
+      billingLabel: plan.billingLabelINR,
+      cycle: getPlanBillingCycle(plan.id),
+    });
+    setIsUpiModalOpen(true);
+    setUtrSubmitted(false);
+    setUtrInput('');
+    setUtrError(null);
+    setSubmittedPaymentId(null);
+  };
+
+  // Hydrate URL query state (currency, OAuth token, status) and probe payment gateways on mount
   useEffect(() => {
     let mounted = true;
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlToken = params.get('token');
+      if (urlToken) {
+        try {
+          localStorage.setItem('mahi_auth_token', urlToken);
+          localStorage.setItem('mahi_access_token', urlToken);
+        } catch {}
+        params.delete('token');
+        const nextQuery = params.toString();
+        window.history.replaceState(
+          {},
+          '',
+          `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`
+        );
+      }
+
+      const storedToken =
+        localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token');
+      setHasAuthToken(Boolean(storedToken));
+
+      const urlCurrency = (params.get('currency') || '').toUpperCase();
+      if (urlCurrency === 'USD' || urlCurrency === 'INR') {
+        setCurrency(urlCurrency);
+      }
+
+      const statusParam = params.get('status');
+      if (statusParam === 'success') {
+        setCheckoutNotice('Payment completed! Your MAHI Browser subscription is activating.');
+      } else if (statusParam === 'cancelled') {
+        setCheckoutError('Checkout was cancelled before completion. Select a plan to retry anytime.');
+      }
+
+      const openUpi = params.get('openUpi');
+      const requestedPlanId = params.get('plan');
+      if (openUpi === '1' && requestedPlanId) {
+        const matched = PRICING_PLANS.find((p) => p.id === requestedPlanId);
+        if (matched) {
+          openManualUpiModal(matched);
+        }
+      }
+    }
+
     const fetchGateways = async () => {
       try {
         const resp = await fetch(`${BRAND.apiUrl}/api/v1/billing/gateways`);
@@ -225,7 +296,11 @@ export default function PricingView() {
           }
         }
       } catch {
-        // Fall back gracefully to manual UPI on any error
+        // Fall back gracefully on gateway probe error
+      } finally {
+        if (mounted) {
+          setGatewaysLoaded(true);
+        }
       }
     };
     fetchGateways();
@@ -245,61 +320,134 @@ export default function PricingView() {
     } catch (_) {}
   };
 
+  const startOnlineCheckout = async (
+    plan: PlanTier,
+    targetCurrency: 'INR' | 'USD',
+    provider: 'youpi_pg' | 'stripe'
+  ): Promise<{ redirected: boolean; error?: string }> => {
+    if (typeof window === 'undefined') {
+      return { redirected: false };
+    }
+
+    const cycle = getPlanBillingCycle(plan.id);
+    const nextPricingPath = `/pricing?plan=${encodeURIComponent(plan.id)}&currency=${targetCurrency}&autoCheckout=1`;
+    const token =
+      localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token');
+
+    if (!token) {
+      if (targetCurrency === 'USD') {
+        window.location.href = `/signup?plan=${encodeURIComponent(plan.id)}&currency=USD&redirect=${encodeURIComponent(nextPricingPath)}`;
+      } else {
+        window.location.href = `/login?redirect=${encodeURIComponent(nextPricingPath)}&plan=${encodeURIComponent(plan.id)}&currency=INR`;
+      }
+      return { redirected: true };
+    }
+
+    try {
+      setActiveCheckoutPlanId(plan.id);
+      const origin = window.location.origin;
+      const resp = await fetch(`${BRAND.apiUrl}/api/v1/billing/checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          planId: plan.id,
+          billingCycle: cycle,
+          provider,
+          currency: targetCurrency,
+          successUrl: `${origin}/pricing?status=success&plan=${encodeURIComponent(plan.id)}&currency=${targetCurrency}`,
+          cancelUrl: `${origin}/pricing?status=cancelled&plan=${encodeURIComponent(plan.id)}&currency=${targetCurrency}`,
+        }),
+      });
+
+      if (resp.status === 401) {
+        try {
+          localStorage.removeItem('mahi_auth_token');
+          localStorage.removeItem('mahi_access_token');
+        } catch {}
+        setHasAuthToken(false);
+        window.location.href = `/login?redirect=${encodeURIComponent(nextPricingPath)}&plan=${encodeURIComponent(plan.id)}&currency=${targetCurrency}`;
+        return { redirected: true };
+      }
+
+      const data = await resp.json().catch(() => ({}));
+      if (resp.ok && data?.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return { redirected: true };
+      }
+
+      const errorMessage =
+        typeof data?.error === 'string'
+          ? data.error
+          : data?.error?.message || `Checkout failed (${resp.status}).`;
+      return { redirected: false, error: errorMessage };
+    } catch {
+      return { redirected: false, error: 'Unable to reach billing service. Please retry.' };
+    } finally {
+      setActiveCheckoutPlanId(null);
+    }
+  };
+
+  // Auto-resume checkout after returning from /login or /signup
+  useEffect(() => {
+    if (!gatewaysLoaded || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('autoCheckout') !== '1') return;
+
+    const planId = params.get('plan');
+    const urlCurrency = (params.get('currency') || '').toUpperCase();
+    const targetCurrency: 'INR' | 'USD' = urlCurrency === 'USD' ? 'USD' : 'INR';
+    const token =
+      localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token');
+    const matchedPlan = PRICING_PLANS.find((p) => p.id === planId);
+
+    params.delete('autoCheckout');
+    const nextQuery = params.toString();
+    window.history.replaceState(
+      {},
+      '',
+      `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`
+    );
+
+    if (!matchedPlan || !token) return;
+
+    if (targetCurrency === 'USD') {
+      void startOnlineCheckout(matchedPlan, 'USD', 'stripe').then((res) => {
+        if (!res.redirected && res.error) {
+          setCheckoutError(res.error);
+        }
+      });
+    } else if (isYoupiEnabled) {
+      void startOnlineCheckout(matchedPlan, 'INR', 'youpi_pg').then((res) => {
+        if (!res.redirected) {
+          openManualUpiModal(matchedPlan);
+        }
+      });
+    } else {
+      openManualUpiModal(matchedPlan);
+    }
+  }, [gatewaysLoaded, isYoupiEnabled]);
+
   // Plan CTA Click Handler
   const handlePlanClick = async (plan: PlanTier) => {
     trackFunnel('plan_cta_clicked', { planId: plan.id, currency });
+    setCheckoutError(null);
+    setCheckoutNotice(null);
 
     if (currency === 'INR') {
       if (isYoupiEnabled) {
-        try {
-          const token =
-            typeof window !== 'undefined'
-              ? localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token')
-              : null;
-          if (token) {
-            const resp = await fetch(`${BRAND.apiUrl}/api/v1/billing/checkout`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                planId: plan.id,
-                billingCycle: plan.id === 'starter' ? 'MONTHLY' : 'ANNUAL',
-                provider: 'youpi_pg',
-                currency: 'INR',
-              }),
-            });
-            if (resp.ok) {
-              const data = await resp.json();
-              if (data?.checkoutUrl) {
-                window.location.href = data.checkoutUrl;
-                return;
-              }
-            }
-          } else {
-            window.location.href = `/login?redirect=/pricing&plan=${plan.id}`;
-            return;
-          }
-        } catch {
-          // Fall back gracefully to manual UPI modal
-        }
+        const result = await startOnlineCheckout(plan, 'INR', 'youpi_pg');
+        if (result.redirected) return;
       }
 
-      setSelectedUpiPlan({
-        id: plan.id,
-        name: plan.name,
-        price: plan.priceINR,
-        billingLabel: plan.billingLabelINR,
-        cycle: plan.id === 'starter' ? 'MONTHLY' : 'ANNUAL',
-      });
-      setIsUpiModalOpen(true);
-      setUtrSubmitted(false);
-      setUtrInput('');
-      setUtrError(null);
-      setSubmittedPaymentId(null);
+      openManualUpiModal(plan);
     } else {
-      window.location.href = `${plan.ctaHref}&currency=USD`;
+      const result = await startOnlineCheckout(plan, 'USD', 'stripe');
+      if (!result.redirected && result.error) {
+        setCheckoutError(result.error);
+      }
     }
   };
 
@@ -443,6 +591,21 @@ export default function PricingView() {
             </div>
           </div>
 
+          {(checkoutNotice || checkoutError) && (
+            <div className="max-w-2xl mx-auto mb-10">
+              {checkoutNotice && (
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                  {checkoutNotice}
+                </div>
+              )}
+              {checkoutError && (
+                <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                  {checkoutError}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ========================================================================= */}
           {/* 3 PRICING CARDS: EXPANDED SIZE, HIGH-END SCALE & LUXURY MONOCHROME        */}
           {/* ========================================================================= */}
@@ -534,21 +697,29 @@ export default function PricingView() {
                     <button
                       type="button"
                       onClick={() => handlePlanClick(plan)}
-                      className={`inline-flex w-full items-center justify-center rounded-full py-3.5 px-6 text-sm sm:text-base font-medium transition-all duration-200 active:scale-[0.98] shadow-sm ${
+                      disabled={activeCheckoutPlanId === plan.id}
+                      className={`inline-flex w-full items-center justify-center rounded-full py-3.5 px-6 text-sm sm:text-base font-medium transition-all duration-200 active:scale-[0.98] shadow-sm disabled:opacity-60 disabled:cursor-wait ${
                         plan.popular || plan.id === 'ultimate'
                           ? 'bg-white text-black hover:bg-zinc-200'
                           : 'bg-zinc-900 text-white hover:bg-zinc-800 border border-zinc-700/80'
                       }`}
                     >
-                      {currency === 'INR'
-                        ? (isYoupiEnabled
-                            ? 'Pay Now (Instant UPI)'
-                            : `Pay with UPI (${symbol}${price.toLocaleString()})`)
-                        : `${plan.ctaText} (${symbol}${price})`}
+                      {activeCheckoutPlanId === plan.id
+                        ? 'Redirecting to Checkout...'
+                        : currency === 'INR'
+                          ? (isYoupiEnabled
+                              ? 'Pay Now (Instant UPI)'
+                              : `Pay with UPI (${symbol}${price.toLocaleString()})`)
+                          : `Pay with Card (${symbol}${price})`}
                     </button>
                     {currency === 'INR' && !isYoupiEnabled && (
                       <p className="text-[11px] text-zinc-500 font-mono text-center mt-2.5">
                         Instant checkout is being activated. Manual UPI is available now.
+                      </p>
+                    )}
+                    {currency === 'USD' && (
+                      <p className="text-[11px] text-zinc-500 font-mono text-center mt-2.5">
+                        Secure international Stripe checkout • Instant activation
                       </p>
                     )}
                   </div>
@@ -971,6 +1142,17 @@ export default function PricingView() {
             {/* UTR Submission Form */}
             {!utrSubmitted ? (
               <form onSubmit={handleUtrSubmit} className="space-y-3">
+                {!hasAuthToken && (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 flex items-center justify-between gap-2">
+                    <span>Sign in first so we can activate this payment on your account.</span>
+                    <a
+                      href={`/login?redirect=${encodeURIComponent(`/pricing?plan=${selectedUpiPlan.id}&currency=INR&openUpi=1`)}&plan=${encodeURIComponent(selectedUpiPlan.id)}&currency=INR`}
+                      className="shrink-0 underline font-semibold text-white hover:text-amber-100"
+                    >
+                      Sign In
+                    </a>
+                  </div>
+                )}
                 {utrError && (
                   <div className="rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-xs text-[#e6e3e3]">
                     {utrError}

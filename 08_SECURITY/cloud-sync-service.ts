@@ -8,7 +8,8 @@ import { app, BrowserWindow } from './electron-bridge.js';
 import { getHWID, verifyLicense } from './license-service.js';
 import { ADMIN_API_BASE_URL, isOnlineRevoked, isGraceExpired } from './license-status-service.js';
 import { hasValidLicense, assertCanCreateProfile } from './freemium-guard.js';
-import { hasValidAccountSubscription, getAccountSyncKey, loadEncryptedSession } from './account-service.js';
+import { hasValidAccountSubscription, getAccountSyncKey, loadEncryptedSession, readCachedStatus } from './account-service.js';
+import { resolveCapabilitiesForCanonicalPlan } from '../07_BACKEND/commercial/canonical-plan-catalog.js';
 import { getProfileById, getProfiles, getProfileStoragePath } from '../02_BROWSER/services/profile-service.js';
 import {
   exportProfileToArchive,
@@ -492,6 +493,17 @@ export function getEffectiveSyncPassphrase(): string {
 
 export function isCloudSyncAllowed(): { allowed: boolean; reason?: string } {
   const session = loadEncryptedSession();
+  const cached = readCachedStatus();
+  if (cached?.plan && hasValidAccountSubscription()) {
+    const caps = resolveCapabilitiesForCanonicalPlan(cached.plan);
+    if (caps['cloud.sync'] === false) {
+      return {
+        allowed: false,
+        reason: 'Encrypted Cloud Backup is unlocked on Growth (25 profiles) and Ultimate (Unlimited) plans.',
+      };
+    }
+  }
+
   if (session?.token || session?.account_id || hasValidAccountSubscription()) {
     return { allowed: true };
   }

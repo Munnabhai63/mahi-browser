@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -11,7 +11,7 @@ import {
   bulkAssignProxies,
   bulkDeleteProfiles,
 } from '../../02_BROWSER/services/profile-service.js';
-import { createProxy } from '../../02_BROWSER/services/proxy-service.js';
+import { createProxy, deleteProxy } from '../../02_BROWSER/services/proxy-service.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
 import { getProductionChromiumExecutablePath } from '../../02_BROWSER/managed-engine.js';
@@ -52,6 +52,15 @@ describe.skipIf(!REAL_CHROMIUM)('Phase 8: Bulk Profile Operations Suite & Stagge
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     } catch {}
+  });
+
+  afterEach(() => {
+    for (const pxId of proxyIds) {
+      try {
+        deleteProxy(pxId);
+      } catch {}
+    }
+    proxyIds = [];
   });
 
   beforeEach(() => {

@@ -25,6 +25,7 @@ import {
   ProviderPriceMapping,
   PlanCatalogEntry,
   PlanCatalogResponse,
+  BillingCycleType,
 } from '../../10_CONFIG/shared/types/commercial.js';
 import {
   CANONICAL_PLAN_CATALOG,
@@ -642,7 +643,7 @@ function syncProviderPrices(
 export function getProviderPriceMapping(
   provider: string,
   planId: CanonicalPlanId,
-  billingCycle: 'MONTHLY' | 'ANNUAL'
+  billingCycle: BillingCycleType
 ): ProviderPriceMapping | null {
   const db = getDatabase();
   const row = db.prepare(`

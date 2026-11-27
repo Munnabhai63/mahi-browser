@@ -35,7 +35,7 @@ export type PlanCategory = 'PERSONAL' | 'BUSINESS';
 
 export type PlanStatus = 'ACTIVE' | 'HIDDEN' | 'ARCHIVED';
 
-export type BillingCycleType = 'MONTHLY' | 'ANNUAL';
+export type BillingCycleType = 'MONTHLY' | 'QUARTERLY' | 'SEMI_ANNUAL' | 'ANNUAL';
 
 export type PricingPublishStatus = 'DRAFT' | 'PREVIEW' | 'PUBLISHING' | 'PUBLISHED' | 'PUBLISH_FAILED' | 'ROLLED_BACK';
 
@@ -59,6 +59,10 @@ export interface CanonicalPlanDefinition {
   automationConcurrency: number;
   apiRequestsMonthly: number;
   workspaceLimit: number;
+  durationDays?: number;
+  defaultBillingCycle?: BillingCycleType;
+  proxySlotLimit?: number;
+  cloudBackupLimit?: number;
   capabilities: Record<FeatureCapability, boolean>;
   status: PlanStatus;
   displayOrder: number;
@@ -271,6 +275,8 @@ export interface CommercialPlanLimits {
   maxProfiles: number;
   maxDevices: number;
   maxConcurrentRunning: number;
+  maxProxies?: number;
+  maxCloudBackupProfiles?: number;
   proxyAccess: boolean;
   cloudSync: boolean;
   apiAccess: boolean;
@@ -307,7 +313,7 @@ export interface CommercialSubscription {
   planId: string;
   licenseId?: string;
   status: CommercialSubscriptionStatus;
-  billingCycle: 'MONTHLY' | 'ANNUAL' | 'LIFETIME' | 'TRIAL';
+  billingCycle: 'MONTHLY' | 'QUARTERLY' | 'SEMI_ANNUAL' | 'ANNUAL' | 'LIFETIME' | 'TRIAL';
   startsAt: string;
   expiresAt: string | null;
   paymentProvider?: string;
@@ -400,7 +406,7 @@ export interface RegisterUserDTO {
   licenseKey?: string;
   intent?: 'trial' | 'free' | 'paid';
   planId?: string;
-  billingCycle?: 'annual' | 'monthly';
+  billingCycle?: 'annual' | 'semi_annual' | 'quarterly' | 'monthly' | string;
   acceptedTerms?: boolean;
   termsVersion?: string;
 }

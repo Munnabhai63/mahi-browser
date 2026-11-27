@@ -536,6 +536,9 @@ export async function handleAuthRoutes(
       const isDesktop = stateRecord.intent === 'desktop_login' || authResult.returnUrl.includes('/auth/desktop-success');
 
       if (!isDesktop) {
+        if (targetUrl.startsWith('/') && websiteBase) {
+          targetUrl = `${websiteBase}${targetUrl}`;
+        }
         const sep = targetUrl.includes('?') ? '&' : '?';
         targetUrl = `${targetUrl}${sep}token=${encodeURIComponent(authResult.token || '')}&login=success`;
       } else {

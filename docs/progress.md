@@ -1,5 +1,17 @@
 # Progress Tracker
 
+## Pricing, Billing, Redirect & Runtime Quota Remediation (2026-11-27)
+- [x] **Authoritative Billing Amounts & Term Durations (`canonical-plan-catalog.ts`, `commercial-plan-service.ts`, `payment-service.ts`, `payment-routes.ts`, `pricing-admin-service.ts`):**
+  - Fixed `calculateAuthoritativeOrderTotal` so fixed-term `mahi_starter` (`₹599`/`$9`, 30d/90d), `mahi_growth` (`₹999`/`$15`, 180d `SEMI_ANNUAL`), and `mahi_ultimate` (`₹1,499`/`$24`, 365d `ANNUAL`) read authoritative term pricing directly instead of double-discounting.
+  - Wired `SEMI_ANNUAL` / `QUARTERLY` normalization and exact `resolveSubscriptionDurationDays` across YouPI-PG checkout, Stripe checkout, manual UPI submission/approval, and subscription activation while preserving legacy `plan_pro` and 50% annual `professional_*`/`business_*` compatibility.
+- [x] **USD Stripe Checkout, Login Redirects & Paid Intent Protection (`PricingView.tsx`, `signup/page.tsx`, `login/page.tsx`, `auth-routes.ts`, `google-oauth-service.ts`, `commercial-auth-service.ts`, `landing/lib/redirect.ts`):**
+  - Added validated relative/trusted `sanitizeSafeRedirect` helper and wired `redirect`, `plan`, and `currency` propagation across `/login` (email/password + Google OAuth), `/signup`, and `/pricing` auto-checkout resumption.
+  - Wired USD (`currency=USD`) flow to trigger `/api/v1/billing/checkout` with `provider: 'stripe'` and prevented unverified paid signups from receiving paid entitlements prior to completed payment.
+- [x] **Capability Aliases, Runtime Quotas & Desktop Modal Sync (`commercial-entitlement-service.ts`, `process-manager.ts`, `freemium-guard.ts`, `proxy-service.ts`, `cloud-profile-service.ts`, `cloud-sync-service.ts`, `account-service.ts`, `AccountModal.tsx`):**
+  - Mapped `'starter'`, `'growth'`, and `'ultimate'` aliases in `resolveCapabilitiesForCanonicalPlan` and desktop `!user` entitlement fallbacks.
+  - Enforced concurrent running window caps (`3` / `10` / `25`) in `canLaunchProfile` + `ProcessManager.startProfile` (`CONCURRENT_LIMIT_REACHED`), `25` custom proxy slots on Starter (`assertCanCreateProxy` in `createProxy`), and `25` encrypted cloud backup profiles on Growth (`0` on Starter, Unlimited on Ultimate) across `getUserSyncUsage`/`createUploadSession`.
+  - Synced `AccountModal.tsx` to the canonical 3 plans (`Starter`, `Growth`, `Ultimate`), fixed `pricing/page.tsx` savings copy (`72%`/`79%`), `Slice UPI` casing, `/signup` free tier badge, `Navbar.tsx` flex wrapping, and added `11_TESTS/unit/pricing-billing-quota-fixes.test.ts`.
+
 ## Post-v1.4.0 Audit Remediation — Phases 1–3 (2026-11-27)
 - [x] **Phase 1 — Hardcoded Literals, Path Bugs & Config Drift:**
   - Replaced personal temp path in `12_SCRIPTS/tz-probe.ts` with portable `os.tmpdir()` / `MAHI_TZ_PROBE_DEBUG_FILE`.

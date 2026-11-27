@@ -17,8 +17,13 @@ import { getDatabase } from '../../06_DATABASE/connection.js';
 import { isPostgresConfigured, getCentralRepository } from '../../06_DATABASE/central-repository.js';
 import { getPrismaClient } from '../../06_DATABASE/prisma-client.js';
 import { getCommercialPlans, getCommercialPlanById, DEFAULT_COMMERCIAL_PLANS } from './commercial-plan-service.js';
-import { CommercialPlan } from '../../10_CONFIG/shared/types/commercial.js';
-import { calculateAuthoritativeOrderTotal, legacyPlanIdToCanonical } from './canonical-plan-catalog.js';
+import { CommercialPlan, BillingCycleType } from '../../10_CONFIG/shared/types/commercial.js';
+import {
+  calculateAuthoritativeOrderTotal,
+  legacyPlanIdToCanonical,
+  normalizeBillingCycle,
+  resolveSubscriptionDurationDays,
+} from './canonical-plan-catalog.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 import { getEmailProvider } from '../../05_AUTH/email-service.js';
 import { SUPPORT_EMAIL } from '../../10_CONFIG/contact-config.js';
@@ -50,7 +55,7 @@ export class PaymentGatewayNotConfiguredError extends Error {
 export interface CheckoutSessionRequest {
   userId: string;
   planId: string;
-  billingCycle: 'MONTHLY' | 'ANNUAL';
+  billingCycle: BillingCycleType;
   currency?: 'INR' | 'USD';
   successUrl?: string;
   cancelUrl?: string;
@@ -67,7 +72,7 @@ export interface CheckoutSessionResponse {
   currency: string;
   provider: PaymentProviderType;
   planId: string;
-  billingCycle: 'MONTHLY' | 'ANNUAL';
+  billingCycle: BillingCycleType;
   createdAt: string;
   gatewayMeta?: Record<string, any>;
 }
@@ -78,7 +83,7 @@ export interface PaymentWebhookEvent {
   provider: PaymentProviderType;
   userId: string;
   planId: string;
-  billingCycle: 'MONTHLY' | 'ANNUAL';
+  billingCycle: BillingCycleType;
   amountCents: number;
   currency: string;
   externalPaymentId: string;
@@ -108,7 +113,7 @@ export interface UserSubscriptionSummary {
   planId: string;
   planName: string;
   status: 'ACTIVE' | 'TRIAL' | 'EXPIRED' | 'CANCELLED';
-  billingCycle: 'MONTHLY' | 'ANNUAL';
+  billingCycle: BillingCycleType;
   startsAt: string;
   expiresAt: string;
   maxProfiles: number;
@@ -816,8 +821,8 @@ export class PaymentService {
   /**
    * Resolves expected price in cents based on plan and billing cycle.
    */
-  public calculatePlanAmountCents(plan: CommercialPlan, billingCycle: 'MONTHLY' | 'ANNUAL'): number {
-    const rateUsd = billingCycle === 'ANNUAL' ? plan.priceAnnual : plan.priceMonthly;
+  public calculatePlanAmountCents(plan: CommercialPlan, billingCycle: BillingCycleType): number {
+    const rateUsd = billingCycle === 'ANNUAL' || billingCycle === 'SEMI_ANNUAL' ? plan.priceAnnual : plan.priceMonthly;
     return rateUsd * 100;
   }
 
@@ -847,16 +852,22 @@ export class PaymentService {
       throw new Error('Free tier does not require checkout payment.');
     }
 
+    const effectiveBillingCycle = normalizeBillingCycle(req.billingCycle, plan.id);
+    const normalizedReq: CheckoutSessionRequest = {
+      ...req,
+      billingCycle: effectiveBillingCycle,
+    };
+
     let amountCents: number;
     let authoritativeBreakdown: any = null;
     const isLegacyPlan = plan.id.startsWith('plan_') && plan.priceMonthly > 0;
 
-    if (isLegacyPlan && !req.extraMembers && !req.extraProxyGb && (!req.currency || req.currency === 'USD')) {
-      amountCents = this.calculatePlanAmountCents(plan, req.billingCycle);
+    if (isLegacyPlan && !normalizedReq.extraMembers && !normalizedReq.extraProxyGb && (!normalizedReq.currency || normalizedReq.currency === 'USD')) {
+      amountCents = this.calculatePlanAmountCents(plan, effectiveBillingCycle);
     } else {
       const orderTotal = calculateAuthoritativeOrderTotal({
         planId: req.planId,
-        billingCycle: req.billingCycle,
+        billingCycle: effectiveBillingCycle,
         currency: req.currency || (plan.id.startsWith('plan_') ? 'USD' : 'INR'),
         extraMembers: req.extraMembers,
         extraProxyGb: req.extraProxyGb,
@@ -886,12 +897,12 @@ export class PaymentService {
     }
 
     // 4. Delegate to provider adapter
-    const resolvedCurrency = (req.currency || (plan.id.startsWith('plan_') ? 'USD' : 'INR')).toUpperCase();
+    const resolvedCurrency = (normalizedReq.currency || (plan.id.startsWith('plan_') ? 'USD' : 'INR')).toUpperCase();
     const effectiveProvider = providerType || (resolvedCurrency === 'INR' ? 'youpi_pg' : this.defaultProvider);
     const provider = this.getProvider(effectiveProvider);
-    const session = await provider.createCheckoutSession(req, plan, amountCents);
-    if (req.idempotencyKey) {
-      session.orderId = req.idempotencyKey;
+    const session = await provider.createCheckoutSession(normalizedReq, plan, amountCents);
+    if (normalizedReq.idempotencyKey) {
+      session.orderId = normalizedReq.idempotencyKey;
     }
 
     // 5. Record pending payment transaction
@@ -904,22 +915,22 @@ export class PaymentService {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?)
     `).run(
       session.sessionId,
-      req.userId,
+      normalizedReq.userId,
       null,
       session.provider,
-      req.idempotencyKey || session.orderId,
+      normalizedReq.idempotencyKey || session.orderId,
       session.sessionId,
       amountCents,
       session.currency,
       plan.id,
-      req.billingCycle,
+      effectiveBillingCycle,
       session.checkoutUrl,
       JSON.stringify({
-        userId: req.userId,
+        userId: normalizedReq.userId,
         planId: plan.id,
-        billingCycle: req.billingCycle,
-        extraMembers: req.extraMembers || 0,
-        extraProxyGb: req.extraProxyGb || 0,
+        billingCycle: effectiveBillingCycle,
+        extraMembers: normalizedReq.extraMembers || 0,
+        extraProxyGb: normalizedReq.extraProxyGb || 0,
         authoritativeBreakdown,
       }),
       now,
@@ -1075,7 +1086,7 @@ export class PaymentService {
   public async activateSubscriptionFromPayment(params: {
     userId: string;
     planId: string;
-    billingCycle: 'MONTHLY' | 'ANNUAL';
+    billingCycle: BillingCycleType | string;
     amountCents: number;
     currency: string;
     provider: PaymentProviderType;
@@ -1094,8 +1105,9 @@ export class PaymentService {
       throw new Error(`PLAN_NOT_FOUND: Unknown plan "${params.planId}".`);
     }
 
+    const effectiveCycle = normalizeBillingCycle(params.billingCycle, targetPlan.id);
     const now = new Date().toISOString();
-    const durationDays = params.billingCycle === 'ANNUAL' ? 365 : 30;
+    const durationDays = resolveSubscriptionDurationDays(targetPlan.id, effectiveCycle);
     const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
     const subId = `sub_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     const invoiceNumber = `INV-${new Date().getFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
@@ -1147,8 +1159,8 @@ export class PaymentService {
             amount_cents: params.amountCents,
             currency: params.currency,
             status: 'SUCCEEDED',
-            plan_id: params.planId,
-            billing_cycle: params.billingCycle,
+            plan_id: targetPlan.id,
+            billing_cycle: effectiveCycle,
             receipt_url: params.receiptUrl || null,
             metadata_json: JSON.stringify(params.metadata || {}),
             created_at: now,
@@ -1179,9 +1191,9 @@ export class PaymentService {
         data: {
           id: subId,
           user_id: params.userId,
-          plan_id: params.planId,
+          plan_id: targetPlan.id,
           status: 'ACTIVE',
-          billing_cycle: params.billingCycle,
+          billing_cycle: effectiveCycle,
           starts_at: now,
           expires_at: expiresAt,
           payment_provider: params.provider,
@@ -1195,7 +1207,7 @@ export class PaymentService {
         await prisma.auth_users.update({
           where: { id: params.userId },
           data: {
-            plan_id: params.planId,
+            plan_id: targetPlan.id,
             profile_quota: targetPlan.limits.maxProfiles,
             updated_at: now,
           },
@@ -1219,7 +1231,7 @@ export class PaymentService {
             await prisma.commercial_users.update({
               where: { id: params.userId },
               data: {
-                plan_id: params.planId,
+                plan_id: targetPlan.id,
                 updated_at: now,
               },
             });
@@ -1331,8 +1343,8 @@ export class PaymentService {
             params.externalPaymentId,
             params.amountCents,
             params.currency,
-            params.planId,
-            params.billingCycle,
+            targetPlan.id,
+            effectiveCycle,
             params.receiptUrl || null,
             JSON.stringify(params.metadata || {}),
             now,
@@ -1363,11 +1375,11 @@ export class PaymentService {
         db.prepare(`
           INSERT OR IGNORE INTO commercial_users (id, email, password_hash, salt, name, plan_id, created_at, updated_at)
           VALUES (?, ?, 'placeholder', 'placeholder', 'Subscriber', ?, ?, ?)
-        `).run(params.userId, `${params.userId}@commercial.local`, params.planId, now, now);
+        `).run(params.userId, `${params.userId}@commercial.local`, targetPlan.id, now, now);
         db.prepare(`
           INSERT OR IGNORE INTO commercial_plans (id, name, tier, limits_json, created_at)
           VALUES (?, 'Plan', 'pro', '{}', ?)
-        `).run(params.planId, now);
+        `).run(targetPlan.id, now);
 
         // 4. Activate Subscription in Database
         db.prepare(`
@@ -1378,8 +1390,8 @@ export class PaymentService {
         `).run(
           subId,
           params.userId,
-          params.planId,
-          params.billingCycle,
+          targetPlan.id,
+          effectiveCycle,
           now,
           expiresAt,
           params.provider,
@@ -1393,7 +1405,7 @@ export class PaymentService {
             UPDATE auth_users
             SET plan_id = ?, profile_quota = ?, updated_at = ?
             WHERE id = ?
-          `).run(params.planId, targetPlan.limits.maxProfiles, now, params.userId);
+          `).run(targetPlan.id, targetPlan.limits.maxProfiles, now, params.userId);
         } catch (err: any) {
           console.error('[PaymentService] SQLite auth_users plan update error:', err?.message);
         }
@@ -1404,7 +1416,7 @@ export class PaymentService {
             UPDATE commercial_users
             SET plan_id = ?
             WHERE id = ?
-          `).run(params.planId, params.userId);
+          `).run(targetPlan.id, params.userId);
         } catch (err: any) {
           console.error('[PaymentService] SQLite commercial_users plan update error:', err?.message);
         }
@@ -1456,7 +1468,7 @@ export class PaymentService {
         try {
           const repo = getCentralRepository();
           await repo.updateAuthUser(params.userId, {
-            plan_id: params.planId,
+            plan_id: targetPlan.id,
             profile_quota: targetPlan.limits.maxProfiles,
           });
         } catch (err: any) {
@@ -1472,10 +1484,10 @@ export class PaymentService {
 
     const subSummary: UserSubscriptionSummary = {
       userId: params.userId,
-      planId: params.planId,
+      planId: targetPlan.id,
       planName: targetPlan.name,
       status: 'ACTIVE',
-      billingCycle: params.billingCycle,
+      billingCycle: effectiveCycle,
       startsAt: now,
       expiresAt,
       maxProfiles: targetPlan.limits.maxProfiles,
@@ -1579,7 +1591,7 @@ export class PaymentService {
   public async submitManualUpiPayment(params: {
     userId: string;
     planId: string;
-    billingCycle?: 'MONTHLY' | 'ANNUAL';
+    billingCycle?: BillingCycleType | string;
     utr: string;
     amountPaise?: number;
     proofAsset?: string;
@@ -1597,7 +1609,7 @@ export class PaymentService {
       throw new Error(`Selected plan "${params.planId}" is not available for purchase.`);
     }
 
-    const cycle = params.billingCycle || 'MONTHLY';
+    const cycle = normalizeBillingCycle(params.billingCycle, plan.id);
     const orderTotal = calculateAuthoritativeOrderTotal({
       planId: params.planId as any,
       billingCycle: cycle,

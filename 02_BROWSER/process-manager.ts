@@ -173,7 +173,11 @@ class ProcessManager {
     pid?: number;
     debugPort?: number;
     error?: string;
-    code?: 'MOBILE_MODE_CONFLICT' | 'MOBILE_MODE_ROTATION_FAILED' | 'MOBILE_MODE_IP_UNCHANGED';
+    code?:
+      | 'MOBILE_MODE_CONFLICT'
+      | 'MOBILE_MODE_ROTATION_FAILED'
+      | 'MOBILE_MODE_IP_UNCHANGED'
+      | 'CONCURRENT_LIMIT_REACHED';
     runningProfileId?: string;
     runningProfileName?: string;
     rotatedIp?: string;
@@ -243,6 +247,31 @@ class ProcessManager {
         const errorMsg = `Profile ${profileId} not found in database.`;
         debugLog(`[ProcessManager ERROR] ${errorMsg}`);
         return { success: false, error: errorMsg };
+      }
+
+      try {
+        const [{ canLaunchProfile }, { resolveDefaultOwnerId }] = await Promise.all([
+          import('../07_BACKEND/commercial/commercial-entitlement-service.js'),
+          import('../08_SECURITY/freemium-guard.js'),
+        ]);
+        const rawOwnerId = (profile as any).ownerId || (profile as any).owner_id;
+        const normalizedProfileOwner =
+          rawOwnerId && rawOwnerId !== 'SYSTEM_OWNER' && rawOwnerId !== 'LOCAL_CLIENT'
+            ? rawOwnerId
+            : undefined;
+        const effectiveOwnerId = resolveDefaultOwnerId(normalizedProfileOwner);
+        const launchCheck = canLaunchProfile(effectiveOwnerId);
+        if (!launchCheck.allowed) {
+          const errorMsg = launchCheck.message || 'Concurrent running browser limit reached for your plan.';
+          debugLog(`[ProcessManager] Concurrent launch blocked for "${profile.name}": ${errorMsg}`);
+          return {
+            success: false,
+            code: 'CONCURRENT_LIMIT_REACHED',
+            error: errorMsg,
+          };
+        }
+      } catch (gateErr: any) {
+        debugLog(`[ProcessManager WARN] Launch quota check error: ${gateErr?.message || gateErr}`);
       }
 
       debugLog(`[ProcessManager] Preparing to launch "${profile.name}"...`);

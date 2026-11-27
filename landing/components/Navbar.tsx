@@ -29,11 +29,11 @@ export default function Navbar() {
           : 'bg-[#030303]/80 backdrop-blur-md border-b border-white/5 text-[#ededed]'
       }`}
     >
-      <div className="w-full max-w-[1920px] mx-auto px-6 sm:px-10 lg:px-12 py-5 flex items-center justify-between">
+      <div className="w-full max-w-[1920px] mx-auto px-6 sm:px-10 lg:px-12 py-5 flex items-center justify-between gap-4">
         
-        {/* BRAND LOGO (LEFT: MAX 25%) */}
-        <div className="w-1/4 flex items-center justify-start">
-          <Link href="/" className="flex items-center gap-2.5 group">
+        {/* BRAND LOGO (LEFT) */}
+        <div className="shrink-0 flex items-center justify-start">
+          <Link href="/" className="flex items-center gap-2.5 group whitespace-nowrap">
             <div
               className={`w-8 h-8 rounded-lg flex items-center justify-center p-1.5 shadow-sm transition-colors ${
                 isLight
@@ -80,9 +80,9 @@ export default function Navbar() {
           </Link>
         </div>
 
-        {/* NAVIGATION LINKS (CENTER: DEAD-CENTERED) */}
+        {/* NAVIGATION LINKS (CENTER: COMPACT NO-WRAP) */}
         <nav
-          className={`hidden md:flex items-center gap-7 lg:gap-9 text-[14px] font-normal ${
+          className={`hidden md:flex items-center gap-4 lg:gap-6 xl:gap-8 text-[13px] lg:text-[14px] font-normal whitespace-nowrap ${
             isLight ? 'text-zinc-600' : 'text-zinc-300'
           }`}
         >
@@ -158,11 +158,11 @@ export default function Navbar() {
           </Link>
         </nav>
 
-        {/* RIGHT CTA BUTTONS (RIGHT: MAX 25%) */}
-        <div className="w-1/4 flex items-center justify-end gap-5">
+        {/* RIGHT CTA BUTTONS (SHRINK-SAFE) */}
+        <div className="shrink-0 flex items-center justify-end gap-3 lg:gap-4">
           <Link
             href="/login"
-            className={`hidden sm:inline-block text-[14px] font-medium transition-colors ${
+            className={`hidden sm:inline-block whitespace-nowrap text-[13px] lg:text-[14px] font-medium transition-colors ${
               isLight ? 'text-zinc-700 hover:text-black' : 'text-zinc-300 hover:text-white'
             }`}
           >
@@ -170,7 +170,7 @@ export default function Navbar() {
           </Link>
           <Link
             href="/download"
-            className={`hidden sm:inline-flex items-center justify-center px-5 py-2.5 rounded-full text-[13px] font-medium tracking-tight transition-all transform hover:scale-[1.02] ${
+            className={`hidden sm:inline-flex shrink-0 whitespace-nowrap items-center justify-center px-4 lg:px-5 py-2.5 rounded-full text-[13px] font-medium tracking-tight transition-all transform hover:scale-[1.02] ${
               isLight
                 ? 'bg-black text-white hover:bg-zinc-800 shadow-sm'
                 : 'bg-white text-black hover:bg-zinc-200 shadow-[0_0_20px_rgba(255,255,255,0.12)]'

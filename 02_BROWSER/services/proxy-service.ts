@@ -13,6 +13,7 @@ import {
 import { encryptData, decryptData } from '../../08_SECURITY/encryption.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
 import { testProxy } from './proxy-test-service.js';
+import { assertCanCreateProxy } from '../../08_SECURITY/freemium-guard.js';
 
 export function getProxies(): ProxyItem[] {
   const db = getDatabase();
@@ -139,6 +140,8 @@ export function getDecryptedProxyCredentials(id: string): { username?: string; p
 }
 
 export function createProxy(dto: CreateProxyDTO): ProxyItem {
+  assertCanCreateProxy(1, (dto as any)?.ownerId);
+
   const db = getDatabase();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();

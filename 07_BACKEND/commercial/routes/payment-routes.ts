@@ -9,6 +9,7 @@ import {
   verifyRazorpayPaymentSignature,
   resolveCommercialPlan,
 } from '../payment-service.js';
+import { normalizeBillingCycle } from '../canonical-plan-catalog.js';
 import { getDatabase } from '../../../06_DATABASE/connection.js';
 import { isPostgresConfigured, getCentralRepository } from '../../../06_DATABASE/central-repository.js';
 import { getPrismaClient } from '../../../06_DATABASE/prisma-client.js';
@@ -58,7 +59,10 @@ export async function handlePaymentRoutes(
       sendJSON(res, 400, { success: false, error: 'planId is required. Cannot determine payment amount.' });
       return true;
     }
-    const billingCycle = ((body.billingCycle || body.billing_cycle || body.billing || 'MONTHLY') as string).toUpperCase() as 'MONTHLY' | 'ANNUAL';
+    const billingCycle = normalizeBillingCycle(
+      String(body.billingCycle || body.billing_cycle || body.billing || ''),
+      planId
+    );
     const proofAsset = body.proofAsset || body.proof_asset || body.receiptUrl || body.receipt_url;
     const extraMembers = body.extraMembers || body.extra_members;
     const extraProxyGb = body.extraProxyGb || body.extra_proxy_gb;
@@ -156,7 +160,10 @@ export async function handlePaymentRoutes(
       sendJSON(res, 400, { success: false, error: 'Missing required field: planId.' });
       return true;
     }
-    const billingCycle = ((body.billingCycle || body.billing || 'MONTHLY') as string).toUpperCase() as 'MONTHLY' | 'ANNUAL';
+    const billingCycle = normalizeBillingCycle(
+      String(body.billingCycle || body.billing || ''),
+      planId
+    );
     const provider = ((body.provider || 'youpi_pg') as string).toLowerCase() as PaymentProviderType;
     const currency = body.currency || (provider === 'stripe' ? 'USD' : 'INR');
     const extraMembers = Number(body.extraMembers || 0);

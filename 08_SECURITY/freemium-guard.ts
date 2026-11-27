@@ -9,6 +9,7 @@ import { getDatabase } from '../06_DATABASE/connection.js';
 import { hasValidAccountSubscription, getAccountPlanLimits, isBusinessPlan, readCachedStatus, getAccountSession } from './account-service.js';
 import { getActiveUserId } from '../07_BACKEND/commercial/session-context.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
+import { getCanonicalPlan, legacyPlanIdToCanonical } from '../07_BACKEND/commercial/canonical-plan-catalog.js';
 
 function getUserDataPath(): string {
   return getWritableUserDataDir();
@@ -179,6 +180,103 @@ export function getPlanLimitsInfo(ownerId?: string): {
     proLimit: PRO_PROFILE_LIMIT,
     tier,
   };
+}
+
+export function getProxyCount(): number {
+  try {
+    const db = getDatabase();
+    const row = db.prepare('SELECT COUNT(*) as count FROM proxies').get() as { count: number } | undefined;
+    return typeof row?.count === 'number' ? row.count : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function getProxyLimitsInfo(ownerId?: string): {
+  currentCount: number;
+  maxProxies: number;
+  planId: string;
+} {
+  const resolvedOwner = resolveDefaultOwnerId(ownerId);
+  let effectivePlanId = 'plan_free';
+
+  if (resolvedOwner && resolvedOwner !== 'SYSTEM_OWNER') {
+    try {
+      const db = getDatabase();
+      const userRow = db
+        .prepare('SELECT plan_id, trial_expires_at, status FROM commercial_users WHERE id = ?')
+        .get(resolvedOwner) as { plan_id?: string; trial_expires_at?: string | null; status?: string } | undefined;
+
+      if (userRow) {
+        const subRow = db
+          .prepare(
+            "SELECT plan_id, status, expires_at FROM commercial_subscriptions WHERE user_id = ? AND status IN ('ACTIVE', 'TRIAL') ORDER BY starts_at DESC LIMIT 1"
+          )
+          .get(resolvedOwner) as { plan_id?: string; status?: string; expires_at?: string | null } | undefined;
+
+        const subActive = Boolean(
+          subRow && !(subRow.expires_at && new Date(subRow.expires_at).getTime() <= Date.now())
+        );
+
+        if (subActive && subRow?.plan_id) {
+          effectivePlanId = subRow.plan_id;
+        } else if (
+          userRow.plan_id &&
+          userRow.plan_id !== 'plan_free' &&
+          userRow.plan_id !== 'free' &&
+          !(userRow.trial_expires_at && new Date(userRow.trial_expires_at).getTime() <= Date.now())
+        ) {
+          effectivePlanId = userRow.plan_id;
+        }
+      }
+    } catch {
+      // Fall back to account session / license checks when commercial tables aren't initialized
+    }
+  }
+
+  if (effectivePlanId === 'plan_free') {
+    const accountLimits = getAccountPlanLimits();
+    if (accountLimits.isPro && accountLimits.plan) {
+      effectivePlanId = accountLimits.plan;
+    } else if (hasValidLicense()) {
+      effectivePlanId = 'plan_pro';
+    }
+  }
+
+  const canonicalId = legacyPlanIdToCanonical(effectivePlanId);
+  let maxProxies = 15;
+  if (canonicalId) {
+    const def = getCanonicalPlan(canonicalId);
+    if (def && typeof def.proxySlotLimit === 'number') {
+      maxProxies = def.proxySlotLimit;
+    } else if (canonicalId !== 'free') {
+      maxProxies = -1;
+    }
+  } else if (effectivePlanId !== 'plan_free' && effectivePlanId !== 'free') {
+    maxProxies = -1;
+  }
+
+  return {
+    currentCount: getProxyCount(),
+    maxProxies,
+    planId: effectivePlanId,
+  };
+}
+
+export function assertCanCreateProxy(additionalCount = 1, ownerId?: string): void {
+  const { currentCount, maxProxies } = getProxyLimitsInfo(ownerId);
+  if (maxProxies === -1 || maxProxies >= 100000) return;
+
+  if (currentCount + additionalCount > maxProxies) {
+    if (maxProxies <= 15) {
+      throw new Error(
+        `Free plan custom proxy slot limit reached (${maxProxies} slots). Upgrade to Starter (25 slots) or Growth/Ultimate (Unlimited proxies).`
+      );
+    }
+    throw new Error(
+      `Custom proxy slot limit reached (${maxProxies} slots). Upgrade to Growth or Ultimate for Unlimited custom proxies.`
+    );
+  }
 }
 
 /**

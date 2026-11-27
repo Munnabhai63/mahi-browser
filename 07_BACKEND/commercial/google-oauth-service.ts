@@ -238,6 +238,9 @@ export function normalizePlanId(planId?: string): string {
     return clean;
   }
   // Aliases
+  if (clean === 'starter' || clean === 'plan_1month') return 'mahi_starter';
+  if (clean === 'growth' || clean === 'plan_6months') return 'mahi_growth';
+  if (clean === 'ultimate' || clean === 'plan_1year' || clean === 'annual' || clean === 'yearly') return 'mahi_ultimate';
   if (clean === 'pro_10') return 'professional_10';
   if (clean === 'pro_25') return 'professional_25';
   if (clean === 'pro_50') return 'professional_50';
@@ -953,6 +956,8 @@ export async function authenticateWithGoogleClaimsAsync(
     const trialUsed = isTrial ? 1 : 0;
     const pendingPlanId = intent === 'paid' ? planId : null;
     const pendingBillingCycle = intent === 'paid' ? billingCycle : null;
+    const initialPlanId = intent === 'paid' ? 'free' : planId;
+    const initialProfileQuota = intent === 'paid' ? 15 : profileQuota;
     const acceptedTermsInt = stateRecord?.acceptedTerms === true ? 1 : (stateRecord?.acceptedTerms === false ? 0 : null);
     const termsVersion = stateRecord?.termsVersion || null;
 
@@ -966,7 +971,7 @@ export async function authenticateWithGoogleClaimsAsync(
         accepted_terms, terms_version
       ) VALUES (?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
     `).run(
-      userId, cleanEmail, displayName, planId,
+      userId, cleanEmail, displayName, initialPlanId,
       trialStartedAt, trialExpiresAt, trialUsed, intent,
       pendingPlanId, pendingBillingCycle, claims.sub, avatarUrl,
       now, now, now,
@@ -984,7 +989,7 @@ export async function authenticateWithGoogleClaimsAsync(
           accepted_terms, terms_version
         ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
       `).run(
-        userId, cleanEmail, cleanEmail, displayName, now, planId, profileQuota,
+        userId, cleanEmail, cleanEmail, displayName, now, initialPlanId, initialProfileQuota,
         trialStartedAt, trialExpiresAt, trialUsed, intent,
         claims.sub, avatarUrl, now, now, now,
         acceptedTermsInt, termsVersion
@@ -1007,8 +1012,8 @@ export async function authenticateWithGoogleClaimsAsync(
           status: 'ACTIVE',
           email_verified: 1,
           email_verified_at: now,
-          plan_id: planId,
-          profile_quota: profileQuota,
+          plan_id: initialPlanId,
+          profile_quota: initialProfileQuota,
           trial_started_at: trialStartedAt,
           trial_expires_at: trialExpiresAt,
           trial_used: trialUsed,
