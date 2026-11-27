@@ -1,5 +1,16 @@
 # Progress Tracker
 
+## Phase 3: Gateway Refactor & Backend Modularity — P1 (2026-11-28)
+- [x] **Sub-Step 3A — Native Fastify Route Plugins & Cycle Removal (`cloud-gateway.ts`, `fastify-route-adapter.ts`, `app.ts`, `http-security.ts`):**
+  - Replaced `setNotFoundHandler` + `reply.hijack()` in `07_BACKEND/server/cloud-gateway.ts` with native Fastify route plugins registered cleanly across `/api/v1/auth`, `/api/v1/billing`, `/api/v1/admin`, `/api/v1/sync`, `/api/v1/entitlements`, `/api/v1/account`, `/api/v1/commercial`, `/api/v1/webhooks`, `/api/v1/cloud-browser`, `/v1/remote`, `/api/v1/remote`, `/v2/*`, `/download/*`, and portal/static paths via `07_BACKEND/server/fastify-route-adapter.ts` (`FastifyResponseBridge`, `registerPrefixBridgePlugin`, preserving `ServerResponse` compatibility and SSE streaming).
+  - Relocated `isTrustedOrigin` to `07_BACKEND/utils/http-security.ts` (with backwards-compatible re-export in `cloud-gateway.ts`) and wired global Fastify `setErrorHandler` via `toSafeErrorResponse` alongside strict security headers (`X-Gateway-Engine: Fastify-Node22`, `security-headers.ts`) and raw wire body preservation for signed payment webhooks.
+- [x] **Sub-Step 3B — Eliminate Blocking Sync I/O in HTTP & File Serving (`07_BACKEND/server/app.ts`, `07_BACKEND/api/local-api-server.ts`):**
+  - Eliminated all blocking `fs.existsSync`, `fs.statSync`, and `fs.readFileSync` calls across HTTP request/static/portal/download handlers in `07_BACKEND/server/app.ts` and `sendFile` in `07_BACKEND/api/local-api-server.ts`, replacing them with async `fs.promises.stat` / `fs.promises.readFile` and `fs.createReadStream` with error and socket-close cleanup handlers.
+- [x] **Sub-Step 3C — Modularize Oversized Backend Monoliths (`payment-service.ts`, `admin-owner-routes.ts`, `remote-api-router.ts`):**
+  - Split `07_BACKEND/commercial/payment-service.ts` (3,107 -> 213 lines) into `07_BACKEND/commercial/payments/` (`payment-types.ts`, `payment-adapters.ts`, `payment-activation.ts`, `manual-payment-handlers.ts`, `payment-queries.ts`) while preserving every exported type, class, helper, and `paymentService` singleton.
+  - Split `07_BACKEND/commercial/routes/admin-owner-routes.ts` (1,868 -> 23 lines) into `07_BACKEND/commercial/routes/admin/` (`admin-shared.ts`, `admin-users-routes.ts`, `admin-payments-routes.ts`, `owner-console-routes.ts`) while preserving `handleAdminOwnerRoutes`.
+  - Split `07_BACKEND/commercial/remote-api-router.ts` (1,903 -> 202 lines) into `07_BACKEND/commercial/routes/remote/` (`remote-shared.ts`, `remote-billing-routes.ts`, `remote-profiles-routes.ts`, `remote-automation-routes.ts`, `remote-streaming-routes.ts`) while preserving all exported auth/helper/router symbols.
+
 ## Phase 2: Database, Payments & Distributed State — P0/P1 (2026-11-28)
 - [x] **Sub-Step 2A — PostgreSQL Pool Tuning & Custom TLS CA (`06_DATABASE/pool-config.ts`, `06_DATABASE/prisma-client.ts`):**
   - Added `parsePgPoolConfig()` supporting configurable `DB_POOL_MAX`, `DB_POOL_IDLE_TIMEOUT_MS`, `DB_POOL_CONNECTION_TIMEOUT_MS`, `DB_KEEPALIVE`, and `DB_SSL_CA` (inline PEM or file path, stripping conflicting `sslmode` query params) + `DB_SSL_REJECT_UNAUTHORIZED`.

@@ -1,5 +1,13 @@
 # Decisions Log
 
+## 2026-11-28 - Phase 3 Gateway Refactor & Backend Modularity (P1)
+- **Context**: `cloud-gateway.ts` routed API traffic via `setNotFoundHandler` + `reply.hijack()` (bypassing Fastify's plugin tree, error handler, and lifecycle), HTTP file handlers in `app.ts` and `local-api-server.ts` executed blocking `fs.readFileSync`/`statSync`/`existsSync` on request threads, and three commercial monoliths (`payment-service.ts` 3,107 lines, `admin-owner-routes.ts` 1,868 lines, `remote-api-router.ts` 1,903 lines) coupled unrelated concerns in single files.
+- **Key Decisions**:
+  1. **Fastify Prefix Bridge Without `reply.hijack()` (`fastify-route-adapter.ts`, `cloud-gateway.ts`)**: Replaced `setNotFoundHandler` + `reply.hijack()` with domain-prefixed Fastify plugins backed by `FastifyResponseBridge` (synchronous `reply.code(...).send(...)` for buffered payloads and `PassThrough` streaming for SSE, avoiding Fastify 5 async `reply.then()` deadlocks) and added a global `setErrorHandler` delegating to `toSafeErrorResponse`.
+  2. **Break Utility Circular Import (`utils/http-security.ts`)**: Moved `isTrustedOrigin` out of `cloud-gateway.ts` into `utils/http-security.ts` (re-exported from `cloud-gateway.ts` for compatibility) so commercial/remote routers never import the gateway server module directly.
+  3. **Async Streamed HTTP Serving (`server/app.ts`, `api/local-api-server.ts`)**: Standardized all static HTML, asset, SEO (`sitemap.xml`/`robots.txt`), and installer binary endpoints on `fs.promises` + `fs.createReadStream` with path-traversal canonicalization and stream abort handling on client close.
+  4. **Backward-Compatible Facade Pattern (`payments/`, `routes/admin/`, `routes/remote/`)**: Extracted cohesive domain modules behind thin facade barrels (`payment-service.ts`, `admin-owner-routes.ts`, `remote-api-router.ts`) so existing Electron IPC, local API, gateway routes, and unit test imports remain 100% compatible without breaking changes.
+
 ## 2026-11-28 - Phase 2 Database, Payments & Distributed State Architecture (P0/P1)
 - **Context**: Single-instance billing mutations (`payment-service.ts`), process-local in-memory `Map`s (`authRateLimitMap`, `loginAttempts`, `ownerSessionMap`, `ownerVerifyRateLimitMap`, `rateLimitBuckets`), default `pg.Pool` sizing/TLS settings, and lack of an emergency circuit breaker risked race conditions, split-brain writes, and horizontal scaling bypasses across gateway replicas.
 - **Key Decisions**:

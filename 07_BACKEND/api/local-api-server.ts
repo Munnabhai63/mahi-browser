@@ -461,14 +461,20 @@ function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
   res.end(JSON.stringify(data));
 }
 
-function sendFile(res: http.ServerResponse, filePath: string, downloadName: string) {
+async function sendFile(res: http.ServerResponse, filePath: string, downloadName: string): Promise<void> {
   const req = (res as any).__req as http.IncomingMessage | undefined;
   const corsHeaders = req ? getCorsHeaders(req) : {};
-  if (!fs.existsSync(filePath)) {
+  let stat: fs.Stats;
+  try {
+    stat = await fs.promises.stat(filePath);
+    if (!stat.isFile()) {
+      sendJSON(res, 404, { success: false, error: 'File not found. Build installers first using npm run dist.' });
+      return;
+    }
+  } catch {
     sendJSON(res, 404, { success: false, error: 'File not found. Build installers first using npm run dist.' });
     return;
   }
-  const stat = fs.statSync(filePath);
   res.writeHead(200, {
     'Content-Type': 'application/octet-stream',
     'Content-Disposition': `attachment; filename="${downloadName}"`,
@@ -476,6 +482,19 @@ function sendFile(res: http.ServerResponse, filePath: string, downloadName: stri
     ...corsHeaders,
   });
   const stream = fs.createReadStream(filePath);
+  stream.on('error', (err: NodeJS.ErrnoException) => {
+    console.error('[LocalApi] Error streaming download file:', filePath, err?.message || err);
+    if (!res.headersSent) {
+      sendJSON(res, err?.code === 'ENOENT' ? 404 : 500, { success: false, error: 'Failed to stream installer file.' });
+    } else if (!res.writableEnded && !res.destroyed) {
+      res.destroy(err);
+    }
+  });
+  res.on('close', () => {
+    if (!stream.destroyed) {
+      stream.destroy();
+    }
+  });
   stream.pipe(res);
 }
 
@@ -656,7 +675,7 @@ export async function handleLocalApiRequest(
         return;
       }
       const info = getDistributionInfo();
-      sendFile(res, info.setupPath, info.setupFileName);
+      await sendFile(res, info.setupPath, info.setupFileName);
       return;
     }
 
@@ -667,7 +686,7 @@ export async function handleLocalApiRequest(
         return;
       }
       const info = getDistributionInfo();
-      sendFile(res, info.portablePath, info.portableFileName);
+      await sendFile(res, info.portablePath, info.portableFileName);
       return;
     }
 

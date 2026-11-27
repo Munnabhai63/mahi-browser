@@ -1,6 +1,5 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
-import { isTrustedOrigin } from '../../server/cloud-gateway.js';
 import { verifyAccessToken } from '../../../05_AUTH/central-auth-service.js';
 import { verifyToken } from '../commercial-auth-service.js';
 import { verifyAdminAccess } from '../../../05_AUTH/admin-auth.js';
@@ -12,6 +11,7 @@ import { getPrismaClient } from '../../../06_DATABASE/prisma-client.js';
 import {
   resolveTrustedClientIp,
   normalizeIp,
+  isTrustedOrigin,
   readBoundedBuffer,
   parseBoundedJson,
   BoundedBodyOptions,

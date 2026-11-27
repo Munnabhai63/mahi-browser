@@ -1,17 +1,36 @@
 /**
  * MAHI Platform V2 — Fastify Cloud Gateway
- * Implements Section 2 and Section 9 of MAHI_BROWSER_TARGET.md.
- * High-performance standalone cloud gateway with Redis distributed locks,
- * PostgreSQL central repository, Cloudflare R2 session archives, and CORS/security headers.
+ * Implements native Fastify route plugins with explicit domain prefixes,
+ * Redis distributed locks, PostgreSQL central repository, Cloudflare R2 / local storage,
+ * centralized CORS/CSP security headers, and global AppError safe error mapping.
  */
 
-import fastify, { FastifyInstance } from 'fastify';
+import fastify, { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import cors from '@fastify/cors';
 import { isPostgresConfigured, checkPostgresHealth, disconnectPrisma } from '../../06_DATABASE/prisma-client.js';
 import { isRedisConfigured, checkRedisHealth, disconnectRedis } from '../../08_SECURITY/redis-lock-service.js';
 import { getStorageProvider } from '../../08_SECURITY/storage-provider.js';
-import { applyFastifySecurityHeaders, applyNodeSecurityHeaders } from '../utils/security-headers.js';
-import { handleCentralApiRequest } from './app.js';
+import { applyFastifySecurityHeaders } from '../utils/security-headers.js';
+import { InvalidJsonError, isTrustedOrigin } from '../utils/http-security.js';
+import { toSafeErrorResponse } from '../utils/app-error.js';
+import {
+  dispatchThroughFastifyReply,
+  registerPrefixBridgePlugin,
+  wrapCommercialHandlers,
+} from './fastify-route-adapter.js';
+import { handleClientEntitlementRoutes } from '../commercial/routes/client-entitlement-routes.js';
+import { handlePaymentRoutes } from '../commercial/routes/payment-routes.js';
+import { handleAuthRoutes } from '../commercial/routes/auth-routes.js';
+import { handleAdminOwnerRoutes } from '../commercial/routes/admin-owner-routes.js';
+import { handleCloudSyncRoutes } from '../commercial/routes/cloud-sync-routes.js';
+import { handleRemoteApiRoutes } from '../commercial/remote-api-router.js';
+import {
+  handlePortalAndStaticRoutes,
+  handleBinaryDownloadRoutes,
+  handleCentralV2Routes,
+} from './app.js';
+
+export { isTrustedOrigin };
 
 export interface FastifyGatewayOptions {
   port?: number;
@@ -22,66 +41,152 @@ export interface FastifyGatewayOptions {
 
 let activeGatewayInstance: FastifyInstance | null = null;
 
-export function isTrustedOrigin(origin?: string): boolean {
-  if (!origin) return true;
-  const clean = origin.trim().replace(/\/+$/, '');
-  const customOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
-    .split(',')
-    .map((o) => o.trim().replace(/\/+$/, ''))
-    .filter(Boolean);
-  if (customOrigins.includes(clean)) {
-    return true;
-  }
-  if (process.env.NODE_ENV === 'development' && process.env.CORS_ALLOW_ALL === 'true') {
-    return true;
-  }
-
-  let parsed: URL;
-  try {
-    parsed = new URL(clean);
-  } catch {
-    return false;
-  }
-
-  const proto = parsed.protocol.toLowerCase();
-  const host = parsed.hostname.toLowerCase();
-
-  if (proto === 'mahibrowser:' || proto === 'mahi:') {
-    return true;
-  }
-  if ((proto === 'http:' || proto === 'https:') && (host === 'localhost' || host === '127.0.0.1' || host === '[::1]')) {
-    return true;
-  }
-  if (host === 'mahibrowser.com' || host.endsWith('.mahibrowser.com')) {
-    return proto === 'https:' || process.env.NODE_ENV !== 'production';
-  }
-  return false;
-}
-
 export function getFastifyCloudGateway(): FastifyInstance | null {
   return activeGatewayInstance;
 }
 
+async function buildHealthPayload() {
+  const [pgHealth, redisHealth] = await Promise.all([
+    checkPostgresHealth(),
+    checkRedisHealth(),
+  ]);
+
+  let storageProviderName = 'unknown';
+  let storageStatus = 'unconfigured';
+  try {
+    const storage = getStorageProvider();
+    storageProviderName = storage.name;
+    storageStatus = 'ready';
+  } catch {
+    storageStatus = 'unavailable';
+  }
+
+  return {
+    status: 'ok',
+    service: 'mahi-cloud-gateway',
+    version: '2.0.0',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    database: {
+      configured: isPostgresConfigured(),
+      provider: isPostgresConfigured() ? 'postgresql' : 'sqlite',
+      status: pgHealth.connected ? 'connected' : isPostgresConfigured() ? 'error' : 'standalone_sqlite',
+      latencyMs: pgHealth.latencyMs,
+      error: pgHealth.error,
+    },
+    redis: {
+      configured: isRedisConfigured(),
+      status: redisHealth.connected ? 'connected' : isRedisConfigured() ? 'error' : 'disconnected',
+      latencyMs: redisHealth.latencyMs,
+      error: redisHealth.error,
+    },
+    storage: {
+      provider: storageProviderName,
+      status: storageStatus,
+    },
+  };
+}
+
+const healthRoutesPlugin: FastifyPluginAsync = async (app) => {
+  app.get('/health', async () => buildHealthPayload());
+  app.get('/api/v2/health', async () => buildHealthPayload());
+};
+
+const portalAndDownloadPlugin: FastifyPluginAsync = async (app) => {
+  const dispatchPortal = async (request: any, reply: any) => {
+    const handled = await dispatchThroughFastifyReply(request, reply, async (req, res, parsedUrl) => {
+      const pathname = parsedUrl.pathname;
+      const cleanPath = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+      return handlePortalAndStaticRoutes(req, res, parsedUrl, cleanPath, (req.method || 'GET').toUpperCase());
+    });
+    if (!handled && !reply.sent) {
+      return reply.code(404).send({ success: false, error: `Route ${request.method} ${request.url.split('?')[0]} not found` });
+    }
+    return reply;
+  };
+
+  const dispatchDownload = async (request: any, reply: any) => {
+    const handled = await dispatchThroughFastifyReply(request, reply, async (req, res, parsedUrl) => {
+      const pathname = parsedUrl.pathname;
+      const cleanPath = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+      return handleBinaryDownloadRoutes(req, res, parsedUrl, cleanPath);
+    });
+    if (!handled && !reply.sent) {
+      return reply.code(404).send({ success: false, error: `Route ${request.method} ${request.url.split('?')[0]} not found` });
+    }
+    return reply;
+  };
+
+  // Explicit binary download routes
+  const binaryDownloadRoutes = [
+    '/download/setup',
+    '/download/portable',
+    '/download/MAHI-Setup.exe',
+    '/api/v2/download/setup',
+    '/api/v2/download/portable',
+  ];
+  for (const routePath of binaryDownloadRoutes) {
+    app.get(routePath, dispatchDownload);
+  }
+
+  // Portal HTML & Next.js static export routes
+  const portalGetRoutes = [
+    '/',
+    '/admin',
+    '/web',
+    '/super-admin',
+    '/root-admin',
+    '/master-admin',
+    '/dashboard',
+    '/download',
+    '/install',
+    '/client',
+    '/setup',
+    '/get',
+    '/app',
+    '/privacy',
+    '/terms',
+    '/aup',
+    '/pricing',
+    '/compare/gologin-alternative',
+    '/docs',
+    '/docs/*',
+    '/blog',
+    '/blog/*',
+    '/signup',
+    '/login',
+    '/book-demo',
+    '/assets/*',
+    '/_next/*',
+    '/sitemap.xml',
+    '/robots.txt',
+  ];
+  for (const routePath of portalGetRoutes) {
+    app.get(routePath, dispatchPortal);
+  }
+};
+
 /**
- * Builds and configures the Fastify Cloud Gateway instance.
+ * Builds and configures the Fastify Cloud Gateway instance with native plugins.
  */
 export async function createFastifyCloudGateway(
   options: FastifyGatewayOptions = {}
 ): Promise<FastifyInstance> {
   const app = fastify({
     logger: options.logger ?? false,
-    bodyLimit: options.bodyLimit ?? (250 * 1024 * 1024), // 250 MB for R2 profile session blobs
+    bodyLimit: options.bodyLimit ?? 250 * 1024 * 1024, // 250 MB for R2 profile session blobs
+    routerOptions: {
+      ignoreTrailingSlash: true,
+    },
   });
 
-  // 1. CORS Configuration (Section 2 - Desktop & Web multi-origin support with strict origin verification)
+  // 1. CORS Configuration (Desktop & Web multi-origin support with strict origin verification)
   await app.register(cors, {
     origin: (origin, cb) => {
-      // Allow requests with no origin (Electron desktop, curl, mobile apps, native callers)
       if (!origin) return cb(null, true);
       if (isTrustedOrigin(origin)) {
         return cb(null, true);
       }
-      // Reject untrusted origins
       return cb(null, false);
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
@@ -103,22 +208,24 @@ export async function createFastifyCloudGateway(
     credentials: true,
   });
 
-  // 2. Security Headers (Section 2 & Production Hardening)
+  // 2. Centralized Security Headers Hook (CSP, COOP, Permissions-Policy, X-Gateway-Engine)
   app.addHook('onSend', async (request, reply) => {
     applyFastifySecurityHeaders(reply, request.url || '/');
   });
 
-  // 3. Application/JSON Parser with Empty Body Toleration
-  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
-    if (!body || (typeof body === 'string' && body.trim() === '')) {
+  // 3. Preserve exact wire bytes (`rawBuffer`) for webhook signatures alongside empty-JSON toleration
+  app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
+    const rawBuf = Buffer.isBuffer(body) ? body : Buffer.from(String(body || ''), 'utf8');
+    (req.raw as any).rawBuffer = rawBuf;
+    const text = rawBuf.toString('utf8').trim();
+    if (!text) {
       return done(null, {});
     }
     try {
-      const json = JSON.parse(body as string);
+      const json = JSON.parse(text);
       done(null, json);
-    } catch (err: any) {
-      err.statusCode = 400;
-      done(err, undefined);
+    } catch {
+      done(new InvalidJsonError('Invalid JSON payload.'), undefined);
     }
   });
 
@@ -126,7 +233,10 @@ export async function createFastifyCloudGateway(
   app.addContentTypeParser(
     ['application/octet-stream', 'application/x-tar', 'application/gzip', 'application/x-gzip'],
     { parseAs: 'buffer' },
-    (_req, body, done) => {
+    (req, body, done) => {
+      if (Buffer.isBuffer(body)) {
+        (req.raw as any).rawBuffer = body;
+      }
       done(null, body);
     }
   );
@@ -134,9 +244,11 @@ export async function createFastifyCloudGateway(
   app.addContentTypeParser(
     'application/x-www-form-urlencoded',
     { parseAs: 'string' },
-    (_req, body, done) => {
+    (req, body, done) => {
       try {
-        const params = new URLSearchParams(body as string);
+        const rawStr = typeof body === 'string' ? body : String(body || '');
+        (req.raw as any).rawBuffer = Buffer.from(rawStr, 'utf8');
+        const params = new URLSearchParams(rawStr);
         const result: Record<string, any> = {};
         for (const [k, v] of params.entries()) {
           result[k] = v;
@@ -148,90 +260,87 @@ export async function createFastifyCloudGateway(
     }
   );
 
-  // 5. Health Check Helper
-  const getHealthStatus = async () => {
-    const [pgHealth, redisHealth] = await Promise.all([
-      checkPostgresHealth(),
-      checkRedisHealth(),
-    ]);
-
-    let storageProviderName = 'unknown';
-    let storageStatus = 'unconfigured';
-    try {
-      const storage = getStorageProvider();
-      storageProviderName = storage.name;
-      storageStatus = 'ready';
-    } catch {
-      storageStatus = 'unavailable';
+  // 5. Global Safe Error Handler (never leak raw err.message / stack / DB errors)
+  app.setErrorHandler((err: any, _request, reply) => {
+    if (err?.code === 'FST_ERR_CTP_BODY_TOO_LARGE' || err?.statusCode === 413) {
+      return reply.code(413).send({
+        success: false,
+        error: 'Request payload exceeds maximum allowed size.',
+        code: 'PAYLOAD_TOO_LARGE',
+      });
     }
-
-    return {
-      status: 'ok',
-      service: 'mahi-cloud-gateway',
-      version: '2.0.0',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      database: {
-        configured: isPostgresConfigured(),
-        provider: isPostgresConfigured() ? 'postgresql' : 'sqlite',
-        status: pgHealth.connected ? 'connected' : (isPostgresConfigured() ? 'error' : 'standalone_sqlite'),
-        latencyMs: pgHealth.latencyMs,
-        error: pgHealth.error,
-      },
-      redis: {
-        configured: isRedisConfigured(),
-        status: redisHealth.connected ? 'connected' : (isRedisConfigured() ? 'error' : 'disconnected'),
-        latencyMs: redisHealth.latencyMs,
-        error: redisHealth.error,
-      },
-      storage: {
-        provider: storageProviderName,
-        status: storageStatus,
-      },
-    };
-  };
-
-  // 6. Dedicated Native Fastify Health Check Endpoints
-  app.get('/health', async (_request, _reply) => {
-    return getHealthStatus();
+    const safe = toSafeErrorResponse(err, { fallbackStatus: 500 });
+    return reply.code(safe.statusCode).send({
+      success: false,
+      error: safe.message,
+      code: safe.code,
+      ...(safe.fieldErrors ? { fieldErrors: safe.fieldErrors } : {}),
+    });
   });
 
-  app.get('/api/v2/health', async (_request, _reply) => {
-    return getHealthStatus();
+  // 6. Native Fastify Domain Route Plugins (zero reply.hijack())
+  await app.register(healthRoutesPlugin);
+
+  // Commercial REST Domain Plugins
+  registerPrefixBridgePlugin(app, ['/api/v1/auth', '/auth'], () =>
+    wrapCommercialHandlers([handleAuthRoutes])
+  );
+  registerPrefixBridgePlugin(app, ['/api/v1/billing'], () =>
+    wrapCommercialHandlers([handlePaymentRoutes])
+  );
+  registerPrefixBridgePlugin(app, ['/api/v1/account', '/v1/account'], () =>
+    wrapCommercialHandlers([handleClientEntitlementRoutes, handlePaymentRoutes, handleAuthRoutes])
+  );
+  registerPrefixBridgePlugin(app, ['/api/v1/commercial'], () =>
+    wrapCommercialHandlers([handleClientEntitlementRoutes, handlePaymentRoutes, handleAdminOwnerRoutes])
+  );
+  registerPrefixBridgePlugin(
+    app,
+    [
+      '/api/v1/entitlements',
+      '/api/v1/devices',
+      '/api/v1/plans',
+      '/api/v1/pricing',
+      '/api/v1/updates',
+      '/api/v1/funnel',
+      '/api/v1/me',
+      '/me',
+    ],
+    () => wrapCommercialHandlers([handleClientEntitlementRoutes])
+  );
+  registerPrefixBridgePlugin(app, ['/api/v1/admin', '/api/v1/support'], () =>
+    wrapCommercialHandlers([handleAdminOwnerRoutes])
+  );
+  registerPrefixBridgePlugin(
+    app,
+    ['/api/v1/sync', '/api/v1/storage', '/api/v1/workspaces', '/v1/sync'],
+    () => wrapCommercialHandlers([handleCloudSyncRoutes])
+  );
+
+  // Remote Cloud API Domain Plugins (registered after specific /v1/account & /v1/sync prefixes)
+  registerPrefixBridgePlugin(
+    app,
+    ['/api/v1/remote', '/api/v1/cloud-browser', '/api/v1/webhooks', '/v1'],
+    () => async (req, res, parsedUrl) =>
+      handleRemoteApiRoutes(req, res, parsedUrl.pathname, (req.method || 'GET').toUpperCase(), parsedUrl)
+  );
+
+  // Portal HTML, Static Assets & Binary Downloads Plugin
+  await app.register(portalAndDownloadPlugin);
+
+  // Central V2 Control Plane Plugin (static /api/v2/health & /api/v2/download/* take precedence)
+  registerPrefixBridgePlugin(app, ['/api/v2'], () => async (req, res, parsedUrl) => {
+    const pathname = parsedUrl.pathname;
+    const cleanPath = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+    return handleCentralV2Routes(req, res, parsedUrl, pathname, cleanPath, (req.method || 'GET').toUpperCase());
   });
 
-  // 7. Universal Gateway Route Adapter (Delegates to Central and Commercial API Handlers)
-  app.setNotFoundHandler(async (request, reply) => {
-    reply.hijack();
-    const req = request.raw;
-    const res = reply.raw;
-
-    // Explicitly set security headers on hijacked responses
-    applyNodeSecurityHeaders(res, req.url || '/');
-
-    // Compute validated CORS headers for hijacked responses
-    const origin = (req.headers.origin as string) || '';
-    if (origin && isTrustedOrigin(origin)) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-      res.setHeader(
-        'Access-Control-Allow-Headers',
-        'Authorization, Content-Type, X-API-Key, X-Admin-Secret, x-mahi-token, Idempotency-Key, X-Mahi-Signature, X-Request-Id, X-Device-Id, X-Workspace-Id, Range'
-      );
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD');
-    }
-
-    // Attach parsed payloads for downstream consume
-    (req as any).body = request.body;
-    (req as any).rawBuffer = Buffer.isBuffer(request.body)
-      ? request.body
-      : typeof request.body === 'string'
-      ? Buffer.from(request.body, 'utf-8')
-      : request.body !== undefined
-      ? Buffer.from(JSON.stringify(request.body), 'utf-8')
-      : undefined;
-
-    await handleCentralApiRequest(req, res);
+  // 7. Native 404 Handler (zero reply.hijack(), strict API CSP + CORS applied via hooks)
+  app.setNotFoundHandler((request, reply) => {
+    return reply.code(404).send({
+      success: false,
+      error: `Route ${request.method.toUpperCase()} ${request.url.split('?')[0]} not found`,
+    });
   });
 
   activeGatewayInstance = app;
