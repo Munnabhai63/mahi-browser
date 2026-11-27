@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
-import { setCustomDatabasePath } from '../../06_DATABASE/connection.js';
+import os from 'node:os';
+import { setCustomDatabasePath, closeDatabase } from '../../06_DATABASE/connection.js';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import {
   createProxy,
@@ -14,11 +15,19 @@ import {
 } from '../../02_BROWSER/services/proxy-service.js';
 
 describe('Proxy Service & Credential Encryption', () => {
+  let testDbDir = '';
+
   beforeAll(async () => {
-    const testDbDir = path.join(process.cwd(), '.test_data');
-    if (!fs.existsSync(testDbDir)) fs.mkdirSync(testDbDir, { recursive: true });
-    setCustomDatabasePath(path.join(testDbDir, `test_mahi_proxies_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.sqlite`));
+    testDbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-proxy-svc-'));
+    setCustomDatabasePath(path.join(testDbDir, 'test_mahi_proxies.sqlite'));
     await initializeDatabase();
+  });
+
+  afterAll(() => {
+    closeDatabase();
+    if (testDbDir) {
+      try { fs.rmSync(testDbDir, { recursive: true, force: true }); } catch {}
+    }
   });
 
   it('should create a proxy and store its password encrypted at rest', () => {

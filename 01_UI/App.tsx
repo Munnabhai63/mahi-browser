@@ -1,44 +1,85 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Sidebar, NavigationPage } from './components/Sidebar.js';
 import { Header } from './components/Header.js';
-import { CommandPaletteModal } from './components/CommandPaletteModal.js';
-import { SynchronizerModal } from './components/SynchronizerModal.js';
 import { ToastContainer } from './components/ToastContainer.js';
 import { AppLockModal } from './components/AppLockModal.js';
-import { WelcomeWizardModal } from './components/WelcomeWizardModal.js';
-import { UpdateModal } from './components/UpdateModal.js';
-import { EngineDownloadModal } from './components/EngineDownloadModal.js';
-import { AccountModal } from './components/AccountModal.js';
+import { PageLoadingFallback } from './components/PageFallback.js';
 import { useAccountStore } from './stores/useAccountStore.js';
 
-// Pages
-import { Dashboard } from './pages/Dashboard.js';
-import { ProfilesList } from './pages/ProfilesList.js';
-import { TrashBin } from './pages/TrashBin.js';
-import { CreateProfileWizard } from './pages/CreateProfileWizard.js';
+// Lazy-loaded Modals
+const CommandPaletteModal = lazy(() =>
+  import('./components/CommandPaletteModal.js').then((m) => ({ default: m.CommandPaletteModal }))
+);
+const SynchronizerModal = lazy(() =>
+  import('./components/SynchronizerModal.js').then((m) => ({ default: m.SynchronizerModal }))
+);
+const WelcomeWizardModal = lazy(() =>
+  import('./components/WelcomeWizardModal.js').then((m) => ({ default: m.WelcomeWizardModal }))
+);
+const UpdateModal = lazy(() =>
+  import('./components/UpdateModal.js').then((m) => ({ default: m.UpdateModal }))
+);
+const EngineDownloadModal = lazy(() =>
+  import('./components/EngineDownloadModal.js').then((m) => ({ default: m.EngineDownloadModal }))
+);
+const AccountModal = lazy(() =>
+  import('./components/AccountModal.js').then((m) => ({ default: m.AccountModal }))
+);
 
-import { ProfileSettingsPage } from './pages/ProfileSettings.js';
-import { BrowserEnvironmentPage } from './pages/BrowserEnvironment.js';
-import { ProxyManagerPage } from './pages/ProxyManager.js';
-import { CookieManagerPage } from './pages/CookieManager.js';
-import { HistoryManagerPage } from './pages/HistoryManager.js';
-import { ExtensionManagerPage } from './pages/ExtensionManager.js';
-import { AutomationListPage } from './pages/AutomationList.js';
-import { WorkflowBuilderPage } from './pages/WorkflowBuilder.js';
-import { Diagnostics } from './pages/Diagnostics.js';
-import { CaptchaSettings } from './pages/CaptchaSettings.js';
-import { WorkspacesPage } from './pages/Workspaces.js';
-
-
-
-import { ImportProfilePage } from './pages/ImportProfileModal.js';
-import { ExportProfilePage } from './pages/ExportProfileModal.js';
-import { AppSettingsPage } from './pages/AppSettings.js';
-import { ActivityLogsPage } from './pages/ActivityLogs.js';
-import { MahiProLicensePage } from './pages/MahiProLicensePage.js';
-import { MobileRotator } from './pages/MobileRotator.js';
-import { CloudPhoneManager } from './pages/CloudPhoneManager.js';
-import { HelpAboutPage } from './pages/HelpAbout.js';
+// Lazy-loaded Pages
+const Dashboard = lazy(() => import('./pages/Dashboard.js').then((m) => ({ default: m.Dashboard })));
+const ProfilesList = lazy(() => import('./pages/ProfilesList.js').then((m) => ({ default: m.ProfilesList })));
+const TrashBin = lazy(() => import('./pages/TrashBin.js').then((m) => ({ default: m.TrashBin })));
+const CreateProfileWizard = lazy(() =>
+  import('./pages/CreateProfileWizard.js').then((m) => ({ default: m.CreateProfileWizard }))
+);
+const ProfileSettingsPage = lazy(() =>
+  import('./pages/ProfileSettings.js').then((m) => ({ default: m.ProfileSettingsPage }))
+);
+const BrowserEnvironmentPage = lazy(() =>
+  import('./pages/BrowserEnvironment.js').then((m) => ({ default: m.BrowserEnvironmentPage }))
+);
+const ProxyManagerPage = lazy(() =>
+  import('./pages/ProxyManager.js').then((m) => ({ default: m.ProxyManagerPage }))
+);
+const CookieManagerPage = lazy(() =>
+  import('./pages/CookieManager.js').then((m) => ({ default: m.CookieManagerPage }))
+);
+const HistoryManagerPage = lazy(() =>
+  import('./pages/HistoryManager.js').then((m) => ({ default: m.HistoryManagerPage }))
+);
+const ExtensionManagerPage = lazy(() =>
+  import('./pages/ExtensionManager.js').then((m) => ({ default: m.ExtensionManagerPage }))
+);
+const AutomationListPage = lazy(() =>
+  import('./pages/AutomationList.js').then((m) => ({ default: m.AutomationListPage }))
+);
+const WorkflowBuilderPage = lazy(() =>
+  import('./pages/WorkflowBuilder.js').then((m) => ({ default: m.WorkflowBuilderPage }))
+);
+const Diagnostics = lazy(() => import('./pages/Diagnostics.js').then((m) => ({ default: m.Diagnostics })));
+const CaptchaSettings = lazy(() =>
+  import('./pages/CaptchaSettings.js').then((m) => ({ default: m.CaptchaSettings }))
+);
+const WorkspacesPage = lazy(() => import('./pages/Workspaces.js').then((m) => ({ default: m.WorkspacesPage })));
+const ImportProfilePage = lazy(() =>
+  import('./pages/ImportProfileModal.js').then((m) => ({ default: m.ImportProfilePage }))
+);
+const ExportProfilePage = lazy(() =>
+  import('./pages/ExportProfileModal.js').then((m) => ({ default: m.ExportProfilePage }))
+);
+const AppSettingsPage = lazy(() => import('./pages/AppSettings.js').then((m) => ({ default: m.AppSettingsPage })));
+const ActivityLogsPage = lazy(() =>
+  import('./pages/ActivityLogs.js').then((m) => ({ default: m.ActivityLogsPage }))
+);
+const MahiProLicensePage = lazy(() =>
+  import('./pages/MahiProLicensePage.js').then((m) => ({ default: m.MahiProLicensePage }))
+);
+const MobileRotator = lazy(() => import('./pages/MobileRotator.js').then((m) => ({ default: m.MobileRotator })));
+const CloudPhoneManager = lazy(() =>
+  import('./pages/CloudPhoneManager.js').then((m) => ({ default: m.CloudPhoneManager }))
+);
+const HelpAboutPage = lazy(() => import('./pages/HelpAbout.js').then((m) => ({ default: m.HelpAboutPage })));
 
 
 
@@ -296,58 +337,66 @@ export const App: React.FC = () => {
         />
 
         <main className="flex-1 overflow-hidden bg-slate-50/50 dark:bg-slate-950/60">
-          {currentPage === 'dashboard' && <Dashboard onNavigate={setCurrentPage} />}
-          {currentPage === 'profiles' && <ProfilesList onNavigate={setCurrentPage} />}
-          {currentPage === 'diagnostics' && <Diagnostics />}
-          {currentPage === 'workspaces' && <WorkspacesPage />}
-          {currentPage === 'captcha' && <CaptchaSettings />}
-          {currentPage === 'trash-bin' && <TrashBin onNavigate={setCurrentPage} />}
+          <Suspense fallback={<PageLoadingFallback />}>
+            {currentPage === 'dashboard' && <Dashboard onNavigate={setCurrentPage} />}
+            {currentPage === 'profiles' && <ProfilesList onNavigate={setCurrentPage} />}
+            {currentPage === 'diagnostics' && <Diagnostics />}
+            {currentPage === 'workspaces' && <WorkspacesPage />}
+            {currentPage === 'captcha' && <CaptchaSettings />}
+            {currentPage === 'trash-bin' && <TrashBin onNavigate={setCurrentPage} />}
 
+            {currentPage === 'create-profile' && <CreateProfileWizard onNavigate={setCurrentPage} />}
 
+            {currentPage === 'profile-settings' && <ProfileSettingsPage onNavigate={setCurrentPage} />}
+            {currentPage === 'browser-environment' && <BrowserEnvironmentPage onNavigate={setCurrentPage} />}
+            {currentPage === 'mobile-rotator' && <MobileRotator />}
+            {currentPage === 'cloud-phone' && <CloudPhoneManager onNavigate={setCurrentPage} />}
+            {currentPage === 'proxies' && <ProxyManagerPage onNavigate={setCurrentPage} />}
 
-          {currentPage === 'create-profile' && <CreateProfileWizard onNavigate={setCurrentPage} />}
+            {currentPage === 'cookies' && <CookieManagerPage onNavigate={setCurrentPage} />}
+            {currentPage === 'history' && <HistoryManagerPage onNavigate={setCurrentPage} />}
+            {currentPage === 'extensions' && <ExtensionManagerPage onNavigate={setCurrentPage} />}
+            {currentPage === 'automation' && <AutomationListPage onNavigate={setCurrentPage} />}
+            {currentPage === 'workflow-builder' && <WorkflowBuilderPage onNavigate={setCurrentPage} />}
+            {currentPage === 'import' && <ImportProfilePage onNavigate={setCurrentPage} />}
+            {currentPage === 'export' && <ExportProfilePage onNavigate={setCurrentPage} />}
+            {currentPage === 'settings' && <AppSettingsPage onNavigate={setCurrentPage} />}
 
-          {currentPage === 'profile-settings' && <ProfileSettingsPage onNavigate={setCurrentPage} />}
-          {currentPage === 'browser-environment' && <BrowserEnvironmentPage onNavigate={setCurrentPage} />}
-          {currentPage === 'mobile-rotator' && <MobileRotator />}
-          {currentPage === 'cloud-phone' && <CloudPhoneManager onNavigate={setCurrentPage} />}
-          {currentPage === 'proxies' && <ProxyManagerPage onNavigate={setCurrentPage} />}
+            {currentPage === 'license' && <MahiProLicensePage onNavigate={setCurrentPage} />}
+            {currentPage === 'logs' && <ActivityLogsPage onNavigate={setCurrentPage} />}
 
-          {currentPage === 'cookies' && <CookieManagerPage onNavigate={setCurrentPage} />}
-          {currentPage === 'history' && <HistoryManagerPage onNavigate={setCurrentPage} />}
-          {currentPage === 'extensions' && <ExtensionManagerPage onNavigate={setCurrentPage} />}
-          {currentPage === 'automation' && <AutomationListPage onNavigate={setCurrentPage} />}
-          {currentPage === 'workflow-builder' && <WorkflowBuilderPage onNavigate={setCurrentPage} />}
-          {currentPage === 'import' && <ImportProfilePage onNavigate={setCurrentPage} />}
-          {currentPage === 'export' && <ExportProfilePage onNavigate={setCurrentPage} />}
-          {currentPage === 'settings' && <AppSettingsPage onNavigate={setCurrentPage} />}
-
-          {currentPage === 'license' && <MahiProLicensePage onNavigate={setCurrentPage} />}
-          {currentPage === 'logs' && <ActivityLogsPage onNavigate={setCurrentPage} />}
-
-          {currentPage === 'help' && <HelpAboutPage onNavigate={setCurrentPage} />}
+            {currentPage === 'help' && <HelpAboutPage onNavigate={setCurrentPage} />}
+          </Suspense>
         </main>
       </div>
 
       {/* Global Modals & Notifications */}
-      <WelcomeWizardModal onNavigate={setCurrentPage} />
-      <UpdateModal />
-      <EngineDownloadModal />
-      <CommandPaletteModal
-        isOpen={isSearchOpen}
-        onClose={() => setIsSearchOpen(false)}
-        onNavigate={setCurrentPage}
-        onOpenCreateProfile={() => setCurrentPage('create-profile')}
-        onOpenSynchronizer={() => setIsSynchronizerOpen(true)}
-      />
-      <SynchronizerModal
-        isOpen={isSynchronizerOpen}
-        onClose={() => setIsSynchronizerOpen(false)}
-      />
-      <AccountModal
-        isOpen={isAccountModalOpen}
-        onClose={closeAccountModal}
-      />
+      <Suspense fallback={null}>
+        <WelcomeWizardModal onNavigate={setCurrentPage} />
+        <UpdateModal />
+        <EngineDownloadModal />
+        {isSearchOpen && (
+          <CommandPaletteModal
+            isOpen={isSearchOpen}
+            onClose={() => setIsSearchOpen(false)}
+            onNavigate={setCurrentPage}
+            onOpenCreateProfile={() => setCurrentPage('create-profile')}
+            onOpenSynchronizer={() => setIsSynchronizerOpen(true)}
+          />
+        )}
+        {isSynchronizerOpen && (
+          <SynchronizerModal
+            isOpen={isSynchronizerOpen}
+            onClose={() => setIsSynchronizerOpen(false)}
+          />
+        )}
+        {isAccountModalOpen && (
+          <AccountModal
+            isOpen={isAccountModalOpen}
+            onClose={closeAccountModal}
+          />
+        )}
+      </Suspense>
       <ToastContainer />
     </div>
   );

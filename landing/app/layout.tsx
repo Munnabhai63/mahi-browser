@@ -1,13 +1,32 @@
 import type { Metadata } from 'next';
 import React from 'react';
+import { Inter, Spectral } from 'next/font/google';
 import './globals.css';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import ChatWidget from '../components/ChatWidget';
 import { BRAND } from '../lib/brand';
 
+const inter = Inter({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+
+const spectral = Spectral({
+  subsets: ['latin'],
+  weight: ['200', '300', '400', '500', '600'],
+  style: ['normal', 'italic'],
+  variable: '--font-spectral',
+  display: 'swap',
+});
+
 export const metadata: Metadata = {
   metadataBase: new URL(BRAND.website),
+  alternates: {
+    canonical: './',
+  },
   title: {
     default: 'MAHI Browser — Enterprise Dual-Engine Anti-Detect Browser',
     template: '%s | MAHI Browser',
@@ -130,14 +149,8 @@ export default function RootLayout({
   };
 
   return (
-    <html lang="en" className="dark scroll-smooth">
+    <html lang="en" className={`dark scroll-smooth ${inter.variable} ${spectral.variable}`}>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Spectral:ital,wght@1,200;1,300;1,400;1,500;1,600&display=swap"
-          rel="stylesheet"
-        />
         <link rel="stylesheet" href="/assets/css/framer-theme.css" />
         <script
           type="application/ld+json"
@@ -145,7 +158,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }}
         />
       </head>
-      <body className="min-h-screen flex flex-col bg-[#030303] text-[#ededed] antialiased selection:bg-white selection:text-black">
+      <body className={`${inter.className} min-h-screen flex flex-col bg-[#030303] text-[#ededed] antialiased selection:bg-white selection:text-black`}>
         <Navbar />
         <main className="flex-1 w-full">{children}</main>
         <Footer />

@@ -15,7 +15,7 @@ import { collectEssentialStorageFiles, restoreStorageFiles, exportProfileToArchi
 import { getCookies, importCookies } from '../../02_BROWSER/services/cookie-service.js';
 
 describe('PHASE 2 INTEGRATION: Zero-Knowledge Cloud Storage, API & Multi-Device Sync', () => {
-  const testDir = path.join(process.cwd(), '.test_phase2_api');
+  const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-phase2-api-'));
   const testDbPath = path.join(testDir, 'phase2_api.sqlite');
   const storageDir = path.join(testDir, 'cloud_storage');
   let server: http.Server;

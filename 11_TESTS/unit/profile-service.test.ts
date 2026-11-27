@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
-import { setCustomDatabasePath } from '../../06_DATABASE/connection.js';
+import os from 'node:os';
+import { setCustomDatabasePath, closeDatabase } from '../../06_DATABASE/connection.js';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import {
   createProfile,
@@ -13,11 +14,19 @@ import {
 } from '../../02_BROWSER/services/profile-service.js';
 
 describe('Profile Service & Storage Isolation', () => {
+  let testDbDir = '';
+
   beforeAll(async () => {
-    const testDbDir = path.join(process.cwd(), '.test_data');
-    if (!fs.existsSync(testDbDir)) fs.mkdirSync(testDbDir, { recursive: true });
-    setCustomDatabasePath(path.join(testDbDir, `test_mahi_profiles_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.sqlite`));
+    testDbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-profile-svc-'));
+    setCustomDatabasePath(path.join(testDbDir, 'test_mahi_profiles.sqlite'));
     await initializeDatabase();
+  });
+
+  afterAll(() => {
+    closeDatabase();
+    if (testDbDir) {
+      try { fs.rmSync(testDbDir, { recursive: true, force: true }); } catch {}
+    }
   });
 
   it('should create a new browser profile with independent storage path', () => {

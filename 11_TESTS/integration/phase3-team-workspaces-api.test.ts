@@ -11,7 +11,7 @@ import { handleCommercialAPIRequest } from '../../07_BACKEND/commercial/commerci
 import { LocalStorageProvider, setStorageProviderForTest } from '../../08_SECURITY/storage-provider.js';
 
 describe('PHASE 3 INTEGRATION: Multi-User Workspaces, RBAC, Sharing & Lock Contention API', () => {
-  const testDir = path.join(process.cwd(), '.test_phase3_api');
+  const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-phase3-api-'));
   const testDbPath = path.join(testDir, 'phase3_api.sqlite');
   const storageDir = path.join(testDir, 'cloud_storage');
   let server: http.Server;

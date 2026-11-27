@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {
@@ -21,14 +22,16 @@ import {
 } from '../../02_BROWSER/managed-engine.js';
 
 describe('Managed Version-Pinned Browser Engine Suite', () => {
-  const testMockDir = path.join(process.cwd(), '.test_engines_mock');
+  let testMockDir = '';
 
   beforeEach(() => {
-    try { fs.mkdirSync(testMockDir, { recursive: true }); } catch {}
+    testMockDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-engines-mock-'));
   });
 
   afterEach(() => {
-    try { fs.rmSync(testMockDir, { recursive: true, force: true }); } catch {}
+    if (testMockDir) {
+      try { fs.rmSync(testMockDir, { recursive: true, force: true }); } catch {}
+    }
   });
 
   it('should have a pinned, current engine version and valid Google CDN and mirror URLs', () => {

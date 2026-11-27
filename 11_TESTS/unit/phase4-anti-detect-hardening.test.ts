@@ -60,18 +60,19 @@ import { initializeDatabase } from '../../06_DATABASE/schema.js';
 
 describe('Phase 4: Anti-Detect Engine Hardening', () => {
   let tempDir: string;
+  let testDbDir = '';
 
   beforeAll(async () => {
-    const testDbDir = path.join(process.cwd(), '.test_data');
-    if (!fs.existsSync(testDbDir)) fs.mkdirSync(testDbDir, { recursive: true });
-    setCustomDatabasePath(
-      path.join(testDbDir, `test_mahi_phase4_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.sqlite`)
-    );
+    testDbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-phase4-db-'));
+    setCustomDatabasePath(path.join(testDbDir, 'test_mahi_phase4.sqlite'));
     await initializeDatabase();
   });
 
   afterAll(() => {
     closeDatabase();
+    if (testDbDir) {
+      try { fs.rmSync(testDbDir, { recursive: true, force: true }); } catch {}
+    }
   });
 
   beforeEach(() => {

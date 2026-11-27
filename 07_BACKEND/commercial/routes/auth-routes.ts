@@ -6,6 +6,12 @@ import {
   parseBody,
   getAuthUserAsync,
   checkAuthRateLimitAsync,
+  parseCookies,
+  AUTH_REFRESH_COOKIE_NAME,
+  buildWebAuthCookies,
+  buildClearWebAuthCookies,
+  appendSetCookies,
+  extractRequestAuthToken,
   desktopAuthTickets,
   WebHandoffSession,
   webHandoffSessions,
@@ -43,6 +49,7 @@ import {
   logoutSession,
   refreshAccessToken,
   logoutSessionAsync,
+  logoutByRefreshTokenAsync,
   listUserSessionsAsync,
   revokeUserSessionAsync,
   revokeAllUserSessionsAsync,
@@ -105,6 +112,16 @@ export async function handleAuthRoutes(
       sendJSON(res, 400, { success: false, error: result.error });
       return true;
     }
+    if (result.tokens?.accessToken) {
+      appendSetCookies(
+        res,
+        buildWebAuthCookies({
+          req,
+          accessToken: result.tokens.accessToken,
+          refreshToken: result.tokens.refreshToken,
+        })
+      );
+    }
     sendJSON(res, 201, {
       success: true,
       token: result.tokens?.accessToken,
@@ -128,6 +145,16 @@ export async function handleAuthRoutes(
       const isDeviceErr = !!result.error?.toLowerCase().includes('device');
       sendJSON(res, 401, { success: false, error: result.error, device_ok: !isDeviceErr });
       return true;
+    }
+    if (result.tokens?.accessToken) {
+      appendSetCookies(
+        res,
+        buildWebAuthCookies({
+          req,
+          accessToken: result.tokens.accessToken,
+          refreshToken: result.tokens.refreshToken,
+        })
+      );
     }
     sendJSON(res, 200, {
       success: true,
@@ -293,6 +320,18 @@ export async function handleAuthRoutes(
     const trialStatus = registeredUserId ? getUserTrialStatus(registeredUserId) : { isTrialActive: isTrial, daysRemaining: isTrial ? 7 : 0, isEligibleForTrial: !isTrial };
     const entitlements = registeredUserId ? evaluateUserEntitlements(registeredUserId) : null;
 
+    const authCookieToken = result.tokens?.accessToken || token;
+    if (authCookieToken) {
+      appendSetCookies(
+        res,
+        buildWebAuthCookies({
+          req,
+          accessToken: authCookieToken,
+          refreshToken: result.tokens?.refreshToken,
+        })
+      );
+    }
+
     sendJSON(res, 201, {
       success: true,
       user: registeredUser,
@@ -381,6 +420,14 @@ export async function handleAuthRoutes(
       const commUser = getUserById(centralRes.user.id);
       const isTrial = Boolean(commUser?.trialExpiresAt && new Date(commUser.trialExpiresAt).getTime() > Date.now());
       const entitlements = evaluateUserEntitlements(centralRes.user.id, body.deviceId, body.deviceName);
+      appendSetCookies(
+        res,
+        buildWebAuthCookies({
+          req,
+          accessToken: centralRes.tokens.accessToken,
+          refreshToken: centralRes.tokens.refreshToken,
+        })
+      );
       sendJSON(res, 200, {
         success: true,
         token: centralRes.tokens.accessToken,
@@ -414,6 +461,15 @@ export async function handleAuthRoutes(
           console.error('[Login] Reconcile error:', err);
         }
         const entitlements = evaluateUserEntitlements(legacyResult.user.id, body.deviceId, body.deviceName);
+        if (legacyResult.token) {
+          appendSetCookies(
+            res,
+            buildWebAuthCookies({
+              req,
+              accessToken: legacyResult.token,
+            })
+          );
+        }
         sendJSON(res, 200, {
           success: true,
           token: legacyResult.token,
@@ -574,7 +630,7 @@ export async function handleAuthRoutes(
         ticketRec.used = false;
       }
 
-      // Establish session cookie and redirect to onboarding / desktop-success
+      // Establish HttpOnly session cookie and redirect without leaking tokens in URL
       let targetUrl = authResult.returnUrl;
       const isDesktop = stateRecord.intent === 'desktop_login' || authResult.returnUrl.includes('/auth/desktop-success');
 
@@ -583,7 +639,7 @@ export async function handleAuthRoutes(
           targetUrl = `${websiteBase}${targetUrl}`;
         }
         const sep = targetUrl.includes('?') ? '&' : '?';
-        targetUrl = `${targetUrl}${sep}token=${encodeURIComponent(authResult.token || '')}&login=success`;
+        targetUrl = `${targetUrl}${sep}login=success`;
       } else {
         const ticketRec = handoffTicket ? desktopAuthTickets.get(handoffTicket) : null;
         const codeParam = ticketRec?.authCode ? `&code=${encodeURIComponent(ticketRec.authCode)}` : '';
@@ -597,9 +653,17 @@ export async function handleAuthRoutes(
         return true;
       }
 
+      if (authResult.token) {
+        appendSetCookies(
+          res,
+          buildWebAuthCookies({
+            req,
+            accessToken: authResult.token,
+          })
+        );
+      }
       res.writeHead(302, {
         Location: targetUrl,
-        'Set-Cookie': `mahi_token=${authResult.token}; Path=/; Max-Age=2592000; SameSite=Lax`,
       });
       res.end();
       return true;
@@ -757,11 +821,10 @@ export async function handleAuthRoutes(
     pruneWebHandoffSessions();
     const auth = await getAuthUserAsync(req);
     if (!auth) {
-      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Valid session cookie or Bearer token required.' });
       return true;
     }
-    const authHeader = (req.headers['authorization'] as string) || (req.headers['x-mahi-token'] ? `Bearer ${req.headers['x-mahi-token']}` : '');
-    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const token = extractRequestAuthToken(req).token || '';
 
     const centralUser = await getCentralUserByIdAsync(auth.userId);
     const commUser = getUserById(auth.userId);
@@ -1011,6 +1074,16 @@ export async function handleAuthRoutes(
     const entitlements = evaluateUserEntitlements(authResult.user.id);
     const trialStatus = getUserTrialStatus(authResult.user.id);
 
+    if (authResult.token) {
+      appendSetCookies(
+        res,
+        buildWebAuthCookies({
+          req,
+          accessToken: authResult.token,
+        })
+      );
+    }
+
     sendJSON(res, 200, {
       success: true,
       token: authResult.token,
@@ -1032,12 +1105,21 @@ export async function handleAuthRoutes(
     const parsed = validateStrictBody(RefreshTokenSchema, rawBody, res);
     if (!parsed.ok) return true;
     const body = parsed.data;
-    const refreshToken = body.refreshToken || body.token || '';
+    const cookieRefreshToken = parseCookies(req)[AUTH_REFRESH_COOKIE_NAME] || '';
+    const refreshToken = body.refreshToken || body.token || cookieRefreshToken;
     const result = await refreshAccessToken(refreshToken, clientIp);
     if (!result.success || !result.tokens) {
       sendJSON(res, 401, result);
       return true;
     }
+    appendSetCookies(
+      res,
+      buildWebAuthCookies({
+        req,
+        accessToken: result.tokens.accessToken,
+        refreshToken: result.tokens.refreshToken,
+      })
+    );
     sendJSON(res, 200, {
       success: true,
       tokens: result.tokens,
@@ -1052,10 +1134,14 @@ export async function handleAuthRoutes(
     const rawBody = await parseBody(req);
     const parsed = validateStrictBody(LogoutSchema, rawBody, res);
     if (!parsed.ok) return true;
+    const cookieRefreshToken = parseCookies(req)[AUTH_REFRESH_COOKIE_NAME] || '';
+    const rawRefreshToken = parsed.data.refreshToken || cookieRefreshToken;
     const sessionId = parsed.data.sessionId || (auth as any)?.sessionId;
-    if (sessionId) {
-      logoutSession(sessionId, clientIp);
+    const revokedBySession = sessionId ? await logoutSessionAsync(sessionId, clientIp) : false;
+    if (rawRefreshToken && !revokedBySession) {
+      await logoutByRefreshTokenAsync(rawRefreshToken, clientIp);
     }
+    appendSetCookies(res, buildClearWebAuthCookies(req));
     sendJSON(res, 200, { success: true, message: 'Logged out successfully.' });
     return true;
   }

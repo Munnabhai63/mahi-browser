@@ -34,21 +34,22 @@ export default function LoginPage() {
     try {
       const resp = await fetch(`${BRAND.apiUrl}/api/v1/auth/login`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
 
       const data = await resp.json().catch(() => ({}));
-      if (resp.ok && data.token) {
-        localStorage.setItem('mahi_auth_token', data.token);
-        localStorage.setItem('mahi_access_token', data.token);
+      if (resp.ok && (data.success || data.token || data.user)) {
+        try {
+          localStorage.removeItem('mahi_auth_token');
+          localStorage.removeItem('mahi_access_token');
+        } catch {}
         if (redirectPath) {
           window.location.href = redirectPath;
           return;
         }
-        // Pass token via URL fragment (#token=) so it is never sent in HTTP requests/logs;
-        // full HttpOnly cookie session migration is scheduled for Phase 3.
-        window.location.href = `${BRAND.appUrl}/overview#token=${encodeURIComponent(data.token)}`;
+        window.location.href = `${BRAND.appUrl}/overview`;
       } else {
         const errorText =
           typeof data.error === 'string'

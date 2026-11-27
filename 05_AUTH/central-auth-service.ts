@@ -1293,6 +1293,24 @@ export async function logoutSessionAsync(sessionId: string, ipAddress?: string):
   return logoutSession(sessionId, ipAddress);
 }
 
+/** Revokes the session matching a raw refresh token across PostgreSQL or SQLite. */
+export async function logoutByRefreshTokenAsync(rawRefreshToken: string, ipAddress?: string): Promise<boolean> {
+  if (!rawRefreshToken || typeof rawRefreshToken !== 'string') return false;
+  const refreshHash = hashToken(rawRefreshToken);
+  if (isPostgresConfigured()) {
+    const repo = getCentralRepository();
+    const session = await repo.findAuthSessionByTokenHash(refreshHash);
+    if (!session?.id) return false;
+    return repo.revokeAuthSession(session.id);
+  }
+  const db = getDatabase();
+  const row = db
+    .prepare('SELECT id, user_id FROM auth_sessions WHERE refresh_token_hash = ?')
+    .get(refreshHash) as any;
+  if (!row?.id) return false;
+  return logoutSession(row.id, ipAddress);
+}
+
 export async function listUserSessionsAsync(userId: string, currentSessionId?: string): Promise<AuthSessionRecord[]> {
   if (isPostgresConfigured()) {
     const repo = getCentralRepository();

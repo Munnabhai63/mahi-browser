@@ -4,7 +4,10 @@ import { URL } from 'node:url';
 import { RemoteApiService } from '../../../services/remote-api-service.js';
 import { WebhookService } from '../../../services/webhook-service.js';
 import { verifyAccessToken, getCentralUserById, getCentralUserByIdAsync } from '../../../../05_AUTH/central-auth-service.js';
-import { verifyPostgresOrSqliteUserAndSessionAsync } from '../router-shared.js';
+import {
+  verifyPostgresOrSqliteUserAndSessionAsync,
+  extractRequestAuthToken,
+} from '../router-shared.js';
 import { isPostgresConfigured, getCentralRepository } from '../../../../06_DATABASE/central-repository.js';
 import {
   readBoundedText,
@@ -176,9 +179,11 @@ export async function resolveRemoteAuthAsync(req: http.IncomingMessage): Promise
     };
   }
 
-  if (authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7).trim();
-    const payload = verifyAccessToken(token);
+  // 2. Check Central Auth Bearer JWT or HttpOnly web session cookie
+  const extracted = extractRequestAuthToken(req);
+  const jwtCandidate = extracted.token && !extracted.token.startsWith('mahi_') ? extracted.token : null;
+  if (jwtCandidate) {
+    const payload = verifyAccessToken(jwtCandidate);
     if (!payload) return null;
 
     const user = await getCentralUserByIdAsync(payload.userId);

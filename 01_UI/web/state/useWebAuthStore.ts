@@ -1,10 +1,9 @@
 /**
  * MAHI Browser — Web Dashboard Authentication Store
- * Phase 7 Architecture
  *
- * Manages Central Auth state for the Web Dashboard.
- * Keeps tokens in memory with secure sessionStorage fallback for page refreshes.
- * Binds token getter to the WebApiClient singleton.
+ * Manages Central Auth state for the Web Dashboard using backend-issued
+ * `HttpOnly` session cookies (`credentials: 'include'`). Never persists raw JWTs
+ * in localStorage, sessionStorage, or URL fragments/query strings.
  */
 
 import { create } from 'zustand';
@@ -30,8 +29,7 @@ interface WebAuthState {
   error: string | null;
   currentWorkspace: TeamWorkspace | null;
 
-  // Actions
-  initialize: () => void;
+  initialize: () => Promise<void> | void;
   login: (email: string, password: string) => Promise<boolean>;
   register: (email: string, password: string, name: string) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -40,7 +38,58 @@ interface WebAuthState {
   clearError: () => void;
 }
 
-const STORAGE_KEY = 'mahi_web_auth_session';
+const LEGACY_STORAGE_KEYS = ['mahi_web_auth_session', 'mahi_auth_token', 'mahi_access_token'];
+
+function clearLegacyBrowserTokenStorage(): void {
+  if (typeof window === 'undefined') return;
+  for (const key of LEGACY_STORAGE_KEYS) {
+    try {
+      window.sessionStorage?.removeItem(key);
+    } catch {}
+    try {
+      window.localStorage?.removeItem(key);
+    } catch {}
+  }
+}
+
+function stripLegacyUrlTokenParams(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const searchParams = new URLSearchParams(window.location.search);
+    const hasTokenParam =
+      hashParams.has('token') ||
+      hashParams.has('accessToken') ||
+      searchParams.has('token') ||
+      searchParams.has('accessToken');
+    if (hasTokenParam) {
+      hashParams.delete('token');
+      hashParams.delete('accessToken');
+      searchParams.delete('token');
+      searchParams.delete('accessToken');
+      const qs = searchParams.toString();
+      const hash = hashParams.toString();
+      const cleanUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}${hash ? `#${hash}` : ''}`;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+  } catch {}
+}
+
+function mapToWebUser(rawUser: any): WebUser {
+  const email = rawUser?.email || '';
+  const planId = rawUser?.planId || 'plan_free';
+  return {
+    id: rawUser?.id || '',
+    email,
+    name: rawUser?.name || (email ? email.split('@')[0] : 'User'),
+    role: rawUser?.role || 'USER',
+    planId,
+    status: rawUser?.status,
+    profileQuota:
+      rawUser?.profileQuota ??
+      (planId && planId !== 'plan_free' && planId !== 'free' ? 100 : 15),
+  };
+}
 
 export const useWebAuthStore = create<WebAuthState>((set, get) => ({
   user: null,
@@ -51,12 +100,11 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
   error: null,
   currentWorkspace: null,
 
-  initialize: () => {
-    // Bind token getter to API client
+  initialize: async () => {
     api.setTokenGetter(() => get().accessToken);
 
-    // Bind automatic unauthorized callback to trigger session refresh or logout
     api.setOnUnauthorized(() => {
+      if (!get().isAuthenticated) return;
       get().refreshSession().then((refreshed) => {
         if (!refreshed) {
           get().logout();
@@ -64,152 +112,75 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
       });
     });
 
-    // 1. Hydrate token from URL fragment (#token=) or legacy query params when redirected from login
-    if (typeof window !== 'undefined') {
-      try {
-        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlToken =
-          hashParams.get('token') ||
-          hashParams.get('accessToken') ||
-          urlParams.get('token') ||
-          urlParams.get('accessToken');
-        if (urlToken) {
-          // Strip token from fragment/query without reloading the page
-          const cleanSearchParams = new URLSearchParams(window.location.search);
-          cleanSearchParams.delete('token');
-          cleanSearchParams.delete('accessToken');
-          const qs = cleanSearchParams.toString();
-          const cleanUrl = window.location.pathname + (qs ? `?${qs}` : '');
-          window.history.replaceState({}, document.title, cleanUrl);
+    stripLegacyUrlTokenParams();
+    clearLegacyBrowserTokenStorage();
 
-          let decodedUser: WebUser = {
-            id: 'hydrated',
-            email: '',
-            name: 'User',
-            role: 'user',
-            planId: 'free',
-            profileQuota: 15,
-          };
-          try {
-            const parts = urlToken.split('.');
-            if (parts.length === 3) {
-              const base64Url = parts[1];
-              const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-              const jsonPayload = decodeURIComponent(
-                atob(base64)
-                  .split('')
-                  .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-                  .join('')
-              );
-              const payload = JSON.parse(jsonPayload);
-              decodedUser = {
-                id: payload.userId || payload.id || 'hydrated',
-                email: payload.email || '',
-                name: payload.name || (payload.email ? payload.email.split('@')[0] : 'User'),
-                role: payload.role || 'user',
-                planId: payload.planId || 'free',
-                profileQuota:
-                  payload.profileQuota ??
-                  (payload.planId && payload.planId !== 'plan_free' && payload.planId !== 'free' ? 100 : 15),
-              };
-            }
-          } catch {}
+    if (typeof window === 'undefined') {
+      set({ isLoading: false });
+      return;
+    }
 
+    try {
+      const meRes = await api.getMe();
+      const payload: any = (meRes as any)?.data?.user ? meRes.data : meRes;
+      if (meRes.success && payload?.user) {
+        set({
+          user: mapToWebUser(payload.user),
+          isAuthenticated: true,
+          isLoading: false,
+          error: null,
+        });
+        return;
+      }
+
+      const refreshRes = await api.refreshToken();
+      if (refreshRes.success) {
+        const refreshedMe = await api.getMe();
+        const refreshedPayload: any = (refreshedMe as any)?.data?.user ? refreshedMe.data : refreshedMe;
+        if (refreshedMe.success && refreshedPayload?.user) {
           set({
-            accessToken: urlToken,
-            user: decodedUser,
+            user: mapToWebUser(refreshedPayload.user),
             isAuthenticated: true,
             isLoading: false,
+            error: null,
           });
-
-          if (window.sessionStorage) {
-            window.sessionStorage.setItem(
-              STORAGE_KEY,
-              JSON.stringify({ accessToken: urlToken, user: decodedUser })
-            );
-          }
           return;
         }
-      } catch {}
-    }
+      }
+    } catch {}
 
-    if (typeof window !== 'undefined' && window.sessionStorage) {
-      try {
-        const saved = window.sessionStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed.accessToken && parsed.user) {
-            const restoredUser = {
-              ...parsed.user,
-              profileQuota:
-                parsed.user.profileQuota ??
-                (parsed.user.planId && parsed.user.planId !== 'plan_free' && parsed.user.planId !== 'free'
-                  ? 100
-                  : 15),
-            };
-            set({
-              user: restoredUser,
-              accessToken: parsed.accessToken,
-              refreshToken: parsed.refreshToken || null,
-              isAuthenticated: true,
-              isLoading: false,
-            });
-            // Try refresh in background
-            if (parsed.refreshToken) {
-              get().refreshSession().catch(() => {});
-            }
-            return;
-          }
-        }
-      } catch {}
-    }
-    set({ isLoading: false });
+    set({ isAuthenticated: false, user: null, isLoading: false });
   },
 
   login: async (email: string, password: string) => {
     set({ isLoading: true, error: null });
     try {
       const res = await api.login(email, password);
-      if (res.success && res.data) {
-        const { user, token, tokens } = res.data;
-        const accessToken = token || tokens?.accessToken;
-        const refreshToken = tokens?.refreshToken;
-
-        const webUser: WebUser = {
-          id: user.id,
-          email: user.email,
-          name: user.name || user.email.split('@')[0],
-          role: user.role,
-          planId: user.planId || 'plan_free',
-          profileQuota: user.profileQuota ?? (user.planId && user.planId !== 'plan_free' && user.planId !== 'free' ? 100 : 15),
-        };
+      const payload: any = res.data || res;
+      if (res.success && payload?.user) {
+        const accessToken = payload.token || payload.tokens?.accessToken || null;
+        const refreshToken = payload.tokens?.refreshToken || null;
+        clearLegacyBrowserTokenStorage();
 
         set({
-          user: webUser,
+          user: mapToWebUser(payload.user),
           accessToken,
           refreshToken,
           isAuthenticated: true,
           isLoading: false,
           error: null,
         });
-
-        // Persist in sessionStorage for page refreshes
-        if (typeof window !== 'undefined' && window.sessionStorage) {
-          window.sessionStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify({ user: webUser, accessToken, refreshToken })
-          );
-        }
-
         return true;
-      } else {
-        set({
-          isLoading: false,
-          error: res.error?.message || 'Login failed. Please check credentials.',
-        });
-        return false;
       }
+
+      set({
+        isLoading: false,
+        error:
+          typeof res.error === 'string'
+            ? res.error
+            : res.error?.message || 'Login failed. Please check credentials.',
+      });
+      return false;
     } catch (err: any) {
       set({
         isLoading: false,
@@ -225,15 +196,13 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
       const res = await api.register(email, password, name);
       if (res.success) {
         set({ isLoading: false, error: null });
-        // Automatically attempt login
         return await get().login(email, password);
-      } else {
-        set({
-          isLoading: false,
-          error: res.error?.message || 'Registration failed',
-        });
-        return false;
       }
+      set({
+        isLoading: false,
+        error: typeof res.error === 'string' ? res.error : res.error?.message || 'Registration failed',
+      });
+      return false;
     } catch (err: any) {
       set({
         isLoading: false,
@@ -245,36 +214,22 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
 
   refreshSession: async () => {
     const { refreshToken } = get();
-    if (!refreshToken) return false;
-
     try {
-      const res = await api.refreshToken(refreshToken);
-      if (res.success && res.data) {
-        const newAccessToken = res.data.accessToken;
-        const newRefreshToken = res.data.refreshToken || refreshToken;
-
+      const res = await api.refreshToken(refreshToken || undefined);
+      const payload: any = res.data || res;
+      if (res.success) {
+        const newAccessToken = payload?.accessToken || payload?.tokens?.accessToken || get().accessToken;
+        const newRefreshToken = payload?.refreshToken || payload?.tokens?.refreshToken || refreshToken;
         set({
-          accessToken: newAccessToken,
-          refreshToken: newRefreshToken,
+          accessToken: newAccessToken || null,
+          refreshToken: newRefreshToken || null,
+          isAuthenticated: true,
+          ...(payload?.user ? { user: mapToWebUser(payload.user) } : {}),
         });
-
-        if (typeof window !== 'undefined' && window.sessionStorage) {
-          const current = get();
-          window.sessionStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify({
-              user: current.user,
-              accessToken: newAccessToken,
-              refreshToken: newRefreshToken,
-            })
-          );
-        }
         return true;
-      } else {
-        // Refresh token failed/expired
-        get().logout();
-        return false;
       }
+      await get().logout();
+      return false;
     } catch {
       return false;
     }
@@ -283,11 +238,10 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
   logout: async () => {
     const { refreshToken } = get();
     try {
-      if (refreshToken) {
-        await api.logout(refreshToken);
-      }
+      await api.logout(refreshToken || undefined);
     } catch {}
 
+    clearLegacyBrowserTokenStorage();
     set({
       user: null,
       accessToken: null,
@@ -296,10 +250,6 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
       currentWorkspace: null,
       error: null,
     });
-
-    if (typeof window !== 'undefined' && window.sessionStorage) {
-      window.sessionStorage.removeItem(STORAGE_KEY);
-    }
   },
 
   setCurrentWorkspace: (workspace: TeamWorkspace | null) => {

@@ -1,21 +1,31 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { useWebAuthStore } from './state/useWebAuthStore.js';
 import { api } from './api/api-client.js';
 import { WebDashboardLayout, WebTab } from './components/WebDashboardLayout.js';
-import { LoginPage } from './pages/LoginPage.js';
-import { OverviewPage } from './pages/OverviewPage.js';
-import { ProfilesPage, WebProfileItem } from './pages/ProfilesPage.js';
-import { WorkspacesPage } from './pages/WorkspacesPage.js';
-import { ProxiesPage, WebProxySession } from './pages/ProxiesPage.js';
-import { DeveloperPage } from './pages/DeveloperPage.js';
-import { AutomationPage } from './pages/AutomationPage.js';
-import { DevicesPage, WebDeviceSession } from './pages/DevicesPage.js';
-import { AuditPage, WebAuditItem } from './pages/AuditPage.js';
-import { AccountPage } from './pages/AccountPage.js';
-import { ProfileModal } from './components/ProfileModal.js';
-import { CreateWorkspaceModal } from './components/WorkspaceModal.js';
-import { CloudSessionViewer } from './components/CloudSessionViewer.js';
+import { PageLoadingFallback } from '../components/PageFallback.js';
+import type { WebProfileItem } from './pages/ProfilesPage.js';
+import type { WebProxySession } from './pages/ProxiesPage.js';
+import type { WebDeviceSession } from './pages/DevicesPage.js';
+import type { WebAuditItem } from './pages/AuditPage.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
+
+const LoginPage = lazy(() => import('./pages/LoginPage.js').then((m) => ({ default: m.LoginPage })));
+const OverviewPage = lazy(() => import('./pages/OverviewPage.js').then((m) => ({ default: m.OverviewPage })));
+const ProfilesPage = lazy(() => import('./pages/ProfilesPage.js').then((m) => ({ default: m.ProfilesPage })));
+const WorkspacesPage = lazy(() => import('./pages/WorkspacesPage.js').then((m) => ({ default: m.WorkspacesPage })));
+const ProxiesPage = lazy(() => import('./pages/ProxiesPage.js').then((m) => ({ default: m.ProxiesPage })));
+const DeveloperPage = lazy(() => import('./pages/DeveloperPage.js').then((m) => ({ default: m.DeveloperPage })));
+const AutomationPage = lazy(() => import('./pages/AutomationPage.js').then((m) => ({ default: m.AutomationPage })));
+const DevicesPage = lazy(() => import('./pages/DevicesPage.js').then((m) => ({ default: m.DevicesPage })));
+const AuditPage = lazy(() => import('./pages/AuditPage.js').then((m) => ({ default: m.AuditPage })));
+const AccountPage = lazy(() => import('./pages/AccountPage.js').then((m) => ({ default: m.AccountPage })));
+const ProfileModal = lazy(() => import('./components/ProfileModal.js').then((m) => ({ default: m.ProfileModal })));
+const CreateWorkspaceModal = lazy(() =>
+  import('./components/WorkspaceModal.js').then((m) => ({ default: m.CreateWorkspaceModal }))
+);
+const CloudSessionViewer = lazy(() =>
+  import('./components/CloudSessionViewer.js').then((m) => ({ default: m.CloudSessionViewer }))
+);
 
 import {
   TeamWorkspace,
@@ -201,7 +211,11 @@ export const WebDashboardApp: React.FC = () => {
 
   // If unauthenticated, show Login / Register screen
   if (!isAuthenticated) {
-    return <LoginPage />;
+    return (
+      <Suspense fallback={<PageLoadingFallback fullScreen label="Loading portal..." />}>
+        <LoginPage />
+      </Suspense>
+    );
   }
 
   // =========================================================================
@@ -522,151 +536,159 @@ export const WebDashboardApp: React.FC = () => {
       )}
 
       {/* Dynamic Content Views */}
-      {activeTab === 'overview' && (
-        <OverviewPage
-          metrics={{
-            totalProfiles: profiles.length,
-            lockedProfiles: profiles.filter((p) => p.isLocked).length,
-            syncedProfiles: profiles.filter((p) => p.syncStatus === 'SYNCED').length,
-            workspaceCount: workspaces.length,
-            activeProxies: proxySessions.length,
-            apiKeysCount: apiKeys.length,
-            webhookEndpointsCount: webhooks.length,
-            activeDevicesCount: devices.length,
-          }}
-          onNavigate={setActiveTab}
-          onOpenCreateProfile={() => setIsHeaderCreateProfileOpen(true)}
-          onOpenCreateWorkspace={() => setIsHeaderCreateWorkspaceOpen(true)}
-          isDesktopOnline={isDesktopOnline}
-        />
-      )}
+      <Suspense fallback={<PageLoadingFallback />}>
+        {activeTab === 'overview' && (
+          <OverviewPage
+            metrics={{
+              totalProfiles: profiles.length,
+              lockedProfiles: profiles.filter((p) => p.isLocked).length,
+              syncedProfiles: profiles.filter((p) => p.syncStatus === 'SYNCED').length,
+              workspaceCount: workspaces.length,
+              activeProxies: proxySessions.length,
+              apiKeysCount: apiKeys.length,
+              webhookEndpointsCount: webhooks.length,
+              activeDevicesCount: devices.length,
+            }}
+            onNavigate={setActiveTab}
+            onOpenCreateProfile={() => setIsHeaderCreateProfileOpen(true)}
+            onOpenCreateWorkspace={() => setIsHeaderCreateWorkspaceOpen(true)}
+            isDesktopOnline={isDesktopOnline}
+          />
+        )}
 
-      {activeTab === 'profiles' && (
-        <ProfilesPage
-          profiles={profiles}
-          isLoading={isLoadingData}
-          onRefresh={loadDashboardData}
-          onCreateProfile={handleCreateProfile}
-          onUpdateProfile={handleUpdateProfile}
-          onDeleteProfile={handleDeleteProfile}
-          onLaunchProfile={handleLaunchProfile}
-          onLaunchCloud={handleLaunchCloud}
-          onNavigateToDevices={() => setActiveTab('devices')}
-        />
-      )}
+        {activeTab === 'profiles' && (
+          <ProfilesPage
+            profiles={profiles}
+            isLoading={isLoadingData}
+            onRefresh={loadDashboardData}
+            onCreateProfile={handleCreateProfile}
+            onUpdateProfile={handleUpdateProfile}
+            onDeleteProfile={handleDeleteProfile}
+            onLaunchProfile={handleLaunchProfile}
+            onLaunchCloud={handleLaunchCloud}
+            onNavigateToDevices={() => setActiveTab('devices')}
+          />
+        )}
 
-      {activeTab === 'workspaces' && (
-        <WorkspacesPage
-          workspaces={workspaces}
-          currentWorkspace={currentWorkspace}
-          members={members}
-          sharedProfiles={sharedProfiles}
-          currentUserRole={currentUserRole}
-          isLoading={isLoadingData}
-          onSelectWorkspace={setCurrentWorkspace}
-          onCreateWorkspace={handleCreateWorkspace}
-          onInviteMember={handleInviteMember}
-          onUpdateRole={handleUpdateMemberRole}
-          onRemoveMember={handleRemoveMember}
-          onShareProfile={handleShareProfile}
-        />
-      )}
+        {activeTab === 'workspaces' && (
+          <WorkspacesPage
+            workspaces={workspaces}
+            currentWorkspace={currentWorkspace}
+            members={members}
+            sharedProfiles={sharedProfiles}
+            currentUserRole={currentUserRole}
+            isLoading={isLoadingData}
+            onSelectWorkspace={setCurrentWorkspace}
+            onCreateWorkspace={handleCreateWorkspace}
+            onInviteMember={handleInviteMember}
+            onUpdateRole={handleUpdateMemberRole}
+            onRemoveMember={handleRemoveMember}
+            onShareProfile={handleShareProfile}
+          />
+        )}
 
-      {activeTab === 'proxies' && (
-        <ProxiesPage
-          sessions={proxySessions}
-          usage={proxyUsage}
-          isLoading={isLoadingData}
-          onRefresh={loadDashboardData}
-          onGenerateSession={handleGenerateProxySession}
-          onRotateSession={handleRotateProxySession}
-          onRevokeSession={handleRevokeProxySession}
-        />
-      )}
+        {activeTab === 'proxies' && (
+          <ProxiesPage
+            sessions={proxySessions}
+            usage={proxyUsage}
+            isLoading={isLoadingData}
+            onRefresh={loadDashboardData}
+            onGenerateSession={handleGenerateProxySession}
+            onRotateSession={handleRotateProxySession}
+            onRevokeSession={handleRevokeProxySession}
+          />
+        )}
 
-      {activeTab === 'automation' && (
-        <AutomationPage
-          currentWorkspace={currentWorkspace}
-          profiles={profiles}
-          recordAudit={recordAudit}
-        />
-      )}
+        {activeTab === 'automation' && (
+          <AutomationPage
+            currentWorkspace={currentWorkspace}
+            profiles={profiles}
+            recordAudit={recordAudit}
+          />
+        )}
 
-      {activeTab === 'developer' && (
-        <DeveloperPage
-          apiKeys={apiKeys}
-          webhooks={webhooks}
-          deliveries={deliveries}
-          workspaces={workspaces}
-          isLoading={isLoadingData}
-          onRefresh={loadDashboardData}
-          onCreateApiKey={handleCreateApiKey}
-          onRevokeApiKey={handleRevokeApiKey}
-          onRotateApiKey={handleRotateApiKey}
-          onCreateWebhook={handleCreateWebhook}
-          onDeleteWebhook={handleDeleteWebhook}
-          onTestWebhook={handleTestWebhook}
-          onRotateWebhookSecret={handleRotateWebhookSecret}
-          onLoadDeliveries={handleLoadDeliveries}
-        />
-      )}
+        {activeTab === 'developer' && (
+          <DeveloperPage
+            apiKeys={apiKeys}
+            webhooks={webhooks}
+            deliveries={deliveries}
+            workspaces={workspaces}
+            isLoading={isLoadingData}
+            onRefresh={loadDashboardData}
+            onCreateApiKey={handleCreateApiKey}
+            onRevokeApiKey={handleRevokeApiKey}
+            onRotateApiKey={handleRotateApiKey}
+            onCreateWebhook={handleCreateWebhook}
+            onDeleteWebhook={handleDeleteWebhook}
+            onTestWebhook={handleTestWebhook}
+            onRotateWebhookSecret={handleRotateWebhookSecret}
+            onLoadDeliveries={handleLoadDeliveries}
+          />
+        )}
 
-      {activeTab === 'devices' && (
-        <DevicesPage
-          devices={devices}
-          isLoading={isLoadingData}
-          onRefresh={loadDashboardData}
-          onRevokeSession={handleRevokeDeviceSession}
-        />
-      )}
+        {activeTab === 'devices' && (
+          <DevicesPage
+            devices={devices}
+            isLoading={isLoadingData}
+            onRefresh={loadDashboardData}
+            onRevokeSession={handleRevokeDeviceSession}
+          />
+        )}
 
-      {activeTab === 'audit' && (
-        <AuditPage
-          logs={auditLogs}
-          isLoading={isLoadingData}
-          onRefresh={loadDashboardData}
-        />
-      )}
+        {activeTab === 'audit' && (
+          <AuditPage
+            logs={auditLogs}
+            isLoading={isLoadingData}
+            onRefresh={loadDashboardData}
+          />
+        )}
 
-      {activeTab === 'account' && (
-        <AccountPage
-          profileCount={profiles.length}
-          maxProfiles={
-            user?.profileQuota ??
-            (user?.planId && user.planId !== 'plan_free' && user.planId !== 'free' ? 100 : 15)
-          }
-        />
-      )}
+        {activeTab === 'account' && (
+          <AccountPage
+            profileCount={profiles.length}
+            maxProfiles={
+              user?.profileQuota ??
+              (user?.planId && user.planId !== 'plan_free' && user.planId !== 'free' ? 100 : 15)
+            }
+          />
+        )}
+      </Suspense>
 
       {/* Global Modals triggered from header */}
-      <ProfileModal
-        isOpen={isHeaderCreateProfileOpen}
-        mode="create"
-        onClose={() => setIsHeaderCreateProfileOpen(false)}
-        onSubmit={handleCreateProfile}
-      />
+      <Suspense fallback={null}>
+        {isHeaderCreateProfileOpen && (
+          <ProfileModal
+            isOpen={isHeaderCreateProfileOpen}
+            mode="create"
+            onClose={() => setIsHeaderCreateProfileOpen(false)}
+            onSubmit={handleCreateProfile}
+          />
+        )}
 
-      <CreateWorkspaceModal
-        isOpen={isHeaderCreateWorkspaceOpen}
-        onClose={() => setIsHeaderCreateWorkspaceOpen(false)}
-        onSubmit={handleCreateWorkspace}
-      />
+        {isHeaderCreateWorkspaceOpen && (
+          <CreateWorkspaceModal
+            isOpen={isHeaderCreateWorkspaceOpen}
+            onClose={() => setIsHeaderCreateWorkspaceOpen(false)}
+            onSubmit={handleCreateWorkspace}
+          />
+        )}
 
-      {/* Interactive Cloud Browser Session Viewer */}
-      {activeCloudSession && (
-        <CloudSessionViewer
-          sessionId={activeCloudSession.sessionId}
-          profileId={activeCloudSession.profileId}
-          profileName={activeCloudSession.profileName}
-          initialStreamToken={activeCloudSession.streamToken}
-          initialStreamGatewayUrl={activeCloudSession.streamGatewayUrl}
-          regionId={activeCloudSession.regionId}
-          onClose={() => {
-            setActiveCloudSession(null);
-            loadDashboardData();
-          }}
-        />
-      )}
+        {/* Interactive Cloud Browser Session Viewer */}
+        {activeCloudSession && (
+          <CloudSessionViewer
+            sessionId={activeCloudSession.sessionId}
+            profileId={activeCloudSession.profileId}
+            profileName={activeCloudSession.profileName}
+            initialStreamToken={activeCloudSession.streamToken}
+            initialStreamGatewayUrl={activeCloudSession.streamGatewayUrl}
+            regionId={activeCloudSession.regionId}
+            onClose={() => {
+              setActiveCloudSession(null);
+              loadDashboardData();
+            }}
+          />
+        )}
+      </Suspense>
     </WebDashboardLayout>
   );
 };

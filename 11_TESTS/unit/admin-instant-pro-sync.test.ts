@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { setCustomDatabasePath, closeDatabase, getDatabase } from '../../06_DATABASE/connection.js';
@@ -7,12 +8,15 @@ import { evaluateUserEntitlements } from '../../07_BACKEND/commercial/commercial
 import { getUserById } from '../../07_BACKEND/commercial/commercial-auth-service.js';
 
 describe('Admin Instant Pro Entitlement & Sync Engine', () => {
-  const testDbDir = path.join(process.cwd(), '.test_instant_pro');
+  const testDbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-instant-pro-'));
   const testDbPath = path.join(testDbDir, 'instant_pro_test.sqlite');
 
   beforeEach(async () => {
-    try { fs.mkdirSync(testDbDir, { recursive: true }); } catch {}
-    try { fs.unlinkSync(testDbPath); } catch {}
+    closeDatabase();
+    fs.mkdirSync(testDbDir, { recursive: true });
+    for (const suffix of ['', '-wal', '-shm']) {
+      try { fs.unlinkSync(`${testDbPath}${suffix}`); } catch {}
+    }
     setCustomDatabasePath(testDbPath);
     await initializeDatabase();
   });

@@ -91,6 +91,7 @@ export class WebApiClient {
     try {
       const res = await fetch(url, {
         ...options,
+        credentials: options.credentials ?? 'include',
         headers,
       });
 
@@ -152,22 +153,38 @@ export class WebApiClient {
     });
   }
 
-  public async refreshToken(refreshToken: string) {
+  public async refreshToken(refreshToken?: string) {
     return this.request<{
       accessToken: string;
       refreshToken: string;
       expiresIn: number;
     }>('/api/v1/auth/refresh', {
       method: 'POST',
-      body: JSON.stringify({ refreshToken }),
+      body: JSON.stringify(refreshToken ? { refreshToken } : {}),
     });
   }
 
   public async logout(refreshToken?: string) {
     return this.request<{ success: boolean }>('/api/v1/auth/logout', {
       method: 'POST',
-      body: JSON.stringify({ refreshToken }),
+      body: JSON.stringify(refreshToken ? { refreshToken } : {}),
     });
+  }
+
+  public async getMe() {
+    return this.request<{
+      user: {
+        id: string;
+        email: string;
+        name: string;
+        role: string;
+        planId: string;
+        status?: string;
+        profileQuota?: number;
+      };
+      trialStatus?: unknown;
+      entitlements?: unknown;
+    }>('/api/v1/auth/me', { method: 'GET' });
   }
 
   public async getActiveSessions() {

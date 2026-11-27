@@ -240,6 +240,7 @@ export const RefreshTokenSchema = z.strictObject({
 
 export const LogoutSchema = z.strictObject({
   sessionId: optionalTrimmedString,
+  refreshToken: z.string().max(4096).optional(),
   token: z.string().max(4096).optional(),
 });
 

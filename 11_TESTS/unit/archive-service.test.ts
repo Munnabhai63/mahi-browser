@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
-import { setCustomDatabasePath } from '../../06_DATABASE/connection.js';
+import os from 'node:os';
+import { setCustomDatabasePath, closeDatabase } from '../../06_DATABASE/connection.js';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { createProfile, getProfiles } from '../../02_BROWSER/services/profile-service.js';
 import { importCookies } from '../../02_BROWSER/services/cookie-service.js';
@@ -13,11 +14,10 @@ import {
 
 describe('Profile Archive Import & Export (.mahi-profile)', () => {
   let profileId = '';
-  const testOutputDir = path.join(process.cwd(), '.test_data');
+  const testOutputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-archive-svc-'));
 
   beforeAll(async () => {
-    if (!fs.existsSync(testOutputDir)) fs.mkdirSync(testOutputDir, { recursive: true });
-    setCustomDatabasePath(path.join(testOutputDir, `test_mahi_archive_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.sqlite`));
+    setCustomDatabasePath(path.join(testOutputDir, 'test_mahi_archive.sqlite'));
     await initializeDatabase();
 
     const p = createProfile({
@@ -32,6 +32,11 @@ describe('Profile Archive Import & Export (.mahi-profile)', () => {
       profileId,
       JSON.stringify([{ domain: '.test.com', name: 'sess', value: 'secret123', path: '/', secure: true, httpOnly: true }])
     );
+  });
+
+  afterAll(() => {
+    closeDatabase();
+    try { fs.rmSync(testOutputDir, { recursive: true, force: true }); } catch {}
   });
 
   it('should export a profile with password encryption to a .mahi-profile file', () => {

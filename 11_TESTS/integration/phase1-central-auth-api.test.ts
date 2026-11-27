@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
@@ -9,15 +10,18 @@ import { handleCommercialAPIRequest } from '../../07_BACKEND/commercial/commerci
 import { verifyAccessToken } from '../../05_AUTH/central-auth-service.js';
 
 describe('PHASE 1: Central Auth Endpoints & Security Controls Integration', () => {
-  const testDbDir = path.join(process.cwd(), '.test_phase1_api');
+  const testDbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-phase1-api-'));
   const testDbPath = path.join(testDbDir, 'phase1_api.sqlite');
   let server: http.Server;
   let serverPort = 0;
   let baseUrl = '';
 
   beforeEach(async () => {
-    try { fs.mkdirSync(testDbDir, { recursive: true }); } catch {}
-    try { fs.unlinkSync(testDbPath); } catch {}
+    closeDatabase();
+    fs.mkdirSync(testDbDir, { recursive: true });
+    for (const suffix of ['', '-wal', '-shm']) {
+      try { fs.unlinkSync(`${testDbPath}${suffix}`); } catch {}
+    }
     setCustomDatabasePath(testDbPath);
     await initializeDatabase();
     DevelopmentEmailProvider.clear();
@@ -28,8 +32,7 @@ describe('PHASE 1: Central Auth Endpoints & Security Controls Integration', () =
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
     closeDatabase();
-    try { fs.unlinkSync(testDbPath); } catch {}
-    try { fs.rmdirSync(testDbDir); } catch {}
+    try { fs.rmSync(testDbDir, { recursive: true, force: true }); } catch {}
   });
 
   // Start a lightweight test HTTP server running handleCommercialAPIRequest

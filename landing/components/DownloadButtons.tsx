@@ -82,12 +82,13 @@ const DOWNLOAD_OPTIONS: DownloadOption[] = [
 
 export default function DownloadButtons() {
   const [detectedOs, setDetectedOs] = useState<OperatingSystem>('windows');
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
   const [isHandoffLoading, setIsHandoffLoading] = useState(false);
   const [trialActivated, setTrialActivated] = useState(false);
 
   useEffect(() => {
+    let active = true;
     if (typeof window !== 'undefined' && window.navigator) {
       const ua = window.navigator.userAgent.toLowerCase();
       if (ua.includes('mac') || ua.includes('darwin')) {
@@ -99,52 +100,67 @@ export default function DownloadButtons() {
       }
 
       const urlParams = new URLSearchParams(window.location.search);
-      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-      const urlToken =
-        hashParams.get('token') ||
-        hashParams.get('access_token') ||
-        urlParams.get('token') ||
-        urlParams.get('access_token') ||
-        urlParams.get('auth_token');
-      if (urlToken) {
-        setAuthToken(urlToken);
-        try {
-          localStorage.setItem('mahi_auth_token', urlToken);
-          localStorage.setItem('mahi_access_token', urlToken);
-        } catch {}
-        if (window.location.hash) {
+      // Clean up any legacy token query/hash fragments without persisting JWTs into Web Storage.
+      if (window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        if (hashParams.has('token') || hashParams.has('access_token')) {
           window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
         }
-      } else {
+      }
+      if (urlParams.has('token') || urlParams.has('access_token') || urlParams.has('auth_token')) {
+        urlParams.delete('token');
+        urlParams.delete('access_token');
+        urlParams.delete('auth_token');
+        const cleanedQuery = urlParams.toString();
+        window.history.replaceState(
+          {},
+          document.title,
+          `${window.location.pathname}${cleanedQuery ? `?${cleanedQuery}` : ''}${window.location.hash}`
+        );
+      }
+      try {
+        localStorage.removeItem('mahi_auth_token');
+        localStorage.removeItem('mahi_access_token');
+      } catch {}
+
+      const autoDownload = urlParams.get('auto') === 'true';
+
+      void (async () => {
+        let authenticated = false;
         try {
-          const stored = localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token');
-          if (stored) setAuthToken(stored);
-        } catch {}
-      }
-
-      // Auto-trigger download if navigated from Home CTA (require authentication)
-      if (urlParams.get('auto') === 'true') {
-        const currentToken =
-          urlToken ||
-          (typeof window !== 'undefined'
-            ? localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token')
-            : null);
-        if (!currentToken) {
-          window.location.href = '/signup?intent=trial&returnUrl=/download';
-          return;
+          const meResp = await fetch(`${BRAND.apiUrl}/api/v1/auth/me`, {
+            method: 'GET',
+            credentials: 'include',
+          });
+          authenticated = meResp.ok;
+        } catch {
+          authenticated = false;
         }
+        if (!active) return;
+        setIsAuthenticated(authenticated);
 
-        setTimeout(() => {
-          const downloadTarget = BRAND.downloads.windowsSetup;
-          const a = document.createElement('a');
-          a.href = downloadTarget;
-          a.download = '';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-        }, 600);
-      }
+        // Auto-trigger download if navigated from Home CTA (require authenticated HttpOnly session)
+        if (autoDownload) {
+          if (!authenticated) {
+            window.location.href = '/signup?intent=trial&returnUrl=/download';
+            return;
+          }
+
+          setTimeout(() => {
+            const downloadTarget = BRAND.downloads.windowsSetup;
+            const a = document.createElement('a');
+            a.href = downloadTarget;
+            a.download = '';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }, 600);
+        }
+      })();
     }
+    return () => {
+      active = false;
+    };
   }, []);
 
   const trackDownload = async (opt: DownloadOption) => {
@@ -164,15 +180,15 @@ export default function DownloadButtons() {
   };
 
   const handleDeepLinkHandoff = async () => {
-    if (!authToken) return;
+    if (!isAuthenticated) return;
     setIsHandoffLoading(true);
     setHandoffStatus(null);
     try {
       const resp = await fetch(`${BRAND.apiUrl}/api/v1/auth/web-handoff`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           client: 'nextjs-web-portal',
@@ -189,6 +205,9 @@ export default function DownloadButtons() {
         } else {
           setHandoffStatus('Could not generate desktop handoff link.');
         }
+      } else if (resp.status === 401) {
+        setIsAuthenticated(false);
+        setHandoffStatus('Session expired. Please sign in again.');
       } else {
         setHandoffStatus('Failed to initiate desktop handoff session.');
       }
@@ -200,20 +219,24 @@ export default function DownloadButtons() {
   };
 
   const handleActivateTrial = async () => {
-    if (!authToken) return;
+    if (!isAuthenticated) return;
     try {
       const resp = await fetch(`${BRAND.apiUrl}/api/v1/auth/trial/activate`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           source: 'download_page',
           product: 'mahi_browser_pro_trial',
         }),
       });
-      if (resp.ok) setTrialActivated(true);
+      if (resp.ok) {
+        setTrialActivated(true);
+      } else if (resp.status === 401) {
+        setIsAuthenticated(false);
+      }
     } catch {
       setTrialActivated(true);
     }
@@ -228,7 +251,7 @@ export default function DownloadButtons() {
   return (
     <div className="w-full space-y-8">
       {/* Cloud Authenticated Deep Link Banner */}
-      {authToken && (
+      {isAuthenticated && (
         <div className="rounded-[8px] border border-white/15 bg-[#131517] p-5 backdrop-blur-md">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">

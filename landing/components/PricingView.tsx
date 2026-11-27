@@ -244,6 +244,7 @@ export default function PricingView() {
   const [txError, setTxError] = useState<string | null>(null);
   const [submittedCryptoPaymentId, setSubmittedCryptoPaymentId] = useState<string | null>(null);
   const [gatewaysLoaded, setGatewaysLoaded] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const [hasAuthToken, setHasAuthToken] = useState(false);
   const [activeCheckoutPlanId, setActiveCheckoutPlanId] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -279,17 +280,13 @@ export default function PricingView() {
     setSubmittedCryptoPaymentId(null);
   };
 
-  // Hydrate URL query state (currency, OAuth token, status) and probe payment gateways on mount
+  // Hydrate URL query state (currency, status) and probe session + payment gateways on mount
   useEffect(() => {
     let mounted = true;
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const urlToken = params.get('token');
-      if (urlToken) {
-        try {
-          localStorage.setItem('mahi_auth_token', urlToken);
-          localStorage.setItem('mahi_access_token', urlToken);
-        } catch {}
+      // Clean up any legacy token query/hash fragments without storing JWTs in Web Storage.
+      if (params.has('token')) {
         params.delete('token');
         const nextQuery = params.toString();
         window.history.replaceState(
@@ -298,10 +295,10 @@ export default function PricingView() {
           `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`
         );
       }
-
-      const storedToken =
-        localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token');
-      setHasAuthToken(Boolean(storedToken));
+      try {
+        localStorage.removeItem('mahi_auth_token');
+        localStorage.removeItem('mahi_access_token');
+      } catch {}
 
       const urlCurrency = (params.get('currency') || '').toUpperCase();
       if (urlCurrency === 'USD' || urlCurrency === 'INR') {
@@ -331,6 +328,26 @@ export default function PricingView() {
         }
       }
     }
+
+    const fetchSessionStatus = async () => {
+      try {
+        const resp = await fetch(`${BRAND.apiUrl}/api/v1/auth/me`, {
+          method: 'GET',
+          credentials: 'include',
+        });
+        if (mounted) {
+          setHasAuthToken(resp.ok);
+        }
+      } catch {
+        if (mounted) {
+          setHasAuthToken(false);
+        }
+      } finally {
+        if (mounted) {
+          setAuthChecked(true);
+        }
+      }
+    };
 
     const fetchGateways = async () => {
       try {
@@ -363,7 +380,8 @@ export default function PricingView() {
         }
       }
     };
-    fetchGateways();
+    void fetchSessionStatus();
+    void fetchGateways();
     return () => {
       mounted = false;
     };
@@ -391,10 +409,8 @@ export default function PricingView() {
 
     const cycle = getPlanBillingCycle(plan.id);
     const nextPricingPath = `/pricing?plan=${encodeURIComponent(plan.id)}&currency=${targetCurrency}&autoCheckout=1`;
-    const token =
-      localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token');
 
-    if (!token) {
+    if (authChecked && !hasAuthToken) {
       if (targetCurrency === 'USD') {
         window.location.href = `/signup?plan=${encodeURIComponent(plan.id)}&currency=USD&redirect=${encodeURIComponent(nextPricingPath)}`;
       } else {
@@ -408,9 +424,9 @@ export default function PricingView() {
       const origin = window.location.origin;
       const resp = await fetch(`${BRAND.apiUrl}/api/v1/billing/checkout`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           planId: plan.id,
@@ -423,12 +439,12 @@ export default function PricingView() {
       });
 
       if (resp.status === 401) {
-        try {
-          localStorage.removeItem('mahi_auth_token');
-          localStorage.removeItem('mahi_access_token');
-        } catch {}
         setHasAuthToken(false);
-        window.location.href = `/login?redirect=${encodeURIComponent(nextPricingPath)}&plan=${encodeURIComponent(plan.id)}&currency=${targetCurrency}`;
+        if (targetCurrency === 'USD') {
+          window.location.href = `/signup?plan=${encodeURIComponent(plan.id)}&currency=USD&redirect=${encodeURIComponent(nextPricingPath)}`;
+        } else {
+          window.location.href = `/login?redirect=${encodeURIComponent(nextPricingPath)}&plan=${encodeURIComponent(plan.id)}&currency=INR`;
+        }
         return { redirected: true };
       }
 
@@ -452,15 +468,13 @@ export default function PricingView() {
 
   // Auto-resume checkout after returning from /login or /signup
   useEffect(() => {
-    if (!gatewaysLoaded || typeof window === 'undefined') return;
+    if (!gatewaysLoaded || !authChecked || typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     if (params.get('autoCheckout') !== '1') return;
 
     const planId = params.get('plan');
     const urlCurrency = (params.get('currency') || '').toUpperCase();
     const targetCurrency: 'INR' | 'USD' = urlCurrency === 'USD' ? 'USD' : 'INR';
-    const token =
-      localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token');
     const matchedPlan = PRICING_PLANS.find((p) => p.id === planId);
 
     params.delete('autoCheckout');
@@ -471,7 +485,7 @@ export default function PricingView() {
       `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`
     );
 
-    if (!matchedPlan || !token) return;
+    if (!matchedPlan || !hasAuthToken) return;
 
     if (targetCurrency === 'USD') {
       if (isStripeEnabled) {
@@ -492,7 +506,7 @@ export default function PricingView() {
     } else {
       openManualUpiModal(matchedPlan);
     }
-  }, [gatewaysLoaded, isYoupiEnabled, isStripeEnabled, isUsdtEnabled, usdtAddress]);
+  }, [gatewaysLoaded, authChecked, hasAuthToken, isYoupiEnabled, isStripeEnabled, isUsdtEnabled, usdtAddress]);
 
   // Plan CTA Click Handler
   const handlePlanClick = async (plan: PlanTier) => {
@@ -567,21 +581,11 @@ export default function PricingView() {
     setUtrError(null);
 
     try {
-      const token =
-        typeof window !== 'undefined'
-          ? localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token')
-          : null;
-
-      if (!token) {
-        setUtrError('Please log in first so we can attach this payment to your account.');
-        return;
-      }
-
       const resp = await fetch(`${BRAND.apiUrl}/api/v1/account/payments/upi/submit`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           planId: selectedUpiPlan.id,
@@ -590,6 +594,12 @@ export default function PricingView() {
           currency: 'INR',
         }),
       });
+
+      if (resp.status === 401) {
+        setHasAuthToken(false);
+        setUtrError('Please log in first so we can attach this payment to your account.');
+        return;
+      }
 
       const data = await resp.json().catch(() => ({}));
 
@@ -653,21 +663,11 @@ export default function PricingView() {
     setTxError(null);
 
     try {
-      const token =
-        typeof window !== 'undefined'
-          ? localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token')
-          : null;
-
-      if (!token) {
-        setTxError('Please log in first so we can attach this USDT payment to your account.');
-        return;
-      }
-
       const resp = await fetch(`${BRAND.apiUrl}/api/v1/account/payments/crypto/submit`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           planId: selectedCryptoPlan.id,
@@ -676,6 +676,12 @@ export default function PricingView() {
           network: usdtNetwork,
         }),
       });
+
+      if (resp.status === 401) {
+        setHasAuthToken(false);
+        setTxError('Please log in first so we can attach this USDT payment to your account.');
+        return;
+      }
 
       const data = await resp.json().catch(() => ({}));
 

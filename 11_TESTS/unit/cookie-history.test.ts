@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
-import { setCustomDatabasePath } from '../../06_DATABASE/connection.js';
+import os from 'node:os';
+import { setCustomDatabasePath, closeDatabase } from '../../06_DATABASE/connection.js';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { createProfile } from '../../02_BROWSER/services/profile-service.js';
 import {
@@ -20,15 +21,22 @@ import {
 
 describe('Cookie & History Services', () => {
   let profileId = '';
+  let testDbDir = '';
 
   beforeAll(async () => {
-    const testDbDir = path.join(process.cwd(), '.test_data');
-    if (!fs.existsSync(testDbDir)) fs.mkdirSync(testDbDir, { recursive: true });
-    setCustomDatabasePath(path.join(testDbDir, `test_mahi_cookies_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.sqlite`));
+    testDbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-cookie-history-'));
+    setCustomDatabasePath(path.join(testDbDir, 'test_mahi_cookies.sqlite'));
     await initializeDatabase();
 
     const p = createProfile({ name: 'Cookie Test Profile' });
     profileId = p.id;
+  });
+
+  afterAll(() => {
+    closeDatabase();
+    if (testDbDir) {
+      try { fs.rmSync(testDbDir, { recursive: true, force: true }); } catch {}
+    }
   });
 
   it('should parse Netscape cookie file content', () => {

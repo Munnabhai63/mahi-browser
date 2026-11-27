@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { setCustomDatabasePath, closeDatabase } from '../../06_DATABASE/connection.js';
@@ -9,14 +10,14 @@ import { registerUser } from '../../07_BACKEND/commercial/commercial-auth-servic
 import { getInstallSecrets } from '../../08_SECURITY/install-secrets.js';
 
 describe('Commercial Admin & REST API Integration Suite', () => {
-  const testDbDir = path.join(process.cwd(), '.test_commercial_api');
+  const testDbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-commercial-api-'));
   const testDbPath = path.join(testDbDir, 'commercial_api_test.sqlite');
   let server: http.Server;
   let baseUrl: string;
   const testPort = 39871;
 
   beforeAll(async () => {
-    try { fs.mkdirSync(testDbDir, { recursive: true }); } catch {}
+    fs.mkdirSync(testDbDir, { recursive: true });
     try { fs.unlinkSync(testDbPath); } catch {}
     setCustomDatabasePath(testDbPath);
     await initializeDatabase();
@@ -35,8 +36,7 @@ describe('Commercial Admin & REST API Integration Suite', () => {
       server.close(() => resolve());
     });
     closeDatabase();
-    try { fs.unlinkSync(testDbPath); } catch {}
-    try { fs.rmdirSync(testDbDir); } catch {}
+    try { fs.rmSync(testDbDir, { recursive: true, force: true }); } catch {}
   });
 
   async function request(path: string, options: { method?: string; body?: any; headers?: Record<string, string> } = {}) {

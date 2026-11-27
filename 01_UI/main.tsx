@@ -1,10 +1,14 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import './api-fallback.js';
-import { App } from './App.js';
-import { WebDashboardApp } from './web/WebDashboardApp.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
+import { PageLoadingFallback } from './components/PageFallback.js';
 import './index.css';
+
+const App = lazy(() => import('./App.js').then((m) => ({ default: m.App })));
+const WebDashboardApp = lazy(() =>
+  import('./web/WebDashboardApp.js').then((m) => ({ default: m.WebDashboardApp }))
+);
 
 const isWebDashboard =
   typeof window !== 'undefined' &&
@@ -17,7 +21,9 @@ const isWebDashboard =
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
-      {isWebDashboard ? <WebDashboardApp /> : <App />}
+      <Suspense fallback={<PageLoadingFallback fullScreen label="Starting MAHI Browser..." />}>
+        {isWebDashboard ? <WebDashboardApp /> : <App />}
+      </Suspense>
     </ErrorBoundary>
   </React.StrictMode>
 );

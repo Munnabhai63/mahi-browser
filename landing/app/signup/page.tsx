@@ -52,6 +52,7 @@ export default function SignupPage() {
       const cycle = getBillingCycleForPlan(planId);
       const resp = await fetch(`${BRAND.apiUrl}/api/v1/auth/register`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name,
@@ -68,16 +69,17 @@ export default function SignupPage() {
 
       const data = await resp.json().catch(() => ({}));
       if (resp.ok && (data.token || data.user)) {
-        const token = data.token;
-        if (token) {
-          localStorage.setItem('mahi_auth_token', token);
-          localStorage.setItem('mahi_access_token', token);
-        }
+        try {
+          localStorage.removeItem('mahi_auth_token');
+          localStorage.removeItem('mahi_access_token');
+        } catch {}
 
-        if (isUsdPaidFlow && token) {
+        if (isUsdPaidFlow) {
           let stripeEnabled = false;
           try {
-            const gwResp = await fetch(`${BRAND.apiUrl}/api/v1/billing/gateways`);
+            const gwResp = await fetch(`${BRAND.apiUrl}/api/v1/billing/gateways`, {
+              credentials: 'include',
+            });
             if (gwResp.ok) {
               const gwData = await gwResp.json();
               stripeEnabled = Boolean(
@@ -90,9 +92,9 @@ export default function SignupPage() {
           if (stripeEnabled) {
             const checkoutResp = await fetch(`${BRAND.apiUrl}/api/v1/billing/checkout`, {
               method: 'POST',
+              credentials: 'include',
               headers: {
                 'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
               },
               body: JSON.stringify({
                 planId,

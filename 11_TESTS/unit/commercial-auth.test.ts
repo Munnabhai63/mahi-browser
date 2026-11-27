@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { setCustomDatabasePath, closeDatabase, getDatabase } from '../../06_DATABASE/connection.js';
@@ -18,20 +19,22 @@ import {
 import { getCommercialAuditLogs } from '../../07_BACKEND/commercial/commercial-audit-service.js';
 
 describe('Commercial Authentication & RBAC Service', () => {
-  const testDbDir = path.join(process.cwd(), '.test_commercial_auth');
+  const testDbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-commercial-auth-'));
   const testDbPath = path.join(testDbDir, 'commercial_auth_test.sqlite');
 
   beforeEach(async () => {
-    try { fs.mkdirSync(testDbDir, { recursive: true }); } catch {}
-    try { fs.unlinkSync(testDbPath); } catch {}
+    closeDatabase();
+    fs.mkdirSync(testDbDir, { recursive: true });
+    for (const suffix of ['', '-wal', '-shm']) {
+      try { fs.unlinkSync(`${testDbPath}${suffix}`); } catch {}
+    }
     setCustomDatabasePath(testDbPath);
     await initializeDatabase();
   });
 
   afterAll(() => {
     closeDatabase();
-    try { fs.unlinkSync(testDbPath); } catch {}
-    try { fs.rmdirSync(testDbDir); } catch {}
+    try { fs.rmSync(testDbDir, { recursive: true, force: true }); } catch {}
   });
 
   it('should register a new commercial user with hashed password and unique salt', () => {

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { setCustomDatabasePath, closeDatabase, getDatabase } from '../../06_DATABASE/connection.js';
@@ -27,20 +28,22 @@ import {
 import { createLicense } from '../../04_LICENSING/license-engine.js';
 
 describe('Commercial Licensing, Plans & Device Entitlements', () => {
-  const testDbDir = path.join(process.cwd(), '.test_commercial_lic');
+  const testDbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-commercial-lic-'));
   const testDbPath = path.join(testDbDir, 'commercial_lic_test.sqlite');
 
   beforeEach(async () => {
-    try { fs.mkdirSync(testDbDir, { recursive: true }); } catch {}
-    try { fs.unlinkSync(testDbPath); } catch {}
+    closeDatabase();
+    fs.mkdirSync(testDbDir, { recursive: true });
+    for (const suffix of ['', '-wal', '-shm']) {
+      try { fs.unlinkSync(`${testDbPath}${suffix}`); } catch {}
+    }
     setCustomDatabasePath(testDbPath);
     await initializeDatabase();
   });
 
   afterAll(() => {
     closeDatabase();
-    try { fs.unlinkSync(testDbPath); } catch {}
-    try { fs.rmdirSync(testDbDir); } catch {}
+    try { fs.rmSync(testDbDir, { recursive: true, force: true }); } catch {}
   });
 
   it('should seed default commercial plans with correct limits', () => {

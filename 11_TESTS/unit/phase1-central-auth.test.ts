@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { setCustomDatabasePath, closeDatabase, getDatabase } from '../../06_DATABASE/connection.js';
@@ -24,12 +25,15 @@ import { clearEncryptedSession, clearCachedStatus } from '../../08_SECURITY/acco
 import { setActiveUserId } from '../../07_BACKEND/commercial/session-context.js';
 
 describe('PHASE 1: Central Account & Authentication Service', () => {
-  const testDbDir = path.join(process.cwd(), '.test_phase1_auth');
+  const testDbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-phase1-auth-'));
   const testDbPath = path.join(testDbDir, 'phase1_auth.sqlite');
 
   beforeEach(async () => {
-    try { fs.mkdirSync(testDbDir, { recursive: true }); } catch {}
-    try { fs.unlinkSync(testDbPath); } catch {}
+    closeDatabase();
+    fs.mkdirSync(testDbDir, { recursive: true });
+    for (const suffix of ['', '-wal', '-shm']) {
+      try { fs.unlinkSync(`${testDbPath}${suffix}`); } catch {}
+    }
     setCustomDatabasePath(testDbPath);
     await initializeDatabase();
     DevelopmentEmailProvider.clear();
@@ -40,8 +44,7 @@ describe('PHASE 1: Central Account & Authentication Service', () => {
 
   afterAll(() => {
     closeDatabase();
-    try { fs.unlinkSync(testDbPath); } catch {}
-    try { fs.rmdirSync(testDbDir); } catch {}
+    try { fs.rmSync(testDbDir, { recursive: true, force: true }); } catch {}
   });
 
   describe('1. Password Hashing Security', () => {

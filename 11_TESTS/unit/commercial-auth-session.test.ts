@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { app } from 'electron';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
@@ -36,11 +37,11 @@ import {
 } from '../../07_BACKEND/commercial/commercial-audit-service.js';
 
 describe('Task 3: Commercial Auth Split-Brain, Session Persistence & Rate Limiting', () => {
-  const testDbDir = path.join(process.cwd(), '.test_commercial_auth_session');
+  const testDbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-comm-auth-session-'));
   const testDbPath = path.join(testDbDir, 'commercial_auth_test.sqlite');
 
   beforeAll(async () => {
-    try { fs.mkdirSync(testDbDir, { recursive: true }); } catch {}
+    fs.mkdirSync(testDbDir, { recursive: true });
     try { fs.unlinkSync(testDbPath); } catch {}
     setCustomDatabasePath(testDbPath);
     await initializeDatabase();
@@ -48,8 +49,7 @@ describe('Task 3: Commercial Auth Split-Brain, Session Persistence & Rate Limiti
 
   afterAll(async () => {
     closeDatabase();
-    try { fs.unlinkSync(testDbPath); } catch {}
-    try { fs.rmdirSync(testDbDir); } catch {}
+    try { fs.rmSync(testDbDir, { recursive: true, force: true }); } catch {}
   });
 
   beforeEach(() => {

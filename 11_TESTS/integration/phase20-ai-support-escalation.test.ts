@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { setCustomDatabasePath, closeDatabase, getDatabase } from '../../06_DATABASE/connection.js';
@@ -10,14 +11,14 @@ import { getEmailProvider, DevelopmentEmailProvider } from '../../05_AUTH/email-
 import { getInstallSecrets } from '../../08_SECURITY/install-secrets.js';
 
 describe('Phase 20 — AI Support Assistant & Payment Escalation Integration Suite', () => {
-  const testDbDir = path.join(process.cwd(), '.test_phase20_support');
+  const testDbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-phase20-support-'));
   const testDbPath = path.join(testDbDir, 'support_phase20.sqlite');
   let server: http.Server;
   let baseUrl: string;
   const testPort = 39885;
 
   beforeAll(async () => {
-    try { fs.mkdirSync(testDbDir, { recursive: true }); } catch {}
+    fs.mkdirSync(testDbDir, { recursive: true });
     try { fs.unlinkSync(testDbPath); } catch {}
     setCustomDatabasePath(testDbPath);
     await initializeDatabase();
@@ -36,8 +37,7 @@ describe('Phase 20 — AI Support Assistant & Payment Escalation Integration Sui
       server.close(() => resolve());
     });
     closeDatabase();
-    try { fs.unlinkSync(testDbPath); } catch {}
-    try { fs.rmdirSync(testDbDir); } catch {}
+    try { fs.rmSync(testDbDir, { recursive: true, force: true }); } catch {}
   });
 
   async function request(endpoint: string, options: { method?: string; body?: any; headers?: Record<string, string> } = {}) {

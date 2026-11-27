@@ -41,7 +41,7 @@ import {
 } from '../../08_SECURITY/cloud-sync-service.js';
 
 describe('PHASE 2 UNIT: Zero-Knowledge Envelope Crypto, Storage & Locking', () => {
-  const testDir = path.join(process.cwd(), '.test_phase2_unit');
+  const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-phase2-unit-artifacts-'));
   let tempSqliteDir: string;
 
   beforeAll(async () => {

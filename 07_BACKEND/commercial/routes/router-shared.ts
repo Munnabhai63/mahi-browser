@@ -70,13 +70,165 @@ function isSessionExpired(expiresAt: unknown): boolean {
   return Number.isFinite(ts) && ts <= Date.now();
 }
 
-function extractBearerHeaderToken(req: http.IncomingMessage): string | null {
+export const AUTH_SESSION_COOKIE_NAME = 'mahi_session';
+export const AUTH_REFRESH_COOKIE_NAME = 'mahi_refresh';
+export const LEGACY_AUTH_COOKIE_NAME = 'mahi_token';
+
+/** Parses raw HTTP `Cookie` headers into a decoded key-value dictionary. */
+export function parseCookies(req: http.IncomingMessage): Record<string, string> {
+  const cookieHeader = req?.headers?.cookie;
+  if (!cookieHeader || typeof cookieHeader !== 'string') {
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const part of cookieHeader.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx <= 0) continue;
+    const key = part.slice(0, idx).trim();
+    const rawVal = part.slice(idx + 1).trim();
+    if (!key) continue;
+    try {
+      out[key] = decodeURIComponent(rawVal);
+    } catch {
+      out[key] = rawVal;
+    }
+  }
+  return out;
+}
+
+function resolveCookieSecurityAttributes(req?: http.IncomingMessage): {
+  domainAttr: string;
+  secureAttr: string;
+} {
+  const isProdNonElectron = process.env.NODE_ENV === 'production' && !process.versions?.electron;
+  const rawHostHeader =
+    (req?.headers?.['x-forwarded-host'] as string) ||
+    (req?.headers?.host as string) ||
+    '';
+  const reqHost = rawHostHeader.split(',')[0].trim().split(':')[0].toLowerCase();
+  const reqProto = ((req?.headers?.['x-forwarded-proto'] as string) || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  const originHeader = ((req?.headers?.origin as string) || '').toLowerCase();
+  const isLocalHost =
+    reqHost === 'localhost' || reqHost === '127.0.0.1' || reqHost === '::1';
+  const isHttps =
+    reqProto === 'https' ||
+    originHeader.startsWith('https://') ||
+    Boolean((req?.socket as any)?.encrypted);
+
+  const useSecure = isHttps || (isProdNonElectron && !isLocalHost);
+  const secureAttr = useSecure ? '; Secure' : '';
+
+  const configuredDomain = (process.env.COOKIE_DOMAIN || process.env.MAHI_COOKIE_DOMAIN || '').trim();
+  let domainAttr = '';
+  if (!isLocalHost) {
+    if (configuredDomain) {
+      domainAttr = `; Domain=${configuredDomain}`;
+    } else if (
+      reqHost === 'mahibrowser.com' ||
+      reqHost.endsWith('.mahibrowser.com') ||
+      (!reqHost && isProdNonElectron)
+    ) {
+      domainAttr = '; Domain=.mahibrowser.com';
+    }
+  }
+
+  return { domainAttr, secureAttr };
+}
+
+/** Builds HttpOnly; SameSite=Lax (+ Secure/Domain in prod) auth cookies for browser sessions. */
+export function buildWebAuthCookies(params: {
+  req?: http.IncomingMessage;
+  accessToken: string;
+  refreshToken?: string;
+  accessMaxAgeSeconds?: number;
+  refreshMaxAgeSeconds?: number;
+}): string[] {
+  const { domainAttr, secureAttr } = resolveCookieSecurityAttributes(params.req);
+  const accessMaxAge = params.accessMaxAgeSeconds ?? 60 * 60 * 24 * 7;
+  const refreshMaxAge = params.refreshMaxAgeSeconds ?? 60 * 60 * 24 * 30;
+  const cookies: string[] = [];
+
+  if (params.accessToken) {
+    cookies.push(
+      `${AUTH_SESSION_COOKIE_NAME}=${encodeURIComponent(params.accessToken)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${accessMaxAge}${domainAttr}${secureAttr}`
+    );
+  }
+  if (params.refreshToken) {
+    cookies.push(
+      `${AUTH_REFRESH_COOKIE_NAME}=${encodeURIComponent(params.refreshToken)}; HttpOnly; SameSite=Lax; Path=/api/v1/auth; Max-Age=${refreshMaxAge}${domainAttr}${secureAttr}`
+    );
+  }
+  // Expire any legacy non-HttpOnly cookie left from earlier versions
+  cookies.push(
+    `${LEGACY_AUTH_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax${domainAttr}${secureAttr}`
+  );
+  return cookies;
+}
+
+/** Builds Set-Cookie headers that immediately expire all web session cookies. */
+export function buildClearWebAuthCookies(req?: http.IncomingMessage): string[] {
+  const { domainAttr, secureAttr } = resolveCookieSecurityAttributes(req);
+  const cookies = [
+    `${AUTH_SESSION_COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${domainAttr}${secureAttr}`,
+    `${AUTH_REFRESH_COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/api/v1/auth; Max-Age=0${domainAttr}${secureAttr}`,
+    `${LEGACY_AUTH_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax${domainAttr}${secureAttr}`,
+  ];
+  if (domainAttr) {
+    // Also clear any host-only fallback cookies set without Domain attribute
+    cookies.push(
+      `${AUTH_SESSION_COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secureAttr}`,
+      `${AUTH_REFRESH_COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/api/v1/auth; Max-Age=0${secureAttr}`
+    );
+  }
+  return cookies;
+}
+
+/** Appends Set-Cookie header values onto a ServerResponse without clobbering existing cookies. */
+export function appendSetCookies(res: http.ServerResponse, newCookies: string[]): void {
+  if (!res || newCookies.length === 0 || typeof res.setHeader !== 'function') return;
+  const existing = typeof res.getHeader === 'function' ? res.getHeader('Set-Cookie') : undefined;
+  const merged: string[] = Array.isArray(existing)
+    ? existing.map(String)
+    : existing
+      ? [String(existing)]
+      : [];
+  for (const cookie of newCookies) {
+    if (!merged.includes(cookie)) {
+      merged.push(cookie);
+    }
+  }
+  res.setHeader('Set-Cookie', merged);
+}
+
+/** Extracts bearer JWT from headers first, falling back to HttpOnly `mahi_session` cookie. */
+export function extractRequestAuthToken(req: http.IncomingMessage): {
+  token: string | null;
+  source: 'bearer' | 'cookie' | 'none';
+} {
   const authHeader =
     (req.headers['authorization'] as string) ||
     (req.headers['x-mahi-token'] ? `Bearer ${req.headers['x-mahi-token']}` : '');
-  if (!authHeader.startsWith('Bearer ')) return null;
-  const token = authHeader.substring(7).trim();
-  return token || null;
+  if (authHeader.startsWith('Bearer ')) {
+    const bearer = authHeader.substring(7).trim();
+    if (bearer) {
+      return { token: bearer, source: 'bearer' };
+    }
+  }
+
+  const cookies = parseCookies(req);
+  const cookieToken = cookies[AUTH_SESSION_COOKIE_NAME] || cookies[LEGACY_AUTH_COOKIE_NAME];
+  if (cookieToken && cookieToken.trim()) {
+    return { token: cookieToken.trim(), source: 'cookie' };
+  }
+
+  return { token: null, source: 'none' };
+}
+
+function extractBearerHeaderToken(req: http.IncomingMessage): string | null {
+  return extractRequestAuthToken(req).token;
 }
 
 function tryGetSqliteDb() {

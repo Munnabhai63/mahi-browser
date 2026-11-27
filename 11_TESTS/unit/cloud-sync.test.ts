@@ -30,7 +30,7 @@ import {
 } from '../../10_CONFIG/engine-config.js';
 
 describe('Cloud Profile Sync & Engine Mirror Suite', () => {
-  const testDir = path.join(process.cwd(), '.test_cloud_sync');
+  const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-cloud-sync-unit-'));
   let tempSqliteDir: string;
 
   beforeAll(async () => {
@@ -42,6 +42,7 @@ describe('Cloud Profile Sync & Engine Mirror Suite', () => {
 
   afterAll(() => {
     try { fs.rmSync(tempSqliteDir, { recursive: true, force: true }); } catch {}
+    try { fs.rmSync(testDir, { recursive: true, force: true }); } catch {}
   });
 
   beforeEach(() => {
