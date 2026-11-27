@@ -21,6 +21,7 @@ import {
   switchDevice as accountSwitchDevice,
   getPaymentInfo as accountGetPaymentInfo,
   submitManualUpiPayment as accountSubmitManualUpiPayment,
+  submitManualCryptoPayment as accountSubmitManualCryptoPayment,
   fetchPricingCatalogFromServer,
   createCheckoutSessionFromServer,
   fetchPaymentStatusFromServer,
@@ -2584,6 +2585,45 @@ export function registerIpcHandlers(): void {
       plan_id: payload.plan_id || payload.planId,
       billing_cycle: payload.billing_cycle || payload.billingCycle,
       utr: payload.utr,
+      proof_asset: payload.proof_asset || payload.proofAsset,
+      extra_members: payload.extra_members || payload.extraMembers,
+      extra_proxy_gb: payload.extra_proxy_gb || payload.extraProxyGb,
+    });
+  });
+
+  ipcMain.handle('account:submitManualCryptoPayment', async (_e, payload: any) => {
+    if (process.env.MAHI_LOCAL_COMMERCIAL_MODE === 'true') {
+      try {
+        const session = getAccountSession();
+        const userId = session?.account_id || getActiveUserId() || 'SYSTEM_OWNER';
+        const res = await paymentService.submitManualCryptoPayment({
+          userId,
+          planId: payload.plan_id || payload.planId,
+          billingCycle: (payload.billing_cycle || payload.billingCycle || 'SEMI_ANNUAL').toUpperCase() as any,
+          txHash: payload.tx_hash || payload.txHash || payload.utr,
+          network: payload.network,
+          proofAsset: payload.proof_asset || payload.proofAsset,
+          extraMembers: payload.extra_members || payload.extraMembers,
+          extraProxyGb: payload.extra_proxy_gb || payload.extraProxyGb,
+        });
+        return {
+          success: true,
+          payment_id: res.paymentId,
+          status: res.status,
+          tx_hash: res.txHash,
+          amount_cents: res.amountCents,
+          message: 'USDT (TRC-20) transaction submitted for verification.'
+        };
+      } catch (err: any) {
+        return { success: false, error: err.message };
+      }
+    }
+
+    return await accountSubmitManualCryptoPayment({
+      plan_id: payload.plan_id || payload.planId,
+      billing_cycle: payload.billing_cycle || payload.billingCycle,
+      tx_hash: payload.tx_hash || payload.txHash || payload.utr,
+      network: payload.network,
       proof_asset: payload.proof_asset || payload.proofAsset,
       extra_members: payload.extra_members || payload.extraMembers,
       extra_proxy_gb: payload.extra_proxy_gb || payload.extraProxyGb,

@@ -26,7 +26,7 @@ import {
 } from './canonical-plan-catalog.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 import { getEmailProvider } from '../../05_AUTH/email-service.js';
-import { SUPPORT_EMAIL } from '../../10_CONFIG/contact-config.js';
+import { SUPPORT_EMAIL, CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
 import { getUserById } from './commercial-auth-service.js';
 import { getCentralUserByIdAsync } from '../../05_AUTH/central-auth-service.js';
 import { createLicense, generateLicenseKey } from '../../04_LICENSING/license-engine.js';
@@ -833,11 +833,20 @@ export class PaymentService {
     req: CheckoutSessionRequest,
     providerType?: PaymentProviderType
   ): Promise<CheckoutSessionResponse> {
+    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
     const db = getDatabase();
 
     // 1. Validate User
-    const userCheck = db.prepare('SELECT id FROM auth_users WHERE id = ?').get(req.userId) ||
-      db.prepare('SELECT id FROM commercial_users WHERE id = ?').get(req.userId);
+    let userCheck: any = null;
+    if (prisma) {
+      userCheck =
+        (await prisma.auth_users.findFirst({ where: { id: req.userId }, select: { id: true } })) ||
+        (await prisma.commercial_users.findFirst({ where: { id: req.userId }, select: { id: true } }));
+    } else {
+      userCheck =
+        db.prepare('SELECT id FROM auth_users WHERE id = ?').get(req.userId) ||
+        db.prepare('SELECT id FROM commercial_users WHERE id = ?').get(req.userId);
+    }
     if (!userCheck) {
       throw new Error(`User account "${req.userId}" does not exist.`);
     }
@@ -878,9 +887,16 @@ export class PaymentService {
 
     // 3. Check Idempotency Key
     if (req.idempotencyKey) {
-      const existing = db.prepare(
-        "SELECT * FROM commercial_payments WHERE external_order_id = ? AND status = 'PENDING'"
-      ).get(req.idempotencyKey) as any;
+      let existing: any = null;
+      if (prisma) {
+        existing = await prisma.commercial_payments.findFirst({
+          where: { external_order_id: req.idempotencyKey, status: 'PENDING' },
+        });
+      } else {
+        existing = db.prepare(
+          "SELECT * FROM commercial_payments WHERE external_order_id = ? AND status = 'PENDING'"
+        ).get(req.idempotencyKey) as any;
+      }
       if (existing) {
         return {
           sessionId: existing.id,
@@ -907,35 +923,58 @@ export class PaymentService {
 
     // 5. Record pending payment transaction
     const now = new Date().toISOString();
-    db.prepare(`
-      INSERT INTO commercial_payments (
-        id, user_id, subscription_id, provider, external_order_id, external_payment_id,
-        amount_cents, currency, status, plan_id, billing_cycle, receipt_url, metadata_json,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?)
-    `).run(
-      session.sessionId,
-      normalizedReq.userId,
-      null,
-      session.provider,
-      normalizedReq.idempotencyKey || session.orderId,
-      session.sessionId,
-      amountCents,
-      session.currency,
-      plan.id,
-      effectiveBillingCycle,
-      session.checkoutUrl,
-      JSON.stringify({
-        userId: normalizedReq.userId,
-        planId: plan.id,
-        billingCycle: effectiveBillingCycle,
-        extraMembers: normalizedReq.extraMembers || 0,
-        extraProxyGb: normalizedReq.extraProxyGb || 0,
-        authoritativeBreakdown,
-      }),
-      now,
-      now
-    );
+    const metadataJson = JSON.stringify({
+      userId: normalizedReq.userId,
+      planId: plan.id,
+      billingCycle: effectiveBillingCycle,
+      extraMembers: normalizedReq.extraMembers || 0,
+      extraProxyGb: normalizedReq.extraProxyGb || 0,
+      authoritativeBreakdown,
+    });
+    if (prisma) {
+      await prisma.commercial_payments.create({
+        data: {
+          id: session.sessionId,
+          user_id: normalizedReq.userId,
+          subscription_id: null,
+          provider: session.provider,
+          external_order_id: normalizedReq.idempotencyKey || session.orderId,
+          external_payment_id: session.sessionId,
+          amount_cents: amountCents,
+          currency: session.currency,
+          status: 'PENDING',
+          plan_id: plan.id,
+          billing_cycle: effectiveBillingCycle,
+          receipt_url: session.checkoutUrl,
+          metadata_json: metadataJson,
+          created_at: now,
+          updated_at: now,
+        },
+      });
+    } else {
+      db.prepare(`
+        INSERT INTO commercial_payments (
+          id, user_id, subscription_id, provider, external_order_id, external_payment_id,
+          amount_cents, currency, status, plan_id, billing_cycle, receipt_url, metadata_json,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?)
+      `).run(
+        session.sessionId,
+        normalizedReq.userId,
+        null,
+        session.provider,
+        normalizedReq.idempotencyKey || session.orderId,
+        session.sessionId,
+        amountCents,
+        session.currency,
+        plan.id,
+        effectiveBillingCycle,
+        session.checkoutUrl,
+        metadataJson,
+        now,
+        now
+      );
+    }
 
     return session;
   }
@@ -949,6 +988,7 @@ export class PaymentService {
     signature: string,
     options?: { secret?: string }
   ): Promise<{ success: boolean; eventId: string; type: string; message: string }> {
+    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
     const db = getDatabase();
     const provider = this.getProvider(providerType);
 
@@ -962,9 +1002,17 @@ export class PaymentService {
     const event = provider.parseWebhookPayload(rawPayload);
 
     // 3. Idempotency Check — Prevent Duplicate Execution & Replay Attacks
-    const existingEvent = db.prepare(
-      'SELECT id, status FROM commercial_webhook_events WHERE id = ?'
-    ).get(event.id) as any;
+    let existingEvent: any = null;
+    if (prisma) {
+      existingEvent = await prisma.commercial_webhook_events.findFirst({
+        where: { id: event.id },
+        select: { id: true, status: true },
+      });
+    } else {
+      existingEvent = db.prepare(
+        'SELECT id, status FROM commercial_webhook_events WHERE id = ?'
+      ).get(event.id) as any;
+    }
 
     if (existingEvent) {
       return {
@@ -973,6 +1021,42 @@ export class PaymentService {
         type: event.type,
         message: 'Webhook event was already processed (Idempotent response).',
       };
+    }
+
+    // Correlate OviPay/gateway webhooks that omit metadata back to our pending checkout row
+    if (!event.userId || !event.planId) {
+      const lookupKeys = [event.externalPaymentId, event.externalOrderId].filter(
+        (v): v is string => typeof v === 'string' && v.trim().length > 0
+      );
+      let correlatedPayment: any = null;
+      if (lookupKeys.length > 0) {
+        if (prisma) {
+          correlatedPayment = await prisma.commercial_payments.findFirst({
+            where: {
+              OR: [
+                { external_payment_id: { in: lookupKeys } },
+                { external_order_id: { in: lookupKeys } },
+                { id: { in: lookupKeys } },
+              ],
+            },
+          });
+        } else {
+          for (const key of lookupKeys) {
+            correlatedPayment = db
+              .prepare(
+                'SELECT * FROM commercial_payments WHERE external_payment_id = ? OR external_order_id = ? OR id = ? LIMIT 1'
+              )
+              .get(key, key, key) as any;
+            if (correlatedPayment) break;
+          }
+        }
+      }
+      if (correlatedPayment) {
+        event.userId = event.userId || correlatedPayment.user_id;
+        event.planId = event.planId || correlatedPayment.plan_id;
+        event.billingCycle = (event.metadata?.billingCycle || correlatedPayment.billing_cycle || event.billingCycle) as BillingCycleType;
+        event.currency = correlatedPayment.currency || event.currency;
+      }
     }
 
     // 4. Validate Amount & Currency Consistency against target plan
@@ -1035,41 +1119,85 @@ export class PaymentService {
       });
 
     } else if (event.type === 'payment.failed') {
-      db.prepare(`
-        INSERT INTO commercial_payments (
-          id, user_id, subscription_id, provider, external_order_id, external_payment_id,
-          amount_cents, currency, status, plan_id, billing_cycle, receipt_url, metadata_json,
-          created_at, updated_at
-        ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 'FAILED', ?, ?, NULL, ?, ?, ?)
-      `).run(
-        `pay_fail_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
-        event.userId,
-        event.provider,
-        event.externalOrderId || null,
-        event.externalPaymentId,
-        event.amountCents,
-        event.currency,
-        event.planId,
-        event.billingCycle,
-        JSON.stringify(event.metadata || {}),
-        now,
-        now
-      );
+      const failId = `pay_fail_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+      const metaJson = JSON.stringify(event.metadata || {});
+      if (prisma) {
+        await prisma.commercial_payments.create({
+          data: {
+            id: failId,
+            user_id: event.userId,
+            subscription_id: null,
+            provider: event.provider,
+            external_order_id: event.externalOrderId || null,
+            external_payment_id: event.externalPaymentId,
+            amount_cents: event.amountCents,
+            currency: event.currency,
+            status: 'FAILED',
+            plan_id: event.planId,
+            billing_cycle: event.billingCycle,
+            receipt_url: null,
+            metadata_json: metaJson,
+            created_at: now,
+            updated_at: now,
+          },
+        });
+      } else {
+        db.prepare(`
+          INSERT INTO commercial_payments (
+            id, user_id, subscription_id, provider, external_order_id, external_payment_id,
+            amount_cents, currency, status, plan_id, billing_cycle, receipt_url, metadata_json,
+            created_at, updated_at
+          ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 'FAILED', ?, ?, NULL, ?, ?, ?)
+        `).run(
+          failId,
+          event.userId,
+          event.provider,
+          event.externalOrderId || null,
+          event.externalPaymentId,
+          event.amountCents,
+          event.currency,
+          event.planId,
+          event.billingCycle,
+          metaJson,
+          now,
+          now
+        );
+      }
 
     } else if (event.type === 'subscription.cancelled') {
-      db.prepare(`
-        UPDATE commercial_subscriptions
-        SET status = 'CANCELLED'
-        WHERE user_id = ? AND status = 'ACTIVE'
-      `).run(event.userId);
+      if (prisma) {
+        await prisma.commercial_subscriptions.updateMany({
+          where: { user_id: event.userId, status: 'ACTIVE' },
+          data: { status: 'CANCELLED', updated_at: now },
+        });
+      } else {
+        db.prepare(`
+          UPDATE commercial_subscriptions
+          SET status = 'CANCELLED'
+          WHERE user_id = ? AND status = 'ACTIVE'
+        `).run(event.userId);
+      }
     }
 
     // 6. Record Processed Webhook Event (Idempotency Audit)
-    db.prepare(`
-      INSERT INTO commercial_webhook_events (
-        id, provider, event_type, payload_json, status, created_at
-      ) VALUES (?, ?, ?, ?, 'PROCESSED', ?)
-    `).run(event.id, event.provider, event.type, rawPayload, now);
+    if (prisma) {
+      await prisma.commercial_webhook_events.create({
+        data: {
+          id: event.id,
+          provider: event.provider,
+          event_type: event.type,
+          payload_json: rawPayload,
+          status: 'PROCESSED',
+          created_at: now,
+        },
+      });
+    } else {
+      db.prepare(`
+        INSERT INTO commercial_webhook_events (
+          id, provider, event_type, payload_json, status, created_at
+        ) VALUES (?, ?, ?, ?, 'PROCESSED', ?)
+      `).run(event.id, event.provider, event.type, rawPayload, now);
+    }
 
     return {
       success: true,
@@ -1543,6 +1671,30 @@ export class PaymentService {
     }));
   }
 
+  public async getUserInvoicesAsync(userId: string): Promise<PaymentInvoiceRecord[]> {
+    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
+    if (prisma) {
+      const rows = await prisma.commercial_billing_invoices.findMany({
+        where: { user_id: userId },
+        orderBy: { created_at: 'desc' },
+      });
+      return rows.map((r: any) => ({
+        id: r.id,
+        userId: r.user_id,
+        paymentId: r.payment_id || undefined,
+        invoiceNumber: r.invoice_number,
+        amountCents: r.amount_cents,
+        currency: r.currency,
+        status: r.status,
+        periodStart: r.period_start,
+        periodEnd: r.period_end,
+        pdfUrl: r.pdf_url || undefined,
+        createdAt: r.created_at,
+      }));
+    }
+    return this.getUserInvoices(userId);
+  }
+
   /**
    * Retrieves active subscription summary for a user.
    */
@@ -1570,6 +1722,31 @@ export class PaymentService {
       maxDevices: plan.limits.maxDevices,
       paymentProvider: sub.payment_provider || undefined,
     };
+  }
+
+  public async getUserSubscriptionAsync(userId: string): Promise<UserSubscriptionSummary | null> {
+    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
+    if (prisma) {
+      const sub = await prisma.commercial_subscriptions.findFirst({
+        where: { user_id: userId, status: 'ACTIVE' },
+        orderBy: { starts_at: 'desc' },
+      });
+      if (!sub) return null;
+      const plan = getCommercialPlanById(sub.plan_id) || getCommercialPlans()[0];
+      return {
+        userId,
+        planId: sub.plan_id,
+        planName: plan.name,
+        status: sub.status as UserSubscriptionSummary['status'],
+        billingCycle: sub.billing_cycle as BillingCycleType,
+        startsAt: sub.starts_at,
+        expiresAt: sub.expires_at || '',
+        maxProfiles: plan.limits.maxProfiles,
+        maxDevices: plan.limits.maxDevices,
+        paymentProvider: sub.payment_provider || undefined,
+      };
+    }
+    return this.getUserSubscription(userId);
   }
 
   /**
@@ -1761,6 +1938,184 @@ export class PaymentService {
   }
 
   /**
+   * Submits a manual USDT (TRC-20) crypto transaction hash and persists it under PENDING_VERIFICATION.
+   */
+  public async submitManualCryptoPayment(params: {
+    userId: string;
+    planId: string;
+    billingCycle?: BillingCycleType | string;
+    txHash: string;
+    network?: string;
+    proofAsset?: string;
+    extraMembers?: number;
+    extraProxyGb?: number;
+  }): Promise<{
+    paymentId: string;
+    status: string;
+    txHash: string;
+    amountCents: number;
+    currency: string;
+    network: string;
+    walletAddress: string;
+    createdAt: string;
+  }> {
+    const cleanHash = (params.txHash || '').trim();
+    if (!/^[a-fA-F0-9]{64}$/.test(cleanHash)) {
+      throw new Error('INVALID_TX_HASH: Please enter a valid 64-character TRON (TRC-20) transaction hash.');
+    }
+
+    const plan = resolveCommercialPlan(params.planId);
+    if (!plan || !plan.isActive || plan.tier === 'FREE') {
+      throw new Error(`Selected plan "${params.planId}" is not available for purchase.`);
+    }
+
+    const cycle = normalizeBillingCycle(params.billingCycle, plan.id);
+    const orderTotal = calculateAuthoritativeOrderTotal({
+      planId: params.planId as any,
+      billingCycle: cycle,
+      currency: 'USD',
+      extraMembers: params.extraMembers,
+      extraProxyGb: params.extraProxyGb,
+    });
+    const amountCents = orderTotal.totalChargeMinor;
+    const network = (params.network || process.env.PAYMENT_USDT_NETWORK || CONTACT_CONFIG.USDT_NETWORK || 'TRC-20 (TRON)').trim();
+    const walletAddress = (process.env.PAYMENT_USDT_ADDRESS || CONTACT_CONFIG.USDT_ADDRESS || '').trim();
+
+    const paymentId = `pay_usdt_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const externalOrderId = `usdt_ord_${Date.now()}`;
+    const now = new Date().toISOString();
+    const metaJson = JSON.stringify({
+      txHash: cleanHash,
+      network,
+      walletAddress,
+      proofAsset: params.proofAsset,
+      submittedAt: now,
+      extraMembers: params.extraMembers || 0,
+      extraProxyGb: params.extraProxyGb || 0,
+      orderTotal,
+    });
+
+    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
+    if (prisma) {
+      const existing = await prisma.commercial_payments.findFirst({
+        where: {
+          OR: [{ external_payment_id: cleanHash }, { id: cleanHash }],
+        },
+      });
+      if (existing) {
+        throw new Error('TX_HASH_ALREADY_EXISTS: This transaction hash has already been submitted.');
+      }
+
+      await prisma.commercial_payments.create({
+        data: {
+          id: paymentId,
+          user_id: params.userId,
+          subscription_id: null,
+          provider: 'manual_usdt_trc20',
+          external_order_id: externalOrderId,
+          external_payment_id: cleanHash,
+          amount_cents: amountCents,
+          currency: 'USD',
+          status: 'PENDING_VERIFICATION',
+          plan_id: plan.id,
+          billing_cycle: cycle,
+          receipt_url: params.proofAsset || null,
+          metadata_json: metaJson,
+          created_at: now,
+          updated_at: now,
+        },
+      });
+
+      try {
+        await prisma.commercial_audit_logs.create({
+          data: {
+            id: crypto.randomUUID(),
+            actor_id: params.userId,
+            actor_name: 'USER',
+            actor_role: 'USER',
+            action: 'CRYPTO_TX_SUBMITTED',
+            target_type: 'PAYMENT',
+            target_id: paymentId,
+            details: `USDT ($${(amountCents / 100).toFixed(2)} ${network}) pending — TX ${cleanHash} — plan ${plan.id}`,
+            ip_address: null,
+            result: 'SUCCESS',
+            created_at: now,
+          },
+        });
+      } catch {}
+    } else {
+      const db = getDatabase();
+      const existing = db.prepare('SELECT id FROM commercial_payments WHERE external_payment_id = ?').get(cleanHash) as any;
+      if (existing) {
+        throw new Error('TX_HASH_ALREADY_EXISTS: This transaction hash has already been submitted.');
+      }
+
+      db.prepare(`
+        INSERT INTO commercial_payments (
+          id, user_id, subscription_id, provider, external_order_id, external_payment_id,
+          amount_cents, currency, status, plan_id, billing_cycle, receipt_url, metadata_json,
+          created_at, updated_at
+        ) VALUES (?, ?, NULL, 'manual_usdt_trc20', ?, ?, ?, 'USD', 'PENDING_VERIFICATION', ?, ?, ?, ?, ?, ?)
+      `).run(
+        paymentId,
+        params.userId,
+        externalOrderId,
+        cleanHash,
+        amountCents,
+        plan.id,
+        cycle,
+        params.proofAsset || null,
+        metaJson,
+        now,
+        now
+      );
+
+      try {
+        await logCommercialAudit({
+          actorId: params.userId,
+          actorName: 'USER',
+          actorRole: 'USER',
+          action: 'CRYPTO_TX_SUBMITTED',
+          targetType: 'PAYMENT',
+          targetId: paymentId,
+          details: `USDT ($${(amountCents / 100).toFixed(2)} ${network}) pending — TX ${cleanHash} — plan ${plan.id}`,
+        });
+      } catch {}
+    }
+
+    try {
+      const emailProvider = getEmailProvider();
+      const adminEmail = process.env.ADMIN_PAYMENT_EMAIL || SUPPORT_EMAIL;
+      const amountUsd = `$${(amountCents / 100).toFixed(2)} USDT`;
+      await emailProvider.sendBillingAlert(
+        adminEmail,
+        paymentId,
+        amountUsd,
+        `USDT (${network}) TX ${cleanHash} pending admin approval`,
+        {
+          planName: plan.name || plan.id,
+          userId: params.userId,
+          submittedAt: now,
+          instruction: 'Verify TRC-20 transaction on Tronscan and approve in admin panel.',
+        }
+      );
+    } catch (err: any) {
+      console.warn(`[PaymentService] admin crypto notification failed: ${err.message}`);
+    }
+
+    return {
+      paymentId,
+      status: 'PENDING_VERIFICATION',
+      txHash: cleanHash,
+      amountCents,
+      currency: 'USD',
+      network,
+      walletAddress,
+      createdAt: now,
+    };
+  }
+
+  /**
    * Approves a manual UPI payment, activating subscription and creating an invoice.
    */
   public async approveManualPayment(
@@ -1808,6 +2163,14 @@ export class PaymentService {
       metadata: meta,
     });
 
+    const isCrypto = payment.provider === 'manual_usdt_trc20';
+    const methodLabel = isCrypto ? 'USDT TRC-20' : 'manual UPI';
+    const refLabel = isCrypto ? 'TX' : 'UTR';
+    const formattedAmount =
+      payment.currency === 'USD'
+        ? `$${(payment.amount_cents / 100).toFixed(2)} USD`
+        : `₹${(payment.amount_cents / 100).toFixed(2)}`;
+
     if (prisma) {
       try {
         await prisma.commercial_audit_logs.create({
@@ -1819,7 +2182,7 @@ export class PaymentService {
             action: 'APPROVE_MANUAL_PAYMENT',
             target_type: 'PAYMENT',
             target_id: payment.id,
-            details: `Approved manual UPI payment ${payment.id} for user ${payment.user_id} (UTR: ${payment.external_payment_id})`,
+            details: `Approved ${methodLabel} payment ${payment.id} for user ${payment.user_id} (${refLabel}: ${payment.external_payment_id})`,
             ip_address: null,
             result: 'SUCCESS',
             created_at: new Date().toISOString(),
@@ -1835,7 +2198,7 @@ export class PaymentService {
           action: 'APPROVE_MANUAL_PAYMENT',
           targetType: 'PAYMENT',
           targetId: payment.id,
-          details: `Approved manual UPI payment ${payment.id} for user ${payment.user_id} (UTR: ${payment.external_payment_id})`,
+          details: `Approved ${methodLabel} payment ${payment.id} for user ${payment.user_id} (${refLabel}: ${payment.external_payment_id})`,
         });
       } catch {}
     }
@@ -1855,12 +2218,11 @@ export class PaymentService {
       } else {
         const plan = resolveCommercialPlan(payment.plan_id);
         const planName = plan ? plan.name : payment.plan_id;
-        const amountInr = (payment.amount_cents / 100).toString();
         const paidAt = new Date().toISOString();
         await getEmailProvider().sendPaymentApprovedEmail({
           email: userEmail,
           planName,
-          amountInr,
+          amountInr: formattedAmount,
           paidAt,
           licenceKey: actResult.licence?.rawKey,
           validUntil: actResult.subscription.expiresAt,
@@ -2004,6 +2366,39 @@ export class PaymentService {
   /**
    * Retrieves user payment history ordered by date descending.
    */
+  public async getUserPaymentHistoryAsync(userId: string): Promise<any[]> {
+    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
+    if (prisma) {
+      const rows = await prisma.commercial_payments.findMany({
+        where: { user_id: userId },
+        orderBy: { created_at: 'desc' },
+      });
+      return rows.map((r: any) => {
+        let metadata: any = {};
+        try {
+          metadata = JSON.parse(r.metadata_json || '{}');
+        } catch {}
+        return {
+          id: r.id,
+          userId: r.user_id,
+          planId: r.plan_id,
+          billingCycle: r.billing_cycle,
+          amountCents: r.amount_cents,
+          currency: r.currency,
+          provider: r.provider,
+          status: r.status,
+          externalPaymentId: r.external_payment_id,
+          externalOrderId: r.external_order_id,
+          receiptUrl: r.receipt_url,
+          metadata,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+        };
+      });
+    }
+    return this.getUserPaymentHistory(userId);
+  }
+
   public getUserPaymentHistory(userId: string): any[] {
     const db = getDatabase();
     const rows = db.prepare(`
@@ -2080,12 +2475,31 @@ export class PaymentService {
     invoice?: PaymentInvoiceRecord;
     error?: string;
   }> {
-    const db = getDatabase();
-    const payment = db.prepare(`
-      SELECT * FROM commercial_payments 
-      WHERE (external_payment_id = ? OR external_order_id = ? OR id = ?) 
-      AND provider IN ('youpi_pg', 'simulation')
-    `).get(paymentOrOrderId, paymentOrOrderId, paymentOrOrderId) as any;
+    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
+    let payment: any = null;
+    if (prisma) {
+      payment = await prisma.commercial_payments.findFirst({
+        where: {
+          AND: [
+            {
+              OR: [
+                { external_payment_id: paymentOrOrderId },
+                { external_order_id: paymentOrOrderId },
+                { id: paymentOrOrderId },
+              ],
+            },
+            { provider: { in: ['youpi_pg', 'simulation'] } },
+          ],
+        },
+      });
+    } else {
+      const db = getDatabase();
+      payment = db.prepare(`
+        SELECT * FROM commercial_payments 
+        WHERE (external_payment_id = ? OR external_order_id = ? OR id = ?) 
+        AND provider IN ('youpi_pg', 'simulation')
+      `).get(paymentOrOrderId, paymentOrOrderId, paymentOrOrderId) as any;
+    }
 
     if (!payment) {
       return { success: false, status: 'NOT_FOUND', error: 'Payment record not found.' };
@@ -2096,7 +2510,7 @@ export class PaymentService {
     }
 
     if (payment.status === 'SUCCEEDED') {
-      const sub = this.getUserSubscription(payment.user_id);
+      const sub = await this.getUserSubscriptionAsync(payment.user_id);
       return { success: true, status: 'SUCCEEDED', subscription: sub || undefined };
     }
 

@@ -3,7 +3,15 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { BRAND } from '../lib/brand';
-import { LEGAL_SELLER_NAME, UPI_ID, WHATSAPP_RAW_NUMBER } from '../../10_CONFIG/contact-config';
+import {
+  LEGAL_SELLER_NAME,
+  UPI_ID,
+  USDT_ENABLED,
+  USDT_ADDRESS,
+  USDT_NETWORK,
+  USDT_QR_ASSET_WEB,
+  WHATSAPP_RAW_NUMBER,
+} from '../../10_CONFIG/contact-config';
 
 interface PlanTier {
   id: string;
@@ -216,6 +224,25 @@ export default function PricingView() {
   const [utrError, setUtrError] = useState<string | null>(null);
   const [submittedPaymentId, setSubmittedPaymentId] = useState<string | null>(null);
   const [isYoupiEnabled, setIsYoupiEnabled] = useState(false);
+  const [isStripeEnabled, setIsStripeEnabled] = useState(false);
+  const [isUsdtEnabled, setIsUsdtEnabled] = useState(USDT_ENABLED);
+  const [usdtAddress, setUsdtAddress] = useState(USDT_ADDRESS);
+  const [usdtNetwork, setUsdtNetwork] = useState(USDT_NETWORK);
+  const [usdtQrAsset, setUsdtQrAsset] = useState(USDT_QR_ASSET_WEB);
+  const [isCryptoModalOpen, setIsCryptoModalOpen] = useState(false);
+  const [selectedCryptoPlan, setSelectedCryptoPlan] = useState<{
+    id: string;
+    name: string;
+    price: number;
+    billingLabel: string;
+    cycle: BillingCycle;
+  } | null>(null);
+  const [copiedCrypto, setCopiedCrypto] = useState(false);
+  const [txHashInput, setTxHashInput] = useState('');
+  const [txSubmitted, setTxSubmitted] = useState(false);
+  const [isSubmittingTx, setIsSubmittingTx] = useState(false);
+  const [txError, setTxError] = useState<string | null>(null);
+  const [submittedCryptoPaymentId, setSubmittedCryptoPaymentId] = useState<string | null>(null);
   const [gatewaysLoaded, setGatewaysLoaded] = useState(false);
   const [hasAuthToken, setHasAuthToken] = useState(false);
   const [activeCheckoutPlanId, setActiveCheckoutPlanId] = useState<string | null>(null);
@@ -235,6 +262,21 @@ export default function PricingView() {
     setUtrInput('');
     setUtrError(null);
     setSubmittedPaymentId(null);
+  };
+
+  const openCryptoModal = (plan: PlanTier) => {
+    setSelectedCryptoPlan({
+      id: plan.id,
+      name: plan.name,
+      price: plan.priceUSD,
+      billingLabel: plan.billingLabelUSD,
+      cycle: getPlanBillingCycle(plan.id),
+    });
+    setIsCryptoModalOpen(true);
+    setTxSubmitted(false);
+    setTxHashInput('');
+    setTxError(null);
+    setSubmittedCryptoPaymentId(null);
   };
 
   // Hydrate URL query state (currency, OAuth token, status) and probe payment gateways on mount
@@ -274,11 +316,18 @@ export default function PricingView() {
       }
 
       const openUpi = params.get('openUpi');
+      const openCrypto = params.get('openCrypto');
       const requestedPlanId = params.get('plan');
       if (openUpi === '1' && requestedPlanId) {
         const matched = PRICING_PLANS.find((p) => p.id === requestedPlanId);
         if (matched) {
           openManualUpiModal(matched);
+        }
+      } else if (openCrypto === '1' && requestedPlanId) {
+        const matched = PRICING_PLANS.find((p) => p.id === requestedPlanId);
+        if (matched) {
+          setCurrency('USD');
+          openCryptoModal(matched);
         }
       }
     }
@@ -292,6 +341,17 @@ export default function PricingView() {
             const youpi = data.gateways.find((g: any) => g.id === 'youpi_pg');
             if (youpi?.enabled) {
               setIsYoupiEnabled(true);
+            }
+            const stripe = data.gateways.find((g: any) => g.id === 'stripe');
+            if (stripe?.enabled) {
+              setIsStripeEnabled(true);
+            }
+            const usdt = data.gateways.find((g: any) => g.id === 'usdt_trc20');
+            if (usdt) {
+              setIsUsdtEnabled(Boolean(usdt.enabled));
+              if (usdt.walletAddress) setUsdtAddress(usdt.walletAddress);
+              if (usdt.network) setUsdtNetwork(usdt.network);
+              if (usdt.qrAsset) setUsdtQrAsset(usdt.qrAsset);
             }
           }
         }
@@ -414,11 +474,15 @@ export default function PricingView() {
     if (!matchedPlan || !token) return;
 
     if (targetCurrency === 'USD') {
-      void startOnlineCheckout(matchedPlan, 'USD', 'stripe').then((res) => {
-        if (!res.redirected && res.error) {
-          setCheckoutError(res.error);
-        }
-      });
+      if (isStripeEnabled) {
+        void startOnlineCheckout(matchedPlan, 'USD', 'stripe').then((res) => {
+          if (!res.redirected && res.error) {
+            setCheckoutError(res.error);
+          }
+        });
+      } else if (isUsdtEnabled && usdtAddress) {
+        openCryptoModal(matchedPlan);
+      }
     } else if (isYoupiEnabled) {
       void startOnlineCheckout(matchedPlan, 'INR', 'youpi_pg').then((res) => {
         if (!res.redirected) {
@@ -428,7 +492,7 @@ export default function PricingView() {
     } else {
       openManualUpiModal(matchedPlan);
     }
-  }, [gatewaysLoaded, isYoupiEnabled]);
+  }, [gatewaysLoaded, isYoupiEnabled, isStripeEnabled, isUsdtEnabled, usdtAddress]);
 
   // Plan CTA Click Handler
   const handlePlanClick = async (plan: PlanTier) => {
@@ -444,9 +508,22 @@ export default function PricingView() {
 
       openManualUpiModal(plan);
     } else {
-      const result = await startOnlineCheckout(plan, 'USD', 'stripe');
-      if (!result.redirected && result.error) {
-        setCheckoutError(result.error);
+      if (isStripeEnabled) {
+        const result = await startOnlineCheckout(plan, 'USD', 'stripe');
+        if (result.redirected) return;
+        if (result.error && !isUsdtEnabled) {
+          setCheckoutError(result.error);
+          return;
+        }
+      }
+
+      if (isUsdtEnabled && usdtAddress) {
+        openCryptoModal(plan);
+      } else {
+        const result = await startOnlineCheckout(plan, 'USD', 'stripe');
+        if (!result.redirected && result.error) {
+          setCheckoutError(result.error);
+        }
       }
     }
   };
@@ -536,6 +613,92 @@ export default function PricingView() {
       setUtrError('Network error. Your payment is safe — please retry or contact support.');
     } finally {
       setIsSubmittingUtr(false);
+    }
+  };
+
+  const handleCopyCrypto = () => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        navigator.clipboard
+          .writeText(usdtAddress)
+          .then(() => {
+            setCopiedCrypto(true);
+            setTimeout(() => setCopiedCrypto(false), 2500);
+          })
+          .catch(() => {
+            setCopiedCrypto(true);
+            setTimeout(() => setCopiedCrypto(false), 2500);
+          });
+      } else {
+        setCopiedCrypto(true);
+        setTimeout(() => setCopiedCrypto(false), 2500);
+      }
+    } catch (_) {
+      setCopiedCrypto(true);
+      setTimeout(() => setCopiedCrypto(false), 2500);
+    }
+  };
+
+  const handleCryptoSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedHash = txHashInput.trim();
+    if (!trimmedHash || !selectedCryptoPlan) return;
+
+    if (!/^[a-fA-F0-9]{64}$/.test(trimmedHash)) {
+      setTxError('Please paste a valid 64-character TRON (TRC-20) transaction hash.');
+      return;
+    }
+
+    setIsSubmittingTx(true);
+    setTxError(null);
+
+    try {
+      const token =
+        typeof window !== 'undefined'
+          ? localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token')
+          : null;
+
+      if (!token) {
+        setTxError('Please log in first so we can attach this USDT payment to your account.');
+        return;
+      }
+
+      const resp = await fetch(`${BRAND.apiUrl}/api/v1/account/payments/crypto/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          planId: selectedCryptoPlan.id,
+          billingCycle: selectedCryptoPlan.cycle,
+          txHash: trimmedHash,
+          network: usdtNetwork,
+        }),
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      if (!resp.ok || !data.success) {
+        setTxError(
+          typeof data.error === 'string'
+            ? data.error
+            : data.error?.message || 'Could not submit TRC-20 transaction hash. Please check and retry.'
+        );
+        return;
+      }
+
+      trackFunnel('crypto_tx_submitted', {
+        txHash: trimmedHash,
+        paymentId: data.payment_id,
+        amountCents: data.amount_cents,
+      });
+      setSubmittedCryptoPaymentId(data.payment_id || null);
+      setTxSubmitted(true);
+    } catch {
+      setTxError('Network error. Your transaction is safe on-chain — please retry or contact support.');
+    } finally {
+      setIsSubmittingTx(false);
     }
   };
 
@@ -710,7 +873,11 @@ export default function PricingView() {
                           ? (isYoupiEnabled
                               ? 'Pay Now (Instant UPI)'
                               : `Pay with UPI (${symbol}${price.toLocaleString()})`)
-                          : `Pay with Card (${symbol}${price})`}
+                          : (isStripeEnabled
+                              ? `Pay with Card (${symbol}${price})`
+                              : isUsdtEnabled
+                                ? `Pay with USDT (${symbol}${price})`
+                                : `Pay with Card (${symbol}${price})`)}
                     </button>
                     {currency === 'INR' && !isYoupiEnabled && (
                       <p className="text-[11px] text-zinc-500 font-mono text-center mt-2.5">
@@ -718,9 +885,24 @@ export default function PricingView() {
                       </p>
                     )}
                     {currency === 'USD' && (
-                      <p className="text-[11px] text-zinc-500 font-mono text-center mt-2.5">
-                        Secure international Stripe checkout • Instant activation
-                      </p>
+                      <div className="mt-2.5 text-center space-y-1">
+                        <p className="text-[11px] text-zinc-500 font-mono">
+                          {isStripeEnabled
+                            ? 'Secure international Stripe checkout • Instant activation'
+                            : isUsdtEnabled
+                              ? `Zero-fee USDT (${usdtNetwork}) transfer • Verified activation`
+                              : 'Secure international USD checkout'}
+                        </p>
+                        {isStripeEnabled && isUsdtEnabled && usdtAddress && (
+                          <button
+                            type="button"
+                            onClick={() => openCryptoModal(plan)}
+                            className="text-[11px] text-zinc-300 hover:text-white underline font-mono"
+                          >
+                            Or pay with USDT (TRC-20) →
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
 
@@ -803,7 +985,7 @@ export default function PricingView() {
                       >
                         {currency === 'INR'
                           ? (isYoupiEnabled ? 'Pay Now (Instant UPI)' : 'Pay with UPI')
-                          : 'Get Started'}
+                          : (isStripeEnabled ? 'Get Started' : isUsdtEnabled ? 'Pay with USDT' : 'Get Started')}
                       </button>
                     </div>
                   );
@@ -1220,6 +1402,153 @@ export default function PricingView() {
               </a>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 5. CRYPTO USDT (TRC-20) PAYMENT MODAL                                     */}
+      {/* ========================================================================= */}
+      {isCryptoModalOpen && selectedCryptoPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="relative w-full max-w-md rounded-2xl bg-[#0a0a0c] border border-zinc-800 p-6 sm:p-7 text-left shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => setIsCryptoModalOpen(false)}
+              className="absolute top-4 right-4 text-zinc-400 hover:text-white p-1.5 rounded-lg transition-colors"
+              aria-label="Close modal"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div>
+              <div className="text-[11px] font-mono uppercase tracking-[0.18em] text-zinc-400 mb-1">
+                USDT Crypto Checkout • {usdtNetwork}
+              </div>
+              <h3 className="font-['Spectral',serif] text-2xl font-light text-white">
+                {selectedCryptoPlan.name} — ${selectedCryptoPlan.price.toLocaleString()} USDT
+              </h3>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                {selectedCryptoPlan.billingLabel}
+              </p>
+              <p className="text-[11px] text-amber-300/90 font-mono mt-2">
+                Send ONLY USDT via TRON (TRC-20) network to this address.
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white p-4 flex flex-col items-center justify-center space-y-2">
+              <img
+                src={usdtQrAsset}
+                alt="MAHI Browser USDT TRC-20 QR Code"
+                className="w-48 h-48 object-contain rounded-lg"
+              />
+              <div className="text-[11px] font-mono text-zinc-600 text-center font-medium">
+                Scan with TronLink, Trust Wallet, Binance, Bybit or OKX
+              </div>
+            </div>
+
+            <div className="space-y-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 p-3.5 text-xs">
+              <div className="flex items-center justify-between text-zinc-400">
+                <span>Network:</span>
+                <span className="font-semibold text-emerald-400">{usdtNetwork}</span>
+              </div>
+              <div className="space-y-1.5 pt-1 border-t border-zinc-800">
+                <span className="text-zinc-400 block">TRC-20 Wallet Address:</span>
+                <div className="flex items-center gap-2">
+                  <code className="font-mono text-[11px] text-zinc-200 bg-zinc-800 px-2.5 py-1.5 rounded border border-zinc-700 break-all flex-1">
+                    {usdtAddress}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={handleCopyCrypto}
+                    className="shrink-0 px-2.5 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[11px] text-white transition-colors"
+                  >
+                    {copiedCrypto ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {!txSubmitted ? (
+              <form onSubmit={handleCryptoSubmit} className="space-y-3">
+                {!hasAuthToken && (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 flex items-center justify-between gap-2">
+                    <span>Sign in first so we can activate this payment on your account.</span>
+                    <a
+                      href={`/login?redirect=${encodeURIComponent(`/pricing?plan=${selectedCryptoPlan.id}&currency=USD&openCrypto=1`)}&plan=${encodeURIComponent(selectedCryptoPlan.id)}&currency=USD`}
+                      className="shrink-0 underline font-semibold text-white hover:text-amber-100"
+                    >
+                      Sign In
+                    </a>
+                  </div>
+                )}
+                {txError && (
+                  <div className="rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-xs text-[#e6e3e3]">
+                    {txError}
+                  </div>
+                )}
+                <div>
+                  <label htmlFor="txhash-input" className="block text-[11px] font-mono text-zinc-400 uppercase tracking-wider mb-1">
+                    Enter TRON (TRC-20) Transaction Hash (64 characters)
+                  </label>
+                  <input
+                    id="txhash-input"
+                    type="text"
+                    required
+                    maxLength={64}
+                    placeholder="Paste 64-character TRC-20 transaction hash"
+                    value={txHashInput}
+                    onChange={(e) => setTxHashInput(e.target.value)}
+                    className="w-full rounded-xl bg-black border border-zinc-700 px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-white transition-colors font-mono"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isSubmittingTx}
+                  className="w-full rounded-full bg-white text-black py-2.5 text-xs sm:text-sm font-semibold hover:bg-zinc-200 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmittingTx ? 'Submitting TX…' : 'Verify USDT TX & Submit'}
+                </button>
+              </form>
+            ) : (
+              <div className="rounded-xl bg-zinc-900 border border-zinc-700 p-4 text-center space-y-2">
+                <div className="text-white font-semibold text-sm">
+                  USDT Transaction Recorded
+                </div>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Your TRC-20 TX <code className="text-white font-mono break-all">{txHashInput}</code> for ${selectedCryptoPlan.price.toLocaleString()} USDT has been submitted for verification.
+                  {submittedCryptoPaymentId && (
+                    <span className="block mt-1 font-mono text-[11px] text-zinc-400">
+                      Reference: <code className="text-white font-semibold">{submittedCryptoPaymentId}</code>
+                    </span>
+                  )}
+                </p>
+                <div className="pt-2">
+                  <a
+                    href={`https://wa.me/${WHATSAPP_RAW_NUMBER}?text=Hi%20${encodeURIComponent(LEGAL_SELLER_NAME.split(' ')[0])},%20I%20have%20paid%20${selectedCryptoPlan.price}%20USDT%20(TRC-20)%20for%20MAHI%20Browser%20${encodeURIComponent(selectedCryptoPlan.name)}%20Plan.%20TX:%20${encodeURIComponent(txHashInput)}${submittedCryptoPaymentId ? `%20Ref:%20${encodeURIComponent(submittedCryptoPaymentId)}` : ''}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-white text-black px-4 py-2 text-xs font-semibold hover:bg-zinc-200 transition-colors"
+                  >
+                    Confirm on WhatsApp
+                  </a>
+                </div>
+              </div>
+            )}
+
+            <div className="text-center text-[11px] text-zinc-500 pt-1">
+              Need instant activation help?{' '}
+              <a
+                href={`https://wa.me/${WHATSAPP_RAW_NUMBER}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-zinc-300 hover:text-white underline"
+              >
+                Chat with Founder on WhatsApp
+              </a>
+            </div>
           </div>
         </div>
       )}

@@ -1,9 +1,21 @@
 import net from 'node:net';
 import tls from 'node:tls';
-import http from 'node:http';
-import https from 'node:https';
 import { CreateProxyDTO, ProxyTestResult } from '../../10_CONFIG/shared/types/proxy.js';
 import { openSocks5TunnelSocket, Socks5Error } from '../socks-tunnel.js';
+import {
+  ProxySecurityError,
+  ProxyDnsLookupFn,
+  isBlockedIpAddress,
+  assertSafeProxyTargetSyntax,
+  assertSafeProxyTargetRuntime,
+} from './proxy-security.js';
+
+export {
+  ProxySecurityError,
+  isBlockedIpAddress,
+  assertSafeProxyTargetSyntax,
+  assertSafeProxyTargetRuntime,
+};
 
 function debugLog(msg: string) {
   const fn = (globalThis as any).__mahiDebugLog;
@@ -38,35 +50,18 @@ export interface GeoLocationDetails {
  * Resolves Geolocation details for a given IP or hostname
  */
 export async function resolveGeoLocation(target: string): Promise<GeoLocationDetails | null> {
-  const cleanTarget = target.trim().replace(/^https?:\/\//i, '').split(':')[0];
+  const raw = target.trim().replace(/^https?:\/\//i, '');
+  const cleanTarget = net.isIP(raw) !== 0 ? raw : raw.split('/')[0].split(':')[0];
   if (!cleanTarget) return null;
-
-  // 1. Try ip-api.com
   try {
-    const res = await fetch(`http://ip-api.com/json/${cleanTarget}?fields=status,country,countryCode,regionName,city,timezone,isp,as,org,query`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (res.ok) {
-      const data = (await res.json()) as any;
-      if (data && data.status === 'success') {
-        return {
-          ip: data.query || cleanTarget,
-          country: data.country || 'United States',
-          countryCode: (data.countryCode || 'US').toUpperCase(),
-          region: data.regionName || undefined,
-          city: data.city || undefined,
-          timezone: data.timezone || undefined,
-          isp: data.isp || undefined,
-          asn: data.as || undefined,
-          org: data.org || undefined,
-        };
-      }
-    }
-  } catch {}
+    assertSafeProxyTargetSyntax(cleanTarget);
+  } catch {
+    return null;
+  }
 
-  // 2. Fallback to freeipapi.com
+  // 1. Try freeipapi.com (HTTPS)
   try {
-    const res = await fetch(`https://freeipapi.com/api/json/${cleanTarget}`, {
+    const res = await fetch(`https://freeipapi.com/api/json/${encodeURIComponent(cleanTarget)}`, {
       signal: AbortSignal.timeout(3000),
     });
     if (res.ok) {
@@ -84,9 +79,9 @@ export async function resolveGeoLocation(target: string): Promise<GeoLocationDet
     }
   } catch {}
 
-  // 3. Fallback to ipapi.co
+  // 2. Fallback to ipapi.co (HTTPS)
   try {
-    const res = await fetch(`https://ipapi.co/${cleanTarget}/json/`, {
+    const res = await fetch(`https://ipapi.co/${encodeURIComponent(cleanTarget)}/json/`, {
       signal: AbortSignal.timeout(3000),
     });
     if (res.ok) {
@@ -106,6 +101,29 @@ export async function resolveGeoLocation(target: string): Promise<GeoLocationDet
     }
   } catch {}
 
+  // 3. Fallback to ipwho.is (HTTPS)
+  try {
+    const res = await fetch(`https://ipwho.is/${encodeURIComponent(cleanTarget)}`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as any;
+      if (data && data.success !== false && data.country_code) {
+        return {
+          ip: data.ip || cleanTarget,
+          country: data.country || 'United States',
+          countryCode: String(data.country_code).toUpperCase(),
+          region: data.region || undefined,
+          city: data.city || undefined,
+          timezone: data.timezone?.id || undefined,
+          isp: data.connection?.isp || undefined,
+          asn: data.connection?.asn ? `AS${data.connection.asn}` : undefined,
+          org: data.connection?.org || undefined,
+        };
+      }
+    }
+  } catch {}
+
   return null;
 }
 
@@ -119,9 +137,11 @@ function testHttpsConnectThroughProxy(
   protocol = 'http',
   username?: string,
   password?: string,
-  timeoutMs = 7000
+  timeoutMs = 7000,
+  connectHost?: string
 ): Promise<{ success: boolean; latencyMs: number; publicIp?: string; error?: string; errorCode?: string }> {
   const startTime = Date.now();
+  const targetAddress = connectHost || host;
 
   return new Promise((resolve) => {
     let isResolved = false;
@@ -237,7 +257,7 @@ function testHttpsConnectThroughProxy(
 
     if (protocol === 'https') {
       const tlsOpts: tls.ConnectionOptions = {
-        host,
+        host: targetAddress,
         port,
         rejectUnauthorized: process.env.MAHI_ALLOW_SELF_SIGNED_PROXY !== '1',
       };
@@ -246,7 +266,7 @@ function testHttpsConnectThroughProxy(
       }
       rawSocket = tls.connect(tlsOpts, onConnectEstablished);
     } else {
-      rawSocket = net.connect(port, host, onConnectEstablished);
+      rawSocket = net.connect(port, targetAddress, onConnectEstablished);
     }
 
     rawSocket.on('error', (err: any) => {
@@ -278,12 +298,14 @@ async function testSocks5ThroughProxy(
   port: number,
   username?: string,
   password?: string,
-  timeoutMs = 7000
+  timeoutMs = 7000,
+  connectHost?: string
 ): Promise<{ success: boolean; latencyMs: number; publicIp?: string; error?: string; errorCode?: string }> {
   const startTime = Date.now();
+  const targetAddress = connectHost || host;
   try {
     const { socket, initialData } = await openSocks5TunnelSocket({
-      proxyHost: host,
+      proxyHost: targetAddress,
       proxyPort: port,
       targetHost: 'api.ipify.org',
       targetPort: 443,
@@ -317,7 +339,7 @@ async function testSocks5ThroughProxy(
           {
             socket,
             servername: 'api.ipify.org',
-            rejectUnauthorized: false,
+            rejectUnauthorized: process.env.MAHI_ALLOW_SELF_SIGNED_PROXY !== '1',
           },
           () => {
             tlsSocket.write(
@@ -378,14 +400,17 @@ async function testSocks5ThroughProxy(
 /**
  * Master Proxy Testing & Geolocation Service
  */
-export async function testProxy(dto: Partial<CreateProxyDTO>): Promise<ProxyTestResult> {
+export async function testProxy(
+  dto: Partial<CreateProxyDTO>,
+  options?: { allowPrivateTargets?: boolean; lookupFn?: ProxyDnsLookupFn }
+): Promise<ProxyTestResult> {
   const host = dto.host?.trim();
   const port = Number(dto.port);
   const protocol = (dto.protocol || 'http').toLowerCase();
 
   debugLog(`[ProxyTestService] Starting validation for: ${sanitizeProxyLog(dto)}`);
 
-  // 1. Validation
+  // 1. Validation & SSRF protection (blocks loopback, RFC1918, cloud metadata, and DNS rebinding)
   if (!host) {
     return { success: false, latencyMs: 0, errorCode: 'INVALID_CONFIG', errorMessage: 'Proxy host is required' };
   }
@@ -393,21 +418,35 @@ export async function testProxy(dto: Partial<CreateProxyDTO>): Promise<ProxyTest
     return { success: false, latencyMs: 0, errorCode: 'INVALID_CONFIG', errorMessage: 'Valid port (1-65535) is required' };
   }
 
-  // 2. Perform End-to-End Handshake Test based on Protocol
+  let connectHost = host;
+  try {
+    const resolvedTarget = await assertSafeProxyTargetRuntime(host, options);
+    connectHost = resolvedTarget.resolvedIp;
+  } catch (err: any) {
+    const errorCode = err instanceof ProxySecurityError ? err.errorCode : 'SSRF_BLOCKED';
+    return {
+      success: false,
+      latencyMs: 0,
+      errorCode,
+      errorMessage: err?.message || 'Blocked unsafe proxy target',
+    };
+  }
+
+  // 2. Perform End-to-End Handshake Test based on Protocol (connecting to validated IP)
   let testResult: { success: boolean; latencyMs: number; publicIp?: string; error?: string; errorCode?: string };
 
   if (protocol === 'socks5' || protocol === 'socks4') {
     debugLog(`[ProxyTestService] Testing SOCKS5 handshake through ${protocol}://${host}:${port}...`);
-    testResult = await testSocks5ThroughProxy(host, port, dto.username, dto.password, 7000);
+    testResult = await testSocks5ThroughProxy(host, port, dto.username, dto.password, 7000, connectHost);
   } else {
     debugLog(`[ProxyTestService] Testing HTTPS CONNECT through ${protocol}://${host}:${port}...`);
-    testResult = await testHttpsConnectThroughProxy(host, port, protocol, dto.username, dto.password, 7000);
+    testResult = await testHttpsConnectThroughProxy(host, port, protocol, dto.username, dto.password, 7000, connectHost);
 
     // If initial protocol failed, try alternate protocol (e.g. if configured as http, try https, or vice versa)
     if (!testResult.success && testResult.errorCode !== 'AUTHENTICATION_FAILED') {
       const altProtocol = protocol === 'https' ? 'http' : 'https';
       debugLog(`[ProxyTestService] Retrying with alternate protocol (${altProtocol})...`);
-      const altResult = await testHttpsConnectThroughProxy(host, port, altProtocol, dto.username, dto.password, 4000);
+      const altResult = await testHttpsConnectThroughProxy(host, port, altProtocol, dto.username, dto.password, 4000, connectHost);
       if (altResult.success) {
         testResult = altResult;
       }

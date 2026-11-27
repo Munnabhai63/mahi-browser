@@ -10,6 +10,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { URL } from 'node:url';
 import { parseBoundedJson, getErrorStatusCode } from '../utils/http-security.js';
+import { buildHtmlSecurityHeaders } from '../utils/security-headers.js';
 import { getProfiles, getProfileById, createProfile, updateProfile, deleteProfile, cloneProfile } from '../../02_BROWSER/services/profile-service.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
 import { getProxies, createProxy, updateProxy, deleteProxy, testProxyConnection } from '../../02_BROWSER/services/proxy-service.js';
@@ -60,7 +61,7 @@ function sendHTML(res: http.ServerResponse, statusCode: number, html: string) {
   const corsHeaders = req ? getCorsHeaders(req) : {};
   res.writeHead(statusCode, {
     'Content-Type': 'text/html; charset=utf-8',
-    'Content-Security-Policy': "default-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';",
+    ...buildHtmlSecurityHeaders(html),
     ...corsHeaders,
   });
   res.end(html);

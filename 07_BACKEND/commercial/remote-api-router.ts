@@ -22,6 +22,7 @@ import {
 } from '../services/remote-api-service.js';
 import { WebhookService } from '../services/webhook-service.js';
 import { verifyAccessToken, getCentralUserById, getCentralUserByIdAsync } from '../../05_AUTH/central-auth-service.js';
+import { verifyPostgresOrSqliteUserAndSessionAsync } from './routes/router-shared.js';
 import { isPostgresConfigured, getCentralRepository } from '../../06_DATABASE/central-repository.js';
 import { getUserDevices } from './commercial-device-service.js';
 import { isTrustedOrigin } from '../server/cloud-gateway.js';
@@ -233,6 +234,9 @@ export async function resolveRemoteAuthAsync(req: http.IncomingMessage): Promise
 
     const user = await getCentralUserByIdAsync(payload.userId);
     if (!user || user.status !== 'ACTIVE') return null;
+
+    const sessionCheck = await verifyPostgresOrSqliteUserAndSessionAsync(payload.userId, payload.sessionId);
+    if (!sessionCheck.active) return null;
 
     return {
       authType: 'JWT',

@@ -10,7 +10,7 @@
  * - Official UPI ID: 6375823589@slc
  * - UPI Account Holder: Mr Mahipal Choudhary
  * - UPI QR Asset: /brand/mahi-upi-qr.png
- * - USDT Status: DISABLED (Fake placeholder removed; real wallet pending)
+ * - USDT Status: ENABLED (TRC-20 / TRON: TPerRUMbJtNSmcRoBcQt1PpNpYCrEd5ziA)
  */
 
 export const APP_AUTHOR = 'Munna Bhai';
@@ -42,13 +42,15 @@ export const UPI_QR_ASSET_WEB = '/assets/img/payments/mahi-upi-qr.png';
 export const UPI_ENABLED = true;
 
 // Crypto / USDT Configuration
-export const USDT_ENABLED = false;
-export const USDT_ADDRESS = '';
-export const USDT_NETWORK = '';
+export const USDT_ENABLED = true;
+export const USDT_ADDRESS = 'TPerRUMbJtNSmcRoBcQt1PpNpYCrEd5ziA';
+export const USDT_NETWORK = 'TRC-20 (TRON)';
+export const USDT_QR_ASSET = '/brand/mahi-usdt-trc20-qr.png';
+export const USDT_QR_ASSET_WEB = '/assets/img/payments/mahi-usdt-trc20-qr.png';
 
 // Pricing Defaults
 export const DEFAULT_PRICE_INR = 599;
-export const DEFAULT_PRICE_USDT = 7;
+export const DEFAULT_PRICE_USDT = 9;
 
 // Authoritative Legal Identity & Redressal Configuration
 export const LEGAL_SELLER_NAME = 'Mahipal Choudhary';
@@ -107,6 +109,8 @@ export const CONTACT_CONFIG = {
   USDT_ENABLED,
   USDT_ADDRESS,
   USDT_NETWORK,
+  USDT_QR_ASSET,
+  USDT_QR_ASSET_WEB,
   DEFAULT_PRICE_INR,
   DEFAULT_PRICE_USDT,
   businessEmail: BUSINESS_EMAIL,
@@ -142,6 +146,7 @@ export interface ContactConfig {
     enabled: boolean;
     address: string;
     network: string;
+    qrAsset: string;
   };
 }
 
@@ -230,6 +235,7 @@ export function getAuthoritativeContactConfig(): ContactConfig {
       enabled: USDT_ENABLED,
       address: USDT_ADDRESS,
       network: USDT_NETWORK,
+      qrAsset: USDT_QR_ASSET,
     },
   };
 }

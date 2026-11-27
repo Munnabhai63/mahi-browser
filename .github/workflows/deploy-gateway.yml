@@ -117,5 +117,5 @@ jobs:
           PORT: ${{ secrets.VPS_PORT || '22' }}
           USER: ${{ secrets.VPS_USER }}
         run: |
-          ssh -p "$PORT" "$USER@$HOST" "for i in 1 2 3 4 5 6; do curl -fsS http://127.0.0.1:8989/health && exit 0; sleep 3; done; exit 1"
+          ssh -p "$PORT" "$USER@$HOST" "for i in \$(seq 1 20); do curl -fsS http://127.0.0.1:8989/health && exit 0; sleep 3; done; exit 1"
           curl -fsS https://api.mahibrowser.com/health

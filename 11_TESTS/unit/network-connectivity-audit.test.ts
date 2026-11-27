@@ -119,11 +119,14 @@ describe('FORENSIC NETWORK CONNECTIVITY & NO-PROXY CONTRACT SUITE', () => {
 
     it('correctly routes SOCKS5 test requests via SOCKS5 handshake handler', async () => {
       // Testing against a non-listening local port to verify handshake routing and CONNECTION_REFUSED
-      const socksResult = await testProxy({
-        host: '127.0.0.1',
-        port: 19999,
-        protocol: 'socks5',
-      });
+      const socksResult = await testProxy(
+        {
+          host: '127.0.0.1',
+          port: 19999,
+          protocol: 'socks5',
+        },
+        { allowPrivateTargets: true }
+      );
       expect(socksResult.success).toBe(false);
       expect(socksResult.errorCode).toBe('CONNECTION_REFUSED');
     });

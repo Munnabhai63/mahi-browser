@@ -4,7 +4,7 @@ import { URL } from 'node:url';
 import {
   sendJSON,
   parseBody,
-  getAuthUser,
+  getAuthUserAsync,
   checkAuthRateLimit,
   desktopAuthTickets,
   WebHandoffSession,
@@ -14,6 +14,26 @@ import {
   MAX_WEB_HANDOFF_SESSIONS,
   WEB_HANDOFF_TTL_MS,
 } from './router-shared.js';
+import { sendSafeError, validateStrictBody } from '../../utils/app-error.js';
+import {
+  LegacySignupSchema,
+  LegacyLoginSchema,
+  AuthRegisterSchema,
+  VerifyEmailSchema,
+  ResendVerificationSchema,
+  AuthLoginSchema,
+  DesktopExchangeSchema,
+  DesktopHandoffSchema,
+  WebHandoffExchangeSchema,
+  GoogleAuthPostSchema,
+  RefreshTokenSchema,
+  LogoutSchema,
+  ForgotPasswordSchema,
+  ResetPasswordSchema,
+  RevokeSessionSchema,
+  RevokeAllSessionsSchema,
+  TrialActivateSchema,
+} from '../validation/commercial-schemas.js';
 import {
   registerCentralUser,
   verifyEmailToken,
@@ -71,8 +91,10 @@ export async function handleAuthRoutes(
   clientIp: string
 ): Promise<boolean> {
   if (routePath === '/v1/account/signup' && method === 'POST') {
-    const body = await parseBody(req);
-    const { email, password, name } = body;
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(LegacySignupSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const { email, password, name } = parsed.data;
     if (!email || !password) {
       sendJSON(res, 400, { success: false, error: 'Email and password required' });
       return true;
@@ -92,8 +114,10 @@ export async function handleAuthRoutes(
   }
 
   if (routePath === '/v1/account/login' && method === 'POST') {
-    const body = await parseBody(req);
-    const { email, password, hwid } = body;
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(LegacyLoginSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const { email, password, hwid } = parsed.data;
     if (!email || !password) {
       sendJSON(res, 400, { success: false, error: 'Email and password required' });
       return true;
@@ -125,7 +149,10 @@ export async function handleAuthRoutes(
       return true;
     }
 
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(AuthRegisterSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     if (body.acceptedTerms !== true) {
       sendJSON(res, 400, {
         success: false,
@@ -156,9 +183,12 @@ export async function handleAuthRoutes(
       sendJSON(res, 400, { success: false, error: `Invalid plan "${body.planId}"` });
       return true;
     }
+    const regEmail = (body.email || '').trim();
+    const regPassword = body.password || '';
+    const regIntent = (body.intent === 'paid' || body.intent === 'trial' ? body.intent : 'free') as 'free' | 'trial' | 'paid';
     const result = await registerCentralUser({
-      email: body.email,
-      password: body.password,
+      email: regEmail,
+      password: regPassword,
       name: body.name,
       ipAddress: clientIp,
     });
@@ -218,11 +248,11 @@ export async function handleAuthRoutes(
     let commUserResult: any;
     try {
       commUserResult = registerUser({
-        email: body.email,
-        password: body.password,
+        email: regEmail,
+        password: regPassword,
         name: body.name,
-        intent: body.intent,
-        planId: body.planId || body.plan,
+        intent: regIntent,
+        planId: body.planId || body.plan || body.requestedPlan,
         billingCycle: body.billingCycle || body.billing,
         acceptedTerms: true,
         termsVersion: termsVer,
@@ -288,8 +318,10 @@ export async function handleAuthRoutes(
       return true;
     }
 
-    const body = await parseBody(req);
-    const result = await verifyEmailToken(body.token, clientIp);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(VerifyEmailSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const result = await verifyEmailToken(parsed.data.token || '', clientIp);
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
   }
@@ -306,8 +338,10 @@ export async function handleAuthRoutes(
       return true;
     }
 
-    const body = await parseBody(req);
-    const result = await resendEmailVerification(body.email, clientIp);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(ResendVerificationSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const result = await resendEmailVerification(parsed.data.email || '', clientIp);
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
   }
@@ -324,10 +358,13 @@ export async function handleAuthRoutes(
       return true;
     }
 
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(AuthLoginSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     const centralRes = await loginCentralUser({
-      email: body.email,
-      password: body.password,
+      email: body.email || '',
+      password: body.password || '',
       deviceId: body.deviceId,
       deviceName: body.deviceName,
       platform: body.platform,
@@ -361,9 +398,14 @@ export async function handleAuthRoutes(
     }
 
     // Fallback to legacy commercial login only if not registered in central auth
-    const centralUserExists = getCentralUserByEmail(body.email);
-    if (!centralUserExists) {
-      const legacyResult = loginUser(body, clientIp);
+    const loginEmail = (body.email || '').trim();
+    const loginPassword = body.password || '';
+    const centralUserExists = loginEmail ? getCentralUserByEmail(loginEmail) : null;
+    if (!centralUserExists && loginEmail && loginPassword) {
+      const legacyResult = loginUser(
+        { ...body, email: loginEmail, password: loginPassword },
+        clientIp
+      );
       if (legacyResult.success && legacyResult.user) {
         try {
           await reconcileUserPlanOnLogin(legacyResult.user.id);
@@ -561,8 +603,16 @@ export async function handleAuthRoutes(
       res.end();
       return true;
     } catch (err: any) {
+      const msg = typeof err?.message === 'string' ? err.message : '';
+      const safeErrorCode = msg.startsWith('GOOGLE_EMAIL_NOT_VERIFIED')
+        ? 'google_email_not_verified'
+        : msg.startsWith('GOOGLE_ID_TOKEN_')
+          ? 'google_token_invalid'
+          : msg.startsWith('GOOGLE_OAUTH_NOT_CONFIGURED')
+            ? 'google_oauth_not_configured'
+            : 'oauth_exchange_failed';
       res.writeHead(302, {
-        Location: `${websiteBase}/signup?error=${encodeURIComponent(err.message || 'oauth_exchange_failed')}`,
+        Location: `${websiteBase}/signup?error=${encodeURIComponent(safeErrorCode)}`,
       });
       res.end();
       return true;
@@ -599,14 +649,16 @@ export async function handleAuthRoutes(
 
   // 2.2 Secure PKCE Authorization Code Exchange (RFC 8252 Hardened)
   if (routePath === '/api/v1/auth/desktop-exchange' && method === 'POST') {
-    let body: any = {};
+    let rawBody: any = {};
     try {
-      body = await parseBody(req);
+      rawBody = await parseBody(req);
     } catch {
       sendJSON(res, 400, { success: false, error: 'Invalid JSON payload' });
       return true;
     }
-    const { ticket, code, code_verifier } = body;
+    const parsed = validateStrictBody(DesktopExchangeSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const { ticket, code, code_verifier } = parsed.data;
     if (!ticket || !code || !code_verifier) {
       sendJSON(res, 400, { success: false, error: 'ticket, code, and code_verifier are required' });
       return true;
@@ -664,8 +716,10 @@ export async function handleAuthRoutes(
   // 2.3 Desktop Loopback Handoff (Invoked by browser completion page to local daemon port 32123)
   if (routePath === '/api/v1/auth/desktop-handoff' && method === 'POST') {
     try {
-      const body = await parseBody(req);
-      const { ticket, code } = body;
+      const rawBody = await parseBody(req);
+      const parsed = validateStrictBody(DesktopHandoffSchema, rawBody, res);
+      if (!parsed.ok) return true;
+      const { ticket, code } = parsed.data;
       if (ticket && code) {
         const { exchangeDesktopAuthCode } = await import('../../../08_SECURITY/account-service.js');
         const exchangeResult = await exchangeDesktopAuthCode(ticket, code);
@@ -676,7 +730,7 @@ export async function handleAuthRoutes(
         return true;
       }
     } catch (err: any) {
-      sendJSON(res, 400, { success: false, error: err?.message || 'Invalid payload' });
+      sendSafeError(res, err, { fallbackStatus: 400, fallbackMessage: 'Invalid payload' });
       return true;
     }
     sendJSON(res, 400, { success: false, error: 'ticket and code are required' });
@@ -700,7 +754,7 @@ export async function handleAuthRoutes(
   // 2.5 Zero-Token Web-to-Desktop Handoff Endpoint (Single-Use, 120s TTL)
   if (routePath === '/api/v1/auth/web-handoff' && method === 'POST') {
     pruneWebHandoffSessions();
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
@@ -764,7 +818,10 @@ export async function handleAuthRoutes(
   // 2.6 Web-to-Desktop Handoff Code Exchange (Single-Use Anti-Replay)
   if (routePath === '/api/v1/auth/web-handoff/exchange' && method === 'POST') {
     pruneWebHandoffSessions();
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(WebHandoffExchangeSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     const handoffCode = body?.handoffCode || body?.code;
 
     if (!handoffCode || typeof handoffCode !== 'string') {
@@ -867,7 +924,26 @@ export async function handleAuthRoutes(
       return true;
     }
 
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const candidateIdToken =
+      typeof rawBody?.idToken === 'string'
+        ? rawBody.idToken.trim()
+        : typeof rawBody?.id_token === 'string'
+          ? rawBody.id_token.trim()
+          : '';
+    const candidateCode = typeof rawBody?.code === 'string' ? rawBody.code.trim() : '';
+
+    if (!candidateIdToken && !candidateCode) {
+      sendJSON(res, 401, {
+        success: false,
+        error: 'UNVERIFIED_GOOGLE_AUTH: A verified Google idToken or OAuth authorization code is required.',
+      });
+      return true;
+    }
+
+    const parsed = validateStrictBody(GoogleAuthPostSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     const rawIdToken =
       typeof body?.idToken === 'string'
         ? body.idToken.trim()
@@ -875,14 +951,6 @@ export async function handleAuthRoutes(
           ? body.id_token.trim()
           : '';
     const authCode = typeof body?.code === 'string' ? body.code.trim() : '';
-
-    if (!rawIdToken && !authCode) {
-      sendJSON(res, 401, {
-        success: false,
-        error: 'UNVERIFIED_GOOGLE_AUTH: A verified Google idToken or OAuth authorization code is required.',
-      });
-      return true;
-    }
 
     let claims: GoogleClaims;
     try {
@@ -902,9 +970,9 @@ export async function handleAuthRoutes(
         }
       }
     } catch (err: any) {
-      sendJSON(res, 401, {
-        success: false,
-        error: err?.message || 'Google credential verification failed.',
+      sendSafeError(res, err, {
+        fallbackStatus: 401,
+        fallbackMessage: 'Google credential verification failed.',
       });
       return true;
     }
@@ -959,8 +1027,11 @@ export async function handleAuthRoutes(
   }
 
   if (routePath === '/api/v1/auth/refresh' && method === 'POST') {
-    const body = await parseBody(req);
-    const refreshToken = body.refreshToken || body.token;
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(RefreshTokenSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
+    const refreshToken = body.refreshToken || body.token || '';
     const result = await refreshAccessToken(refreshToken, clientIp);
     if (!result.success || !result.tokens) {
       sendJSON(res, 401, result);
@@ -976,9 +1047,11 @@ export async function handleAuthRoutes(
   }
 
   if (routePath === '/api/v1/auth/logout' && method === 'POST') {
-    const auth = getAuthUser(req);
-    const body = await parseBody(req);
-    const sessionId = body.sessionId || (auth as any)?.sessionId;
+    const auth = await getAuthUserAsync(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(LogoutSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const sessionId = parsed.data.sessionId || (auth as any)?.sessionId;
     if (sessionId) {
       logoutSession(sessionId, clientIp);
     }
@@ -998,8 +1071,10 @@ export async function handleAuthRoutes(
       return true;
     }
 
-    const body = await parseBody(req);
-    const result = await requestPasswordReset(body.email, clientIp);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(ForgotPasswordSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const result = await requestPasswordReset(parsed.data.email || '', clientIp);
     sendJSON(res, 200, result);
     return true;
   }
@@ -1016,10 +1091,13 @@ export async function handleAuthRoutes(
       return true;
     }
 
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(ResetPasswordSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     const result = await resetPasswordWithToken({
-      token: body.token,
-      newPassword: body.newPassword || body.password,
+      token: body.token || '',
+      newPassword: body.newPassword || body.password || '',
       ipAddress: clientIp,
     });
     sendJSON(res, result.success ? 200 : 400, result);
@@ -1027,7 +1105,7 @@ export async function handleAuthRoutes(
   }
 
   if (routePath === '/api/v1/auth/sessions' && method === 'GET') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
@@ -1039,26 +1117,30 @@ export async function handleAuthRoutes(
   }
 
   if (routePath === '/api/v1/auth/sessions/revoke' && method === 'POST') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
-    const body = await parseBody(req);
-    const success = await revokeUserSessionAsync(auth.userId, body.sessionId, clientIp);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(RevokeSessionSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const success = await revokeUserSessionAsync(auth.userId, parsed.data.sessionId || '', clientIp);
     sendJSON(res, 200, { success });
     return true;
   }
 
   if (routePath === '/api/v1/auth/sessions/revoke-all' && method === 'POST') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(RevokeAllSessionsSchema, rawBody, res);
+    if (!parsed.ok) return true;
     const currentSessionId = (auth as any).sessionId;
-    const revokedCount = await revokeAllUserSessionsAsync(auth.userId, body.keepCurrent ? currentSessionId : undefined, clientIp);
+    const revokedCount = await revokeAllUserSessionsAsync(auth.userId, parsed.data.keepCurrent ? currentSessionId : undefined, clientIp);
     sendJSON(res, 200, { success: true, revokedCount });
     return true;
   }
@@ -1067,7 +1149,7 @@ export async function handleAuthRoutes(
   // 2. USER PROFILE & ENTITLEMENTS (Authenticated)
   // -------------------------------------------------------------
   if (routePath === '/api/v1/auth/me' && method === 'GET') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Valid Bearer token required.' });
       return true;
@@ -1097,15 +1179,18 @@ export async function handleAuthRoutes(
   }
 
   if (routePath === '/api/v1/auth/trial/activate' && method === 'POST') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(TrialActivateSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     // Fall back to the canonical trial plan: the download page sends no planId, and
     // TRIAL_CONFIG is the single source of truth for which plan a trial grants.
-    const trialPlanId = body.planId || body.plan_id || TRIAL_CONFIG.trialPlanId;
+    const trialPlanId = body.planId || body.plan_id || body.plan || TRIAL_CONFIG.trialPlanId;
     if (!trialPlanId) {
       sendJSON(res, 400, { success: false, error: 'NO_TRIAL_PLAN_CONFIGURED' });
       return true;
@@ -1126,7 +1211,7 @@ export async function handleAuthRoutes(
   }
 
   if (routePath === '/api/v1/auth/trial/status' && method === 'GET') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;

@@ -65,6 +65,7 @@ export interface PaymentInfo {
   price_usdt: number;
   usdt_address: string;
   usdt_network: string;
+  usdt_qr_asset?: string;
   usdt_enabled?: boolean;
   whatsapp_number: string;
 }
@@ -710,7 +711,11 @@ export async function getPaymentInfo(): Promise<PaymentInfo> {
         upi_account_holder: res.body.upi_account_holder || CONTACT_CONFIG.UPI_ACCOUNT_HOLDER,
         upi_qr_asset: res.body.upi_qr_asset || CONTACT_CONFIG.UPI_QR_ASSET,
         whatsapp_number: res.body.whatsapp_number || CONTACT_CONFIG.WHATSAPP_NUMBER,
-        usdt_enabled: res.body.usdt_enabled === true,
+        price_usd: res.body.price_usd ?? CONTACT_CONFIG.DEFAULT_PRICE_USDT,
+        price_usdt: res.body.price_usdt ?? CONTACT_CONFIG.DEFAULT_PRICE_USDT,
+        usdt_address: res.body.usdt_address || CONTACT_CONFIG.USDT_ADDRESS,
+        usdt_network: res.body.usdt_network || CONTACT_CONFIG.USDT_NETWORK,
+        usdt_enabled: res.body.usdt_enabled ?? CONTACT_CONFIG.USDT_ENABLED,
       };
     }
   } catch {}
@@ -720,11 +725,11 @@ export async function getPaymentInfo(): Promise<PaymentInfo> {
     upi_account_holder: CONTACT_CONFIG.UPI_ACCOUNT_HOLDER,
     upi_qr_asset: CONTACT_CONFIG.UPI_QR_ASSET,
     price_inr: CONTACT_CONFIG.DEFAULT_PRICE_INR || 599,
-    price_usd: 19,
-    price_usdt: 0,
-    usdt_address: '',
-    usdt_network: '',
-    usdt_enabled: false,
+    price_usd: CONTACT_CONFIG.DEFAULT_PRICE_USDT || 9,
+    price_usdt: CONTACT_CONFIG.DEFAULT_PRICE_USDT || 9,
+    usdt_address: CONTACT_CONFIG.USDT_ADDRESS,
+    usdt_network: CONTACT_CONFIG.USDT_NETWORK,
+    usdt_enabled: CONTACT_CONFIG.USDT_ENABLED,
     whatsapp_number: CONTACT_CONFIG.WHATSAPP_NUMBER
   };
 }
@@ -780,6 +785,63 @@ export async function submitManualUpiPayment(payload: {
     return {
       success: false,
       error: err?.message || 'Network error while submitting payment'
+    };
+  }
+}
+
+export async function submitManualCryptoPayment(payload: {
+  plan_id: string;
+  tx_hash: string;
+  network?: string;
+  proof_asset?: string;
+  billing_cycle?: string;
+  extra_members?: number;
+  extra_proxy_gb?: number;
+}): Promise<{ success: boolean; payment_id?: string; status?: string; tx_hash?: string; amount_cents?: number; message?: string; error?: string }> {
+  const session = loadEncryptedSession();
+  if (!session?.token) throw new Error('No active account session');
+
+  const txHashClean = (payload.tx_hash || '').trim();
+  if (!/^[a-fA-F0-9]{64}$/.test(txHashClean)) {
+    return { success: false, error: 'Invalid transaction hash: please paste the full 64-character TRC-20 TX hash.' };
+  }
+
+  try {
+    const res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/payments/crypto/submit`, {
+      method: 'POST',
+      headers: {
+        'x-mahi-token': session.token,
+        'Authorization': `Bearer ${session.token}`,
+      }
+    }, {
+      plan_id: payload.plan_id || 'mahi_growth',
+      billing_cycle: (payload.billing_cycle || 'SEMI_ANNUAL').toUpperCase(),
+      tx_hash: txHashClean,
+      network: payload.network || CONTACT_CONFIG.USDT_NETWORK,
+      proof_asset: payload.proof_asset || '',
+      extra_members: payload.extra_members,
+      extra_proxy_gb: payload.extra_proxy_gb,
+    });
+
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      return {
+        success: true,
+        payment_id: res.body?.payment_id,
+        status: res.body?.status || 'PENDING_VERIFICATION',
+        tx_hash: res.body?.tx_hash || txHashClean,
+        amount_cents: res.body?.amount_cents,
+        message: res.body?.message || 'USDT (TRC-20) transaction submitted for verification.',
+      };
+    }
+
+    return {
+      success: false,
+      error: res.body?.error || `Submission failed (HTTP ${res.statusCode})`
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err?.message || 'Network error while submitting crypto payment'
     };
   }
 }

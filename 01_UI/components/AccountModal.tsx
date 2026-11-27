@@ -47,6 +47,7 @@ interface DesktopPlanOption {
   profiles: number;
   concurrent: number;
   priceInr: number;
+  priceUsd: number;
   billingCycle: CanonicalBillingCycle;
   durationLabel: string;
   rateSubtext: string;
@@ -60,6 +61,7 @@ const DESKTOP_PLANS: DesktopPlanOption[] = [
     profiles: 25,
     concurrent: 3,
     priceInr: 599,
+    priceUsd: 9,
     billingCycle: 'MONTHLY',
     durationLabel: '1 Month',
     rateSubtext: '₹599/mo • 25 Proxy Slots',
@@ -70,6 +72,7 @@ const DESKTOP_PLANS: DesktopPlanOption[] = [
     profiles: 100,
     concurrent: 10,
     priceInr: 999,
+    priceUsd: 15,
     billingCycle: 'SEMI_ANNUAL',
     durationLabel: '6 Months',
     rateSubtext: '₹166/mo (Save 72%) • 25 Cloud Backups',
@@ -81,6 +84,7 @@ const DESKTOP_PLANS: DesktopPlanOption[] = [
     profiles: 1000000,
     concurrent: 25,
     priceInr: 1499,
+    priceUsd: 24,
     billingCycle: 'ANNUAL',
     durationLabel: '1 Year',
     rateSubtext: '₹125/mo (Save 79%) • Unlimited Backup & 2 Devices',
@@ -154,6 +158,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     forgotPassword,
     resetPassword,
     submitManualUpiPayment,
+    submitManualCryptoPayment,
   } = useAccountStore();
 
   const { showToast } = useToastStore();
@@ -177,11 +182,13 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
   const [isActivatingTrial, setIsActivatingTrial] = useState(false);
   const [myLicense, setMyLicense] = useState<MyLicenseResponse | null>(null);
 
-  // Manual UPI payment submission states
+  // Manual UPI / Crypto payment submission states
   const [selectedPlanId, setSelectedPlanId] = useState<'mahi_starter' | 'mahi_growth' | 'mahi_ultimate'>('mahi_growth');
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<CanonicalBillingCycle>('SEMI_ANNUAL');
+  const [paymentMethod, setPaymentMethod] = useState<'upi' | 'crypto'>('upi');
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [utrInput, setUtrInput] = useState('');
+  const [txHashInput, setTxHashInput] = useState('');
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [paymentSubmittedStatus, setPaymentSubmittedStatus] = useState<string | null>(null);
 
@@ -235,6 +242,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
   const activePlanMeta = dynamicPlans.find((p) => p.id === selectedPlanId) || dynamicPlans[1] || dynamicPlans[0];
   const priceInr = activePlanMeta.priceInr;
+  const priceUsd = activePlanMeta.priceUsd;
 
   const handleSelectPlan = (plan: DesktopPlanOption) => {
     setSelectedPlanId(plan.id);
@@ -790,6 +798,10 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
   const upiId = paymentInfo?.upi_id || CONTACT_CONFIG.UPI_ID;
   const upiHolder = paymentInfo?.upi_account_holder || CONTACT_CONFIG.UPI_ACCOUNT_HOLDER;
   const upiQrAsset = paymentInfo?.upi_qr_asset || CONTACT_CONFIG.UPI_QR_ASSET;
+  const usdtEnabled = paymentInfo?.usdt_enabled ?? CONTACT_CONFIG.USDT_ENABLED;
+  const usdtAddress = paymentInfo?.usdt_address || CONTACT_CONFIG.USDT_ADDRESS;
+  const usdtNetwork = paymentInfo?.usdt_network || CONTACT_CONFIG.USDT_NETWORK;
+  const usdtQrAsset = paymentInfo?.usdt_qr_asset || CONTACT_CONFIG.USDT_QR_ASSET;
   const waNumber = paymentInfo?.whatsapp_number || CONTACT_CONFIG.WHATSAPP_NUMBER;
   const waCleanNumber = waNumber.replace(/[^0-9]/g, '') || CONTACT_CONFIG.WHATSAPP_RAW_NUMBER;
 
@@ -834,6 +846,53 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
         type: 'error',
         title: 'Error',
         message: err.message || 'Payment submission failed.',
+      });
+    } finally {
+      setIsSubmittingPayment(false);
+    }
+  };
+
+  const handleSubmitCryptoPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanHash = txHashInput.trim();
+    if (!/^[a-fA-F0-9]{64}$/.test(cleanHash)) {
+      showToast({
+        type: 'error',
+        title: 'Invalid TX Hash',
+        message: 'Please paste the full 64-character TRON (TRC-20) transaction hash.',
+      });
+      return;
+    }
+
+    setIsSubmittingPayment(true);
+    try {
+      const res = await submitManualCryptoPayment({
+        plan_id: selectedPlanId,
+        billing_cycle: selectedBillingCycle,
+        tx_hash: cleanHash,
+        network: usdtNetwork,
+      });
+
+      if (res.success) {
+        setPaymentSubmittedStatus(res.status || 'PENDING_VERIFICATION');
+        fetchPaymentHistory().catch(() => {});
+        showToast({
+          type: 'success',
+          title: 'Crypto TX Submitted',
+          message: 'Your USDT (TRC-20) transaction is PENDING_VERIFICATION. Admin will verify and activate.',
+        });
+      } else {
+        showToast({
+          type: 'error',
+          title: 'Submission Failed',
+          message: res.error || 'Failed to submit TRC-20 transaction hash.',
+        });
+      }
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Error',
+        message: err.message || 'Crypto submission failed.',
       });
     } finally {
       setIsSubmittingPayment(false);
@@ -1137,7 +1196,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                               </div>
                             </div>
                             <div className="shrink-0 text-right">
-                              <div className="text-xs font-extrabold text-emerald-300">₹{p.priceInr.toLocaleString()}</div>
+                              <div className="text-xs font-extrabold text-emerald-300">
+                                {paymentMethod === 'crypto' ? `$${p.priceUsd} USDT` : `₹${p.priceInr.toLocaleString()}`}
+                              </div>
                             </div>
                           </button>
                         );
@@ -1145,87 +1206,181 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                     </div>
                   </div>
 
-                  {/* UPI Payment Container */}
+                  {/* Payment Container (UPI / Crypto USDT TRC-20) */}
                   <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                    <div className="flex items-center justify-between border-b border-slate-800/80 pb-2 gap-2">
                       <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                         <Zap size={14} className="text-teal-400" />
-                        UPI Payment
+                        {paymentMethod === 'crypto' ? 'USDT (TRC-20) Payment' : 'UPI Payment'}
                       </span>
-                      <span className="text-[11px] font-mono text-emerald-400">Verified Gateway</span>
+                      {usdtEnabled && usdtAddress ? (
+                        <div className="inline-flex items-center rounded-lg bg-slate-900 border border-slate-800 p-0.5 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPaymentMethod('upi');
+                              setPaymentSubmittedStatus(null);
+                            }}
+                            className={`px-2 py-0.5 rounded-md font-bold transition ${
+                              paymentMethod === 'upi' ? 'bg-teal-600 text-white' : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            UPI (₹)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPaymentMethod('crypto');
+                              setPaymentSubmittedStatus(null);
+                            }}
+                            className={`px-2 py-0.5 rounded-md font-bold transition ${
+                              paymentMethod === 'crypto' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            USDT ($)
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] font-mono text-emerald-400">Verified Gateway</span>
+                      )}
                     </div>
 
-                    <div className="flex flex-col sm:flex-row items-center gap-4">
-                      {/* Authoritative Slice QR Asset */}
-                      <div className="p-2 bg-white rounded-xl shadow-lg shrink-0 flex flex-col items-center">
-                        <img
-                          src={upiQrAsset}
-                          alt="Official MAHI UPI QR"
-                          className="w-32 h-32 object-contain rounded-lg"
-                        />
-                        <span className="text-[9px] font-bold text-slate-700 mt-1 uppercase tracking-wider">Scan with UPI App</span>
-                      </div>
+                    {paymentMethod === 'crypto' && usdtEnabled && usdtAddress ? (
+                      <>
+                        <div className="flex flex-col sm:flex-row items-center gap-4">
+                          <div className="p-2 bg-white rounded-xl shadow-lg shrink-0 flex flex-col items-center">
+                            <img
+                              src={usdtQrAsset}
+                              alt="Official MAHI USDT TRC-20 QR"
+                              className="w-32 h-32 object-contain rounded-lg"
+                            />
+                            <span className="text-[9px] font-bold text-slate-700 mt-1 uppercase tracking-wider">TRON (TRC-20)</span>
+                          </div>
 
-                      {/* UPI Account Details */}
-                      <div className="space-y-2.5 w-full text-xs">
-                        <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Account Holder</span>
-                          <strong className="text-white text-sm block">{upiHolder}</strong>
-                        </div>
+                          <div className="space-y-2.5 w-full text-xs">
+                            <div>
+                              <span className="text-[10px] uppercase font-bold text-slate-400 block">Network</span>
+                              <strong className="text-emerald-300 text-xs block">{usdtNetwork}</strong>
+                            </div>
 
-                        <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-400 block">UPI ID</span>
-                          <div className="flex items-center justify-between bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 mt-0.5">
-                            <strong className="text-teal-400 font-mono text-xs">{upiId}</strong>
-                            <button
-                              type="button"
-                              onClick={() => copyToClipboard(upiId, 'UPI ID')}
-                              className="text-slate-400 hover:text-white flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 transition"
-                              title="Copy UPI ID"
-                            >
-                              <Copy size={11} />
-                              <span className="text-[10px]">Copy</span>
-                            </button>
+                            <div>
+                              <span className="text-[10px] uppercase font-bold text-slate-400 block">USDT Wallet Address</span>
+                              <div className="flex items-center justify-between gap-2 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 mt-0.5">
+                                <strong className="text-teal-400 font-mono text-[11px] break-all">{usdtAddress}</strong>
+                                <button
+                                  type="button"
+                                  onClick={() => copyToClipboard(usdtAddress, 'USDT TRC-20 Address')}
+                                  className="shrink-0 text-slate-400 hover:text-white flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 transition"
+                                  title="Copy USDT TRC-20 Address"
+                                >
+                                  <Copy size={11} />
+                                  <span className="text-[10px]">Copy</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            <div>
+                              <span className="text-[10px] uppercase font-bold text-slate-400 block">Payable Amount</span>
+                              <strong className="text-emerald-400 font-bold text-sm">${priceUsd} USDT (TRC-20)</strong>
+                            </div>
                           </div>
                         </div>
 
-                        <div>
-                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Payable Amount</span>
-                          <strong className="text-emerald-400 font-bold text-sm">₹{priceInr} INR</strong>
+                        <div className="pt-2 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(usdtAddress, 'USDT TRC-20 Address')}
+                            className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition flex items-center justify-center gap-1.5"
+                          >
+                            <Copy size={13} />
+                            <span>Copy Address</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setShowPaymentForm(!showPaymentForm)}
+                            className="flex-1 py-2 px-3 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5"
+                          >
+                            <CheckCircle2 size={13} />
+                            <span>{showPaymentForm ? 'Hide TX Form' : 'I Have Sent USDT'}</span>
+                          </button>
                         </div>
-                      </div>
-                    </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex flex-col sm:flex-row items-center gap-4">
+                          {/* Authoritative Slice QR Asset */}
+                          <div className="p-2 bg-white rounded-xl shadow-lg shrink-0 flex flex-col items-center">
+                            <img
+                              src={upiQrAsset}
+                              alt="Official MAHI UPI QR"
+                              className="w-32 h-32 object-contain rounded-lg"
+                            />
+                            <span className="text-[9px] font-bold text-slate-700 mt-1 uppercase tracking-wider">Scan with UPI App</span>
+                          </div>
 
-                    {/* Action Buttons: Copy UPI ID, Online Checkout & I Have Paid */}
-                    <div className="pt-2 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(upiId, 'UPI ID')}
-                        className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition flex items-center justify-center gap-1.5"
-                      >
-                        <Copy size={13} />
-                        <span>Copy UPI</span>
-                      </button>
+                          {/* UPI Account Details */}
+                          <div className="space-y-2.5 w-full text-xs">
+                            <div>
+                              <span className="text-[10px] uppercase font-bold text-slate-400 block">Account Holder</span>
+                              <strong className="text-white text-sm block">{upiHolder}</strong>
+                            </div>
 
-                      <button
-                        type="button"
-                        onClick={handleOnlineCheckout}
-                        className="py-2 px-3 rounded-xl bg-indigo-600/90 hover:bg-indigo-600 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5"
-                        title="Instant UPI & Cards online checkout"
-                      >
-                        <Sparkles size={13} />
-                        <span>Instant UPI / Cards</span>
-                      </button>
+                            <div>
+                              <span className="text-[10px] uppercase font-bold text-slate-400 block">UPI ID</span>
+                              <div className="flex items-center justify-between bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 mt-0.5">
+                                <strong className="text-teal-400 font-mono text-xs">{upiId}</strong>
+                                <button
+                                  type="button"
+                                  onClick={() => copyToClipboard(upiId, 'UPI ID')}
+                                  className="text-slate-400 hover:text-white flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 transition"
+                                  title="Copy UPI ID"
+                                >
+                                  <Copy size={11} />
+                                  <span className="text-[10px]">Copy</span>
+                                </button>
+                              </div>
+                            </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setShowPaymentForm(!showPaymentForm)}
-                        className="flex-1 py-2 px-3 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5"
-                      >
-                        <CheckCircle2 size={13} />
-                        <span>{showPaymentForm ? 'Hide Form' : 'I Have Paid'}</span>
-                      </button>
-                    </div>
+                            <div>
+                              <span className="text-[10px] uppercase font-bold text-slate-400 block">Payable Amount</span>
+                              <strong className="text-emerald-400 font-bold text-sm">₹{priceInr} INR</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons: Copy UPI ID, Online Checkout & I Have Paid */}
+                        <div className="pt-2 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(upiId, 'UPI ID')}
+                            className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition flex items-center justify-center gap-1.5"
+                          >
+                            <Copy size={13} />
+                            <span>Copy UPI</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleOnlineCheckout}
+                            className="py-2 px-3 rounded-xl bg-indigo-600/90 hover:bg-indigo-600 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5"
+                            title="Instant UPI online checkout"
+                          >
+                            <Sparkles size={13} />
+                            <span>Instant UPI</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setShowPaymentForm(!showPaymentForm)}
+                            className="flex-1 py-2 px-3 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5"
+                          >
+                            <CheckCircle2 size={13} />
+                            <span>{showPaymentForm ? 'Hide Form' : 'I Have Paid'}</span>
+                          </button>
+                        </div>
+                      </>
+                    )}
 
                     {/* Latest Payment Status / History Banner */}
                     {(latestPayment || paymentSubmittedStatus) && (
@@ -1280,7 +1435,10 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
                     {/* Verification Form */}
                     {showPaymentForm && (
-                      <form onSubmit={handleSubmitPayment} className="mt-3 pt-3 border-t border-slate-800/80 space-y-3">
+                      <form
+                        onSubmit={paymentMethod === 'crypto' ? handleSubmitCryptoPayment : handleSubmitPayment}
+                        className="mt-3 pt-3 border-t border-slate-800/80 space-y-3"
+                      >
                         {paymentSubmittedStatus ? (
                           <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs space-y-1">
                             <div className="flex items-center gap-2 font-bold">
@@ -1288,9 +1446,44 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                               <span>Status: {paymentSubmittedStatus}</span>
                             </div>
                             <p className="text-[11px] text-emerald-400/90 leading-relaxed">
-                              Your UTR has been submitted for manual approval. An administrator will verify and activate your PRO entitlement.
+                              Your {paymentMethod === 'crypto' ? 'TRC-20 transaction hash' : 'UTR'} has been submitted for manual approval. An administrator will verify and activate your PRO entitlement.
                             </p>
                           </div>
+                        ) : paymentMethod === 'crypto' ? (
+                          <>
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                                TRON (TRC-20) Transaction Hash <span className="text-rose-400">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={txHashInput}
+                                onChange={(e) => setTxHashInput(e.target.value)}
+                                placeholder="Paste 64-character TRC-20 transaction hash"
+                                maxLength={64}
+                                required
+                                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-mono focus:border-teal-500 focus:outline-none"
+                              />
+                              <p className="text-[10px] text-slate-500 mt-1">
+                                Send ONLY USDT on the TRON (TRC-20) network and paste the full 64-char TX hash from TronLink / Binance / OKX.
+                              </p>
+                            </div>
+
+                            <button
+                              type="submit"
+                              disabled={isSubmittingPayment}
+                              className="w-full py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs shadow transition flex items-center justify-center gap-2"
+                            >
+                              {isSubmittingPayment ? (
+                                <span>Submitting TX Hash...</span>
+                              ) : (
+                                <>
+                                  <Check size={13} />
+                                  <span>Submit Crypto Payment for Approval</span>
+                                </>
+                              )}
+                            </button>
+                          </>
                         ) : (
                           <>
                             <div>

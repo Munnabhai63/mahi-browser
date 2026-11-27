@@ -791,11 +791,12 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
       upi_account_holder: CONTACT_CONFIG.UPI_ACCOUNT_HOLDER,
       upi_qr_asset: CONTACT_CONFIG.UPI_QR_ASSET,
       price_inr: CONTACT_CONFIG.DEFAULT_PRICE_INR,
-      price_usd: 19,
+      price_usd: CONTACT_CONFIG.DEFAULT_PRICE_USDT,
       price_usdt: CONTACT_CONFIG.DEFAULT_PRICE_USDT,
       usdt_address: CONTACT_CONFIG.USDT_ADDRESS,
       usdt_network: CONTACT_CONFIG.USDT_NETWORK,
-      usdt_enabled: false,
+      usdt_qr_asset: CONTACT_CONFIG.USDT_QR_ASSET,
+      usdt_enabled: CONTACT_CONFIG.USDT_ENABLED,
       whatsapp_number: CONTACT_CONFIG.WHATSAPP_NUMBER,
     }),
     accountGetPricingCatalog: async () => ({
@@ -864,6 +865,10 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     accountSubmitManualUpiPayment: async () => ({
       success: false,
       error: 'DESKTOP_OR_SERVER_REQUIRED: Manual UPI submission requires desktop runtime or live billing API.',
+    }),
+    accountSubmitManualCryptoPayment: async () => ({
+      success: false,
+      error: 'DESKTOP_OR_SERVER_REQUIRED: Crypto TX submission requires desktop runtime or live billing API.',
     }),
     accountGetPaymentStatus: async () => ({
       success: false,

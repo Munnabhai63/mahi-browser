@@ -19,6 +19,9 @@ import {
   UPI_ACCOUNT_HOLDER,
   UPI_QR_ASSET,
   USDT_ENABLED,
+  USDT_ADDRESS,
+  USDT_NETWORK,
+  USDT_QR_ASSET,
   isValidEmail,
   isValidWhatsAppNumber,
   isValidUpiId,
@@ -74,11 +77,14 @@ describe('Production Business Contact & UPI Cutover Verification', () => {
       expect(YOUTUBE_URL).toBe('');
     });
 
-    it('enforces exact authoritative UPI configuration and disables USDT', () => {
+    it('enforces exact authoritative UPI and USDT (TRC-20) configuration', () => {
       expect(UPI_ID).toBe('6375823589@slc');
       expect(UPI_ACCOUNT_HOLDER).toBe('Mr Mahipal Choudhary');
       expect(UPI_QR_ASSET).toBe('/brand/mahi-upi-qr.png');
-      expect(USDT_ENABLED).toBe(false);
+      expect(USDT_ENABLED).toBe(true);
+      expect(USDT_ADDRESS).toBe('TPerRUMbJtNSmcRoBcQt1PpNpYCrEd5ziA');
+      expect(USDT_NETWORK).toBe('TRC-20 (TRON)');
+      expect(USDT_QR_ASSET).toBe('/brand/mahi-usdt-trc20-qr.png');
     });
   });
 
@@ -134,6 +140,12 @@ describe('Production Business Contact & UPI Cutover Verification', () => {
 
       const landingStat = fs.statSync(landingQrPath);
       expect(landingStat.size).toBeGreaterThan(1000); // Non-empty image file
+
+      const landingUsdtQr = path.resolve(process.cwd(), 'landing/public/assets/img/payments/mahi-usdt-trc20-qr.png');
+      const publicUsdtQr = path.resolve(process.cwd(), 'public/brand/mahi-usdt-trc20-qr.png');
+      expect(fs.existsSync(landingUsdtQr)).toBe(true);
+      expect(fs.existsSync(publicUsdtQr)).toBe(true);
+      expect(fs.statSync(landingUsdtQr).size).toBeGreaterThan(1000);
     });
   });
 

@@ -1,6 +1,14 @@
 import http from 'node:http';
 import { URL } from 'node:url';
-import { sendJSON, parseBody, parseRawBuffer, getAuthUser } from './router-shared.js';
+import { sendJSON, parseBody, parseRawBuffer, getAuthUserAsync } from './router-shared.js';
+import { sendSafeError, validateStrictBody } from '../../utils/app-error.js';
+import {
+  UpiSubmitSchema,
+  CryptoSubmitSchema,
+  BillingCheckoutSchema,
+  VerifyRazorpaySchema,
+  VerifyYoupiSchema,
+} from '../validation/commercial-schemas.js';
 import { CONTACT_CONFIG } from '../../../10_CONFIG/contact-config.js';
 import {
   paymentService,
@@ -25,17 +33,23 @@ export async function handlePaymentRoutes(
   clientIp: string
 ): Promise<boolean> {
   if ((routePath === '/v1/account/payment-info' || routePath === '/api/v1/account/payment-info' || routePath === '/api/v1/commercial/payment-info') && method === 'GET') {
+    const usdtAddress = (process.env.PAYMENT_USDT_ADDRESS || CONTACT_CONFIG.USDT_ADDRESS || '').trim();
+    const usdtEnabled =
+      process.env.PAYMENT_USDT_ENABLED !== undefined
+        ? process.env.PAYMENT_USDT_ENABLED === 'true'
+        : Boolean(CONTACT_CONFIG.USDT_ENABLED && usdtAddress);
     sendJSON(res, 200, {
       success: true,
       upi_id: process.env.PAYMENT_UPI_ID || CONTACT_CONFIG.UPI_ID,
       upi_account_holder: process.env.PAYMENT_UPI_HOLDER || CONTACT_CONFIG.UPI_ACCOUNT_HOLDER,
       upi_qr_asset: CONTACT_CONFIG.UPI_QR_ASSET,
       price_inr: parseInt(process.env.DEFAULT_PRICE_INR || '', 10) || CONTACT_CONFIG.DEFAULT_PRICE_INR || 599,
-      price_usd: 19,
-      price_usdt: 0,
-      usdt_address: '',
-      usdt_network: '',
-      usdt_enabled: false,
+      price_usd: CONTACT_CONFIG.DEFAULT_PRICE_USDT || 9,
+      price_usdt: CONTACT_CONFIG.DEFAULT_PRICE_USDT || 9,
+      usdt_address: usdtAddress,
+      usdt_network: process.env.PAYMENT_USDT_NETWORK || CONTACT_CONFIG.USDT_NETWORK,
+      usdt_qr_asset: CONTACT_CONFIG.USDT_QR_ASSET,
+      usdt_enabled: usdtEnabled,
       whatsapp_number: process.env.SUPPORT_WHATSAPP || CONTACT_CONFIG.WHATSAPP_NUMBER,
       support_email: process.env.SUPPORT_EMAIL || CONTACT_CONFIG.SUPPORT_EMAIL,
     });
@@ -43,12 +57,15 @@ export async function handlePaymentRoutes(
   }
 
   if ((routePath === '/v1/account/payments/upi/submit' || routePath === '/api/v1/account/payments/upi/submit') && method === 'POST') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(UpiSubmitSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     const utr = (body.utr || '').trim();
     if (!utr || utr.length < 6) {
       sendJSON(res, 400, { success: false, error: 'Invalid UTR: Transaction reference must be at least 6 characters.' });
@@ -88,22 +105,85 @@ export async function handlePaymentRoutes(
       });
       return true;
     } catch (err: any) {
-      if (err.message && err.message.includes('UTR_ALREADY_EXISTS')) {
-        sendJSON(res, 409, { success: false, error: err.message });
+      if (err?.message && err.message.includes('UTR_ALREADY_EXISTS')) {
+        sendSafeError(res, err, { fallbackStatus: 409 });
         return true;
       }
-      sendJSON(res, 400, { success: false, error: err.message });
+      sendSafeError(res, err, { fallbackStatus: 400 });
+      return true;
+    }
+  }
+
+  if ((routePath === '/v1/account/payments/crypto/submit' || routePath === '/api/v1/account/payments/crypto/submit') && method === 'POST') {
+    const auth = await getAuthUserAsync(req);
+    if (!auth) {
+      sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
+      return true;
+    }
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(CryptoSubmitSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
+    const txHash = (body.txHash || body.tx_hash || body.hash || body.utr || '').trim();
+    if (!/^[a-fA-F0-9]{64}$/.test(txHash)) {
+      sendJSON(res, 400, { success: false, error: 'Invalid transaction hash: please paste the full 64-character TRC-20 transaction hash.' });
+      return true;
+    }
+    const planId = body.planId || body.plan_id || body.plan;
+    if (!planId || typeof planId !== 'string' || !planId.trim()) {
+      sendJSON(res, 400, { success: false, error: 'planId is required. Cannot determine payment amount.' });
+      return true;
+    }
+    const billingCycle = normalizeBillingCycle(
+      String(body.billingCycle || body.billing_cycle || body.billing || ''),
+      planId
+    );
+    const network = typeof body.network === 'string' && body.network.trim() ? body.network.trim() : undefined;
+    const proofAsset = body.proofAsset || body.proof_asset || body.receiptUrl || body.receipt_url;
+    const extraMembers = body.extraMembers || body.extra_members;
+    const extraProxyGb = body.extraProxyGb || body.extra_proxy_gb;
+
+    try {
+      const result = await paymentService.submitManualCryptoPayment({
+        userId: auth.userId,
+        planId,
+        billingCycle,
+        txHash,
+        network,
+        proofAsset,
+        extraMembers: extraMembers ? Number(extraMembers) : undefined,
+        extraProxyGb: extraProxyGb ? Number(extraProxyGb) : undefined,
+      });
+
+      sendJSON(res, 200, {
+        success: true,
+        payment_id: result.paymentId,
+        status: result.status,
+        tx_hash: result.txHash,
+        amount_cents: result.amountCents,
+        currency: result.currency,
+        network: result.network,
+        wallet_address: result.walletAddress,
+        message: 'USDT (TRC-20) transaction submitted for verification.',
+      });
+      return true;
+    } catch (err: any) {
+      if (err?.message && err.message.includes('TX_HASH_ALREADY_EXISTS')) {
+        sendSafeError(res, err, { fallbackStatus: 409 });
+        return true;
+      }
+      sendSafeError(res, err, { fallbackStatus: 400 });
       return true;
     }
   }
 
   if ((routePath === '/v1/account/payments/status' || routePath === '/api/v1/account/payments/status') && method === 'GET') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
-    const payments = paymentService.getUserPaymentHistory(auth.userId);
+    const payments = await paymentService.getUserPaymentHistoryAsync(auth.userId);
     sendJSON(res, 200, { success: true, payments, data: payments });
     return true;
   }
@@ -118,6 +198,12 @@ export async function handlePaymentRoutes(
       (process.env.YOUPI_PG_BASE_URL || process.env.BASE_PAYMENT_API_URL) &&
       (process.env.YOUPI_PG_API_KEY || process.env.YOUPI_PG_SECRET)
     );
+    const usdtAddress = (process.env.PAYMENT_USDT_ADDRESS || CONTACT_CONFIG.USDT_ADDRESS || '').trim();
+    const usdtEnabled =
+      process.env.PAYMENT_USDT_ENABLED !== undefined
+        ? process.env.PAYMENT_USDT_ENABLED === 'true'
+        : Boolean(CONTACT_CONFIG.USDT_ENABLED && usdtAddress);
+    const usdtNetwork = process.env.PAYMENT_USDT_NETWORK || CONTACT_CONFIG.USDT_NETWORK;
     const gateways = [
       {
         id: 'youpi_pg',
@@ -126,6 +212,17 @@ export async function handlePaymentRoutes(
         currency: 'INR',
         isDirect: true,
         description: 'Instant 0% fee peer-to-bank settlement via GPay, PhonePe, Paytm & BHIM',
+      },
+      {
+        id: 'usdt_trc20',
+        name: 'Crypto USDT (TRC-20)',
+        enabled: usdtEnabled,
+        currency: 'USD',
+        isDirect: true,
+        walletAddress: usdtAddress,
+        network: usdtNetwork,
+        qrAsset: CONTACT_CONFIG.USDT_QR_ASSET_WEB,
+        description: 'Zero-fee USDT (TRC-20 / TRON) payment with 64-character TX hash verification',
       },
       {
         id: 'stripe',
@@ -149,12 +246,15 @@ export async function handlePaymentRoutes(
   }
 
   if (routePath === '/api/v1/billing/checkout' && method === 'POST') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(BillingCheckoutSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     const planId = body.planId || body.plan;
     if (!planId) {
       sendJSON(res, 400, { success: false, error: 'Missing required field: planId.' });
@@ -165,7 +265,11 @@ export async function handlePaymentRoutes(
       planId
     );
     const provider = ((body.provider || 'youpi_pg') as string).toLowerCase() as PaymentProviderType;
-    const currency = body.currency || (provider === 'stripe' ? 'USD' : 'INR');
+    const currency = (
+      String(body.currency || (provider === 'stripe' ? 'USD' : 'INR')).toUpperCase() === 'USD'
+        ? 'USD'
+        : 'INR'
+    ) as 'INR' | 'USD';
     const extraMembers = Number(body.extraMembers || 0);
     const extraProxyGb = Number(body.extraProxyGb || 0);
 
@@ -197,19 +301,21 @@ export async function handlePaymentRoutes(
       return true;
     } catch (err: any) {
       const status = err instanceof PaymentGatewayNotConfiguredError ? 503 : 400;
-      sendJSON(res, status, { success: false, error: err.message });
+      sendSafeError(res, err, { fallbackStatus: status });
       return true;
     }
   }
 
   if (routePath === '/api/v1/billing/verify-razorpay' && method === 'POST') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
-    const body = await parseBody(req);
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body;
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(VerifyRazorpaySchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = parsed.data;
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
       sendJSON(res, 400, { success: false, error: 'Missing required Razorpay verification fields.' });
       return true;
@@ -279,12 +385,15 @@ export async function handlePaymentRoutes(
   }
 
   if (routePath === '/api/v1/billing/verify-youpi' && method === 'POST') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(VerifyYoupiSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     const paymentOrOrderId = body.paymentId || body.orderId || body.external_payment_id || body.externalOrderId;
     if (!paymentOrOrderId) {
       sendJSON(res, 400, { success: false, error: 'Missing required field: paymentId or orderId.' });
@@ -297,14 +406,14 @@ export async function handlePaymentRoutes(
       sendJSON(res, statusCode, result);
       return true;
     } catch (err: any) {
-      sendJSON(res, 500, { success: false, error: err.message });
+      sendSafeError(res, err, { fallbackStatus: 500 });
       return true;
     }
   }
 
   const youpiStatusMatch = routePath.match(/^\/api\/v1\/billing\/youpi\/status\/([a-zA-Z0-9_.-]+)$/);
   if (youpiStatusMatch && method === 'GET') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
@@ -316,7 +425,7 @@ export async function handlePaymentRoutes(
       sendJSON(res, statusCode, result);
       return true;
     } catch (err: any) {
-      sendJSON(res, 500, { success: false, error: err.message });
+      sendSafeError(res, err, { fallbackStatus: 500 });
       return true;
     }
   }
@@ -324,7 +433,9 @@ export async function handlePaymentRoutes(
   if (
     (routePath === '/api/v1/billing/webhook' ||
       routePath === '/api/v1/billing/webhook/youpi' ||
-      routePath === '/api/v1/billing/webhook/youpi_pg') &&
+      routePath === '/api/v1/billing/webhook/youpi_pg' ||
+      routePath === '/api/v1/commercial/checkout/webhook' ||
+      routePath === '/api/v1/commercial/checkout/webhook/youpi') &&
     method === 'POST'
   ) {
     try {
@@ -365,21 +476,21 @@ export async function handlePaymentRoutes(
       sendJSON(res, 200, { success: true, data: result });
       return true;
     } catch (err: any) {
-      const isSig = err.message && err.message.includes('INVALID_WEBHOOK_SIGNATURE');
+      const isSig = Boolean(err?.message && err.message.includes('INVALID_WEBHOOK_SIGNATURE'));
       const fallbackStatus = isSig ? 400 : 500;
       const status = typeof err?.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : fallbackStatus;
-      sendJSON(res, status, { success: false, error: err.message });
+      sendSafeError(res, err, { fallbackStatus: status });
       return true;
     }
   }
 
   if (routePath === '/api/v1/billing/subscription' && method === 'GET') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
-    const sub = paymentService.getUserSubscription(auth.userId);
+    const sub = await paymentService.getUserSubscriptionAsync(auth.userId);
     const entitlements = evaluateUserEntitlements(auth.userId);
     sendJSON(res, 200, {
       success: true,
@@ -390,12 +501,12 @@ export async function handlePaymentRoutes(
   }
 
   if (routePath === '/api/v1/billing/invoices' && method === 'GET') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
-    const invoices = paymentService.getUserInvoices(auth.userId);
+    const invoices = await paymentService.getUserInvoicesAsync(auth.userId);
     sendJSON(res, 200, { success: true, invoices });
     return true;
   }

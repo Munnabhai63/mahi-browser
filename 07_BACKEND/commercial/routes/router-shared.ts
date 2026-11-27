@@ -7,6 +7,8 @@ import { verifyAdminAccess } from '../../../05_AUTH/admin-auth.js';
 import { isValidAdminWebSecret } from '../../../08_SECURITY/install-secrets.js';
 import { CommercialRole } from '../../../10_CONFIG/shared/types/commercial.js';
 import { getDatabase } from '../../../06_DATABASE/connection.js';
+import { getCentralRepository, isPostgresConfigured } from '../../../06_DATABASE/central-repository.js';
+import { getPrismaClient } from '../../../06_DATABASE/prisma-client.js';
 import {
   resolveTrustedClientIp,
   normalizeIp,
@@ -46,29 +48,264 @@ export function parseRawBuffer(req: http.IncomingMessage, options: BoundedBodyOp
   return readBoundedBuffer(req, options);
 }
 
-export function getAuthUser(req: http.IncomingMessage): { userId: string; email: string; role: CommercialRole; sessionId?: string } | null {
-  const authHeader = (req.headers['authorization'] as string) || (req.headers['x-mahi-token'] ? `Bearer ${req.headers['x-mahi-token']}` : '');
-  if (authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7);
-    const centralPayload = verifyAccessToken(token);
-    if (centralPayload) {
+const BLOCKED_USER_STATUSES = new Set(['BANNED', 'SUSPENDED', 'DISABLED']);
+
+function isTestMode(): boolean {
+  return process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
+}
+
+function isBlockedStatus(status: unknown): boolean {
+  if (!status) return false;
+  return BLOCKED_USER_STATUSES.has(String(status).trim().toUpperCase());
+}
+
+function isSessionExpired(expiresAt: unknown): boolean {
+  if (!expiresAt) return false;
+  const ts = expiresAt instanceof Date ? expiresAt.getTime() : new Date(String(expiresAt)).getTime();
+  return Number.isFinite(ts) && ts <= Date.now();
+}
+
+function extractBearerHeaderToken(req: http.IncomingMessage): string | null {
+  const authHeader =
+    (req.headers['authorization'] as string) ||
+    (req.headers['x-mahi-token'] ? `Bearer ${req.headers['x-mahi-token']}` : '');
+  if (!authHeader.startsWith('Bearer ')) return null;
+  const token = authHeader.substring(7).trim();
+  return token || null;
+}
+
+function tryGetSqliteDb() {
+  try {
+    return getDatabase();
+  } catch {
+    return null;
+  }
+}
+
+export function verifySqliteUserAndSession(
+  userId: string,
+  sessionId?: string
+): { active: boolean; role?: CommercialRole; email?: string; foundInDb: boolean } {
+  const db = tryGetSqliteDb();
+  if (!db) {
+    return { active: true, foundInDb: false };
+  }
+
+  let userRow: any = null;
+  try {
+    userRow = db.prepare('SELECT id, email, role, status FROM auth_users WHERE id = ?').get(userId);
+  } catch {}
+  if (!userRow) {
+    try {
+      userRow = db.prepare('SELECT id, email, role, status FROM commercial_users WHERE id = ?').get(userId);
+    } catch {}
+  }
+
+  if (userRow) {
+    if (isBlockedStatus(userRow.status)) {
+      return { active: false, foundInDb: true };
+    }
+  } else {
+    if (!isTestMode() || sessionId) {
+      // Central JWTs (with sessionId) require an active DB user record in auth_users/commercial_users.
+      return { active: false, foundInDb: false };
+    }
+    return { active: true, foundInDb: false };
+  }
+
+  if (sessionId) {
+    try {
+      const sessionRow = db
+        .prepare('SELECT id, user_id, is_revoked, expires_at FROM auth_sessions WHERE id = ?')
+        .get(sessionId) as any;
+      if (sessionRow) {
+        if (sessionRow.user_id !== userId) {
+          return { active: false, foundInDb: true };
+        }
+        if (sessionRow.is_revoked === 1 || sessionRow.is_revoked === true) {
+          return { active: false, foundInDb: true };
+        }
+        if (isSessionExpired(sessionRow.expires_at)) {
+          return { active: false, foundInDb: true };
+        }
+      } else {
+        if (!isTestMode()) {
+          return { active: false, foundInDb: true };
+        }
+        const hasAnySession = db
+          .prepare('SELECT 1 FROM auth_sessions WHERE user_id = ? LIMIT 1')
+          .get(userId);
+        if (hasAnySession) {
+          return { active: false, foundInDb: true };
+        }
+      }
+    } catch {}
+  }
+
+  return {
+    active: true,
+    role: userRow.role as CommercialRole | undefined,
+    email: userRow.email as string | undefined,
+    foundInDb: true,
+  };
+}
+
+export async function verifyPostgresOrSqliteUserAndSessionAsync(
+  userId: string,
+  sessionId?: string
+): Promise<{ active: boolean; role?: CommercialRole; email?: string; foundInDb: boolean }> {
+  if (!isPostgresConfigured()) {
+    return verifySqliteUserAndSession(userId, sessionId);
+  }
+
+  const prisma = getPrismaClient() as any;
+  const repo = getCentralRepository();
+
+  let userRow: any = null;
+  let userLookupRan = false;
+  try {
+    if (typeof repo.findAuthUserById === 'function') {
+      userLookupRan = true;
+      userRow = await repo.findAuthUserById(userId);
+    }
+  } catch {
+    userLookupRan = false;
+  }
+
+  if (!userRow && typeof repo.findCommercialUserById === 'function') {
+    try {
+      const commRow = await repo.findCommercialUserById(userId);
+      if (commRow) userRow = commRow;
+    } catch {}
+  }
+
+  if (userRow) {
+    if (isBlockedStatus(userRow.status)) {
+      return { active: false, foundInDb: true };
+    }
+  } else if (userLookupRan) {
+    if (!isTestMode() || sessionId) {
+      return { active: false, foundInDb: false };
+    }
+    return { active: true, foundInDb: false };
+  }
+
+  if (sessionId && prisma?.auth_sessions && typeof prisma.auth_sessions.findUnique === 'function') {
+    try {
+      const sessionRow = await prisma.auth_sessions.findUnique({
+        where: { id: sessionId },
+      });
+      if (sessionRow) {
+        if (sessionRow.user_id !== userId) {
+          return { active: false, foundInDb: true };
+        }
+        if (sessionRow.is_revoked === 1 || sessionRow.is_revoked === true) {
+          return { active: false, foundInDb: true };
+        }
+        if (isSessionExpired(sessionRow.expires_at)) {
+          return { active: false, foundInDb: true };
+        }
+      } else {
+        if (!isTestMode()) {
+          return { active: false, foundInDb: true };
+        }
+        if (typeof prisma.auth_sessions.count === 'function') {
+          const totalSessions = await prisma.auth_sessions.count({
+            where: { user_id: userId },
+          });
+          if (totalSessions > 0) {
+            return { active: false, foundInDb: true };
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return {
+    active: true,
+    role: (userRow?.role as CommercialRole | undefined) || undefined,
+    email: (userRow?.email as string | undefined) || undefined,
+    foundInDb: Boolean(userRow),
+  };
+}
+
+export function getAuthUser(
+  req: http.IncomingMessage
+): { userId: string; email: string; role: CommercialRole; sessionId?: string } | null {
+  const token = extractBearerHeaderToken(req);
+  if (!token) return null;
+
+  const centralPayload = verifyAccessToken(token);
+  if (centralPayload) {
+    if (!isPostgresConfigured()) {
+      const check = verifySqliteUserAndSession(centralPayload.userId, centralPayload.sessionId);
+      if (!check.active) return null;
       return {
         userId: centralPayload.userId,
-        email: centralPayload.email,
-        role: centralPayload.role as CommercialRole,
+        email: check.email || centralPayload.email,
+        role: check.role || (centralPayload.role as CommercialRole),
         sessionId: centralPayload.sessionId,
       };
     }
-    return verifyToken(token);
+    return {
+      userId: centralPayload.userId,
+      email: centralPayload.email,
+      role: centralPayload.role as CommercialRole,
+      sessionId: centralPayload.sessionId,
+    };
   }
-  return null;
+
+  const legacyPayload = verifyToken(token);
+  if (!legacyPayload) return null;
+  if (!isPostgresConfigured()) {
+    const check = verifySqliteUserAndSession(legacyPayload.userId);
+    if (!check.active) return null;
+    return {
+      userId: legacyPayload.userId,
+      email: check.email || legacyPayload.email,
+      role: check.role || legacyPayload.role,
+    };
+  }
+  return legacyPayload;
+}
+
+export async function getAuthUserAsync(
+  req: http.IncomingMessage
+): Promise<{ userId: string; email: string; role: CommercialRole; sessionId?: string } | null> {
+  const token = extractBearerHeaderToken(req);
+  if (!token) return null;
+
+  const centralPayload = verifyAccessToken(token);
+  if (centralPayload) {
+    const check = await verifyPostgresOrSqliteUserAndSessionAsync(
+      centralPayload.userId,
+      centralPayload.sessionId
+    );
+    if (!check.active) return null;
+    return {
+      userId: centralPayload.userId,
+      email: check.email || centralPayload.email,
+      role: check.role || (centralPayload.role as CommercialRole),
+      sessionId: centralPayload.sessionId,
+    };
+  }
+
+  const legacyPayload = verifyToken(token);
+  if (!legacyPayload) return null;
+  const check = await verifyPostgresOrSqliteUserAndSessionAsync(legacyPayload.userId);
+  if (!check.active) return null;
+  return {
+    userId: legacyPayload.userId,
+    email: check.email || legacyPayload.email,
+    role: check.role || legacyPayload.role,
+  };
 }
 
 export function checkAdminAuth(
   req: http.IncomingMessage,
   body?: any,
   options?: { allowedRoles?: CommercialRole[] }
-): { isAdmin: boolean; actor: { id: string; name: string; role: CommercialRole } } {
+): { isAdmin: boolean; isNonStaff?: boolean; actor: { id: string; name: string; role: CommercialRole } } {
   const allowedRoles = options?.allowedRoles ?? ['SUPER_ADMIN', 'ADMIN'];
 
   // 1. Check JWT role (strictly forbid SUPPORT / BILLING from admin mutations by default)
@@ -92,6 +329,40 @@ export function checkAdminAuth(
 
   return {
     isAdmin: false,
+    isNonStaff: Boolean(user && !allowedRoles.includes(user.role)),
+    actor: { id: 'unknown', name: 'Unauthorized', role: 'USER' },
+  };
+}
+
+export async function checkAdminAuthAsync(
+  req: http.IncomingMessage,
+  body?: any,
+  options?: { allowedRoles?: CommercialRole[] }
+): Promise<{ isAdmin: boolean; isNonStaff: boolean; actor: { id: string; name: string; role: CommercialRole } }> {
+  const allowedRoles = options?.allowedRoles ?? ['SUPER_ADMIN', 'ADMIN'];
+
+  const user = await getAuthUserAsync(req);
+  if (user && allowedRoles.includes(user.role)) {
+    return {
+      isAdmin: true,
+      isNonStaff: false,
+      actor: { id: user.userId, name: user.email, role: user.role },
+    };
+  }
+
+  const headerSecret = req.headers['x-admin-secret'] as string;
+  const secret = headerSecret || (body && body.adminSecret) || '';
+  if (secret && (verifyAdminAccess(secret) || isValidAdminWebSecret(secret))) {
+    return {
+      isAdmin: true,
+      isNonStaff: false,
+      actor: { id: 'admin', name: 'Master Administrator', role: 'SUPER_ADMIN' },
+    };
+  }
+
+  return {
+    isAdmin: false,
+    isNonStaff: Boolean(user && !allowedRoles.includes(user.role)),
     actor: { id: 'unknown', name: 'Unauthorized', role: 'USER' },
   };
 }

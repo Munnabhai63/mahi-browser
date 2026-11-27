@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { URL } from 'node:url';
 import { sendJSON } from './routes/router-shared.js';
+import { sendSafeError } from '../utils/app-error.js';
 import { isTrustedOrigin } from '../server/cloud-gateway.js';
 import { resolveTrustedClientIp } from '../utils/http-security.js';
 import { handleRemoteApiRoutes } from './remote-api-router.js';
@@ -95,33 +96,38 @@ export async function handleCommercialApiRoutes(
   const routePath = isDirectAuth || isDirectMe ? `/api/v1${pathname}` : isDirectSync ? `/api${pathname}` : pathname;
   const clientIp = resolveTrustedClientIp(req);
 
-  // 1. Client Entitlement & Device Endpoints
-  if (await handleClientEntitlementRoutes(req, res, pathname, method, parsedUrl, routePath, clientIp)) {
+  try {
+    // 1. Client Entitlement & Device Endpoints
+    if (await handleClientEntitlementRoutes(req, res, pathname, method, parsedUrl, routePath, clientIp)) {
+      return true;
+    }
+
+    // 2. Billing & Payment Endpoints
+    if (await handlePaymentRoutes(req, res, pathname, method, parsedUrl, routePath, clientIp)) {
+      return true;
+    }
+
+    // 3. Central & Desktop Authentication Endpoints
+    if (await handleAuthRoutes(req, res, pathname, method, parsedUrl, routePath, clientIp)) {
+      return true;
+    }
+
+    // 4. Administration & Owner Step-Up Console
+    if (await handleAdminOwnerRoutes(req, res, pathname, method, parsedUrl, routePath, clientIp)) {
+      return true;
+    }
+
+    // 5. Cloud Sync, Storage & Team Workspaces
+    if (await handleCloudSyncRoutes(req, res, pathname, method, parsedUrl, routePath, clientIp)) {
+      return true;
+    }
+
+    sendJSON(res, 404, { success: false, error: `Endpoint ${method} ${pathname} not found.` });
+    return true;
+  } catch (err) {
+    sendSafeError(res, err, { fallbackStatus: 500 });
     return true;
   }
-
-  // 2. Billing & Payment Endpoints
-  if (await handlePaymentRoutes(req, res, pathname, method, parsedUrl, routePath, clientIp)) {
-    return true;
-  }
-
-  // 3. Central & Desktop Authentication Endpoints
-  if (await handleAuthRoutes(req, res, pathname, method, parsedUrl, routePath, clientIp)) {
-    return true;
-  }
-
-  // 4. Administration & Owner Step-Up Console
-  if (await handleAdminOwnerRoutes(req, res, pathname, method, parsedUrl, routePath, clientIp)) {
-    return true;
-  }
-
-  // 5. Cloud Sync, Storage & Team Workspaces
-  if (await handleCloudSyncRoutes(req, res, pathname, method, parsedUrl, routePath, clientIp)) {
-    return true;
-  }
-
-  sendJSON(res, 404, { success: false, error: `Endpoint ${method} ${pathname} not found.` });
-  return true;
 }
 
 export async function handleCommercialAPIRequest(

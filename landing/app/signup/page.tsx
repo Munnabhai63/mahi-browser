@@ -75,31 +75,42 @@ export default function SignupPage() {
         }
 
         if (isUsdPaidFlow && token) {
-          const checkoutResp = await fetch(`${BRAND.apiUrl}/api/v1/billing/checkout`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              planId,
-              billingCycle: cycle,
-              provider: 'stripe',
-              currency: 'USD',
-              successUrl: `${BRAND.website}/pricing?status=success&plan=${encodeURIComponent(planId)}&currency=USD`,
-              cancelUrl: `${BRAND.website}/pricing?plan=${encodeURIComponent(planId)}&currency=USD`,
-            }),
-          });
-          const checkoutData = await checkoutResp.json().catch(() => ({}));
-          if (checkoutResp.ok && checkoutData?.checkoutUrl) {
-            window.location.href = checkoutData.checkoutUrl;
-            return;
+          let stripeEnabled = false;
+          try {
+            const gwResp = await fetch(`${BRAND.apiUrl}/api/v1/billing/gateways`);
+            if (gwResp.ok) {
+              const gwData = await gwResp.json();
+              stripeEnabled = Boolean(
+                Array.isArray(gwData?.gateways) &&
+                  gwData.gateways.find((g: any) => g.id === 'stripe')?.enabled
+              );
+            }
+          } catch {}
+
+          if (stripeEnabled) {
+            const checkoutResp = await fetch(`${BRAND.apiUrl}/api/v1/billing/checkout`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                planId,
+                billingCycle: cycle,
+                provider: 'stripe',
+                currency: 'USD',
+                successUrl: `${BRAND.website}/pricing?status=success&plan=${encodeURIComponent(planId)}&currency=USD`,
+                cancelUrl: `${BRAND.website}/pricing?plan=${encodeURIComponent(planId)}&currency=USD`,
+              }),
+            });
+            const checkoutData = await checkoutResp.json().catch(() => ({}));
+            if (checkoutResp.ok && checkoutData?.checkoutUrl) {
+              window.location.href = checkoutData.checkoutUrl;
+              return;
+            }
           }
-          setErrorMsg(
-            typeof checkoutData?.error === 'string'
-              ? checkoutData.error
-              : 'Account created, but USD Stripe checkout could not be initialized. Return to Pricing or switch to INR UPI.'
-          );
+
+          window.location.href = `/pricing?plan=${encodeURIComponent(planId)}&currency=USD&autoCheckout=1`;
           return;
         }
 

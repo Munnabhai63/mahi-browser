@@ -205,13 +205,16 @@ describe('Layer 2: SOCKS5 Authenticated Tunnel & CDP Debug Port Hardening', () =
     });
     cleanups.push(() => mockSocks.close());
 
-    const badRes = await testProxy({
-      host: '127.0.0.1',
-      port: mockSocks.port,
-      protocol: 'socks5',
-      username: 'good',
-      password: 'wrong',
-    });
+    const badRes = await testProxy(
+      {
+        host: '127.0.0.1',
+        port: mockSocks.port,
+        protocol: 'socks5',
+        username: 'good',
+        password: 'wrong',
+      },
+      { allowPrivateTargets: true }
+    );
     expect(badRes.success).toBe(false);
     expect(badRes.errorCode).toBe('AUTHENTICATION_FAILED');
   });

@@ -451,6 +451,7 @@ export interface MahiBrowserAPI {
   accountGetPricingCatalog?: () => Promise<{ success: boolean; catalog?: any; error?: string }>;
   accountCreateCheckoutSession?: (payload: any) => Promise<{ success: boolean; session?: any; error?: string }>;
   accountSubmitManualUpiPayment: (payload: { plan_id: string; utr: string; proof_asset?: string; billing_cycle?: string; amount_paise?: number; extra_members?: number; extra_proxy_gb?: number }) => Promise<{ success: boolean; payment_id?: string; status?: string; message?: string; error?: string }>;
+  accountSubmitManualCryptoPayment?: (payload: { plan_id: string; tx_hash: string; network?: string; proof_asset?: string; billing_cycle?: string; extra_members?: number; extra_proxy_gb?: number }) => Promise<{ success: boolean; payment_id?: string; status?: string; tx_hash?: string; message?: string; error?: string }>;
   accountGetPaymentStatus?: () => Promise<{ success: boolean; payments?: any[]; error?: string }>;
   accountGetSession: () => Promise<any>;
   accountGetPlanLimits: (dto?: { force?: boolean }) => Promise<{ isPro: boolean; plan: string; maxProfiles: number; expiresAt: string | null }>;

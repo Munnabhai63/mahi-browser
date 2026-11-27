@@ -10,6 +10,7 @@ import cors from '@fastify/cors';
 import { isPostgresConfigured, checkPostgresHealth, disconnectPrisma } from '../../06_DATABASE/prisma-client.js';
 import { isRedisConfigured, checkRedisHealth, disconnectRedis } from '../../08_SECURITY/redis-lock-service.js';
 import { getStorageProvider } from '../../08_SECURITY/storage-provider.js';
+import { applyFastifySecurityHeaders, applyNodeSecurityHeaders } from '../utils/security-headers.js';
 import { handleCentralApiRequest } from './app.js';
 
 export interface FastifyGatewayOptions {
@@ -103,12 +104,8 @@ export async function createFastifyCloudGateway(
   });
 
   // 2. Security Headers (Section 2 & Production Hardening)
-  app.addHook('onSend', async (_request, reply) => {
-    reply.header('X-Content-Type-Options', 'nosniff');
-    reply.header('X-Frame-Options', 'DENY');
-    reply.header('X-XSS-Protection', '1; mode=block');
-    reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
-    reply.header('X-Gateway-Engine', 'Fastify-Node22');
+  app.addHook('onSend', async (request, reply) => {
+    applyFastifySecurityHeaders(reply, request.url || '/');
   });
 
   // 3. Application/JSON Parser with Empty Body Toleration
@@ -210,11 +207,7 @@ export async function createFastifyCloudGateway(
     const res = reply.raw;
 
     // Explicitly set security headers on hijacked responses
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('X-Gateway-Engine', 'Fastify-Node22');
+    applyNodeSecurityHeaders(res, req.url || '/');
 
     // Compute validated CORS headers for hijacked responses
     const origin = (req.headers.origin as string) || '';

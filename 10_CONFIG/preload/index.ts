@@ -380,6 +380,7 @@ const api: MahiBrowserAPI = {
   accountGetPricingCatalog: () => ipcRenderer.invoke('account:getPricingCatalog'),
   accountCreateCheckoutSession: (payload: any) => ipcRenderer.invoke('account:createCheckoutSession', payload),
   accountSubmitManualUpiPayment: (payload: any) => ipcRenderer.invoke('account:submitManualUpiPayment', payload),
+  accountSubmitManualCryptoPayment: (payload: any) => ipcRenderer.invoke('account:submitManualCryptoPayment', payload),
   accountGetPaymentStatus: () => ipcRenderer.invoke('account:getPaymentStatus'),
   accountGetSession: () => ipcRenderer.invoke('account:getSession'),
   accountGetPlanLimits: (dto?: { force?: boolean }) => ipcRenderer.invoke('account:getPlanLimits', dto),

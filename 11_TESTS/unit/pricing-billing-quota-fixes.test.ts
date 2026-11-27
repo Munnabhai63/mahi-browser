@@ -11,7 +11,7 @@ import {
   resolveSubscriptionDurationDays,
   normalizeBillingCycle,
 } from '../../07_BACKEND/commercial/canonical-plan-catalog.js';
-import { paymentService } from '../../07_BACKEND/commercial/payment-service.js';
+import { paymentService, YoupiPgPaymentAdapter } from '../../07_BACKEND/commercial/payment-service.js';
 import { registerUser } from '../../07_BACKEND/commercial/commercial-auth-service.js';
 import {
   evaluateUserEntitlements,
@@ -391,6 +391,92 @@ describe('Pricing, Billing, Redirect & Runtime Quota Remediation Suite', () => {
       const ent = evaluateUserEntitlements(reg.user!.id);
       expect(ent.plan.tier).toBe('FREE');
       expect(ent.limits.maxProfiles).toBe(15);
+    });
+  });
+
+  describe('5. USDT (TRC-20) Crypto Submission & OviPay Webhook Correlation', () => {
+    it('validates 64-char TRC-20 TX hashes, charges exact USD cents, blocks duplicates, and activates Growth 180d on approval', async () => {
+      const reg = registerUser({ email: `usdt-${Date.now()}@test.com`, password: 'Password123!' });
+      const userId = reg.user!.id;
+
+      await expect(
+        paymentService.submitManualCryptoPayment({
+          userId,
+          planId: 'growth',
+          billingCycle: 'SEMI_ANNUAL',
+          txHash: 'too-short',
+        })
+      ).rejects.toThrow(/INVALID_TX_HASH/);
+
+      const txHash = 'a'.repeat(64);
+      const subRes = await paymentService.submitManualCryptoPayment({
+        userId,
+        planId: 'growth',
+        billingCycle: 'SEMI_ANNUAL',
+        txHash,
+      });
+      expect(subRes.status).toBe('PENDING_VERIFICATION');
+      expect(subRes.amountCents).toBe(1500);
+      expect(subRes.currency).toBe('USD');
+      expect(subRes.walletAddress).toBe('TPerRUMbJtNSmcRoBcQt1PpNpYCrEd5ziA');
+
+      await expect(
+        paymentService.submitManualCryptoPayment({
+          userId,
+          planId: 'growth',
+          billingCycle: 'SEMI_ANNUAL',
+          txHash,
+        })
+      ).rejects.toThrow(/TX_HASH_ALREADY_EXISTS/);
+
+      const admin = { id: 'admin-crypto', name: 'Admin', role: 'OWNER' };
+      await paymentService.approveManualPayment(subRes.paymentId, admin);
+      const activeSub = paymentService.getUserSubscription(userId);
+      expect(activeSub).not.toBeNull();
+      expect(activeSub!.planId).toBe('mahi_growth');
+      expect(activeSub!.paymentProvider).toBe('manual_usdt_trc20');
+      const days = Math.round(
+        (new Date(activeSub!.expiresAt).getTime() - new Date(activeSub!.startsAt).getTime()) / 86400000
+      );
+      expect(days).toBe(180);
+    });
+
+    it('correlates OviPay webhooks without metadata back to the pending checkout order', async () => {
+      const reg = registerUser({ email: `ovipay-${Date.now()}@test.com`, password: 'Password123!' });
+      const userId = reg.user!.id;
+
+      const checkout = await paymentService.createCheckoutSession(
+        {
+          userId,
+          planId: 'mahi_ultimate',
+          billingCycle: 'ANNUAL',
+          currency: 'INR',
+          idempotencyKey: `ovi_order_${Date.now()}`,
+        },
+        'youpi_pg'
+      );
+
+      const secret = 'whsec_test_ovipay_correlation';
+      const payload = JSON.stringify({
+        event: 'SUCCESS',
+        orderId: checkout.orderId,
+        paymentId: checkout.sessionId,
+        amount: 1499,
+        amountPaise: 149900,
+        currency: 'INR',
+        utr: '412345678901',
+        status: 'SUCCESS',
+        metadata: null,
+        timestamp: new Date().toISOString(),
+      });
+      const sig = new YoupiPgPaymentAdapter().signPayload(payload, secret);
+
+      const whRes = await paymentService.handleWebhook('youpi_pg', payload, sig, { secret });
+      expect(whRes.success).toBe(true);
+      const sub = paymentService.getUserSubscription(userId);
+      expect(sub).not.toBeNull();
+      expect(sub!.planId).toBe('mahi_ultimate');
+      expect(sub!.billingCycle).toBe('ANNUAL');
     });
   });
 });

@@ -1,5 +1,35 @@
 # Progress Tracker
 
+## Production Recovery, OviPay & USDT (TRC-20) Deployment (2026-11-27)
+- [x] **VPS Live Recovery (`mahibrowser.com`, `api.mahibrowser.com`, `app.mahibrowser.com`):**
+  - Restored Supabase connectivity by creating least-privilege `mahi_gateway` role (verified via Session Pooler IPv4 `aws-0-ap-south-1.pooler.supabase.com:5432`, resolving Docker IPv6 unreachable errors and `pg` TLS chain verification via `?uselibpqcompat=true&sslmode=require`).
+  - Rebuilt & started `mahibrowser_gateway` (`127.0.0.1:8989`, healthy) + `mahibrowser_redis` (healthy), deployed updated `landing/out` and `dist` web dashboard, resolving user `HTTP 502` on desktop/web Sign In & Sign Up.
+  - Temporarily enabled `STORAGE_PROVIDER=local` (`LOCAL_STORAGE_SECRET`) until production Cloudflare R2 credentials are supplied.
+- [x] **OviPay UPI Gateway Restored (`https://ovipay.oviaxe.com`):**
+  - Diagnosed `pay.oviaxe.com` returning Vercel `HTTP 402 DEPLOYMENT_DISABLED` + Cloudflare `1033` and restored sovereign OviPay (`F:\UserData\Downloads\ai-power-tools\OviPay`) onto VPS `/opt/ovipay` (`127.0.0.1:6100` PM2 `ovipay`), backed by Neon Postgres merchant `ca67904f-1bf9-4bba-830a-b53921a3a8d2` and matching `api_key`/`webhook_secret`.
+  - Added `/api/v1/commercial/checkout/webhook` + `/api/v1/commercial/checkout/webhook/youpi` aliases and metadata-less OviPay order correlation in `07_BACKEND/commercial/payment-service.ts`.
+- [x] **USDT (TRC-20) Payment Flow (`10_CONFIG/contact-config.ts`, `payment-service.ts`, `payment-routes.ts`, `AccountModal.tsx`, `PricingView.tsx`):**
+  - Enabled `USDT_ENABLED = true` for wallet `TPerRUMbJtNSmcRoBcQt1PpNpYCrEd5ziA` (`TRC-20 (TRON)`), generated bundled QR PNGs (`public/brand/mahi-usdt-trc20-qr.png`, `landing/public/assets/img/payments/mahi-usdt-trc20-qr.png`), exposed `/api/v1/billing/gateways` (`usdt_trc20`) and `POST /api/v1/account/payments/crypto/submit` (64-char hex TX hash validation, authoritative USD cents pricing, duplicate rejection), and wired Desktop + Landing USD checkouts cleanly.
+- [x] **Typecheck & Strict-Zod CI Fixes:**
+  - Resolved TypeScript narrowing errors and pre-existing strict Zod schema mismatches across `commercial-schemas.ts`, `auth-routes.ts`, `admin-owner-routes.ts`, `cloud-sync-routes.ts`, `proxy-security.ts`, and `app-error.ts`.
+  - **Verification:** `npm run typecheck`, `npm run build:gateway`, `npx vite build`, `npm --prefix landing run build`, `npm run test:ci` (`160 passed | 2 skipped`, `1413 passed | 22 skipped`), and live HTTPS checks across all endpoints (`200 OK`, auth login DB probe `401 Invalid email or password.`).
+
+## Phase 1: Critical Security Hardening — P0 (2026-11-27)
+- [x] **Owner TOTP Bypass Removal & Non-Staff 404 Masking (`owner-totp-service.ts`, `admin-owner-routes.ts`, `router-shared.ts`):**
+  - Removed `'testing-bypass'` and `'bypass'` fallbacks from `isOwnerSession()` and `getOwnerSessionCookie()`.
+  - Added `requireAdminAccess()` returning real HTTP `404` for authenticated non-staff (`USER`/`SUPPORT`/`BILLING`) across admin routes and real `404` (`hideUnauthenticated: true`) for all non-admins on `/api/v1/admin/owner/*` while preserving `403` for unauthenticated callers on standard `/api/v1/admin/*` endpoints.
+- [x] **Immediate Session & User Status Revocation (`router-shared.ts`, `auth-middleware.ts`, `remote-api-router.ts`, commercial routes):**
+  - Added `verifySqliteUserAndSession()`, `verifyPostgresOrSqliteUserAndSessionAsync()`, `getAuthUserAsync()`, and `checkAdminAuthAsync()` verifying active user status (`ACTIVE`, blocking `BANNED`/`SUSPENDED`/`DISABLED`), unrevoked non-expired `auth_sessions`, and syncing latest DB `role`.
+  - Rolled out `await getAuthUserAsync(req)` across `auth-routes.ts`, `payment-routes.ts`, `client-entitlement-routes.ts`, `cloud-sync-routes.ts`, and `admin-owner-routes.ts`.
+- [x] **Proxy SSRF, DNS Rebinding & TLS/HTTPS Hardening (`proxy-security.ts`, `proxy-test-service.ts`, `layer2-network-cdp.test.ts`, `network-connectivity-audit.test.ts`):**
+  - Added `isBlockedIpAddress`, `assertSafeProxyTargetSyntax`, and `assertSafeProxyTargetRuntime` blocking loopback, RFC1918, CGNAT, link-local, AWS/GCP cloud metadata IPs (`169.254.169.254`, `metadata.google.internal`), IPv4-mapped IPv6, NAT64, obfuscated integer/octal IPs, and DNS rebinding (pinning resolved public IP for socket connection).
+  - Enforced `rejectUnauthorized: process.env.MAHI_ALLOW_SELF_SIGNED_PROXY !== '1'` in `testSocks5ThroughProxy` and removed plaintext `http://ip-api.com` from `resolveGeoLocation()` (HTTPS-only `freeipapi.com`, `ipapi.co`, `ipwho.is`).
+- [x] **Strict Zod Payload Validation & Safe AppError Mapping (`app-error.ts`, `commercial-schemas.ts`, `commercial-api-router.ts`, route handlers):**
+  - Enforced `z.strictObject()` schemas (`validateStrictBody` using `z.flattenError`) across commercial/admin POST/PUT payloads and replaced raw `err.message` HTTP responses with `sendSafeError()` / `toSafeErrorResponse()` masking internal SQLite/Prisma/stack/path exceptions while preserving domain error codes (`TERMS_NOT_ACCEPTED`, `UTR_ALREADY_EXISTS`, etc.).
+- [x] **Centralized Startup CloudEnv Validation & Strict CSP/Security Headers (`cloud-env.ts`, `start-gateway.ts`, `security-headers.ts`, `cloud-gateway.ts`, `app.ts`, `nginx-production.conf`):**
+  - Added Zod `getCloudEnv()` / `validateCloudEnv()` failing fast in non-Electron `production` on weak/missing secrets, `PAYMENT_ALLOW_TEST_ADAPTERS=true`, `PAYMENT_PROVIDER=simulation`, `CORS_ALLOW_ALL=true`, unpaired Google OAuth creds, missing `LOCAL_STORAGE_SECRET`, or non-`https://` `APP_URL`/`API_URL`.
+  - Tightened API (`default-src 'none'`) and HTML portal CSPs alongside `Permissions-Policy`, `Cross-Origin-Opener-Policy`, `Cache-Control: no-store`, and `nginx-production.conf` headers (preserving `X-Gateway-Engine: Fastify-Node22`), verified by `11_TESTS/unit/phase1-security-hardening-p0.test.ts`.
+
 ## Pricing, Billing, Redirect & Runtime Quota Remediation (2026-11-27)
 - [x] **Authoritative Billing Amounts & Term Durations (`canonical-plan-catalog.ts`, `commercial-plan-service.ts`, `payment-service.ts`, `payment-routes.ts`, `pricing-admin-service.ts`):**
   - Fixed `calculateAuthoritativeOrderTotal` so fixed-term `mahi_starter` (`₹599`/`$9`, 30d/90d), `mahi_growth` (`₹999`/`$15`, 180d `SEMI_ANNUAL`), and `mahi_ultimate` (`₹1,499`/`$24`, 365d `ANNUAL`) read authoritative term pricing directly instead of double-discounting.

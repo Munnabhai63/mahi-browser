@@ -1,7 +1,32 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { URL } from 'node:url';
-import { sendJSON, parseBody, checkAdminAuth, getAuthUser, resolveTrustedClientIp } from './router-shared.js';
+import { sendJSON, parseBody, checkAdminAuthAsync, resolveTrustedClientIp } from './router-shared.js';
+import { CommercialRole } from '../../../10_CONFIG/shared/types/commercial.js';
+import { sendSafeError, validateStrictBody } from '../../utils/app-error.js';
+import {
+  SupportChatSchema,
+  AdminDemoStatusSchema,
+  AdminSupportStatusSchema,
+  AdminSupportReplySchema,
+  AdminUserStatusSchema,
+  AdminUserPlanSchema,
+  AdminBoostQuotaSchema,
+  AdminFeatureOverridesSchema,
+  AdminCreatePlanSchema,
+  AdminUpdatePlanSchema,
+  AdminPricingDraftSchema,
+  AdminPricingPublishSchema,
+  AdminActionSecretOnlySchema,
+  AdminRevokeLicenseSchema,
+  AdminExtendLicenseSchema,
+  AdminPublishVersionSchema,
+  AdminPaymentDecisionSchema,
+  OwnerVerifySchema,
+  OwnerGrantSchema,
+  OwnerPlanMutationSchema,
+  OwnerUserMutationSchema,
+} from '../validation/commercial-schemas.js';
 import {
   adminGetDashboardSummary,
   adminListUsers,
@@ -86,6 +111,27 @@ import {
 import { paymentService, resolveCommercialPlan } from '../payment-service.js';
 import { revokeCommercialDevice, resetAllUserDevices, getAllCommercialDevices } from '../commercial-device-service.js';
 
+async function requireAdminAccess(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  body?: any,
+  options?: { hideUnauthenticated?: boolean; forbiddenMessage?: string }
+): Promise<{ ok: true; actor: { id: string; name: string; role: CommercialRole } } | { ok: false }> {
+  const authRes = await checkAdminAuthAsync(req, body);
+  if (authRes.isAdmin) {
+    return { ok: true, actor: authRes.actor };
+  }
+  if (authRes.isNonStaff || options?.hideUnauthenticated) {
+    sendJSON(res, 404, { success: false, error: 'Not found.' });
+    return { ok: false };
+  }
+  sendJSON(res, 403, {
+    success: false,
+    error: options?.forbiddenMessage || 'Forbidden. Admin privileges required.',
+  });
+  return { ok: false };
+}
+
 export async function handleAdminOwnerRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -96,11 +142,8 @@ export async function handleAdminOwnerRoutes(
   clientIp: string
 ): Promise<boolean> {
   if (routePath === '/api/v1/commercial/admin/demo-requests' && method === 'GET') {
-    const adminAuth = checkAdminAuth(req);
-    if (!adminAuth.isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Admin authorization required' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res, undefined, { forbiddenMessage: 'Admin authorization required' });
+    if (!adminGate.ok) return true;
     const statusFilter = parsedUrl.searchParams.get('status') as DemoRequestStatus | undefined;
     const { items: leads } = await adminListDemoRequests({ status: statusFilter });
     sendJSON(res, 200, { success: true, data: leads });
@@ -110,14 +153,14 @@ export async function handleAdminOwnerRoutes(
   // Admin: Update Demo Request Status
   const demoStatusMatch = routePath.match(/^\/api\/v1\/commercial\/admin\/demo-requests\/([a-zA-Z0-9_-]+)\/status$/);
   if (demoStatusMatch && method === 'PUT') {
-    const adminAuth = checkAdminAuth(req);
-    if (!adminAuth.isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Admin authorization required' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res, undefined, { forbiddenMessage: 'Admin authorization required' });
+    if (!adminGate.ok) return true;
     const demoId = demoStatusMatch[1];
-    const body = await parseBody(req);
-    const result = updateDemoRequestStatus(demoId, body.status, body.adminNotes, adminAuth.actor.name);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(AdminDemoStatusSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
+    const result = updateDemoRequestStatus(demoId, body.status as any, body.adminNotes, adminGate.actor.name);
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
   }
@@ -127,19 +170,18 @@ export async function handleAdminOwnerRoutes(
     (routePath === '/api/v1/commercial/support/chat' || routePath === '/api/v1/support/chat') &&
     method === 'POST'
   ) {
-    const body = await parseBody(req);
-    const result = await handleSupportChatMessage(body);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(SupportChatSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const result = await handleSupportChatMessage(parsed.data as any);
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
   }
 
   // Phase 20: Admin: List Support Tickets
   if (routePath === '/api/v1/commercial/admin/support-tickets' && method === 'GET') {
-    const adminAuth = checkAdminAuth(req);
-    if (!adminAuth.isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Admin authorization required' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res, undefined, { forbiddenMessage: 'Admin authorization required' });
+    if (!adminGate.ok) return true;
     const status = parsedUrl.searchParams.get('status') || undefined;
     const category = parsedUrl.searchParams.get('category') || undefined;
     const escalatedOnly = parsedUrl.searchParams.get('escalatedOnly') === 'true';
@@ -151,14 +193,14 @@ export async function handleAdminOwnerRoutes(
   // Phase 20: Admin: Update Support Ticket Status
   const ticketStatusMatch = routePath.match(/^\/api\/v1\/commercial\/admin\/support-tickets\/([a-zA-Z0-9_-]+)\/status$/);
   if (ticketStatusMatch && method === 'PUT') {
-    const adminAuth = checkAdminAuth(req);
-    if (!adminAuth.isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Admin authorization required' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res, undefined, { forbiddenMessage: 'Admin authorization required' });
+    if (!adminGate.ok) return true;
     const ticketId = ticketStatusMatch[1];
-    const body = await parseBody(req);
-    const result = updateSupportTicketStatus(ticketId, body.status, body.adminNotes, adminAuth.actor.name);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(AdminSupportStatusSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
+    const result = updateSupportTicketStatus(ticketId, body.status as any, body.adminNotes, adminGate.actor.name);
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
   }
@@ -166,39 +208,33 @@ export async function handleAdminOwnerRoutes(
   // Phase 23: Admin: Reply to Support Ticket
   const ticketReplyMatch = routePath.match(/^\/api\/v1\/commercial\/admin\/support-tickets\/([a-zA-Z0-9_-]+)\/reply$/);
   if (ticketReplyMatch && method === 'POST') {
-    const adminAuth = checkAdminAuth(req);
-    if (!adminAuth.isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Admin authorization required' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res, undefined, { forbiddenMessage: 'Admin authorization required' });
+    if (!adminGate.ok) return true;
     const ticketId = ticketReplyMatch[1];
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(AdminSupportReplySchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     if (!body.reply || typeof body.reply !== 'string' || !body.reply.trim()) {
       sendJSON(res, 400, { success: false, error: 'Reply text is required.' });
       return true;
     }
-    const result = replySupportTicket(ticketId, body.reply.trim(), body.status || 'RESOLVED', body.adminNotes, adminAuth.actor.name);
+    const result = replySupportTicket(ticketId, body.reply.trim(), (body.status || 'RESOLVED') as any, body.adminNotes, adminGate.actor.name);
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
   }
 
   if (routePath === '/api/v1/commercial/admin/funnel-metrics' && method === 'GET') {
-    const adminAuth = checkAdminAuth(req);
-    if (!adminAuth.isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Admin authorization required' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res, undefined, { forbiddenMessage: 'Admin authorization required' });
+    if (!adminGate.ok) return true;
     const metrics = await adminFunnelMetrics();
     sendJSON(res, 200, { success: true, data: metrics });
     return true;
   }
 
   if (pathname === '/api/v1/admin/dashboard' && method === 'GET') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
 
     const stats = await adminGetDashboardSummary();
     sendJSON(res, 200, { success: true, data: stats });
@@ -209,11 +245,8 @@ export async function handleAdminOwnerRoutes(
   // 7. ADMIN USER MANAGEMENT (Protected)
   // -------------------------------------------------------------
   if (pathname === '/api/v1/admin/users' && method === 'GET') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
     const status = parsedUrl.searchParams.get('status') || undefined;
     const role = parsedUrl.searchParams.get('role') || undefined;
     const search = parsedUrl.searchParams.get('search') || undefined;
@@ -227,11 +260,8 @@ export async function handleAdminOwnerRoutes(
 
   // Terms Acceptance & Legal Compliance Summary
   if (pathname === '/api/v1/admin/terms-compliance' && method === 'GET') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
 
     const data = await adminTermsCompliance();
     sendJSON(res, 200, {
@@ -243,13 +273,14 @@ export async function handleAdminOwnerRoutes(
 
   const userStatusMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_:-]+)\/status$/);
   if (userStatusMatch && (method === 'PUT' || method === 'POST')) {
-    const { isAdmin, actor } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
+    const { actor } = adminGate;
     const userId = userStatusMatch[1];
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(AdminUserStatusSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data as any;
     const prisma = isPostgresConfigured();
     if (prisma) {
       const r = await adminSetUserStatus(userId, body.status, actor, body.reason);
@@ -273,13 +304,14 @@ export async function handleAdminOwnerRoutes(
 
   const userPlanMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_:-]+)\/plan$/);
   if (userPlanMatch && (method === 'PUT' || method === 'POST')) {
-    const { isAdmin, actor } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
+    const { actor } = adminGate;
     const userId = userPlanMatch[1];
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(AdminUserPlanSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     const prisma = isPostgresConfigured();
     if (prisma) {
       const r = await adminSetUserPlan(userId, body.planId, actor);
@@ -304,13 +336,14 @@ export async function handleAdminOwnerRoutes(
   // Phase 23: Admin Quota Booster (GoLogin Parity)
   const userBoostMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_:-]+)\/boost$/);
   if (userBoostMatch && method === 'POST') {
-    const { isAdmin, actor } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
+    const { actor } = adminGate;
     const userId = userBoostMatch[1];
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(AdminBoostQuotaSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data as any;
     const prisma = isPostgresConfigured();
     if (prisma) {
       const r = await adminBoostQuota(userId, body.type, body.amount, actor);
@@ -335,16 +368,20 @@ export async function handleAdminOwnerRoutes(
   // Phase 23: Admin Enterprise Feature Overrides (MostLogin Parity)
   const userFeaturesMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_:-]+)\/features$/);
   if (userFeaturesMatch && (method === 'PUT' || method === 'POST')) {
-    const { isAdmin, actor } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
+    const { actor } = adminGate;
     const userId = userFeaturesMatch[1];
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(AdminFeatureOverridesSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
+    const normalizedOverrides: Record<string, boolean> = Object.fromEntries(
+      Object.entries(body.overrides || {}).map(([k, v]) => [k, Boolean(v)])
+    );
     const prisma = isPostgresConfigured();
     if (prisma) {
-      const r = await adminSetFeatureOverrides(userId, body.overrides || {}, actor);
+      const r = await adminSetFeatureOverrides(userId, normalizedOverrides, actor);
       if (r.centralGone) {
         sendJSON(res, 409, {
           success: false,
@@ -358,7 +395,7 @@ export async function handleAdminOwnerRoutes(
       sendJSON(res, r.success ? 200 : 400, r);
       return true;
     }
-    const result = setUserFeatureOverrides(userId, body.overrides || {}, actor);
+    const result = setUserFeatureOverrides(userId, normalizedOverrides, actor);
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
   }
@@ -366,11 +403,9 @@ export async function handleAdminOwnerRoutes(
   // Phase 23: 1-Click HWID & Machine Unbind (GoLogin Parity)
   const userResetDevicesMatch = pathname.match(/^\/api\/v1\/admin\/users\/([a-zA-Z0-9_:-]+)\/reset-devices$/);
   if (userResetDevicesMatch && method === 'POST') {
-    const { isAdmin, actor } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
+    const { actor } = adminGate;
     const userId = userResetDevicesMatch[1];
     const prisma = isPostgresConfigured();
     if (prisma) {
@@ -397,38 +432,33 @@ export async function handleAdminOwnerRoutes(
   // 8. ADMIN PLANS MANAGEMENT (Protected)
   // -------------------------------------------------------------
   if (pathname === '/api/v1/admin/plans' && method === 'GET') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
     const { items: plans } = await adminListPlans(true);
     sendJSON(res, 200, { success: true, data: plans });
     return true;
   }
 
   if (pathname === '/api/v1/admin/plans' && method === 'POST') {
-    const body = await parseBody(req);
-    const { isAdmin, actor } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
-      return true;
-    }
-    const newPlan = createCommercialPlan(body, actor);
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody);
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(AdminCreatePlanSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const newPlan = createCommercialPlan(parsed.data as any, adminGate.actor);
     sendJSON(res, 201, { success: true, data: newPlan });
     return true;
   }
 
   const planIdMatch = pathname.match(/^\/api\/v1\/admin\/plans\/([a-zA-Z0-9_-]+)$/);
   if (planIdMatch && method === 'PUT') {
-    const body = await parseBody(req);
-    const { isAdmin, actor } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody);
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(AdminUpdatePlanSchema, rawBody, res);
+    if (!parsed.ok) return true;
     const planId = planIdMatch[1];
-    const updated = updateCommercialPlan(planId, body, actor);
+    const updated = updateCommercialPlan(planId, parsed.data as any, adminGate.actor);
     sendJSON(res, updated ? 200 : 404, { success: Boolean(updated), data: updated });
     return true;
   }
@@ -437,143 +467,121 @@ export async function handleAdminOwnerRoutes(
   // 8B. ADMIN PRICING VERSIONING & CATALOG (Protected)
   // -------------------------------------------------------------
   if (pathname === '/api/v1/admin/pricing/catalog' && method === 'GET') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
     try {
       const catalog = buildPlanCatalog();
       sendJSON(res, 200, { success: true, data: catalog });
     } catch (err: any) {
-      sendJSON(res, 500, { success: false, error: err.message });
+      sendSafeError(res, err, { fallbackStatus: 500 });
     }
     return true;
   }
 
   if (pathname === '/api/v1/admin/pricing/versions' && method === 'GET') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
     sendJSON(res, 200, { success: true, data: getAllPricingVersions() });
     return true;
   }
 
   if (pathname === '/api/v1/admin/pricing/active' && method === 'GET') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
     sendJSON(res, 200, { success: true, data: getActivePricingVersion() });
     return true;
   }
 
   if (pathname === '/api/v1/admin/pricing/draft' && method === 'POST') {
-    const body = await parseBody(req);
-    const { isAdmin, actor } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody);
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(AdminPricingDraftSchema, rawBody, res);
+    if (!parsed.ok) return true;
     try {
-      const draft = createPricingDraft(body, actor.id, actor.name);
+      const draft = createPricingDraft(parsed.data as any, adminGate.actor.id, adminGate.actor.name);
       sendJSON(res, 201, { success: true, data: draft });
     } catch (err: any) {
-      sendJSON(res, 400, { success: false, error: err.message });
+      sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
   }
 
   const pricingDraftUpdateMatch = pathname.match(/^\/api\/v1\/admin\/pricing\/draft\/(\d+)$/);
   if (pricingDraftUpdateMatch && method === 'PUT') {
-    const body = await parseBody(req);
-    const { isAdmin, actor } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody);
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(AdminPricingDraftSchema, rawBody, res);
+    if (!parsed.ok) return true;
     try {
       const version = parseInt(pricingDraftUpdateMatch[1], 10);
-      const updated = updatePricingDraft(version, body, actor.id, actor.name);
+      const updated = updatePricingDraft(version, parsed.data as any, adminGate.actor.id, adminGate.actor.name);
       sendJSON(res, updated ? 200 : 404, { success: Boolean(updated), data: updated });
     } catch (err: any) {
-      sendJSON(res, 400, { success: false, error: err.message });
+      sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
   }
 
   const pricingPreviewMatch = pathname.match(/^\/api\/v1\/admin\/pricing\/preview\/(\d+)$/);
   if (pricingPreviewMatch && method === 'GET') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
     try {
       const version = parseInt(pricingPreviewMatch[1], 10);
       const preview = previewPricingChanges(version);
       sendJSON(res, 200, { success: true, data: preview });
     } catch (err: any) {
-      sendJSON(res, 404, { success: false, error: err.message });
+      sendSafeError(res, err, { fallbackStatus: 404 });
     }
     return true;
   }
 
   const pricingPublishMatch = pathname.match(/^\/api\/v1\/admin\/pricing\/publish\/(\d+)$/);
   if (pricingPublishMatch && method === 'POST') {
-    const body = await parseBody(req);
-    const { isAdmin, actor } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody);
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(AdminPricingPublishSchema, rawBody, res);
+    if (!parsed.ok) return true;
     try {
       const version = parseInt(pricingPublishMatch[1], 10);
-      const resPublish = publishPricingVersion(version, actor.id, actor.name);
+      const resPublish = publishPricingVersion(version, adminGate.actor.id, adminGate.actor.name);
       sendJSON(res, resPublish.success ? 200 : 400, resPublish);
     } catch (err: any) {
-      sendJSON(res, 400, { success: false, error: err.message });
+      sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
   }
 
   const pricingRollbackMatch = pathname.match(/^\/api\/v1\/admin\/pricing\/rollback\/(\d+)$/);
   if (pricingRollbackMatch && method === 'POST') {
-    const body = await parseBody(req);
-    const { isAdmin, actor } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody);
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(AdminActionSecretOnlySchema, rawBody, res);
+    if (!parsed.ok) return true;
     try {
       const version = parseInt(pricingRollbackMatch[1], 10);
-      const rolledBack = rollbackPricing(version, actor.id, actor.name);
+      const rolledBack = rollbackPricing(version, adminGate.actor.id, adminGate.actor.name);
       sendJSON(res, rolledBack.success ? 200 : 400, rolledBack);
     } catch (err: any) {
-      sendJSON(res, 400, { success: false, error: err.message });
+      sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
   }
 
   if (pathname === '/api/v1/admin/pricing/revenue-summary' && method === 'GET') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
     sendJSON(res, 200, { success: true, data: getAdminRevenueSummary() });
     return true;
   }
 
   if (pathname === '/api/v1/admin/pricing/provider-sync-status' && method === 'GET') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Admin privileges required.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
     sendJSON(res, 200, { success: true, data: getProviderSyncStatus() });
     return true;
   }
@@ -582,11 +590,8 @@ export async function handleAdminOwnerRoutes(
   // 9. ADMIN LICENSE MANAGEMENT (Protected)
   // -------------------------------------------------------------
   if (pathname === '/api/v1/admin/licenses' && method === 'GET') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
     const status = parsedUrl.searchParams.get('status') || undefined;
     const search = parsedUrl.searchParams.get('search') || undefined;
     const { items: licenses } = await adminListLicenses({ status, searchQuery: search });
@@ -596,11 +601,8 @@ export async function handleAdminOwnerRoutes(
 
   if (pathname === '/api/v1/admin/licenses' && method === 'POST') {
     const body = await parseBody(req);
-    const { isAdmin } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res, body);
+    if (!adminGate.ok) return true;
     sendJSON(res, 403, {
       success: false,
       error: 'License minting is disabled in the app. Contact support.',
@@ -609,12 +611,12 @@ export async function handleAdminOwnerRoutes(
   }
 
   if (pathname === '/api/v1/admin/licenses/revoke' && method === 'POST') {
-    const body = await parseBody(req);
-    const { isAdmin } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody);
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(AdminRevokeLicenseSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     try {
       const ok = await revokeLicense(body.licenseId, body.reason);
       sendJSON(res, ok ? 200 : 404, { success: ok });
@@ -627,14 +629,13 @@ export async function handleAdminOwnerRoutes(
   }
 
   if (pathname === '/api/v1/admin/licenses/extend' && method === 'POST') {
-    const body = await parseBody(req);
-    const { isAdmin } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody);
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(AdminExtendLicenseSchema, rawBody, res);
+    if (!parsed.ok) return true;
     try {
-      const record = await extendLicense(body);
+      const record = await extendLicense(parsed.data);
       sendJSON(res, record ? 200 : 404, { success: Boolean(record), data: record });
       return true;
     } catch (e: any) {
@@ -648,11 +649,8 @@ export async function handleAdminOwnerRoutes(
   // 10. ADMIN DEVICE FLEET MANAGEMENT (Protected)
   // -------------------------------------------------------------
   if (pathname === '/api/v1/admin/devices' && method === 'GET') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
     const status = parsedUrl.searchParams.get('status') || undefined;
     const search = parsedUrl.searchParams.get('search') || undefined;
     const { items: devices } = await adminListDevices({ status, searchQuery: search });
@@ -662,13 +660,10 @@ export async function handleAdminOwnerRoutes(
 
   const deviceRevokeMatch = pathname.match(/^\/api\/v1\/admin\/devices\/([a-zA-Z0-9_-]+)$/);
   if (deviceRevokeMatch && method === 'DELETE') {
-    const { isAdmin, actor } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
     const deviceId = deviceRevokeMatch[1];
-    const ok = revokeCommercialDevice(deviceId, actor);
+    const ok = revokeCommercialDevice(deviceId, adminGate.actor);
     sendJSON(res, ok ? 200 : 404, { success: ok });
     return true;
   }
@@ -677,11 +672,8 @@ export async function handleAdminOwnerRoutes(
   // 11. ADMIN AUDIT LOGS (Protected)
   // -------------------------------------------------------------
   if (pathname === '/api/v1/admin/audit-logs' && method === 'GET') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
     const action = parsedUrl.searchParams.get('action') || undefined;
     const role = parsedUrl.searchParams.get('role') || undefined;
     const resultStatus = parsedUrl.searchParams.get('result') || undefined;
@@ -705,24 +697,20 @@ export async function handleAdminOwnerRoutes(
   // 12. ADMIN SOFTWARE VERSIONS (Protected)
   // -------------------------------------------------------------
   if (pathname === '/api/v1/admin/versions' && method === 'GET') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
     const { items: versions } = await adminListVersions();
     sendJSON(res, 200, { success: true, data: versions });
     return true;
   }
 
   if (pathname === '/api/v1/admin/versions' && method === 'POST') {
-    const body = await parseBody(req);
-    const { isAdmin, actor } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
-      return true;
-    }
-    const version = publishSoftwareVersion(body, actor);
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody);
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(AdminPublishVersionSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const version = publishSoftwareVersion(parsed.data, adminGate.actor);
     sendJSON(res, 201, { success: true, data: version });
     return true;
   }
@@ -731,11 +719,8 @@ export async function handleAdminOwnerRoutes(
   // 12.1 ADMIN PAYMENTS & MANUAL UPI APPROVAL (Protected)
   // -------------------------------------------------------------
   if (pathname === '/api/v1/admin/payments' && method === 'GET') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res);
+    if (!adminGate.ok) return true;
     const status = parsedUrl.searchParams.get('status') || undefined;
     const { items: payments } = await adminListPayments({ status });
     sendJSON(res, 200, { success: true, data: payments, payments });
@@ -744,15 +729,14 @@ export async function handleAdminOwnerRoutes(
 
   const paymentApproveMatch = pathname.match(/^\/api\/v1\/admin\/payments\/([a-zA-Z0-9_-]+)\/approve$/);
   if (paymentApproveMatch && method === 'POST') {
-    const body = await parseBody(req);
-    const { isAdmin, actor } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody);
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(AdminPaymentDecisionSchema, rawBody, res);
+    if (!parsed.ok) return true;
     const paymentId = paymentApproveMatch[1];
     try {
-      const result = await paymentService.approveManualPayment(paymentId, actor);
+      const result = await paymentService.approveManualPayment(paymentId, adminGate.actor);
       sendJSON(res, 200, {
         success: true,
         payment_id: paymentId,
@@ -762,23 +746,22 @@ export async function handleAdminOwnerRoutes(
       });
       return true;
     } catch (err: any) {
-      sendJSON(res, 400, { success: false, error: err.message });
+      sendSafeError(res, err, { fallbackStatus: 400 });
       return true;
     }
   }
 
   const paymentRejectMatch = pathname.match(/^\/api\/v1\/admin\/payments\/([a-zA-Z0-9_-]+)\/reject$/);
   if (paymentRejectMatch && method === 'POST') {
-    const body = await parseBody(req);
-    const { isAdmin, actor } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody);
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(AdminPaymentDecisionSchema, rawBody, res);
+    if (!parsed.ok) return true;
     const paymentId = paymentRejectMatch[1];
-    const reason = body?.reason || 'Payment rejected by administrator';
+    const reason = parsed.data.reason || 'Payment rejected by administrator';
     try {
-      const result = await paymentService.rejectManualPayment(paymentId, actor, reason);
+      const result = await paymentService.rejectManualPayment(paymentId, adminGate.actor, reason);
       sendJSON(res, 200, {
         success: true,
         payment_id: paymentId,
@@ -789,7 +772,7 @@ export async function handleAdminOwnerRoutes(
       });
       return true;
     } catch (err: any) {
-      sendJSON(res, 400, { success: false, error: err.message });
+      sendSafeError(res, err, { fallbackStatus: 400 });
       return true;
     }
   }
@@ -797,9 +780,9 @@ export async function handleAdminOwnerRoutes(
   // -------------------------------------------------------------
   function getOwnerSessionCookie(req: http.IncomingMessage): string | null {
     const cookieHeader = req.headers.cookie;
-    if (!cookieHeader) return 'testing-bypass';
+    if (!cookieHeader) return null;
     const match = cookieHeader.match(/(?:^|;\s*)owner_session=([^;]*)/);
-    return match ? decodeURIComponent(match[1]) : 'testing-bypass';
+    return match ? decodeURIComponent(match[1]) : null;
   }
 
   async function recordOwnerActionAudit(params: {
@@ -888,12 +871,12 @@ export async function handleAdminOwnerRoutes(
   }
 
   if (pathname === '/api/v1/admin/owner/verify' && method === 'POST') {
-    const body = await parseBody(req);
-    const { isAdmin } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Master admin authorization required.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody, { hideUnauthenticated: true });
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(OwnerVerifySchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     if (!isOwnerConfigured()) {
       sendJSON(res, 503, { success: false, error: 'Owner console not configured.' });
       return true;
@@ -918,11 +901,8 @@ export async function handleAdminOwnerRoutes(
   }
 
   if (pathname === '/api/v1/admin/owner/logout' && method === 'POST') {
-    const { isAdmin } = checkAdminAuth(req);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Master admin authorization required.' });
-      return true;
-    }
+    const adminGate = await requireAdminAccess(req, res, undefined, { hideUnauthenticated: true });
+    if (!adminGate.ok) return true;
     const cookieToken = getOwnerSessionCookie(req);
     if (cookieToken) {
       revokeOwnerSession(cookieToken);
@@ -934,12 +914,12 @@ export async function handleAdminOwnerRoutes(
   }
 
   if (pathname === '/api/v1/admin/owner/grant' && method === 'POST') {
-    const body = await parseBody(req);
-    const { isAdmin } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Master admin authorization required.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody, { hideUnauthenticated: true });
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(OwnerGrantSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     if (!isOwnerConfigured()) {
       sendJSON(res, 503, { success: false, error: 'Owner console not configured.' });
       return true;
@@ -1163,12 +1143,12 @@ export async function handleAdminOwnerRoutes(
   }
 
   if (pathname === '/api/v1/admin/owner/remove' && method === 'POST') {
-    const body = await parseBody(req);
-    const { isAdmin } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Master admin authorization required.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody, { hideUnauthenticated: true });
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(OwnerUserMutationSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     if (!isOwnerConfigured()) {
       sendJSON(res, 503, { success: false, error: 'Owner console not configured.' });
       return true;
@@ -1289,12 +1269,12 @@ export async function handleAdminOwnerRoutes(
   }
 
   if (pathname === '/api/v1/admin/owner/set-plan' && method === 'POST') {
-    const body = await parseBody(req);
-    const { isAdmin } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Master admin authorization required.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody, { hideUnauthenticated: true });
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(OwnerPlanMutationSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     if (!isOwnerConfigured()) {
       sendJSON(res, 503, { success: false, error: 'Owner console not configured.' });
       return true;
@@ -1463,12 +1443,12 @@ export async function handleAdminOwnerRoutes(
     const newStatus = isSuspend ? 'SUSPENDED' : 'ACTIVE';
     const auditAction = isSuspend ? 'OWNER_USER_SUSPENDED' : 'OWNER_USER_RESUMED';
 
-    const body = await parseBody(req);
-    const { isAdmin } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Master admin authorization required.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody, { hideUnauthenticated: true });
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(OwnerUserMutationSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     if (!isOwnerConfigured()) {
       sendJSON(res, 503, { success: false, error: 'Owner console not configured.' });
       return true;
@@ -1583,12 +1563,12 @@ export async function handleAdminOwnerRoutes(
   }
 
   if (pathname === '/api/v1/admin/owner/ban' && method === 'POST') {
-    const body = await parseBody(req);
-    const { isAdmin } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Master admin authorization required.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody, { hideUnauthenticated: true });
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(OwnerUserMutationSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     if (!isOwnerConfigured()) {
       sendJSON(res, 503, { success: false, error: 'Owner console not configured.' });
       return true;
@@ -1723,12 +1703,12 @@ export async function handleAdminOwnerRoutes(
   }
 
   if (pathname === '/api/v1/admin/owner/unban' && method === 'POST') {
-    const body = await parseBody(req);
-    const { isAdmin } = checkAdminAuth(req, body);
-    if (!isAdmin) {
-      sendJSON(res, 403, { success: false, error: 'Forbidden. Master admin authorization required.' });
-      return true;
-    }
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody, { hideUnauthenticated: true });
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(OwnerUserMutationSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     if (!isOwnerConfigured()) {
       sendJSON(res, 503, { success: false, error: 'Owner console not configured.' });
       return true;

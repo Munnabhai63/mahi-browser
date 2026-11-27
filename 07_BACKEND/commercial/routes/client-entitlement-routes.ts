@@ -1,6 +1,14 @@
 import http from 'node:http';
 import { URL } from 'node:url';
-import { sendJSON, parseBody, getAuthUser, signAccountStatus } from './router-shared.js';
+import { sendJSON, parseBody, getAuthUserAsync, signAccountStatus } from './router-shared.js';
+import { sendSafeError, validateStrictBody } from '../../utils/app-error.js';
+import {
+  SwitchDeviceSchema,
+  DemoRequestSchema,
+  FunnelTrackSchema,
+  ActivateLicenseKeySchema,
+  RevokeDeviceSchema,
+} from '../validation/commercial-schemas.js';
 import { getCentralUserByIdAsync, verifyAccessToken } from '../../../05_AUTH/central-auth-service.js';
 import { evaluateUserEntitlements, activateCommercialLicenseForUser } from '../commercial-entitlement-service.js';
 import { createDemoRequest } from '../demo-service.js';
@@ -26,7 +34,7 @@ export async function handleClientEntitlementRoutes(
   clientIp: string
 ): Promise<boolean> {
   if (routePath === '/v1/account/status' && method === 'GET') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Valid token required.' });
       return true;
@@ -109,8 +117,11 @@ export async function handleClientEntitlementRoutes(
   }
 
   if (routePath === '/v1/account/switch-device' && method === 'POST') {
-    const body = await parseBody(req);
-    const auth = getAuthUser(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(SwitchDeviceSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
+    const auth = await getAuthUserAsync(req);
     const token = body.token || (req.headers['x-mahi-token'] as string);
     const userId = auth?.userId || (token ? verifyAccessToken(token)?.userId : null);
     if (!userId) {
@@ -133,16 +144,20 @@ export async function handleClientEntitlementRoutes(
   }
 
   if (routePath === '/api/v1/commercial/demo-request' && method === 'POST') {
-    const body = await parseBody(req);
-    const result = createDemoRequest(body);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(DemoRequestSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const result = createDemoRequest(parsed.data as any);
     sendJSON(res, result.success ? 201 : 400, result);
     return true;
   }
 
   if (routePath === '/api/v1/funnel/track' && method === 'POST') {
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(FunnelTrackSchema, rawBody, res);
+    if (!parsed.ok) return true;
     const result = recordFunnelEvent({
-      ...body,
+      ...(parsed.data as any),
       ipAddress: clientIp,
     });
     sendJSON(res, result.success ? 200 : 400, result);
@@ -150,7 +165,7 @@ export async function handleClientEntitlementRoutes(
   }
 
   if ((pathname === '/api/v1/me/license' || routePath === '/api/v1/me/license') && method === 'GET') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
@@ -218,7 +233,7 @@ export async function handleClientEntitlementRoutes(
   }
 
   if (pathname === '/api/v1/entitlements/check' && method === 'GET') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
@@ -232,12 +247,15 @@ export async function handleClientEntitlementRoutes(
   }
 
   if (pathname === '/api/v1/entitlements/activate-key' && method === 'POST') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
-    const body = await parseBody(req);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(ActivateLicenseKeySchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
     const result = activateCommercialLicenseForUser(auth.userId, body.licenseKey, body.deviceId, body.deviceName);
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
@@ -247,7 +265,7 @@ export async function handleClientEntitlementRoutes(
   // 3. USER DEVICES (Authenticated)
   // -------------------------------------------------------------
   if (pathname === '/api/v1/devices/my-devices' && method === 'GET') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
@@ -258,13 +276,15 @@ export async function handleClientEntitlementRoutes(
   }
 
   if (pathname === '/api/v1/devices/revoke' && method === 'POST') {
-    const auth = getAuthUser(req);
+    const auth = await getAuthUserAsync(req);
     if (!auth) {
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
-    const body = await parseBody(req);
-    const ok = revokeCommercialDevice(body.deviceId, { id: auth.userId, name: auth.email, role: auth.role }, auth.userId);
+    const rawBody = await parseBody(req);
+    const parsed = validateStrictBody(RevokeDeviceSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const ok = revokeCommercialDevice(parsed.data.deviceId, { id: auth.userId, name: auth.email, role: auth.role }, auth.userId);
     sendJSON(res, 200, { success: ok });
     return true;
   }
@@ -283,7 +303,7 @@ export async function handleClientEntitlementRoutes(
       const catalog = buildPlanCatalog();
       sendJSON(res, 200, { success: true, data: catalog });
     } catch (err: any) {
-      sendJSON(res, 500, { success: false, error: err.message });
+      sendSafeError(res, err, { fallbackStatus: 500 });
     }
     return true;
   }

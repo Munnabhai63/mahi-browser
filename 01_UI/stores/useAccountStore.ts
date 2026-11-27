@@ -65,6 +65,7 @@ interface AccountState {
   createCheckoutSession: (payload: any) => Promise<any>;
   fetchPaymentHistory: () => Promise<any>;
   submitManualUpiPayment: (payload: { plan_id: string; utr: string; proof_asset?: string; billing_cycle?: string; amount_paise?: number; extra_members?: number; extra_proxy_gb?: number }) => Promise<{ success: boolean; payment_id?: string; status?: string; message?: string; error?: string }>;
+  submitManualCryptoPayment: (payload: { plan_id: string; tx_hash: string; network?: string; proof_asset?: string; billing_cycle?: string; extra_members?: number; extra_proxy_gb?: number }) => Promise<{ success: boolean; payment_id?: string; status?: string; tx_hash?: string; message?: string; error?: string }>;
   accountSignup: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   accountLogin: (email: string, password: string) => Promise<{ success: boolean; error?: string; deviceMismatch?: boolean }>;
   accountLoginWithToken: (token: string) => Promise<{ success: boolean; error?: string }>;
@@ -247,6 +248,18 @@ export const useAccountStore = create<AccountState>()(
           return res;
         } catch (err: any) {
           return { success: false, error: err.message || 'Payment submission failed' };
+        }
+      },
+
+      submitManualCryptoPayment: async (payload) => {
+        if (!window.mahiAPI?.accountSubmitManualCryptoPayment) {
+          return { success: false, error: 'Crypto payment submission API unavailable' };
+        }
+        try {
+          const res = await window.mahiAPI.accountSubmitManualCryptoPayment(payload);
+          return res;
+        } catch (err: any) {
+          return { success: false, error: err.message || 'Crypto payment submission failed' };
         }
       },
 
