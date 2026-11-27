@@ -3,6 +3,11 @@ import { getDatabase } from '../06_DATABASE/connection.js';
 import { getJwtSecret } from '../08_SECURITY/install-secrets.js';
 import { getEmailProvider } from './email-service.js';
 import { isPostgresConfigured, getCentralRepository } from '../06_DATABASE/central-repository.js';
+import {
+  checkAttemptLockoutAsync,
+  recordFailedAttemptAsync,
+  clearAttemptsAsync,
+} from '../08_SECURITY/distributed-state-service.js';
 
 function mapRowToAuthUser(row: any): AuthUser {
   return {
@@ -222,6 +227,35 @@ function recordLoginFailure(key: string): void {
   loginAttempts.set(key, record);
 }
 
+export async function checkLoginRateLimitAsync(
+  key: string
+): Promise<{ allowed: boolean; remainingMs?: number }> {
+  const res = await checkAttemptLockoutAsync({
+    namespace: 'login_lock',
+    key,
+    maxAttempts: MAX_LOGIN_ATTEMPTS,
+    windowMs: LOGIN_LOCKOUT_MS,
+  });
+  if (!res.allowed) {
+    return { allowed: false, remainingMs: res.remainingMs };
+  }
+  return { allowed: true };
+}
+
+export async function recordLoginFailureAsync(key: string): Promise<void> {
+  await recordFailedAttemptAsync({
+    namespace: 'login_lock',
+    key,
+    windowMs: LOGIN_LOCKOUT_MS,
+    maxAttempts: MAX_LOGIN_ATTEMPTS,
+  });
+}
+
+export async function clearLoginAttemptsAsync(key: string): Promise<void> {
+  loginAttempts.delete(key);
+  await clearAttemptsAsync({ namespace: 'login_lock', key });
+}
+
 function clearLoginAttempts(key: string): void {
   loginAttempts.delete(key);
 }
@@ -234,7 +268,7 @@ setInterval(() => {
       loginAttempts.delete(k);
     }
   }
-}, 60 * 1000);
+}, 60 * 1000).unref();
 
 // ============================================================================
 // USER REGISTRATION & EMAIL VERIFICATION
@@ -605,7 +639,7 @@ export async function loginCentralUser(params: {
   const normalizedEmail = rawEmail.toLowerCase();
   const rateLimitKey = `${params.ipAddress || '127.0.0.1'}:${normalizedEmail}`;
 
-  const rateCheck = checkLoginRateLimit(rateLimitKey);
+  const rateCheck = await checkLoginRateLimitAsync(rateLimitKey);
   if (!rateCheck.allowed) {
     logSecurityEvent(null, 'LOGIN_LOCKED', `Login locked out for ${normalizedEmail}`, 'BLOCKED', params.ipAddress);
     return {
@@ -623,7 +657,7 @@ export async function loginCentralUser(params: {
     const repo = getCentralRepository();
     const row = await repo.findAuthUserByEmail(normalizedEmail);
     if (!row) {
-      recordLoginFailure(rateLimitKey);
+      await recordLoginFailureAsync(rateLimitKey);
       logSecurityEvent(null, 'LOGIN_FAILED', `Non-existent user attempted: ${normalizedEmail}`, 'FAILURE', params.ipAddress);
       return { success: false, error: 'Invalid email or password.' };
     }
@@ -637,7 +671,7 @@ export async function loginCentralUser(params: {
 
     const isValid = verifyPassword(params.password, row.salt, row.password_hash);
     if (!isValid) {
-      recordLoginFailure(rateLimitKey);
+      await recordLoginFailureAsync(rateLimitKey);
       logSecurityEvent(row.id, 'LOGIN_FAILED', `Invalid password for user: ${normalizedEmail}`, 'FAILURE', params.ipAddress);
       return { success: false, error: 'Invalid email or password.' };
     }
@@ -652,7 +686,7 @@ export async function loginCentralUser(params: {
       return { success: false, error: 'Your account has been disabled.' };
     }
 
-    clearLoginAttempts(rateLimitKey);
+    await clearLoginAttemptsAsync(rateLimitKey);
 
     const now = new Date().toISOString();
     await repo.updateAuthUser(row.id, { last_login_at: now });
@@ -711,7 +745,7 @@ export async function loginCentralUser(params: {
   const db = getDatabase();
   const row = db.prepare('SELECT * FROM auth_users WHERE normalized_email = ?').get(normalizedEmail) as any;
   if (!row) {
-    recordLoginFailure(rateLimitKey);
+    await recordLoginFailureAsync(rateLimitKey);
     logSecurityEvent(null, 'LOGIN_FAILED', `Non-existent user attempted: ${normalizedEmail}`, 'FAILURE', params.ipAddress);
     return { success: false, error: 'Invalid email or password.' };
   }
@@ -725,7 +759,7 @@ export async function loginCentralUser(params: {
 
   const isValid = verifyPassword(params.password, row.salt, row.password_hash);
   if (!isValid) {
-    recordLoginFailure(rateLimitKey);
+    await recordLoginFailureAsync(rateLimitKey);
     logSecurityEvent(row.id, 'LOGIN_FAILED', `Invalid password for user: ${normalizedEmail}`, 'FAILURE', params.ipAddress);
     return { success: false, error: 'Invalid email or password.' };
   }
@@ -742,7 +776,7 @@ export async function loginCentralUser(params: {
   }
 
   // Clear rate limits on success
-  clearLoginAttempts(rateLimitKey);
+  await clearLoginAttemptsAsync(rateLimitKey);
 
   const now = new Date().toISOString();
   db.prepare('UPDATE auth_users SET last_login_at = ?, updated_at = ? WHERE id = ?').run(now, now, row.id);

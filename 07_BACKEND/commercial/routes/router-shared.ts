@@ -16,6 +16,11 @@ import {
   parseBoundedJson,
   BoundedBodyOptions,
 } from '../../utils/http-security.js';
+import {
+  consumeFixedWindowRateLimitAsync,
+  clearLocalDistributedStateNamespace,
+  clearDistributedStateNamespaceAsync,
+} from '../../../08_SECURITY/distributed-state-service.js';
 
 export { resolveTrustedClientIp };
 
@@ -689,6 +694,30 @@ export function checkAuthRateLimit(clientIp: string, action: string = 'auth'): {
   return { allowed: true, remaining: AUTH_RATE_LIMIT_MAX_ATTEMPTS - entry.attempts, retryAfterSeconds: 0 };
 }
 
+export async function checkAuthRateLimitAsync(
+  clientIp: string,
+  action: string = 'auth'
+): Promise<{ allowed: boolean; remaining: number; retryAfterSeconds: number }> {
+  const normalizedIp = normalizeIp(clientIp) || '127.0.0.1';
+  const result = await consumeFixedWindowRateLimitAsync({
+    namespace: 'auth_rl',
+    key: `${normalizedIp}:${action}`,
+    windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
+    maxAttempts: AUTH_RATE_LIMIT_MAX_ATTEMPTS,
+  });
+  return {
+    allowed: result.allowed,
+    remaining: result.remaining,
+    retryAfterSeconds: result.retryAfterSeconds,
+  };
+}
+
 export function resetAuthRateLimitForTesting(): void {
   authRateLimitMap.clear();
+  clearLocalDistributedStateNamespace('auth_rl');
+}
+
+export async function resetAuthRateLimitAsyncForTesting(): Promise<void> {
+  authRateLimitMap.clear();
+  await clearDistributedStateNamespaceAsync('auth_rl');
 }

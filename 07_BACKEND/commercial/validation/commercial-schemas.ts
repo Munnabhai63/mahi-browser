@@ -430,6 +430,12 @@ export const OwnerUserMutationSchema = z.strictObject({
   adminSecret: optionalTrimmedString,
 });
 
+export const OwnerKillSwitchSchema = z.strictObject({
+  enabled: z.boolean(),
+  reason: z.string().max(1000).optional(),
+  adminSecret: optionalTrimmedString,
+});
+
 // ============================================================================
 // 5. CLOUD SYNC & TEAM WORKSPACE SCHEMAS
 // ============================================================================

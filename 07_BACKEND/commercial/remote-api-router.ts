@@ -16,11 +16,12 @@ import crypto from 'node:crypto';
 import { URL } from 'node:url';
 import {
   RemoteApiService,
-  checkRateLimit,
+  checkRateLimitAsync,
   getCachedIdempotentResponse,
   saveIdempotentResponse,
 } from '../services/remote-api-service.js';
 import { WebhookService } from '../services/webhook-service.js';
+import { rejectIfEmergencyFrozen } from '../services/kill-switch-service.js';
 import { verifyAccessToken, getCentralUserById, getCentralUserByIdAsync } from '../../05_AUTH/central-auth-service.js';
 import { verifyPostgresOrSqliteUserAndSessionAsync } from './routes/router-shared.js';
 import { isPostgresConfigured, getCentralRepository } from '../../06_DATABASE/central-repository.js';
@@ -462,7 +463,7 @@ export async function handleRemoteApiRoutes(
 
   // Rate Limiting
   const rateLimitKey = auth.apiKeyId ? `key:${auth.apiKeyId}` : `usr:${auth.userId}`;
-  const rateLimit = checkRateLimit(rateLimitKey);
+  const rateLimit = await checkRateLimitAsync(rateLimitKey);
   if (!rateLimit.allowed) {
     RemoteApiService.getInstance().logAudit(
       auth.apiKeyId || 'jwt',
@@ -1822,6 +1823,7 @@ export async function handleRemoteApiRoutes(
     // ========================================================================
     // POST billing/checkout (Create checkout session)
     if (route === 'billing/checkout' && method === 'POST') {
+      if (await rejectIfEmergencyFrozen(res, 'remote_billing_checkout')) return true;
       const body = await parseBody(req);
       const session = await paymentService.createCheckoutSession(
         {

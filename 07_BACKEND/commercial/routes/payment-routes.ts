@@ -22,6 +22,7 @@ import { getDatabase } from '../../../06_DATABASE/connection.js';
 import { isPostgresConfigured, getCentralRepository } from '../../../06_DATABASE/central-repository.js';
 import { getPrismaClient } from '../../../06_DATABASE/prisma-client.js';
 import { evaluateUserEntitlements } from '../commercial-entitlement-service.js';
+import { rejectIfEmergencyFrozen } from '../../services/kill-switch-service.js';
 
 export async function handlePaymentRoutes(
   req: http.IncomingMessage,
@@ -62,6 +63,7 @@ export async function handlePaymentRoutes(
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
+    if (await rejectIfEmergencyFrozen(res, 'manual_upi_checkout')) return true;
     const rawBody = await parseBody(req);
     const parsed = validateStrictBody(UpiSubmitSchema, rawBody, res);
     if (!parsed.ok) return true;
@@ -120,6 +122,7 @@ export async function handlePaymentRoutes(
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
+    if (await rejectIfEmergencyFrozen(res, 'manual_crypto_checkout')) return true;
     const rawBody = await parseBody(req);
     const parsed = validateStrictBody(CryptoSubmitSchema, rawBody, res);
     if (!parsed.ok) return true;
@@ -251,6 +254,7 @@ export async function handlePaymentRoutes(
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
+    if (await rejectIfEmergencyFrozen(res, 'billing_checkout')) return true;
     const rawBody = await parseBody(req);
     const parsed = validateStrictBody(BillingCheckoutSchema, rawBody, res);
     if (!parsed.ok) return true;
@@ -312,6 +316,7 @@ export async function handlePaymentRoutes(
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
+    if (await rejectIfEmergencyFrozen(res, 'verify_razorpay')) return true;
     const rawBody = await parseBody(req);
     const parsed = validateStrictBody(VerifyRazorpaySchema, rawBody, res);
     if (!parsed.ok) return true;
@@ -390,6 +395,7 @@ export async function handlePaymentRoutes(
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
+    if (await rejectIfEmergencyFrozen(res, 'verify_youpi')) return true;
     const rawBody = await parseBody(req);
     const parsed = validateStrictBody(VerifyYoupiSchema, rawBody, res);
     if (!parsed.ok) return true;
@@ -438,6 +444,7 @@ export async function handlePaymentRoutes(
       routePath === '/api/v1/commercial/checkout/webhook/youpi') &&
     method === 'POST'
   ) {
+    if (await rejectIfEmergencyFrozen(res, 'payment_webhook')) return true;
     try {
       const rawBody = (await parseRawBuffer(req, { maxBytes: 2 * 1024 * 1024, timeoutMs: 30_000 })).toString('utf-8');
       const signature = (

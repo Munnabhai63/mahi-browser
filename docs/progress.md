@@ -1,5 +1,20 @@
 # Progress Tracker
 
+## Phase 2: Database, Payments & Distributed State — P0/P1 (2026-11-28)
+- [x] **Sub-Step 2A — PostgreSQL Pool Tuning & Custom TLS CA (`06_DATABASE/pool-config.ts`, `06_DATABASE/prisma-client.ts`):**
+  - Added `parsePgPoolConfig()` supporting configurable `DB_POOL_MAX`, `DB_POOL_IDLE_TIMEOUT_MS`, `DB_POOL_CONNECTION_TIMEOUT_MS`, `DB_KEEPALIVE`, and `DB_SSL_CA` (inline PEM or file path, stripping conflicting `sslmode` query params) + `DB_SSL_REJECT_UNAUTHORIZED`.
+  - Wired `parsePgPoolConfig(connectionString)` into `06_DATABASE/prisma-client.ts` without impacting Electron or SQLite test execution.
+- [x] **Sub-Step 2B — Transactional PostgreSQL Billing & Webhook Idempotency (`07_BACKEND/commercial/payment-service.ts`):**
+  - Replaced non-deterministic `Date.now()` webhook fallback IDs across Stripe, Razorpay, Simulation, and YouPI-PG adapters with deterministic SHA-256 content hashes (`hashWebhookContent`).
+  - Wrapped `createCheckoutSession`, `handleWebhook`, `activateSubscriptionFromPayment`, `submitManualUpiPayment`, `submitManualCryptoPayment`, `approveManualPayment`, and `rejectManualPayment` in `prisma.$transaction` with row locking (`SELECT ... FOR UPDATE`), atomic `INSERT INTO commercial_webhook_events ... ON CONFLICT (id) DO NOTHING RETURNING id`, conditional `UPDATE ... WHERE status = 'PENDING_VERIFICATION' RETURNING id`, and synchronous SQLite `SAVEPOINT` transactions.
+  - Enforced strict production fail-fast (`[PaymentService][PG_UNAVAILABLE]`) when `NODE_ENV=production` PostgreSQL billing models are missing, eliminating silent SQLite split-brain writes.
+- [x] **Sub-Step 2C — Distributed Redis / PostgreSQL Rate Limits & Owner Sessions (`08_SECURITY/distributed-state-service.ts`, `router-shared.ts`, `auth-routes.ts`, `central-auth-service.ts`, `owner-totp-service.ts`, `admin-owner-routes.ts`, `remote-api-service.ts`, `remote-api-router.ts`):**
+  - Added `distributed-state-service.ts` providing atomic Lua `INCR`/`PEXPIRE` rate limiting, brute-force attempt lockouts, and distributed KV sessions over Redis with atomic PostgreSQL (`system_runtime_state`) and SQLite/memory fallbacks when Redis is disabled.
+  - Migrated auth endpoint rate limits (`auth-routes.ts`), central login lockouts (`central-auth-service.ts`), owner step-up sessions + verify rate limits (`admin-owner-routes.ts`), and remote API rate limits (`remote-api-router.ts`) to async distributed state while preserving sync helpers for unit test compatibility.
+- [x] **Sub-Step 2D — TOTP-Gated Emergency Kill Switch (`07_BACKEND/services/kill-switch-service.ts`, `cloud-env.ts`, `commercial-schemas.ts`, route & service guards):**
+  - Added `EMERGENCY_KILL_SWITCH` (env override + Redis + PostgreSQL `system_runtime_flags` / SQLite `app_settings`) toggleable solely via `GET`/`POST /api/v1/admin/owner/kill-switch` (requiring staff access + verified Owner TOTP `owner_session`, returning `404` to non-staff and `403` without TOTP).
+  - Enforced clean HTTP `503 SERVICE_UNAVAILABLE` maintenance responses across checkouts, UPI/crypto submissions, payment verification/webhooks, license minting/activation, trial activation, and cloud profile sync/storage routes, verified by `11_TESTS/unit/phase2-db-payments-distributed-state.test.ts`.
+
 ## Production Recovery, OviPay & USDT (TRC-20) Deployment (2026-11-27)
 - [x] **VPS Live Recovery (`mahibrowser.com`, `api.mahibrowser.com`, `app.mahibrowser.com`):**
   - Restored Supabase connectivity by creating least-privilege `mahi_gateway` role (verified via Session Pooler IPv4 `aws-0-ap-south-1.pooler.supabase.com:5432`, resolving Docker IPv6 unreachable errors and `pg` TLS chain verification via `?uselibpqcompat=true&sslmode=require`).

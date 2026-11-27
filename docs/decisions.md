@@ -1,5 +1,13 @@
 # Decisions Log
 
+## 2026-11-28 - Phase 2 Database, Payments & Distributed State Architecture (P0/P1)
+- **Context**: Single-instance billing mutations (`payment-service.ts`), process-local in-memory `Map`s (`authRateLimitMap`, `loginAttempts`, `ownerSessionMap`, `ownerVerifyRateLimitMap`, `rateLimitBuckets`), default `pg.Pool` sizing/TLS settings, and lack of an emergency circuit breaker risked race conditions, split-brain writes, and horizontal scaling bypasses across gateway replicas.
+- **Key Decisions**:
+  1. **Configurable `pg.Pool` + Custom CA (`06_DATABASE/pool-config.ts`)**: Tuned defaults (`max=10`, `idleTimeoutMillis=60000`, `connectionTimeoutMillis=15000`, `keepAlive=true`) while stripping `?sslmode=` when `DB_SSL_CA` or `DB_SSL_REJECT_UNAUTHORIZED=false` is explicitly configured so `pg` does not reject custom CAs.
+  2. **Transactional Postgres Billing & Deterministic Event IDs (`07_BACKEND/commercial/payment-service.ts`)**: Wrapped checkouts, webhook claims, subscription/license activation, and manual approvals inside `prisma.$transaction` with `FOR UPDATE` row locks, `ON CONFLICT (id) DO NOTHING RETURNING id`, and conditional `PENDING_VERIFICATION` atomic updates, while deriving deterministic SHA-256 event IDs when upstream webhooks omit `id` and failing fast in non-Electron `production` if PG billing models are absent.
+  3. **Redis-First Distributed State with Atomic PG Fallback (`08_SECURITY/distributed-state-service.ts`)**: Executed fixed-window rate limits and brute-force lockouts via atomic Redis Lua (`INCR` + `PTTL`/`PEXPIRE`) and `SET EX`/`DEL` for owner sessions (never consulting local memory cache when Redis is active, preventing stale revoked sessions across replicas), falling back cleanly to PostgreSQL `system_runtime_state` atomic `ON CONFLICT DO UPDATE` upserts and local SQLite/Map for single-node unit tests.
+  4. **Dual-Layer TOTP-Gated `EMERGENCY_KILL_SWITCH` (`07_BACKEND/services/kill-switch-service.ts`)**: Combined an immutable `EMERGENCY_KILL_SWITCH=true` env override with a Redis-synced PostgreSQL/SQLite persistent flag controlled solely via `/api/v1/admin/owner/kill-switch` (staff + Owner TOTP `owner_session` gated), returning HTTP `503` across payment, license minting, trial, and cloud sync endpoints.
+
 ## 2026-11-27 - Production Recovery, OviPay (`ovipay.oviaxe.com`) Cutover & USDT (TRC-20) Flow
 - **Context**: Live production hit Nginx `410`/`502` on `mahibrowser.com`/`api.mahibrowser.com`, `pay.oviaxe.com` returned Vercel `402 DEPLOYMENT_DISABLED` / Cloudflare `1033`, and USD checkouts needed an active payment rail alongside YouPI-PG UPI while Stripe remains disabled.
 - **Key Decisions**:

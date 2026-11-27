@@ -19,6 +19,7 @@ import {
   SetWorkspaceKeyEnvelopeSchema,
 } from '../validation/commercial-schemas.js';
 import { getStorageProvider, LocalStorageProvider } from '../../../08_SECURITY/storage-provider.js';
+import { rejectIfEmergencyFrozen } from '../../services/kill-switch-service.js';
 import {
   getUserSyncUsage,
   listUserCloudProfilesAsync,
@@ -63,6 +64,10 @@ export async function handleCloudSyncRoutes(
   routePath: string,
   clientIp: string
 ): Promise<boolean> {
+  if (routePath.startsWith('/api/v1/sync') || routePath.startsWith('/api/v1/storage')) {
+    if (await rejectIfEmergencyFrozen(res, 'cloud_sync')) return true;
+  }
+
   if (routePath === '/api/v1/storage/upload' && method === 'PUT') {
     const key = parsedUrl.searchParams.get('key');
     const expires = parseInt(parsedUrl.searchParams.get('expires') || '0', 10);

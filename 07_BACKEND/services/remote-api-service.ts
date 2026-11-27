@@ -14,6 +14,11 @@
 
 import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
+import {
+  consumeFixedWindowRateLimitAsync,
+  clearLocalDistributedStateNamespace,
+  clearDistributedStateNamespaceAsync,
+} from '../../08_SECURITY/distributed-state-service.js';
 import { getCentralUserById, AuthUser } from '../../05_AUTH/central-auth-service.js';
 import { hasWorkspacePermission, getMemberRoleInWorkspace } from './team-workspace-service.js';
 import { TeamRole, TeamPermission } from '../../10_CONFIG/shared/types/workspace.js';
@@ -97,8 +102,33 @@ export function checkRateLimit(
   };
 }
 
+export async function checkRateLimitAsync(
+  identifier: string,
+  limitPerMinute = 120
+): Promise<{ allowed: boolean; limit: number; remaining: number; resetSeconds: number }> {
+  const windowMs = 60_000;
+  const res = await consumeFixedWindowRateLimitAsync({
+    namespace: 'remote_api_rl',
+    key: identifier,
+    windowMs,
+    maxAttempts: limitPerMinute,
+  });
+  return {
+    allowed: res.allowed,
+    limit: limitPerMinute,
+    remaining: res.remaining,
+    resetSeconds: res.retryAfterSeconds || Math.ceil(windowMs / 1000),
+  };
+}
+
 export function resetRateLimits(): void {
   rateLimitBuckets.clear();
+  clearLocalDistributedStateNamespace('remote_api_rl');
+}
+
+export async function resetRateLimitsAsync(): Promise<void> {
+  rateLimitBuckets.clear();
+  await clearDistributedStateNamespaceAsync('remote_api_rl');
 }
 
 // ============================================================================

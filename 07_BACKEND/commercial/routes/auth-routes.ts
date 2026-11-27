@@ -5,7 +5,7 @@ import {
   sendJSON,
   parseBody,
   getAuthUserAsync,
-  checkAuthRateLimit,
+  checkAuthRateLimitAsync,
   desktopAuthTickets,
   WebHandoffSession,
   webHandoffSessions,
@@ -15,6 +15,7 @@ import {
   WEB_HANDOFF_TTL_MS,
 } from './router-shared.js';
 import { sendSafeError, validateStrictBody } from '../../utils/app-error.js';
+import { rejectIfEmergencyFrozen } from '../../services/kill-switch-service.js';
 import {
   LegacySignupSchema,
   LegacyLoginSchema,
@@ -138,7 +139,7 @@ export async function handleAuthRoutes(
   }
 
   if (routePath === '/api/v1/auth/register' && method === 'POST') {
-    const rate = checkAuthRateLimit(clientIp, 'register');
+    const rate = await checkAuthRateLimitAsync(clientIp, 'register');
     if (!rate.allowed) {
       res.setHeader('Retry-After', String(rate.retryAfterSeconds));
       sendJSON(res, 429, {
@@ -307,7 +308,7 @@ export async function handleAuthRoutes(
   }
 
   if (routePath === '/api/v1/auth/verify-email' && method === 'POST') {
-    const rate = checkAuthRateLimit(clientIp, 'verify-email');
+    const rate = await checkAuthRateLimitAsync(clientIp, 'verify-email');
     if (!rate.allowed) {
       res.setHeader('Retry-After', String(rate.retryAfterSeconds));
       sendJSON(res, 429, {
@@ -327,7 +328,7 @@ export async function handleAuthRoutes(
   }
 
   if (routePath === '/api/v1/auth/resend-verification' && method === 'POST') {
-    const rate = checkAuthRateLimit(clientIp, 'resend-verification');
+    const rate = await checkAuthRateLimitAsync(clientIp, 'resend-verification');
     if (!rate.allowed) {
       res.setHeader('Retry-After', String(rate.retryAfterSeconds));
       sendJSON(res, 429, {
@@ -347,7 +348,7 @@ export async function handleAuthRoutes(
   }
 
   if (routePath === '/api/v1/auth/login' && method === 'POST') {
-    const rate = checkAuthRateLimit(clientIp, 'login');
+    const rate = await checkAuthRateLimitAsync(clientIp, 'login');
     if (!rate.allowed) {
       res.setHeader('Retry-After', String(rate.retryAfterSeconds));
       sendJSON(res, 429, {
@@ -913,7 +914,7 @@ export async function handleAuthRoutes(
 
   // 3. Programmatic Google OAuth SSO Endpoint (Requires cryptographically verified ID token or OAuth code)
   if (routePath === '/api/v1/auth/google' && method === 'POST') {
-    const rate = checkAuthRateLimit(clientIp, 'google_oauth');
+    const rate = await checkAuthRateLimitAsync(clientIp, 'google_oauth');
     if (!rate.allowed) {
       res.setHeader('Retry-After', String(rate.retryAfterSeconds));
       sendJSON(res, 429, {
@@ -1060,7 +1061,7 @@ export async function handleAuthRoutes(
   }
 
   if (routePath === '/api/v1/auth/forgot-password' && method === 'POST') {
-    const rate = checkAuthRateLimit(clientIp, 'forgot-password');
+    const rate = await checkAuthRateLimitAsync(clientIp, 'forgot-password');
     if (!rate.allowed) {
       res.setHeader('Retry-After', String(rate.retryAfterSeconds));
       sendJSON(res, 429, {
@@ -1080,7 +1081,7 @@ export async function handleAuthRoutes(
   }
 
   if (routePath === '/api/v1/auth/reset-password' && method === 'POST') {
-    const rate = checkAuthRateLimit(clientIp, 'reset-password');
+    const rate = await checkAuthRateLimitAsync(clientIp, 'reset-password');
     if (!rate.allowed) {
       res.setHeader('Retry-After', String(rate.retryAfterSeconds));
       sendJSON(res, 429, {
@@ -1184,6 +1185,7 @@ export async function handleAuthRoutes(
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
+    if (await rejectIfEmergencyFrozen(res, 'trial_activation')) return true;
     const rawBody = await parseBody(req);
     const parsed = validateStrictBody(TrialActivateSchema, rawBody, res);
     if (!parsed.ok) return true;

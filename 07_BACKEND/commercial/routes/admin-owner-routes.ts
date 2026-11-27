@@ -26,6 +26,7 @@ import {
   OwnerGrantSchema,
   OwnerPlanMutationSchema,
   OwnerUserMutationSchema,
+  OwnerKillSwitchSchema,
 } from '../validation/commercial-schemas.js';
 import {
   adminGetDashboardSummary,
@@ -89,13 +90,18 @@ import { getFunnelMetrics } from '../funnel-service.js';
 import {
   isOwnerConfigured,
   verifyOwnerTotp,
-  createOwnerSession,
-  isOwnerSession,
-  revokeOwnerSession,
-  checkOwnerVerifyRateLimit,
-  recordFailedOwnerVerifyAttempt,
-  recordSuccessfulOwnerVerifyAttempt,
+  createOwnerSessionAsync,
+  isOwnerSessionAsync,
+  revokeOwnerSessionAsync,
+  checkOwnerVerifyRateLimitAsync,
+  recordFailedOwnerVerifyAttemptAsync,
+  recordSuccessfulOwnerVerifyAttemptAsync,
 } from '../../services/owner-totp-service.js';
+import {
+  getEmergencyKillSwitchStateAsync,
+  setEmergencyKillSwitchAsync,
+  rejectIfEmergencyFrozen,
+} from '../../services/kill-switch-service.js';
 import { getDatabase } from '../../../06_DATABASE/connection.js';
 import { getCentralRepository, isPostgresConfigured } from '../../../06_DATABASE/central-repository.js';
 import { getPrismaClient } from '../../../06_DATABASE/prisma-client.js';
@@ -882,19 +888,19 @@ export async function handleAdminOwnerRoutes(
       return true;
     }
     const clientIp = resolveTrustedClientIp(req);
-    if (!checkOwnerVerifyRateLimit(clientIp)) {
+    if (!(await checkOwnerVerifyRateLimitAsync(clientIp))) {
       sendJSON(res, 429, { success: false, error: 'Too many failed verification attempts. Please try again later.' });
       return true;
     }
     const code = body?.code !== undefined && body?.code !== null ? String(body.code).trim() : '';
     if (!code || !verifyOwnerTotp(code)) {
-      recordFailedOwnerVerifyAttempt(clientIp);
+      await recordFailedOwnerVerifyAttemptAsync(clientIp);
       sendJSON(res, 401, { success: false, error: 'Invalid or expired code' });
       return true;
     }
 
-    recordSuccessfulOwnerVerifyAttempt(clientIp);
-    const sessionToken = createOwnerSession();
+    await recordSuccessfulOwnerVerifyAttemptAsync(clientIp);
+    const sessionToken = await createOwnerSessionAsync();
     res.setHeader('Set-Cookie', `owner_session=${sessionToken}; HttpOnly; SameSite=Strict; Secure; Path=/; Max-Age=1800`);
     sendJSON(res, 200, { success: true });
     return true;
@@ -905,11 +911,69 @@ export async function handleAdminOwnerRoutes(
     if (!adminGate.ok) return true;
     const cookieToken = getOwnerSessionCookie(req);
     if (cookieToken) {
-      revokeOwnerSession(cookieToken);
+      await revokeOwnerSessionAsync(cookieToken);
     }
     res.setHeader('Set-Cookie', 'owner_session=; HttpOnly; SameSite=Strict; Secure; Path=/; Max-Age=0');
     res.writeHead(204);
     res.end();
+    return true;
+  }
+
+  if (pathname === '/api/v1/admin/owner/kill-switch' && method === 'GET') {
+    const adminGate = await requireAdminAccess(req, res, undefined, { hideUnauthenticated: true });
+    if (!adminGate.ok) return true;
+    if (!isOwnerConfigured()) {
+      sendJSON(res, 503, { success: false, error: 'Owner console not configured.' });
+      return true;
+    }
+    const cookieToken = getOwnerSessionCookie(req);
+    if (!cookieToken || !(await isOwnerSessionAsync(cookieToken))) {
+      sendJSON(res, 403, { success: false, error: 'Owner session required. Please verify TOTP.' });
+      return true;
+    }
+    const state = await getEmergencyKillSwitchStateAsync();
+    sendJSON(res, 200, { success: true, ...state });
+    return true;
+  }
+
+  if (pathname === '/api/v1/admin/owner/kill-switch' && method === 'POST') {
+    const rawBody = await parseBody(req);
+    const adminGate = await requireAdminAccess(req, res, rawBody, { hideUnauthenticated: true });
+    if (!adminGate.ok) return true;
+    const parsed = validateStrictBody(OwnerKillSwitchSchema, rawBody, res);
+    if (!parsed.ok) return true;
+    const body = parsed.data;
+    if (!isOwnerConfigured()) {
+      sendJSON(res, 503, { success: false, error: 'Owner console not configured.' });
+      return true;
+    }
+    const cookieToken = getOwnerSessionCookie(req);
+    if (!cookieToken || !(await isOwnerSessionAsync(cookieToken))) {
+      sendJSON(res, 403, { success: false, error: 'Owner session required. Please verify TOTP.' });
+      return true;
+    }
+
+    const state = await setEmergencyKillSwitchAsync({
+      enabled: body.enabled,
+      reason: body.reason,
+      updatedBy: adminGate.actor.id || adminGate.actor.name || 'OWNER',
+    });
+
+    await recordOwnerActionAudit({
+      action: body.enabled ? 'OWNER_KILL_SWITCH_ENABLED' : 'OWNER_KILL_SWITCH_DISABLED',
+      targetType: 'SYSTEM',
+      targetId: 'emergency_kill_switch',
+      details: {
+        enabled: state.enabled,
+        dbEnabled: state.dbEnabled,
+        envOverride: state.envOverride,
+        reason: body.reason,
+        ip: clientIp,
+      },
+      ip: clientIp,
+    });
+
+    sendJSON(res, 200, { success: true, ...state });
     return true;
   }
 
@@ -925,10 +989,12 @@ export async function handleAdminOwnerRoutes(
       return true;
     }
     const cookieToken = getOwnerSessionCookie(req);
-    if (!cookieToken || !isOwnerSession(cookieToken)) {
+    if (!cookieToken || !(await isOwnerSessionAsync(cookieToken))) {
       sendJSON(res, 403, { success: false, error: 'Owner session required. Please verify TOTP.' });
       return true;
     }
+
+    if (await rejectIfEmergencyFrozen(res, 'owner_license_grant')) return true;
 
     const clientIp = resolveTrustedClientIp(req);
     const rawTarget = body?.userId ? String(body.userId).trim() : '';
@@ -1154,7 +1220,7 @@ export async function handleAdminOwnerRoutes(
       return true;
     }
     const cookieToken = getOwnerSessionCookie(req);
-    if (!cookieToken || !isOwnerSession(cookieToken)) {
+    if (!cookieToken || !(await isOwnerSessionAsync(cookieToken))) {
       sendJSON(res, 403, { success: false, error: 'Owner session required. Please verify TOTP.' });
       return true;
     }
@@ -1280,7 +1346,7 @@ export async function handleAdminOwnerRoutes(
       return true;
     }
     const cookieToken = getOwnerSessionCookie(req);
-    if (!cookieToken || !isOwnerSession(cookieToken)) {
+    if (!cookieToken || !(await isOwnerSessionAsync(cookieToken))) {
       sendJSON(res, 403, { success: false, error: 'Owner session required. Please verify TOTP.' });
       return true;
     }
@@ -1454,7 +1520,7 @@ export async function handleAdminOwnerRoutes(
       return true;
     }
     const cookieToken = getOwnerSessionCookie(req);
-    if (!cookieToken || !isOwnerSession(cookieToken)) {
+    if (!cookieToken || !(await isOwnerSessionAsync(cookieToken))) {
       sendJSON(res, 403, { success: false, error: 'Owner session required. Please verify TOTP.' });
       return true;
     }
@@ -1574,7 +1640,7 @@ export async function handleAdminOwnerRoutes(
       return true;
     }
     const cookieToken = getOwnerSessionCookie(req);
-    if (!cookieToken || !isOwnerSession(cookieToken)) {
+    if (!cookieToken || !(await isOwnerSessionAsync(cookieToken))) {
       sendJSON(res, 403, { success: false, error: 'Owner session required. Please verify TOTP.' });
       return true;
     }
@@ -1714,7 +1780,7 @@ export async function handleAdminOwnerRoutes(
       return true;
     }
     const cookieToken = getOwnerSessionCookie(req);
-    if (!cookieToken || !isOwnerSession(cookieToken)) {
+    if (!cookieToken || !(await isOwnerSessionAsync(cookieToken))) {
       sendJSON(res, 403, { success: false, error: 'Owner session required. Please verify TOTP.' });
       return true;
     }

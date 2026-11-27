@@ -6,6 +6,17 @@
  */
 
 import crypto from 'node:crypto';
+import { isRedisConfigured } from '../../08_SECURITY/redis-lock-service.js';
+import {
+  setDistributedKvAsync,
+  getDistributedKvAsync,
+  deleteDistributedKvAsync,
+  checkAttemptLockoutAsync,
+  recordFailedAttemptAsync,
+  clearAttemptsAsync,
+  clearLocalDistributedStateNamespace,
+  clearDistributedStateNamespaceAsync,
+} from '../../08_SECURITY/distributed-state-service.js';
 
 const RFC4648_BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
@@ -187,6 +198,7 @@ export function revokeOwnerSession(token: string | undefined | null): void {
 
 export function clearAllOwnerSessions(): void {
   ownerSessionMap.clear();
+  clearLocalDistributedStateNamespace('owner_sess');
 }
 
 // ---------------------------------------------------------------------------
@@ -227,4 +239,118 @@ export function recordSuccessfulOwnerVerifyAttempt(ip: string): void {
 
 export function clearOwnerVerifyRateLimits(): void {
   ownerVerifyRateLimitMap.clear();
+  clearLocalDistributedStateNamespace('owner_verify_rl');
+}
+
+// ---------------------------------------------------------------------------
+// Distributed Async Session & Verify Rate-Limit API (Redis / PG / SQLite)
+// ---------------------------------------------------------------------------
+
+function normalizeOwnerVerifyIp(ip: string): string {
+  const clean = (ip || '').trim();
+  if (!clean) return 'unknown';
+  return clean.replace(/^::ffff:/i, '');
+}
+
+export async function createOwnerSessionAsync(nowMs?: number): Promise<string> {
+  const token = crypto.randomBytes(32).toString('hex');
+  const effectiveNow = nowMs ?? Date.now();
+  await setDistributedKvAsync({
+    namespace: 'owner_sess',
+    key: token,
+    value: { createdAt: effectiveNow },
+    ttlMs: OWNER_SESSION_TTL_MS,
+    nowMs,
+  });
+
+  // When Redis is disabled (e.g. local single-process mode/tests), keep local map in sync
+  // so legacy synchronous assertions continue working. When Redis is enabled, distributed
+  // Redis state is authoritative across all replicas.
+  if (!isRedisConfigured() || nowMs !== undefined) {
+    ownerSessionMap.set(token, { exp: effectiveNow + OWNER_SESSION_TTL_MS });
+  }
+  return token;
+}
+
+export async function isOwnerSessionAsync(
+  token: string | undefined | null,
+  nowMs?: number
+): Promise<boolean> {
+  if (!token || typeof token !== 'string') return false;
+  const clean = token.trim();
+  if (!clean) return false;
+
+  const entry = await getDistributedKvAsync({
+    namespace: 'owner_sess',
+    key: clean,
+    nowMs,
+  });
+  if (entry) {
+    return true;
+  }
+
+  // Only consult local in-memory map if Redis is NOT configured (protects multi-replica
+  // logout/revocation from hitting stale process-local cache).
+  if (!isRedisConfigured()) {
+    return isOwnerSession(clean, nowMs);
+  }
+  return false;
+}
+
+export async function revokeOwnerSessionAsync(token: string | undefined | null): Promise<void> {
+  if (!token || typeof token !== 'string') return;
+  const clean = token.trim();
+  if (!clean) return;
+  ownerSessionMap.delete(clean);
+  await deleteDistributedKvAsync({
+    namespace: 'owner_sess',
+    key: clean,
+  });
+}
+
+export async function clearAllOwnerSessionsAsync(): Promise<void> {
+  ownerSessionMap.clear();
+  await clearDistributedStateNamespaceAsync('owner_sess');
+}
+
+export async function checkOwnerVerifyRateLimitAsync(
+  ip: string,
+  nowMs?: number
+): Promise<boolean> {
+  const normalizedIp = normalizeOwnerVerifyIp(ip);
+  const res = await checkAttemptLockoutAsync({
+    namespace: 'owner_verify_rl',
+    key: normalizedIp,
+    maxAttempts: RATE_LIMIT_MAX_ATTEMPTS,
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    nowMs,
+  });
+  return res.allowed;
+}
+
+export async function recordFailedOwnerVerifyAttemptAsync(
+  ip: string,
+  nowMs?: number
+): Promise<void> {
+  const normalizedIp = normalizeOwnerVerifyIp(ip);
+  await recordFailedAttemptAsync({
+    namespace: 'owner_verify_rl',
+    key: normalizedIp,
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    maxAttempts: RATE_LIMIT_MAX_ATTEMPTS,
+    nowMs,
+  });
+}
+
+export async function recordSuccessfulOwnerVerifyAttemptAsync(ip: string): Promise<void> {
+  const normalizedIp = normalizeOwnerVerifyIp(ip);
+  await clearAttemptsAsync({
+    namespace: 'owner_verify_rl',
+    key: normalizedIp,
+  });
+}
+
+export async function clearOwnerVerifyRateLimitsAsync(): Promise<void> {
+  ownerVerifyRateLimitMap.clear();
+  await clearDistributedStateNamespaceAsync('owner_verify_rl');
 }

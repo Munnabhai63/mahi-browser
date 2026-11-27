@@ -5,6 +5,7 @@
 
 import { createRequire } from 'node:module';
 import type { PrismaClient as PrismaClientType } from '@prisma/client';
+import { parsePgPoolConfig } from './pool-config.js';
 
 const nodeRequire = createRequire(import.meta.url);
 
@@ -62,10 +63,8 @@ export function getPrismaClient(): PrismaClientType | null {
       const PrismaPgCtor = adapterMod.PrismaPg || adapterMod.default?.PrismaPg;
       const PoolCtor = pgMod.Pool || pgMod.default?.Pool;
 
-      const pool = new PoolCtor({
-        connectionString,
-        connectionTimeoutMillis: 10000,
-      });
+      const poolConfig = parsePgPoolConfig(connectionString);
+      const pool = new PoolCtor(poolConfig);
       const adapter = new PrismaPgCtor(pool, { disposeExternalPool: true });
 
       pgPoolInstance = pool;

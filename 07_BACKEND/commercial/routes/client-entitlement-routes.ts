@@ -23,6 +23,7 @@ import { resolveCommercialPlan } from '../payment-service.js';
 import { isPostgresConfigured } from '../../../06_DATABASE/central-repository.js';
 import { getPrismaClient } from '../../../06_DATABASE/prisma-client.js';
 import { getDatabase } from '../../../06_DATABASE/connection.js';
+import { rejectIfEmergencyFrozen } from '../../services/kill-switch-service.js';
 
 export async function handleClientEntitlementRoutes(
   req: http.IncomingMessage,
@@ -252,6 +253,7 @@ export async function handleClientEntitlementRoutes(
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
+    if (await rejectIfEmergencyFrozen(res, 'license_activation')) return true;
     const rawBody = await parseBody(req);
     const parsed = validateStrictBody(ActivateLicenseKeySchema, rawBody, res);
     if (!parsed.ok) return true;

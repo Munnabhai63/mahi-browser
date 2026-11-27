@@ -45,6 +45,13 @@ const CloudEnvSchema = z.object({
   MAHI_STATUS_PRIVATE_KEY: z.string().trim().optional(),
   RSA_PRIVATE_KEY: z.string().trim().optional(),
   MAHI_CLOUD_GATEWAY: z.string().trim().optional(),
+  DB_POOL_MAX: z.coerce.number().int().min(1).max(200).optional(),
+  DB_POOL_IDLE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(600000).optional(),
+  DB_POOL_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(500).max(120000).optional(),
+  DB_KEEPALIVE: z.string().trim().optional(),
+  DB_SSL_CA: z.string().trim().optional(),
+  DB_SSL_REJECT_UNAUTHORIZED: z.string().trim().optional(),
+  EMERGENCY_KILL_SWITCH: z.string().trim().optional(),
 });
 
 export type CloudEnv = z.infer<typeof CloudEnvSchema>;
