@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { BRAND } from '../lib/brand';
 
 export interface FaqItem {
   question: string;
@@ -26,7 +27,7 @@ export const DEFAULT_FAQS: FaqItem[] = [
   {
     question: 'What payment methods are supported, and how does instant UPI work?',
     answer:
-      'We support instant Indian UPI payments via dynamic QR code (VPA: 6375823589@slc) with 0% gateway processing fees, providing instant license activation. For international customers, we support major credit cards and wire transfers in USD and EUR.',
+      `We support instant Indian UPI payments via dynamic QR code (VPA: ${BRAND.upiId}) with 0% gateway processing fees, providing instant license activation. For international customers, we support major credit cards and wire transfers in USD and EUR.`,
   },
   {
     question: 'Can my team share profiles without getting locked out or corrupting browser sessions?',

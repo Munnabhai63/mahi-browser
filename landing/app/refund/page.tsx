@@ -85,8 +85,8 @@ export default function RefundPolicyPage() {
             </li>
             <li>
               <strong className="text-slate-300">WhatsApp Support:</strong>{' '}
-              <a href="https://wa.me/919376343629" target="_blank" rel="noopener noreferrer" className="text-slate-200 underline hover:text-white">
-                +91 9376343629
+              <a href={BRAND.whatsapp.url} target="_blank" rel="noopener noreferrer" className="text-slate-200 underline hover:text-white">
+                {BRAND.whatsapp.display}
               </a>
             </li>
           </ul>

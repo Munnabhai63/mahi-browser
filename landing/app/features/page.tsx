@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { BRAND } from '../../lib/brand';
 
 export default function FeaturesPage() {
   const [activeWorkflowTab, setActiveWorkflowTab] = React.useState(0);
@@ -954,7 +955,7 @@ export default function FeaturesPage() {
               },
               {
                 q: 'How does the 0% Indian UPI payment gateway work?',
-                a: 'Indian teams can pay directly bank-to-bank via UPI (VPA: 6375823589@slc). There are 0% gateway transaction fees, instant license activation, and direct WhatsApp and email support.',
+                a: `Indian teams can pay directly bank-to-bank via UPI (VPA: ${BRAND.upiId}). There are 0% gateway transaction fees, instant license activation, and direct WhatsApp and email support.`,
               },
             ].map((item, idx) => {
               const isOpen = openFaq === idx;

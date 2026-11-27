@@ -64,7 +64,7 @@ export default function PrivacyPolicyPage() {
         <section className="space-y-2">
           <h2 className="text-lg font-bold text-white">5. Data Deletion & Contact Information</h2>
           <p>
-            For privacy inquiries or data deletion requests, contact us at <a href={`mailto:${BRAND.officialEmail}`} className="text-zinc-300 hover:text-white underline">{BRAND.officialEmail}</a> or via <a href="https://wa.me/919376343629" className="text-zinc-300 hover:text-white underline">WhatsApp Support</a>.
+            For privacy inquiries or data deletion requests, contact us at <a href={`mailto:${BRAND.officialEmail}`} className="text-zinc-300 hover:text-white underline">{BRAND.officialEmail}</a> or via <a href={BRAND.whatsapp.url} className="text-zinc-300 hover:text-white underline">WhatsApp Support</a>.
           </p>
         </section>
 

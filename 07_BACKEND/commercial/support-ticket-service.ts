@@ -17,6 +17,7 @@ import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getEmailProvider } from '../../05_AUTH/email-service.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
+import { websiteUrl } from '../../10_CONFIG/shared/site-config.js';
 
 export interface SupportTicket {
   id: string;
@@ -94,7 +95,7 @@ export function classifySupportQuery(query: string): {
         '• Pro 50 (Most Popular): 50 profiles, 5 team seats, 7-day free trial included (₹2,199/mo)\n' +
         '• Pro 100: 100 profiles, 10 team seats, priority API (₹3,899/mo)\n' +
         '• Enterprise: Custom scale with dedicated infrastructure.\n' +
-        'You can view full details or choose a plan at https://mahibrowser.com/pricing.',
+        `You can view full details or choose a plan at ${websiteUrl('/pricing', { productionFallback: true })}.`,
     };
   }
 
@@ -120,8 +121,8 @@ export function classifySupportQuery(query: string): {
       category: 'SETUP',
       suggestedReply:
         'Installing MAHI Browser is fast and straightforward:\n' +
-        '1. Create your account or log in at https://mahibrowser.com/login.\n' +
-        `2. Go to https://mahibrowser.com/download to get the official Windows x64 v${APP_VERSION} installer (~85 MB).\n` +
+        `1. Create your account or log in at ${websiteUrl('/login', { productionFallback: true })}.\n` +
+        `2. Go to ${websiteUrl('/download', { productionFallback: true })} to get the official Windows x64 v${APP_VERSION} installer (~85 MB).\n` +
         `3. Run MAHI-Browser-Setup-${APP_VERSION}.exe. If Microsoft Defender SmartScreen appears, click "More info" → "Run anyway".\n` +
         '4. Log into the desktop app with your credentials to sync your active trial or plan!',
     };

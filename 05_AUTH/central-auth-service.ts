@@ -8,6 +8,7 @@ import {
   recordFailedAttemptAsync,
   clearAttemptsAsync,
 } from '../08_SECURITY/distributed-state-service.js';
+import { websiteUrl } from '../10_CONFIG/shared/site-config.js';
 
 function mapRowToAuthUser(row: any): AuthUser {
   return {
@@ -357,7 +358,7 @@ export async function registerCentralUser(params: {
       created_at: now,
     });
 
-    const verifyUrl = `https://mahibrowser.com/verify-email?token=${rawVerifyToken}`;
+    const verifyUrl = websiteUrl(`/verify-email?token=${rawVerifyToken}`, { productionFallback: true });
     try {
       await getEmailProvider().sendVerificationEmail(rawEmail, rawVerifyToken, verifyUrl);
     } catch (err: any) {
@@ -450,7 +451,7 @@ export async function registerCentralUser(params: {
   `).run(tokenId, tokenHash, userId, normalizedEmail, expiresAt, now);
 
   // Send verification email via provider
-  const verifyUrl = `https://mahibrowser.com/verify-email?token=${rawVerifyToken}`;
+  const verifyUrl = websiteUrl(`/verify-email?token=${rawVerifyToken}`, { productionFallback: true });
   try {
     await getEmailProvider().sendVerificationEmail(rawEmail, rawVerifyToken, verifyUrl);
   } catch (err: any) {
@@ -581,7 +582,7 @@ export async function resendEmailVerification(email: string, ipAddress?: string)
       created_at: now,
     });
 
-    const verifyUrl = `https://mahibrowser.com/verify-email?token=${rawVerifyToken}`;
+    const verifyUrl = websiteUrl(`/verify-email?token=${rawVerifyToken}`, { productionFallback: true });
     await getEmailProvider().sendVerificationEmail(user.email, rawVerifyToken, verifyUrl);
     logSecurityEvent(user.id, 'RESEND_VERIFICATION', `Resent verification to ${normalizedEmail}`, 'SUCCESS', ipAddress);
     return { success: true };
@@ -616,7 +617,7 @@ export async function resendEmailVerification(email: string, ipAddress?: string)
     VALUES (?, ?, ?, ?, 'EMAIL_VERIFICATION', ?, ?)
   `).run(tokenId, tokenHash, user.id, normalizedEmail, expiresAt, now);
 
-  const verifyUrl = `https://mahibrowser.com/verify-email?token=${rawVerifyToken}`;
+  const verifyUrl = websiteUrl(`/verify-email?token=${rawVerifyToken}`, { productionFallback: true });
   await getEmailProvider().sendVerificationEmail(user.email, rawVerifyToken, verifyUrl);
 
   logSecurityEvent(user.id, 'RESEND_VERIFICATION', `Resent verification to ${normalizedEmail}`, 'SUCCESS', ipAddress);
@@ -1059,7 +1060,7 @@ export async function requestPasswordReset(email: string, ipAddress?: string): P
       created_at: now,
     });
 
-    const resetUrl = `https://mahibrowser.com/reset-password?token=${rawResetToken}`;
+    const resetUrl = websiteUrl(`/reset-password?token=${rawResetToken}`, { productionFallback: true });
     try {
       await getEmailProvider().sendPasswordResetEmail(user.email, rawResetToken, resetUrl);
     } catch (err: any) {
@@ -1094,7 +1095,7 @@ export async function requestPasswordReset(email: string, ipAddress?: string): P
     VALUES (?, ?, ?, ?, 'PASSWORD_RESET', ?, ?)
   `).run(tokenId, tokenHash, user.id, normalizedEmail, expiresAt, now);
 
-  const resetUrl = `https://mahibrowser.com/reset-password?token=${rawResetToken}`;
+  const resetUrl = websiteUrl(`/reset-password?token=${rawResetToken}`, { productionFallback: true });
   try {
     await getEmailProvider().sendPasswordResetEmail(user.email, rawResetToken, resetUrl);
   } catch (err: any) {

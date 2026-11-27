@@ -1,5 +1,12 @@
 # Decisions Log
 
+## 2026-11-28 - Phase 6 Centralized URL & Env-Driven Contact/Payment Config (P1)
+- **Context**: Domain URLs (`verify-email`, `reset-password`, workspace `inviteUrl`, support replies, OAuth allowed origins, update feeds, price catalog, and legacy `checkout.mahibrowser.com`/`invoices.mahibrowser.com` strings) plus business contact and UPI/USDT metadata were hardcoded across auth, billing, security, UI, and Next.js landing files instead of reading runtime/build-time environment configuration.
+- **Decisions**:
+  - Created dependency-free `10_CONFIG/shared/site-config.ts` (re-exported via `landing/lib/site-config.ts`) without relative `.js` imports so Next.js 16 Turbopack, Vite, Electron `tsc`, Gateway `tsc`, and Vitest resolve it identically; included static `NEXT_PUBLIC_*` / `VITE_*` literal reads for client-bundle inlining alongside dynamic Node `process.env` reads via ES getters (`siteConfig`).
+  - Distinguished explicit local dev (`NODE_ENV=development` non-packaged -> `http://localhost:3000`, `http://localhost:5173`, `http://localhost:8989`) from Electron packaged / static production / unit defaults (`https://mahibrowser.com`, `https://app.mahibrowser.com`, `https://api.mahibrowser.com`) so existing desktop runtime and live feed/price checks continue working with zero `.env` present while env overrides win everywhere.
+  - Converted `10_CONFIG/contact-config.ts` to expose `getRuntimeContactConfig()` + dynamic `CONTACT_CONFIG` getters supporting `BUSINESS_EMAIL`, `SUPPORT_EMAIL`, `WHATSAPP_NUMBER`, `UPI_ID`, `UPI_ACCOUNT_HOLDER`, `USDT_ADDRESS`, and `USDT_NETWORK` (while preserving static default exports for backward-compatible tests) and extended `GET /api/v1/billing/gateways` with `upi_manual` and public `support` metadata so Landing hydrates live VPS merchant/support changes cleanly.
+
 ## 2026-11-28 - Phase 5 Live VPS, Database Schema, Nginx CSP & CI-Gated Deployment (P0)
 - **Context**: Post-`a0795fd` live checks uncovered missing `MAHI_OWNER_TOTP_SECRET` / `MAHI_WEBSITE_URL` on VPS `/opt/mahi-browser/.env`, a route path mismatch (`/api/v1/admin/owner/verify` vs `/verify-totp`), Supabase schema drift (`archive_format`, `cloud_profile_deltas`, `device_model`, `system_runtime_state`/`flags`) with RLS disabled across `public` tables, stale Nginx CSP/COOP headers and missing `app.mahibrowser.com` `root`, and un-gated/missing Web Dashboard CD workflows.
 - **Decisions**:

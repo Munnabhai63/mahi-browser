@@ -1,15 +1,39 @@
+import { getSiteConfig } from './site-config';
+import {
+  buildWhatsAppLink as buildContactWhatsAppLink,
+  getRuntimePaymentMetadata,
+} from '../../10_CONFIG/contact-config';
+
 export const BRAND = {
   name: 'MAHI Browser',
   legalName: 'MAHI Browser — By Mahipal Choudhary',
   creator: 'Mahipal Choudhary',
   tagline: 'Enterprise Anti-Detect Browser with JS-Layer MV3 Stealth & Camoufox C++ Engine',
-  officialEmail: 'mahiverse.official@gmail.com',
-  hubEmail: 'mahiverse.hub@gmail.com',
-  upiId: '6375823589@slc',
+  get officialEmail(): string {
+    return getRuntimePaymentMetadata().supportEmail;
+  },
+  get hubEmail(): string {
+    return getRuntimePaymentMetadata().businessEmail;
+  },
+  get upiId(): string {
+    return getRuntimePaymentMetadata().upi.id;
+  },
+  get upiAccountHolder(): string {
+    return getRuntimePaymentMetadata().upi.accountHolder;
+  },
+  get usdt() {
+    return getRuntimePaymentMetadata().usdt;
+  },
   version: '1.4.0',
-  website: 'https://mahibrowser.com',
-  appUrl: 'https://app.mahibrowser.com',
-  apiUrl: 'https://api.mahibrowser.com',
+  get website(): string {
+    return getSiteConfig({ productionFallback: true }).websiteUrl;
+  },
+  get appUrl(): string {
+    return getSiteConfig({ productionFallback: true }).appUrl;
+  },
+  get apiUrl(): string {
+    return getSiteConfig({ productionFallback: true }).apiUrl;
+  },
   assets: {
     logo: '/assets/img/logo.png',
     favicon: '/assets/img/favicon.ico',
@@ -25,7 +49,9 @@ export const BRAND = {
     linuxAvailable: false,
   },
   legal: {
-    sellerName: 'Mahipal Choudhary',
+    get sellerName(): string {
+      return getRuntimePaymentMetadata().legalSellerName;
+    },
     brandName: 'MAHI Browser',
     country: 'India',
     state: 'Rajasthan',
@@ -33,23 +59,31 @@ export const BRAND = {
     gstin: null as string | null,
     registeredAddress: null as string | null,
     grievanceOfficer: 'Mahipal Choudhary',
-    grievanceOfficerEmail: 'mahiverse.official@gmail.com',
+    get grievanceOfficerEmail(): string {
+      return getRuntimePaymentMetadata().grievanceOfficerEmail;
+    },
     grievanceResponseDays: 15,
     refundWindowDays: 7,
     effectiveDate: '2026-11-16',
     lastUpdated: '2026-11-19',
   },
   whatsapp: {
-    rawNumber: '919376343629',
-    number: '+919376343629',
-    display: '+91 9376343629',
-    url: 'https://wa.me/919376343629',
+    get rawNumber(): string {
+      return getRuntimePaymentMetadata().whatsappRawNumber;
+    },
+    get number(): string {
+      return getRuntimePaymentMetadata().whatsappNumber;
+    },
+    get display(): string {
+      return getRuntimePaymentMetadata().whatsappDisplay;
+    },
+    get url(): string {
+      return `https://wa.me/${getRuntimePaymentMetadata().whatsappRawNumber}`;
+    },
   },
 };
 
 export function buildWhatsAppLink(customMessage?: string): string {
-  const defaultMsg = 'Hello MAHI Browser Support, I need help with my account.';
-  const msg = encodeURIComponent(customMessage || defaultMsg);
-  return `https://wa.me/919376343629?text=${msg}`;
+  return buildContactWhatsAppLink(customMessage);
 }
 

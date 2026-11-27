@@ -3,15 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { BRAND } from '../lib/brand';
-import {
-  LEGAL_SELLER_NAME,
-  UPI_ID,
-  USDT_ENABLED,
-  USDT_ADDRESS,
-  USDT_NETWORK,
-  USDT_QR_ASSET_WEB,
-  WHATSAPP_RAW_NUMBER,
-} from '../../10_CONFIG/contact-config';
+import { getRuntimePaymentMetadata } from '../../10_CONFIG/contact-config';
 
 interface PlanTier {
   id: string;
@@ -163,38 +155,40 @@ const COMPARISON_CATEGORIES = [
   },
 ];
 
-const PRICING_FAQS = [
-  {
-    question: 'How are browser profiles stored and isolated in MAHI Browser?',
-    answer:
-      'Unlike legacy cloud tools that send your session data to external cloud servers, MAHI Browser stores all profile cookies, local storage, and proxy configurations in local-first encrypted SQLite databases on your machine. Your profiles run completely air-gapped without leaking data.',
-  },
-  {
-    question: 'What is the difference between Starter (1M), Growth (6M), and Ultimate (1Y)?',
-    answer:
-      'Starter (₹599) includes 25 air-gapped profiles for 1 month. Growth (₹999) provides 6 months of access (effective ₹166/month) with 100 profiles and unlimited proxy slots. Ultimate (₹1,499) provides 1 full year of access (effective ₹125/month) with unlimited offline profiles, 2 device workspaces, and 24/7 dedicated VIP WhatsApp support.',
-  },
-  {
-    question: 'How does 0% fee Indian UPI payment work?',
-    answer:
-      `You can pay directly via any Indian UPI app (PhonePe, Google Pay, Paytm, CRED, BHIM) to our registered merchant VPA ${UPI_ID}. There are zero international credit card markups or foreign transaction fees. Your license key is verified and activated promptly.`,
-  },
-  {
-    question: 'Can I import my existing GoLogin or AdsPower profiles and cookies?',
-    answer:
-      'Yes. MAHI Browser features a Universal Bulk Importer. Simply export your profiles from GoLogin, AdsPower, or Multilogin as JSON, drag and drop the file into MAHI Browser, and our engine automatically maps proxies, User-Agents, and cookies into isolated profiles.',
-  },
-  {
-    question: 'Can I upgrade from 1 Month or 6 Months to 1 Year later?',
-    answer:
-      'Yes. You can upgrade at any time. Any remaining days on your current subscription will be prorated and stacked seamlessly onto your new 1-Year Ultimate plan.',
-  },
-  {
-    question: 'What is the 7-day money-back guarantee?',
-    answer:
-      'If our dual-engine architecture (Chromium 138 + Camoufox) fails to pass your target platform’s anti-fraud checks (Cloudflare Turnstile, DataDome, CreepJS), simply message our WhatsApp support within 7 days for a full, unconditional refund.',
-  },
-];
+function getPricingFaqs(upiId: string) {
+  return [
+    {
+      question: 'How are browser profiles stored and isolated in MAHI Browser?',
+      answer:
+        'Unlike legacy cloud tools that send your session data to external cloud servers, MAHI Browser stores all profile cookies, local storage, and proxy configurations in local-first encrypted SQLite databases on your machine. Your profiles run completely air-gapped without leaking data.',
+    },
+    {
+      question: 'What is the difference between Starter (1M), Growth (6M), and Ultimate (1Y)?',
+      answer:
+        'Starter (₹599) includes 25 air-gapped profiles for 1 month. Growth (₹999) provides 6 months of access (effective ₹166/month) with 100 profiles and unlimited proxy slots. Ultimate (₹1,499) provides 1 full year of access (effective ₹125/month) with unlimited offline profiles, 2 device workspaces, and 24/7 dedicated VIP WhatsApp support.',
+    },
+    {
+      question: 'How does 0% fee Indian UPI payment work?',
+      answer:
+        `You can pay directly via any Indian UPI app (PhonePe, Google Pay, Paytm, CRED, BHIM) to our registered merchant VPA ${upiId}. There are zero international credit card markups or foreign transaction fees. Your license key is verified and activated promptly.`,
+    },
+    {
+      question: 'Can I import my existing GoLogin or AdsPower profiles and cookies?',
+      answer:
+        'Yes. MAHI Browser features a Universal Bulk Importer. Simply export your profiles from GoLogin, AdsPower, or Multilogin as JSON, drag and drop the file into MAHI Browser, and our engine automatically maps proxies, User-Agents, and cookies into isolated profiles.',
+    },
+    {
+      question: 'Can I upgrade from 1 Month or 6 Months to 1 Year later?',
+      answer:
+        'Yes. You can upgrade at any time. Any remaining days on your current subscription will be prorated and stacked seamlessly onto your new 1-Year Ultimate plan.',
+    },
+    {
+      question: 'What is the 7-day money-back guarantee?',
+      answer:
+        'If our dual-engine architecture (Chromium 138 + Camoufox) fails to pass your target platform’s anti-fraud checks (Cloudflare Turnstile, DataDome, CreepJS), simply message our WhatsApp support within 7 days for a full, unconditional refund.',
+    },
+  ];
+}
 
 type BillingCycle = 'MONTHLY' | 'SEMI_ANNUAL' | 'ANNUAL';
 
@@ -205,11 +199,17 @@ function getPlanBillingCycle(planId: string): BillingCycle {
 }
 
 export default function PricingView() {
+  const initialContact = getRuntimePaymentMetadata();
   const [currency, setCurrency] = useState<'INR' | 'USD'>('INR');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
-  // Indian UPI Modal state
+  // Indian UPI Modal state (build-time env defaults + live Gateway hydration)
   const [isUpiModalOpen, setIsUpiModalOpen] = useState(false);
+  const [upiId, setUpiId] = useState(initialContact.upi.id);
+  const [upiAccountHolder, setUpiAccountHolder] = useState(initialContact.upi.accountHolder);
+  const [upiQrAsset, setUpiQrAsset] = useState(initialContact.upi.qrAssetWeb);
+  const [whatsappRawNumber, setWhatsappRawNumber] = useState(initialContact.whatsappRawNumber);
+  const [sellerName, setSellerName] = useState(initialContact.legalSellerName);
   const [selectedUpiPlan, setSelectedUpiPlan] = useState<{
     id: string;
     name: string;
@@ -225,10 +225,10 @@ export default function PricingView() {
   const [submittedPaymentId, setSubmittedPaymentId] = useState<string | null>(null);
   const [isYoupiEnabled, setIsYoupiEnabled] = useState(false);
   const [isStripeEnabled, setIsStripeEnabled] = useState(false);
-  const [isUsdtEnabled, setIsUsdtEnabled] = useState(USDT_ENABLED);
-  const [usdtAddress, setUsdtAddress] = useState(USDT_ADDRESS);
-  const [usdtNetwork, setUsdtNetwork] = useState(USDT_NETWORK);
-  const [usdtQrAsset, setUsdtQrAsset] = useState(USDT_QR_ASSET_WEB);
+  const [isUsdtEnabled, setIsUsdtEnabled] = useState(initialContact.usdt.enabled);
+  const [usdtAddress, setUsdtAddress] = useState(initialContact.usdt.address);
+  const [usdtNetwork, setUsdtNetwork] = useState(initialContact.usdt.network);
+  const [usdtQrAsset, setUsdtQrAsset] = useState(initialContact.usdt.qrAssetWeb);
   const [isCryptoModalOpen, setIsCryptoModalOpen] = useState(false);
   const [selectedCryptoPlan, setSelectedCryptoPlan] = useState<{
     id: string;
@@ -370,6 +370,16 @@ export default function PricingView() {
               if (usdt.network) setUsdtNetwork(usdt.network);
               if (usdt.qrAsset) setUsdtQrAsset(usdt.qrAsset);
             }
+            const upiManual = data.gateways.find((g: any) => g.id === 'upi_manual');
+            if (upiManual) {
+              if (upiManual.upiId) setUpiId(upiManual.upiId);
+              if (upiManual.accountHolder) setUpiAccountHolder(upiManual.accountHolder);
+              if (upiManual.qrAsset) setUpiQrAsset(upiManual.qrAsset);
+            }
+          }
+          if (mounted && data?.support) {
+            if (data.support.whatsappRawNumber) setWhatsappRawNumber(data.support.whatsappRawNumber);
+            if (data.support.sellerName) setSellerName(data.support.sellerName);
           }
         }
       } catch {
@@ -547,7 +557,7 @@ export default function PricingView() {
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
         navigator.clipboard
-          .writeText(UPI_ID)
+          .writeText(upiId)
           .then(() => {
             setCopiedUpi(true);
             setTimeout(() => setCopiedUpi(false), 2500);
@@ -1175,7 +1185,7 @@ export default function PricingView() {
 
             {/* Right Accordion Column */}
             <div className="lg:col-span-7 divide-y divide-[#e6e3e3] border-y border-[#e6e3e3]">
-              {PRICING_FAQS.map((faq, idx) => {
+              {getPricingFaqs(upiId).map((faq, idx) => {
                 const isOpen = openFaq === idx;
                 return (
                   <div key={idx} className="py-4">
@@ -1295,7 +1305,7 @@ export default function PricingView() {
             {/* UPI QR Code Container */}
             <div className="rounded-2xl bg-white p-4 flex flex-col items-center justify-center space-y-2">
               <img
-                src="/assets/img/payments/mahi-upi-qr.png"
+                src={upiQrAsset}
                 alt="MAHI Browser UPI QR Code"
                 className="w-48 h-48 object-contain rounded-lg"
               />
@@ -1308,13 +1318,13 @@ export default function PricingView() {
             <div className="space-y-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 p-3.5 text-xs">
               <div className="flex items-center justify-between text-zinc-400">
                 <span>Account Holder:</span>
-                <span className="font-semibold text-white">{LEGAL_SELLER_NAME}</span>
+                <span className="font-semibold text-white">{upiAccountHolder}</span>
               </div>
               <div className="flex items-center justify-between text-zinc-400 pt-1 border-t border-zinc-800">
                 <span>Official Merchant VPA:</span>
                 <div className="flex items-center gap-2">
                   <code className="font-mono text-zinc-200 bg-zinc-800 px-2 py-0.5 rounded border border-zinc-700">
-                    {UPI_ID}
+                    {upiId}
                   </code>
                   <button
                     type="button"
@@ -1384,7 +1394,7 @@ export default function PricingView() {
                 </p>
                 <div className="pt-2">
                   <a
-                    href={`https://wa.me/${WHATSAPP_RAW_NUMBER}?text=Hi%20${encodeURIComponent(LEGAL_SELLER_NAME.split(' ')[0])},%20I%20have%20paid%20INR%20${selectedUpiPlan.price}%20via%20UPI%20for%20MAHI%20Browser%20${encodeURIComponent(selectedUpiPlan.name)}%20Plan.%20UTR:%20${encodeURIComponent(utrInput)}${submittedPaymentId ? `%20Ref:%20${encodeURIComponent(submittedPaymentId)}` : ''}`}
+                    href={`https://wa.me/${whatsappRawNumber}?text=Hi%20${encodeURIComponent(sellerName.split(' ')[0])},%20I%20have%20paid%20INR%20${selectedUpiPlan.price}%20via%20UPI%20for%20MAHI%20Browser%20${encodeURIComponent(selectedUpiPlan.name)}%20Plan.%20UTR:%20${encodeURIComponent(utrInput)}${submittedPaymentId ? `%20Ref:%20${encodeURIComponent(submittedPaymentId)}` : ''}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-center gap-2 rounded-full bg-white text-black px-4 py-2 text-xs font-semibold hover:bg-zinc-200 transition-colors"
@@ -1399,7 +1409,7 @@ export default function PricingView() {
             <div className="text-center text-[11px] text-zinc-500 pt-1">
               Need instant activation help?{' '}
               <a
-                href={`https://wa.me/${WHATSAPP_RAW_NUMBER}`}
+                href={`https://wa.me/${whatsappRawNumber}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-zinc-300 hover:text-white underline"
@@ -1533,7 +1543,7 @@ export default function PricingView() {
                 </p>
                 <div className="pt-2">
                   <a
-                    href={`https://wa.me/${WHATSAPP_RAW_NUMBER}?text=Hi%20${encodeURIComponent(LEGAL_SELLER_NAME.split(' ')[0])},%20I%20have%20paid%20${selectedCryptoPlan.price}%20USDT%20(TRC-20)%20for%20MAHI%20Browser%20${encodeURIComponent(selectedCryptoPlan.name)}%20Plan.%20TX:%20${encodeURIComponent(txHashInput)}${submittedCryptoPaymentId ? `%20Ref:%20${encodeURIComponent(submittedCryptoPaymentId)}` : ''}`}
+                    href={`https://wa.me/${whatsappRawNumber}?text=Hi%20${encodeURIComponent(sellerName.split(' ')[0])},%20I%20have%20paid%20${selectedCryptoPlan.price}%20USDT%20(TRC-20)%20for%20MAHI%20Browser%20${encodeURIComponent(selectedCryptoPlan.name)}%20Plan.%20TX:%20${encodeURIComponent(txHashInput)}${submittedCryptoPaymentId ? `%20Ref:%20${encodeURIComponent(submittedCryptoPaymentId)}` : ''}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-center gap-2 rounded-full bg-white text-black px-4 py-2 text-xs font-semibold hover:bg-zinc-200 transition-colors"
@@ -1547,7 +1557,7 @@ export default function PricingView() {
             <div className="text-center text-[11px] text-zinc-500 pt-1">
               Need instant activation help?{' '}
               <a
-                href={`https://wa.me/${WHATSAPP_RAW_NUMBER}`}
+                href={`https://wa.me/${whatsappRawNumber}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-zinc-300 hover:text-white underline"

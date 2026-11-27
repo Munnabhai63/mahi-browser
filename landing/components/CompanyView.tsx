@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { BRAND } from '../lib/brand';
 
 const STATS = [
   { target: 500, suffix: '+', label: 'FLEET CUSTOMERS' },
@@ -133,31 +134,31 @@ const OPEN_ROLES = [
     title: 'Lead Chromium & C++ Engine Engineer',
     type: 'FULL TIME',
     location: 'Remote / London, UK',
-    href: 'mailto:mahiverse.official@gmail.com?subject=Job%20Application:%20Lead%20Chromium%20%26%20C%2B%2B%20Engine%20Engineer',
+    href: `mailto:${BRAND.officialEmail}?subject=Job%20Application:%20Lead%20Chromium%20%26%20C%2B%2B%20Engine%20Engineer`,
   },
   {
     title: 'Lead Anti-Detect & Fingerprint Researcher',
     type: 'FULL TIME',
     location: 'Remote / San Francisco, CA',
-    href: 'mailto:mahiverse.official@gmail.com?subject=Job%20Application:%20Lead%20Anti-Detect%20%26%20Fingerprint%20Researcher',
+    href: `mailto:${BRAND.officialEmail}?subject=Job%20Application:%20Lead%20Anti-Detect%20%26%20Fingerprint%20Researcher`,
   },
   {
     title: 'Full Stack Engineer (TypeScript, Next.js, Rust)',
     type: 'FULL TIME',
     location: 'Remote',
-    href: 'mailto:mahiverse.official@gmail.com?subject=Job%20Application:%20Full%20Stack%20Engineer',
+    href: `mailto:${BRAND.officialEmail}?subject=Job%20Application:%20Full%20Stack%20Engineer`,
   },
   {
     title: 'Head of Enterprise Sales & Agency Fleets',
     type: 'FULL TIME',
     location: 'San Francisco, CA',
-    href: 'mailto:mahiverse.official@gmail.com?subject=Job%20Application:%20Head%20of%20Enterprise%20Sales',
+    href: `mailto:${BRAND.officialEmail}?subject=Job%20Application:%20Head%20of%20Enterprise%20Sales`,
   },
   {
     title: 'Media Operations & Growth Fleet Specialist',
     type: 'FULL TIME',
     location: 'London, UK',
-    href: 'mailto:mahiverse.official@gmail.com?subject=Job%20Application:%20Media%20Operations%20Specialist',
+    href: `mailto:${BRAND.officialEmail}?subject=Job%20Application:%20Media%20Operations%20Specialist`,
   },
 ];
 

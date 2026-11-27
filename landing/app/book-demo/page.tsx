@@ -119,7 +119,7 @@ export default function BookDemoPage() {
               </div>
               <div className="text-[13px] text-zinc-300 space-y-1.5 font-sans">
                 <div>Email: <a href={`mailto:${BRAND.officialEmail}`} className="text-white hover:underline underline-offset-4">{BRAND.officialEmail}</a></div>
-                <div>WhatsApp: <a href="https://wa.me/919376343629" className="text-white hover:underline underline-offset-4">Chat on WhatsApp</a></div>
+                <div>WhatsApp: <a href={BRAND.whatsapp.url} className="text-white hover:underline underline-offset-4">Chat on WhatsApp</a></div>
                 <div>Founder & CEO: <strong className="text-white">{BRAND.creator}</strong></div>
               </div>
             </div>

@@ -29,13 +29,18 @@ import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { encryptProfileArchive, decryptProfileArchive } from './cloud-profile-crypto.js';
 import { getDeviceId, getDeviceName } from '../03_HARDWARE/device-id.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
+import { cleanUrl, getSiteConfig } from '../10_CONFIG/shared/site-config.js';
 
 const MAX_PROFILE_BYTES = 200 * 1024 * 1024; // 200MB
 const MAX_USER_QUOTA_BYTES = 1024 * 1024 * 1024; // 1GB
 const DEFAULT_PASSPHRASE = 'mahi-cloud-sync';
 
 export function getApiBaseUrl(): string {
-  return process.env.COMMERCIAL_API_URL || ADMIN_API_BASE_URL;
+  return (
+    cleanUrl(process.env.COMMERCIAL_API_URL, '') ||
+    getSiteConfig({ productionFallback: true }).apiUrl ||
+    ADMIN_API_BASE_URL
+  );
 }
 
 function getUserDataPath(): string {

@@ -11,6 +11,10 @@ export default function PricingTable() {
   const [category, setCategory] = useState<'PERSONAL' | 'BUSINESS'>('PERSONAL');
   const [currency, setCurrency] = useState<'INR' | 'USD' | 'EUR'>('INR');
   const [showUpiModal, setShowUpiModal] = useState(false);
+  const [upiId, setUpiId] = useState(BRAND.upiId);
+  const [upiQrAsset, setUpiQrAsset] = useState(BRAND.assets.upiQr);
+  const [supportEmail, setSupportEmail] = useState(BRAND.officialEmail);
+  const [whatsappUrl, setWhatsappUrl] = useState(BRAND.whatsapp.url);
 
   useEffect(() => {
     fetch(`${BRAND.apiUrl}/api/v1/pricing/catalog`)
@@ -45,6 +49,23 @@ export default function PricingTable() {
               };
             })
           );
+        }
+      })
+      .catch(() => {});
+
+    fetch(`${BRAND.apiUrl}/api/v1/billing/gateways`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (Array.isArray(data?.gateways)) {
+          const upiManual = data.gateways.find((g: any) => g.id === 'upi_manual');
+          if (upiManual?.upiId) setUpiId(upiManual.upiId);
+          if (upiManual?.qrAsset) setUpiQrAsset(upiManual.qrAsset);
+        }
+        if (data?.support?.email) setSupportEmail(data.support.email);
+        if (data?.support?.whatsappUrl) {
+          setWhatsappUrl(data.support.whatsappUrl);
+        } else if (data?.support?.whatsappRawNumber) {
+          setWhatsappUrl(`https://wa.me/${data.support.whatsappRawNumber}`);
         }
       })
       .catch(() => {});
@@ -230,17 +251,17 @@ export default function PricingTable() {
             </p>
             <div className="mx-auto flex justify-center p-3 bg-white rounded-xl w-48 h-48 border-4 border-emerald-500/40">
               <img
-                src={BRAND.assets.upiQr}
+                src={upiQrAsset}
                 alt="MAHI Browser UPI QR"
                 className="w-full h-full object-contain"
               />
             </div>
             <div className="rounded-lg bg-slate-950 p-2.5 text-xs border border-slate-800">
               <span className="text-slate-400">UPI VPA: </span>
-              <span className="font-mono text-zinc-200 font-bold">{BRAND.upiId}</span>
+              <span className="font-mono text-zinc-200 font-bold">{upiId}</span>
             </div>
             <p className="text-[11px] text-slate-400">
-              After transfer, send transaction screenshot to <a href={`mailto:${BRAND.officialEmail}`} className="text-zinc-300 underline">{BRAND.officialEmail}</a> or <a href="https://wa.me/919376343629" className="text-zinc-300 underline">WhatsApp Support</a> for prompt activation.
+              After transfer, send transaction screenshot to <a href={`mailto:${supportEmail}`} className="text-zinc-300 underline">{supportEmail}</a> or <a href={whatsappUrl} className="text-zinc-300 underline">WhatsApp Support</a> for prompt activation.
             </p>
           </div>
         </div>

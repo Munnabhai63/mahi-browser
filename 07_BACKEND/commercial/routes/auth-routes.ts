@@ -22,6 +22,7 @@ import {
 } from './router-shared.js';
 import { sendSafeError, validateStrictBody } from '../../utils/app-error.js';
 import { rejectIfEmergencyFrozen } from '../../services/kill-switch-service.js';
+import { cleanUrl, getSiteConfig } from '../../../10_CONFIG/shared/site-config.js';
 import {
   LegacySignupSchema,
   LegacyLoginSchema,
@@ -568,7 +569,10 @@ export async function handleAuthRoutes(
     const state = parsedUrl.searchParams.get('state');
     const error = parsedUrl.searchParams.get('error');
 
-    const websiteBase = (process.env.MAHI_WEBSITE_URL || (process.env.NODE_ENV === 'production' ? 'https://mahibrowser.com' : '')).replace(/\/+$/, '');
+    const explicitWebsite = cleanUrl(process.env.MAHI_WEBSITE_URL || process.env.WEBSITE_URL, '');
+    const websiteBase =
+      explicitWebsite ||
+      (process.env.NODE_ENV === 'production' ? getSiteConfig({ productionFallback: true }).websiteUrl : '');
 
     // Handle user cancellation or OAuth error
     if (error || !state) {

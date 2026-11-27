@@ -12,6 +12,7 @@ import {
 } from '../../10_CONFIG/shared/types/workspace.js';
 import { getEmailProvider } from '../../05_AUTH/email-service.js';
 import { getCentralUserById, getCentralUserByEmail } from '../../05_AUTH/central-auth-service.js';
+import { appUrl } from '../../10_CONFIG/shared/site-config.js';
 
 // ============================================================================
 // PERMISSION CHECK HELPERS
@@ -508,7 +509,7 @@ export async function inviteWorkspaceMember(
 
   const inviter = getCentralUserById(inviterUserId);
   const inviterName = inviter ? (inviter.name || inviter.email) : 'Team Admin';
-  const inviteUrl = `https://app.mahibrowser.com/invite?token=${rawToken}`;
+  const inviteUrl = appUrl(`/invite?token=${rawToken}`, { productionFallback: true });
 
   await getEmailProvider().sendWorkspaceInvitationEmail(
     normalizedEmail,

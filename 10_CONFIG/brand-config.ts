@@ -3,6 +3,8 @@
  * Strict centralized brand asset system locking the 4 approved final logo assets.
  */
 
+import { getSiteConfig } from './shared/site-config.js';
+
 // Authoritative Master Asset Identifiers & Paths
 export const PRIMARY_LOGO = '/brand/mahi-browser-logo-primary.png'; // ASSET A (Full Logo with wordmark)
 export const RED_MARK = '/brand/mahi-browser-mark-red.png';         // ASSET B (Red Dragon Mark)
@@ -17,8 +19,12 @@ export const BRAND_CONFIG = {
   creator: 'Munna Bhai',
   creatorBranding: 'By Munna Bhai',
   company: 'Munna Bhai',
-  website: 'https://mahibrowser.com',
-  consoleUrl: 'https://app.mahibrowser.com',
+  get website(): string {
+    return getSiteConfig({ productionFallback: true }).websiteUrl;
+  },
+  get consoleUrl(): string {
+    return getSiteConfig({ productionFallback: true }).appUrl;
+  },
 
   // Authoritative Approved Assets
   assets: {

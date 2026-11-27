@@ -24,6 +24,7 @@ import { BrandLogo } from '../components/BrandLogo.js';
 import { UpdateStatusEvent } from '../../10_CONFIG/shared/types/updater.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
+import { getDefaultUpdateFeedUrl } from '../../10_CONFIG/shared/site-config.js';
 
 interface HelpAboutProps {
   onNavigate: (page: NavigationPage) => void;
@@ -274,7 +275,7 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
                   {updateStatus.state === 'DOWNLOADING' && `Transferred ${Math.round((updateStatus.progress?.transferred || 0) / 1024 / 1024)} MB of ${Math.round((updateStatus.progress?.total || 0) / 1024 / 1024)} MB`}
                   {updateStatus.state === 'DOWNLOADED' && `The update has been cryptographically verified and is ready to install.`}
                   {updateStatus.state === 'ERROR' && (updateStatus.error || 'Could not connect to update feed. Please check your network.')}
-                  {updateStatus.state === 'CHECKING' && 'Contacting https://mahibrowser.com/update/ to check release metadata...'}
+                  {updateStatus.state === 'CHECKING' && `Contacting ${getDefaultUpdateFeedUrl()} to check release metadata...`}
                   {updateStatus.state === 'IDLE' && `Click "Check for Updates" to verify against the official production release feed.`}
                 </p>
               </div>

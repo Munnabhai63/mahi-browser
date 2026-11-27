@@ -24,6 +24,7 @@ import { useProfileStore } from '../stores/useProfileStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { BrandLogo } from './BrandLogo.js';
 import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
+import { getSiteConfig, websiteUrl } from '../../10_CONFIG/shared/site-config.js';
 import { fetchMyLicense, MyLicenseResponse } from '../api-fallback.js';
 
 interface AccountModalProps {
@@ -32,11 +33,7 @@ interface AccountModalProps {
 }
 
 function getAdminApiBaseUrl(): string {
-  return (
-    (import.meta as any).env?.VITE_MAHI_API_URL ||
-    (import.meta as any).env?.VITE_MAHI_ADMIN_URL ||
-    'https://api.mahibrowser.com'
-  );
+  return getSiteConfig({ productionFallback: true }).apiUrl;
 }
 
 type CanonicalBillingCycle = 'MONTHLY' | 'SEMI_ANNUAL' | 'ANNUAL';
@@ -1072,7 +1069,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                 ) : (
                   <div className="text-xs text-slate-400 space-y-1">
                     <p>No licence yet. It is issued automatically after payment is approved.</p>
-                    <a href="https://mahibrowser.com/pricing" target="_blank" rel="noopener noreferrer" className="text-slate-300 hover:text-white underline inline-block font-medium">View Pricing</a>
+                    <a href={websiteUrl('/pricing', { productionFallback: true })} target="_blank" rel="noopener noreferrer" className="text-slate-300 hover:text-white underline inline-block font-medium">View Pricing</a>
                   </div>
                 )}
               </div>
@@ -1530,7 +1527,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                     rel="noreferrer"
                     className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-xs border border-slate-700/60 transition"
                   >
-                    <span>Need Help? Contact WhatsApp Support ({CONTACT_CONFIG.WHATSAPP_DISPLAY})</span>
+                    <span>Need Help? Contact WhatsApp Support ({paymentInfo?.whatsapp_number || CONTACT_CONFIG.WHATSAPP_DISPLAY})</span>
                     <ExternalLink size={12} />
                   </a>
                 </div>

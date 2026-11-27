@@ -13,6 +13,7 @@ import { getUserById } from '../commercial-auth-service.js';
 import { getCentralUserByIdAsync } from '../../../05_AUTH/central-auth-service.js';
 import { createLicense } from '../../../04_LICENSING/license-engine.js';
 import { assertNotEmergencyFrozen } from '../../services/kill-switch-service.js';
+import { websiteUrl } from '../../../10_CONFIG/shared/site-config.js';
 import {
   CheckoutSessionRequest,
   CheckoutSessionResponse,
@@ -90,7 +91,7 @@ export async function createCheckoutSessionImpl(
 
   const formatExistingCheckout = (existing: any): CheckoutSessionResponse => ({
     sessionId: existing.id,
-    checkoutUrl: existing.receipt_url || `https://checkout.mahibrowser.com/session/${existing.id}`,
+    checkoutUrl: existing.receipt_url || websiteUrl(`/pricing?sessionId=${encodeURIComponent(existing.id)}`, { productionFallback: true }),
     orderId: existing.external_order_id,
     amountCents: existing.amount_cents,
     currency: existing.currency,

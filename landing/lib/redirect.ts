@@ -1,3 +1,5 @@
+import { getSiteConfig, getTrustedSiteOrigins } from './site-config';
+
 const SAFE_REDIRECT_PREFIXES = [
   '/pricing',
   '/download',
@@ -6,12 +8,6 @@ const SAFE_REDIRECT_PREFIXES = [
   '/account',
   '/checkout',
   '/book-demo',
-];
-
-const TRUSTED_REDIRECT_ORIGINS = [
-  'https://mahibrowser.com',
-  'https://www.mahibrowser.com',
-  'https://app.mahibrowser.com',
 ];
 
 /**
@@ -25,11 +21,14 @@ export function sanitizeSafeRedirect(raw?: string | null): string | null {
     return null;
   }
 
+  const trustedOrigins = getTrustedSiteOrigins({ productionFallback: true });
+  const baseWebsiteOriginUrl = getSiteConfig({ productionFallback: true }).websiteUrl;
+
   if (trimmed.startsWith('https://')) {
     try {
       const parsed = new URL(trimmed);
       if (parsed.protocol !== 'https:') return null;
-      if (!TRUSTED_REDIRECT_ORIGINS.includes(parsed.origin.toLowerCase())) return null;
+      if (!trustedOrigins.includes(parsed.origin.toLowerCase())) return null;
       const p = parsed.pathname.toLowerCase();
       if (p === '/') return parsed.toString();
       const allowed = SAFE_REDIRECT_PREFIXES.some((prefix) => p === prefix || p.startsWith(`${prefix}/`));
@@ -44,8 +43,9 @@ export function sanitizeSafeRedirect(raw?: string | null): string | null {
   }
 
   try {
-    const parsed = new URL(trimmed, 'https://mahibrowser.com');
-    if (parsed.origin !== 'https://mahibrowser.com') return null;
+    const baseWebsite = new URL(baseWebsiteOriginUrl);
+    const parsed = new URL(trimmed, baseWebsite);
+    if (parsed.origin !== baseWebsite.origin) return null;
     const p = parsed.pathname.toLowerCase();
     if (p === '/') return '/';
     const allowed = SAFE_REDIRECT_PREFIXES.some((prefix) => p === prefix || p.startsWith(`${prefix}/`));

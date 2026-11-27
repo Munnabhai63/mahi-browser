@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { UpdateChannel, UpdateReleaseManifest, UpdateProgress } from '../../10_CONFIG/shared/types/updater.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
+import { getDefaultUpdateFeedUrl } from '../../10_CONFIG/shared/site-config.js';
 
 function getUpdaterUserAgent(): string {
   return `MAHI-Browser-Updater/${APP_VERSION} (${os.platform()}; ${os.arch()})`;
@@ -29,7 +30,7 @@ export interface UpdateProvider {
 export class GenericHttpUpdateProvider implements UpdateProvider {
   name = 'GenericHttpUpdateProvider';
 
-  async fetchManifest(channel: UpdateChannel, feedUrl = 'https://mahibrowser.com/update/'): Promise<UpdateReleaseManifest | null> {
+  async fetchManifest(channel: UpdateChannel, feedUrl = getDefaultUpdateFeedUrl()): Promise<UpdateReleaseManifest | null> {
     const baseUrl = feedUrl.endsWith('/') ? feedUrl : `${feedUrl}/`;
     const manifestFile = channel === 'BETA' ? 'latest-beta.json' : 'latest.json';
     const targetUrl = new URL(manifestFile, baseUrl).toString();

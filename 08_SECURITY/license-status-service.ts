@@ -4,11 +4,16 @@ import crypto from 'node:crypto';
 import { app, BrowserWindow, Notification } from './electron-bridge.js';
 import { getHWID, verifyLicense } from './license-service.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
+import { getSiteConfig } from '../10_CONFIG/shared/site-config.js';
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
 // ============================================================================
-export const ADMIN_API_BASE_URL = process.env.MAHI_API_URL || process.env.MAHI_ADMIN_URL || 'https://api.mahibrowser.com';
+export function getLicenseApiBaseUrl(): string {
+  return getSiteConfig({ productionFallback: true }).apiUrl;
+}
+
+export const ADMIN_API_BASE_URL = getLicenseApiBaseUrl();
 const GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days grace period
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;   // 6 hours check interval
 const STARTUP_DELAY_MS = 5000;                   // 5s non-blocking delay on startup

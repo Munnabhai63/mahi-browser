@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isWeakSecret, validateProductionSecrets } from '../../08_SECURITY/install-secrets.js';
+import { getSiteConfig, type SiteConfig } from '../../10_CONFIG/shared/site-config.js';
 
 export class CloudEnvError extends Error {
   public readonly issues: string[];
@@ -17,9 +18,25 @@ const CloudEnvSchema = z.object({
   DATABASE_URL: z.string().trim().optional(),
   REDIS_URL: z.string().trim().optional(),
   APP_URL: z.string().trim().optional(),
+  MAHI_APP_URL: z.string().trim().optional(),
   API_URL: z.string().trim().optional(),
+  MAHI_API_URL: z.string().trim().optional(),
+  MAHI_ADMIN_URL: z.string().trim().optional(),
+  COMMERCIAL_API_URL: z.string().trim().optional(),
   WEBSITE_URL: z.string().trim().optional(),
   MAHI_WEBSITE_URL: z.string().trim().optional(),
+  SUPPORT_EMAIL: z.string().trim().optional(),
+  BUSINESS_EMAIL: z.string().trim().optional(),
+  WHATSAPP_NUMBER: z.string().trim().optional(),
+  SUPPORT_WHATSAPP: z.string().trim().optional(),
+  PAYMENT_UPI_ID: z.string().trim().optional(),
+  UPI_ID: z.string().trim().optional(),
+  PAYMENT_UPI_HOLDER: z.string().trim().optional(),
+  UPI_ACCOUNT_HOLDER: z.string().trim().optional(),
+  PAYMENT_USDT_ADDRESS: z.string().trim().optional(),
+  USDT_ADDRESS: z.string().trim().optional(),
+  PAYMENT_USDT_NETWORK: z.string().trim().optional(),
+  USDT_NETWORK: z.string().trim().optional(),
   CORS_ALLOW_ALL: z.string().trim().optional(),
   PAYMENT_ALLOW_TEST_ADAPTERS: z.string().trim().optional(),
   PAYMENT_PROVIDER: z.string().trim().optional(),
@@ -144,8 +161,17 @@ export function validateCloudEnv(rawEnv: NodeJS.ProcessEnv = process.env): Cloud
   if (env.APP_URL && !isValidHttpsUrl(env.APP_URL)) {
     issues.push('APP_URL must be a valid https:// URL in production.');
   }
+  if (env.MAHI_APP_URL && !isValidHttpsUrl(env.MAHI_APP_URL)) {
+    issues.push('MAHI_APP_URL must be a valid https:// URL in production.');
+  }
   if (env.API_URL && !isValidHttpsUrl(env.API_URL)) {
     issues.push('API_URL must be a valid https:// URL in production.');
+  }
+  if (env.MAHI_API_URL && !isValidHttpsUrl(env.MAHI_API_URL)) {
+    issues.push('MAHI_API_URL must be a valid https:// URL in production.');
+  }
+  if (env.WEBSITE_URL && !isValidHttpsUrl(env.WEBSITE_URL)) {
+    issues.push('WEBSITE_URL must be a valid https:// URL in production.');
   }
   if (env.MAHI_WEBSITE_URL && !isValidHttpsUrl(env.MAHI_WEBSITE_URL)) {
     issues.push('MAHI_WEBSITE_URL must be a valid https:// URL in production.');
@@ -163,6 +189,10 @@ export function getCloudEnv(options?: { forceReload?: boolean }): CloudEnv {
     cachedEnv = validateCloudEnv(process.env);
   }
   return cachedEnv;
+}
+
+export function getCloudSiteConfig(): SiteConfig {
+  return getSiteConfig();
 }
 
 export function resetCloudEnvCacheForTesting(): void {

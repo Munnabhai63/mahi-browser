@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { CommercialPlan } from '../../../10_CONFIG/shared/types/commercial.js';
+import { apiUrl, websiteUrl } from '../../../10_CONFIG/shared/site-config.js';
 import {
   CheckoutSessionRequest,
   CheckoutSessionResponse,
@@ -66,8 +67,8 @@ export class StripePaymentAdapter implements PaymentProvider {
       params.append('metadata[userId]', req.userId);
       params.append('metadata[planId]', plan.id);
       params.append('metadata[billingCycle]', req.billingCycle);
-      params.append('success_url', req.successUrl || 'https://mahibrowser.com/checkout/success?session_id={CHECKOUT_SESSION_ID}');
-      params.append('cancel_url', req.cancelUrl || 'https://mahibrowser.com/pricing');
+      params.append('success_url', req.successUrl || websiteUrl('/pricing?status=success&session_id={CHECKOUT_SESSION_ID}', { productionFallback: true }));
+      params.append('cancel_url', req.cancelUrl || websiteUrl('/pricing', { productionFallback: true }));
 
       const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
         method: 'POST',
@@ -340,7 +341,7 @@ export class SimulationPaymentAdapter implements PaymentProvider {
     amountCents: number
   ): Promise<CheckoutSessionResponse> {
     const sessionId = `sim_cs_${crypto.randomBytes(16).toString('hex')}`;
-    const checkoutUrl = `https://checkout.mahibrowser.com/sim/pay/${sessionId}`;
+    const checkoutUrl = websiteUrl(`/pricing?status=simulated&session_id=${sessionId}`, { productionFallback: true });
 
     return {
       sessionId,
@@ -384,7 +385,7 @@ export class SimulationPaymentAdapter implements PaymentProvider {
       currency: payload.currency || 'USD',
       externalPaymentId: payload.externalPaymentId || `sim_pi_${contentHash.slice(0, 24)}`,
       externalOrderId: payload.externalOrderId,
-      receiptUrl: payload.receiptUrl || `https://invoices.mahibrowser.com/receipt_${contentHash.slice(0, 16)}.pdf`,
+      receiptUrl: payload.receiptUrl || apiUrl(`/api/v1/billing/invoices?receipt=${contentHash.slice(0, 16)}`, { productionFallback: true }),
       metadata: payload.metadata,
       rawPayload: payload,
     };
@@ -429,7 +430,7 @@ export class YoupiPgPaymentAdapter implements PaymentProvider {
 
     const orderId = req.idempotencyKey || `mahi_ord_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     const amountRupees = amountCents / 100;
-    const returnUrl = req.successUrl || `https://mahibrowser.com/pricing?status=success&orderId=${orderId}`;
+    const returnUrl = req.successUrl || websiteUrl(`/pricing?status=success&orderId=${orderId}`, { productionFallback: true });
 
     const resolveCheckoutUrl = (sessionId: string, customUrl?: string) => {
       if (customUrl) return customUrl;

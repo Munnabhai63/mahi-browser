@@ -25,6 +25,7 @@ import { processManager } from '../../02_BROWSER/process-manager.js';
 import { getDatabase, flushDatabaseToDisk } from '../../06_DATABASE/connection.js';
 import { getWritableUserDataDir } from '../utils/runtime-paths.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
+import { getDefaultUpdateFeedUrl, getSiteConfig } from '../../10_CONFIG/shared/site-config.js';
 
 function safeLogActivity(level: 'INFO' | 'WARNING' | 'ERROR', action: string, details: string) {
   try {
@@ -32,11 +33,26 @@ function safeLogActivity(level: 'INFO' | 'WARNING' | 'ERROR', action: string, de
   } catch {}
 }
 
-export const DEFAULT_UPDATE_FEED_URL = 'https://mahibrowser.com/update/';
+export const DEFAULT_UPDATE_FEED_URL = getDefaultUpdateFeedUrl();
 export const UPDATE_FEED_URL = DEFAULT_UPDATE_FEED_URL;
 export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
-const ALLOWED_UPDATE_FEED_HOSTS = ['mahibrowser.com', 'www.mahibrowser.com'];
+function getAllowedUpdateFeedHosts(): string[] {
+  const hosts = new Set<string>(['mahibrowser.com', 'www.mahibrowser.com']);
+  try {
+    const parsedSite = new URL(getSiteConfig({ productionFallback: true }).websiteUrl);
+    if (parsedSite.protocol === 'https:') {
+      hosts.add(parsedSite.hostname.toLowerCase());
+    }
+    const parsedFeed = new URL(getDefaultUpdateFeedUrl());
+    if (parsedFeed.protocol === 'https:') {
+      hosts.add(parsedFeed.hostname.toLowerCase());
+    }
+  } catch {
+    // Keep canonical hosts if env feed/website URL is malformed
+  }
+  return Array.from(hosts);
+}
 
 /**
  * Any feed URL that is not https on the allowed hosts collapses to the production
@@ -44,15 +60,16 @@ const ALLOWED_UPDATE_FEED_HOSTS = ['mahibrowser.com', 'www.mahibrowser.com'];
  * tampered updater_config.json, and a compromised renderer.
  */
 export function sanitizeFeedUrl(input: unknown): string {
+  const defaultFeed = getDefaultUpdateFeedUrl();
   try {
-    if (typeof input !== 'string' || !input.trim()) return DEFAULT_UPDATE_FEED_URL;
+    if (typeof input !== 'string' || !input.trim()) return defaultFeed;
     const u = new URL(input.trim());
-    if (u.protocol !== 'https:') return DEFAULT_UPDATE_FEED_URL;
-    if (!ALLOWED_UPDATE_FEED_HOSTS.includes(u.hostname.toLowerCase())) return DEFAULT_UPDATE_FEED_URL;
+    if (u.protocol !== 'https:') return defaultFeed;
+    if (!getAllowedUpdateFeedHosts().includes(u.hostname.toLowerCase())) return defaultFeed;
     const s = u.toString();
     return s.endsWith('/') ? s : s + '/';
   } catch {
-    return DEFAULT_UPDATE_FEED_URL;
+    return defaultFeed;
   }
 }
 
@@ -84,7 +101,7 @@ export function loadUpdateConfig(): UpdateConfig {
     autoCheck: true,
     autoDownload: true,
     notifyBeforeRestart: true,
-    feedUrl: DEFAULT_UPDATE_FEED_URL,
+    feedUrl: getDefaultUpdateFeedUrl(),
   };
 }
 

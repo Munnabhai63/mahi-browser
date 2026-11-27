@@ -10,6 +10,7 @@ import { ADMIN_API_BASE_URL } from './license-status-service.js';
 import { CONTACT_CONFIG } from '../10_CONFIG/contact-config.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 import { getCanonicalPlan, legacyPlanIdToCanonical } from '../07_BACKEND/commercial/canonical-plan-catalog.js';
+import { cleanUrl, getSiteConfig } from '../10_CONFIG/shared/site-config.js';
 
 // ============================================================================
 // CONSTANTS & PUBLIC KEY FOR SIGNATURE VERIFICATION
@@ -82,7 +83,11 @@ export const ACCOUNT_SERVICE_MODULE = 'account-service';
 console.log('[account-service] Account & subscription module initialized');
 
 export function getAdminApiBaseUrl(): string {
-  return process.env.MAHI_API_URL || process.env.MAHI_ADMIN_URL || ADMIN_API_BASE_URL || 'https://api.mahibrowser.com';
+  return (
+    cleanUrl(process.env.MAHI_API_URL || process.env.MAHI_ADMIN_URL, '') ||
+    getSiteConfig({ productionFallback: true }).apiUrl ||
+    ADMIN_API_BASE_URL
+  );
 }
 
 export const getApiBaseUrl = getAdminApiBaseUrl;

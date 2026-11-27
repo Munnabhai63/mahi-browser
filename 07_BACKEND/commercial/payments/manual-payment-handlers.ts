@@ -4,7 +4,7 @@ import { BillingCycleType } from '../../../10_CONFIG/shared/types/commercial.js'
 import { calculateAuthoritativeOrderTotal, normalizeBillingCycle } from '../canonical-plan-catalog.js';
 import { logCommercialAudit } from '../commercial-audit-service.js';
 import { getEmailProvider } from '../../../05_AUTH/email-service.js';
-import { SUPPORT_EMAIL, CONTACT_CONFIG } from '../../../10_CONFIG/contact-config.js';
+import { CONTACT_CONFIG, getRuntimeContactConfig } from '../../../10_CONFIG/contact-config.js';
 import { getUserById } from '../commercial-auth-service.js';
 import { getCentralUserByIdAsync } from '../../../05_AUTH/central-auth-service.js';
 import { assertNotEmergencyFrozen } from '../../services/kill-switch-service.js';
@@ -177,7 +177,7 @@ export async function submitManualUpiPaymentImpl(params: {
 
   try {
     const emailProvider = getEmailProvider();
-    const adminEmail = process.env.ADMIN_PAYMENT_EMAIL || SUPPORT_EMAIL;
+    const adminEmail = process.env.ADMIN_PAYMENT_EMAIL || getRuntimeContactConfig().supportEmail;
     const amountInr = `₹${(amountPaise / 100).toFixed(2)}`;
     await emailProvider.sendBillingAlert(
       adminEmail,
@@ -243,8 +243,9 @@ export async function submitManualCryptoPaymentImpl(params: {
     extraProxyGb: params.extraProxyGb,
   });
   const amountCents = orderTotal.totalChargeMinor;
-  const network = (params.network || process.env.PAYMENT_USDT_NETWORK || CONTACT_CONFIG.USDT_NETWORK || 'TRC-20 (TRON)').trim();
-  const walletAddress = (process.env.PAYMENT_USDT_ADDRESS || CONTACT_CONFIG.USDT_ADDRESS || '').trim();
+  const runtimeContact = getRuntimeContactConfig();
+  const network = (params.network || runtimeContact.usdt.network || 'TRC-20 (TRON)').trim();
+  const walletAddress = (runtimeContact.usdt.address || '').trim();
 
   const paymentId = `pay_usdt_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
   const externalOrderId = `usdt_ord_${Date.now()}`;
@@ -369,7 +370,7 @@ export async function submitManualCryptoPaymentImpl(params: {
 
   try {
     const emailProvider = getEmailProvider();
-    const adminEmail = process.env.ADMIN_PAYMENT_EMAIL || SUPPORT_EMAIL;
+    const adminEmail = process.env.ADMIN_PAYMENT_EMAIL || getRuntimeContactConfig().supportEmail;
     const amountUsd = `$${(amountCents / 100).toFixed(2)} USDT`;
     await emailProvider.sendBillingAlert(
       adminEmail,
@@ -769,7 +770,7 @@ export async function rejectManualPaymentImpl(
         email: userEmail,
         planName,
         reason,
-        supportEmail: SUPPORT_EMAIL,
+        supportEmail: getRuntimeContactConfig().supportEmail,
       });
     }
   } catch (err: any) {

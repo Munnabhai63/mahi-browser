@@ -7,6 +7,7 @@ import { CANONICAL_PLAN_CATALOG } from './canonical-plan-catalog.js';
 import { recordFunnelEvent } from './funnel-service.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 import { CURRENT_TERMS_VERSION } from '../../10_CONFIG/shared/types/commercial.js';
+import { getSiteConfig, getTrustedSiteOrigins } from '../../10_CONFIG/shared/site-config.js';
 
 export interface GoogleAuthResult {
   success: boolean;
@@ -123,18 +124,15 @@ export function isSafeInternalUrl(url?: string | null): boolean {
     '/overview',
   ];
 
-  const TRUSTED_ORIGINS = [
-    'https://mahibrowser.com',
-    'https://www.mahibrowser.com',
-    'https://app.mahibrowser.com',
-  ];
+  const site = getSiteConfig({ productionFallback: true });
+  const trustedOrigins = getTrustedSiteOrigins({ productionFallback: true });
 
   // Case A: Absolute HTTPS URL on a trusted MAHI origin
   if (trimmed.startsWith('https://')) {
     try {
       const parsed = new URL(trimmed);
       if (parsed.protocol !== 'https:') return false;
-      if (!TRUSTED_ORIGINS.includes(parsed.origin.toLowerCase())) return false;
+      if (!trustedOrigins.includes(parsed.origin.toLowerCase())) return false;
       const pathname = parsed.pathname.toLowerCase();
       if (pathname === '/') return true;
       return ALLOWED_EXACT_OR_PREFIXES.some(prefix =>
@@ -155,8 +153,9 @@ export function isSafeInternalUrl(url?: string | null): boolean {
   }
 
   try {
-    const parsed = new URL(trimmed, 'https://mahibrowser.com');
-    if (parsed.origin !== 'https://mahibrowser.com') return false;
+    const baseWebsite = new URL(site.websiteUrl);
+    const parsed = new URL(trimmed, baseWebsite);
+    if (parsed.origin !== baseWebsite.origin) return false;
     const pathname = parsed.pathname.toLowerCase();
     if (pathname === '/') return true;
     return ALLOWED_EXACT_OR_PREFIXES.some(prefix =>

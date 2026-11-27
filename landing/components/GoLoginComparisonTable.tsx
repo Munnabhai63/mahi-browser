@@ -96,7 +96,7 @@ const COMPARISON_DATA: ComparisonFeature[] = [
   {
     category: 'Pricing & Support',
     feature: 'Instant UPI (India) 0% Fee',
-    mahi: { value: 'Yes (Dynamic QR: 6375823589@slc)', highlight: true },
+    mahi: { value: `Yes (Dynamic QR: ${BRAND.upiId})`, highlight: true },
     gologin: { value: 'No (Credit Card Only + FX Fees)' },
     adspower: { value: 'Third-party gateway only' },
     multilogin: { value: 'No (Credit Card Only)' },

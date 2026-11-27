@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import http from 'node:http';
 import https from 'node:https';
 import { app } from './electron-bridge.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
+import { getContentJsonUrl } from '../10_CONFIG/shared/site-config.js';
 
-const CONTENT_JSON_URL = 'https://mahibrowser.com/content.json';
 const DEFAULT_PRICE_INR = 599;
 const FETCH_TIMEOUT_MS = 3000;
 
@@ -44,7 +45,7 @@ export function setDynamicPriceForTesting(price: number): void {
 }
 
 /**
- * Fetches latest price_inr from https://mahibrowser.com/content.json with 3s timeout.
+ * Fetches latest price_inr from env-configured website `/content.json` with 3s timeout.
  * Updates in-memory cache and persists to disk.
  */
 export async function fetchDynamicPrice(): Promise<number> {
@@ -59,8 +60,11 @@ export async function fetchDynamicPrice(): Promise<number> {
     }, FETCH_TIMEOUT_MS);
 
     try {
-      const req = https.get(
-        CONTENT_JSON_URL,
+      const targetUrl = getContentJsonUrl();
+      const parsed = new URL(targetUrl);
+      const client = parsed.protocol === 'http:' ? http : https;
+      const req = client.get(
+        targetUrl,
         {
           timeout: FETCH_TIMEOUT_MS,
           headers: { 'User-Agent': 'MAHI-BROWSER-Client/1.0.3' },

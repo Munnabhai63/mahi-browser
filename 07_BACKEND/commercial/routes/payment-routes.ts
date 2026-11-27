@@ -9,7 +9,7 @@ import {
   VerifyRazorpaySchema,
   VerifyYoupiSchema,
 } from '../validation/commercial-schemas.js';
-import { CONTACT_CONFIG } from '../../../10_CONFIG/contact-config.js';
+import { getRuntimePaymentMetadata } from '../../../10_CONFIG/contact-config.js';
 import {
   paymentService,
   PaymentProviderType,
@@ -34,25 +34,26 @@ export async function handlePaymentRoutes(
   clientIp: string
 ): Promise<boolean> {
   if ((routePath === '/v1/account/payment-info' || routePath === '/api/v1/account/payment-info' || routePath === '/api/v1/commercial/payment-info') && method === 'GET') {
-    const usdtAddress = (process.env.PAYMENT_USDT_ADDRESS || CONTACT_CONFIG.USDT_ADDRESS || '').trim();
-    const usdtEnabled =
-      process.env.PAYMENT_USDT_ENABLED !== undefined
-        ? process.env.PAYMENT_USDT_ENABLED === 'true'
-        : Boolean(CONTACT_CONFIG.USDT_ENABLED && usdtAddress);
+    const contact = getRuntimePaymentMetadata();
     sendJSON(res, 200, {
       success: true,
-      upi_id: process.env.PAYMENT_UPI_ID || CONTACT_CONFIG.UPI_ID,
-      upi_account_holder: process.env.PAYMENT_UPI_HOLDER || CONTACT_CONFIG.UPI_ACCOUNT_HOLDER,
-      upi_qr_asset: CONTACT_CONFIG.UPI_QR_ASSET,
-      price_inr: parseInt(process.env.DEFAULT_PRICE_INR || '', 10) || CONTACT_CONFIG.DEFAULT_PRICE_INR || 599,
-      price_usd: CONTACT_CONFIG.DEFAULT_PRICE_USDT || 9,
-      price_usdt: CONTACT_CONFIG.DEFAULT_PRICE_USDT || 9,
-      usdt_address: usdtAddress,
-      usdt_network: process.env.PAYMENT_USDT_NETWORK || CONTACT_CONFIG.USDT_NETWORK,
-      usdt_qr_asset: CONTACT_CONFIG.USDT_QR_ASSET,
-      usdt_enabled: usdtEnabled,
-      whatsapp_number: process.env.SUPPORT_WHATSAPP || CONTACT_CONFIG.WHATSAPP_NUMBER,
-      support_email: process.env.SUPPORT_EMAIL || CONTACT_CONFIG.SUPPORT_EMAIL,
+      upi_id: contact.upi.id,
+      upi_account_holder: contact.upi.accountHolder,
+      upi_qr_asset: contact.upi.qrAsset,
+      price_inr: contact.defaultPriceInr,
+      price_usd: contact.defaultPriceUsdt,
+      price_usdt: contact.defaultPriceUsdt,
+      usdt_address: contact.usdt.address,
+      usdt_network: contact.usdt.network,
+      usdt_qr_asset: contact.usdt.qrAsset,
+      usdt_enabled: contact.usdt.enabled,
+      whatsapp_number: contact.whatsappNumber,
+      whatsapp_raw_number: contact.whatsappRawNumber,
+      whatsapp_display: contact.whatsappDisplay,
+      whatsapp_url: contact.whatsappUrl,
+      support_email: contact.supportEmail,
+      business_email: contact.businessEmail,
+      legal_seller_name: contact.legalSellerName,
     });
     return true;
   }
@@ -201,12 +202,7 @@ export async function handlePaymentRoutes(
       (process.env.YOUPI_PG_BASE_URL || process.env.BASE_PAYMENT_API_URL) &&
       (process.env.YOUPI_PG_API_KEY || process.env.YOUPI_PG_SECRET)
     );
-    const usdtAddress = (process.env.PAYMENT_USDT_ADDRESS || CONTACT_CONFIG.USDT_ADDRESS || '').trim();
-    const usdtEnabled =
-      process.env.PAYMENT_USDT_ENABLED !== undefined
-        ? process.env.PAYMENT_USDT_ENABLED === 'true'
-        : Boolean(CONTACT_CONFIG.USDT_ENABLED && usdtAddress);
-    const usdtNetwork = process.env.PAYMENT_USDT_NETWORK || CONTACT_CONFIG.USDT_NETWORK;
+    const contact = getRuntimePaymentMetadata();
     const gateways = [
       {
         id: 'youpi_pg',
@@ -219,12 +215,12 @@ export async function handlePaymentRoutes(
       {
         id: 'usdt_trc20',
         name: 'Crypto USDT (TRC-20)',
-        enabled: usdtEnabled,
+        enabled: contact.usdt.enabled,
         currency: 'USD',
         isDirect: true,
-        walletAddress: usdtAddress,
-        network: usdtNetwork,
-        qrAsset: CONTACT_CONFIG.USDT_QR_ASSET_WEB,
+        walletAddress: contact.usdt.address,
+        network: contact.usdt.network,
+        qrAsset: contact.usdt.qrAssetWeb,
         description: 'Zero-fee USDT (TRC-20 / TRON) payment with 64-character TX hash verification',
       },
       {
@@ -238,13 +234,28 @@ export async function handlePaymentRoutes(
       {
         id: 'upi_manual',
         name: 'Direct UPI Transfer (UTR)',
-        enabled: true,
+        enabled: contact.upi.enabled,
         currency: 'INR',
         isDirect: true,
+        upiId: contact.upi.id,
+        accountHolder: contact.upi.accountHolder,
+        qrAsset: contact.upi.qrAssetWeb,
         description: 'Direct bank transfer to Slice UPI ID with manual admin verification',
       },
     ];
-    sendJSON(res, 200, { success: true, gateways });
+    sendJSON(res, 200, {
+      success: true,
+      gateways,
+      support: {
+        email: contact.supportEmail,
+        businessEmail: contact.businessEmail,
+        whatsappNumber: contact.whatsappNumber,
+        whatsappRawNumber: contact.whatsappRawNumber,
+        whatsappDisplay: contact.whatsappDisplay,
+        whatsappUrl: contact.whatsappUrl,
+        sellerName: contact.legalSellerName,
+      },
+    });
     return true;
   }
 

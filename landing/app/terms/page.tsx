@@ -57,8 +57,8 @@ export default function TermsOfServicePage() {
             </li>
             <li>
               <strong className="text-slate-300">WhatsApp Support:</strong>{' '}
-              <a href="https://wa.me/919376343629" target="_blank" rel="noopener noreferrer" className="text-slate-200 underline hover:text-white">
-                +91 9376343629
+              <a href={BRAND.whatsapp.url} target="_blank" rel="noopener noreferrer" className="text-slate-200 underline hover:text-white">
+                {BRAND.whatsapp.display}
               </a>
             </li>
           </ul>
@@ -67,7 +67,7 @@ export default function TermsOfServicePage() {
         <section className="space-y-2">
           <h2 className="text-lg font-bold text-white">4. Payments, Subscriptions & Refunds</h2>
           <p>
-            Subscription fees are billed in advance on a prepaid monthly or annual basis. UPI payments made directly to our merchant VPA <code className="text-slate-200">6375823589@slc</code> are processed at 0% gateway fees and activated immediately upon UTR confirmation.
+            Subscription fees are billed in advance on a prepaid monthly or annual basis. UPI payments made directly to our merchant VPA <code className="text-slate-200">{BRAND.upiId}</code> are processed at 0% gateway fees and activated immediately upon UTR confirmation.
           </p>
           <p>
             We provide a 7-day money-back guarantee that applies strictly and exclusively to initial subscription purchases if the software fails to perform as described. Refunds are issued to the original payment method used during checkout. Refund requests must be directed to our support email (<a href={`mailto:${BRAND.officialEmail}`} className="text-slate-200 underline hover:text-white">{BRAND.officialEmail}</a>) accompanied by your registered account email and corresponding payment transaction ID or UPI UTR reference number.

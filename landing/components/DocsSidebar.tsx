@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { DocItem } from '../lib/mdx';
+import { BRAND } from '../lib/brand';
 
 interface DocsSidebarProps {
   docs: DocItem[];
@@ -39,7 +40,7 @@ export default function DocsSidebar({ docs, currentSlug }: DocsSidebarProps) {
             Reach out via WhatsApp or email for custom C++ engine patches.
           </p>
           <a
-            href="https://wa.me/919376343629"
+            href={BRAND.whatsapp.url}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1.5 text-xs text-zinc-300 hover:text-white font-medium transition-colors"

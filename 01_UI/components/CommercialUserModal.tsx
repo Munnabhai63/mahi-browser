@@ -4,6 +4,7 @@ import { useAccountStore } from '../stores/useAccountStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { BrandLogo } from './BrandLogo.js';
 import { fetchMyLicense, MyLicenseResponse } from '../api-fallback.js';
+import { websiteUrl } from '../../10_CONFIG/shared/site-config.js';
 
 interface CommercialUserModalProps {
   isOpen: boolean;
@@ -101,7 +102,7 @@ export const CommercialUserModal: React.FC<CommercialUserModalProps> = ({ isOpen
             ) : (
               <div className="text-[11px] text-slate-400">
                 <p>No licence yet. It is issued automatically after payment is approved.</p>
-                <a href="https://mahibrowser.com/pricing" target="_blank" rel="noopener noreferrer" className="text-slate-300 hover:text-white underline inline-block mt-1 font-medium">View Pricing</a>
+                <a href={websiteUrl('/pricing', { productionFallback: true })} target="_blank" rel="noopener noreferrer" className="text-slate-300 hover:text-white underline inline-block mt-1 font-medium">View Pricing</a>
               </div>
             )}
           </div>
