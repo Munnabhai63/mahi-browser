@@ -11,8 +11,14 @@ import { getProfileDebugPort } from '../../02_BROWSER/launcher.js';
 import { synchronizerHub } from '../../09_AUTOMATION/sync-hub.js';
 import { cdpSynchronizer } from '../../09_AUTOMATION/cdp-synchronizer.js';
 import { startApiServer, stopApiServer } from '../../07_BACKEND/api/local-api-server.js';
+import { canRunLiveNetworkTests } from '../setup/e2e-guards.js';
 
-function getCdpTabs(port: number): Promise<any[]> {
+interface CdpPageTarget {
+  type?: string;
+  url?: string;
+}
+
+function getCdpTabs(port: number): Promise<CdpPageTarget[]> {
   return new Promise((resolve) => {
     const req = http.get(`http://127.0.0.1:${port}/json/list`, (res) => {
       let b = '';
@@ -20,7 +26,7 @@ function getCdpTabs(port: number): Promise<any[]> {
       res.on('end', () => {
         try {
           const list = JSON.parse(b);
-          resolve(Array.isArray(list) ? list.filter(t => t.type === 'page') : []);
+          resolve(Array.isArray(list) ? list.filter((t: CdpPageTarget) => t.type === 'page') : []);
         } catch {
           resolve([]);
         }
@@ -34,7 +40,7 @@ function getCdpTabs(port: number): Promise<any[]> {
   });
 }
 
-describe('REAL BROWSER SYNCHRONIZER E2E VERIFICATION', () => {
+describe.skipIf(!canRunLiveNetworkTests())('REAL BROWSER SYNCHRONIZER E2E VERIFICATION', () => {
   let tempDbDir: string;
   let masterProfileId: string;
   let slaveProfileId: string;

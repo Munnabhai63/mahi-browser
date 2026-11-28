@@ -24,7 +24,7 @@ describe('Phase 7: Web Management Dashboard E2E Flows & Security Verification', 
 
   beforeEach(() => {
     mockFetch = vi.fn();
-    global.fetch = mockFetch as any;
+    global.fetch = mockFetch as unknown as typeof fetch;
     client = new WebApiClient({
       baseUrl: 'https://api.mahibrowser.com',
       getAccessToken: () => useWebAuthStore.getState().accessToken,

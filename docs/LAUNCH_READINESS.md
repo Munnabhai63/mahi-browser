@@ -2,7 +2,7 @@
 
 **Document Status:** Live Operational Checklist  
 **Version Target:** v1.4.0  
-**Last Updated:** November 27, 2026  
+**Last Updated:** November 28, 2026  
 **Audience:** Owner (Mahipal Choudhary), Lead Engineers, DevOps  
 
 ---
@@ -12,10 +12,10 @@
 The following components are fully tested, integrated, and verified working in code and deployed infrastructure:
 
 - [x] **Automated Regression Suite Green**
-  - **Evidence:** `npm run test:ci` -> `1372 passed | 0 failed | 22 skipped` tests across `159` test files (`157` passing files, `2` environment-gated E2E suites skipped). All unit, integration, and security regression suites pass with `0 failed`.
-  - **Components Covered:** Pricing calculation, YouPI adapter, manual UPI UTR flow, webhook HMAC verification, anti-detect launcher, delta cloud sync, mobile IP rotator, strict Electron CSP, Prisma 7 adapter wiring, Zod 4 schemas, and commercial auth.
-- [x] **Typecheck & Static Build Pass Cleanly**
-  - **Evidence:** Root `npm run typecheck`, `npm run build:gateway`, `npm run landing:typecheck`, `npm run landing:build`, `npm run lint`, and `npm --prefix landing run lint` exit cleanly with code `0` (Next.js `16.4.6`: `41` static pages generated, `40` exported HTML files in `landing/out`).
+  - **Evidence:** `npm run test:ci` -> `1435 passed | 0 failed | 22 skipped` tests across `166` unit & integration test files (`164` passing, `2` skipped), plus headless `npm run test:e2e` (`47 passed | 0 failed | 18 skipped` across `8` files) and `npm run test:stress` (`60 passed | 0 failed | 10 skipped` across `5` files).
+  - **Components Covered:** Pricing calculation, YouPI adapter, manual UPI UTR flow, webhook HMAC verification, anti-detect launcher, delta cloud sync, mobile IP rotator, strict Electron CSP (`script-src 'self'`), Prisma 7 adapter wiring, Zod 4 schemas, structured logger & SSRF guards, and commercial auth.
+- [x] **Typecheck, Audit & Modern Stack Build Pass Cleanly**
+  - **Evidence:** Root `npm run typecheck`, `npm run build:gateway`, `MAHI_SKIP_ADB_STAGE=1 npm run build` (`vite@^7.3.8` + `electron@^45.5.0` + `react@^19.3.1` + `@tailwindcss/vite@^4.3.5`), `npm --prefix landing run typecheck`, `npm --prefix landing run build` (`next@16.4.6` + `react@^19.3.1` + `@tailwindcss/postcss@^4.3.5`, `42` static routes), `npm run lint`, `npm --prefix landing run lint` (`0` warnings/errors), and `npm audit --omit=dev --audit-level=high` (`0` critical / `0` high vulnerabilities) exit cleanly with code `0`.
 - [x] **GitHub Release v1.4.0 Published & Verified Live**
   - **Evidence:** Public release tag `v1.4.0` on `Munnabhai63/mahi-browser` hosting all 8 Windows release assets:
     - `MAHI-Browser-Setup-1.4.0.exe` & `MAHI-Browser-Setup-latest.exe` (`347,095,590` bytes)

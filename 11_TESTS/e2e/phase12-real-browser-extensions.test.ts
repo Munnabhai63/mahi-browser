@@ -10,6 +10,7 @@ import { installExtension, getExtensions } from '../../02_BROWSER/services/exten
 import { processManager } from '../../02_BROWSER/process-manager.js';
 import { getProfileDebugPort } from '../../02_BROWSER/launcher.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
+import { canRunRealBrowserTests } from '../setup/e2e-guards.js';
 
 describe('Real Browser Extensions Launch & Runtime Verification', () => {
   let tempDir: string;
@@ -82,7 +83,18 @@ describe('Real Browser Extensions Launch & Runtime Verification', () => {
     } catch {}
   });
 
-  it('should launch real Chrome with all enabled extensions loaded in browser arguments', async () => {
+  it('registers enabled extensions in SQLite and validates manifest.json on disk', () => {
+    const exts = getExtensions(testProfileId);
+    expect(exts.length).toBe(2);
+    expect(exts.map((e) => e.name)).toContain('uBlock Origin Lite');
+    expect(exts.map((e) => e.name)).toContain('MetaMask');
+
+    for (const ext of exts) {
+      expect(fs.existsSync(path.join(ext.sourcePath, 'manifest.json'))).toBe(true);
+    }
+  });
+
+  it.skipIf(!canRunRealBrowserTests())('should launch real Chrome with all enabled extensions loaded in browser arguments', async () => {
     // 1. Verify extensions are registered in database
     const exts = getExtensions(testProfileId);
     expect(exts.length).toBe(2);

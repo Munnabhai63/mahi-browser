@@ -61,6 +61,7 @@ import {
 import { detectSystemBrowsers } from '../../02_BROWSER/detector.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
 import { prepareSessionPersistence, markCleanExit } from '../../02_BROWSER/launcher.js';
+import { canRunRealBrowserTests } from '../setup/e2e-guards.js';
 
 describe('MASTER QA + FULL FUNCTIONALITY AUDIT (ALL 11 MODULES)', () => {
   let tempDir: string;
@@ -528,11 +529,17 @@ describe('MASTER QA + FULL FUNCTIONALITY AUDIT (ALL 11 MODULES)', () => {
   // MODULE 8: SYSTEM DETECTOR & SESSION PERSISTENCE
   // -------------------------------------------------------------
   describe('Module 8: System Detector & Session Persistence', () => {
-    it('should detect installed system browsers', async () => {
+    it('should detect installed system browsers safely across headless CI and desktop hosts', async () => {
       const browsers = await detectSystemBrowsers();
       expect(Array.isArray(browsers)).toBe(true);
-      // At least chrome or edge exists on standard Windows/developer environment
-      expect(browsers.length).toBeGreaterThanOrEqual(1);
+      for (const browser of browsers) {
+        expect(typeof browser.name).toBe('string');
+        expect(typeof browser.path).toBe('string');
+        expect(fs.existsSync(browser.path)).toBe(true);
+      }
+      if (canRunRealBrowserTests()) {
+        expect(browsers.length).toBeGreaterThanOrEqual(1);
+      }
     });
 
     it('should configure Chromium session persistence and clean exit state', () => {

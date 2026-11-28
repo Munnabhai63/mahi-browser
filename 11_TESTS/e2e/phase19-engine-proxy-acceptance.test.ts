@@ -18,12 +18,13 @@ import { createProxy } from '../../02_BROWSER/services/proxy-service.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
 import { getProfileDebugPort } from '../../02_BROWSER/launcher.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
+import { canRunPackagedAcceptanceTests, canRunRealBrowserTests } from '../setup/e2e-guards.js';
 
 describe('PHASE 19 — CHROMIUM ENGINE DISCOVERY & PROXY LAUNCH ACCEPTANCE SUITE', () => {
   let tempDir: string;
   let testProxyServer: http.Server | null = null;
   let proxyHits = 0;
-  const PROXY_PORT = 28899;
+  let proxyPort = 0;
 
   beforeAll(async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-engine-p19-'));
@@ -33,7 +34,7 @@ describe('PHASE 19 — CHROMIUM ENGINE DISCOVERY & PROXY LAUNCH ACCEPTANCE SUITE
     await initializeDatabase();
 
     // Start local test HTTP proxy that tracks requests and forwards HTTP CONNECT
-    testProxyServer = http.createServer((req, res) => {
+    testProxyServer = http.createServer((_req, res) => {
       proxyHits++;
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end('Proxied response from local test proxy');
@@ -53,7 +54,11 @@ describe('PHASE 19 — CHROMIUM ENGINE DISCOVERY & PROXY LAUNCH ACCEPTANCE SUITE
     });
 
     await new Promise<void>((resolve) => {
-      testProxyServer!.listen(PROXY_PORT, '127.0.0.1', () => resolve());
+      testProxyServer?.listen(0, '127.0.0.1', () => {
+        const addr = testProxyServer?.address();
+        proxyPort = typeof addr === 'object' && addr ? addr.port : 0;
+        resolve();
+      });
     });
   });
 
@@ -69,14 +74,25 @@ describe('PHASE 19 — CHROMIUM ENGINE DISCOVERY & PROXY LAUNCH ACCEPTANCE SUITE
     }
   });
 
-  it.skipIf(!process.env.RUN_PACKAGED_ACCEPTANCE_TESTS)('1. verifies canonical bundled and production Chromium engine path resolution', () => {
+  it('0. verifies headless local proxy binding and production engine target path resolution', async () => {
+    expect(proxyPort).toBeGreaterThan(0);
+    const response = await fetch(`http://127.0.0.1:${proxyPort}/healthcheck`);
+    expect(response.status).toBe(200);
+    expect(proxyHits).toBeGreaterThanOrEqual(1);
+
+    const expectedExe = process.platform === 'win32' ? 'chrome.exe' : 'chrome';
+    const prodPath = getProductionChromiumExecutablePath();
+    expect(prodPath).toContain(expectedExe);
+  });
+
+  it.skipIf(!canRunPackagedAcceptanceTests())('1. verifies canonical bundled and production Chromium engine path resolution', () => {
     const bundledPath = getBundledEngineExecutablePath();
     console.log('[Acceptance Test] Bundled path:', bundledPath);
     expect(bundledPath).toBeDefined();
     expect(bundledPath).not.toBeNull();
     expect(fs.existsSync(bundledPath!)).toBe(true);
     expect(bundledPath).toContain('138.0.7204.0');
-    expect(bundledPath).toContain('chrome.exe');
+    expect(bundledPath).toContain(process.platform === 'win32' ? 'chrome.exe' : 'chrome');
 
     const prodPath = getProductionChromiumExecutablePath();
     console.log('[Acceptance Test] Production path:', prodPath);
@@ -87,13 +103,14 @@ describe('PHASE 19 — CHROMIUM ENGINE DISCOVERY & PROXY LAUNCH ACCEPTANCE SUITE
     expect(isInstalled).toBe(true);
   });
 
-  it('2. verifies self-healing engine check succeeds without unnecessary downloads', async () => {
+  it.skipIf(!canRunRealBrowserTests())('2. verifies self-healing engine check succeeds without unnecessary downloads', async () => {
     const installed = await ensureProductionChromiumInstalled();
     expect(installed).toBeTruthy();
-    expect(typeof installed === 'string' ? installed : '').toContain('chrome.exe');
+    const expectedExe = process.platform === 'win32' ? 'chrome.exe' : 'chrome';
+    expect(typeof installed === 'string' ? installed : '').toContain(expectedExe);
   });
 
-  it('3. launches a profile without proxy, verifies live process PID, CDP connection, and clean stop', async () => {
+  it.skipIf(!canRunRealBrowserTests())('3. launches a profile without proxy, verifies live process PID, CDP connection, and clean stop', async () => {
     const directProf = createProfile({
       name: 'P19 Direct Profile Test',
       folder: 'Acceptance',
@@ -138,12 +155,12 @@ describe('PHASE 19 — CHROMIUM ENGINE DISCOVERY & PROXY LAUNCH ACCEPTANCE SUITE
     console.log(`[Acceptance Test] Profile cleanly stopped.`);
   });
 
-  it('4. launches a disposable profile with a configured HTTP proxy and verifies proxy routing and clean stop', async () => {
+  it.skipIf(!canRunRealBrowserTests())('4. launches a disposable profile with a configured HTTP proxy and verifies proxy routing and clean stop', async () => {
     const proxyRecord = createProxy({
       name: 'Local Test Proxy',
       protocol: 'http',
       host: '127.0.0.1',
-      port: PROXY_PORT,
+      port: proxyPort,
     });
 
     const proxySettings = getDefaultProfileSettings();
@@ -183,7 +200,7 @@ describe('PHASE 19 — CHROMIUM ENGINE DISCOVERY & PROXY LAUNCH ACCEPTANCE SUITE
 
     // Request through the proxy
     try {
-      await page.goto('http://127.0.0.1:' + PROXY_PORT, { timeout: 6000 });
+      await page.goto(`http://127.0.0.1:${proxyPort}`, { timeout: 6000 });
     } catch {}
 
     console.log(`[Acceptance Test] Proxy hits observed: ${proxyHits} (initial: ${initialHits})`);
@@ -198,7 +215,7 @@ describe('PHASE 19 — CHROMIUM ENGINE DISCOVERY & PROXY LAUNCH ACCEPTANCE SUITE
     console.log(`[Acceptance Test] Proxy profile cleanly stopped.`);
   });
 
-  it.skipIf(!process.env.RUN_PACKAGED_ACCEPTANCE_TESTS)('5. verifies real user SQLite database integrity and preservation of all 11 customer profiles and 10 proxies', () => {
+  it.skipIf(!canRunPackagedAcceptanceTests())('5. verifies real user SQLite database integrity and preservation of all 11 customer profiles and 10 proxies', () => {
     const realDbPath = path.join(process.env.APPDATA || '', 'mahi-browser', 'mahi_browser.sqlite');
     expect(fs.existsSync(realDbPath)).toBe(true);
     const dbSize = fs.statSync(realDbPath).size;

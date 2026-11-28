@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout CI Gate Action
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           sparse-checkout: |
             .github/actions/wait-for-ci
@@ -44,10 +44,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
@@ -73,7 +73,7 @@ jobs:
           test -f landing/out/download.html || test -f landing/out/download/index.html
 
       - name: Upload Landing Build Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: landing-static-export
           path: landing/out/
@@ -87,7 +87,7 @@ jobs:
     environment: production
     steps:
       - name: Download Landing Static Export
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: landing-static-export
           path: landing/out

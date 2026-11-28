@@ -64,7 +64,7 @@ jobs:
 
     steps:
       - name: Checkout MAHI Browser Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Free Disk Space (Ubuntu)
         if: runner.os == 'Linux'
@@ -91,18 +91,18 @@ jobs:
           Get-PSDrive -PSProvider FileSystem
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
       - name: Set up Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
       - name: Cache depot_tools
         if: ${{ github.event.inputs.clean_cache != true && github.event.inputs.clean_cache != 'true' }}
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/depot_tools
           key: depot-tools-${{ runner.os }}-${{ hashFiles('14_ENGINE_PATCHES/chromium-138/series') }}
@@ -292,7 +292,7 @@ jobs:
           console.log('Engine manifest generated for ${{ matrix.target }}:', entry);
 
       - name: Upload Engine Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mahi-chromium-${{ matrix.target }}
           path: |
@@ -304,7 +304,7 @@ jobs:
 
       - name: Publish Release Asset (Tags only)
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist-engine/${{ matrix.archive_name }}

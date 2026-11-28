@@ -63,10 +63,10 @@ jobs:
         os: ${{ fromJson(needs.resolve-matrix.outputs.test_os) }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: 'npm'
@@ -113,10 +113,10 @@ jobs:
         include: ${{ fromJson(needs.resolve-matrix.outputs.package_matrix) }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: 'npm'
@@ -363,7 +363,7 @@ jobs:
           Get-ChildItem release | Select-Object Name, Length | Format-Table -AutoSize
 
       - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mahi-browser-${{ matrix.platform }}-${{ matrix.arch }}
           path: release/*
@@ -376,14 +376,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download All Platform Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: mahi-browser-*
           merge-multiple: true
           path: release
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: MAHI Browser ${{ github.ref_name }}
           draft: false
@@ -410,16 +410,16 @@ jobs:
     environment: production
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download Packaged Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: mahi-browser-win-x64
           path: release
 
       - name: Download Cross-Platform Optional Artifacts (macOS / Linux)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         continue-on-error: true
         with:
           pattern: mahi-browser-*
@@ -566,7 +566,7 @@ jobs:
 
       - name: Upload Deployment Evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: deployment-evidence-${{ github.ref_name }}
           path: docs/deployment-evidence/*.md

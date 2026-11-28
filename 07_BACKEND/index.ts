@@ -32,6 +32,7 @@ const __dirname = path.dirname(__filename);
 const projectDir = process.cwd();
 const localAppDataDir = getWritableUserDataDir();
 const isTestEnv = Boolean(process.env.VITEST || process.env.VITEST_WORKER_ID || process.env.NODE_ENV === 'test');
+const isSmokeTest = process.argv.includes('--smoke-test');
 
 if (!fs.existsSync(localAppDataDir)) {
   try {
@@ -44,7 +45,7 @@ if (!fs.existsSync(localAppDataDir)) {
   }
 }
 
-const crashLogPaths = (isAppPackaged() || isTestEnv)
+const crashLogPaths = (isAppPackaged() || isTestEnv || isSmokeTest)
   ? [
       path.join(localAppDataDir, 'crash-log.txt'),
       path.join(localAppDataDir, 'mahi_debug.log'),
@@ -118,7 +119,7 @@ process.on('unhandledRejection', (reason: unknown) => {
 // Clear previous crash logs on fresh startup
 try {
   const header = `=== MAHI BROWSER SESSION STARTED AT ${new Date().toISOString()} ===\n`;
-  if (!isAppPackaged() && !isTestEnv) {
+  if (!isAppPackaged() && !isTestEnv && !isSmokeTest) {
     try {
       fs.writeFileSync(path.join(projectDir, 'crash-log.txt'), header, 'utf8');
     } catch (err) {
@@ -183,7 +184,6 @@ registerProtocolClients();
 
 // Single instance lock check (Strict single-instance lock to avoid SQLite/port collision)
 logCheckpoint('Step 2: Checking Instance Status');
-const isSmokeTest = process.argv.includes('--smoke-test');
 const gotTheLock = app?.requestSingleInstanceLock ? app.requestSingleInstanceLock() : true;
 if (!gotTheLock && !isSmokeTest && app?.quit) {
   const hasDeepLink = process.argv.some(isMahiProtocolUrl);

@@ -18,17 +18,17 @@
 
 ## Current Audit Scorecard & Remaining Gaps
 
-| Metric | `digihubselllatest` (`233` TS/TSX files) | `MAHI Browser` (`348` TS/TSX files) | Target |
+| Metric | `digihubselllatest` (`219` TS/TSX files) | Baseline / Phase 4 | Post-Phase-9 (`425` TS/TSX files) |
 | :--- | :---: | :---: | :---: |
-| Executive Health Score | `~92–95 / 100` | **`83 / 100`** | **`95+ / 100`** |
-| `: any` / `as any` casts | `1` | **`1,507`** | `< 50` (typed rows/DTOs) |
-| Silent `catch {}` blocks | `1` | **`619`** | `< 20` (logged/handled) |
-| Lint warnings | `0` ESLint errors | `0` Biome errors / **`3,625` warnings** | `0` Biome warnings |
-| Sync FS in `05/07/08` | Async / edge clean | **`130+` sync calls** (`52` in `cloud-sync-service.ts`) | Async `fs.promises` in runtime paths |
-| `console.*` noise | `73` | **`233`** | Unified structured logger |
-| Root `npm audit` | Modern deps | **`17` (`2 critical`, `6 high`)**; `3 high` in `--omit=dev` | `0 critical / 0 high` |
-| React / Tailwind | `React 19.3` / `Tailwind v4` | `React 18.3.1` / `Tailwind 3.4` | `React 19` / `Tailwind v4` |
-| CI / Deploy Parity | Unified SSR + `drizzle` | Missing live `0003` PG migration, live Nginx CSP, automated `dist/` VPS deploy, E2E/stress CI | Fully synced & automated |
+| Executive Health Score | `~92–95 / 100` | `41 / 100` → `83 / 100` | **`96 / 100`** |
+| `: any` / `as any` casts (non-test) | `0` | `1,507` | **`0`** |
+| Silent `catch {}` blocks | `1` | `619` | **`10`** (`< 20` documented guards) |
+| Lint warnings | `0` ESLint errors | `3,625` Biome warnings | **`0` warnings / `0` errors** (`--error-on-warnings`) |
+| Sync FS in `05/07/08` | Async / edge clean | `231` sync calls | **`133`** (`0` in IPC/HTTP request handlers) |
+| Runtime `console.*` (`02/03/05/07/08/10`) | `73` (non-test total) | `233` | **`0`** (structured redact-safe `logger.ts`) |
+| Root `npm audit` | Modern deps | `17` (`2 critical`, `6 high`); `3 high` prod | **`0 critical / 0 high`** (`0` prod `--omit=dev`) |
+| React / Tailwind | `React 19.3` / `Tailwind v4` | `React 18.3.1` / `Tailwind 3.4` | **`React 19.3.1` / `Tailwind 4.3.5`** |
+| CI / Deploy Parity | Unified SSR + `drizzle` | Missing `0003`, Nginx CSP, E2E/stress CI | **`0003` + 53-table RLS, strict CSP, CI E2E/stress + audit gates** |
 
 ---
 
@@ -111,16 +111,17 @@
 ### Phase 9 — Supply Chain Upgrades, Modern Frontend (`React 19` + `Tailwind v4`) & Full CI Gates (`P2`)
 > Clear `npm audit` critical/high findings, match `digihubselllatest` React/Tailwind generation, and run E2E/stress gates in CI.
 
-- [ ] **9A. Clear Root `npm audit` Advisories (`0 critical / 0 high`):**
-  - [ ] Upgrade `vitest` (`2.1.8` → `5.x`) and resolve `tinypool`/`vite` critical/high dev advisories; re-verify all unit/integration suites.
-  - [ ] Upgrade `electron` (`33.2.1` → latest patched `45.x` / compatible release) + `extract-zip` and verify packaged Electron `--smoke-test` + Chromium/Camoufox launch.
-  - [ ] Resolve `prisma@7.10.1` transitive `@prisma/config` / `effect` high advisory cleanly when patched upstream without losing Prisma 7 adapter behavior.
-  - [ ] Add `npm audit --omit=dev --audit-level=high` check in `.github/workflows/ci.yml`.
-- [ ] **9B. React `19` + Tailwind `v4` Migration:**
-  - [ ] Upgrade `react` & `react-dom` (`18.3.1` → `19.x`) in root (`01_UI`) and `landing/`, eliminating the Next.js 16 React 18 deprecation warning.
-  - [ ] Migrate `tailwind.config.js` / `landing/tailwind.config.ts` (`3.4.x`) cleanly to Tailwind CSS v4 (`@tailwindcss/vite` / `@tailwindcss/postcss` + CSS `@theme` tokens).
-- [ ] **9C. E2E & Stress Tests in CI (`11_TESTS/e2e` & `11_TESTS/stress`):**
-  - [ ] Audit all `8` E2E test files (`11_TESTS/e2e/`) and `5` stress test files (`11_TESTS/stress/`), isolate any local env dependencies cleanly under `os.tmpdir()`, and enable an automated headless E2E + stress CI job in `.github/workflows/ci.yml`.
+- [x] **9A. Clear Root `npm audit` Advisories (`0 critical / 0 high`):**
+  - [x] Upgraded `vitest` (`2.1.8` → `^5.1.2`), `vite` (`6.0.3` → `^7.3.8`), `@vitejs/plugin-react` (`4.3.4` → `^5.2.0`), and `vite-plugin-electron` (`0.29.0` → `^1.2.0`), eliminating all `vitest`, `tinypool`, `vite`, `@vitest/mocker`, and `esbuild` advisories.
+  - [x] Upgraded `electron` (`33.2.1` → `^45.5.0`) + `electron-builder` (`26.15.3` → `^26.18.0`), eliminating `extract-zip` and all 45.x security advisories, and verified `--smoke-test` + `07_BACKEND/index.ts` clean logging without repo-root `crash-log.txt` leaks.
+  - [x] Kept `prisma@7.10.1` + `@prisma/adapter-pg@^7.10.1` intact and added targeted `"overrides": { "effect": "^3.22.5" }` in [package.json](file:///c:/Users/munaf/Desktop/mahai%20brouser/package.json), clearing `@prisma/config`/`effect` ReDoS advisories cleanly (`0 critical`, `0 high` across root & `0` total in `landing/` and `--omit=dev`).
+  - [x] Added `npm audit --omit=dev --audit-level=high` + `npm --prefix landing audit --omit=dev --audit-level=high` gates in [.github/workflows/ci.yml](file:///c:/Users/munaf/Desktop/mahai%20brouser/.github/workflows/ci.yml) and bumped GitHub Actions across all workflows to Node 24-compatible major tags (`checkout@v6`, `setup-node@v6`, `setup-python@v6`, `cache@v5`, `upload-artifact@v6`, `download-artifact@v7`, `softprops/action-gh-release@v3`).
+- [x] **9B. React `19` + Tailwind `v4` Migration:**
+  - [x] Upgraded `react`, `react-dom` (`^19.3.1`), `@types/react` (`^19.3.3`), `@types/react-dom` (`^19.3.0`), and `lucide-react` (`^1.83.0`) in root and `landing/`, eliminating Next.js 16 React 18 deprecation warnings.
+  - [x] Migrated desktop Vite styling ([01_UI/index.css](file:///c:/Users/munaf/Desktop/mahai%20brouser/01_UI/index.css) + [vite.config.ts](file:///c:/Users/munaf/Desktop/mahai%20brouser/vite.config.ts) via `@tailwindcss/vite@^4.3.5`) and Next.js landing styling ([landing/app/globals.css](file:///c:/Users/munaf/Desktop/mahai%20brouser/landing/app/globals.css) + [landing/postcss.config.mjs](file:///c:/Users/munaf/Desktop/mahai%20brouser/landing/postcss.config.mjs) via `@tailwindcss/postcss@^4.3.5`) to Tailwind CSS v4 `@theme` / `@theme inline` + `@custom-variant dark` tokens, removing legacy `tailwind.config.js`, `postcss.config.js`, and `landing/tailwind.config.ts` while preserving `#030303` obsidian design and Inter + Spectral typography.
+- [x] **9C. E2E & Stress Tests in CI (`11_TESTS/e2e` & `11_TESTS/stress`):**
+  - [x] Audited all `8` Vitest E2E specs (plus Playwright spec `brand-logo-dragging.e2e.ts`) in `11_TESTS/e2e/` and `5` stress specs in `11_TESTS/stress/`, isolated `quick-profile-real-e2e.test.ts` under `os.tmpdir()` and Linux `XDG_CONFIG_HOME` in [global-test-setup.ts](file:///c:/Users/munaf/Desktop/mahai%20brouser/11_TESTS/setup/global-test-setup.ts), switched `phase19-engine-proxy-acceptance.test.ts` to ephemeral proxy ports, and gated external binary / live network tests via [e2e-guards.ts](file:///c:/Users/munaf/Desktop/mahai%20brouser/11_TESTS/setup/e2e-guards.ts).
+  - [x] Added `test:e2e` and `test:stress` scripts in [package.json](file:///c:/Users/munaf/Desktop/mahai%20brouser/package.json) and wired the automated headless `e2e-and-stress` CI job into [.github/workflows/ci.yml](file:///c:/Users/munaf/Desktop/mahai%20brouser/.github/workflows/ci.yml).
 
 ---
 

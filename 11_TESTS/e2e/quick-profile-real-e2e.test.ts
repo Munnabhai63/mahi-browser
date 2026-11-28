@@ -1,14 +1,23 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { initSqlEngine, setCustomDatabasePath } from '../../06_DATABASE/connection.js';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { createProfile, getProfileById, deleteProfile } from '../../02_BROWSER/services/profile-service.js';
 import { assertCanCreateProfile, getNonDeletedProfileCount } from '../../08_SECURITY/freemium-guard.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
+import { canRunRealBrowserTests } from '../setup/e2e-guards.js';
 
 describe('REAL E2E ACCEPTANCE: Quick Profile Creation, SQLite Persistence & Chromium Launch', () => {
+  let tempDir: string;
   let createdProfileId: string | null = null;
 
   beforeAll(async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mahi-quick-profile-e2e-'));
+    await initSqlEngine();
+    setCustomDatabasePath(path.join(tempDir, 'quick_profile_e2e.sqlite'));
     await initializeDatabase();
   });
 
@@ -21,10 +30,19 @@ describe('REAL E2E ACCEPTANCE: Quick Profile Creation, SQLite Persistence & Chro
         deleteProfile(createdProfileId);
       } catch {}
     }
+    try {
+      await processManager.stopAll();
+    } catch {}
+    if (tempDir && fs.existsSync(tempDir)) {
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch {}
+    }
   });
 
   it('verifies entitlement quota assertCanCreateProfile passes', () => {
     const count = getNonDeletedProfileCount();
+    expect(count).toBeGreaterThanOrEqual(0);
     expect(() => assertCanCreateProfile(1)).not.toThrow();
   });
 
@@ -56,7 +74,7 @@ describe('REAL E2E ACCEPTANCE: Quick Profile Creation, SQLite Persistence & Chro
     expect(fetched?.folder).toBe('General');
   });
 
-  it('launches real production Chromium, verifies running state, and stops cleanly', async () => {
+  it.skipIf(!canRunRealBrowserTests())('launches real production Chromium, verifies running state, and stops cleanly', async () => {
     expect(createdProfileId).toBeDefined();
     if (!createdProfileId) return;
 

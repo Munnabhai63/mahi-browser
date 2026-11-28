@@ -1,17 +1,77 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@source "../app";
+@source "../components";
+@source "../content";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: var(--font-inter), 'Inter', system-ui, -apple-system, sans-serif;
+  --font-serif: var(--font-spectral), 'Spectral', Georgia, serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --color-brand-dark: #020617;
+  --color-brand-surface: #0f172a;
+  --color-brand-border: #1e293b;
+  --color-brand-muted: #64748b;
+  --color-brand-light: #f8fafc;
+  --color-brand-red: #b91c1c;
+  --color-brand-crimson: #dc2626;
+  --color-brand-emerald: #059669;
+  --color-brand-green: #10b981;
+  --color-brand-cyan: #06b6d4;
+
+  --animate-marquee: marquee 28s linear infinite;
+  --animate-marquee-reverse: marqueeReverse 28s linear infinite;
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-fadeInScale: fadeInScale 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+  @keyframes marquee {
+    0% {
+      transform: translateX(0%);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
+  }
+
+  @keyframes marqueeReverse {
+    0% {
+      transform: translateX(-50%);
+    }
+    100% {
+      transform: translateX(0%);
+    }
+  }
+
+  @keyframes fadeInScale {
+    0% {
+      opacity: 0;
+      transform: scale(0.985) translateY(6px);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+}
 
 :root {
   --background: #030303;
   --foreground: #ededed;
 }
 
-body {
-  background-color: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-inter), 'Inter', system-ui, -apple-system, sans-serif;
-  overflow-x: clip;
+@layer base {
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-inter), 'Inter', system-ui, -apple-system, sans-serif;
+    overflow-x: clip;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 .font-\[\'Spectral\'\,serif\] {

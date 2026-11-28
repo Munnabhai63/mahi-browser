@@ -13,8 +13,6 @@ on:
       - 'index.html'
       - 'app.html'
       - 'vite.config.ts'
-      - 'tailwind.config.js'
-      - 'postcss.config.js'
       - 'tsconfig.json'
       - 'tsconfig.electron.json'
       - 'package.json'
@@ -43,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout CI Gate Action
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           sparse-checkout: |
             .github/actions/wait-for-ci
@@ -54,10 +52,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
@@ -80,7 +78,7 @@ jobs:
           ls -la dist/assets
 
       - name: Upload Dashboard Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: dashboard-dist
           path: dist/
@@ -94,7 +92,7 @@ jobs:
     environment: production
     steps:
       - name: Download Dashboard Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: dashboard-dist
           path: dist

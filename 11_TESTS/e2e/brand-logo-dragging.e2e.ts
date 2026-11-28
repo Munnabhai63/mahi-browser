@@ -1,3 +1,7 @@
+/**
+ * Standalone Playwright acceptance test targeting live marketing site (https://mahibrowser.com).
+ * Executed outside headless Vitest CI (`test:e2e`) when `@playwright/test` and network access are enabled.
+ */
 import { test, expect } from '@playwright/test';
 
 test.describe('Brand Logo Non-Draggable & Clickable Verification', () => {

@@ -14,6 +14,7 @@ import {
   getWorkflowLogs,
 } from '../../09_AUTOMATION/automation-engine.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
+import { canRunRealBrowserTests } from '../setup/e2e-guards.js';
 
 describe('10-Cycle Automation Engine Stress & Reliability Verification', () => {
   let tempDir: string;
@@ -44,80 +45,106 @@ describe('10-Cycle Automation Engine Stress & Reliability Verification', () => {
     } catch {}
   });
 
-  // Run 10 Consecutive Cycles of Real-Engine Execution
+  // Headless 10-Cycle RPA Pipeline Definition, Serialization & Persistence Stress
   for (let cycle = 1; cycle <= 10; cycle++) {
-    it(
-      `Cycle ${cycle}/10: Execute RPA pipeline with JS eval, scroll, sleep, screenshot, and DB logging`,
-      async () => {
-        const wf = saveWorkflow({
-          name: `Stress-Workflow-Cycle-${cycle}`,
-          steps: [
-            {
-              id: `step-1-c${cycle}`,
-              order: 0,
-              type: 'OPEN_URL',
-              target: 'about:blank',
-              timeoutMs: 8000,
-            },
-            {
-              id: `step-2-c${cycle}`,
-              order: 1,
-              type: 'EVALUATE_JS',
-              value: `document.title = "Cycle ${cycle} Active - Verified"; return document.title;`,
-            },
-            {
-              id: `step-3-c${cycle}`,
-              order: 2,
-              type: 'EXTRACT_TITLE',
-            },
-            {
-              id: `step-4-c${cycle}`,
-              order: 3,
-              type: 'RANDOM_SLEEP',
-              value: '20-50',
-            },
-            {
-              id: `step-5-c${cycle}`,
-              order: 4,
-              type: 'SCROLL',
-              value: '200',
-            },
-            {
-              id: `step-6-c${cycle}`,
-              order: 5,
-              type: 'SCREENSHOT',
-            },
-            {
-              id: `step-7-c${cycle}`,
-              order: 6,
-              type: 'CLOSE_BROWSER',
-            },
-          ],
-        });
+    it(`Headless Cycle ${cycle}/10: Save, verify, and clean up 7-step RPA workflow pipeline`, () => {
+      const wf = saveWorkflow({
+        name: `Headless-Stress-Workflow-Cycle-${cycle}`,
+        steps: [
+          { id: `h-step-1-c${cycle}`, order: 0, type: 'OPEN_URL', target: 'about:blank', timeoutMs: 8000 },
+          { id: `h-step-2-c${cycle}`, order: 1, type: 'EVALUATE_JS', value: `return "Cycle ${cycle}";` },
+          { id: `h-step-3-c${cycle}`, order: 2, type: 'EXTRACT_TITLE' },
+          { id: `h-step-4-c${cycle}`, order: 3, type: 'RANDOM_SLEEP', value: '20-50' },
+          { id: `h-step-5-c${cycle}`, order: 4, type: 'SCROLL', value: '200' },
+          { id: `h-step-6-c${cycle}`, order: 5, type: 'SCREENSHOT' },
+          { id: `h-step-7-c${cycle}`, order: 6, type: 'CLOSE_BROWSER' },
+        ],
+      });
 
-        const profileId = profileIds[(cycle - 1) % profileIds.length];
-        const result = await runWorkflow({
-          workflowId: wf.id,
-          profileId,
-        });
-
-        expect(result).toBeDefined();
-        expect(result.status).toBe('SUCCESS');
-        expect(result.stepLogs.length).toBe(7);
-        expect(result.stepLogs[1].output).toContain(`Cycle ${cycle} Active - Verified`);
-        expect(result.stepLogs[2].output).toContain(`Cycle ${cycle} Active - Verified`);
-        expect(result.stepLogs[5].screenshotBase64).toBeDefined();
-
-        // Verify DB persistence
-        const logs = getWorkflowLogs(wf.id);
-        expect(logs.length).toBeGreaterThan(0);
-        expect(logs[0].status).toBe('SUCCESS');
-
-        // Cleanup workflow
-        deleteWorkflow(wf.id);
-      },
-      60000
-    );
+      const list = getWorkflows();
+      const persisted = list.find((w) => w.id === wf.id);
+      expect(persisted).toBeDefined();
+      expect(persisted?.steps.length).toBe(7);
+      expect(deleteWorkflow(wf.id)).toBe(true);
+    });
   }
+
+  // Run 10 Consecutive Cycles of Real-Engine Execution when Chromium binary is enabled
+  describe.skipIf(!canRunRealBrowserTests())('Real Chromium 10-Cycle Execution Stress', () => {
+    for (let cycle = 1; cycle <= 10; cycle++) {
+      it(
+        `Cycle ${cycle}/10: Execute RPA pipeline with JS eval, scroll, sleep, screenshot, and DB logging`,
+        async () => {
+          const wf = saveWorkflow({
+            name: `Stress-Workflow-Cycle-${cycle}`,
+            steps: [
+              {
+                id: `step-1-c${cycle}`,
+                order: 0,
+                type: 'OPEN_URL',
+                target: 'about:blank',
+                timeoutMs: 8000,
+              },
+              {
+                id: `step-2-c${cycle}`,
+                order: 1,
+                type: 'EVALUATE_JS',
+                value: `document.title = "Cycle ${cycle} Active - Verified"; return document.title;`,
+              },
+              {
+                id: `step-3-c${cycle}`,
+                order: 2,
+                type: 'EXTRACT_TITLE',
+              },
+              {
+                id: `step-4-c${cycle}`,
+                order: 3,
+                type: 'RANDOM_SLEEP',
+                value: '20-50',
+              },
+              {
+                id: `step-5-c${cycle}`,
+                order: 4,
+                type: 'SCROLL',
+                value: '200',
+              },
+              {
+                id: `step-6-c${cycle}`,
+                order: 5,
+                type: 'SCREENSHOT',
+              },
+              {
+                id: `step-7-c${cycle}`,
+                order: 6,
+                type: 'CLOSE_BROWSER',
+              },
+            ],
+          });
+
+          const profileId = profileIds[(cycle - 1) % profileIds.length];
+          const result = await runWorkflow({
+            workflowId: wf.id,
+            profileId,
+          });
+
+          expect(result).toBeDefined();
+          expect(result.status).toBe('SUCCESS');
+          expect(result.stepLogs.length).toBe(7);
+          expect(result.stepLogs[1].output).toContain(`Cycle ${cycle} Active - Verified`);
+          expect(result.stepLogs[2].output).toContain(`Cycle ${cycle} Active - Verified`);
+          expect(result.stepLogs[5].screenshotBase64).toBeDefined();
+
+          // Verify DB persistence
+          const logs = getWorkflowLogs(wf.id);
+          expect(logs.length).toBeGreaterThan(0);
+          expect(logs[0].status).toBe('SUCCESS');
+
+          // Cleanup workflow
+          deleteWorkflow(wf.id);
+        },
+        60000
+      );
+    }
+  });
 
 });

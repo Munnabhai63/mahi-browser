@@ -9,8 +9,9 @@ import { createProfile } from '../../02_BROWSER/services/profile-service.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
 import { getProfileDebugPort } from '../../02_BROWSER/launcher.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
+import { canRunLiveNetworkTests } from '../setup/e2e-guards.js';
 
-describe('STEP 20 — LIVE RUNTIME NETWORK CONNECTIVITY E2E TEST', () => {
+describe.skipIf(!canRunLiveNetworkTests())('STEP 20 — LIVE RUNTIME NETWORK CONNECTIVITY E2E TEST', () => {
   let tempDir: string;
   let profileId: string;
   let debugPort: number;
