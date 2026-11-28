@@ -12,7 +12,7 @@
 
 import http from 'node:http';
 import crypto from 'node:crypto';
-import {
+import type {
   CloudClientAction,
   CloudServerMessage,
   CloudStreamFrame,
@@ -99,7 +99,7 @@ export class SessionGateway {
 
     // 1. Discover target page debugger URL via CDP JSON API
     const pageTarget = await this.resolvePageTarget(cdpPort);
-    if (!pageTarget || !pageTarget.webSocketDebuggerUrl) {
+    if (!pageTarget?.webSocketDebuggerUrl) {
       throw new Error(`CDP_TARGET_ERROR: Could not find inspectable page target on port ${cdpPort}`);
     }
 
@@ -118,9 +118,9 @@ export class SessionGateway {
     let cdpWs: WebSocket;
     try {
       cdpWs = new WebSocket(pageTarget.webSocketDebuggerUrl);
-    } catch (wsErr: any) {
+    } catch (wsErr: unknown) {
       this.activeStreams.delete(sessionId);
-      throw new Error(`CDP_WS_CONNECT_FAILED: ${wsErr.message}`);
+      throw new Error(`CDP_WS_CONNECT_FAILED: ${wsErr instanceof Error ? wsErr.message : String(wsErr)}`);
     }
 
     state.ws = cdpWs;
@@ -200,15 +200,16 @@ export class SessionGateway {
   /**
    * Queries the Chromium HTTP endpoint to get the active tab's debugger URL.
    */
-  private async resolvePageTarget(port: number): Promise<any> {
+  private async resolvePageTarget(port: number): Promise<{ type?: string; webSocketDebuggerUrl?: string } | null> {
     for (let i = 0; i < 20; i++) {
-      const targets = await new Promise<any[]>((resolve) => {
+      const targets = await new Promise<Array<{ type?: string; webSocketDebuggerUrl?: string }>>((resolve) => {
         const req = http.get(`http://127.0.0.1:${port}/json/list`, { timeout: 1000 }, (res) => {
           let data = '';
           res.on('data', (c) => (data += c));
           res.on('end', () => {
             try {
-              resolve(JSON.parse(data));
+              const parsed = JSON.parse(data) as Array<{ type?: string; webSocketDebuggerUrl?: string }>;
+              resolve(Array.isArray(parsed) ? parsed : []);
             } catch {
               resolve([]);
             }
@@ -262,7 +263,7 @@ export class SessionGateway {
    */
   public dispatchAction(sessionId: string, action: CloudClientAction): void {
     const stream = this.activeStreams.get(sessionId);
-    if (!stream || !stream.ws || stream.ws.readyState !== WebSocket.OPEN) {
+    if (stream?.ws?.readyState !== WebSocket.OPEN) {
       return;
     }
 

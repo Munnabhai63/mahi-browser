@@ -1,4 +1,4 @@
-import { MetadataRoute } from 'next';
+import type { MetadataRoute } from 'next';
 import { BRAND } from '../lib/brand';
 
 export const dynamic = 'force-static';

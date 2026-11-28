@@ -11,7 +11,7 @@ import path from 'node:path';
 import os from 'node:os';
 import https from 'node:https';
 import { execFileSync } from 'node:child_process';
-import { resolveMultiCoreExecutablePath, getAvailableCores } from './multi-core-resolver.js';
+import { resolveMultiCoreExecutablePath } from './multi-core-resolver.js';
 import { getCamoufoxExecutablePath } from '../detector.js';
 import { getEnginesBaseDir, downloadFileWithProgress, extractZipArchive } from '../managed-engine.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
@@ -79,11 +79,14 @@ export async function resolveCamoufoxRelease(): Promise<CamoufoxReleaseInfo> {
     });
 
     if (res.statusCode === 200) {
-      const json = JSON.parse(res.data);
+      const json = JSON.parse(res.data) as {
+        tag_name?: string;
+        assets?: Array<{ name: string; browser_download_url: string }>;
+      };
       if (json && Array.isArray(json.assets)) {
-        const matched = json.assets.find((a: any) => assetRegex.test(a.name));
+        const matched = json.assets.find((a) => assetRegex.test(a.name));
         if (matched) {
-          const manifestAsset = json.assets.find((a: any) => a.name === 'manifest.json');
+          const manifestAsset = json.assets.find((a) => a.name === 'manifest.json');
           return {
             tag: json.tag_name || 'latest',
             assetName: matched.name,
@@ -104,15 +107,18 @@ export async function resolveCamoufoxRelease(): Promise<CamoufoxReleaseInfo> {
 
 export function checkDiskFreeSpace(dir: string, requiredBytes: number): void {
   try {
-    if (typeof (fs as any).statfsSync === 'function') {
-      const stats = (fs as any).statfsSync(dir);
+    const fsWithStatfs = fs as typeof fs & {
+      statfsSync?: (target: string) => { bavail: number | bigint; bsize: number | bigint };
+    };
+    if (typeof fsWithStatfs.statfsSync === 'function') {
+      const stats = fsWithStatfs.statfsSync(dir);
       const free = Number(stats.bavail) * Number(stats.bsize);
       if (free < requiredBytes) {
         throw new Error(`INSUFFICIENT_DISK: Required ${requiredBytes} bytes free, but only ${free} bytes available on ${dir}`);
       }
     }
-  } catch (err: any) {
-    if (err.message && err.message.startsWith('INSUFFICIENT_DISK')) {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.startsWith('INSUFFICIENT_DISK')) {
       throw err;
     }
   }
@@ -129,9 +135,13 @@ let inFlightCamoufoxDownload: Promise<string> | null = null;
 
 function broadcastCamoufoxProgress(payload: CamoufoxProgressEvent): void {
   try {
-    const { BrowserWindow } = require('electron');
+    const { BrowserWindow } = require('electron') as {
+      BrowserWindow?: {
+        getAllWindows?: () => Array<{ webContents: { send: (ch: string, data: CamoufoxProgressEvent) => void } }>;
+      };
+    };
     if (BrowserWindow && typeof BrowserWindow.getAllWindows === 'function') {
-      BrowserWindow.getAllWindows().forEach((win: any) => {
+      BrowserWindow.getAllWindows().forEach((win) => {
         try {
           win.webContents.send('engine:camoufox:progress', payload);
         } catch (winErr) {
@@ -173,7 +183,6 @@ const SUPPORTED_MAJOR_VERSIONS = [120, 124, 128, 130, 149, 150];
  * Scans local system and returns comprehensive engine inventory.
  */
 export function auditLocalEngines(): EngineHealthReport {
-  const available = getAvailableCores();
   const cores: EngineCoreManifest[] = [];
 
   for (const major of SUPPORTED_MAJOR_VERSIONS) {
@@ -450,7 +459,10 @@ export async function ensureCamoufoxInstalled(options?: {
         version: releaseInfo.tag,
         installedAt: new Date().toISOString(),
         executablePath: finalExe,
-        sha256: typeof downloadResult === 'object' ? (downloadResult as any).sha256 : undefined,
+        sha256:
+          typeof downloadResult === 'object' && downloadResult !== null && 'sha256' in downloadResult
+            ? (downloadResult as { sha256?: string }).sha256
+            : undefined,
       };
       fs.writeFileSync(markerPath, JSON.stringify(markerData, null, 2), 'utf8');
 
@@ -458,8 +470,8 @@ export async function ensureCamoufoxInstalled(options?: {
       try {
         const verOutput = execFileSync(finalExe, ['--version'], { timeout: 20000, stdio: 'pipe' }).toString().trim();
         log.info(`[Camoufox Provisioner] Successfully provisioned Camoufox (${verOutput}) at "${finalExe}"`);
-      } catch (smokeErr: any) {
-        log.info(`[Camoufox Provisioner] Provisioned at "${finalExe}" (smoke notice: ${smokeErr.message})`);
+      } catch (smokeErr: unknown) {
+        log.info(`[Camoufox Provisioner] Provisioned at "${finalExe}" (smoke notice: ${smokeErr instanceof Error ? smokeErr.message : String(smokeErr)})`);
       }
 
       broadcastCamoufoxProgress({
@@ -469,7 +481,7 @@ export async function ensureCamoufoxInstalled(options?: {
       });
 
       return finalExe;
-    } catch (err: any) {
+    } catch (err: unknown) {
       try {
         if (fs.existsSync(tempZipPath)) fs.unlinkSync(tempZipPath);
       } catch (zipCleanupErr) {
@@ -486,7 +498,7 @@ export async function ensureCamoufoxInstalled(options?: {
           err: dirCleanupErr instanceof Error ? dirCleanupErr.message : String(dirCleanupErr),
         });
       }
-      const errMsg = err?.message || String(err);
+      const errMsg = err instanceof Error ? err.message : String(err);
       broadcastCamoufoxProgress({
         stage: 'FAILED',
         error: errMsg,

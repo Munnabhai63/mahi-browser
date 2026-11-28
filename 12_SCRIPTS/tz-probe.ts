@@ -7,9 +7,18 @@ import http from 'node:http';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
-import { chromium } from 'rebrowser-playwright-core';
+import { chromium, type Browser } from 'rebrowser-playwright-core';
 import { launchBrowser, getProfileDebugPort } from '../02_BROWSER/launcher.js';
 import type { Profile } from '../10_CONFIG/shared/types/profile.js';
+
+interface CdpTargetEntry {
+  type?: string;
+  title?: string;
+  url?: string;
+}
+
+type ProbeWindow = Window & { __MAHI_STEALTH_CORE_RAN?: boolean };
+type WorkerWithName = typeof window.Worker & { name?: string };
 
 interface TzResult {
   context: string;
@@ -135,28 +144,58 @@ async function runProbe() {
   });
 
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
-  const serverPort = (server.address() as any).port;
+  const serverAddr = server.address();
+  const serverPort = typeof serverAddr === 'object' && serverAddr ? serverAddr.port : 0;
   const probeUrl = `http://127.0.0.1:${serverPort}/`;
 
   const profileId = 'tz-probe-profile-01';
-  const profile = {
+  const profile: Profile = {
     id: profileId,
     name: 'Timezone Probe Profile',
+    description: '',
+    folder: 'General',
+    tags: [],
+    notes: '',
     status: 'STOPPED',
+    pinned: false,
     storagePath: testDir,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     settings: {
       browser: {
+        engine: 'chrome',
+        version: '138',
+        userAgent: '',
         startupUrl: probeUrl,
+        homepage: 'about:blank',
+        additionalArgs: [],
+        enableExtensions: true,
+        hardwareAcceleration: true,
+      },
+      display: {
+        screenWidth: 1920,
+        screenHeight: 1080,
+        deviceScaleFactor: 1,
+        colorDepth: 24,
       },
       locale: {
         timezone: targetTz,
         language: 'en-US',
         languagesList: ['en-US', 'en'],
       },
+      network: {
+        directConnection: true,
+        webrtc: 'disabled',
+      },
+      permissions: {
+        camera: 'prompt',
+        microphone: 'prompt',
+        geolocation: 'prompt',
+        notifications: 'prompt',
+        midi: 'prompt',
+      },
     },
-  } as any as Profile;
+  };
 
   const debugPort = getProfileDebugPort(profile.id);
   console.log(`[TZ Probe] Launching test profile with timezone: ${targetTz} on debug port ${debugPort}...`);
@@ -168,8 +207,8 @@ async function runProbe() {
     try {
       new Function(code);
       console.log('[TZ Probe] stealth-core.js syntax is VALID!');
-    } catch (err: any) {
-      console.error('[TZ Probe] stealth-core.js SYNTAX ERROR:', err.message);
+    } catch (err: unknown) {
+      console.error('[TZ Probe] stealth-core.js SYNTAX ERROR:', err instanceof Error ? err.message : String(err));
       const debugFile = process.env.MAHI_TZ_PROBE_DEBUG_FILE || path.join(os.tmpdir(), 'mahi_bad_stealth.js');
       fs.writeFileSync(debugFile, code);
       console.error('[TZ Probe] Saved invalid stealth-core.js to:', debugFile);
@@ -178,7 +217,7 @@ async function runProbe() {
     console.log('[TZ Probe] stealth-core.js DOES NOT EXIST at', coreJsPath);
   }
 
-  let cdpBrowser: any = null;
+  let cdpBrowser: Browser | null = null;
   try {
     const cdpEndpoint = `http://127.0.0.1:${debugPort}`;
     console.log(`[TZ Probe] Connecting to CDP at ${cdpEndpoint}...`);
@@ -199,10 +238,10 @@ async function runProbe() {
     console.log(`[TZ Probe] Navigating to ${probeUrl}...`);
     try {
       const listRes = await fetch(`http://127.0.0.1:${debugPort}/json/list`);
-      const listData = await listRes.json();
-      console.log(`[TZ Probe] CDP Targets on debug port:`, listData.map((t: any) => ({ type: t.type, title: t.title, url: t.url })));
-    } catch (e: any) {
-      console.log('[TZ Probe] Failed to fetch /json/list:', e.message);
+      const listData = (await listRes.json()) as CdpTargetEntry[];
+      console.log(`[TZ Probe] CDP Targets on debug port:`, listData.map((t) => ({ type: t.type, title: t.title, url: t.url })));
+    } catch (e: unknown) {
+      console.log('[TZ Probe] Failed to fetch /json/list:', e instanceof Error ? e.message : String(e));
     }
     await page.goto(probeUrl, { waitUntil: 'domcontentloaded' });
 
@@ -218,28 +257,28 @@ async function runProbe() {
     console.table(Object.values(results));
 
     // Inspect JS Proxy vs Native descriptor
-    const stealthRan = await page.evaluate(() => (window as any).__MAHI_STEALTH_CORE_RAN);
+    const stealthRan = await page.evaluate(() => (window as ProbeWindow).__MAHI_STEALTH_CORE_RAN);
     console.log(`\n[Stealth Script Active?] stealthRan = ${stealthRan}`);
     const tzOffsetToString = await page.evaluate(() => Date.prototype.getTimezoneOffset.toString());
     const dtfResolvedToString = await page.evaluate(() => Intl.DateTimeFormat.prototype.resolvedOptions.toString());
     const workerToString = await page.evaluate(() => window.Worker.toString());
-    const isProxyWorker = await page.evaluate(() => (window.Worker as any).name);
+    const isProxyWorker = await page.evaluate(() => (window.Worker as WorkerWithName).name);
     const workerCreation = await page.evaluate(() => {
       try {
-        const w = new Worker('/worker.js');
+        new Worker('/worker.js');
         return 'success';
-      } catch (e: any) {
-        return 'threw: ' + e.message;
+      } catch (e: unknown) {
+        return `threw: ${e instanceof Error ? e.message : String(e)}`;
       }
     });
-    const xhrCheck = await page.evaluate(() => {
+    await page.evaluate(() => {
       try {
         const xhr = new XMLHttpRequest();
         xhr.open('GET', '/worker.js', false);
         xhr.send();
         return { status: xhr.status, textLen: (xhr.responseText || '').length };
-      } catch (e: any) {
-        return { error: e.message };
+      } catch (e: unknown) {
+        return { error: e instanceof Error ? e.message : String(e) };
       }
     });
     console.log(`\n[Native / Proxy Checks]`);

@@ -1,24 +1,16 @@
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import {
+import type {
   CommercialEntitlements,
   CommercialPlan,
   CommercialSubscription,
-  CommercialDevice,
-  CommercialUser,
   FeatureCapability,
   CommercialPlanTier,
-  CanonicalPlanId,
 } from '../../10_CONFIG/shared/types/commercial.js';
 import { getUserById } from './commercial-auth-service.js';
 import { getCommercialPlanById, DEFAULT_COMMERCIAL_PLANS } from './commercial-plan-service.js';
-import {
-  resolveCapabilitiesForCanonicalPlan,
-  CANONICAL_PLAN_CATALOG,
-  findLowestPlanForCapability,
-} from './canonical-plan-catalog.js';
+import { resolveCapabilitiesForCanonicalPlan } from './canonical-plan-catalog.js';
 import { registerOrUpdateDevice, getUserDevices } from './commercial-device-service.js';
 import { getDeviceId, getDeviceName } from '../../03_HARDWARE/device-id.js';
-import { getProfiles } from '../../02_BROWSER/services/profile-service.js';
 import { getRealUserProfileCount } from '../../02_BROWSER/services/starter-profiles-service.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
 import { validateCurrentLicense, getLicenseById } from '../../04_LICENSING/license-engine.js';
@@ -27,6 +19,50 @@ import { hasValidAccountSubscription, readCachedStatus, getAccountSession, isBus
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('commercial-entitlement-service');
+
+interface CommercialSubscriptionRow {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  license_id?: string | null;
+  status: string;
+  billing_cycle: string;
+  starts_at: string;
+  expires_at: string | null;
+  payment_provider?: string | null;
+  external_sub_id?: string | null;
+  created_at: string;
+}
+
+interface LegacyLicenseRow {
+  id: string;
+  key_masked: string;
+  status: string;
+  duration_type?: string;
+  starts_at?: string | null;
+  expires_at?: string | null;
+  notes?: string | null;
+  created_at: string;
+}
+
+interface TrialUserRow {
+  trial_used?: number | boolean | null;
+  trial_expires_at?: string | null;
+}
+
+interface SqliteDbWithTransaction {
+  transaction?: <T>(fn: () => T) => () => T;
+}
+
+export interface EntitlementCapabilityError extends Error {
+  code: string;
+  status: number;
+  capability: FeatureCapability;
+  requiredPlan: CommercialPlanTier;
+  requiredTier: CommercialPlanTier;
+  planName: string;
+  featureName: string;
+}
 
 export const CAPABILITY_REQUIREMENTS: Record<
   FeatureCapability,
@@ -132,7 +168,6 @@ export function evaluateUserEntitlements(
       ? cached.profile_limit
       : effectivePlan.limits.maxProfiles;
 
-    const allProfiles = getProfiles({ includeTrash: false });
     const runningCount = processManager.getRunningCount();
 
     return {
@@ -205,7 +240,7 @@ export function evaluateUserEntitlements(
   // 4. Fetch Active or Trial Subscription
   const subRow = db.prepare(
     "SELECT * FROM commercial_subscriptions WHERE user_id = ? AND status IN ('ACTIVE', 'TRIAL') ORDER BY starts_at DESC LIMIT 1"
-  ).get(user.id) as any;
+  ).get(user.id) as CommercialSubscriptionRow | undefined;
 
   let subscription: CommercialSubscription | undefined;
   if (subRow) {
@@ -235,8 +270,8 @@ export function evaluateUserEntitlements(
       userId: subRow.user_id,
       planId: subRow.plan_id,
       licenseId: subRow.license_id || undefined,
-      status: isExpired ? 'EXPIRED' : (subRow.status as any),
-      billingCycle: subRow.billing_cycle as any,
+      status: isExpired ? 'EXPIRED' : (subRow.status as CommercialSubscription['status']),
+      billingCycle: subRow.billing_cycle as CommercialSubscription['billingCycle'],
       startsAt: subRow.starts_at,
       expiresAt: subRow.expires_at,
       paymentProvider: subRow.payment_provider || undefined,
@@ -246,11 +281,11 @@ export function evaluateUserEntitlements(
   }
 
   // Check if there is an active direct license assigned to this account
-  let activeLicRow: any = null;
+  let activeLicRow: LegacyLicenseRow | null = null;
   try {
-    activeLicRow = db.prepare(
+    activeLicRow = (db.prepare(
       "SELECT * FROM licenses WHERE account_id = ? AND status = 'ACTIVE' AND (expires_at IS NULL OR expires_at > ?) ORDER BY created_at DESC LIMIT 1"
-    ).get(user.id, new Date().toISOString()) as any;
+    ).get(user.id, new Date().toISOString()) as LegacyLicenseRow | undefined) ?? null;
   } catch (licErr) {
     log.debug('Skipped legacy licenses lookup during entitlement evaluation', {
       userId: user.id,
@@ -274,7 +309,7 @@ export function evaluateUserEntitlements(
       status: 'ACTIVE',
       billingCycle: activeLicRow.duration_type === 'LIFETIME' ? 'LIFETIME' : (activeLicRow.duration_type === '365_DAYS' ? 'ANNUAL' : 'MONTHLY'),
       startsAt: activeLicRow.starts_at || activeLicRow.created_at,
-      expiresAt: activeLicRow.expires_at || undefined,
+      expiresAt: activeLicRow.expires_at ?? null,
       paymentProvider: 'ADMIN_LICENSE',
       createdAt: activeLicRow.created_at,
     };
@@ -311,7 +346,7 @@ export function evaluateUserEntitlements(
       id: activeLicRow.id,
       keyMasked: activeLicRow.key_masked,
       status: activeLicRow.status,
-      expiresAt: activeLicRow.expires_at,
+      expiresAt: activeLicRow.expires_at ?? null,
     };
   }
 
@@ -328,7 +363,6 @@ export function evaluateUserEntitlements(
   const userDevices = getUserDevices(user.id);
   const activeDevCount = userDevices.filter((d) => d.status === 'ACTIVE').length;
 
-  const allProfiles = getProfiles({ includeTrash: false });
   const runningCount = processManager.getRunningCount();
 
   const isDeviceAuthorized = devReg.success;
@@ -344,16 +378,16 @@ export function evaluateUserEntitlements(
 
   // Phase 23: MostLogin-style Enterprise Feature Overrides per User
   if (user.featureOverrides) {
-    if (user.featureOverrides['qunkong']) {
+    if (user.featureOverrides.qunkong) {
       capabilities['automation.synchronizer'] = true;
     }
-    if (user.featureOverrides['multiCore']) {
+    if (user.featureOverrides.multiCore) {
       capabilities['stealth.multiCore'] = true;
     }
-    if (user.featureOverrides['apiDaemon']) {
+    if (user.featureOverrides.apiDaemon) {
       capabilities['api.localDaemon'] = true;
     }
-    if (user.featureOverrides['rpa']) {
+    if (user.featureOverrides.rpa) {
       capabilities['automation.rpa'] = true;
     }
   }
@@ -388,7 +422,7 @@ export function evaluateUserEntitlements(
       ...capabilities,
       uniqueFingerprints: true,
       cloudSync: true,
-    } as any,
+    } as unknown as Record<FeatureCapability, boolean>,
     usage: {
       profilesCount: getRealUserProfileCount(user.id),
       runningProfilesCount: runningCount,
@@ -437,7 +471,7 @@ export function checkCapability(
     const db = getDatabase();
     const subRow = db
       .prepare("SELECT * FROM commercial_subscriptions WHERE user_id = ? AND status IN ('ACTIVE', 'TRIAL') ORDER BY starts_at DESC LIMIT 1")
-      .get(user.id) as any;
+      .get(user.id) as CommercialSubscriptionRow | undefined;
     if (subRow) {
       const isTrialSub = subRow.billing_cycle === 'TRIAL' || subRow.status === 'TRIAL';
       const isExpired = Boolean(
@@ -482,10 +516,17 @@ export function checkCapability(
     ? (user ? (getCommercialPlanById(user.planId) || defaultFreePlan) : defaultFreePlan)
     : defaultFreePlan;
 
-  const caps = resolveCapabilitiesForPlan(
-    effectivePlan,
-    (isSubActive || isTrialActive) ? ({ status: 'ACTIVE' } as any) : ({ status: 'EXPIRED' } as any)
-  );
+  const syntheticSub: CommercialSubscription = {
+    id: '',
+    userId,
+    planId: effectivePlan.id,
+    status: (isSubActive || isTrialActive) ? 'ACTIVE' : 'EXPIRED',
+    billingCycle: 'MONTHLY',
+    startsAt: '',
+    expiresAt: null,
+    createdAt: '',
+  };
+  const caps = resolveCapabilitiesForPlan(effectivePlan, syntheticSub);
   const isAllowed = Boolean(caps[capability]);
 
   if (!isAllowed) {
@@ -512,14 +553,18 @@ export function checkCapability(
 export function assertEntitled(userId: string, capability: FeatureCapability): void {
   const res = checkCapability(userId, capability);
   if (!res.entitled) {
-    const err = new Error(res.reason || `Feature "${capability}" is not included in current plan.`);
-    (err as any).code = 'FEATURE_NOT_INCLUDED';
-    (err as any).status = 403;
-    (err as any).capability = capability;
-    (err as any).requiredPlan = res.requiredTier;
-    (err as any).requiredTier = res.requiredTier;
-    (err as any).planName = res.planName;
-    (err as any).featureName = res.featureName;
+    const err = Object.assign(
+      new Error(res.reason || `Feature "${capability}" is not included in current plan.`),
+      {
+        code: 'FEATURE_NOT_INCLUDED',
+        status: 403,
+        capability,
+        requiredPlan: res.requiredTier,
+        requiredTier: res.requiredTier,
+        planName: res.planName,
+        featureName: res.featureName,
+      }
+    ) as EntitlementCapabilityError;
     throw err;
   }
 }
@@ -585,7 +630,7 @@ export function canLaunchProfile(
  */
 export function activateCommercialLicenseForUser(
   userId: string,
-  rawKey: string,
+  _rawKey: string,
   deviceId?: string,
   deviceName?: string
 ): { success: boolean; message: string; entitlements?: CommercialEntitlements } {
@@ -633,8 +678,8 @@ export function activateUserTrial(
 
   const runActivation = () => {
     // Check user and trial status directly inside transaction
-    const userRow = db.prepare('SELECT trial_used, trial_expires_at FROM commercial_users WHERE id = ?').get(userId) as any;
-    const existingSub = db.prepare("SELECT id FROM commercial_subscriptions WHERE user_id = ? AND billing_cycle = 'TRIAL' LIMIT 1").get(userId) as any;
+    const userRow = db.prepare('SELECT trial_used, trial_expires_at FROM commercial_users WHERE id = ?').get(userId) as TrialUserRow | undefined;
+    const existingSub = db.prepare("SELECT id FROM commercial_subscriptions WHERE user_id = ? AND billing_cycle = 'TRIAL' LIMIT 1").get(userId) as { id: string } | undefined;
 
     if (userRow?.trial_used || existingSub) {
       return {
@@ -687,8 +732,9 @@ export function activateUserTrial(
     };
   };
 
-  if (typeof (db as any).transaction === 'function') {
-    return (db as any).transaction(runActivation)();
+  const dbTx = db as unknown as SqliteDbWithTransaction;
+  if (typeof dbTx.transaction === 'function') {
+    return dbTx.transaction(runActivation)();
   }
   return runActivation();
 }

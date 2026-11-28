@@ -1,39 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
   Users,
   Plus,
   Shield,
-  UserCheck,
   UserPlus,
   Mail,
   Layers,
-  Download,
-  Upload,
   Trash2,
-  CheckCircle2,
-  AlertCircle,
   Briefcase,
-  Key,
   Copy,
   Check,
   Lock,
   Unlock,
   Play,
   RefreshCw,
-  FileText,
-  UserMinus,
   Share2,
 } from 'lucide-react';
 import {
-  Workspace,
-  TeamMember,
-  MemberRole,
-  TeamWorkspace,
-  TeamWorkspaceMember,
-  TeamRole,
-  TeamWorkspaceInvitation,
-  TeamProfileShare,
-  TeamWorkspaceAuditLog,
+  type Workspace,
+  type TeamMember,
+  type TeamWorkspace,
+  type TeamWorkspaceMember,
+  type TeamRole,
+  type TeamWorkspaceInvitation,
+  type TeamProfileShare,
+  type TeamWorkspaceAuditLog,
   ROLE_PERMISSIONS,
 } from '../../10_CONFIG/shared/types/workspace.js';
 import { useProfileStore } from '../stores/useProfileStore.js';
@@ -41,7 +33,7 @@ import { useToastStore } from '../stores/useToastStore.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
 
 export const WorkspacesPage: React.FC = () => {
-  const { profiles, fetchProfiles, startProfile, stopProfile } = useProfileStore();
+  const { profiles, fetchProfiles, startProfile } = useProfileStore();
   const { showToast } = useToastStore();
 
   // Local & Team Workspaces State
@@ -59,7 +51,7 @@ export const WorkspacesPage: React.FC = () => {
   // Local Workspace Members
   const [localMembers, setLocalMembers] = useState<TeamMember[]>([]);
 
-  const [loading, setLoading] = useState<boolean>(true);
+  const [_loading, setLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'members' | 'shares' | 'invites' | 'audit' | 'assignments'>('members');
   const [removeMemberTarget, setRemoveMemberTarget] = useState<string | null>(null);
 
@@ -78,13 +70,14 @@ export const WorkspacesPage: React.FC = () => {
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
   const [sharePermissionLevel, setSharePermissionLevel] = useState<'VIEW' | 'RUN' | 'EDIT' | 'ADMIN'>('RUN');
 
-  const [showImportModal, setShowImportModal] = useState<boolean>(false);
-  const [importJsonText, setImportJsonText] = useState<string>('');
+  const [_showImportModal, _setShowImportModal] = useState<boolean>(false);
+  const [_importJsonText, _setImportJsonText] = useState<string>('');
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadAllData is a stable async loader defined in this scope
   useEffect(() => {
-    loadAllData();
+    void loadAllData();
     fetchProfiles();
-  }, []);
+  }, [fetchProfiles]);
 
   const loadAllData = async () => {
     setLoading(true);
@@ -166,7 +159,7 @@ export const WorkspacesPage: React.FC = () => {
   const currentUserRole: TeamRole = currentTeamWorkspace?.userRole || 'OWNER';
   const userPermissions = ROLE_PERMISSIONS[currentUserRole] || [];
 
-  const canEditWorkspace = userPermissions.includes('WORKSPACE_EDIT');
+  const _canEditWorkspace = userPermissions.includes('WORKSPACE_EDIT');
   const canInvite = userPermissions.includes('MEMBER_INVITE');
   const canRemoveMember = userPermissions.includes('MEMBER_REMOVE');
   const canChangeRole = userPermissions.includes('MEMBER_ROLE_CHANGE');
@@ -205,8 +198,8 @@ export const WorkspacesPage: React.FC = () => {
       setShowCreateWsModal(false);
       setNewWsName('');
       setNewWsDesc('');
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Create Failed', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Create Failed', message: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -219,7 +212,7 @@ export const WorkspacesPage: React.FC = () => {
           inviteEmail.trim(),
           inviteRole
         );
-        if (res && res.token) {
+        if (res?.token) {
           setLatestInviteToken(res.token);
         }
         await loadTeamWorkspaceDetails(activeWorkspaceId);
@@ -230,8 +223,8 @@ export const WorkspacesPage: React.FC = () => {
         });
       }
       setInviteEmail('');
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Invite Failed', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Invite Failed', message: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -242,8 +235,8 @@ export const WorkspacesPage: React.FC = () => {
         await loadTeamWorkspaceDetails(activeWorkspaceId);
         showToast({ type: 'info', title: 'Invitation Revoked', message: 'Invite link invalidated' });
       }
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Revoke Failed', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Revoke Failed', message: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -254,8 +247,8 @@ export const WorkspacesPage: React.FC = () => {
         await loadTeamWorkspaceDetails(activeWorkspaceId);
         showToast({ type: 'success', title: 'Role Updated', message: `Role changed to ${newRole}` });
       }
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Role Change Failed', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Role Change Failed', message: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -270,7 +263,7 @@ export const WorkspacesPage: React.FC = () => {
         await window.mahiAPI.teamWorkspaceShareProfile(activeWorkspaceId, {
           cloudProfileId: selectedProfileId,
           permissionLevel: sharePermissionLevel,
-          encryptedKeyEnvelope: 'workspace_envelope_' + selectedProfileId,
+          encryptedKeyEnvelope: `workspace_envelope_${selectedProfileId}`,
         });
         await loadTeamWorkspaceDetails(activeWorkspaceId);
         setShowShareModal(false);
@@ -281,8 +274,8 @@ export const WorkspacesPage: React.FC = () => {
           message: 'Profile now accessible to authorized teammates',
         });
       }
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Share Failed', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Share Failed', message: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -293,8 +286,8 @@ export const WorkspacesPage: React.FC = () => {
         await loadTeamWorkspaceDetails(activeWorkspaceId);
         showToast({ type: 'info', title: 'Share Revoked', message: 'Profile removed from workspace' });
       }
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Revoke Failed', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Revoke Failed', message: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -330,8 +323,8 @@ export const WorkspacesPage: React.FC = () => {
           message: `Restoring shared profile archive from Zero-Knowledge Cloud...`,
         });
       }
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Launch Failed', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Launch Failed', message: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -352,7 +345,6 @@ export const WorkspacesPage: React.FC = () => {
         return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
       case 'MEMBER':
         return 'bg-teal-500/10 text-teal-400 border-teal-500/20';
-      case 'VIEWER':
       default:
         return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
     }
@@ -409,14 +401,14 @@ export const WorkspacesPage: React.FC = () => {
             </select>
           </div>
 
-          <button
+          <button type="button"
             onClick={() => setShowCreateWsModal(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 transition-all shadow-sm"
           >
             <Plus className="w-4 h-4 text-teal-500" /> New Workspace
           </button>
 
-          <button
+          <button type="button"
             onClick={() => loadAllData()}
             className="p-2.5 rounded-xl bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-400 hover:text-slate-100 transition-all shadow-sm"
             title="Refresh"
@@ -499,7 +491,7 @@ export const WorkspacesPage: React.FC = () => {
       {/* Tabs Navigation */}
       <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
         <div className="flex items-center gap-2">
-          <button
+          <button type="button"
             onClick={() => setActiveTab('members')}
             className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
               activeTab === 'members'
@@ -512,7 +504,7 @@ export const WorkspacesPage: React.FC = () => {
 
           {isTeamMode && (
             <>
-              <button
+              <button type="button"
                 onClick={() => setActiveTab('shares')}
                 className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
                   activeTab === 'shares'
@@ -523,7 +515,7 @@ export const WorkspacesPage: React.FC = () => {
                 Shared Profiles ({sharedProfiles.length})
               </button>
 
-              <button
+              <button type="button"
                 onClick={() => setActiveTab('invites')}
                 className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
                   activeTab === 'invites'
@@ -534,7 +526,7 @@ export const WorkspacesPage: React.FC = () => {
                 Invitations ({teamInvites.length})
               </button>
 
-              <button
+              <button type="button"
                 onClick={() => setActiveTab('audit')}
                 className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
                   activeTab === 'audit'
@@ -548,7 +540,7 @@ export const WorkspacesPage: React.FC = () => {
           )}
 
           {!isTeamMode && (
-            <button
+            <button type="button"
               onClick={() => setActiveTab('assignments')}
               className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
                 activeTab === 'assignments'
@@ -564,7 +556,7 @@ export const WorkspacesPage: React.FC = () => {
         {/* Tab Actions */}
         <div className="flex items-center gap-2">
           {activeTab === 'members' && canInvite && isTeamMode && (
-            <button
+            <button type="button"
               onClick={() => setShowInviteModal(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-400 hover:from-teal-400 hover:to-emerald-300 text-xs font-black text-slate-950 shadow-md shadow-teal-500/20 transition-all"
             >
@@ -573,7 +565,7 @@ export const WorkspacesPage: React.FC = () => {
           )}
 
           {activeTab === 'shares' && canShareProfile && (
-            <button
+            <button type="button"
               onClick={() => setShowShareModal(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-400 hover:from-teal-400 hover:to-emerald-300 text-xs font-black text-slate-950 shadow-md shadow-teal-500/20 transition-all"
             >
@@ -638,7 +630,7 @@ export const WorkspacesPage: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 text-right">
                       {canRemoveMember && m.role !== 'OWNER' && (
-                        <button
+                        <button type="button"
                           onClick={() => handleRemoveMember(m.userId)}
                           className="p-1.5 rounded-lg hover:bg-rose-500/10 text-slate-400 hover:text-rose-500 transition-colors"
                           title="Remove Teammate"
@@ -723,7 +715,7 @@ export const WorkspacesPage: React.FC = () => {
                       )}
                     </td>
                     <td className="px-6 py-4 text-right space-x-2">
-                      <button
+                      <button type="button"
                         onClick={() => handleLaunchSharedProfile(share)}
                         disabled={share.lockStatus?.isLocked}
                         className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
@@ -737,7 +729,7 @@ export const WorkspacesPage: React.FC = () => {
                       </button>
 
                       {canShareProfile && (
-                        <button
+                        <button type="button"
                           onClick={() => handleRevokeShare(share.cloudProfileId)}
                           className="p-1.5 rounded-lg hover:bg-rose-500/10 text-slate-400 hover:text-rose-500 transition-colors"
                           title="Revoke Profile Access"
@@ -787,7 +779,7 @@ export const WorkspacesPage: React.FC = () => {
                     <td className="px-6 py-4 text-xs text-slate-400">{new Date(inv.expiresAt).toLocaleDateString()}</td>
                     <td className="px-6 py-4 text-right">
                       {canInvite && (
-                        <button
+                        <button type="button"
                           onClick={() => handleRevokeInvite(inv.id)}
                           className="px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 transition-colors"
                         >
@@ -845,7 +837,7 @@ export const WorkspacesPage: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
             <h3 className="text-lg font-black text-slate-900 dark:text-white">Create Multi-User Team Workspace</h3>
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Workspace Name</label>
+              <label htmlFor="field-001" className="block text-xs font-bold text-slate-500 uppercase mb-1">Workspace Name</label>
               <input
                 type="text"
                 value={newWsName}
@@ -855,7 +847,7 @@ export const WorkspacesPage: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Description (Optional)</label>
+              <label htmlFor="field-002" className="block text-xs font-bold text-slate-500 uppercase mb-1">Description (Optional)</label>
               <input
                 type="text"
                 value={newWsDesc}
@@ -865,13 +857,13 @@ export const WorkspacesPage: React.FC = () => {
               />
             </div>
             <div className="flex items-center justify-end gap-3 pt-3">
-              <button
+              <button type="button"
                 onClick={() => setShowCreateWsModal(false)}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white"
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 onClick={handleCreateWorkspace}
                 className="px-5 py-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-400 text-slate-950 font-black text-xs shadow-md shadow-teal-500/20"
               >
@@ -888,7 +880,7 @@ export const WorkspacesPage: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
             <h3 className="text-lg font-black text-slate-900 dark:text-white">Invite Teammate via Central Auth</h3>
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Account Email</label>
+              <label htmlFor="field-003" className="block text-xs font-bold text-slate-500 uppercase mb-1">Account Email</label>
               <input
                 type="email"
                 value={inviteEmail}
@@ -898,7 +890,7 @@ export const WorkspacesPage: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Assign Role</label>
+              <label htmlFor="field-004" className="block text-xs font-bold text-slate-500 uppercase mb-1">Assign Role</label>
               <select
                 value={inviteRole}
                 onChange={(e) => setInviteRole(e.target.value as TeamRole)}
@@ -916,7 +908,7 @@ export const WorkspacesPage: React.FC = () => {
                 <span className="text-[11px] font-bold text-teal-400">Single-Use Invite Token Generated:</span>
                 <div className="flex items-center justify-between gap-2 font-mono text-xs text-slate-200 bg-slate-950/60 p-2 rounded-lg">
                   <span className="truncate">{latestInviteToken}</span>
-                  <button
+                  <button type="button"
                     onClick={() => copyToClipboard(latestInviteToken)}
                     className="p-1 hover:text-teal-400"
                     title="Copy token"
@@ -928,7 +920,7 @@ export const WorkspacesPage: React.FC = () => {
             )}
 
             <div className="flex items-center justify-end gap-3 pt-3">
-              <button
+              <button type="button"
                 onClick={() => {
                   setShowInviteModal(false);
                   setLatestInviteToken('');
@@ -937,7 +929,7 @@ export const WorkspacesPage: React.FC = () => {
               >
                 Close
               </button>
-              <button
+              <button type="button"
                 onClick={handleInviteMember}
                 className="px-5 py-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-400 text-slate-950 font-black text-xs shadow-md shadow-teal-500/20"
               >
@@ -954,7 +946,7 @@ export const WorkspacesPage: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
             <h3 className="text-lg font-black text-slate-900 dark:text-white">Share Profile to Workspace</h3>
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Select Profile</label>
+              <label htmlFor="field-005" className="block text-xs font-bold text-slate-500 uppercase mb-1">Select Profile</label>
               <select
                 value={selectedProfileId}
                 onChange={(e) => setSelectedProfileId(e.target.value)}
@@ -969,10 +961,10 @@ export const WorkspacesPage: React.FC = () => {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Permission Level</label>
+              <label htmlFor="field-006" className="block text-xs font-bold text-slate-500 uppercase mb-1">Permission Level</label>
               <select
                 value={sharePermissionLevel}
-                onChange={(e) => setSharePermissionLevel(e.target.value as any)}
+                onChange={(e) => setSharePermissionLevel(e.target.value as 'RUN' | 'VIEW' | 'EDIT' | 'ADMIN')}
                 className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm font-bold text-slate-200"
               >
                 <option value="RUN">RUN (Teammates can launch & sync sessions)</option>
@@ -985,13 +977,13 @@ export const WorkspacesPage: React.FC = () => {
               Zero-Knowledge protection: Teammates inherit sessions and cookies. Passwords and master secrets are never transmitted.
             </p>
             <div className="flex items-center justify-end gap-3 pt-3">
-              <button
+              <button type="button"
                 onClick={() => setShowShareModal(false)}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white"
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 onClick={handleShareProfile}
                 disabled={!selectedProfileId}
                 className="px-5 py-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-400 text-slate-950 font-black text-xs shadow-md shadow-teal-500/20 disabled:opacity-50"
@@ -1019,8 +1011,8 @@ export const WorkspacesPage: React.FC = () => {
               await loadTeamWorkspaceDetails(activeWorkspaceId);
               showToast({ type: 'info', title: 'Member Removed', message: 'User access revoked' });
             }
-          } catch (err: any) {
-            showToast({ type: 'error', title: 'Remove Failed', message: err.message });
+          } catch (err: unknown) {
+            showToast({ type: 'error', title: 'Remove Failed', message: err instanceof Error ? err.message : String(err) });
           }
         }}
         onCancel={() => setRemoveMemberTarget(null)}

@@ -1,5 +1,5 @@
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import { FeatureFlagDefinition, PlanTierId } from '../../10_CONFIG/shared/types/platform.js';
+import type { FeatureFlagDefinition, PlanTierId } from '../../10_CONFIG/shared/types/platform.js';
 import { logActivity } from './audit-service.js';
 
 const TIER_WEIGHTS: Record<PlanTierId, number> = {
@@ -74,9 +74,22 @@ const DEFAULT_FLAGS: FeatureFlagDefinition[] = [
   },
 ];
 
+interface SqliteFeatureFlagRow {
+  key: string;
+  name: string;
+  description: string | null;
+  enabled_global: number;
+  min_plan_tier: string;
+  rollout_percentage: number | null;
+  allowed_user_ids_json: string | null;
+  allowed_org_ids_json: string | null;
+  kill_switch_active: number;
+  updated_at: string;
+}
+
 export function getFeatureFlags(): FeatureFlagDefinition[] {
   const db = getDatabase();
-  const rows = db.prepare('SELECT * FROM feature_flags').all() as any[];
+  const rows = db.prepare('SELECT * FROM feature_flags').all() as SqliteFeatureFlagRow[];
 
   if (rows.length === 0) {
     // Seed default flags

@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { BRAND } from '../../lib/brand';
 
@@ -49,10 +51,11 @@ export default function BookDemoPage() {
     <div className="relative min-h-screen bg-[#030303] text-white selection:bg-white selection:text-black pt-24 sm:pt-32 pb-24 overflow-hidden">
       {/* Background Ambience */}
       <div className="absolute inset-0 z-0 pointer-events-none">
-        <img
+        <Image
           src="/assets/company/hero_walking.jpg"
           alt=""
-          className="w-full h-full object-cover object-center opacity-10 filter contrast-125"
+          fill
+          className="object-cover object-center opacity-10 filter contrast-125"
         />
         <div className="absolute inset-0 bg-gradient-to-b from-[#030303]/90 via-[#030303]/95 to-[#030303]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_900px_600px_at_50%_20%,rgba(255,255,255,0.03),transparent)]" />
@@ -163,10 +166,11 @@ export default function BookDemoPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
+                    <label htmlFor="demo-name" className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
                       Full Name
                     </label>
                     <input
+                      id="demo-name"
                       type="text"
                       required
                       value={name}
@@ -177,10 +181,11 @@ export default function BookDemoPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
+                    <label htmlFor="demo-email" className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
                       Corporate Work Email
                     </label>
                     <input
+                      id="demo-email"
                       type="email"
                       required
                       value={email}
@@ -191,10 +196,11 @@ export default function BookDemoPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
+                    <label htmlFor="demo-company" className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
                       Company / Organization
                     </label>
                     <input
+                      id="demo-company"
                       type="text"
                       required
                       value={company}
@@ -206,10 +212,11 @@ export default function BookDemoPage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
+                      <label htmlFor="demo-team-size" className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
                         Profile Fleet Size
                       </label>
                       <select
+                        id="demo-team-size"
                         value={teamSize}
                         onChange={(e) => setTeamSize(e.target.value)}
                         className="w-full rounded-[6px] border border-white/10 bg-[#080808] px-3.5 py-2.5 text-[13px] text-white focus:border-white/40 focus:outline-none"
@@ -223,10 +230,11 @@ export default function BookDemoPage() {
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
+                      <label htmlFor="demo-phone" className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
                         WhatsApp / Direct Phone
                       </label>
                       <input
+                        id="demo-phone"
                         type="tel"
                         required
                         value={phone}
@@ -238,10 +246,11 @@ export default function BookDemoPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
+                    <label htmlFor="demo-use-case" className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
                       Primary Use Case
                     </label>
                     <select
+                      id="demo-use-case"
                       value={useCase}
                       onChange={(e) => setUseCase(e.target.value)}
                       className="w-full rounded-[6px] border border-white/10 bg-[#080808] px-3.5 py-2.5 text-[13px] text-white focus:border-white/40 focus:outline-none"

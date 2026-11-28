@@ -2,13 +2,17 @@ import net from 'node:net';
 import tls from 'node:tls';
 import http from 'node:http';
 import https from 'node:https';
-import stream from 'node:stream';
+import type stream from 'node:stream';
 import { bridgeConnectOverSocks5, forwardHttpRequestOverSocks5 } from './socks-tunnel.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
 const log = createLogger('proxy-tunnel');
 
+interface GlobalWithDebugLog {
+  __mahiDebugLog?: (msg: string) => void;
+}
+
 function debugLog(msg: string) {
-  const fn = (globalThis as any).__mahiDebugLog;
+  const fn = (globalThis as GlobalWithDebugLog).__mahiDebugLog;
   if (fn) fn(msg);
   else log.info(msg);
 }
@@ -209,7 +213,7 @@ export async function createProxyTunnel(options: ProxyTunnelOptions): Promise<Pr
       debugLog(`[ProxyTunnel HTTP ERROR] ${err.message}`);
       if (!clientRes.headersSent) {
         clientRes.writeHead(502, { 'Content-Type': 'text/plain' });
-        clientRes.end('Proxy Tunnel Error: ' + err.message);
+        clientRes.end(`Proxy Tunnel Error: ${err.message}`);
       }
     });
 
@@ -219,8 +223,8 @@ export async function createProxyTunnel(options: ProxyTunnelOptions): Promise<Pr
   // HTTPS CONNECT Tunnel Handling
   server.on('connect', (req, clientSocket: stream.Duplex, head) => {
     activeSockets.add(clientSocket);
-    if ('setTimeout' in clientSocket && typeof (clientSocket as any).setTimeout === 'function') {
-      (clientSocket as any).setTimeout(SOCKET_TIMEOUT);
+    if ('setTimeout' in clientSocket && typeof (clientSocket as stream.Duplex & { setTimeout?: (ms: number) => void }).setTimeout === 'function') {
+      (clientSocket as stream.Duplex & { setTimeout: (ms: number) => void }).setTimeout(SOCKET_TIMEOUT);
     }
 
     if (isSocksUpstream) {

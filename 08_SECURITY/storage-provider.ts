@@ -1,8 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import http from 'node:http';
-import https from 'node:https';
 import { URL } from 'node:url';
 import {
   S3Client,
@@ -159,8 +157,8 @@ export class LocalStorageProvider implements ObjectStorageProvider {
     const fullPath = this.resolveFilePath(objectKey);
     try {
       return await fs.promises.readFile(fullPath);
-    } catch (err: any) {
-      if (err?.code === 'ENOENT') {
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
         return null;
       }
       throw err;
@@ -363,11 +361,11 @@ export class S3R2StorageProvider implements ObjectStorageProvider {
         provider: this.name,
         message: connected ? `Connected to ${this.bucket} on ${this.endpoint}` : `Storage returned HTTP ${res.status}`,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       return {
         connected: false,
         provider: this.name,
-        message: err?.message || 'Storage connection failed',
+        message: err instanceof Error ? err.message : 'Storage connection failed',
       };
     }
   }

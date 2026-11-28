@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Plus,
   Trash2,
   ArrowUp,
   ArrowDown,
@@ -14,22 +14,18 @@ import {
   FileText,
   Compass,
   XCircle,
-  Sparkles,
-  Mail,
-  Shield,
   Search as SearchIcon,
   Copy,
   Sliders,
   Code2,
   Keyboard,
   ShieldCheck,
-  CheckCircle2,
   Layers,
 } from 'lucide-react';
 import { useAutomationStore } from '../stores/useAutomationStore.js';
 import { useProfileStore } from '../stores/useProfileStore.js';
-import { AutomationStep, AutomationStepType, RpaTemplate } from '../../10_CONFIG/shared/types/automation.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { AutomationStep, AutomationStepType, RpaTemplate } from '../../10_CONFIG/shared/types/automation.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 import { RPA_TEMPLATES } from '../../10_CONFIG/shared/constants/automation-templates.js';
 
 interface WorkflowBuilderProps {
@@ -72,7 +68,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
       setDefaultProfileId(selectedWorkflow.defaultProfileId || profiles[0]?.id || '');
       setSteps([...selectedWorkflow.steps]);
     }
-  }, [selectedWorkflow?.id]);
+  }, [selectedWorkflow, profiles]);
 
   const handleAddStep = (type: AutomationStepType) => {
     let target = '';
@@ -187,7 +183,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
       {/* Top Header */}
       <div className="h-16 px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center space-x-3">
-          <button
+          <button type="button"
             onClick={() => onNavigate('automation')}
             className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
@@ -221,7 +217,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
             <span>Load Template</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={handleSave}
             className="px-3.5 py-1.5 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl shadow-sm shadow-teal-600/20 flex items-center space-x-1.5 active:scale-95 transition-all"
           >
@@ -237,7 +233,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+              <label htmlFor="field-001" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                 Workflow Name
               </label>
               <input
@@ -249,7 +245,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+              <label htmlFor="field-002" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                 Default Target Profile
               </label>
               <select
@@ -268,7 +264,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="field-003" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
               Description / Notes
             </label>
             <input
@@ -320,7 +316,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
                 </div>
 
                 <div className="flex items-center space-x-1">
-                  <label className="flex items-center space-x-1 mr-2 text-[10px] text-slate-400 cursor-pointer">
+                  <label htmlFor="field-004" className="flex items-center space-x-1 mr-2 text-[10px] text-slate-400 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={Boolean(step.continueOnError)}
@@ -369,7 +365,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
                 {/* 1. OPEN_URL */}
                 {step.type === 'OPEN_URL' && (
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                    <label htmlFor="field-005" className="block text-[11px] font-semibold text-slate-400 mb-1">
                       Target Web URL
                     </label>
                     <input
@@ -386,7 +382,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
                 {step.type === 'SEARCH' && (
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                      <label htmlFor="field-006" className="block text-[11px] font-semibold text-slate-400 mb-1">
                         Search Engine
                       </label>
                       <select
@@ -401,7 +397,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
                       </select>
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                      <label htmlFor="field-007" className="block text-[11px] font-semibold text-slate-400 mb-1">
                         Keyword / Query
                       </label>
                       <input
@@ -419,7 +415,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
                 {(step.type === 'CLICK' || step.type === 'FILL') && (
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                      <label htmlFor="field-008" className="block text-[11px] font-semibold text-slate-400 mb-1">
                         CSS / XPath Selector
                       </label>
                       <input
@@ -432,7 +428,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
                     </div>
                     {step.type === 'FILL' && (
                       <div>
-                        <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                        <label htmlFor="field-009" className="block text-[11px] font-semibold text-slate-400 mb-1">
                           Text to Fill
                         </label>
                         <input
@@ -451,7 +447,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
                 {step.type === 'KEYPRESS' && (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                      <label htmlFor="field-010" className="block text-[11px] font-semibold text-slate-400 mb-1">
                         Key to Press
                       </label>
                       <select
@@ -469,7 +465,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                      <label htmlFor="field-011" className="block text-[11px] font-semibold text-slate-400 mb-1">
                         Optional Target Selector
                       </label>
                       <input
@@ -487,7 +483,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
                 {step.type === 'SCROLL' && (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                      <label htmlFor="field-012" className="block text-[11px] font-semibold text-slate-400 mb-1">
                         Scroll Target / Distance
                       </label>
                       <input
@@ -500,9 +496,8 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
                     </div>
                     <div className="flex items-end space-x-2">
                       {['500', '1000', 'bottom', 'top'].map((preset) => (
-                        <button
-                          key={preset}
-                          type="button"
+                        <button type="button"
+                          key={preset}
                           onClick={() => handleUpdateStep(idx, { value: preset })}
                           className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-teal-500/10 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-300"
                         >
@@ -516,7 +511,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
                 {/* 6. RANDOM_SLEEP */}
                 {step.type === 'RANDOM_SLEEP' && (
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                    <label htmlFor="field-013" className="block text-[11px] font-semibold text-slate-400 mb-1">
                       Human Random Sleep Range (Min-Max Milliseconds)
                     </label>
                     <input
@@ -532,7 +527,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
                 {/* 7. EVALUATE_JS */}
                 {step.type === 'EVALUATE_JS' && (
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                    <label htmlFor="field-014" className="block text-[11px] font-semibold text-slate-400 mb-1">
                       JavaScript Code to Evaluate
                     </label>
                     <textarea
@@ -549,7 +544,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
                 {step.type === 'WAIT' && (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                      <label htmlFor="field-015" className="block text-[11px] font-semibold text-slate-400 mb-1">
                         Wait Duration (ms)
                       </label>
                       <input
@@ -562,9 +557,8 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
                     </div>
                     <div className="flex items-end space-x-1.5">
                       {WAIT_PRESETS.slice(0, 4).map((wp) => (
-                        <button
-                          key={wp.value}
-                          type="button"
+                        <button type="button"
+                          key={wp.value}
                           onClick={() => handleUpdateStep(idx, { value: wp.value })}
                           className="px-2 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-teal-500/10 rounded-lg text-[10px] font-bold"
                         >
@@ -608,9 +602,8 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
             ].map((tool) => {
               const Icon = tool.icon;
               return (
-                <button
-                  key={tool.type}
-                  type="button"
+                <button type="button"
+                  key={tool.type}
                   onClick={() => handleAddStep(tool.type)}
                   className="px-3 py-1.5 bg-slate-50 dark:bg-slate-950 hover:bg-teal-500/10 border border-slate-200 dark:border-slate-800 hover:border-teal-500/30 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5 transition-colors shadow-xs active:scale-95"
                 >
@@ -642,7 +635,7 @@ export const WorkflowBuilderPage: React.FC<WorkflowBuilderProps> = ({ onNavigate
                     </p>
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setIsTemplateModalOpen(false)}
                   className="text-slate-400 hover:text-slate-200 text-sm font-bold p-1.5"
                 >

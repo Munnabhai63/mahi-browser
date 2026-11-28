@@ -5,16 +5,17 @@
  */
 
 import { getCommercialPlans } from './commercial-plan-service.js';
-import { CommercialPlan, BillingCycleType } from '../../10_CONFIG/shared/types/commercial.js';
+import type { CommercialPlan, BillingCycleType } from '../../10_CONFIG/shared/types/commercial.js';
 import {
-  CheckoutSessionRequest,
-  CheckoutSessionResponse,
+  type CheckoutSessionRequest,
+  type CheckoutSessionResponse,
   PaymentGatewayNotConfiguredError,
-  PaymentInvoiceRecord,
-  PaymentProvider,
-  PaymentProviderType,
-  PaymentWebhookEvent,
-  UserSubscriptionSummary,
+  type PaymentInvoiceRecord,
+  type PaymentProvider,
+  type PaymentProviderType,
+  type PaymentWebhookEvent,
+  type PgBillingClient,
+  type UserSubscriptionSummary,
   calculatePlanAmountCents,
   resolveCommercialPlan,
   verifyRazorpayPaymentSignature,
@@ -37,6 +38,7 @@ import {
   submitManualUpiPaymentImpl,
 } from './payments/manual-payment-handlers.js';
 import {
+  type PaymentRecordSummary,
   cancelSubscriptionImpl,
   getUserInvoicesAsyncImpl,
   getUserInvoicesImpl,
@@ -145,8 +147,8 @@ export class PaymentService {
     externalPaymentId: string;
     externalOrderId?: string;
     receiptUrl?: string;
-    metadata?: Record<string, any>;
-    tx?: any;
+    metadata?: Record<string, unknown>;
+    tx?: PgBillingClient;
     targetPaymentId?: string;
     alreadyClaimedPaymentId?: string;
   }) {
@@ -193,15 +195,15 @@ export class PaymentService {
     return rejectManualPaymentImpl(paymentId, adminActor, reason);
   }
 
-  public getUserPaymentHistoryAsync(userId: string): Promise<any[]> {
+  public getUserPaymentHistoryAsync(userId: string): Promise<PaymentRecordSummary[]> {
     return getUserPaymentHistoryAsyncImpl(userId);
   }
 
-  public getUserPaymentHistory(userId: string): any[] {
+  public getUserPaymentHistory(userId: string): PaymentRecordSummary[] {
     return getUserPaymentHistoryImpl(userId);
   }
 
-  public listAdminPayments(statusFilter?: string): any[] {
+  public listAdminPayments(statusFilter?: string): PaymentRecordSummary[] {
     return listAdminPaymentsImpl(statusFilter);
   }
 

@@ -30,12 +30,14 @@ import {
   adminResetUserDevices,
 } from '../../admin-actions.js';
 import { publishSoftwareVersion } from '../../commercial-version-service.js';
-import { updateDemoRequestStatus, DemoRequestStatus } from '../../demo-service.js';
+import { updateDemoRequestStatus, type DemoRequestStatus } from '../../demo-service.js';
 import {
   handleSupportChatMessage,
   updateSupportTicketStatus,
   replySupportTicket,
+  type SupportTicket,
 } from '../../support-ticket-service.js';
+import type { CommercialUserStatus } from '../../../../10_CONFIG/shared/types/commercial.js';
 import { isPostgresConfigured } from '../../../../06_DATABASE/central-repository.js';
 import {
   updateUserStatus,
@@ -44,7 +46,7 @@ import {
   setUserFeatureOverrides,
 } from '../../commercial-auth-service.js';
 import { revokeCommercialDevice, resetAllUserDevices } from '../../commercial-device-service.js';
-import { AdminRouteContext, requireAdminAccess, sendMirrorMissingResponse } from './admin-shared.js';
+import { type AdminRouteContext, requireAdminAccess, sendMirrorMissingResponse } from './admin-shared.js';
 
 /** Handles commercial leads/support, dashboard, user, device, audit, and version routes. */
 export async function handleAdminUserManagementRoutes(ctx: AdminRouteContext): Promise<boolean> {
@@ -68,7 +70,7 @@ export async function handleAdminUserManagementRoutes(ctx: AdminRouteContext): P
     const parsed = validateStrictBody(AdminDemoStatusSchema, rawBody, res);
     if (!parsed.ok) return true;
     const body = parsed.data;
-    const result = updateDemoRequestStatus(demoId, body.status as any, body.adminNotes, adminGate.actor.name);
+    const result = updateDemoRequestStatus(demoId, body.status as DemoRequestStatus, body.adminNotes, adminGate.actor.name);
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
   }
@@ -80,7 +82,10 @@ export async function handleAdminUserManagementRoutes(ctx: AdminRouteContext): P
     const rawBody = await parseBody(req);
     const parsed = validateStrictBody(SupportChatSchema, rawBody, res);
     if (!parsed.ok) return true;
-    const result = await handleSupportChatMessage(parsed.data as any);
+    const result = await handleSupportChatMessage({
+      ...parsed.data,
+      message: parsed.data.message || '',
+    });
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
   }
@@ -105,7 +110,7 @@ export async function handleAdminUserManagementRoutes(ctx: AdminRouteContext): P
     const parsed = validateStrictBody(AdminSupportStatusSchema, rawBody, res);
     if (!parsed.ok) return true;
     const body = parsed.data;
-    const result = updateSupportTicketStatus(ticketId, body.status as any, body.adminNotes, adminGate.actor.name);
+    const result = updateSupportTicketStatus(ticketId, body.status as SupportTicket['status'], body.adminNotes, adminGate.actor.name);
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
   }
@@ -123,7 +128,13 @@ export async function handleAdminUserManagementRoutes(ctx: AdminRouteContext): P
       sendJSON(res, 400, { success: false, error: 'Reply text is required.' });
       return true;
     }
-    const result = replySupportTicket(ticketId, body.reply.trim(), (body.status || 'RESOLVED') as any, body.adminNotes, adminGate.actor.name);
+    const result = replySupportTicket(
+      ticketId,
+      body.reply.trim(),
+      (body.status || 'RESOLVED') as SupportTicket['status'],
+      body.adminNotes,
+      adminGate.actor.name
+    );
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
   }
@@ -177,14 +188,15 @@ export async function handleAdminUserManagementRoutes(ctx: AdminRouteContext): P
     const rawBody = await parseBody(req);
     const parsed = validateStrictBody(AdminUserStatusSchema, rawBody, res);
     if (!parsed.ok) return true;
-    const body = parsed.data as any;
+    const body = parsed.data;
+    const nextStatus = body.status as CommercialUserStatus;
     if (isPostgresConfigured()) {
-      const r = await adminSetUserStatus(userId, body.status, actor, body.reason);
+      const r = await adminSetUserStatus(userId, nextStatus, actor, body.reason);
       if (r.centralGone) return sendMirrorMissingResponse(res, r.message);
       sendJSON(res, r.ok ? 200 : 404, { success: r.ok });
       return true;
     }
-    const ok = updateUserStatus(userId, body.status, actor, body.reason);
+    const ok = updateUserStatus(userId, nextStatus, actor, body.reason);
     sendJSON(res, ok ? 200 : 404, { success: ok });
     return true;
   }
@@ -219,14 +231,15 @@ export async function handleAdminUserManagementRoutes(ctx: AdminRouteContext): P
     const rawBody = await parseBody(req);
     const parsed = validateStrictBody(AdminBoostQuotaSchema, rawBody, res);
     if (!parsed.ok) return true;
-    const body = parsed.data as any;
+    const body = parsed.data;
+    const boostType = body.type as 'PROFILES' | 'PROXY_GB';
     if (isPostgresConfigured()) {
-      const r = await adminBoostQuota(userId, body.type, body.amount, actor);
+      const r = await adminBoostQuota(userId, boostType, body.amount, actor);
       if (r.centralGone) return sendMirrorMissingResponse(res, r.message);
       sendJSON(res, r.success ? 200 : 400, r);
       return true;
     }
-    const result = boostUserQuota(userId, body.type, body.amount, actor);
+    const result = boostUserQuota(userId, boostType, body.amount, actor);
     sendJSON(res, result.success ? 200 : 400, result);
     return true;
   }
@@ -331,7 +344,7 @@ export async function handleAdminUserManagementRoutes(ctx: AdminRouteContext): P
     try {
       const version = publishSoftwareVersion(parsed.data, adminGate.actor);
       sendJSON(res, 201, { success: true, data: version });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;

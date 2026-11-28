@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import type React from 'react';
+import { useEffect, useState } from 'react';
 import {
   PlaySquare,
   Plus,
@@ -9,16 +10,14 @@ import {
   CheckCircle2,
   AlertCircle,
   Image as ImageIcon,
-  ChevronRight,
-  Sparkles,
   Users,
   Layers,
 } from 'lucide-react';
 import { useAutomationStore } from '../stores/useAutomationStore.js';
 import { useProfileStore } from '../stores/useProfileStore.js';
-import { AutomationWorkflow, RpaTemplate } from '../../10_CONFIG/shared/types/automation.js';
+import type { AutomationWorkflow, RpaTemplate } from '../../10_CONFIG/shared/types/automation.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 import { RPA_TEMPLATES } from '../../10_CONFIG/shared/constants/automation-templates.js';
 
 interface AutomationListProps {
@@ -56,7 +55,7 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
     fetchWorkflows();
     fetchProfiles();
     fetchLogs();
-  }, []);
+  }, [fetchWorkflows, fetchProfiles, fetchLogs]);
 
   const handleRun = async (wf: AutomationWorkflow) => {
     const profileId = selectedProfileForRun[wf.id] || wf.defaultProfileId || profiles[0]?.id;
@@ -129,7 +128,7 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
         </div>
 
         <div className="flex items-center space-x-2.5">
-          <button
+          <button type="button"
             onClick={() => setIsTemplateModalOpen(true)}
             className="px-3.5 py-1.5 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl shadow-xs flex items-center space-x-1.5 active:scale-95 transition-all"
           >
@@ -137,7 +136,7 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
             <span>Pre-Built Templates</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={handleCreateNew}
             className="px-3.5 py-1.5 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl shadow-sm shadow-teal-600/20 flex items-center space-x-1.5 active:scale-95 transition-all"
           >
@@ -167,13 +166,13 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
                 Build visual step-by-step automation sequences or load one of our ready-to-use pre-built RPA templates.
               </p>
               <div className="flex items-center justify-center space-x-2.5 pt-2">
-                <button
+                <button type="button"
                   onClick={() => setIsTemplateModalOpen(true)}
                   className="px-3.5 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl shadow-xs transition"
                 >
                   Load Pre-Built Template
                 </button>
-                <button
+                <button type="button"
                   onClick={handleCreateNew}
                   className="px-3.5 py-1.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-sm transition"
                 >
@@ -234,7 +233,7 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
                         ))}
                       </select>
 
-                      <button
+                      <button type="button"
                         onClick={() => handleRun(wf)}
                         disabled={isRunning}
                         className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs flex items-center space-x-1 active:scale-95 transition-all"
@@ -244,7 +243,7 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
                         <span>Run</span>
                       </button>
 
-                      <button
+                      <button type="button"
                         onClick={() => {
                           setBatchTargetWorkflow(wf);
                           setBatchSelectedProfileIds(profiles.slice(0, 3).map((p) => p.id));
@@ -257,7 +256,7 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
                         <span>Batch</span>
                       </button>
 
-                      <button
+                      <button type="button"
                         onClick={() => handleEdit(wf)}
                         className="p-1.5 text-slate-400 hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"
                         title="Edit in Visual Studio"
@@ -265,7 +264,7 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
 
-                      <button
+                      <button type="button"
                         onClick={() => setDeleteTarget(wf)}
                         className="p-1.5 text-slate-400 hover:text-rose-500 rounded-xl hover:bg-rose-500/10"
                         title="Delete Workflow"
@@ -317,9 +316,9 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
                   </div>
 
                   <div className="space-y-2 max-h-[380px] overflow-y-auto custom-scrollbar pr-1">
-                    {activeExecutionLog.stepLogs.map((step, idx) => (
+                    {activeExecutionLog.stepLogs.map((step) => (
                       <div
-                        key={idx}
+                        key={`${step.stepId}-${step.stepType}-${step.timestamp ?? step.durationMs}`}
                         className={`p-3 rounded-xl border text-xs space-y-1 ${
                           step.status === 'SUCCESS'
                             ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-500/20'
@@ -352,7 +351,7 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
                         )}
 
                         {step.screenshotBase64 && (
-                          <button
+                          <button type="button"
                             onClick={() =>
                               setSelectedScreenshot(`data:image/jpeg;base64,${step.screenshotBase64}`)
                             }
@@ -391,7 +390,7 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
                     </p>
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setIsTemplateModalOpen(false)}
                   className="text-slate-400 hover:text-slate-200 text-sm font-bold p-1.5"
                 >
@@ -469,7 +468,7 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
                     </p>
                   </div>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => setBatchTargetWorkflow(null)}
                   className="text-slate-400 hover:text-slate-200 text-sm font-bold p-1.5"
                 >
@@ -479,16 +478,16 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
 
               <div className="py-4 space-y-4">
                 <div>
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                  <label htmlFor="field-001" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
                     Select Profiles ({batchSelectedProfileIds.length} chosen)
                   </label>
                   <div className="max-h-44 overflow-y-auto space-y-1.5 custom-scrollbar border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 bg-slate-50 dark:bg-slate-950">
                     {profiles.map((p) => {
                       const isSelected = batchSelectedProfileIds.includes(p.id);
                       return (
-                        <button
+                        <button type="button"
                           key={p.id}
-                          type="button"
+
                           onClick={() => {
                             if (isSelected) {
                               setBatchSelectedProfileIds(batchSelectedProfileIds.filter((id) => id !== p.id));
@@ -514,7 +513,7 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                  <label htmlFor="field-002" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
                     Stagger Delay between Profiles
                   </label>
                   <div className="grid grid-cols-3 gap-2">
@@ -523,9 +522,9 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
                       { label: '1.5s (Safe)', value: 1500 },
                       { label: '3.0s', value: 3000 },
                     ].map((d) => (
-                      <button
+                      <button type="button"
                         key={d.value}
-                        type="button"
+
                         onClick={() => setBatchDelayMs(d.value)}
                         className={`p-2 rounded-xl text-xs font-bold border transition-all ${
                           batchDelayMs === d.value
@@ -565,11 +564,14 @@ export const AutomationListPage: React.FC<AutomationListProps> = ({ onNavigate }
 
       {/* Screenshot Preview Modal */}
       {selectedScreenshot && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150"
-          onClick={() => setSelectedScreenshot(null)}
-        >
-          <div className="max-w-4xl max-h-[85vh] overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl p-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <button
+            type="button"
+            aria-label="Close screenshot preview"
+            onClick={() => setSelectedScreenshot(null)}
+            className="absolute inset-0 w-full h-full cursor-default"
+          />
+          <div className="relative z-10 max-w-4xl max-h-[85vh] overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl p-2">
             <img
               src={selectedScreenshot}
               alt="Execution Screenshot"

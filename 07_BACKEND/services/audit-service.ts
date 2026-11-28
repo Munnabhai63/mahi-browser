@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import { ActivityLogItem, ActivityLogFilter, LogCategory, LogSeverity } from '../../10_CONFIG/shared/types/logs.js';
+import type { ActivityLogItem, ActivityLogFilter, LogCategory, LogSeverity } from '../../10_CONFIG/shared/types/logs.js';
 import { sanitizeSensitiveString, sanitizeObject } from '../../08_SECURITY/sanitizer.js';
 import { createLogger } from '../utils/logger.js';
 

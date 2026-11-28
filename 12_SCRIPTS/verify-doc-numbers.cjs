@@ -22,21 +22,22 @@ function check(desc, condition, details) {
   }
 }
 
+function getHtmlFiles(dir) {
+  let files = [];
+  for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, item.name);
+    if (item.isDirectory()) {
+      files = files.concat(getHtmlFiles(fullPath));
+    } else if (item.isFile() && item.name.endsWith('.html')) {
+      files.push(fullPath);
+    }
+  }
+  return files;
+}
+
 // 1. Landing Out HTML Count
 const landingOutDir = path.join(rootDir, 'landing', 'out');
 if (fs.existsSync(landingOutDir)) {
-  function getHtmlFiles(dir) {
-    let files = [];
-    for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = path.join(dir, item.name);
-      if (item.isDirectory()) {
-        files = files.concat(getHtmlFiles(fullPath));
-      } else if (item.isFile() && item.name.endsWith('.html')) {
-        files.push(fullPath);
-      }
-    }
-    return files;
-  }
   const htmlFiles = getHtmlFiles(landingOutDir);
   console.log(`[INFO] Counted ${htmlFiles.length} HTML files in ${landingOutDir}`);
   check('Landing static export has >= 38 HTML files', htmlFiles.length >= 38, `Found ${htmlFiles.length}`);

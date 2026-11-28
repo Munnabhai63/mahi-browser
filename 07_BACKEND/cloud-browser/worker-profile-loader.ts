@@ -32,7 +32,6 @@ async function pathExists(targetPath: string): Promise<boolean> {
 import {
   encryptProfileArchive,
   decryptProfileArchive,
-  deriveUserSyncKey,
 } from '../../08_SECURITY/cloud-profile-crypto.js';
 import {
   exportProfileToArchive,
@@ -42,13 +41,27 @@ import {
   getProfileById,
   getProfileStoragePath,
 } from '../../02_BROWSER/services/profile-service.js';
-import { Profile } from '../../10_CONFIG/shared/types/profile.js';
+import type { Profile, PartialProfileSettings } from '../../10_CONFIG/shared/types/profile.js';
+
+interface SqliteCloudProfileRow {
+  id: string;
+  name: string;
+  current_version: number;
+}
+
+interface SqliteCloudProfileVersionRow {
+  object_key: string | null;
+  checksum_sha256: string;
+  encrypted_data_key: string;
+  iv: string;
+  auth_tag: string;
+}
 
 export interface PrepareProfileResult {
   profileId: string;
   profileName: string;
   version: number;
-  profileSettings: any;
+  profileSettings: PartialProfileSettings;
   runtimeDir: string;
 }
 
@@ -93,7 +106,7 @@ export class WorkerProfileLoader {
     // 1. Check if there is an existing cloud profile in cloud_profiles
     const cloudProf = db.prepare(`
       SELECT * FROM cloud_profiles WHERE id = ? OR local_profile_id = ?
-    `).get(profileId, profileId) as any;
+    `).get<SqliteCloudProfileRow>(profileId, profileId);
 
     let profileName = 'Cloud Profile';
     let version = 1;
@@ -108,15 +121,15 @@ export class WorkerProfileLoader {
         SELECT * FROM cloud_profile_versions
         WHERE cloud_profile_id = ?
         ORDER BY version DESC LIMIT 1
-      `).get(cloudProf.id) as any;
+      `).get<SqliteCloudProfileVersionRow>(cloudProf.id);
 
-      if (verRow && verRow.object_key) {
+      if (verRow?.object_key) {
         // Download encrypted package from storage
         const storage = getStorageProvider();
         let ciphertext: Buffer | null = null;
         try {
           ciphertext = await storage.getObject(verRow.object_key);
-        } catch (err: any) {
+        } catch (_err: unknown) {
           // If storage download url is used, read from local storage fallback
           ciphertext = null;
         }
@@ -149,7 +162,7 @@ export class WorkerProfileLoader {
               overrideName: profileName,
             });
             loadedFromCloud = true;
-          } catch (importErr: any) {
+          } catch (importErr: unknown) {
             // If import into app DB failed, fallback to direct payload extraction
             log.debug('Cloud worker profile archive import fell back cleanly', {
               sessionId,
@@ -271,10 +284,10 @@ export class WorkerProfileLoader {
     // 4. Optimistic concurrency check
     const existingCloud = db.prepare(`
       SELECT * FROM cloud_profiles WHERE id = ? OR local_profile_id = ?
-    `).get(profileId, profileId) as any;
+    `).get<SqliteCloudProfileRow>(profileId, profileId);
 
     let targetVersion = (baseVersion || 0) + 1;
-    let cloudProfileId = existingCloud?.id || crypto.randomUUID();
+    const cloudProfileId = existingCloud?.id || crypto.randomUUID();
 
     if (existingCloud) {
       if (baseVersion > 0 && baseVersion !== existingCloud.current_version) {

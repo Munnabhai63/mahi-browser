@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import type React from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   ChevronDown,
   Box,
@@ -13,7 +14,7 @@ import {
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useLicenseStore } from '../stores/useLicenseStore.js';
-import { NavigationPage } from './Sidebar.js';
+import type { NavigationPage } from './Sidebar.js';
 import { CommercialUserModal } from './CommercialUserModal.js';
 
 interface AccountDropdownProps {
@@ -335,9 +336,8 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
             {workspaces.map((ws) => {
               const isActive = ws.id === activeWorkspaceId;
               return (
-                <button
-                  key={ws.id}
-                  type="button"
+                <button type="button"
+                  key={ws.id}
                   onClick={() => {
                     setActiveWorkspace(ws.id);
                     setIsOpen(false);
@@ -361,7 +361,6 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
               <form onSubmit={handleCreateWorkspace} className="p-2 space-y-2">
                 <input
                   type="text"
-                  autoFocus
                   placeholder="Workspace name..."
                   value={newWsName}
                   onChange={(e) => setNewWsName(e.target.value)}

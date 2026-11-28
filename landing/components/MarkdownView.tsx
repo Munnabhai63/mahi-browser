@@ -1,4 +1,4 @@
-import React from 'react';
+import type React from 'react';
 
 interface MarkdownViewProps {
   content: string;
@@ -12,14 +12,15 @@ export default function MarkdownView({ content }: MarkdownViewProps) {
   let codeBlockContent: string[] = [];
   let codeBlockLang = '';
   let inList = false;
-  let listItems: string[] = [];
+  let listItems: Array<{ id: string; text: string }> = [];
+  let listItemSeq = 0;
 
   const flushList = (key: string) => {
     if (inList && listItems.length > 0) {
       elements.push(
         <ul key={key} className="my-4 list-disc list-inside space-y-1.5 text-slate-300 text-sm sm:text-base leading-relaxed pl-2">
-          {listItems.map((item, i) => (
-            <li key={i}>{renderInlineNodes(item, `${key}-li-${i}`)}</li>
+          {listItems.map((item) => (
+            <li key={item.id}>{renderInlineNodes(item.text, item.id)}</li>
           ))}
         </ul>
       );
@@ -137,7 +138,7 @@ export default function MarkdownView({ content }: MarkdownViewProps) {
     // List item
     if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
       inList = true;
-      listItems.push(line.trim().slice(2));
+      listItems.push({ id: `li-${listItemSeq++}`, text: line.trim().slice(2) });
       continue;
     } else {
       flushList(`list-${idx}`);

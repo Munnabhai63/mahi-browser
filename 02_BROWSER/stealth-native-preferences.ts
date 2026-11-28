@@ -1,7 +1,33 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Profile } from '../10_CONFIG/shared/types/profile.js';
+import type { Profile, ProfileSettings, PartialProfileSettings } from '../10_CONFIG/shared/types/profile.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+interface ChromiumPreferencesDocument {
+  mahi?: Record<string, unknown>;
+  gologin?: Record<string, unknown>;
+  security?: {
+    https_first_mode_enabled?: boolean;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+type StealthPreferencesInputSettings =
+  | (PartialProfileSettings & {
+      locale?: PartialProfileSettings['locale'] & { languages?: string[] };
+      permissions?: PartialProfileSettings['permissions'] & {
+        geolocationData?: { latitude: number; longitude: number; accuracy?: number };
+      };
+    })
+  | (ProfileSettings & {
+      locale?: ProfileSettings['locale'] & { languages?: string[] };
+      permissions?: ProfileSettings['permissions'] & {
+        geolocationData?: { latitude: number; longitude: number; accuracy?: number };
+      };
+    })
+  | null
+  | undefined;
 const log = createLogger('stealth-native-preferences');
 
 export {
@@ -33,7 +59,7 @@ import {
 export function injectNativeStealthPreferences(
   storageDir: string,
   profile: Profile,
-  settings: any,
+  settings: StealthPreferencesInputSettings,
   proxyIp?: string
 ): void {
   try {
@@ -43,16 +69,16 @@ export function injectNativeStealthPreferences(
     }
 
     const prefsPath = path.join(defaultDir, 'Preferences');
-    let prefs: Record<string, any> = {};
+    let prefs: ChromiumPreferencesDocument = {};
     if (fs.existsSync(prefsPath)) {
       try {
-        prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf8'));
+        prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf8')) as ChromiumPreferencesDocument;
       } catch {
         prefs = {};
       }
     }
 
-    const seed = getDeterministicSeed(profile.id + '_' + (profile.name || 'mahi'));
+    const seed = getDeterministicSeed(`${profile.id}_${profile.name || 'mahi'}`);
     const canvasNoiseVal = getNoiseValueFromSeed(seed, 500000);
     const audioNoiseVal = getNoiseValueFromSeed(seed, 1000000);
     const webglNoiseVal = getNoiseValueFromSeed(seed, 750000);
@@ -97,9 +123,9 @@ export function injectNativeStealthPreferences(
 
     // Fake Video Capture (Facial KYC / Video Loop bypass)
     const fakeVideoEnabled = Boolean(settings?.fakeVideoCapture?.enable && settings?.fakeVideoCapture?.filePath);
-    const fakeVideoFile = fakeVideoEnabled ? String(settings.fakeVideoCapture.filePath) : '';
+    const fakeVideoFile = fakeVideoEnabled ? String(settings?.fakeVideoCapture?.filePath || '') : '';
 
-    const nativeMahiStealthConfig: Record<string, any> = {
+    const nativeMahiStealthConfig: Record<string, unknown> = {
       // 1. 2D Canvas Noise (Skia engine hooks)
       canvasMode: fp.canvas === 'off' ? 'off' : 'noise',
       canvasNoise: fp.canvas === 'off' ? 0 : canvasNoiseVal,

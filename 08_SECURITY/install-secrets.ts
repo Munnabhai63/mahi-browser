@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, safeStorage } from './electron-bridge.js';
+import { safeStorage } from './electron-bridge.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
 const log = createLogger('install-secrets');
@@ -31,7 +31,7 @@ function writeSecretsFile(filePath: string, data: InstallSecrets): void {
   if (isSafeStorageAvailable()) {
     try {
       const encrypted = safeStorage.encryptString(jsonStr);
-      payload = 'SAFE_STORAGE_V1:' + encrypted.toString('base64');
+      payload = `SAFE_STORAGE_V1:${encrypted.toString('base64')}`;
     } catch (err) {
       log.warn('[SECURITY] safeStorage.encryptString failed, falling back to restricted file permissions:', err);
     }
@@ -94,7 +94,7 @@ export function getInstallSecrets(): InstallSecrets {
     const raw = fs.readFileSync(filePath, 'utf8').trim();
     if (raw.length > 0) {
       const stored = readSecretsFile(filePath);
-      if (stored && stored.jwtSecret && stored.apiAuthToken && stored.adminSalt) {
+      if (stored?.jwtSecret && stored.apiAuthToken && stored.adminSalt) {
         cachedSecrets = stored;
         return cachedSecrets;
       }
@@ -155,12 +155,12 @@ export function getJwtSecret(): string {
   if (!process.versions?.electron) {
     const envJwt = process.env.JWT_SECRET?.trim();
     if (isNonElectronProduction()) {
-      if (isWeakSecret(envJwt, 32)) {
+      if (!envJwt || isWeakSecret(envJwt, 32)) {
         throw new Error(
           '[Security] Production startup requires a strong JWT_SECRET (>= 32 chars) via environment; disk fallback is disabled.'
         );
       }
-      return envJwt!;
+      return envJwt;
     }
     if (envJwt && envJwt.length >= 16) {
       return envJwt;
@@ -181,12 +181,12 @@ export function getMasterAdminSecret(): string {
   if (!process.versions?.electron) {
     const envAdmin = (process.env.ADMIN_BOOTSTRAP_TOKEN || process.env.MAHI_MASTER_ADMIN_SECRET)?.trim();
     if (isNonElectronProduction()) {
-      if (isWeakSecret(envAdmin, 32)) {
+      if (!envAdmin || isWeakSecret(envAdmin, 32)) {
         throw new Error(
           '[Security] Production startup requires a strong ADMIN_BOOTSTRAP_TOKEN (>= 32 chars) via environment; disk fallback is disabled.'
         );
       }
-      return envAdmin!;
+      return envAdmin;
     }
     if (envAdmin && envAdmin.length >= 16) {
       return envAdmin;
@@ -212,8 +212,8 @@ export function validateProductionSecrets(): void {
   let keyObj: crypto.KeyObject;
   try {
     keyObj = crypto.createPrivateKey(formatted);
-  } catch (err: any) {
-    throw new Error(`[Security] Production status signing private key is invalid: ${err?.message || 'parse failed'}`);
+  } catch (err: unknown) {
+    throw new Error(`[Security] Production status signing private key is invalid: ${err instanceof Error ? err.message : 'parse failed'}`);
   }
   if (keyObj.asymmetricKeyType === 'rsa') {
     const bits = keyObj.asymmetricKeyDetails?.modulusLength ?? 0;

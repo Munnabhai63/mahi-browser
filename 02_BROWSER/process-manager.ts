@@ -1,6 +1,6 @@
-import { ChildProcess } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { BrowserWindow } from '../08_SECURITY/electron-bridge.js';
-import { Profile, ProfileStatus } from '../10_CONFIG/shared/types/profile.js';
+import type { Profile, ProfileStatus } from '../10_CONFIG/shared/types/profile.js';
 import { getProfileById, updateProfile, updateProfileStatus, findProfileByNumber } from './services/profile-service.js';
 import { getProxyById } from './services/proxy-service.js';
 
@@ -9,12 +9,16 @@ import { recordSessionStart, recordSessionStop } from '../07_BACKEND/services/st
 import { launchBrowser, markCleanExit } from './launcher.js';
 import { synchronizerHub } from '../09_AUTOMATION/sync-hub.js';
 import { platformAdapter } from './services/platform-adapter.js';
-import { ProxyTunnelHandle } from './proxy-tunnel.js';
+import type { ProxyTunnelHandle } from './proxy-tunnel.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
 const log = createLogger('process-manager');
 
+interface GlobalWithDebugLog {
+  __mahiDebugLog?: (msg: string) => void;
+}
+
 function debugLog(msg: string) {
-  const fn = (globalThis as any).__mahiDebugLog;
+  const fn = (globalThis as GlobalWithDebugLog).__mahiDebugLog;
   if (fn) fn(msg);
   else log.info(msg);
 }
@@ -308,7 +312,7 @@ class ProcessManager {
           import('../07_BACKEND/commercial/commercial-entitlement-service.js'),
           import('../08_SECURITY/freemium-guard.js'),
         ]);
-        const rawOwnerId = (profile as any).ownerId || (profile as any).owner_id;
+        const rawOwnerId = profile.ownerId || (profile as Profile & { owner_id?: string }).owner_id;
         const normalizedProfileOwner =
           rawOwnerId && rawOwnerId !== 'SYSTEM_OWNER' && rawOwnerId !== 'LOCAL_CLIENT'
             ? rawOwnerId
@@ -324,8 +328,8 @@ class ProcessManager {
             error: errorMsg,
           };
         }
-      } catch (gateErr: any) {
-        debugLog(`[ProcessManager WARN] Launch quota check error: ${gateErr?.message || gateErr}`);
+      } catch (gateErr: unknown) {
+        debugLog(`[ProcessManager WARN] Launch quota check error: ${gateErr instanceof Error ? gateErr.message : String(gateErr)}`);
       }
 
       debugLog(`[ProcessManager] Preparing to launch "${profile.name}"...`);
@@ -721,11 +725,11 @@ class ProcessManager {
             ...entry,
           });
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         const entry = {
           profileId: pid,
           success: false,
-          error: err.message,
+          error: err instanceof Error ? err.message : String(err),
         };
         results.push(entry);
         if (onProgress) {

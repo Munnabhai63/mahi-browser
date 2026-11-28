@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import { KeyRound, ArrowRight } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore.js';
 import { BrandLogo } from './BrandLogo.js';
@@ -34,7 +35,6 @@ export const AppLockModal: React.FC = () => {
             <KeyRound className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
               type="password"
-              autoFocus
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               placeholder="Enter PIN..."

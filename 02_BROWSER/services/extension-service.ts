@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import https from 'node:https';
 import { execFileSync } from 'node:child_process';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import { ExtensionItem, InstallExtensionDTO } from '../../10_CONFIG/shared/types/extension.js';
+import type { ExtensionItem, InstallExtensionDTO } from '../../10_CONFIG/shared/types/extension.js';
 import { getProfileById, getProfilesDirectory } from './profile-service.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
 import { createLogger } from '../../07_BACKEND/utils/logger.js';
@@ -216,7 +216,6 @@ export async function downloadAndExtractCrx(extensionStoreId: string, targetDir:
         return true;
       }
     } catch {
-      continue;
     }
   }
 
@@ -254,9 +253,9 @@ export function getExtensions(profileId: string): ExtensionItem[] {
             const extVersion = manifest.version || latestVersion;
             const extDesc = resolveLocalizedText(versionDir, manifest.description) || '';
 
-            let iconPath: string | undefined = undefined;
+            let iconPath: string | undefined ;
             if (manifest.icons) {
-              const iconKey = Object.keys(manifest.icons).sort((a, b) => parseInt(b) - parseInt(a))[0];
+              const iconKey = Object.keys(manifest.icons).sort((a, b) => parseInt(b, 10) - parseInt(a, 10))[0];
               if (iconKey && manifest.icons[iconKey]) {
                 iconPath = path.join(versionDir, manifest.icons[iconKey]);
               }
@@ -327,9 +326,9 @@ export function installExtension(dto: InstallExtensionDTO): ExtensionItem {
   let name = dto.name || 'Custom Extension';
   let version = dto.version || '1.0.0';
   let description = '';
-  let extensionId = crypto.randomBytes(8).toString('hex');
-  let iconPath: string | undefined = undefined;
-  const srcPath = dto.sourcePath || (dto as any).location || '';
+  const extensionId = crypto.randomBytes(8).toString('hex');
+  let iconPath: string | undefined ;
+  const srcPath = dto.sourcePath || (dto as InstallExtensionDTO & { location?: string }).location || '';
 
   // Check if directory with manifest.json
   if (srcPath) {
@@ -341,7 +340,7 @@ export function installExtension(dto: InstallExtensionDTO): ExtensionItem {
         if (manifest.version) version = manifest.version;
         if (manifest.description) description = resolveLocalizedText(srcPath, manifest.description) || manifest.description;
         if (manifest.icons) {
-          const iconKey = Object.keys(manifest.icons).sort((a, b) => parseInt(b) - parseInt(a))[0];
+          const iconKey = Object.keys(manifest.icons).sort((a, b) => parseInt(b, 10) - parseInt(a, 10))[0];
           if (iconKey && manifest.icons[iconKey]) {
             iconPath = path.join(srcPath, manifest.icons[iconKey]);
           }
@@ -400,7 +399,7 @@ export async function installFromWebStoreUrl(profileId: string, webStoreUrl: str
   // Extract 32-character extension ID
   let extId = webStoreUrl.trim();
   const urlMatch = webStoreUrl.match(/\/detail\/[^/]+\/([a-z]{32})/i) || webStoreUrl.match(/([a-z]{32})/i);
-  if (urlMatch && urlMatch[1]) {
+  if (urlMatch?.[1]) {
     extId = urlMatch[1].toLowerCase();
   }
 
@@ -418,13 +417,11 @@ export async function installFromWebStoreUrl(profileId: string, webStoreUrl: str
   const manifestPath = path.join(extDir, 'manifest.json');
   let name = `Web Store Extension (${extId.slice(0, 8)})`;
   let version = '1.0.0';
-  let description = '';
   if (fs.existsSync(manifestPath)) {
     try {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
       name = resolveLocalizedText(extDir, manifest.name) || name;
       version = manifest.version || version;
-      description = resolveLocalizedText(extDir, manifest.description) || '';
     } catch (manifestErr) {
       log.debug('extension-service webstore manifest parse failed, using fallback metadata', { manifestPath, err: manifestErr });
     }

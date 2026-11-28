@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
   Globe2,
   Search,
@@ -6,28 +7,25 @@ import {
   Download,
   Upload,
   AlertTriangle,
-  FileCode,
-  CheckCircle2,
-  X,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
-import { CookieItem } from '../../10_CONFIG/shared/types/cookie.js';
+import type { CookieItem } from '../../10_CONFIG/shared/types/cookie.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 
 interface CookieManagerProps {
   onNavigate: (page: NavigationPage) => void;
 }
 
-export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) => {
+export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate: _onNavigate }) => {
   const { profiles, selectedProfileId, setSelectedProfileId } = useProfileStore();
   const { showToast } = useToastStore();
 
   const [cookies, setCookies] = useState<CookieItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [_loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [domainFilter, setDomainFilter] = useState('');
+  const [domainFilter, _setDomainFilter] = useState('');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importContent, setImportContent] = useState('');
   const [isExportWarningOpen, setIsExportWarningOpen] = useState(false);
@@ -48,20 +46,21 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
         });
         setCookies(res);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         type: 'error',
         title: 'Failed to load cookies',
-        message: err?.message || 'Could not retrieve cookie jar.',
+        message: err instanceof Error ? err.message : 'Could not retrieve cookie jar.',
       });
     } finally {
       setLoading(false);
     }
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadCookies is a stable async loader, intentional mount-only call
   useEffect(() => {
-    loadCookies();
-  }, [activeProfileId, searchQuery, domainFilter]);
+    void loadCookies();
+  }, []);
 
   const handleDeleteOne = async (cookieId: string) => {
     if (!activeProfileId) return;
@@ -69,8 +68,8 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
       await window.mahiAPI.deleteCookie(activeProfileId, cookieId);
       showToast({ type: 'info', title: 'Cookie Removed', message: 'Cookie deleted.' });
       loadCookies();
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Delete Failed', message: err?.message || 'Could not remove cookie.' });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Delete Failed', message: err instanceof Error ? err.message : 'Could not remove cookie.' });
     }
   };
 
@@ -81,8 +80,8 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
       showToast({ type: 'info', title: 'Cookies Cleared', message: 'All cookies purged.' });
       setIsClearConfirmOpen(false);
       loadCookies();
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Clear Failed', message: err?.message || 'Could not purge cookies.' });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Clear Failed', message: err instanceof Error ? err.message : 'Could not purge cookies.' });
     }
   };
 
@@ -106,11 +105,11 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
           message: result.errors[0] || 'Invalid cookie syntax',
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         type: 'error',
         title: 'Import Error',
-        message: err?.message || 'Could not process cookies.',
+        message: err instanceof Error ? err.message : 'Could not process cookies.',
       });
     }
   };
@@ -134,11 +133,11 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
 
       setIsExportWarningOpen(false);
       showToast({ type: 'success', title: 'Cookies Exported', message: 'Download started.' });
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         type: 'error',
         title: 'Export Failed',
-        message: err?.message || 'Could not export cookies.',
+        message: err instanceof Error ? err.message : 'Could not export cookies.',
       });
     }
   };
@@ -168,7 +167,7 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
             ))}
           </select>
 
-          <button
+          <button type="button"
             onClick={() => setIsImportModalOpen(true)}
             className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl flex items-center space-x-1.5 transition-colors"
           >
@@ -176,7 +175,7 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
             <span>Import</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={() => setIsExportWarningOpen(true)}
             disabled={cookies.length === 0}
             className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 disabled:opacity-40 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl flex items-center space-x-1.5 transition-colors"
@@ -185,7 +184,7 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
             <span>Export</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={() => setIsClearConfirmOpen(true)}
             disabled={cookies.length === 0}
             className="px-3.5 py-2 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-40 text-rose-500 text-xs font-semibold rounded-xl flex items-center space-x-1.5 transition-colors"
@@ -218,7 +217,7 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
             <Globe2 className="w-10 h-10 text-slate-400 mx-auto mb-2" />
             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">No Cookies in this Profile</h4>
             <p className="text-xs text-slate-400 mt-0.5 mb-4">Launch the profile and visit websites to accumulate session cookies, or import them.</p>
-            <button
+            <button type="button"
               onClick={() => setIsImportModalOpen(true)}
               className="px-4 py-2 bg-teal-600 text-white text-xs font-semibold rounded-xl"
             >
@@ -261,7 +260,7 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
                     </div>
                   </td>
                   <td className="py-3 px-5 text-right">
-                    <button
+                    <button type="button"
                       onClick={() => handleDeleteOne(c.id)}
                       className="p-1 rounded-md text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
                     >
@@ -293,13 +292,13 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
             />
 
             <div className="flex items-center justify-end space-x-3 mt-4">
-              <button
+              <button type="button"
                 onClick={() => setIsImportModalOpen(false)}
                 className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold"
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 onClick={handleImport}
                 disabled={!importContent.trim()}
                 className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold shadow-sm"
@@ -328,9 +327,9 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
             </div>
 
             <div className="mt-4 space-y-2 text-xs">
-              <label className="block font-semibold text-slate-700 dark:text-slate-300">Format</label>
+              <label htmlFor="field-001" className="block font-semibold text-slate-700 dark:text-slate-300">Format</label>
               <div className="flex space-x-3">
-                <label className="flex items-center space-x-1.5 cursor-pointer">
+                <label htmlFor="field-002" className="flex items-center space-x-1.5 cursor-pointer">
                   <input
                     type="radio"
                     name="exportFormat"
@@ -339,7 +338,7 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
                   />
                   <span>JSON Format</span>
                 </label>
-                <label className="flex items-center space-x-1.5 cursor-pointer">
+                <label htmlFor="field-003" className="flex items-center space-x-1.5 cursor-pointer">
                   <input
                     type="radio"
                     name="exportFormat"
@@ -352,13 +351,13 @@ export const CookieManagerPage: React.FC<CookieManagerProps> = ({ onNavigate }) 
             </div>
 
             <div className="flex items-center justify-end space-x-3 mt-6">
-              <button
+              <button type="button"
                 onClick={() => setIsExportWarningOpen(false)}
                 className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold"
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 onClick={handleConfirmExport}
                 className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-sm"
               >

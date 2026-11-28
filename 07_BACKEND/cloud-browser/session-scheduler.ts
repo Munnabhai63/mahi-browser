@@ -4,7 +4,7 @@
  */
 
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import {
+import type {
   CloudBrowserWorker,
   CloudBrowserRegion,
   CloudWorkerStatus,
@@ -54,7 +54,7 @@ export class SessionScheduler {
           now
         );
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Non-fatal if DB not yet initialized in specific test harnesses
       log.debug('Default worker node registration deferred (DB uninitialized)', {
         err: err instanceof Error ? err.message : String(err),
@@ -72,7 +72,7 @@ export class SessionScheduler {
              is_default as isDefault, created_at as createdAt
       FROM cloud_browser_regions
       ORDER BY is_default DESC, name ASC
-    `).all() as any[];
+    `).all<Omit<CloudBrowserRegion, 'isDefault'> & { isDefault: number }>();
 
     return rows.map((r) => ({
       ...r,
@@ -101,7 +101,7 @@ export class SessionScheduler {
       WHERE region_id = ? AND status = 'ONLINE' AND active_sessions < capacity
       ORDER BY active_sessions ASC, cpu_usage_pct ASC
       LIMIT 1
-    `).get(preferredRegionId) as any;
+    `).get<CloudBrowserWorker>(preferredRegionId);
 
     // Fallback: If preferred region has no capacity, find any online worker
     if (!workerRow) {
@@ -115,7 +115,7 @@ export class SessionScheduler {
         WHERE status = 'ONLINE' AND active_sessions < capacity
         ORDER BY active_sessions ASC
         LIMIT 1
-      `).get() as any;
+      `).get<CloudBrowserWorker>();
     }
 
     if (!workerRow) {
@@ -130,7 +130,7 @@ export class SessionScheduler {
       WHERE id = ?
     `).run(new Date().toISOString(), workerRow.id);
 
-    return workerRow as CloudBrowserWorker;
+    return workerRow;
   }
 
   /**

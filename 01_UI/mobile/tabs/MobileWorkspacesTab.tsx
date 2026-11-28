@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 
 export interface MobileWorkspaceMember {
   id: string;
@@ -69,10 +70,11 @@ export const MobileWorkspacesTab: React.FC<MobileWorkspacesTabProps> = ({
           padding: 16,
         }}
       >
-        <label style={{ fontSize: 11, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <label htmlFor="mobile-ws-select" style={{ fontSize: 11, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
           Active Workspace
         </label>
         <select
+          id="mobile-ws-select"
           value={activeWorkspaceId}
           onChange={(e) => onSelectWorkspace(e.target.value)}
           style={{
@@ -127,6 +129,7 @@ export const MobileWorkspacesTab: React.FC<MobileWorkspacesTabProps> = ({
           </h3>
           {canManageMembers && (
             <button
+              type="button"
               onClick={() => setShowInviteModal(true)}
               disabled={isOffline}
               style={{
@@ -186,6 +189,7 @@ export const MobileWorkspacesTab: React.FC<MobileWorkspacesTabProps> = ({
 
                 {canManageMembers && member.role !== 'OWNER' && (
                   <button
+                    type="button"
                     onClick={() => onRemoveMember(currentWorkspace.id, member.id)}
                     style={{
                       background: 'none',
@@ -234,10 +238,11 @@ export const MobileWorkspacesTab: React.FC<MobileWorkspacesTabProps> = ({
           >
             <h3 style={{ margin: 0, fontSize: 16, color: '#F8FAFC' }}>Invite Team Member</h3>
             <div>
-              <label style={{ fontSize: 12, color: '#94A3B8', display: 'block', marginBottom: 4 }}>
+              <label htmlFor="mobile-ws-invite-email" style={{ fontSize: 12, color: '#94A3B8', display: 'block', marginBottom: 4 }}>
                 Member Email
               </label>
               <input
+                id="mobile-ws-invite-email"
                 type="email"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
@@ -256,12 +261,13 @@ export const MobileWorkspacesTab: React.FC<MobileWorkspacesTabProps> = ({
             </div>
 
             <div>
-              <label style={{ fontSize: 12, color: '#94A3B8', display: 'block', marginBottom: 4 }}>
+              <label htmlFor="mobile-ws-invite-role" style={{ fontSize: 12, color: '#94A3B8', display: 'block', marginBottom: 4 }}>
                 Assigned Role (RBAC)
               </label>
               <select
+                id="mobile-ws-invite-role"
                 value={inviteRole}
-                onChange={(e) => setInviteRole(e.target.value as any)}
+                onChange={(e) => setInviteRole(e.target.value as 'ADMIN' | 'OPERATOR' | 'VIEWER')}
                 style={{
                   width: '100%',
                   padding: '8px 12px',
@@ -281,6 +287,7 @@ export const MobileWorkspacesTab: React.FC<MobileWorkspacesTabProps> = ({
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
               <button
+                type="button"
                 onClick={() => setShowInviteModal(false)}
                 style={{
                   padding: '8px 14px',
@@ -295,6 +302,7 @@ export const MobileWorkspacesTab: React.FC<MobileWorkspacesTabProps> = ({
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={() => {
                   if (inviteEmail.trim()) {
                     onInviteMember(currentWorkspace.id, inviteEmail.trim(), inviteRole);

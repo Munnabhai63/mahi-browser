@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
+import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
 import {
   getConfigBackupsDir,
   getDbBackupsDir,
@@ -126,8 +126,9 @@ export async function initSqlEngine(): Promise<SqlJsStatic> {
     SQL = await initSqlJs({
       locateFile: (file) => {
         try {
-          if (process && (process as any).resourcesPath) {
-            const resPath = path.join((process as any).resourcesPath, file);
+          const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+          if (process && resourcesPath) {
+            const resPath = path.join(resourcesPath, file);
             if (fs.existsSync(resPath)) return resPath;
           }
           if (typeof __dirname !== 'undefined') {
@@ -180,9 +181,10 @@ export function saveDatabaseToDisk(): void {
         fs.renameSync(tmpPath, dbPath);
         renameErr = null;
         break;
-      } catch (err: any) {
+      } catch (err: unknown) {
         renameErr = err;
-        if (err && (err.code === 'EPERM' || err.code === 'EBUSY') && attempt < 3) {
+        const code = (err as NodeJS.ErrnoException | null)?.code;
+        if (err && (code === 'EPERM' || code === 'EBUSY') && attempt < 3) {
           const until = Date.now() + 25 * (attempt + 1);
           while (Date.now() < until) {}
           continue;
@@ -241,14 +243,14 @@ export function requestDatabaseSave(): void {
 
 export interface PreparedStatement {
   run: (...params: unknown[]) => { changes: number; lastInsertRowid: number | bigint };
-  get: (...params: unknown[]) => Record<string, any> | undefined;
-  all: (...params: unknown[]) => Record<string, any>[];
+  get: <T = Record<string, unknown>>(...params: unknown[]) => T | undefined;
+  all: <T = Record<string, unknown>>(...params: unknown[]) => T[];
 }
 
 export interface SqliteWrapper {
   exec: (sql: string) => void;
   prepare: (sql: string) => PreparedStatement;
-  transaction?: <T extends (...args: any[]) => any>(fn: T) => T;
+  transaction?: <T extends (...args: never[]) => unknown>(fn: T) => T;
   close: () => void;
   export: () => Uint8Array;
 }
@@ -298,8 +300,8 @@ export function getDatabase(): SqliteWrapper {
   const rawDb = dbInstance;
 
   return {
-    transaction: <T extends (...args: any[]) => any>(fn: T): T => {
-      return ((...args: any[]) => {
+    transaction: <T extends (...args: never[]) => unknown>(fn: T): T => {
+      return ((...args: Parameters<T>) => {
         const spName = `sp_${transactionDepth}`;
         rawDb.exec(`SAVEPOINT ${spName};`);
         transactionDepth++;
@@ -341,8 +343,8 @@ export function getDatabase(): SqliteWrapper {
     prepare: (sql: string): PreparedStatement => {
       return {
         run: (...params: unknown[]) => {
-          const safeParams = params.map((p) => (p === undefined ? null : p));
-          rawDb.run(sql, safeParams as any);
+          const safeParams = params.map((p) => (p === undefined ? null : p)) as Parameters<Database['run']>[1];
+          rawDb.run(sql, safeParams);
           const changes = rawDb.getRowsModified();
           let lastInsertRowid: number | bigint = 0;
           if (/^\s*INSERT\b/i.test(sql)) {
@@ -365,27 +367,27 @@ export function getDatabase(): SqliteWrapper {
           }
           return { changes, lastInsertRowid };
         },
-        get: (...params: unknown[]) => {
-          const safeParams = params.map((p) => (p === undefined ? null : p));
+        get: <T = Record<string, unknown>>(...params: unknown[]): T | undefined => {
+          const safeParams = params.map((p) => (p === undefined ? null : p)) as Parameters<Database['run']>[1];
           const stmt = rawDb.prepare(sql);
           try {
-            stmt.bind(safeParams as any);
+            stmt.bind(safeParams);
             if (stmt.step()) {
-              return stmt.getAsObject();
+              return stmt.getAsObject() as T;
             }
             return undefined;
           } finally {
             stmt.free();
           }
         },
-        all: (...params: unknown[]) => {
-          const safeParams = params.map((p) => (p === undefined ? null : p));
+        all: <T = Record<string, unknown>>(...params: unknown[]): T[] => {
+          const safeParams = params.map((p) => (p === undefined ? null : p)) as Parameters<Database['run']>[1];
           const stmt = rawDb.prepare(sql);
-          const results: Record<string, any>[] = [];
+          const results: T[] = [];
           try {
-            stmt.bind(safeParams as any);
+            stmt.bind(safeParams);
             while (stmt.step()) {
-              results.push(stmt.getAsObject());
+              results.push(stmt.getAsObject() as T);
             }
             return results;
           } finally {

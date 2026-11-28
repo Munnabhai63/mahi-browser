@@ -1,4 +1,4 @@
-import React from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 
 export default function HeroSection() {
@@ -17,10 +17,13 @@ export default function HeroSection() {
       {/* BACKGROUND PHONE MOCKUP & GRADIENT OVERLAYS */}
       <div className="absolute inset-0 pointer-events-none select-none z-0 overflow-hidden">
         {/* Exact Framer Full Cover Image: Hand holding Phone */}
-        <img
+        <Image
           src="/assets/sxPkE4LCDGhsTG2wk1HO9SrI.jpg"
           alt="Mahi Browser Mockup"
-          className="absolute inset-0 w-full h-full object-cover object-center opacity-95"
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-center opacity-95"
           draggable={false}
         />
 
@@ -52,6 +55,7 @@ export default function HeroSection() {
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
+              aria-hidden="true"
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
@@ -92,14 +96,14 @@ export default function HeroSection() {
         <div className="relative max-w-[1440px] mx-auto overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_15%,black_85%,transparent)]">
           <div className="flex items-center gap-20 whitespace-nowrap animate-marquee py-2 opacity-50 hover:opacity-100 transition-opacity">
             {/* Ticker Set 1 */}
-            {tickerItems.map((item, idx) => (
-              <span key={`ticker-1-${idx}`} className="text-zinc-400 text-sm font-semibold tracking-wider font-sans">
+            {tickerItems.map((item) => (
+              <span key={`ticker-1-${item}`} className="text-zinc-400 text-sm font-semibold tracking-wider font-sans">
                 {item}
               </span>
             ))}
             {/* Ticker Set 2 (Duplicate for Seamless Loop) */}
-            {tickerItems.map((item, idx) => (
-              <span key={`ticker-2-${idx}`} className="text-zinc-400 text-sm font-semibold tracking-wider font-sans">
+            {tickerItems.map((item) => (
+              <span key={`ticker-2-${item}`} className="text-zinc-400 text-sm font-semibold tracking-wider font-sans">
                 {item}
               </span>
             ))}

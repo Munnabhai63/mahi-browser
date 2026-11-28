@@ -1,5 +1,12 @@
 # Decisions Log
 
+## 2026-11-28 - Phase 7 Part 2 Strict Typing & Zero-Warning Biome Gate (P1/P2)
+- **Context**: `01_UI/`, `02_BROWSER/`, `04_LICENSING/`, `05_AUTH/`, `06_DATABASE/`, `07_BACKEND/`, `08_SECURITY/`, `09_AUTOMATION/`, `10_CONFIG/`, `12_SCRIPTS/`, and `landing/` carried `1,507+` `: any`/`as any` casts plus `3,625` Biome warnings (`useImportType`, `useButtonType`, `noLabelWithoutControl`, `noStaticElementInteractions`, `useKeyWithClickEvents`, `noUnusedVariables`, `useExhaustiveDependencies`, etc.) and `152` infos under `--diagnostic-level=error`.
+- **Decisions**:
+  - **Domain DTOs & Narrowing Over `any`**: Typed SQLite/Prisma rows (`central-repository.ts`), gateway/IPC payloads (`register-handlers.ts`, `app.ts`), and `WebApiClient` (`01_UI/web/api/api-client.ts`) with explicit interfaces and `unknown` + type-guard error narrowing without changing public IPC or HTTP JSON contracts, driving non-test source `: any` / `as any` to `0`.
+  - **Semantic Accessibility Refactoring Over Global Rule Suppression**: Preserved all `biome.json` rules intact, converting clickable card `<div>`/`<span>` wrappers and modal backdrops into native `<button type="button">` elements and pairing `<label htmlFor>` + `id` attributes across desktop, mobile, and web forms; kept single-rule `// biome-ignore` annotations strictly scoped to modal backdrop click-outside / `stopPropagation` containers and intentional mount-only `useEffect` calls.
+  - **Strict CI Enforcement**: Promoted `npm run lint` in both root `package.json` and `landing/package.json` to `--error-on-warnings` so `.github/workflows/ci.yml` fails immediately on any future Biome warning or error (`0` errors, `0` warnings, `0` infos verified across `391` root + `56` landing files).
+
 ## 2026-11-28 - Phase 7 Part 1 Structured Logger, Catch Hygiene & Async Runtime I/O (P1/P2)
 - **Context**: Backend/browser runtime modules (`02/05/07/08`) emitted `215` unstructured `console.*` logs without automatic secret redaction, the TS/TSX codebase held `680` silent empty catches across `118` files, and async IPC/HTTP/cloud-sync/worker flows executed blocking `fs.*Sync` calls (plus a `100ms` busy-wait loop in `worker-profile-loader.ts`).
 - **Decisions**:

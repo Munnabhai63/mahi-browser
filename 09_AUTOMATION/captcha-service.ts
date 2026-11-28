@@ -1,7 +1,7 @@
 import https from 'node:https';
 import http from 'node:http';
 import { getDatabase } from '../06_DATABASE/connection.js';
-import {
+import type {
   CaptchaConfig,
   CaptchaBalanceResult,
   CaptchaSolveRequest,
@@ -23,7 +23,25 @@ const DEFAULT_CONFIG: CaptchaConfig = {
   timeoutSeconds: 60,
 };
 
-function httpRequest(url: string, method: string = 'GET', postData?: any): Promise<any> {
+interface CaptchaHttpJsonResponse {
+  status?: number | string;
+  request?: string;
+  errorId?: number;
+  errorDescription?: string;
+  taskId?: string | number;
+  balance?: number | string;
+  solution?: {
+    token?: string;
+    gRecaptchaResponse?: string;
+    text?: string;
+  };
+}
+
+function httpRequest(
+  url: string,
+  method: string = 'GET',
+  postData?: Record<string, unknown> | string
+): Promise<CaptchaHttpJsonResponse | null> {
   return new Promise((resolve, reject) => {
     const isHttps = url.startsWith('https:');
     const client = isHttps ? https : http;
@@ -48,10 +66,10 @@ function httpRequest(url: string, method: string = 'GET', postData?: any): Promi
       res.on('data', (chunk) => (data += chunk));
       res.on('end', () => {
         try {
-          const parsed = JSON.parse(data);
+          const parsed = JSON.parse(data) as CaptchaHttpJsonResponse;
           resolve(parsed);
         } catch {
-          resolve(data);
+          resolve({ request: data });
         }
       });
     });
@@ -76,7 +94,7 @@ export function getCaptchaConfig(): CaptchaConfig {
   const db = getDatabase();
   try {
     const row = db.prepare("SELECT value_json FROM app_settings WHERE key = 'captcha_config'").get() as { value_json: string } | undefined;
-    if (row && row.value_json) {
+    if (row?.value_json) {
       const parsed = { ...DEFAULT_CONFIG, ...JSON.parse(row.value_json) };
       if (parsed.apiKey && typeof parsed.apiKey === 'string' && parsed.apiKey.includes(':')) {
         try {
@@ -103,7 +121,7 @@ export function saveCaptchaConfig(config: Partial<CaptchaConfig>): boolean {
   const merged = { ...current, ...config };
   const persisted: CaptchaConfig = {
     ...merged,
-    apiKey: merged.apiKey && merged.apiKey.trim() ? encryptData(merged.apiKey) : '',
+    apiKey: merged.apiKey?.trim() ? encryptData(merged.apiKey) : '',
   };
   const now = new Date().toISOString();
 
@@ -121,7 +139,7 @@ export function saveCaptchaConfig(config: Partial<CaptchaConfig>): boolean {
  * Queries the live account balance from the specified Captcha provider.
  */
 export async function checkCaptchaBalance(provider: CaptchaProvider, apiKey: string): Promise<CaptchaBalanceResult> {
-  if (!apiKey || !apiKey.trim()) {
+  if (!apiKey?.trim()) {
     return {
       provider,
       balance: 0,
@@ -139,7 +157,7 @@ export async function checkCaptchaBalance(provider: CaptchaProvider, apiKey: str
         if (res && res.status === 1) {
           return {
             provider,
-            balance: parseFloat(res.request) || 0,
+            balance: parseFloat(String(res.request ?? 0)) || 0,
             currency: 'USD',
             success: true,
           };
@@ -159,7 +177,7 @@ export async function checkCaptchaBalance(provider: CaptchaProvider, apiKey: str
         if (res && res.errorId === 0) {
           return {
             provider,
-            balance: parseFloat(res.balance) || 0,
+            balance: parseFloat(String(res.balance ?? 0)) || 0,
             currency: 'USD',
             success: true,
           };
@@ -179,7 +197,7 @@ export async function checkCaptchaBalance(provider: CaptchaProvider, apiKey: str
         if (res && res.errorId === 0) {
           return {
             provider,
-            balance: parseFloat(res.balance) || 0,
+            balance: parseFloat(String(res.balance ?? 0)) || 0,
             currency: 'USD',
             success: true,
           };
@@ -199,7 +217,7 @@ export async function checkCaptchaBalance(provider: CaptchaProvider, apiKey: str
         if (res && res.errorId === 0) {
           return {
             provider,
-            balance: parseFloat(res.balance) || 0,
+            balance: parseFloat(String(res.balance ?? 0)) || 0,
             currency: 'USD',
             success: true,
           };
@@ -222,13 +240,13 @@ export async function checkCaptchaBalance(provider: CaptchaProvider, apiKey: str
           error: `Unsupported provider: ${provider}`,
         };
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       provider,
       balance: 0,
       currency: 'USD',
       success: false,
-      error: err?.message || 'Network error connecting to Captcha provider',
+      error: err instanceof Error ? err.message : 'Network error connecting to Captcha provider',
     };
   }
 }
@@ -241,7 +259,7 @@ export async function solveCaptcha(request: CaptchaSolveRequest): Promise<Captch
   const provider = request.provider || config.provider;
   const apiKey = request.apiKey || config.apiKey;
 
-  if (!apiKey || !apiKey.trim()) {
+  if (!apiKey?.trim()) {
     return {
       success: false,
       error: 'Captcha API Key is not configured. Please set your API key in Captcha Settings.',
@@ -268,7 +286,7 @@ export async function solveCaptcha(request: CaptchaSolveRequest): Promise<Captch
       }
 
       const submitRes = await httpRequest(inUrl);
-      if (!submitRes || submitRes.status !== 1) {
+      if (submitRes?.status !== 1) {
         return {
           success: false,
           error: `2Captcha Task Submission Error: ${submitRes?.request || 'Unknown error'}`,
@@ -285,7 +303,7 @@ export async function solveCaptcha(request: CaptchaSolveRequest): Promise<Captch
         const resUrl = `https://2captcha.com/res.php?key=${encodeURIComponent(apiKey)}&action=get&id=${taskId}&json=1`;
         const resObj = await httpRequest(resUrl);
 
-        if (resObj && resObj.status === 1) {
+        if (resObj?.status === 1) {
           const solveTimeSeconds = (Date.now() - startTime) / 1000;
           logActivity('AUTOMATION', 'SUCCESS', 'Captcha Solved', `Solved ${request.type} on ${request.websiteUrl} in ${solveTimeSeconds.toFixed(1)}s`);
           return {
@@ -322,7 +340,15 @@ export async function solveCaptcha(request: CaptchaSolveRequest): Promise<Captch
     else if (request.type === 'recaptcha_v3') taskType = 'RecaptchaV3TaskProxyless';
     else if (request.type === 'hcaptcha') taskType = 'HCaptchaTaskProxyless';
 
-    const createPayload: any = {
+    const createPayload: {
+      clientKey: string;
+      task: {
+        type: string;
+        websiteURL: string;
+        websiteKey: string;
+        pageAction?: string;
+      };
+    } = {
       clientKey: apiKey,
       task: {
         type: taskType,
@@ -333,7 +359,7 @@ export async function solveCaptcha(request: CaptchaSolveRequest): Promise<Captch
     };
 
     const createRes = await httpRequest(`${baseUrl}/createTask`, 'POST', createPayload);
-    if (!createRes || createRes.errorId !== 0) {
+    if (createRes?.errorId !== 0) {
       return {
         success: false,
         error: `${provider} CreateTask Error: ${createRes?.errorDescription || 'Unknown error'}`,
@@ -377,10 +403,10 @@ export async function solveCaptcha(request: CaptchaSolveRequest): Promise<Captch
       success: false,
       error: `Captcha solve timed out after ${config.timeoutSeconds}s`,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       success: false,
-      error: err?.message || 'Error executing Captcha solver',
+      error: err instanceof Error ? err.message : 'Error executing Captcha solver',
     };
   }
 }

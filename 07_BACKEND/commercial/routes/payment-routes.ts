@@ -1,5 +1,5 @@
-import http from 'node:http';
-import { URL } from 'node:url';
+import type http from 'node:http';
+import type { URL } from 'node:url';
 import { sendJSON, parseBody, parseRawBuffer, getAuthUserAsync } from './router-shared.js';
 import { sendSafeError, validateStrictBody } from '../../utils/app-error.js';
 import {
@@ -12,26 +12,46 @@ import {
 import { getRuntimePaymentMetadata } from '../../../10_CONFIG/contact-config.js';
 import {
   paymentService,
-  PaymentProviderType,
+  type PaymentProviderType,
   PaymentGatewayNotConfiguredError,
   verifyRazorpayPaymentSignature,
-  resolveCommercialPlan,
 } from '../payment-service.js';
 import { normalizeBillingCycle } from '../canonical-plan-catalog.js';
 import { getDatabase } from '../../../06_DATABASE/connection.js';
-import { isPostgresConfigured, getCentralRepository } from '../../../06_DATABASE/central-repository.js';
+import { isPostgresConfigured } from '../../../06_DATABASE/central-repository.js';
 import { getPrismaClient } from '../../../06_DATABASE/prisma-client.js';
 import { evaluateUserEntitlements } from '../commercial-entitlement-service.js';
 import { rejectIfEmergencyFrozen } from '../../services/kill-switch-service.js';
 
+interface SqliteCommercialPaymentPendingRow {
+  user_id: string;
+  status: string;
+  plan_id: string;
+  billing_cycle: string | null;
+  amount_cents: number;
+  currency: string | null;
+}
+
+function getErrMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function getErrStatusCode(err: unknown): number | undefined {
+  if (typeof err === 'object' && err !== null && 'statusCode' in err) {
+    const code = (err as { statusCode?: unknown }).statusCode;
+    if (typeof code === 'number') return code;
+  }
+  return undefined;
+}
+
 export async function handlePaymentRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  pathname: string,
+  _pathname: string,
   method: string,
   parsedUrl: URL,
   routePath: string,
-  clientIp: string
+  _clientIp: string
 ): Promise<boolean> {
   if ((routePath === '/v1/account/payment-info' || routePath === '/api/v1/account/payment-info' || routePath === '/api/v1/commercial/payment-info') && method === 'GET') {
     const contact = getRuntimePaymentMetadata();
@@ -107,8 +127,8 @@ export async function handlePaymentRoutes(
         message: 'Payment submitted successfully for verification.',
       });
       return true;
-    } catch (err: any) {
-      if (err?.message && err.message.includes('UTR_ALREADY_EXISTS')) {
+    } catch (err: unknown) {
+      if (getErrMessage(err).includes('UTR_ALREADY_EXISTS')) {
         sendSafeError(res, err, { fallbackStatus: 409 });
         return true;
       }
@@ -171,8 +191,8 @@ export async function handlePaymentRoutes(
         message: 'USDT (TRC-20) transaction submitted for verification.',
       });
       return true;
-    } catch (err: any) {
-      if (err?.message && err.message.includes('TX_HASH_ALREADY_EXISTS')) {
+    } catch (err: unknown) {
+      if (getErrMessage(err).includes('TX_HASH_ALREADY_EXISTS')) {
         sendSafeError(res, err, { fallbackStatus: 409 });
         return true;
       }
@@ -314,7 +334,7 @@ export async function handlePaymentRoutes(
         billingCycle: session.billingCycle,
       });
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       const status = err instanceof PaymentGatewayNotConfiguredError ? 503 : 400;
       sendSafeError(res, err, { fallbackStatus: status });
       return true;
@@ -343,21 +363,19 @@ export async function handlePaymentRoutes(
       return true;
     }
 
-    let pending: any = null;
     const prisma = isPostgresConfigured() ? getPrismaClient() : null;
-    if (prisma) {
-      pending = await prisma.commercial_payments.findFirst({
-        where: {
-          OR: [
-            { external_order_id: razorpay_order_id },
-            { id: razorpay_order_id },
-          ],
-        },
-      });
-    } else {
-      const db = getDatabase();
-      pending = db.prepare('SELECT * FROM commercial_payments WHERE external_order_id = ? OR id = ?').get(razorpay_order_id, razorpay_order_id) as any;
-    }
+    const pending: SqliteCommercialPaymentPendingRow | null = prisma
+      ? await prisma.commercial_payments.findFirst({
+          where: {
+            OR: [
+              { external_order_id: razorpay_order_id },
+              { id: razorpay_order_id },
+            ],
+          },
+        })
+      : getDatabase()
+          .prepare('SELECT * FROM commercial_payments WHERE external_order_id = ? OR id = ?')
+          .get<SqliteCommercialPaymentPendingRow>(razorpay_order_id, razorpay_order_id) ?? null;
     if (!pending) {
       sendJSON(res, 404, { success: false, error: 'Order not found.' });
       return true;
@@ -422,7 +440,7 @@ export async function handlePaymentRoutes(
       const statusCode = result.status === 'FORBIDDEN' ? 403 : result.status === 'NOT_FOUND' ? 404 : result.success ? 200 : 400;
       sendJSON(res, statusCode, result);
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 500 });
       return true;
     }
@@ -441,7 +459,7 @@ export async function handlePaymentRoutes(
       const statusCode = result.status === 'FORBIDDEN' ? 403 : result.status === 'NOT_FOUND' ? 404 : result.success ? 200 : 400;
       sendJSON(res, statusCode, result);
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 500 });
       return true;
     }
@@ -493,10 +511,11 @@ export async function handlePaymentRoutes(
       const result = await paymentService.handleWebhook(provider, rawBody, signature);
       sendJSON(res, 200, { success: true, data: result });
       return true;
-    } catch (err: any) {
-      const isSig = Boolean(err?.message && err.message.includes('INVALID_WEBHOOK_SIGNATURE'));
+    } catch (err: unknown) {
+      const isSig = getErrMessage(err).includes('INVALID_WEBHOOK_SIGNATURE');
       const fallbackStatus = isSig ? 400 : 500;
-      const status = typeof err?.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : fallbackStatus;
+      const errStatus = getErrStatusCode(err);
+      const status = typeof errStatus === 'number' && errStatus >= 400 && errStatus < 600 ? errStatus : fallbackStatus;
       sendSafeError(res, err, { fallbackStatus: status });
       return true;
     }

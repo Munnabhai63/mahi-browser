@@ -24,28 +24,46 @@ export const isElectronRuntime: boolean = Boolean(
   process.versions.electron
 );
 
-let electronMod: any = null;
+type ElectronModuleShape = {
+  app: App;
+  BrowserWindow: typeof ElectronBrowserWindow;
+  Notification: typeof ElectronNotification;
+  safeStorage: SafeStorage;
+  shell: Shell;
+  dialog: Dialog;
+  ipcMain: IpcMain;
+};
+
+let electronMod: Partial<ElectronModuleShape> | null = null;
 if (isElectronRuntime) {
   try {
-    if (typeof (process as any).getBuiltinModule === 'function') {
-      electronMod = (process as any).getBuiltinModule('electron');
+    const processWithBuiltin = process as NodeJS.Process & {
+      getBuiltinModule?: (id: string) => Partial<ElectronModuleShape> | undefined;
+    };
+    if (typeof processWithBuiltin.getBuiltinModule === 'function') {
+      electronMod = processWithBuiltin.getBuiltinModule('electron') ?? null;
     }
   } catch { /* Non-fatal: Electron built-in module unavailable outside main process */ }
 
   if (!electronMod) {
     try {
-      electronMod = esmRequire('electron');
+      electronMod = esmRequire('electron') as Partial<ElectronModuleShape>;
     } catch { /* Non-fatal: headless CLI / gateway server runs without Electron */ }
   }
 
-  if (!electronMod && typeof (globalThis as any).require === 'function') {
+  if (!electronMod) {
     try {
-      electronMod = (globalThis as any).require('electron');
+      const globalWithRequire = globalThis as typeof globalThis & {
+        require?: (id: string) => Partial<ElectronModuleShape>;
+      };
+      if (typeof globalWithRequire.require === 'function') {
+        electronMod = globalWithRequire.require('electron');
+      }
     } catch { /* Non-fatal: CJS electron fallback unavailable in pure Node */ }
   }
 }
 
-export const app: App = (electronMod?.app ?? {
+export const app: App = (electronMod?.app ?? ({
   isPackaged: false,
   getVersion: () => APP_VERSION,
   getName: () => 'mahi-browser',
@@ -56,19 +74,19 @@ export const app: App = (electronMod?.app ?? {
   quit: () => {},
   exit: () => {},
   setAsDefaultProtocolClient: () => false,
-}) as any;
+} as unknown as App));
 
-export const BrowserWindow: typeof ElectronBrowserWindow = (electronMod?.BrowserWindow ?? class MockBrowserWindow {
-  static getAllWindows(): any[] {
+class MockBrowserWindow {
+  static getAllWindows(): ElectronBrowserWindow[] {
     return [];
   }
-  static getFocusedWindow(): any {
+  static getFocusedWindow(): ElectronBrowserWindow | null {
     return null;
   }
-  static fromWebContents(): any {
+  static fromWebContents(): ElectronBrowserWindow | null {
     return null;
   }
-  static fromId(): any {
+  static fromId(): ElectronBrowserWindow | null {
     return null;
   }
   webContents = {
@@ -81,42 +99,50 @@ export const BrowserWindow: typeof ElectronBrowserWindow = (electronMod?.Browser
   once() {}
   close() {}
   destroy() {}
-}) as any;
+}
 
-export const Notification: typeof ElectronNotification = (electronMod?.Notification ?? class MockNotification {
+export const BrowserWindow: typeof ElectronBrowserWindow = (
+  electronMod?.BrowserWindow ?? (MockBrowserWindow as unknown as typeof ElectronBrowserWindow)
+);
+
+class MockNotification {
   static isSupported(): boolean {
     return false;
   }
   show() {}
   on() {}
-}) as any;
+}
 
-export const safeStorage: SafeStorage = (electronMod?.safeStorage ?? {
+export const Notification: typeof ElectronNotification = (
+  electronMod?.Notification ?? (MockNotification as unknown as typeof ElectronNotification)
+);
+
+export const safeStorage: SafeStorage = (electronMod?.safeStorage ?? ({
   isEncryptionAvailable: () => false,
   encryptString: (plainText: string) => Buffer.from(plainText, 'utf8'),
   decryptString: (encrypted: Buffer) => encrypted.toString('utf8'),
-}) as any;
+} as unknown as SafeStorage));
 
-export const shell: Shell = (electronMod?.shell ?? {
+export const shell: Shell = (electronMod?.shell ?? ({
   openExternal: async () => false,
   openPath: async () => '',
   showItemInFolder: () => {},
-}) as any;
+} as unknown as Shell));
 
-export const dialog: Dialog = (electronMod?.dialog ?? {
+export const dialog: Dialog = (electronMod?.dialog ?? ({
   showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
   showSaveDialog: async () => ({ canceled: true, filePath: '' }),
   showMessageBox: async () => ({ response: 0 }),
-}) as any;
+} as unknown as Dialog));
 
-export const ipcMain: IpcMain = (electronMod?.ipcMain ?? {
+export const ipcMain: IpcMain = (electronMod?.ipcMain ?? ({
   handle: () => {},
   on: () => {},
   removeHandler: () => {},
   removeAllListeners: () => {},
-}) as any;
+} as unknown as IpcMain));
 
-export const electron: any = electronMod ?? {
+export const electron: Partial<ElectronModuleShape> = electronMod ?? {
   app,
   BrowserWindow,
   Notification,

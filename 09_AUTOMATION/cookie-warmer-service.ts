@@ -15,7 +15,7 @@ import crypto from 'node:crypto';
 import { getProfileById, updateProfile, getProfileStoragePath } from '../02_BROWSER/services/profile-service.js';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { exportCookies } from '../02_BROWSER/services/cookie-service.js';
-import { chromium, firefox } from 'rebrowser-playwright-core';
+import { chromium, firefox, type Browser, type BrowserContext, type Page } from 'rebrowser-playwright-core';
 import { processManager } from '../02_BROWSER/process-manager.js';
 import { getProfileDebugPort, cleanupStaleLocks } from '../02_BROWSER/launcher.js';
 import { resolveExecutablePath } from '../02_BROWSER/detector.js';
@@ -221,7 +221,7 @@ export function isWarmerRunning(profileId: string): boolean {
 
 export function pauseWarmer(profileId: string): boolean {
   const warmer = activeWarmers.get(profileId);
-  if (!warmer || warmer.status !== 'WARMING') return false;
+  if (warmer?.status !== 'WARMING') return false;
   warmer.isPaused = true;
   warmer.status = 'PAUSED';
   return true;
@@ -229,7 +229,7 @@ export function pauseWarmer(profileId: string): boolean {
 
 export function resumeWarmer(profileId: string): boolean {
   const warmer = activeWarmers.get(profileId);
-  if (!warmer || warmer.status !== 'PAUSED') return false;
+  if (warmer?.status !== 'PAUSED') return false;
   warmer.isPaused = false;
   warmer.status = 'WARMING';
   if (warmer.resumeResolve) {
@@ -364,8 +364,8 @@ export async function warmProfile(
 
   const wasRunning = processManager.isRunning(profileId);
   const isCamoufox = profile.settings?.browser?.engine === 'camoufox';
-  let browserObj: any = null;
-  let context: any = null;
+  let browserObj: Browser | null = null;
+  let context: BrowserContext | null = null;
   let sitesVisited = 0;
   let sitesFailed = 0;
   let retriesCount = 0;
@@ -382,7 +382,7 @@ export async function warmProfile(
       const storageDir = getProfileStoragePath(profileId);
       cleanupStaleLocks(storageDir);
 
-      let proxyConfig: { server: string; username?: string; password?: string } | undefined = undefined;
+      let proxyConfig: { server: string; username?: string; password?: string } | undefined ;
       if (!profile.settings?.network?.directConnection && profile.settings?.network?.proxyId) {
         const proxy = getProxyById(profile.settings.network.proxyId);
         if (proxy) {
@@ -418,7 +418,7 @@ export async function warmProfile(
       }
 
       const debugPort = getProfileDebugPort(profileId);
-      let connectErr: any = null;
+      let connectErr: unknown = null;
       for (let cdpAttempt = 0; cdpAttempt < 5; cdpAttempt++) {
         try {
           browserObj = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`, { timeout: 10000 });
@@ -429,8 +429,8 @@ export async function warmProfile(
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       }
-      if (!browserObj && connectErr) {
-        throw connectErr;
+      if (!browserObj) {
+        throw connectErr || new Error('Failed to connect to browser over CDP');
       }
 
       const contexts = browserObj.contexts();
@@ -471,7 +471,7 @@ export async function warmProfile(
       let attempt = 0;
 
       while (attempt <= maxRetries && !loaded) {
-        let page: any = null;
+        let page: Page | null = null;
         try {
           page = await context.newPage();
           await page.goto(site.url, { timeout: 15000, waitUntil: 'domcontentloaded' });
@@ -519,7 +519,7 @@ export async function warmProfile(
     if ((warmerController.status as string) !== 'CANCELLED') {
       warmerController.status = 'COMPLETED';
     }
-  } catch (e: any) {
+  } catch (e: unknown) {
     warmerController.status = 'FAILED';
     log.error('cookie-warmer CDP execution error', { profileId, err: e });
   } finally {
@@ -634,7 +634,7 @@ export async function warmBulkProfiles(
       results.push(res);
       if (res.success) successCount++;
       else failureCount++;
-    } catch (err: any) {
+    } catch (err: unknown) {
       failureCount++;
       results.push({
         success: false,
@@ -646,7 +646,7 @@ export async function warmBulkProfiles(
         farmedCookiesCount: 0,
         durationMs: 0,
         completedAt: new Date().toISOString(),
-        errorMessage: err.message || 'Warming failed',
+        errorMessage: err instanceof Error ? err.message : 'Warming failed',
       });
     }
   }

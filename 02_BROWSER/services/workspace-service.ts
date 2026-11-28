@@ -1,17 +1,19 @@
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import {
+import type {
   Workspace,
   TeamMember,
   MemberRole,
+  MemberStatus,
   CreateWorkspaceDTO,
   CreateMemberDTO,
   WorkspaceBundleExportOptions,
 } from '../../10_CONFIG/shared/types/workspace.js';
+
+interface CountRow {
+  count: number;
+}
 import { getProfiles, createProfile, getProfileById } from './profile-service.js';
-import { exportProfileToArchive, importProfileFromArchive } from './archive-service.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
 import { createLogger } from '../../07_BACKEND/utils/logger.js';
 
@@ -33,8 +35,8 @@ export function ensureDefaultWorkspace(): Workspace {
 
   if (existing) {
     if (!activeWorkspaceId) activeWorkspaceId = existing.id;
-    const memberCount = (db.prepare('SELECT COUNT(*) as count FROM workspace_members WHERE workspace_id = ?').get(existing.id) as any)?.count || 0;
-    const profileCount = (db.prepare('SELECT COUNT(*) as count FROM profile_workspaces WHERE workspace_id = ?').get(existing.id) as any)?.count || 0;
+    const memberCount = db.prepare('SELECT COUNT(*) as count FROM workspace_members WHERE workspace_id = ?').get<CountRow>(existing.id)?.count || 0;
+    const profileCount = db.prepare('SELECT COUNT(*) as count FROM profile_workspaces WHERE workspace_id = ?').get<CountRow>(existing.id)?.count || 0;
     return {
       id: existing.id,
       name: existing.name,
@@ -91,8 +93,8 @@ export function getWorkspaces(): Workspace[] {
   }[];
 
   return rows.map((r) => {
-    const memberCount = (db.prepare('SELECT COUNT(*) as count FROM workspace_members WHERE workspace_id = ?').get(r.id) as any)?.count || 0;
-    const profileCount = (db.prepare('SELECT COUNT(*) as count FROM profile_workspaces WHERE workspace_id = ?').get(r.id) as any)?.count || 0;
+    const memberCount = db.prepare('SELECT COUNT(*) as count FROM workspace_members WHERE workspace_id = ?').get<CountRow>(r.id)?.count || 0;
+    const profileCount = db.prepare('SELECT COUNT(*) as count FROM profile_workspaces WHERE workspace_id = ?').get<CountRow>(r.id)?.count || 0;
     return {
       id: r.id,
       name: r.name,
@@ -121,8 +123,8 @@ export function getWorkspaceById(id: string): Workspace | null {
 
   if (!r) return null;
 
-  const memberCount = (db.prepare('SELECT COUNT(*) as count FROM workspace_members WHERE workspace_id = ?').get(r.id) as any)?.count || 0;
-  const profileCount = (db.prepare('SELECT COUNT(*) as count FROM profile_workspaces WHERE workspace_id = ?').get(r.id) as any)?.count || 0;
+  const memberCount = db.prepare('SELECT COUNT(*) as count FROM workspace_members WHERE workspace_id = ?').get<CountRow>(r.id)?.count || 0;
+  const profileCount = db.prepare('SELECT COUNT(*) as count FROM profile_workspaces WHERE workspace_id = ?').get<CountRow>(r.id)?.count || 0;
   return {
     id: r.id,
     name: r.name,
@@ -154,7 +156,9 @@ export function createWorkspace(dto: CreateWorkspaceDTO): Workspace {
   `).run(memberId, id, now);
 
   logActivity('SETTINGS', 'SUCCESS', 'Create Workspace', `Created workspace "${dto.name}"`);
-  return getWorkspaceById(id)!;
+  const created = getWorkspaceById(id);
+  if (!created) throw new Error(`Created workspace ${id} could not be retrieved`);
+  return created;
 }
 
 export function updateWorkspace(id: string, dto: Partial<CreateWorkspaceDTO>): Workspace {
@@ -175,7 +179,9 @@ export function updateWorkspace(id: string, dto: Partial<CreateWorkspaceDTO>): W
     id
   );
 
-  return getWorkspaceById(id)!;
+  const updated = getWorkspaceById(id);
+  if (!updated) throw new Error(`Updated workspace ${id} could not be retrieved`);
+  return updated;
 }
 
 export function deleteWorkspace(id: string): boolean {
@@ -239,7 +245,7 @@ export function getWorkspaceMembers(workspaceId: string): TeamMember[] {
       name: r.name,
       email: r.email,
       role: r.role as MemberRole,
-      status: r.status as any,
+      status: r.status as MemberStatus,
       assignedProfileIds,
       createdAt: r.created_at,
     };
@@ -338,7 +344,7 @@ export async function exportWorkspaceBundle(options: WorkspaceBundleExportOption
 
 export async function importWorkspaceBundle(bundleJson: string, targetWorkspaceId?: string): Promise<{ importedProfilesCount: number; workspaceId: string }> {
   const data = JSON.parse(bundleJson);
-  if (!data.format || !data.format.startsWith('MAHI_WORKSPACE_BUNDLE')) {
+  if (!data.format?.startsWith('MAHI_WORKSPACE_BUNDLE')) {
     throw new Error('Invalid workspace bundle format');
   }
 
@@ -355,7 +361,7 @@ export async function importWorkspaceBundle(bundleJson: string, targetWorkspaceI
   let count = 0;
   if (Array.isArray(data.profiles)) {
     for (const p of data.profiles) {
-      if (p && p.name) {
+      if (p?.name) {
         const created = createProfile({
           name: p.name,
           folder: p.folder || 'Imported',

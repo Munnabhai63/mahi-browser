@@ -1,6 +1,6 @@
-import http from 'node:http';
+import type http from 'node:http';
 import { URL } from 'node:url';
-import { sendJSON } from './routes/router-shared.js';
+import { sendJSON, type ResponseWithReq } from './routes/router-shared.js';
 import { sendSafeError } from '../utils/app-error.js';
 import { resolveTrustedClientIp, isTrustedOrigin } from '../utils/http-security.js';
 import { handleRemoteApiRoutes } from './remote-api-router.js';
@@ -42,7 +42,7 @@ export async function handleCommercialApiRoutes(
   method: string,
   parsedUrl: URL
 ): Promise<boolean> {
-  (res as any).__req = req;
+  (res as ResponseWithReq).__req = req;
 
   // Handle CORS preflight OPTIONS requests for all commercial API paths
   if (method === 'OPTIONS') {

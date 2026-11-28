@@ -1,20 +1,96 @@
 import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import {
-  TeamRole,
-  TeamPermission,
+  type TeamRole,
+  type TeamPermission,
   ROLE_PERMISSIONS,
-  TeamWorkspace,
-  TeamWorkspaceMember,
-  TeamWorkspaceInvitation,
-  TeamProfileShare,
-  TeamWorkspaceAuditLog,
+  type TeamWorkspace,
+  type TeamWorkspaceMember,
+  type TeamWorkspaceInvitation,
+  type TeamProfileShare,
+  type TeamWorkspaceAuditLog,
 } from '../../10_CONFIG/shared/types/workspace.js';
 import { getEmailProvider } from '../../05_AUTH/email-service.js';
 import { getCentralUserById, getCentralUserByEmail } from '../../05_AUTH/central-auth-service.js';
 import { appUrl } from '../../10_CONFIG/shared/site-config.js';
 import { createLogger } from '../utils/logger.js';
 const log = createLogger('team-workspace-service');
+
+interface SqliteWorkspaceRow {
+  id: string;
+  name: string;
+  description: string | null;
+  owner_user_id: string;
+  owner_email: string;
+  owner_name: string;
+  status: TeamWorkspace['status'];
+  created_at: string;
+  updated_at: string;
+  member_count: number;
+  profile_count: number;
+  user_role: string;
+}
+
+interface SqliteTeamMemberRow {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  email: string;
+  name: string;
+  role: string;
+  status: TeamWorkspaceMember['status'];
+  joined_at: string;
+  invited_by: string | null;
+  created_at: string;
+}
+
+interface SqliteInvitationRow {
+  id: string;
+  workspace_id: string;
+  workspace_name: string;
+  email: string;
+  role: string;
+  invited_by: string;
+  invited_by_name: string | null;
+  status: TeamWorkspaceInvitation['status'];
+  expires_at: string;
+  created_at: string;
+}
+
+interface SqliteCloudProfileOwnerRow {
+  id: string;
+  owner_id: string;
+  name: string;
+}
+
+interface SqliteIdRow {
+  id: string;
+}
+
+interface SqliteJoinedShareRow {
+  id: string;
+  workspace_id: string;
+  cloud_profile_id: string;
+  profile_name: string;
+  shared_by: string;
+  shared_by_name: string | null;
+  permission_level: TeamProfileShare['permissionLevel'];
+  encrypted_key_envelope: string;
+  created_at: string;
+  locked_by_device: string | null;
+  lock_expires_at: string | null;
+}
+
+interface SqliteWorkspaceAuditRow {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  user_email: string | null;
+  action: string;
+  target_id: string | null;
+  details: string | null;
+  created_at: string;
+}
 
 // ============================================================================
 // PERMISSION CHECK HELPERS
@@ -33,7 +109,7 @@ export function getMemberRoleInWorkspace(userId: string, workspaceId: string): {
 
 export function hasWorkspacePermission(userId: string, workspaceId: string, permission: TeamPermission): boolean {
   const member = getMemberRoleInWorkspace(userId, workspaceId);
-  if (!member || member.status !== 'ACTIVE') {
+  if (member?.status !== 'ACTIVE') {
     return false;
   }
 
@@ -73,7 +149,7 @@ export interface CreateTeamWorkspaceInput {
 
 export function createTeamWorkspace(ownerUserId: string, input: CreateTeamWorkspaceInput): TeamWorkspace {
   const user = getCentralUserById(ownerUserId);
-  if (!user || user.status !== 'ACTIVE') {
+  if (user?.status !== 'ACTIVE') {
     throw new Error('User not found or account is not active');
   }
 
@@ -120,7 +196,7 @@ export function createTeamWorkspace(ownerUserId: string, input: CreateTeamWorksp
     memberCount: 1,
     profileCount: 0,
     userRole: 'OWNER',
-    userPermissions: ROLE_PERMISSIONS['OWNER'],
+    userPermissions: ROLE_PERMISSIONS.OWNER,
   };
 }
 
@@ -135,7 +211,7 @@ export function listUserTeamWorkspaces(userId: string): TeamWorkspace[] {
     JOIN auth_users u ON w.owner_user_id = u.id
     WHERE m.user_id = ? AND m.status = 'ACTIVE' AND w.status = 'ACTIVE'
     ORDER BY w.created_at DESC
-  `).all(userId) as any[];
+  `).all<SqliteWorkspaceRow>(userId);
 
   return rows.map((r) => ({
     id: r.id,
@@ -164,7 +240,7 @@ export function getTeamWorkspace(userId: string, workspaceId: string): TeamWorks
     JOIN team_workspace_members m ON w.id = m.workspace_id
     JOIN auth_users u ON w.owner_user_id = u.id
     WHERE w.id = ? AND m.user_id = ? AND m.status = 'ACTIVE' AND w.status = 'ACTIVE'
-  `).get(workspaceId, userId) as any;
+  `).get(workspaceId, userId) as SqliteWorkspaceRow | undefined;
 
   if (!row) return null;
 
@@ -210,7 +286,9 @@ export function updateTeamWorkspace(
   `).run(newName, newDesc, now, workspaceId);
 
   logWorkspaceAudit(workspaceId, userId, 'WORKSPACE_UPDATED', `Updated workspace details`);
-  return getTeamWorkspace(userId, workspaceId)!;
+  const updated = getTeamWorkspace(userId, workspaceId);
+  if (!updated) throw new Error('Workspace not found');
+  return updated;
 }
 
 export function deleteTeamWorkspace(userId: string, workspaceId: string): boolean {
@@ -252,14 +330,14 @@ export function transferWorkspaceOwnership(userId: string, workspaceId: string, 
   const db = getDatabase();
   const targetMember = db.prepare(`
     SELECT * FROM team_workspace_members WHERE workspace_id = ? AND user_id = ? AND status = 'ACTIVE'
-  `).get(workspaceId, newOwnerUserId) as any;
+  `).get(workspaceId, newOwnerUserId) as SqliteIdRow | undefined;
 
   if (!targetMember) {
     throw new Error('Target user must be an active member of the workspace');
   }
 
   const targetUser = getCentralUserById(newOwnerUserId);
-  if (!targetUser || targetUser.status !== 'ACTIVE') {
+  if (targetUser?.status !== 'ACTIVE') {
     throw new Error('Target user account is not active');
   }
 
@@ -315,7 +393,7 @@ export function getWorkspaceMembers(userId: string, workspaceId: string): TeamWo
       WHEN 'MEMBER' THEN 4
       WHEN 'VIEWER' THEN 5
       ELSE 6 END, u.name ASC
-  `).all(workspaceId) as any[];
+  `).all<SqliteTeamMemberRow>(workspaceId);
 
   return rows.map((r) => ({
     id: r.id,
@@ -346,7 +424,7 @@ export function updateMemberRole(
   }
 
   const db = getDatabase();
-  const ws = db.prepare('SELECT * FROM team_workspaces WHERE id = ?').get(workspaceId) as any;
+  const ws = db.prepare('SELECT * FROM team_workspaces WHERE id = ?').get(workspaceId) as { owner_user_id: string } | undefined;
   if (!ws) throw new Error('Workspace not found');
 
   if (ws.owner_user_id === targetUserId) {
@@ -355,7 +433,7 @@ export function updateMemberRole(
 
   const targetMember = db.prepare(`
     SELECT * FROM team_workspace_members WHERE workspace_id = ? AND user_id = ? AND status = 'ACTIVE'
-  `).get(workspaceId, targetUserId) as any;
+  `).get(workspaceId, targetUserId) as SqliteTeamMemberRow | undefined;
 
   if (!targetMember) {
     throw new Error('Member not found in workspace');
@@ -390,7 +468,7 @@ export function removeWorkspaceMember(actorUserId: string, workspaceId: string, 
   }
 
   const db = getDatabase();
-  const ws = db.prepare('SELECT * FROM team_workspaces WHERE id = ?').get(workspaceId) as any;
+  const ws = db.prepare('SELECT * FROM team_workspaces WHERE id = ?').get(workspaceId) as { owner_user_id: string } | undefined;
   if (!ws) throw new Error('Workspace not found');
 
   if (ws.owner_user_id === targetUserId) {
@@ -399,7 +477,7 @@ export function removeWorkspaceMember(actorUserId: string, workspaceId: string, 
 
   const targetMember = db.prepare(`
     SELECT * FROM team_workspace_members WHERE workspace_id = ? AND user_id = ? AND status = 'ACTIVE'
-  `).get(workspaceId, targetUserId) as any;
+  `).get(workspaceId, targetUserId) as SqliteTeamMemberRow | undefined;
 
   if (!targetMember) {
     throw new Error('Member not found in workspace');
@@ -468,12 +546,12 @@ export async function inviteWorkspaceMember(
   }
 
   const normalizedEmail = email.trim().toLowerCase();
-  if (!normalizedEmail || !normalizedEmail.includes('@')) {
+  if (!normalizedEmail?.includes('@')) {
     throw new Error('Valid email address is required');
   }
 
   const db = getDatabase();
-  const ws = db.prepare('SELECT name FROM team_workspaces WHERE id = ?').get(workspaceId) as any;
+  const ws = db.prepare('SELECT name FROM team_workspaces WHERE id = ?').get(workspaceId) as { name: string } | undefined;
   if (!ws) throw new Error('Workspace not found');
 
   // Check if already an active member
@@ -491,7 +569,7 @@ export async function inviteWorkspaceMember(
   const pendingInvite = db.prepare(`
     SELECT * FROM team_workspace_invitations
     WHERE workspace_id = ? AND email = ? AND status = 'PENDING' AND expires_at > ?
-  `).get(workspaceId, normalizedEmail, new Date().toISOString()) as any;
+  `).get(workspaceId, normalizedEmail, new Date().toISOString()) as SqliteIdRow | undefined;
 
   if (pendingInvite) {
     throw new Error(`A pending invitation for "${normalizedEmail}" already exists`);
@@ -551,7 +629,7 @@ export function listWorkspaceInvitations(userId: string, workspaceId: string): T
     LEFT JOIN auth_users u ON i.invited_by = u.id
     WHERE i.workspace_id = ? AND i.status = 'PENDING'
     ORDER BY i.created_at DESC
-  `).all(workspaceId) as any[];
+  `).all<SqliteInvitationRow>(workspaceId);
 
   return rows.map((r) => ({
     id: r.id,
@@ -575,7 +653,7 @@ export function revokeWorkspaceInvitation(userId: string, workspaceId: string, i
   const db = getDatabase();
   const invite = db.prepare(`
     SELECT * FROM team_workspace_invitations WHERE id = ? AND workspace_id = ?
-  `).get(invitationId, workspaceId) as any;
+  `).get(invitationId, workspaceId) as SqliteInvitationRow | undefined;
 
   if (!invite) throw new Error('Invitation not found');
   if (invite.status !== 'PENDING') throw new Error(`Invitation is already ${invite.status}`);
@@ -593,7 +671,7 @@ export function acceptWorkspaceInvitation(
   rawToken: string
 ): { success: boolean; workspaceId: string; role: TeamRole } {
   const user = getCentralUserById(userId);
-  if (!user || user.status !== 'ACTIVE') {
+  if (user?.status !== 'ACTIVE') {
     throw new Error('User not found or account is not active');
   }
 
@@ -601,7 +679,7 @@ export function acceptWorkspaceInvitation(
   const db = getDatabase();
   const invite = db.prepare(`
     SELECT * FROM team_workspace_invitations WHERE token_hash = ?
-  `).get(tokenHash) as any;
+  `).get(tokenHash) as SqliteInvitationRow | undefined;
 
   if (!invite) {
     throw new Error('Invalid invitation token');
@@ -629,7 +707,7 @@ export function acceptWorkspaceInvitation(
   // Check if already an active member
   const existingMember = db.prepare(`
     SELECT * FROM team_workspace_members WHERE workspace_id = ? AND user_id = ?
-  `).get(invite.workspace_id, user.id) as any;
+  `).get(invite.workspace_id, user.id) as SqliteTeamMemberRow | undefined;
 
   if (existingMember && existingMember.status === 'ACTIVE') {
     db.prepare("UPDATE team_workspace_invitations SET status = 'ACCEPTED' WHERE id = ?").run(invite.id);
@@ -688,7 +766,7 @@ export function shareProfileToWorkspace(
   // Profile must exist
   const profile = db.prepare(`
     SELECT * FROM cloud_profiles WHERE id = ? AND status != 'DELETED'
-  `).get(input.cloudProfileId) as any;
+  `).get(input.cloudProfileId) as SqliteCloudProfileOwnerRow | undefined;
 
   if (!profile) {
     throw new Error('Cloud profile not found');
@@ -705,7 +783,7 @@ export function shareProfileToWorkspace(
 
   const existingShare = db.prepare(`
     SELECT * FROM team_profile_shares WHERE workspace_id = ? AND cloud_profile_id = ?
-  `).get(workspaceId, input.cloudProfileId) as any;
+  `).get(workspaceId, input.cloudProfileId) as SqliteIdRow | undefined;
 
   let shareId: string;
   if (existingShare) {
@@ -751,7 +829,7 @@ export function revokeProfileShare(userId: string, workspaceId: string, cloudPro
   const db = getDatabase();
   const share = db.prepare(`
     SELECT * FROM team_profile_shares WHERE workspace_id = ? AND cloud_profile_id = ? AND revoked_at IS NULL
-  `).get(workspaceId, cloudProfileId) as any;
+  `).get(workspaceId, cloudProfileId) as SqliteIdRow | undefined;
 
   if (!share) throw new Error('Active profile share not found');
 
@@ -785,7 +863,7 @@ export function listWorkspaceProfiles(userId: string, workspaceId: string): Team
     LEFT JOIN cloud_profile_locks l ON s.cloud_profile_id = l.cloud_profile_id AND l.expires_at > ?
     WHERE s.workspace_id = ? AND s.revoked_at IS NULL AND p.status != 'DELETED'
     ORDER BY s.created_at DESC
-  `).all(new Date().toISOString(), workspaceId) as any[];
+  `).all<SqliteJoinedShareRow>(new Date().toISOString(), workspaceId);
 
   return rows.map((r) => ({
     id: r.id,
@@ -826,7 +904,7 @@ export function getWorkspaceAuditLogs(
     WHERE a.workspace_id = ?
     ORDER BY a.created_at DESC
     LIMIT ?
-  `).all(workspaceId, limit) as any[];
+  `).all<SqliteWorkspaceAuditRow>(workspaceId, limit);
 
   return rows.map((r) => ({
     id: r.id,
@@ -869,7 +947,7 @@ export function setWorkspaceKeyEnvelope(
 
 export function getWorkspaceKeyEnvelope(userId: string, workspaceId: string): string | null {
   const member = getMemberRoleInWorkspace(userId, workspaceId);
-  if (!member || member.status !== 'ACTIVE') {
+  if (member?.status !== 'ACTIVE') {
     return null;
   }
 

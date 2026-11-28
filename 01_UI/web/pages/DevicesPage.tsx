@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Laptop, Smartphone, Monitor, Trash2, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
+import type React from 'react';
+import { useState } from 'react';
+import { Laptop, Smartphone, Monitor, Trash2, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { ConfirmModal } from '../components/ConfirmModal.js';
 import { APP_VERSION } from '../../../10_CONFIG/shared/version.js';
 

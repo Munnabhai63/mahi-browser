@@ -15,12 +15,12 @@ import crypto from 'node:crypto';
 import dns from 'node:dns';
 import net from 'node:net';
 import http from 'node:http';
-import https from 'https';
+import https from 'node:https';
 import { URL } from 'node:url';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { encryptData, decryptData } from '../../08_SECURITY/encryption.js';
 import { logCommercialAudit } from '../commercial/commercial-audit-service.js';
-import {
+import type {
   WebhookEventType,
   WebhookEndpointRecord,
   CreateWebhookEndpointDTO,
@@ -29,6 +29,38 @@ import {
 } from '../../10_CONFIG/shared/types/remote-api.js';
 import { createLogger } from '../utils/logger.js';
 const log = createLogger('webhook-service');
+
+interface SqliteWebhookEndpointRow {
+  id: string;
+  user_id: string;
+  workspace_id: string | null;
+  url: string;
+  description: string | null;
+  secret_hash: string;
+  secret_encrypted: string;
+  events_json: string | null;
+  status: WebhookEndpointRecord['status'];
+  failure_count: number | null;
+  last_delivery_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface SqliteWebhookDeliveryRow {
+  id: string;
+  endpoint_id: string;
+  event_id: string;
+  event_type: WebhookEventType;
+  payload_json: string;
+  destination_url: string;
+  status_code: number | undefined;
+  response_body: string | undefined;
+  duration_ms: number;
+  attempt_count: number;
+  success: number;
+  error_message: string | undefined;
+  delivered_at: string;
+}
 
 // ============================================================================
 // SSRF PROTECTION VALIDATION
@@ -39,7 +71,7 @@ const log = createLogger('webhook-service');
  */
 function isPrivateIPv4(ip: string): boolean {
   const parts = ip.split('.').map((p) => parseInt(p, 10));
-  if (parts.length !== 4 || parts.some((p) => isNaN(p) || p < 0 || p > 255)) {
+  if (parts.length !== 4 || parts.some((p) => Number.isNaN(p) || p < 0 || p > 255)) {
     return true; // malformed IP treated as unsafe
   }
 
@@ -238,7 +270,7 @@ export function verifyWebhookSignature(
   }
 
   const timestamp = parseInt(timestampStr, 10);
-  if (isNaN(timestamp)) {
+  if (Number.isNaN(timestamp)) {
     return { verified: false, reason: 'Invalid signature timestamp' };
   }
 
@@ -322,7 +354,7 @@ export class WebhookService {
       description: dto.description?.trim(),
       secretHash,
       secretEncrypted,
-      events: events as any,
+      events: events as WebhookEventType[],
       status: 'ACTIVE',
       failureCount: 0,
       createdAt: now,
@@ -354,20 +386,20 @@ export class WebhookService {
     }
 
     query += ' ORDER BY created_at DESC';
-    const rows = db.prepare(query).all(...params) as any[];
+    const rows = db.prepare(query).all<SqliteWebhookEndpointRow>(...params);
 
     return rows.map((r) => ({
       id: r.id,
       userId: r.user_id,
       workspaceId: r.workspace_id,
       url: r.url,
-      description: r.description,
+      description: r.description ?? undefined,
       secretHash: r.secret_hash,
       secretEncrypted: r.secret_encrypted,
-      events: JSON.parse(r.events_json || '[]'),
+      events: JSON.parse(r.events_json || '[]') as WebhookEventType[],
       status: r.status,
       failureCount: r.failure_count || 0,
-      lastDeliveryAt: r.last_delivery_at,
+      lastDeliveryAt: r.last_delivery_at ?? undefined,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     }));
@@ -375,7 +407,7 @@ export class WebhookService {
 
   public getEndpoint(endpointId: string, userId: string): WebhookEndpointRecord | null {
     const db = getDatabase();
-    const row = db.prepare('SELECT * FROM webhook_endpoints WHERE id = ? AND user_id = ?').get(endpointId, userId) as any;
+    const row = db.prepare('SELECT * FROM webhook_endpoints WHERE id = ? AND user_id = ?').get<SqliteWebhookEndpointRow>(endpointId, userId);
     if (!row) return null;
 
     return {
@@ -383,10 +415,10 @@ export class WebhookService {
       userId: row.user_id,
       workspaceId: row.workspace_id,
       url: row.url,
-      description: row.description,
+      description: row.description ?? undefined,
       secretHash: row.secret_hash,
       secretEncrypted: row.secret_encrypted,
-      events: JSON.parse(row.events_json || '[]'),
+      events: JSON.parse(row.events_json || '[]') as WebhookEventType[],
       status: row.status,
       failureCount: row.failure_count || 0,
       lastDeliveryAt: row.last_delivery_at,
@@ -466,7 +498,7 @@ export class WebhookService {
       WHERE endpoint_id = ?
       ORDER BY delivered_at DESC
       LIMIT ?
-    `).all(endpointId, Math.min(limit, 100)) as any[];
+    `).all<SqliteWebhookDeliveryRow>(endpointId, Math.min(limit, 100));
 
     return rows.map((r) => ({
       id: r.id,
@@ -508,7 +540,7 @@ export class WebhookService {
       params.push(options.userId, options.workspaceId || options.userId);
     }
 
-    const endpoints = db.prepare(query).all(...params) as any[];
+    const endpoints = db.prepare(query).all<SqliteWebhookEndpointRow>(...params);
     if (endpoints.length === 0) return 0;
 
     const eventId = `evt_${crypto.randomUUID()}`;
@@ -564,7 +596,7 @@ export class WebhookService {
   }
 
   private async deliverPayloadAsync(
-    endpointRow: any,
+    endpointRow: SqliteWebhookEndpointRow,
     payload: WebhookPayload,
     allowHttp?: boolean
   ): Promise<WebhookDeliveryRecord> {
@@ -575,7 +607,7 @@ export class WebhookService {
       url: endpointRow.url,
       secretHash: endpointRow.secret_hash,
       secretEncrypted: endpointRow.secret_encrypted,
-      events: JSON.parse(endpointRow.events_json || '[]'),
+      events: JSON.parse(endpointRow.events_json || '[]') as WebhookEventType[],
       status: endpointRow.status,
       failureCount: endpointRow.failure_count || 0,
       createdAt: endpointRow.created_at,
@@ -625,14 +657,14 @@ export class WebhookService {
         } else {
           lastError = `HTTP ${result.statusCode}: ${result.body.substring(0, 200)}`;
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         durationMs = Date.now() - startTime;
-        lastError = err.message || 'Delivery request failed';
+        lastError = err instanceof Error ? err.message : 'Delivery request failed';
       }
 
       if (!success && attempt < maxRetries) {
         // Backoff between retries (100ms * attempt for responsive tests, up to 1000ms in prod)
-        const backoffMs = Math.min(100 * Math.pow(2, attempt - 1), 1000);
+        const backoffMs = Math.min(100 * 2 ** (attempt - 1), 1000);
         await new Promise((res) => setTimeout(res, backoffMs));
       }
     }
@@ -730,7 +762,11 @@ export class WebhookService {
         method: 'POST',
         ...(pinnedAddress && pinnedFamily
           ? {
-              lookup: (_hostname: string, _options: any, callback: any) => {
+              lookup: (
+                _hostname: string,
+                _options: dns.LookupOptions,
+                callback: (err: NodeJS.ErrnoException | null, address: string, family: number) => void
+              ) => {
                 callback(null, pinnedAddress, pinnedFamily);
               },
             }

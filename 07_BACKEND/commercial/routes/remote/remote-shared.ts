@@ -1,8 +1,8 @@
-import http from 'node:http';
+import type http from 'node:http';
 import crypto from 'node:crypto';
-import { URL } from 'node:url';
+import type { URL } from 'node:url';
 import { RemoteApiService } from '../../../services/remote-api-service.js';
-import { WebhookService } from '../../../services/webhook-service.js';
+import type { WebhookService } from '../../../services/webhook-service.js';
 import { verifyAccessToken, getCentralUserById, getCentralUserByIdAsync } from '../../../../05_AUTH/central-auth-service.js';
 import {
   verifyPostgresOrSqliteUserAndSessionAsync,
@@ -12,17 +12,17 @@ import { isPostgresConfigured, getCentralRepository } from '../../../../06_DATAB
 import {
   readBoundedText,
   parseBoundedJson,
-  BoundedBodyOptions,
+  type BoundedBodyOptions,
   isTrustedOrigin,
 } from '../../../utils/http-security.js';
 import { checkCapability } from '../../commercial-entitlement-service.js';
-import { FeatureCapability } from '../../../../10_CONFIG/shared/types/commercial.js';
-import {
+import type { CommercialRole, FeatureCapability } from '../../../../10_CONFIG/shared/types/commercial.js';
+import type {
   RemoteAuthContext,
   RemoteApiScope,
   RemoteApiResponse,
 } from '../../../../10_CONFIG/shared/types/remote-api.js';
-import { TeamPermission } from '../../../../10_CONFIG/shared/types/workspace.js';
+import type { TeamPermission } from '../../../../10_CONFIG/shared/types/workspace.js';
 
 export interface RemoteRateLimitInfo {
   limit: number;
@@ -50,8 +50,8 @@ export function parseRawBody(req: http.IncomingMessage, options: BoundedBodyOpti
   return readBoundedText(req, options);
 }
 
-export function parseBody(req: http.IncomingMessage, options: BoundedBodyOptions = {}): Promise<any> {
-  return parseBoundedJson(req, options);
+export function parseBody<T = Record<string, unknown>>(req: http.IncomingMessage, options: BoundedBodyOptions = {}): Promise<T> {
+  return parseBoundedJson<T>(req, options);
 }
 
 export function sendRemoteJSON(
@@ -122,7 +122,7 @@ export function sendRemoteJSON(
 export async function resolveRemoteAuthAsync(req: http.IncomingMessage): Promise<RemoteAuthContext | null> {
   const remoteService = RemoteApiService.getInstance();
   const apiKeyHeader = (req.headers['x-api-key'] as string) || '';
-  const authHeader = (req.headers['authorization'] as string) || '';
+  const authHeader = req.headers.authorization || '';
 
   let candidateApiKey = '';
   if (apiKeyHeader) {
@@ -136,11 +136,11 @@ export async function resolveRemoteAuthAsync(req: http.IncomingMessage): Promise
       const repo = getCentralRepository();
       const keyHash = crypto.createHash('sha256').update(candidateApiKey).digest('hex');
       const keyRecord = await repo.findRemoteApiKeyByHash(keyHash);
-      if (!keyRecord || keyRecord.status !== 'ACTIVE') return null;
+      if (keyRecord?.status !== 'ACTIVE') return null;
       if (keyRecord.expires_at && new Date(keyRecord.expires_at).getTime() < Date.now()) return null;
 
       const user = await repo.findAuthUserById(keyRecord.user_id);
-      if (!user || user.status !== 'ACTIVE') return null;
+      if (user?.status !== 'ACTIVE') return null;
 
       let scopes: RemoteApiScope[] = [];
       try {
@@ -155,7 +155,7 @@ export async function resolveRemoteAuthAsync(req: http.IncomingMessage): Promise
         authType: 'API_KEY',
         userId: user.id,
         email: user.email,
-        userRole: user.role as any,
+        userRole: user.role as CommercialRole,
         apiKeyId: keyRecord.id,
         apiKeyPrefix: keyRecord.key_prefix,
         apiKeyScopes: scopes,
@@ -170,7 +170,7 @@ export async function resolveRemoteAuthAsync(req: http.IncomingMessage): Promise
       authType: 'API_KEY',
       userId: keyAuth.user.id,
       email: keyAuth.user.email,
-      userRole: keyAuth.user.role as any,
+      userRole: keyAuth.user.role as CommercialRole,
       apiKeyId: keyAuth.keyRecord.id,
       apiKeyPrefix: keyAuth.keyRecord.keyPrefix,
       apiKeyScopes: keyAuth.keyRecord.scopes,
@@ -187,7 +187,7 @@ export async function resolveRemoteAuthAsync(req: http.IncomingMessage): Promise
     if (!payload) return null;
 
     const user = await getCentralUserByIdAsync(payload.userId);
-    if (!user || user.status !== 'ACTIVE') return null;
+    if (user?.status !== 'ACTIVE') return null;
 
     const sessionCheck = await verifyPostgresOrSqliteUserAndSessionAsync(payload.userId, payload.sessionId);
     if (!sessionCheck.active) return null;
@@ -196,7 +196,7 @@ export async function resolveRemoteAuthAsync(req: http.IncomingMessage): Promise
       authType: 'JWT',
       userId: user.id,
       email: user.email,
-      userRole: user.role as any,
+      userRole: user.role as CommercialRole,
       sessionId: payload.sessionId,
     };
   }
@@ -207,7 +207,7 @@ export async function resolveRemoteAuthAsync(req: http.IncomingMessage): Promise
 export function resolveRemoteAuth(req: http.IncomingMessage): RemoteAuthContext | null {
   const remoteService = RemoteApiService.getInstance();
   const apiKeyHeader = (req.headers['x-api-key'] as string) || '';
-  const authHeader = (req.headers['authorization'] as string) || '';
+  const authHeader = req.headers.authorization || '';
 
   let candidateApiKey = '';
   if (apiKeyHeader) {
@@ -224,7 +224,7 @@ export function resolveRemoteAuth(req: http.IncomingMessage): RemoteAuthContext 
       authType: 'API_KEY',
       userId: keyAuth.user.id,
       email: keyAuth.user.email,
-      userRole: keyAuth.user.role as any,
+      userRole: keyAuth.user.role as CommercialRole,
       apiKeyId: keyAuth.keyRecord.id,
       apiKeyPrefix: keyAuth.keyRecord.keyPrefix,
       apiKeyScopes: keyAuth.keyRecord.scopes,
@@ -239,13 +239,13 @@ export function resolveRemoteAuth(req: http.IncomingMessage): RemoteAuthContext 
     if (!payload) return null;
 
     const user = getCentralUserById(payload.userId);
-    if (!user || user.status !== 'ACTIVE') return null;
+    if (user?.status !== 'ACTIVE') return null;
 
     return {
       authType: 'JWT',
       userId: user.id,
       email: user.email,
-      userRole: user.role as any,
+      userRole: user.role as CommercialRole,
       sessionId: payload.sessionId,
     };
   }

@@ -1,4 +1,4 @@
-import http from 'node:http';
+import type http from 'node:http';
 import net from 'node:net';
 import crypto from 'node:crypto';
 
@@ -165,6 +165,16 @@ export function resolveTrustedClientIp(req: http.IncomingMessage): string {
   return socketIp;
 }
 
+type BufferedIncomingMessage = http.IncomingMessage & {
+  rawBuffer?: unknown;
+  body?: unknown;
+  readableEnded?: boolean;
+  _readableState?: { ended?: boolean };
+  pause?: () => unknown;
+  off?: (event: string, listener: (...args: unknown[]) => void) => unknown;
+  removeListener?: (event: string, listener: (...args: unknown[]) => void) => unknown;
+};
+
 /**
  * Reads an HTTP request body as a Buffer while enforcing a strict maximum byte size
  * and idle read timeout to prevent memory exhaustion / slowloris DoS.
@@ -173,18 +183,19 @@ export function readBoundedBuffer(
   req: http.IncomingMessage,
   options: BoundedBodyOptions = {}
 ): Promise<Buffer> {
+  const bufferedReq = req as BufferedIncomingMessage;
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_RAW_BODY_BYTES;
   const timeoutMs = options.timeoutMs ?? DEFAULT_BODY_TIMEOUT_MS;
 
-  if ((req as any).rawBuffer !== undefined && Buffer.isBuffer((req as any).rawBuffer)) {
-    const preBuffered = (req as any).rawBuffer as Buffer;
+  if (bufferedReq.rawBuffer !== undefined && Buffer.isBuffer(bufferedReq.rawBuffer)) {
+    const preBuffered = bufferedReq.rawBuffer;
     if (preBuffered.length > maxBytes) {
       return Promise.reject(new PayloadTooLargeError(maxBytes));
     }
     return Promise.resolve(preBuffered);
   }
-  if ((req as any).body !== undefined && (req as any).body !== null) {
-    const preBody = (req as any).body;
+  if (bufferedReq.body !== undefined && bufferedReq.body !== null) {
+    const preBody = bufferedReq.body;
     const preBuf = Buffer.isBuffer(preBody)
       ? preBody
       : Buffer.from(typeof preBody === 'string' ? preBody : JSON.stringify(preBody), 'utf8');
@@ -193,7 +204,7 @@ export function readBoundedBuffer(
     }
     return Promise.resolve(preBuf);
   }
-  if ((req as any).readableEnded || (req as any)._readableState?.ended) {
+  if (bufferedReq.readableEnded || bufferedReq._readableState?.ended) {
     return Promise.resolve(Buffer.alloc(0));
   }
 
@@ -201,8 +212,8 @@ export function readBoundedBuffer(
   if (typeof contentLengthHeader === 'string' && contentLengthHeader.trim()) {
     const declaredLength = parseInt(contentLengthHeader, 10);
     if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
-      if (typeof (req as any).pause === 'function') {
-        (req as any).pause();
+      if (typeof bufferedReq.pause === 'function') {
+        bufferedReq.pause();
       }
       return Promise.reject(new PayloadTooLargeError(maxBytes));
     }
@@ -214,11 +225,11 @@ export function readBoundedBuffer(
     let settled = false;
     let timer: NodeJS.Timeout | undefined;
 
-    const removeListener = (event: string, fn: (...args: any[]) => void) => {
-      if (typeof (req as any).off === 'function') {
-        (req as any).off(event, fn);
-      } else if (typeof (req as any).removeListener === 'function') {
-        (req as any).removeListener(event, fn);
+    const removeListener = (event: string, fn: (...args: unknown[]) => void) => {
+      if (typeof bufferedReq.off === 'function') {
+        bufferedReq.off(event, fn);
+      } else if (typeof bufferedReq.removeListener === 'function') {
+        bufferedReq.removeListener(event, fn);
       }
     };
 
@@ -227,10 +238,10 @@ export function readBoundedBuffer(
         clearTimeout(timer);
         timer = undefined;
       }
-      removeListener('data', onData);
-      removeListener('end', onEnd);
-      removeListener('error', onError);
-      removeListener('aborted', onAborted);
+      removeListener('data', onData as (...args: unknown[]) => void);
+      removeListener('end', onEnd as (...args: unknown[]) => void);
+      removeListener('error', onError as (...args: unknown[]) => void);
+      removeListener('aborted', onAborted as (...args: unknown[]) => void);
     };
 
     const resetTimer = () => {
@@ -242,8 +253,8 @@ export function readBoundedBuffer(
           if (settled) return;
           settled = true;
           cleanup();
-          if (typeof (req as any).pause === 'function') {
-            (req as any).pause();
+          if (typeof bufferedReq.pause === 'function') {
+            bufferedReq.pause();
           }
           reject(new RequestTimeoutError(timeoutMs));
         }, timeoutMs);
@@ -259,8 +270,8 @@ export function readBoundedBuffer(
         settled = true;
         cleanup();
         chunks.length = 0;
-        if (typeof (req as any).pause === 'function') {
-          (req as any).pause();
+        if (typeof bufferedReq.pause === 'function') {
+          bufferedReq.pause();
         }
         reject(new PayloadTooLargeError(maxBytes));
         return;
@@ -302,43 +313,45 @@ export async function readBoundedText(
   req: http.IncomingMessage,
   options: BoundedBodyOptions = {}
 ): Promise<string> {
+  const bufferedReq = req as BufferedIncomingMessage;
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_JSON_BODY_BYTES;
-  if ((req as any).body !== undefined && typeof (req as any).body === 'string') {
-    if (Buffer.byteLength((req as any).body, 'utf8') > maxBytes) {
+  if (typeof bufferedReq.body === 'string') {
+    if (Buffer.byteLength(bufferedReq.body, 'utf8') > maxBytes) {
       throw new PayloadTooLargeError(maxBytes);
     }
-    return (req as any).body;
+    return bufferedReq.body;
   }
   const buf = await readBoundedBuffer(req, { ...options, maxBytes });
   return buf.toString('utf8');
 }
 
-export async function parseBoundedJson(
+export async function parseBoundedJson<T = Record<string, unknown>>(
   req: http.IncomingMessage,
   options: BoundedBodyOptions = {}
-): Promise<any> {
+): Promise<T> {
+  const bufferedReq = req as BufferedIncomingMessage;
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_JSON_BODY_BYTES;
   if (
-    (req as any).body !== undefined &&
-    (req as any).body !== null &&
-    typeof (req as any).body === 'object' &&
-    !Buffer.isBuffer((req as any).body)
+    bufferedReq.body !== undefined &&
+    bufferedReq.body !== null &&
+    typeof bufferedReq.body === 'object' &&
+    !Buffer.isBuffer(bufferedReq.body)
   ) {
-    return (req as any).body;
+    return bufferedReq.body as T;
   }
   const raw = await readBoundedText(req, { ...options, maxBytes });
-  if (!raw) return {};
+  if (!raw) return {} as T;
   try {
-    return JSON.parse(raw);
+    return JSON.parse(raw) as T;
   } catch {
     throw new InvalidJsonError(options.invalidJsonMessage || 'Invalid JSON payload');
   }
 }
 
 export function getErrorStatusCode(err: unknown, fallback = 500): number {
-  if (err && typeof err === 'object' && typeof (err as any).statusCode === 'number') {
-    const code = (err as any).statusCode;
-    if (code >= 400 && code < 600) {
+  if (err && typeof err === 'object' && 'statusCode' in err) {
+    const code = (err as { statusCode?: unknown }).statusCode;
+    if (typeof code === 'number' && code >= 400 && code < 600) {
       return code;
     }
   }

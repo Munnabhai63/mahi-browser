@@ -10,7 +10,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 function maskEmail(email) {
-  if (!email || !email.includes('@')) return email || '';
+  if (!email?.includes('@')) return email || '';
   const [local, domain] = email.split('@');
   if (local.length <= 1) return `${local}***@${domain}`;
   return `${local[0]}***@${domain}`;

@@ -81,8 +81,8 @@ function createOwnerPermissionsProxy(perms: TeamPermission[]): TeamPermission[] 
   return new Proxy(perms, {
     get(target, prop, receiver) {
       if (prop === 'length') return 18;
-      if (prop === 'includes') return (val: any) => target.includes(val);
-      if (prop === 'indexOf') return (val: any) => target.indexOf(val);
+      if (prop === 'includes') return (val: TeamPermission) => target.includes(val);
+      if (prop === 'indexOf') return (val: TeamPermission) => target.indexOf(val);
       if (prop === Symbol.iterator) return () => target[Symbol.iterator]();
       return Reflect.get(target, prop, receiver);
     },
@@ -244,4 +244,12 @@ export interface TeamWorkspaceAuditLog {
   targetId?: string;
   details?: string;
   createdAt: string;
+}
+
+export interface TeamWorkspaceInviteResult {
+  invitationId: string;
+  email: string;
+  role: TeamRole;
+  token: string;
+  expiresAt: string;
 }

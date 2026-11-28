@@ -4,7 +4,7 @@
  */
 
 import crypto from 'node:crypto';
-import {
+import type {
   ProxyProvider,
   ProviderSessionCredentials,
   ProviderCreateSessionParams,
@@ -12,7 +12,7 @@ import {
   ProviderHealthCheckResult,
   ProviderUsageStats,
 } from '../proxy-provider-interface.js';
-import {
+import type {
   ProxyProviderCapabilities,
   ProxyNetworkType,
   GeoCountryOption,
@@ -28,13 +28,11 @@ export class BrightDataProxyProvider implements ProxyProvider {
   private customerId?: string;
   private zoneName?: string;
   private zonePassword?: string;
-  private apiKey?: string;
 
   constructor() {
     this.customerId = process.env.BRIGHTDATA_CUSTOMER_ID;
     this.zoneName = process.env.BRIGHTDATA_ZONE || 'residential_zone';
     this.zonePassword = process.env.BRIGHTDATA_ZONE_PASSWORD;
-    this.apiKey = process.env.BRIGHTDATA_API_KEY;
   }
 
   getCapabilities(): ProxyProviderCapabilities {
@@ -61,7 +59,7 @@ export class BrightDataProxyProvider implements ProxyProvider {
     return Boolean(this.customerId && this.zonePassword);
   }
 
-  async getCountries(networkType: ProxyNetworkType): Promise<GeoCountryOption[]> {
+  async getCountries(_networkType: ProxyNetworkType): Promise<GeoCountryOption[]> {
     return [
       {
         code: 'US',
@@ -130,7 +128,7 @@ export class BrightDataProxyProvider implements ProxyProvider {
     const host = 'brd.superproxy.io';
     const port = 22225;
 
-    let expiresAt: string | undefined = undefined;
+    let expiresAt: string | undefined ;
     if (params.sessionType === 'STICKY' && params.ttlMinutes) {
       expiresAt = new Date(Date.now() + params.ttlMinutes * 60 * 1000).toISOString();
     }
@@ -140,7 +138,7 @@ export class BrightDataProxyProvider implements ProxyProvider {
       port,
       protocol: 'http',
       username,
-      password: this.zonePassword!,
+      password: this.zonePassword ?? '',
       country: params.country.toUpperCase(),
       region: params.region,
       city: params.city,
@@ -149,7 +147,7 @@ export class BrightDataProxyProvider implements ProxyProvider {
     };
   }
 
-  async rotateSession(upstreamSessionId: string, params: ProviderCreateSessionParams): Promise<ProviderRotateResult> {
+  async rotateSession(_upstreamSessionId: string, params: ProviderCreateSessionParams): Promise<ProviderRotateResult> {
     if (!this.isConfigured()) {
       throw new Error('Bright Data credentials not configured.');
     }
@@ -165,7 +163,7 @@ export class BrightDataProxyProvider implements ProxyProvider {
       host: 'brd.superproxy.io',
       port: 22225,
       username,
-      password: this.zonePassword!,
+      password: this.zonePassword ?? '',
     };
   }
 

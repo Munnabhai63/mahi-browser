@@ -10,6 +10,16 @@ const SAFE_REDIRECT_PREFIXES = [
   '/book-demo',
 ];
 
+function hasControlCharacter(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Validates and normalizes post-auth redirect destinations to prevent open-redirect attacks.
  * Returns a safe relative path (plus query/hash) or trusted MAHI HTTPS URL, or null if unsafe.
@@ -17,7 +27,7 @@ const SAFE_REDIRECT_PREFIXES = [
 export function sanitizeSafeRedirect(raw?: string | null): string | null {
   if (!raw || typeof raw !== 'string') return null;
   const trimmed = raw.trim();
-  if (!trimmed || trimmed.includes('\\') || trimmed.includes('..') || /[\x00-\x1F\x7F]/.test(trimmed)) {
+  if (!trimmed || trimmed.includes('\\') || trimmed.includes('..') || hasControlCharacter(trimmed)) {
     return null;
   }
 

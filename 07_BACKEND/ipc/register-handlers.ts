@@ -1,21 +1,38 @@
 import { ipcMain, dialog, BrowserWindow, app, shell } from '../../08_SECURITY/electron-bridge.js';
-import * as fs from 'fs';
-import * as path from 'path';
+import type { OpenDialogOptions } from 'electron';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 import { getWritableUserDataDir } from '../utils/runtime-paths.js';
 import { redactSensitiveTokens } from '../utils/http-security.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('ipc-register-handlers');
-import { cleanProfileCaches, CleanCacheResult } from '../services/profile-cache-cleaner.js';
+
+function toErrMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function isEnoentError(err: unknown): boolean {
+  return Boolean(err && typeof err === 'object' && 'code' in err && (err as { code?: unknown }).code === 'ENOENT');
+}
+
+const VALID_BILLING_CYCLES = ['MONTHLY', 'QUARTERLY', 'SEMI_ANNUAL', 'ANNUAL'] as const;
+type ValidBillingCycle = (typeof VALID_BILLING_CYCLES)[number];
+
+function normalizeBillingCycle(raw: string | undefined, fallback: ValidBillingCycle): ValidBillingCycle {
+  const upper = (raw || fallback).toUpperCase();
+  return (VALID_BILLING_CYCLES as readonly string[]).includes(upper) ? (upper as ValidBillingCycle) : fallback;
+}
+import { cleanProfileCaches, type CleanCacheResult } from '../services/profile-cache-cleaner.js';
 import { verifyLicense, getHWID } from '../../08_SECURITY/license-service.js';
 import { isOnlineRevoked, isGraceExpired, getOnlineStatusSummary, checkLicenseStatusOnline } from '../../08_SECURITY/license-status-service.js';
 import { assertCanCreateProfile, getPlanLimitsInfo, assertCapability } from '../../08_SECURITY/freemium-guard.js';
 import { getStarterTemplates, getStarterTemplateById, createProfileFromStarter, isUserNew } from '../../02_BROWSER/services/starter-profiles-service.js';
-import { evaluateUserEntitlements, checkCapability, assertEntitled, activateUserTrial, getUserTrialStatus } from '../commercial/commercial-entitlement-service.js';
+import { evaluateUserEntitlements, checkCapability, activateUserTrial, getUserTrialStatus } from '../commercial/commercial-entitlement-service.js';
 import { buildPlanCatalog } from '../commercial/pricing-admin-service.js';
 import { paymentService } from '../commercial/payment-service.js';
-import { getDynamicPrice, fetchDynamicPrice } from '../../08_SECURITY/price-service.js';
+import { getDynamicPrice } from '../../08_SECURITY/price-service.js';
 import {
   signup as accountSignup,
   login as accountLogin,
@@ -29,7 +46,6 @@ import {
   createCheckoutSessionFromServer,
   fetchPaymentStatusFromServer,
   getAccountSession,
-  getAccountPlanLimits,
   refreshAccountPlanLimits,
   startAccountStatusScheduler,
   refreshAccountToken,
@@ -46,7 +62,6 @@ import {
   activateTrialFromServer,
   getTrialStatusFromServer
 } from '../../08_SECURITY/account-service.js';
-import { getDatabase } from '../../06_DATABASE/connection.js';
 import { setActiveUserId, getActiveUserId, clearActiveSession } from '../commercial/session-context.js';
 import {
   createTeamWorkspace,
@@ -81,7 +96,6 @@ import {
   permanentDeleteProfile,
   emptyTrash,
   updateProfile,
-  deleteProfile,
   cloneProfile,
   claimLegacyProfiles,
   getUnassignedLegacyProfiles,
@@ -168,7 +182,7 @@ import {
   getWorkflowLogs,
 } from '../../09_AUTOMATION/automation-engine.js';
 import { RPA_TEMPLATES } from '../../10_CONFIG/shared/constants/automation-templates.js';
-import { synchronizerHub } from '../../09_AUTOMATION/sync-hub.js';
+import { synchronizerHub, type SynchronizerConfig } from '../../09_AUTOMATION/sync-hub.js';
 import {
   isManagedEngineInstalled,
   getManagedEngineExecutablePath,
@@ -201,10 +215,7 @@ import {
   addLogListener,
 } from '../services/audit-service.js';
 import {
-  createLicense,
   getLicenses,
-  getLicenseById,
-  activateLicense,
   validateCurrentLicense,
   revokeLicense,
   extendLicense,
@@ -276,9 +287,58 @@ import {
   UpdateProxyDTOSchema,
   AutomationWorkflowSchema,
 } from '../../10_CONFIG/shared/validation/schemas.js';
-import { DashboardMetrics } from '../../10_CONFIG/shared/types/ipc.js';
+import type { DashboardMetrics } from '../../10_CONFIG/shared/types/ipc.js';
+import type { CookieWarmProfileOptions } from '../../10_CONFIG/shared/types/automation.js';
+import type {
+  AccountCheckoutPayload,
+  CommercialRole,
+  CommercialUserStatus,
+  FeatureCapability,
+} from '../../10_CONFIG/shared/types/commercial.js';
+import type { FeatureFlagDefinition, PlanTierId } from '../../10_CONFIG/shared/types/platform.js';
+import type { CreateProfileFromStarterOptions } from '../../10_CONFIG/shared/types/profile.js';
+import type { CreateProxyDTO } from '../../10_CONFIG/shared/types/proxy.js';
+import type {
+  CloudSyncConfig,
+  CloudSyncConflictResolution,
+  CloudSyncRestoreOptions,
+} from '../../10_CONFIG/shared/types/sync.js';
+import type { UpdateConfig, UpdateInstallOptions } from '../../10_CONFIG/shared/types/updater.js';
 import { sanitizeError } from '../../08_SECURITY/sanitizer.js';
 import { getProfileStats } from '../services/stats-service.js';
+
+type ProxiesTestInput = Partial<CreateProxyDTO> & { proxyId?: string; id?: string };
+
+interface ManualUpiPaymentInput {
+  plan_id?: string;
+  planId?: string;
+  billing_cycle?: string;
+  billingCycle?: string;
+  utr: string;
+  proof_asset?: string;
+  proofAsset?: string;
+  extra_members?: number;
+  extraMembers?: number;
+  extra_proxy_gb?: number;
+  extraProxyGb?: number;
+}
+
+interface ManualCryptoPaymentInput {
+  plan_id?: string;
+  planId?: string;
+  billing_cycle?: string;
+  billingCycle?: string;
+  tx_hash?: string;
+  txHash?: string;
+  utr?: string;
+  network?: string;
+  proof_asset?: string;
+  proofAsset?: string;
+  extra_members?: number;
+  extraMembers?: number;
+  extra_proxy_gb?: number;
+  extraProxyGb?: number;
+}
 
 export async function handlePreviewCacheCleanup(baseDir?: string): Promise<CleanCacheResult> {
   return cleanProfileCaches({
@@ -296,7 +356,7 @@ export async function handleApplyCacheCleanup(baseDir?: string): Promise<CleanCa
   });
 }
 
-export async function handleProxiesTest(dto: any) {
+export async function handleProxiesTest(dto: ProxiesTestInput) {
   try {
     const proxyId = dto?.proxyId || dto?.id;
     if (proxyId) {
@@ -329,7 +389,7 @@ export async function handleProxiesTest(dto: any) {
           }
         }
 
-        const testDto = {
+        const testDto: Partial<CreateProxyDTO> = {
           protocol: dto.protocol || savedProxy.protocol,
           host: dto.host || savedProxy.host,
           port: dto.port ? Number(dto.port) : savedProxy.port,
@@ -337,7 +397,7 @@ export async function handleProxiesTest(dto: any) {
           password: password || undefined,
         };
 
-        return await testProxyConnection(testDto as any);
+        return await testProxyConnection(testDto);
       }
     }
     return await testProxyConnection(dto);
@@ -647,7 +707,7 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('profiles:warm', async (_event, id: string, options?: any) => {
+  ipcMain.handle('profiles:warm', async (_event, id: string, options?: CookieWarmProfileOptions) => {
     try {
       assertCapability('automation.cookieWarmer');
       const activeOwnerId = getActiveOwnerId();
@@ -661,7 +721,7 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('profiles:warmBulk', async (_event, ids: string[], options?: any) => {
+  ipcMain.handle('profiles:warmBulk', async (_event, ids: string[], options?: CookieWarmProfileOptions) => {
     try {
       assertCapability('automation.cookieWarmer');
       const activeOwnerId = getActiveOwnerId();
@@ -1188,7 +1248,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('settings:verifyPin', async (_event, pin: string) => {
     try {
       return verifyAppPinCheck(pin);
-    } catch (err) {
+    } catch (_err) {
       return false;
     }
   });
@@ -1600,10 +1660,10 @@ export function registerIpcHandlers(): void {
       let rawKey = '';
       try {
         rawKey = (await fs.promises.readFile(licenseFile, 'utf8')).trim();
-      } catch (readErr: any) {
-        if (readErr?.code !== 'ENOENT') {
+      } catch (readErr: unknown) {
+        if (!isEnoentError(readErr)) {
           log.warn('Failed reading offline license key in license:getStatus', {
-            err: readErr instanceof Error ? readErr.message : String(readErr),
+            err: toErrMsg(readErr),
           });
         }
       }
@@ -1694,7 +1754,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('app:getDynamicPrice', async () => {
     try {
       return getDynamicPrice();
-    } catch (err) {
+    } catch (_err) {
       return 599;
     }
   });
@@ -1816,7 +1876,7 @@ export function registerIpcHandlers(): void {
     const res = await dialog.showOpenDialog({
       title: options?.title || 'Open File',
       filters: options?.filters,
-      properties: (options?.properties as any) || ['openFile'],
+      properties: (options?.properties as OpenDialogOptions['properties']) || ['openFile'],
     });
     if (res.canceled) return null;
     return res.filePaths;
@@ -1931,7 +1991,7 @@ export function registerIpcHandlers(): void {
   });
 
   // SYNCHRONIZER HANDLERS
-  ipcMain.handle('synchronizer:start', async (_event, masterProfileId?: string, activeProfiles?: string[], config?: any) => {
+  ipcMain.handle('synchronizer:start', async (_event, masterProfileId?: string, activeProfiles?: string[], config?: Partial<SynchronizerConfig>) => {
     try {
       assertCapability('automation.synchronizer');
       return synchronizerHub.startSync(masterProfileId, activeProfiles, config);
@@ -1981,7 +2041,7 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('updater:install', async (_event, options?: any) => {
+  ipcMain.handle('updater:install', async (_event, options?: UpdateInstallOptions) => {
     try {
       return applyAndRestartUpdate(options);
     } catch (err) {
@@ -2005,7 +2065,7 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('updater:setConfig', async (_event, config: any) => {
+  ipcMain.handle('updater:setConfig', async (_event, config: Partial<UpdateConfig>) => {
     try {
       const { feedUrl: _ignoredFeedUrl, ...safeConfig } = (config && typeof config === 'object') ? config : {};
       return setUpdateConfig(safeConfig);
@@ -2067,7 +2127,7 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('folders:update', async (_event, id: string, updates: any) => {
+  ipcMain.handle('folders:update', async (_event, id: string, updates: { name?: string; parentId?: string | null; color?: string; icon?: string }) => {
     try {
       return updateFolder(id, updates);
     } catch (err) {
@@ -2115,7 +2175,7 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('featureFlags:update', async (_event, key: string, updates: any) => {
+  ipcMain.handle('featureFlags:update', async (_event, key: string, updates: Partial<FeatureFlagDefinition>) => {
     try {
       return updateFeatureFlag(key, updates);
     } catch (err) {
@@ -2123,7 +2183,7 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('featureFlags:check', async (_event, key: string, userTier?: any, userId?: string, orgId?: string) => {
+  ipcMain.handle('featureFlags:check', async (_event, key: string, userTier?: PlanTierId, userId?: string, orgId?: string) => {
     try {
       return isFeatureEnabled(key, userTier, userId, orgId);
     } catch (err) {
@@ -2299,7 +2359,7 @@ export function registerIpcHandlers(): void {
         const check = verifyLicense(licenseKey);
         if (check.valid) {
           setActiveUserId('local-license-user');
-          const user = { id: 'local-license-user', email: 'Enterprise License', name: 'MAHI PRO', role: 'PRO' as any, status: 'ACTIVE' as any, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+          const user = { id: 'local-license-user', email: 'Enterprise License', name: 'MAHI PRO', role: 'PRO' as unknown as CommercialRole, status: 'ACTIVE' as CommercialUserStatus, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
           return { success: true, user, token: licenseKey };
         }
         return { success: false, error: check.error };
@@ -2333,7 +2393,7 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('entitlements:checkCapability', async (_event, capability: any, userId?: string) => {
+  ipcMain.handle('entitlements:checkCapability', async (_event, capability: FeatureCapability, userId?: string) => {
     try {
       const uid = userId || getActiveUserId() || getAccountSession()?.account_id || 'anonymous';
       return checkCapability(uid, capability);
@@ -2368,7 +2428,7 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('starterProfiles:createFromTemplate', async (_event, templateId: string, options?: any) => {
+  ipcMain.handle('starterProfiles:createFromTemplate', async (_event, templateId: string, options?: CreateProfileFromStarterOptions) => {
     try {
       const session = getAccountSession();
       const resolvedOwnerId = options?.ownerId || getActiveUserId() || session?.account_id;
@@ -2433,16 +2493,16 @@ export function registerIpcHandlers(): void {
     try {
       const exe = await ensureManagedEngineInstalled();
       return { success: true, path: exe };
-    } catch (err: any) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    } catch (err: unknown) {
+      return { success: false, error: toErrMsg(err) };
     }
   });
 
   ipcMain.handle('engine:repair', async () => {
     try {
       return await repairManagedEngine();
-    } catch (err: any) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    } catch (err: unknown) {
+      return { success: false, error: toErrMsg(err) };
     }
   });
 
@@ -2454,7 +2514,7 @@ export function registerIpcHandlers(): void {
     assertCapability('cloud.sync');
     return uploadProfileToCloud(profileId, options);
   });
-  ipcMain.handle('sync:restore', async (_e, cloudProfileId: string, options?: any) => {
+  ipcMain.handle('sync:restore', async (_e, cloudProfileId: string, options?: CloudSyncRestoreOptions) => {
     assertCapability('cloud.sync');
     const activeOwnerId = getActiveOwnerId();
     assertCanCreateProfile(1, activeOwnerId);
@@ -2462,13 +2522,13 @@ export function registerIpcHandlers(): void {
   });
   ipcMain.handle('sync:delete', async (_e, cloudProfileId: string) => deleteCloudProfile(cloudProfileId));
   ipcMain.handle('sync:getConfig', async () => getSyncConfigAsync());
-  ipcMain.handle('sync:setConfig', async (_e, config: any) => setSyncConfigAsync(config));
+  ipcMain.handle('sync:setConfig', async (_e, config: Partial<CloudSyncConfig>) => setSyncConfigAsync(config));
   ipcMain.handle('sync:syncAll', async () => {
     assertCapability('cloud.sync');
     return syncAllProfilesAsync();
   });
   ipcMain.handle('sync:getAllStatuses', async () => getAllProfilesSyncStatusAsync());
-  ipcMain.handle('sync:resolveConflict', async (_e, profileId: string, resolution: any) => resolveSyncConflict(profileId, resolution));
+  ipcMain.handle('sync:resolveConflict', async (_e, profileId: string, resolution: CloudSyncConflictResolution) => resolveSyncConflict(profileId, resolution));
   ipcMain.handle('sync:lock:acquire', async (_e, cloudProfileId: string, ttlSeconds?: number) => acquireCloudLock(cloudProfileId, ttlSeconds));
   ipcMain.handle('sync:lock:release', async (_e, cloudProfileId: string) => releaseCloudLock(cloudProfileId));
   ipcMain.handle('sync:lock:status', async (_e, cloudProfileId: string) => getCloudLockStatus(cloudProfileId));
@@ -2476,23 +2536,23 @@ export function registerIpcHandlers(): void {
   // Account & Subscription IPC Handlers (v1.1.0+)
   ipcMain.handle('account:signup', async (_e, dto: { email: string; password: string }) => {
     const res = await accountSignup(dto.email, dto.password);
-    if (res.success && (res as any).user?.id) {
-      setActiveUserId((res as any).user.id);
+    if (res.success && res.user?.id) {
+      setActiveUserId(res.user.id);
     }
     return res;
   });
   ipcMain.handle('account:login', async (_e, dto: { email: string; password: string }) => {
     const res = await accountLogin(dto.email, dto.password);
-    if (res.success && (res as any).user?.id) {
-      setActiveUserId((res as any).user.id);
+    if (res.success && res.user?.id) {
+      setActiveUserId(res.user.id);
     }
     return res;
   });
   ipcMain.handle('account:loginWithToken', async (_e, dto: { token: string } | string) => {
     const token = typeof dto === 'string' ? dto : dto.token;
     const res = await accountLoginWithToken(token);
-    if (res.success && (res as any).user?.id) {
-      setActiveUserId((res as any).user.id);
+    if (res.success && res.user?.id) {
+      setActiveUserId(res.user.id);
     }
     return res;
   });
@@ -2517,8 +2577,8 @@ export function registerIpcHandlers(): void {
     if (process.env.MAHI_LOCAL_COMMERCIAL_MODE === 'true') {
       try {
         return { success: true, catalog: buildPlanCatalog() };
-      } catch (err: any) {
-        return { success: false, error: err.message };
+      } catch (err: unknown) {
+        return { success: false, error: toErrMsg(err) };
       }
     }
     const remoteRes = await fetchPricingCatalogFromServer();
@@ -2528,29 +2588,29 @@ export function registerIpcHandlers(): void {
     // Offline / fallback to local builder
     try {
       return { success: true, catalog: buildPlanCatalog() };
-    } catch (err: any) {
-      return { success: false, error: err.message };
+    } catch (err: unknown) {
+      return { success: false, error: toErrMsg(err) };
     }
   });
 
-  ipcMain.handle('account:createCheckoutSession', async (_e, payload: any) => {
+  ipcMain.handle('account:createCheckoutSession', async (_e, payload: AccountCheckoutPayload) => {
     if (process.env.MAHI_LOCAL_COMMERCIAL_MODE === 'true') {
       try {
         const session = getAccountSession();
         const userId = session?.account_id || getActiveUserId() || 'SYSTEM_OWNER';
         const result = await paymentService.createCheckoutSession({
           userId,
-          planId: payload.planId || payload.plan_id,
-          billingCycle: (payload.billingCycle || payload.billing_cycle || 'ANNUAL').toUpperCase(),
-          currency: payload.currency || 'INR',
+          planId: payload.planId || payload.plan_id || 'free',
+          billingCycle: normalizeBillingCycle(payload.billingCycle || payload.billing_cycle, 'ANNUAL'),
+          currency: (payload.currency || 'INR').toUpperCase() === 'USD' ? 'USD' : 'INR',
           extraMembers: payload.extraMembers,
           extraProxyGb: payload.extraProxyGb,
           successUrl: payload.successUrl,
           cancelUrl: payload.cancelUrl,
-        }, payload.provider || 'youpi_pg');
+        }, (payload.provider || 'youpi_pg') as 'stripe' | 'razorpay' | 'youpi_pg' | 'simulation');
         return { success: true, session: result };
-      } catch (err: any) {
-        return { success: false, error: err.message };
+      } catch (err: unknown) {
+        return { success: false, error: toErrMsg(err) };
       }
     }
 
@@ -2570,15 +2630,15 @@ export function registerIpcHandlers(): void {
     return remoteRes;
   });
 
-  ipcMain.handle('account:submitManualUpiPayment', async (_e, payload: any) => {
+  ipcMain.handle('account:submitManualUpiPayment', async (_e, payload: ManualUpiPaymentInput) => {
     if (process.env.MAHI_LOCAL_COMMERCIAL_MODE === 'true') {
       try {
         const session = getAccountSession();
         const userId = session?.account_id || getActiveUserId() || 'SYSTEM_OWNER';
         const res = await paymentService.submitManualUpiPayment({
           userId,
-          planId: payload.plan_id || payload.planId,
-          billingCycle: (payload.billing_cycle || payload.billingCycle || 'MONTHLY').toUpperCase() as any,
+          planId: payload.plan_id || payload.planId || 'free',
+          billingCycle: normalizeBillingCycle(payload.billing_cycle || payload.billingCycle, 'MONTHLY'),
           utr: payload.utr,
           proofAsset: payload.proof_asset || payload.proofAsset,
           extraMembers: payload.extra_members || payload.extraMembers,
@@ -2592,13 +2652,13 @@ export function registerIpcHandlers(): void {
           amount_paise: res.amountPaise,
           message: 'Payment submitted successfully for verification.'
         };
-      } catch (err: any) {
-        return { success: false, error: err.message };
+      } catch (err: unknown) {
+        return { success: false, error: toErrMsg(err) };
       }
     }
 
     return await accountSubmitManualUpiPayment({
-      plan_id: payload.plan_id || payload.planId,
+      plan_id: payload.plan_id || payload.planId || 'free',
       billing_cycle: payload.billing_cycle || payload.billingCycle,
       utr: payload.utr,
       proof_asset: payload.proof_asset || payload.proofAsset,
@@ -2607,16 +2667,16 @@ export function registerIpcHandlers(): void {
     });
   });
 
-  ipcMain.handle('account:submitManualCryptoPayment', async (_e, payload: any) => {
+  ipcMain.handle('account:submitManualCryptoPayment', async (_e, payload: ManualCryptoPaymentInput) => {
     if (process.env.MAHI_LOCAL_COMMERCIAL_MODE === 'true') {
       try {
         const session = getAccountSession();
         const userId = session?.account_id || getActiveUserId() || 'SYSTEM_OWNER';
         const res = await paymentService.submitManualCryptoPayment({
           userId,
-          planId: payload.plan_id || payload.planId,
-          billingCycle: (payload.billing_cycle || payload.billingCycle || 'SEMI_ANNUAL').toUpperCase() as any,
-          txHash: payload.tx_hash || payload.txHash || payload.utr,
+          planId: payload.plan_id || payload.planId || 'free',
+          billingCycle: normalizeBillingCycle(payload.billing_cycle || payload.billingCycle, 'SEMI_ANNUAL'),
+          txHash: payload.tx_hash || payload.txHash || payload.utr || '',
           network: payload.network,
           proofAsset: payload.proof_asset || payload.proofAsset,
           extraMembers: payload.extra_members || payload.extraMembers,
@@ -2630,15 +2690,15 @@ export function registerIpcHandlers(): void {
           amount_cents: res.amountCents,
           message: 'USDT (TRC-20) transaction submitted for verification.'
         };
-      } catch (err: any) {
-        return { success: false, error: err.message };
+      } catch (err: unknown) {
+        return { success: false, error: toErrMsg(err) };
       }
     }
 
     return await accountSubmitManualCryptoPayment({
-      plan_id: payload.plan_id || payload.planId,
+      plan_id: payload.plan_id || payload.planId || 'free',
       billing_cycle: payload.billing_cycle || payload.billingCycle,
-      tx_hash: payload.tx_hash || payload.txHash || payload.utr,
+      tx_hash: payload.tx_hash || payload.txHash || payload.utr || '',
       network: payload.network,
       proof_asset: payload.proof_asset || payload.proofAsset,
       extra_members: payload.extra_members || payload.extraMembers,
@@ -2653,8 +2713,8 @@ export function registerIpcHandlers(): void {
         const userId = session?.account_id || getActiveUserId() || 'SYSTEM_OWNER';
         const history = paymentService.getUserPaymentHistory(userId);
         return { success: true, payments: history };
-      } catch (err: any) {
-        return { success: false, error: err.message };
+      } catch (err: unknown) {
+        return { success: false, error: toErrMsg(err) };
       }
     }
 
@@ -2701,8 +2761,8 @@ export function registerIpcHandlers(): void {
       let content = '';
       try {
         content = await fs.promises.readFile(crashLogPath, 'utf-8');
-      } catch (readErr: any) {
-        if (readErr?.code !== 'ENOENT') throw readErr;
+      } catch (readErr: unknown) {
+        if (!isEnoentError(readErr)) throw readErr;
       }
       if (content) {
         const lines = content.split('\n');

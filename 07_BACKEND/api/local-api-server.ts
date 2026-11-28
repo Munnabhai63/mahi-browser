@@ -2,7 +2,16 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { URL } from 'node:url';
+import type { CreateProfileDTO, ProfileFilterOptions } from '../../10_CONFIG/shared/types/profile.js';
+import type { CreateProxyDTO, ProxyItem, UpdateProxyDTO } from '../../10_CONFIG/shared/types/proxy.js';
+import type { RunWorkflowDTO } from '../../10_CONFIG/shared/types/automation.js';
+import type { ExtendLicenseDTO } from '../../10_CONFIG/shared/types/license.js';
+import type {
+  BulkAssignProxiesDTO,
+  BulkCreateProfileDTO,
+  BulkUpdateProfilesDTO,
+} from '../../02_BROWSER/services/profile-service.js';
+import type { SynchronizerConfig } from '../../09_AUTOMATION/sync-hub.js';
 import { app } from '../../08_SECURITY/electron-bridge.js';
 import { DEFAULT_LOCAL_DAEMON_PORT } from '../../10_CONFIG/shared/network-endpoints.js';
 import { getAppSettings } from '../services/settings-service.js';
@@ -21,7 +30,6 @@ import {
   permanentDeleteProfile,
   emptyTrash,
   updateProfile,
-  deleteProfile,
   cloneProfile,
   getProfileStoragePath,
 } from '../../02_BROWSER/services/profile-service.js';
@@ -41,7 +49,6 @@ import { runWorkflow } from '../../09_AUTOMATION/automation-engine.js';
 import { sanitizeError } from '../../08_SECURITY/sanitizer.js';
 import {
   getLicenses,
-  getLicenseById,
   activateLicense,
   validateCurrentLicense,
   revokeLicense,
@@ -51,7 +58,7 @@ import {
 } from '../../04_LICENSING/license-engine.js';
 import { verifyAdminAccess } from '../../05_AUTH/admin-auth.js';
 import { verifyAccessToken, getCentralUserByIdAsync } from '../../05_AUTH/central-auth-service.js';
-import { synchronizerHub, SyncAction } from '../../09_AUTOMATION/sync-hub.js';
+import { synchronizerHub, type SyncAction } from '../../09_AUTOMATION/sync-hub.js';
 
 
 
@@ -70,7 +77,6 @@ import {
   getRotationHistory,
   clearRotationHistory,
 } from '../../03_HARDWARE/mobile-rotator-service.js';
-import { getFolders, createFolder } from '../../02_BROWSER/services/folder-service.js';
 import { getFeatureFlags, updateFeatureFlag } from '../services/feature-flag-service.js';
 import { getFleetDevices, getLiveTelemetry, revokeDevice } from '../services/fleet-service.js';
 import { getApiKeys, getApiKeyById, generateApiKey, revokeApiKey, validateApiKey } from '../services/api-v2-service.js';
@@ -107,7 +113,7 @@ const ALLOWED_ORIGIN_PATTERNS = [
 
 export function isAppPackaged(): boolean {
   try {
-    return Boolean(app && app.isPackaged);
+    return Boolean(app?.isPackaged);
   } catch {
     return false;
   }
@@ -203,9 +209,20 @@ function safeEqualStrings(a: string, b: string): boolean {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-export function authenticateRequest(req: http.IncomingMessage, _parsedUrl: URL, body?: any): RequestAuth {
+export type AuthBodyLike = { adminSecret?: unknown; secret?: unknown } & Record<string, unknown>;
+
+interface ResponseWithReq extends http.ServerResponse {
+  __req?: http.IncomingMessage;
+}
+
+function toErrMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+export function authenticateRequest(req: http.IncomingMessage, _parsedUrl: URL, body?: AuthBodyLike): RequestAuth {
   // 1. Check Master Admin Secret first (Headers or JSON body only — never query strings)
-  const adminSecret = (req.headers['x-admin-secret'] as string) || (body && (body.adminSecret || body.secret));
+  const bodySecret = body && (typeof body.adminSecret === 'string' ? body.adminSecret : typeof body.secret === 'string' ? body.secret : '');
+  const adminSecret = (req.headers['x-admin-secret'] as string) || bodySecret;
   if (adminSecret && (verifyAdminAccess(adminSecret) || isValidAdminWebSecret(adminSecret))) {
     if (isAppPackaged() && process.env.MAHI_ENABLE_LOCAL_SUPER_ADMIN !== '1') {
       return { authenticated: false };
@@ -214,7 +231,7 @@ export function authenticateRequest(req: http.IncomingMessage, _parsedUrl: URL, 
   }
 
   // 2. Bearer / X-Mahi-Token headers only (never query strings)
-  const authHeader = req.headers['authorization'];
+  const authHeader = req.headers.authorization;
   let bearer = '';
   if (authHeader) {
     bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
@@ -283,9 +300,9 @@ export async function verifyDownloadAccess(
     return { authorized: true, status: 401 };
   }
 
-  const authHeader = (req.headers['authorization'] as string) || '';
+  const authHeader = req.headers.authorization || '';
   const mahiHeader = (req.headers['x-mahi-token'] as string) || '';
-  const cookieMatch = req.headers['cookie']?.match(/(?:^|;\s*)mahi_token=([^;]+)/)?.[1];
+  const cookieMatch = req.headers.cookie?.match(/(?:^|;\s*)mahi_token=([^;]+)/)?.[1];
   let cookieToken = '';
   if (cookieMatch) {
     try {
@@ -320,14 +337,14 @@ export async function verifyDownloadAccess(
   }
 
   const entitlements = evaluateUserEntitlements(userId);
-  if (!entitlements || !entitlements.planId) {
+  if (!entitlements?.planId) {
     return { authorized: false, status: 403, reason: 'Valid account entitlement required to download installer.' };
   }
 
   return { authorized: true, status: 401 };
 }
 
-function checkMutatingAuth(req: http.IncomingMessage, parsedUrl: URL, body?: any): boolean {
+function checkMutatingAuth(req: http.IncomingMessage, parsedUrl: URL, body?: AuthBodyLike): boolean {
   return authenticateRequest(req, parsedUrl, body).authenticated;
 }
 
@@ -335,7 +352,7 @@ function requireUserOrAdminAuth(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   parsedUrl: URL,
-  body?: any,
+  body?: AuthBodyLike,
   requiredScope?: string
 ): RequestAuth | null {
   const auth = authenticateRequest(req, parsedUrl, body);
@@ -370,7 +387,7 @@ export async function handleApiKeysV2Route(
   }
 
   if (pathname === '/api/v2/api-keys' && method === 'POST') {
-    const body = await parseBody(req);
+    const body = await parseBody<{ userId?: string; scopes?: unknown; name?: string } & AuthBodyLike>(req);
     const auth = requireUserOrAdminAuth(req, res, parsedUrl, body, 'api_keys:write');
     if (!auth) return true;
 
@@ -405,7 +422,8 @@ export async function handleApiKeysV2Route(
       }
     }
 
-    const result = generateApiKey(body?.name || 'API-Key', targetUserId, targetScopes);
+    const keyName = typeof body?.name === 'string' && body.name.trim() ? body.name.trim() : 'API-Key';
+    const result = generateApiKey(keyName, targetUserId, targetScopes);
     sendJSON(res, 201, { success: true, data: result });
     return true;
   }
@@ -433,7 +451,7 @@ export async function handleApiKeysV2Route(
   return false;
 }
 
-function requireMasterAdminAuth(req: http.IncomingMessage, res: http.ServerResponse, parsedUrl: URL, body?: any): RequestAuth | null {
+function requireMasterAdminAuth(req: http.IncomingMessage, res: http.ServerResponse, parsedUrl: URL, body?: AuthBodyLike): RequestAuth | null {
   const auth = authenticateRequest(req, parsedUrl, body);
   if (!auth.authenticated) {
     sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication credentials required.' });
@@ -447,7 +465,7 @@ function requireMasterAdminAuth(req: http.IncomingMessage, res: http.ServerRespo
 }
 
 function sendHTML(res: http.ServerResponse, statusCode: number, html: string) {
-  const req = (res as any).__req as http.IncomingMessage | undefined;
+  const req = (res as ResponseWithReq).__req;
   const corsHeaders = req ? getCorsHeaders(req) : {};
   res.writeHead(statusCode, {
     'Content-Type': 'text/html; charset=utf-8',
@@ -458,7 +476,7 @@ function sendHTML(res: http.ServerResponse, statusCode: number, html: string) {
 }
 
 function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
-  const req = (res as any).__req as http.IncomingMessage | undefined;
+  const req = (res as ResponseWithReq).__req;
   const corsHeaders = req ? getCorsHeaders(req) : {};
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
@@ -468,7 +486,7 @@ function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
 }
 
 async function sendFile(res: http.ServerResponse, filePath: string, downloadName: string): Promise<void> {
-  const req = (res as any).__req as http.IncomingMessage | undefined;
+  const req = (res as ResponseWithReq).__req;
   const corsHeaders = req ? getCorsHeaders(req) : {};
   let stat: fs.Stats;
   try {
@@ -504,8 +522,8 @@ async function sendFile(res: http.ServerResponse, filePath: string, downloadName
   stream.pipe(res);
 }
 
-function parseBody(req: http.IncomingMessage): Promise<any> {
-  return parseBoundedJson(req, { invalidJsonMessage: 'Invalid JSON in request body' });
+function parseBody<T = Record<string, unknown>>(req: http.IncomingMessage): Promise<T> {
+  return parseBoundedJson<T>(req, { invalidJsonMessage: 'Invalid JSON in request body' });
 }
 
 export interface CdpEndpointResolution {
@@ -571,7 +589,7 @@ export async function handleLocalApiRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse
 ): Promise<void> {
-  (res as any).__req = req;
+  (res as ResponseWithReq).__req = req;
 
   // Host header validation — blocks DNS rebinding
   if (!isValidHost(req.headers.host)) {
@@ -644,7 +662,7 @@ export async function handleLocalApiRequest(
         sendJSON(res, 429, { success: false, error: 'Too many failed authentication attempts. Please try again later.' });
         return;
       }
-      const body = await parseBody(req);
+      const body = await parseBody<{ secret?: string; pin?: string }>(req);
       const secret = body.secret || body.pin || '';
       if (verifyAdminAccess(secret) || isValidAdminWebSecret(secret)) {
         recordSuccessfulSuperAdminAttempt(clientIp);
@@ -769,8 +787,8 @@ export async function handleLocalApiRequest(
         const db = getDatabase();
         const licenses = db.prepare('SELECT * FROM licenses ORDER BY created_at DESC').all();
         sendJSON(res, 200, { success: true, data: licenses });
-      } catch(err: any) {
-        sendJSON(res, 500, { success: false, error: err.message });
+      } catch (err: unknown) {
+        sendJSON(res, 500, { success: false, error: toErrMsg(err) });
       }
       return;
     }
@@ -782,7 +800,7 @@ export async function handleLocalApiRequest(
         return;
       }
       try {
-        const body = await parseBody(req);
+        const body = await parseBody<{ action?: string; id?: string } & AuthBodyLike>(req);
         if (!requireMasterAdminAuth(req, res, parsedUrl, body)) return;
         const db = getDatabase();
         
@@ -797,8 +815,8 @@ export async function handleLocalApiRequest(
         }
         
         sendJSON(res, 200, { success: true });
-      } catch(err: any) {
-        sendJSON(res, 500, { success: false, error: err.message });
+      } catch (err: unknown) {
+        sendJSON(res, 500, { success: false, error: toErrMsg(err) });
       }
       return;
     }
@@ -822,8 +840,8 @@ export async function handleLocalApiRequest(
         const rows = db.prepare(`SELECT * FROM ${tableName} LIMIT 100`).all();
         sendJSON(res, 200, { success: true, data: rows });
         return;
-      } catch (dbErr: any) {
-        sendJSON(res, 500, { success: false, error: dbErr.message });
+      } catch (dbErr: unknown) {
+        sendJSON(res, 500, { success: false, error: toErrMsg(dbErr) });
         return;
       }
     }
@@ -842,8 +860,8 @@ export async function handleLocalApiRequest(
         let rawKey = '';
         try {
           rawKey = (await fs.promises.readFile(licenseFile, 'utf8')).trim();
-        } catch (readErr: any) {
-          if (readErr?.code !== 'ENOENT') throw readErr;
+        } catch (readErr: unknown) {
+          if ((readErr as NodeJS.ErrnoException)?.code !== 'ENOENT') throw readErr;
         }
         if (rawKey) {
             const check = verifyLicense(rawKey);
@@ -886,20 +904,20 @@ export async function handleLocalApiRequest(
     }
     if (pathname === '/api/v2/profiles' && method === 'POST') {
       try {
-        const body = await parseBody(req);
+        const body = await parseBody<CreateProfileDTO & AuthBodyLike>(req);
         if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
         const activeOwnerId = getLocalApiOwnerId();
         assertCanCreateProfile(1, activeOwnerId);
         const profile = createProfile({ ...body, ownerId: activeOwnerId });
         sendJSON(res, 201, { success: true, data: profile });
-      } catch (err: any) {
-        sendJSON(res, getErrorStatusCode(err, 400), { success: false, error: err.message });
+      } catch (err: unknown) {
+        sendJSON(res, getErrorStatusCode(err, 400), { success: false, error: toErrMsg(err) });
       }
       return;
     }
     const profileV2Action = pathname.match(/^\/api\/v2\/profiles\/([a-zA-Z0-9_-]+)\/(start|stop|clone)$/);
     if (profileV2Action && method === 'POST') {
-      const body = await parseBody(req);
+      const body = await parseBody<{ name?: string } & AuthBodyLike>(req);
       const action = profileV2Action[2];
       const requiredScope = action === 'clone' ? 'profiles:write' : 'profiles:launch';
       if (!requireUserOrAdminAuth(req, res, parsedUrl, body, requiredScope)) return;
@@ -943,8 +961,8 @@ export async function handleLocalApiRequest(
           assertCanCreateProfile(1, activeOwnerId);
           const cloned = cloneProfile(profileId, body.name || undefined, activeOwnerId);
           sendJSON(res, 201, { success: true, data: cloned });
-        } catch (err: any) {
-          sendJSON(res, 400, { success: false, error: err.message });
+        } catch (err: unknown) {
+          sendJSON(res, 400, { success: false, error: toErrMsg(err) });
         }
         return;
       }
@@ -963,7 +981,7 @@ export async function handleLocalApiRequest(
       if (pathname === '/profiles' && method === 'GET') {
         if (!requireUserOrAdminAuth(req, res, parsedUrl, undefined, 'profiles:read')) return;
         const search = parsedUrl.searchParams.get('search') || undefined;
-        const status = (parsedUrl.searchParams.get('status') as any) || undefined;
+        const status = (parsedUrl.searchParams.get('status') as ProfileFilterOptions['status']) || undefined;
         const profiles = getProfiles({ searchQuery: search, status, ownerId: getLocalApiOwnerId() });
         sendJSON(res, 200, { success: true, data: profiles });
         return;
@@ -971,21 +989,21 @@ export async function handleLocalApiRequest(
 
       if (pathname === '/profiles' && method === 'POST') {
         try {
-          const body = await parseBody(req);
+          const body = await parseBody<AuthBodyLike>(req);
           if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
           const activeOwnerId = getLocalApiOwnerId();
           assertCanCreateProfile(1, activeOwnerId);
           const validated = CreateProfileDTOSchema.parse(body);
           const result = createProfile({ ...validated, ownerId: activeOwnerId });
           sendJSON(res, 201, { success: true, data: result });
-        } catch (err: any) {
+        } catch (err: unknown) {
           sendJSON(res, getErrorStatusCode(err, 400), { success: false, error: sanitizeError(err) });
         }
         return;
       }
 
       if (pathname === '/profiles/bulk' && method === 'POST') {
-        const body = await parseBody(req);
+        const body = await parseBody<BulkCreateProfileDTO & AuthBodyLike>(req);
         if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
         const activeOwnerId = getLocalApiOwnerId();
         assertCanCreateProfile(body?.count || 1, activeOwnerId);
@@ -995,7 +1013,7 @@ export async function handleLocalApiRequest(
       }
 
       if (pathname === '/profiles/bulk-update' && method === 'POST') {
-        const body = await parseBody(req);
+        const body = await parseBody<BulkUpdateProfilesDTO & AuthBodyLike>(req);
         if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
         const result = bulkUpdateProfiles(body, getLocalApiOwnerId());
         sendJSON(res, 200, { success: true, data: result });
@@ -1003,7 +1021,7 @@ export async function handleLocalApiRequest(
       }
 
       if (pathname === '/profiles/bulk-delete' && method === 'POST') {
-        const body = await parseBody(req);
+        const body = await parseBody<{ profileIds?: string[]; permanent?: boolean } & AuthBodyLike>(req);
         if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
         const profileIds: string[] = Array.isArray(body.profileIds) ? body.profileIds : [];
         for (const pid of profileIds) {
@@ -1026,7 +1044,7 @@ export async function handleLocalApiRequest(
       }
 
       if (pathname === '/profiles/bulk-assign-proxies' && method === 'POST') {
-        const body = await parseBody(req);
+        const body = await parseBody<BulkAssignProxiesDTO & AuthBodyLike>(req);
         if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
         const result = bulkAssignProxies(body, getLocalApiOwnerId());
         sendJSON(res, 200, { success: true, data: result });
@@ -1034,7 +1052,7 @@ export async function handleLocalApiRequest(
       }
 
       if (pathname === '/profiles/quick-switch' && method === 'POST') {
-        const body = await parseBody(req);
+        const body = await parseBody<{ number?: string; profileNumber?: string } & AuthBodyLike>(req);
         if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:launch')) return;
         const num = parseInt(body.number || body.profileNumber || '1', 10);
         const result = await processManager.quickSwitchProfile(num);
@@ -1151,10 +1169,10 @@ export async function handleLocalApiRequest(
       // MostLogin / GoLogin Compatibility Route: /api/v1/profile/start or /browser/start
       if ((pathname === '/api/v1/profile/start' || pathname === '/browser/start') && (method === 'GET' || method === 'POST')) {
         let id = parsedUrl.searchParams.get('profileId') || parsedUrl.searchParams.get('profile_id');
-        let body: any = undefined;
+        let body: ({ profileId?: string; profile_id?: string; id?: string } & AuthBodyLike) | undefined ;
         if (method === 'POST') {
-          body = await parseBody(req);
-          if (!id) id = body?.profileId || body?.profile_id || body?.id;
+          body = await parseBody<{ profileId?: string; profile_id?: string; id?: string } & AuthBodyLike>(req);
+          if (!id) id = body?.profileId || body?.profile_id || body?.id || null;
         }
         if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:launch')) return;
         if (!id) return sendJSON(res, 400, { code: 400, success: false, error: 'Missing profileId' });
@@ -1203,10 +1221,10 @@ export async function handleLocalApiRequest(
       // MostLogin / GoLogin Compatibility Route: /api/v1/profile/stop or /browser/stop
       if ((pathname === '/api/v1/profile/stop' || pathname === '/browser/stop') && (method === 'GET' || method === 'POST')) {
         let id = parsedUrl.searchParams.get('profileId') || parsedUrl.searchParams.get('profile_id');
-        let body: any = undefined;
+        let body: ({ profileId?: string; profile_id?: string; id?: string } & AuthBodyLike) | undefined ;
         if (method === 'POST') {
-          body = await parseBody(req);
-          if (!id) id = body?.profileId || body?.profile_id || body?.id;
+          body = await parseBody<{ profileId?: string; profile_id?: string; id?: string } & AuthBodyLike>(req);
+          if (!id) id = body?.profileId || body?.profile_id || body?.id || null;
         }
         if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:launch')) return;
         if (!id) return sendJSON(res, 400, { code: 400, success: false, error: 'Missing profileId' });
@@ -1222,7 +1240,13 @@ export async function handleLocalApiRequest(
       // /profiles/:id/clone
       const cloneMatch = pathname.match(/^\/profiles\/([^/]+)\/clone$/);
       if (cloneMatch && method === 'POST') {
-        const body = await parseBody(req);
+        const body = await parseBody<{
+          newName?: string;
+          copyCookies?: boolean;
+          copyHistory?: boolean;
+          copyExtensions?: boolean;
+          copyBrowserSettings?: boolean;
+        } & AuthBodyLike>(req);
         if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write')) return;
         const id = cloneMatch[1];
         const activeOwnerId = getLocalApiOwnerId();
@@ -1266,7 +1290,18 @@ export async function handleLocalApiRequest(
 
       // MostLogin Parity & 1-Click Extraction: /proxy/extract/third/proxy and /api/v1/proxy/extract
       if ((pathname === '/proxy/extract/third/proxy' || pathname === '/api/v1/proxy/extract') && method === 'POST') {
-        const body = await parseBody(req);
+        const body = await parseBody<{
+          provider?: string;
+          count?: number;
+          country?: string;
+          protocol?: string;
+          profileIds?: string[];
+          host?: string;
+          port?: number;
+          username?: string;
+          apiKey?: string;
+          password?: string;
+        } & AuthBodyLike>(req);
         if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'proxies:write')) return;
         const providerName = (body.provider || 'smartproxy').toLowerCase();
         const count = Math.min(Math.max(Number(body.count) || 1, 1), 50);
@@ -1274,7 +1309,7 @@ export async function handleLocalApiRequest(
         const protocol = (body.protocol || 'HTTP').toUpperCase();
         const profileIds: string[] = Array.isArray(body.profileIds) ? body.profileIds : [];
 
-        const createdProxies: any[] = [];
+        const createdProxies: ProxyItem[] = [];
         for (let i = 0; i < count; i++) {
           const proxyName = `${providerName.toUpperCase()}-${country}-${Date.now().toString().slice(-4)}-${i + 1}`;
           const proxyData = createProxy({
@@ -1330,7 +1365,7 @@ export async function handleLocalApiRequest(
       }
 
       if (pathname === '/proxies' && method === 'POST') {
-        const body = await parseBody(req);
+        const body = await parseBody<CreateProxyDTO & AuthBodyLike>(req);
         if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'proxies:write')) return;
         const proxy = createProxy(body);
         sendJSON(res, 201, { success: true, data: proxy });
@@ -1347,7 +1382,7 @@ export async function handleLocalApiRequest(
           return sendJSON(res, 200, { success: true, data: proxy });
         }
         if (method === 'PUT') {
-          const body = await parseBody(req);
+          const body = await parseBody<UpdateProxyDTO & AuthBodyLike>(req);
           if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'proxies:write')) return;
           const proxy = updateProxy(id, body);
           return sendJSON(res, 200, { success: true, data: proxy });
@@ -1361,7 +1396,7 @@ export async function handleLocalApiRequest(
 
       // AUTOMATION RUN
       if (pathname === '/automation/run' && method === 'POST') {
-        const body = await parseBody(req);
+        const body = await parseBody<RunWorkflowDTO & AuthBodyLike>(req);
         if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'automation:run')) return;
         const result = await runWorkflow(body);
         return sendJSON(res, 200, { success: true, data: result });
@@ -1415,7 +1450,7 @@ export async function handleLocalApiRequest(
       }
 
       if (pathname === '/license/activate' && method === 'POST') {
-        const body = await parseBody(req);
+        const body = await parseBody<{ licenseKey: string; deviceId?: string; deviceName?: string; accountId?: string }>(req);
         const result = activateLicense(body.licenseKey, body.deviceId, body.deviceName, body.accountId);
         return sendJSON(res, result.success ? 200 : 400, result);
       }
@@ -1450,18 +1485,18 @@ export async function handleLocalApiRequest(
         if (!checkSuperAdminRateLimit(clientIp)) {
           return sendJSON(res, 429, { error: 'Too many failed authentication attempts. Try again later.' });
         }
-        const body = await parseBody(req);
-        const adminSecret = (req.headers['x-admin-secret'] as string) || body.adminSecret || '';
+        const body = await parseBody<{ licenseId?: string; reason?: string } & AuthBodyLike>(req);
+        const adminSecret = (req.headers['x-admin-secret'] as string) || (typeof body.adminSecret === 'string' ? body.adminSecret : '');
         if (!verifyAdminAccess(adminSecret)) {
           recordFailedSuperAdminAttempt(clientIp);
           return sendJSON(res, 403, { error: 'Forbidden. Admin authentication required.' });
         }
         recordSuccessfulSuperAdminAttempt(clientIp);
         try {
-          const ok = await revokeLicense(body.licenseId, body.reason);
+          const ok = await revokeLicense(String(body.licenseId || ''), typeof body.reason === 'string' ? body.reason : undefined);
           return sendJSON(res, ok ? 200 : 404, { success: ok });
-        } catch (e: any) {
-          log.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+        } catch (e: unknown) {
+          log.error('[LicenseEngine][CRITICAL] admin license op failed', toErrMsg(e));
           return sendJSON(res, 500, { success: false, error: 'License operation failed.' });
         }
       }
@@ -1474,8 +1509,8 @@ export async function handleLocalApiRequest(
         if (!checkSuperAdminRateLimit(clientIp)) {
           return sendJSON(res, 429, { error: 'Too many failed authentication attempts. Try again later.' });
         }
-        const body = await parseBody(req);
-        const adminSecret = (req.headers['x-admin-secret'] as string) || body.adminSecret || '';
+        const body = await parseBody<ExtendLicenseDTO & AuthBodyLike>(req);
+        const adminSecret = (req.headers['x-admin-secret'] as string) || (typeof body.adminSecret === 'string' ? body.adminSecret : '');
         if (!verifyAdminAccess(adminSecret)) {
           recordFailedSuperAdminAttempt(clientIp);
           return sendJSON(res, 403, { error: 'Forbidden. Admin authentication required.' });
@@ -1485,8 +1520,8 @@ export async function handleLocalApiRequest(
           const record = await extendLicense(body);
           if (!record) return sendJSON(res, 404, { error: 'License not found' });
           return sendJSON(res, 200, { success: true, data: record });
-        } catch (e: any) {
-          log.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+        } catch (e: unknown) {
+          log.error('[LicenseEngine][CRITICAL] admin license op failed', toErrMsg(e));
           return sendJSON(res, 500, { success: false, error: 'License operation failed.' });
         }
       }
@@ -1518,8 +1553,8 @@ export async function handleLocalApiRequest(
         if (!checkSuperAdminRateLimit(clientIp)) {
           return sendJSON(res, 429, { error: 'Too many failed authentication attempts. Try again later.' });
         }
-        const body = await parseBody(req);
-        const adminSecret = (req.headers['x-admin-secret'] as string) || body.adminSecret || '';
+        const body = await parseBody<{ licenseId: string; deviceId: string } & AuthBodyLike>(req);
+        const adminSecret = (req.headers['x-admin-secret'] as string) || (typeof body.adminSecret === 'string' ? body.adminSecret : '');
         if (!verifyAdminAccess(adminSecret)) {
           recordFailedSuperAdminAttempt(clientIp);
           return sendJSON(res, 403, { error: 'Forbidden. Admin authentication required.' });
@@ -1538,7 +1573,13 @@ export async function handleLocalApiRequest(
       }
 
       if ((pathname === '/sync/start' || pathname === '/synchronizer/start') && method === 'POST') {
-        const body = await parseBody(req);
+        const body = await parseBody<{
+          masterProfileId?: string;
+          masterId?: string;
+          activeProfiles?: string[];
+          active?: string[];
+          config?: Partial<SynchronizerConfig>;
+        } & AuthBodyLike>(req);
         if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'sync:write')) return;
         const masterId = body.masterProfileId || body.masterId;
         const active = body.activeProfiles || body.active;
@@ -1553,7 +1594,7 @@ export async function handleLocalApiRequest(
       }
 
       if ((pathname === '/sync/config' || pathname === '/synchronizer/config') && method === 'PUT') {
-        const body = await parseBody(req);
+        const body = await parseBody<Partial<SynchronizerConfig> & AuthBodyLike>(req);
         if (!requireUserOrAdminAuth(req, res, parsedUrl, body, 'sync:write')) return;
         const state = synchronizerHub.updateConfig(body);
         return sendJSON(res, 200, { success: true, state });
@@ -1673,7 +1714,7 @@ export function startApiServer(): void {
 
   apiServer = createLocalApiServer();
 
-  apiServer.on('error', (err: any) => {
+  apiServer.on('error', (err: NodeJS.ErrnoException) => {
     if (err && err.code === 'EADDRINUSE') {
       log.warn(`[API Server] Port ${port} is already in use. Skipping duplicate server bind.`);
     } else {

@@ -1,12 +1,34 @@
 import crypto from 'node:crypto';
+import type { PrismaClient } from '@prisma/client';
 import { getPrismaClient } from '../../../06_DATABASE/prisma-client.js';
 import { isPostgresConfigured } from '../../../06_DATABASE/central-repository.js';
 import { getCommercialPlanById, DEFAULT_COMMERCIAL_PLANS } from '../commercial-plan-service.js';
-import { CommercialPlan, BillingCycleType } from '../../../10_CONFIG/shared/types/commercial.js';
+import type { CommercialPlan, BillingCycleType } from '../../../10_CONFIG/shared/types/commercial.js';
 import { createLogger } from '../../utils/logger.js';
+
 const log = createLogger('payment-types');
 
 export type PaymentProviderType = 'stripe' | 'razorpay' | 'youpi_pg' | 'simulation';
+
+export type PgBillingClient = Partial<PrismaClient>;
+
+export interface CommercialPaymentRow {
+  id: string;
+  user_id: string;
+  subscription_id: string | null;
+  provider: string;
+  external_order_id: string | null;
+  external_payment_id: string | null;
+  amount_cents: number;
+  currency: string;
+  status: string;
+  plan_id: string;
+  billing_cycle: string;
+  receipt_url: string | null;
+  metadata_json: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export class PaymentGatewayNotConfiguredError extends Error {
   public readonly provider: string;
@@ -39,7 +61,7 @@ export interface CheckoutSessionResponse {
   planId: string;
   billingCycle: BillingCycleType;
   createdAt: string;
-  gatewayMeta?: Record<string, any>;
+  gatewayMeta?: Record<string, unknown>;
 }
 
 export interface PaymentWebhookEvent {
@@ -55,8 +77,8 @@ export interface PaymentWebhookEvent {
   externalOrderId?: string;
   externalSubscriptionId?: string;
   receiptUrl?: string;
-  metadata?: Record<string, any>;
-  rawPayload?: any;
+  metadata?: Record<string, unknown>;
+  rawPayload?: unknown;
 }
 
 export interface PaymentInvoiceRecord {
@@ -145,19 +167,20 @@ export function verifyRazorpayPaymentSignature(
 }
 
 export function isStrictProductionPostgres(): boolean {
+  const proc = typeof process !== 'undefined' ? (process as NodeJS.Process & { versions?: { electron?: string } }) : undefined;
   return (
     isPostgresConfigured() &&
     process.env.NODE_ENV === 'production' &&
     !process.env.VITEST &&
-    !(typeof process !== 'undefined' && Boolean((process as any).versions?.electron))
+    !proc?.versions?.electron
   );
 }
 
-export function resolvePgBillingClient(requiredModels: string[]): any | null {
-  const prisma = isPostgresConfigured() ? getPrismaClient() : null;
+export function resolvePgBillingClient(requiredModels: Array<keyof PrismaClient>): PgBillingClient | null {
+  const prisma = isPostgresConfigured() ? (getPrismaClient() as PgBillingClient | null) : null;
   if (!prisma) return null;
 
-  const ready = requiredModels.every((m) => Boolean((prisma as any)[m]));
+  const ready = requiredModels.every((m) => Boolean(prisma[m]));
   if (!ready) {
     if (isStrictProductionPostgres()) {
       throw new Error(
@@ -172,14 +195,24 @@ export function resolvePgBillingClient(requiredModels: string[]): any | null {
   return prisma;
 }
 
-export async function withPgTransaction<T>(prisma: any, fn: (tx: any) => Promise<T>): Promise<T> {
-  if (prisma && typeof prisma.$transaction === 'function') {
-    return await prisma.$transaction(async (tx: any) => fn(tx));
+export async function withPgTransaction<T>(
+  prisma: PgBillingClient,
+  fn: (tx: PgBillingClient) => Promise<T>
+): Promise<T> {
+  const txFn = prisma.$transaction as ((cb: (tx: PgBillingClient) => Promise<T>) => Promise<T>) | undefined;
+  if (typeof txFn === 'function') {
+    return await txFn.call(prisma, async (tx) => fn(tx));
   }
   return await fn(prisma);
 }
 
-export function isPgUniqueViolation(err: any): boolean {
-  const msg = String(err?.message || '').toLowerCase();
-  return err?.code === 'P2002' || err?.code === '23505' || msg.includes('unique constraint') || msg.includes('duplicate key');
+export function isPgUniqueViolation(err: unknown): boolean {
+  const record = err as { message?: unknown; code?: unknown } | null;
+  const msg = String(record?.message || '').toLowerCase();
+  return (
+    record?.code === 'P2002' ||
+    record?.code === '23505' ||
+    msg.includes('unique constraint') ||
+    msg.includes('duplicate key')
+  );
 }

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import { Globe2, Folder, Tag, AlignLeft, X } from 'lucide-react';
 
 interface ProfileModalProps {
@@ -31,6 +32,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isOpen) return;
     if (initialData) {
       setName(initialData.name || '');
       setFolder(initialData.folder || '');
@@ -76,8 +78,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         tags: tags.length > 0 ? tags : undefined,
       });
       onClose();
-    } catch (err: any) {
-      setError(err.message || 'Failed to save profile');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to save profile');
     } finally {
       setIsSubmitting(false);
     }
@@ -101,6 +103,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors"
           >
@@ -116,8 +119,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">Profile Name *</label>
+            <label htmlFor="prof-modal-name" className="text-xs font-semibold text-slate-300">Profile Name *</label>
             <input
+              id="prof-modal-name"
               type="text"
               required
               value={name}
@@ -128,11 +132,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
+            <label htmlFor="prof-modal-folder" className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
               <Folder className="w-3.5 h-3.5 text-slate-400" />
               <span>Folder Group</span>
             </label>
             <input
+              id="prof-modal-folder"
               type="text"
               value={folder}
               onChange={(e) => setFolder(e.target.value)}
@@ -142,12 +147,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
+            <label htmlFor="prof-modal-tag-input" className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
               <Tag className="w-3.5 h-3.5 text-slate-400" />
               <span>Tags</span>
             </label>
             <div className="flex items-center space-x-2">
               <input
+                id="prof-modal-tag-input"
                 type="text"
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
@@ -190,11 +196,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
+            <label htmlFor="prof-modal-notes" className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
               <AlignLeft className="w-3.5 h-3.5 text-slate-400" />
               <span>Notes / Description</span>
             </label>
             <textarea
+              id="prof-modal-notes"
               rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}

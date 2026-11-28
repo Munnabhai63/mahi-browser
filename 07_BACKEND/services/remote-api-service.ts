@@ -19,16 +19,16 @@ import {
   clearLocalDistributedStateNamespace,
   clearDistributedStateNamespaceAsync,
 } from '../../08_SECURITY/distributed-state-service.js';
-import { getCentralUserById, AuthUser } from '../../05_AUTH/central-auth-service.js';
+import { getCentralUserById, type AuthUser } from '../../05_AUTH/central-auth-service.js';
 import { hasWorkspacePermission, getMemberRoleInWorkspace } from './team-workspace-service.js';
-import { TeamRole, TeamPermission } from '../../10_CONFIG/shared/types/workspace.js';
+import type { TeamRole, TeamPermission } from '../../10_CONFIG/shared/types/workspace.js';
 import {
-  RemoteApiKeyRecord,
-  CreateRemoteApiKeyDTO,
-  RemoteApiScope,
+  type RemoteApiKeyRecord,
+  type CreateRemoteApiKeyDTO,
+  type RemoteApiScope,
   ALL_REMOTE_API_SCOPES,
-  RemoteAuthContext,
-  RemoteApiKeyAuditRecord,
+  type RemoteAuthContext,
+  type RemoteApiKeyAuditRecord,
 } from '../../10_CONFIG/shared/types/remote-api.js';
 import { createLogger } from '../utils/logger.js';
 const log = createLogger('remote-api-service');
@@ -147,7 +147,7 @@ export function getCachedIdempotentResponse(
     SELECT status_code, response_json, expires_at
     FROM api_idempotency_records
     WHERE idempotency_key = ? AND user_id = ?
-  `).get(idempotencyKey, userId) as any;
+  `).get<{ status_code: number; response_json: string; expires_at: string }>(idempotencyKey, userId);
 
   if (!row) return null;
 
@@ -215,7 +215,7 @@ export class RemoteApiService {
     dto: CreateRemoteApiKeyDTO
   ): { keyRecord: RemoteApiKeyRecord; secretKey: string } {
     const user = getCentralUserById(userId);
-    if (!user || user.status !== 'ACTIVE') {
+    if (user?.status !== 'ACTIVE') {
       throw new Error('User account not found or inactive');
     }
 
@@ -297,12 +297,28 @@ export class RemoteApiService {
     }
 
     query += ' ORDER BY created_at DESC';
-    const rows = db.prepare(query).all(...params) as any[];
+    interface SqliteRemoteApiKeyRow {
+      id: string;
+      user_id: string;
+      workspace_id: string | null;
+      name: string;
+      key_prefix: string;
+      key_hash: string;
+      scopes_json: string | null;
+      status: RemoteApiKeyRecord['status'];
+      rate_limit_per_min: number | null;
+      requests_count_month: number | null;
+      last_used_at: string | null;
+      expires_at: string | null;
+      created_at: string;
+      revoked_at: string | null;
+    }
+    const rows = db.prepare(query).all<SqliteRemoteApiKeyRow>(...params);
 
     return rows.map((r) => ({
       id: r.id,
       userId: r.user_id,
-      workspaceId: r.workspace_id,
+      workspaceId: r.workspace_id ?? undefined,
       name: r.name,
       keyPrefix: r.key_prefix,
       keyHash: r.key_hash,
@@ -310,22 +326,37 @@ export class RemoteApiService {
       status: r.status,
       rateLimitPerMin: r.rate_limit_per_min || 120,
       requestsCountMonth: r.requests_count_month || 0,
-      lastUsedAt: r.last_used_at,
-      expiresAt: r.expires_at,
+      lastUsedAt: r.last_used_at ?? undefined,
+      expiresAt: r.expires_at ?? undefined,
       createdAt: r.created_at,
-      revokedAt: r.revoked_at,
+      revokedAt: r.revoked_at ?? undefined,
     }));
   }
 
   public getApiKeyById(keyId: string, userId: string): RemoteApiKeyRecord | null {
     const db = getDatabase();
-    const row = db.prepare('SELECT * FROM remote_api_keys WHERE id = ? AND user_id = ?').get(keyId, userId) as any;
+    const row = db.prepare('SELECT * FROM remote_api_keys WHERE id = ? AND user_id = ?').get<{
+      id: string;
+      user_id: string;
+      workspace_id: string | null;
+      name: string;
+      key_prefix: string;
+      key_hash: string;
+      scopes_json: string | null;
+      status: RemoteApiKeyRecord['status'];
+      rate_limit_per_min: number | null;
+      requests_count_month: number | null;
+      last_used_at: string | null;
+      expires_at: string | null;
+      created_at: string;
+      revoked_at: string | null;
+    }>(keyId, userId);
     if (!row) return null;
 
     return {
       id: row.id,
       userId: row.user_id,
-      workspaceId: row.workspace_id,
+      workspaceId: row.workspace_id ?? undefined,
       name: row.name,
       keyPrefix: row.key_prefix,
       keyHash: row.key_hash,
@@ -333,16 +364,16 @@ export class RemoteApiService {
       status: row.status,
       rateLimitPerMin: row.rate_limit_per_min || 120,
       requestsCountMonth: row.requests_count_month || 0,
-      lastUsedAt: row.last_used_at,
-      expiresAt: row.expires_at,
+      lastUsedAt: row.last_used_at ?? undefined,
+      expiresAt: row.expires_at ?? undefined,
       createdAt: row.created_at,
-      revokedAt: row.revoked_at,
+      revokedAt: row.revoked_at ?? undefined,
     };
   }
 
   public revokeApiKey(keyId: string, userId: string): boolean {
     const db = getDatabase();
-    const row = db.prepare('SELECT id, name FROM remote_api_keys WHERE id = ? AND user_id = ?').get(keyId, userId) as any;
+    const row = db.prepare('SELECT id, name FROM remote_api_keys WHERE id = ? AND user_id = ?').get<{ id: string; name: string }>(keyId, userId);
     if (!row) return false;
 
     const now = new Date().toISOString();
@@ -354,7 +385,7 @@ export class RemoteApiService {
 
   public rotateApiKey(keyId: string, userId: string): { keyRecord: RemoteApiKeyRecord; newSecretKey: string } {
     const key = this.getApiKeyById(keyId, userId);
-    if (!key || key.status !== 'ACTIVE') {
+    if (key?.status !== 'ACTIVE') {
       throw new Error('API key not found or revoked');
     }
 
@@ -376,7 +407,7 @@ export class RemoteApiService {
   public authenticateApiKey(
     secretKey: string
   ): { keyRecord: RemoteApiKeyRecord; user: AuthUser; workspaceRole?: TeamRole } | null {
-    if (!secretKey || !secretKey.startsWith('mahi_')) {
+    if (!secretKey?.startsWith('mahi_')) {
       return null;
     }
 
@@ -385,7 +416,22 @@ export class RemoteApiService {
     const row = db.prepare(`
       SELECT * FROM remote_api_keys
       WHERE key_hash = ? AND status = 'ACTIVE'
-    `).get(hash) as any;
+    `).get<{
+      id: string;
+      user_id: string;
+      workspace_id: string | null;
+      name: string;
+      key_prefix: string;
+      key_hash: string;
+      scopes_json: string | null;
+      status: RemoteApiKeyRecord['status'];
+      rate_limit_per_min: number | null;
+      requests_count_month: number | null;
+      last_used_at: string | null;
+      expires_at: string | null;
+      created_at: string;
+      revoked_at: string | null;
+    }>(hash);
 
     if (!row) return null;
 
@@ -395,7 +441,7 @@ export class RemoteApiService {
     }
 
     const user = getCentralUserById(row.user_id);
-    if (!user || user.status !== 'ACTIVE') {
+    if (user?.status !== 'ACTIVE') {
       return null;
     }
 
@@ -518,14 +564,22 @@ export class RemoteApiService {
       WHERE key_id = ? AND user_id = ?
       ORDER BY created_at DESC
       LIMIT 100
-    `).all(keyId, userId) as any[];
+    `).all<{
+      id: string;
+      key_id: string;
+      user_id: string;
+      action: RemoteApiKeyAuditRecord['action'];
+      ip_address: string | null;
+      details: string;
+      created_at: string;
+    }>(keyId, userId);
 
     return rows.map((r) => ({
       id: r.id,
       keyId: r.key_id,
       userId: r.user_id,
       action: r.action,
-      ipAddress: r.ip_address,
+      ipAddress: r.ip_address ?? undefined,
       details: r.details,
       createdAt: r.created_at,
     }));

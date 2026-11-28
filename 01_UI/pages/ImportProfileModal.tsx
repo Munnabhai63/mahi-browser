@@ -1,22 +1,17 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import {
-  FolderPlus,
   FolderOpen,
-  KeyRound,
   CheckCircle2,
   AlertCircle,
-  FileCheck,
-  ArrowRight,
-  Shield,
   Upload,
-  Layers,
   FileText,
   Sparkles,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
-import { ImportProfilePreview, CrossPlatformImportDTO } from '../../10_CONFIG/shared/types/archive.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { ImportProfilePreview, CrossPlatformImportDTO } from '../../10_CONFIG/shared/types/archive.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 
 interface ImportProfileProps {
   onNavigate: (page: NavigationPage) => void;
@@ -74,11 +69,11 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
           message: res.errorMessage || 'Failed to read profile archive.',
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         type: 'error',
         title: 'Validation Failed',
-        message: err?.message || 'Could not validate file.',
+        message: err instanceof Error ? err.message : 'Could not validate file.',
       });
     } finally {
       setLoading(false);
@@ -86,7 +81,7 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
   };
 
   const handleImportArchive = async () => {
-    if (!filePath || !preview || !preview.valid) return;
+    if (!filePath || !preview?.valid) return;
     setLoading(true);
 
     try {
@@ -138,8 +133,8 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
           message: res.errors?.join(', ') || 'Failed to parse profiles',
         });
       }
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Import Error', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Import Error', message: err instanceof Error ? err.message : String(err) });
     } finally {
       setLoading(false);
     }
@@ -153,7 +148,7 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
       const newProf = await createProfile({
         name: cookieProfileName || 'Cookie Profile',
         folder: 'Imported',
-        settings: {} as any,
+        settings: {},
       });
 
       if (newProf && window.mahiAPI?.importCookies) {
@@ -167,8 +162,8 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
       });
       await fetchProfiles();
       onNavigate('profiles');
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Cookie Import Error', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Cookie Import Error', message: err instanceof Error ? err.message : String(err) });
     } finally {
       setLoading(false);
     }
@@ -233,7 +228,7 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
           <div className="space-y-4">
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-001" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Select Profile Archive (.mahi-profile)
                 </label>
                 <div className="flex space-x-2">
@@ -244,7 +239,7 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
                     placeholder="No archive selected"
                     className="flex-1 px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono"
                   />
-                  <button
+                  <button type="button"
                     onClick={handleBrowseFile}
                     className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-xl flex items-center space-x-1.5"
                   >
@@ -256,7 +251,7 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
 
               {preview?.isEncrypted && (
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <label htmlFor="field-002" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Archive Password
                   </label>
                   <div className="flex space-x-2">
@@ -267,7 +262,7 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
                       placeholder="Enter decryption password"
                       className="flex-1 px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs"
                     />
-                    <button
+                    <button type="button"
                       onClick={() => handleValidate(filePath, password)}
                       className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl"
                     >
@@ -278,7 +273,7 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
               )}
             </div>
 
-            {preview && preview.valid && (
+            {preview?.valid && (
               <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-5 space-y-3">
                 <div className="flex items-center space-x-2 font-bold text-xs text-emerald-600 dark:text-emerald-400">
                   <CheckCircle2 className="w-4 h-4" />
@@ -311,12 +306,12 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-003" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Source Platform
                 </label>
                 <select
                   value={platform}
-                  onChange={(e) => setPlatform(e.target.value as any)}
+                  onChange={(e) => setPlatform(e.target.value as CrossPlatformImportDTO['platform'])}
                   className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold"
                 >
                   <option value="DOLPHIN">🐬 Dolphin Anty JSON</option>
@@ -327,7 +322,7 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-004" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Target Folder
                 </label>
                 <input
@@ -341,7 +336,7 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-005" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Paste Profiles JSON Export
               </label>
               <textarea
@@ -359,7 +354,7 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
         {mode === 'NETSCAPE_COOKIES' && (
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-006" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 New Profile Name
               </label>
               <input
@@ -372,7 +367,7 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-007" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Paste Netscape Cookie File Content
               </label>
               <textarea
@@ -389,7 +384,7 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
 
       {/* Action Footer */}
       <div className="flex items-center justify-between pt-6 border-t border-slate-200 dark:border-slate-800">
-        <button
+        <button type="button"
           onClick={() => onNavigate('profiles')}
           className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200"
         >
@@ -397,7 +392,7 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
         </button>
 
         {mode === 'MAHI_ARCHIVE' && (
-          <button
+          <button type="button"
             onClick={handleImportArchive}
             disabled={loading || !preview || !preview.valid}
             className="px-6 py-2.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-40 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-600/20 flex items-center space-x-2 active:scale-95 transition-all"
@@ -408,7 +403,7 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
         )}
 
         {mode === 'CROSS_PLATFORM_JSON' && (
-          <button
+          <button type="button"
             onClick={handleImportCrossPlatform}
             disabled={loading || !jsonText.trim()}
             className="px-6 py-2.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-40 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-600/20 flex items-center space-x-2 active:scale-95 transition-all"
@@ -419,7 +414,7 @@ export const ImportProfilePage: React.FC<ImportProfileProps> = ({ onNavigate }) 
         )}
 
         {mode === 'NETSCAPE_COOKIES' && (
-          <button
+          <button type="button"
             onClick={handleImportNetscape}
             disabled={loading || !netscapeText.trim()}
             className="px-6 py-2.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-40 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-600/20 flex items-center space-x-2 active:scale-95 transition-all"

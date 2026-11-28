@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { BrowserEngine } from '../../10_CONFIG/shared/types/profile.js';
-import { getMahiCustomCorePath, getStealthOrbitaEnginePath, detectSystemBrowsers, getCamoufoxExecutablePath } from '../detector.js';
+import type { BrowserEngine } from '../../10_CONFIG/shared/types/profile.js';
+import { getMahiCustomCorePath, detectSystemBrowsers, getCamoufoxExecutablePath } from '../detector.js';
 import {
   getBundledEngineExecutablePath,
   getProductionChromiumExecutablePath,
@@ -66,7 +66,7 @@ export function resolveMultiCoreExecutablePath(
   }
 
   // Camoufox Dual-Engine check
-  if (engine === 'camoufox' || (userAgent && userAgent.includes('Firefox') && !userAgent.includes('Chrome'))) {
+  if (engine === 'camoufox' || (userAgent?.includes('Firefox') && !userAgent.includes('Chrome'))) {
     const camou = getCamoufoxExecutablePath();
     if (camou && fs.existsSync(camou)) {
       return {

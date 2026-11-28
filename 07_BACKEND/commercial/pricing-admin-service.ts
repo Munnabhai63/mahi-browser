@@ -13,8 +13,8 @@
  */
 
 import crypto from 'node:crypto';
-import { getDatabase } from '../../06_DATABASE/connection.js';
-import {
+import { getDatabase, type SqliteWrapper } from '../../06_DATABASE/connection.js';
+import type {
   CanonicalPlanId,
   PlanPrice,
   PricingVersion,
@@ -40,6 +40,42 @@ import { logCommercialAudit } from './commercial-audit-service.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('pricing-admin-service');
+
+interface SqlitePricingVersionRow {
+  version: number;
+  status: string;
+  prices_json: string | null;
+  annual_discount_percent: number;
+  existing_subscriber_policy: string;
+  published_at: string | null;
+  published_by: string | null;
+  effective_at: string | null;
+  created_at: string;
+  provider_sync_status_json: string | null;
+}
+
+interface SqliteProviderPriceMappingRow {
+  id: string;
+  provider: ProviderPriceMapping['provider'];
+  plan_id: string;
+  billing_cycle: BillingCycleType;
+  pricing_version: number;
+  provider_product_id: string;
+  provider_price_id: string;
+  status: ProviderPriceMapping['status'];
+  created_at: string;
+}
+
+interface SqliteUsageLedgerRow {
+  current_usage: number;
+  max_allowed: number;
+}
+
+interface SqliteSubscriptionRevenueGroupRow {
+  plan_id: string;
+  billing_cycle: string;
+  count: number;
+}
 
 // ─── Database Initialization ───────────────────────────────────────────────────
 
@@ -120,7 +156,7 @@ export function initializePricingTables(): void {
   }
 
   // Seed initial pricing version v1 if none exists
-  const existingVersion = db.prepare('SELECT version FROM pricing_versions ORDER BY version DESC LIMIT 1').get() as any;
+  const existingVersion = db.prepare('SELECT version FROM pricing_versions ORDER BY version DESC LIMIT 1').get() as { version: number } | undefined;
   if (!existingVersion) {
     const now = new Date().toISOString();
     db.prepare(`
@@ -154,23 +190,23 @@ export function initializePricingTables(): void {
  */
 export function getActivePricingVersion(): PricingVersion | null {
   const db = getDatabase();
-  let row: any;
+  let row: SqlitePricingVersionRow | undefined;
   try {
     row = db.prepare(
       "SELECT * FROM pricing_versions WHERE status = 'PUBLISHED' ORDER BY version DESC LIMIT 1"
-    ).get();
+    ).get() as SqlitePricingVersionRow | undefined;
   } catch {
     initializePricingTables();
     row = db.prepare(
       "SELECT * FROM pricing_versions WHERE status = 'PUBLISHED' ORDER BY version DESC LIMIT 1"
-    ).get();
+    ).get() as SqlitePricingVersionRow | undefined;
   }
 
   if (!row) {
     initializePricingTables();
     row = db.prepare(
       "SELECT * FROM pricing_versions WHERE status = 'PUBLISHED' ORDER BY version DESC LIMIT 1"
-    ).get();
+    ).get() as SqlitePricingVersionRow | undefined;
   }
 
   if (!row) return null;
@@ -182,7 +218,7 @@ export function getActivePricingVersion(): PricingVersion | null {
  */
 export function getPricingVersion(version: number): PricingVersion | null {
   const db = getDatabase();
-  const row = db.prepare('SELECT * FROM pricing_versions WHERE version = ?').get(version) as any;
+  const row = db.prepare('SELECT * FROM pricing_versions WHERE version = ?').get(version) as SqlitePricingVersionRow | undefined;
   if (!row) return null;
   return mapPricingVersionRow(row);
 }
@@ -201,7 +237,7 @@ export function getActivePlanPrice(planId: CanonicalPlanId): PlanPrice | null {
  */
 export function getAllPricingVersions(): PricingVersion[] {
   const db = getDatabase();
-  const rows = db.prepare('SELECT * FROM pricing_versions ORDER BY version DESC').all() as any[];
+  const rows = db.prepare('SELECT * FROM pricing_versions ORDER BY version DESC').all<SqlitePricingVersionRow>();
   return rows.map(mapPricingVersionRow);
 }
 
@@ -290,7 +326,7 @@ export function createPricingDraft(
   const draftPolicy = modifications.existingSubscriberPolicy || 'GRANDFATHER';
 
   // Calculate next version number
-  const maxVersion = (db.prepare('SELECT MAX(version) as max FROM pricing_versions').get() as any)?.max || 0;
+  const maxVersion = (db.prepare('SELECT MAX(version) as max FROM pricing_versions').get() as { max?: number | null } | undefined)?.max || 0;
   const newVersion = maxVersion + 1;
   const now = new Date().toISOString();
 
@@ -309,7 +345,11 @@ export function createPricingDraft(
     details: `Created pricing draft v${newVersion}`,
   });
 
-  return getPricingVersion(newVersion)!;
+  const createdDraft = getPricingVersion(newVersion);
+  if (!createdDraft) {
+    throw new Error(`Pricing version ${newVersion} could not be retrieved`);
+  }
+  return createdDraft;
 }
 
 /**
@@ -318,8 +358,8 @@ export function createPricingDraft(
 export function updatePricingDraft(
   version: number,
   modifications: Partial<AdminPricingDraft>,
-  actorId: string,
-  actorName: string
+  _actorId: string,
+  _actorName: string
 ): PricingVersion {
   const db = getDatabase();
   const draft = getPricingVersion(version);
@@ -340,7 +380,11 @@ export function updatePricingDraft(
     WHERE version = ?
   `).run(JSON.stringify(updatedPrices), updatedDiscount, updatedPolicy, version);
 
-  return getPricingVersion(version)!;
+  const updatedDraft = getPricingVersion(version);
+  if (!updatedDraft) {
+    throw new Error(`Updated pricing version ${version} could not be retrieved`);
+  }
+  return updatedDraft;
 }
 
 /**
@@ -382,7 +426,7 @@ export function previewPricingChanges(version: number): AdminPricingPreview {
         monthlyChanged,
         annualChanged,
         monthlyPercentChange: pctChange,
-      } as any);
+      });
     }
   }
 
@@ -391,7 +435,7 @@ export function previewPricingChanges(version: number): AdminPricingPreview {
   try {
     const result = db.prepare(
       "SELECT COUNT(*) as count FROM commercial_subscriptions WHERE status = 'ACTIVE'"
-    ).get() as any;
+    ).get() as { count?: number } | undefined;
     existingSubscriberCount = result?.count || 0;
   } catch (err) {
     log.debug('pricing-admin-service commercial_subscriptions count skipped', { err });
@@ -445,22 +489,22 @@ export function publishPricingVersion(
   
   try {
     // Simulation provider always succeeds
-    syncStatus['simulation'] = syncProviderPrices('simulation', draft, version);
+    syncStatus.simulation = syncProviderPrices('simulation', draft, version);
 
     // Stripe sync
     const stripeKey = process.env.STRIPE_SECRET_KEY;
     if (stripeKey && stripeKey !== '' && !stripeKey.includes('test_secret')) {
-      syncStatus['stripe'] = syncProviderPrices('stripe', draft, version);
+      syncStatus.stripe = syncProviderPrices('stripe', draft, version);
     } else {
-      syncStatus['stripe'] = 'NOT_CONFIGURED';
+      syncStatus.stripe = 'NOT_CONFIGURED';
     }
 
     // Razorpay sync
     const rzpKey = process.env.RAZORPAY_KEY_ID;
     if (rzpKey && rzpKey !== '' && !rzpKey.includes('test_secret')) {
-      syncStatus['razorpay'] = syncProviderPrices('razorpay', draft, version);
+      syncStatus.razorpay = syncProviderPrices('razorpay', draft, version);
     } else {
-      syncStatus['razorpay'] = 'NOT_CONFIGURED';
+      syncStatus.razorpay = 'NOT_CONFIGURED';
     }
 
     // Check for critical failures — if a CONFIGURED provider fails, abort
@@ -484,10 +528,10 @@ export function publishPricingVersion(
         version: getPricingVersion(version) || undefined,
       };
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     db.prepare("UPDATE pricing_versions SET status = 'PUBLISH_FAILED', provider_sync_status_json = ? WHERE version = ?")
       .run(JSON.stringify(syncStatus), version);
-    return { success: false, message: `Provider sync error: ${err.message}` };
+    return { success: false, message: `Provider sync error: ${err instanceof Error ? err.message : String(err)}` };
   }
 
   // Atomic publish: deactivate old, activate new
@@ -601,7 +645,7 @@ function syncProviderPrices(
       if (price.monthlyPricePaise === 0 && price.annualPricePaise === 0) continue;
 
       const plan = CANONICAL_PLAN_CATALOG[price.planId];
-      if (!plan || plan.status !== 'ACTIVE') continue;
+      if (plan?.status !== 'ACTIVE') continue;
 
       // Monthly mapping
       if (price.monthlyPricePaise > 0) {
@@ -659,7 +703,7 @@ export function getProviderPriceMapping(
     SELECT * FROM provider_price_mappings 
     WHERE provider = ? AND plan_id = ? AND billing_cycle = ? AND status = 'ACTIVE'
     ORDER BY pricing_version DESC LIMIT 1
-  `).get(provider, planId, billingCycle) as any;
+  `).get(provider, planId, billingCycle) as SqliteProviderPriceMappingRow | undefined;
 
   if (!row) return null;
   return {
@@ -698,7 +742,7 @@ export function getUsageLedger(userId: string, resourceType: string): {
   const db = getDatabase();
   const row = db.prepare(
     'SELECT * FROM usage_ledger WHERE user_id = ? AND resource_type = ? ORDER BY last_updated_at DESC LIMIT 1'
-  ).get(userId, resourceType) as any;
+  ).get(userId, resourceType) as SqliteUsageLedgerRow | undefined;
 
   if (!row) {
     return { currentUsage: 0, maxAllowed: 0, percentUsed: 0, warningLevel: 'NORMAL' };
@@ -733,7 +777,7 @@ export function updateUsageLedger(
   const now = new Date().toISOString();
   const existing = db.prepare(
     'SELECT id FROM usage_ledger WHERE user_id = ? AND resource_type = ? AND billing_period_start = ?'
-  ).get(userId, resourceType, billingPeriodStart) as any;
+  ).get(userId, resourceType, billingPeriodStart) as { id: string } | undefined;
 
   if (existing) {
     db.prepare(`
@@ -780,7 +824,7 @@ export function getAdminRevenueSummary(): {
   try {
     const subs = db.prepare(
       "SELECT plan_id, billing_cycle, COUNT(*) as count FROM commercial_subscriptions WHERE status = 'ACTIVE' GROUP BY plan_id, billing_cycle"
-    ).all() as any[];
+    ).all<SqliteSubscriptionRevenueGroupRow>();
 
     for (const sub of subs) {
       activeSubscribers += sub.count;
@@ -811,18 +855,18 @@ export function getAdminRevenueSummary(): {
 
 // ─── Internal Helpers ──────────────────────────────────────────────────────────
 
-function mapPricingVersionRow(row: any): PricingVersion {
+function mapPricingVersionRow(row: SqlitePricingVersionRow): PricingVersion {
   return {
     version: row.version,
     status: row.status as PricingPublishStatus,
-    prices: JSON.parse(row.prices_json || '[]'),
+    prices: JSON.parse(row.prices_json || '[]') as PlanPrice[],
     annualDiscountPercent: row.annual_discount_percent,
     existingSubscriberPolicy: row.existing_subscriber_policy as ExistingSubscriberPolicy,
     publishedAt: row.published_at || null,
     publishedBy: row.published_by || null,
     effectiveAt: row.effective_at || null,
     createdAt: row.created_at,
-    providerSyncStatus: JSON.parse(row.provider_sync_status_json || '{}'),
+    providerSyncStatus: JSON.parse(row.provider_sync_status_json || '{}') as Record<string, 'SYNCED' | 'ERROR' | 'NOT_CONFIGURED'>,
   };
 }
 
@@ -833,7 +877,7 @@ function mergePrices(basePrices: PlanPrice[], modifications: PlanPrice[]): PlanP
   return Array.from(merged.values());
 }
 
-function logPricingAudit(db: any, params: {
+function logPricingAudit(db: SqliteWrapper, params: {
   actorId: string;
   actorName: string;
   action: string;

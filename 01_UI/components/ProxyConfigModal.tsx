@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
   X,
   Globe2,
@@ -12,8 +13,8 @@ import {
   Sparkles,
   Clipboard,
 } from 'lucide-react';
-import { Profile } from '../../10_CONFIG/shared/types/profile.js';
-import { ProxyItem, ProxyProtocol, ProxyTestResult } from '../../10_CONFIG/shared/types/proxy.js';
+import type { Profile } from '../../10_CONFIG/shared/types/profile.js';
+import type { ProxyItem, ProxyProtocol, ProxyTestResult } from '../../10_CONFIG/shared/types/proxy.js';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useProxyStore } from '../stores/useProxyStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
@@ -95,7 +96,7 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
 
     setProtocol(parsed.protocol as ProxyProtocol);
     setHost(parsed.host);
-    if (!isNaN(parsed.port)) setPort(parsed.port);
+    if (!Number.isNaN(parsed.port)) setPort(parsed.port);
     if (parsed.username !== undefined) setUsername(parsed.username);
     if (parsed.password !== undefined) setPassword(parsed.password);
   };
@@ -122,7 +123,7 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
       showToast({ type: 'error', title: 'Validation Error', message: 'Proxy Host is required.' });
       return;
     }
-    if (!cleanPort || isNaN(cleanPort) || cleanPort < 1 || cleanPort > 65535) {
+    if (!cleanPort || Number.isNaN(cleanPort) || cleanPort < 1 || cleanPort > 65535) {
       showToast({ type: 'error', title: 'Validation Error', message: 'Valid Port (1-65535) is required.' });
       return;
     }
@@ -132,7 +133,7 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
 
     try {
       const res = await window.mahiAPI.testProxy({
-        proxyId: (initialProxy as any)?.id,
+        proxyId: initialProxy?.id,
         host: cleanHost,
         port: cleanPort,
         protocol,
@@ -173,7 +174,7 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
       showToast({ type: 'error', title: 'Validation Error', message: 'Proxy Host is required.' });
       return;
     }
-    if (!cleanPort || isNaN(cleanPort) || cleanPort < 1 || cleanPort > 65535) {
+    if (!cleanPort || Number.isNaN(cleanPort) || cleanPort < 1 || cleanPort > 65535) {
       showToast({ type: 'error', title: 'Validation Error', message: 'Valid Port (1-65535) is required.' });
       return;
     }
@@ -232,7 +233,7 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
           settings: {
             network: { ...defaults.network, directConnection: false, proxyId },
           },
-        } as any);
+        });
 
         await fetchProxies();
         await fetchProfiles();
@@ -261,7 +262,7 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
         settings: {
           network: { ...defaults.network, directConnection: true, proxyId: undefined },
         },
-      } as any);
+      });
 
       await fetchProfiles();
       showToast({ type: 'info', title: 'Direct Connection', message: 'Proxy removed from profile.' });
@@ -292,7 +293,7 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
               </p>
             </div>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
@@ -305,7 +306,7 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
           {/* Smart Paste Input */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
+              <label htmlFor="field-001" className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-teal-500" />
                 <span>Quick Paste (Auto-Parse)</span>
               </label>
@@ -330,7 +331,7 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
           {/* Protocol & Port Selection */}
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              <label htmlFor="field-002" className="text-xs font-bold text-slate-700 dark:text-slate-300">
                 Proxy Type
               </label>
               <select
@@ -346,7 +347,7 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
             </div>
 
             <div className="col-span-2 space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              <label htmlFor="field-003" className="text-xs font-bold text-slate-700 dark:text-slate-300">
                 Host / IP
               </label>
               <input
@@ -362,7 +363,7 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
           {/* Port & Authentication */}
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              <label htmlFor="field-004" className="text-xs font-bold text-slate-700 dark:text-slate-300">
                 Port
               </label>
               <input
@@ -377,7 +378,7 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              <label htmlFor="field-005" className="text-xs font-bold text-slate-700 dark:text-slate-300">
                 Username <span className="text-[10px] text-slate-400 font-normal">(Optional)</span>
               </label>
               <input
@@ -390,7 +391,7 @@ export const ProxyConfigModal: React.FC<ProxyConfigModalProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+              <label htmlFor="field-006" className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
                 <span>Password</span>
                 <button
                   type="button"

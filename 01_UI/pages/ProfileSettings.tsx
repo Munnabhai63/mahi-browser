@@ -1,36 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
   Sliders,
   Globe2,
-  Shield,
-  Puzzle,
-  HardDrive,
-  PlaySquare,
-  Sparkles,
   Save,
   ArrowLeft,
-  Trash2,
-  Copy,
   Download,
-  CheckCircle2,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useProxyStore } from '../stores/useProxyStore.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 import {
   DEFAULT_USER_AGENTS,
-  SCREEN_RESOLUTIONS,
   TIMEZONES,
   LANGUAGES,
 } from '../../10_CONFIG/shared/constants/defaults.js';
-import { Profile, ProfileSettings as ProfileSettingsType } from '../../10_CONFIG/shared/types/profile.js';
+import type { ProfileSettings as ProfileSettingsType } from '../../10_CONFIG/shared/types/profile.js';
 
 interface ProfileSettingsProps {
   onNavigate: (page: NavigationPage) => void;
 }
 
 export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate }) => {
-  const { profiles, selectedProfileId, updateProfile, deleteProfile } = useProfileStore();
+  const { profiles, selectedProfileId, updateProfile } = useProfileStore();
   const { proxies, fetchProxies } = useProxyStore();
 
   const profile = profiles.find((p) => p.id === selectedProfileId) || profiles[0];
@@ -50,7 +42,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
 
   useEffect(() => {
     fetchProxies();
-  }, []);
+  }, [fetchProxies]);
 
   useEffect(() => {
     if (profile) {
@@ -62,13 +54,13 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
       setSettings(JSON.parse(JSON.stringify(profile.settings)));
       setIsDirty(false);
     }
-  }, [profile?.id]);
+  }, [profile?.id, profile.tags, profile.name, profile]);
 
   if (!profile || !settings) {
     return (
       <div className="p-8 text-center">
         <p className="text-slate-400">No profile selected.</p>
-        <button
+        <button type="button"
           onClick={() => onNavigate('profiles')}
           className="mt-4 px-4 py-2 bg-teal-600 text-white rounded-xl text-xs font-semibold"
         >
@@ -109,7 +101,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <button
+          <button type="button"
             onClick={() => onNavigate('profiles')}
             className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-200 transition-colors"
           >
@@ -129,7 +121,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
         </div>
 
         <div className="flex items-center space-x-3">
-          <button
+          <button type="button"
             onClick={handleSave}
             disabled={!isDirty}
             className="px-4 py-2 bg-teal-600 hover:bg-teal-500 disabled:opacity-40 text-white font-semibold text-xs rounded-xl shadow-sm flex items-center space-x-1.5 transition-all"
@@ -142,17 +134,17 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
 
       {/* Settings Navigation Tabs */}
       <div className="flex items-center space-x-1 border-b border-slate-200 dark:border-slate-800 text-xs font-semibold">
-        {[
+        {([
           { id: 'general', label: 'General' },
           { id: 'browser', label: 'Browser Engine' },
           { id: 'network', label: 'Network & Proxy' },
           { id: 'privacy', label: 'Display & Locale' },
           { id: 'permissions', label: 'Permissions' },
           { id: 'storage', label: 'Storage & Path' },
-        ].map((tab) => (
-          <button
+        ] as const).map((tab) => (
+          <button type="button"
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => setActiveTab(tab.id)}
             className={`px-4 py-3 border-b-2 transition-colors ${
               activeTab === tab.id
                 ? 'border-teal-500 text-teal-600 dark:text-teal-400'
@@ -170,7 +162,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
         {activeTab === 'general' && (
           <div className="space-y-4 max-w-2xl animate-in fade-in duration-150">
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-001" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Profile Name
               </label>
               <input
@@ -186,7 +178,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-002" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Folder Category
                 </label>
                 <input
@@ -201,7 +193,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-003" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Description
                 </label>
                 <input
@@ -217,7 +209,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-004" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Tags
               </label>
               <div className="flex items-center space-x-2">
@@ -225,7 +217,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
                   type="text"
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); } }}
                   placeholder="Add tag..."
                   className="flex-1 px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500"
                 />
@@ -245,19 +237,20 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
                     className="px-2.5 py-1 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 text-xs font-semibold flex items-center space-x-1"
                   >
                     <span>{t}</span>
-                    <span
+                    <button
+                      type="button"
                       className="cursor-pointer hover:text-rose-500 ml-1"
                       onClick={() => handleRemoveTag(t)}
                     >
                       ×
-                    </span>
+                    </button>
                   </span>
                 ))}
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-005" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Notes
               </label>
               <textarea
@@ -277,13 +270,13 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
         {activeTab === 'browser' && (
           <div className="space-y-4 max-w-2xl animate-in fade-in duration-150">
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-006" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Browser Engine
               </label>
               <select
                 value={settings.browser.engine}
                 onChange={(e) => {
-                  const newEngine = e.target.value as any;
+                  const newEngine = e.target.value as ProfileSettingsType['browser']['engine'];
                   const isCamoufox = newEngine === 'camoufox';
                   const currentUa = settings.browser.userAgent || '';
                   const isMobile = currentUa.includes('Android') || settings.mobile?.enable;
@@ -326,7 +319,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                <label htmlFor="field-007" className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                   User Agent String
                 </label>
                 <select
@@ -368,7 +361,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-008" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Startup URL
                 </label>
                 <input
@@ -386,7 +379,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-009" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Homepage
                 </label>
                 <input
@@ -405,7 +398,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
             </div>
 
             <div className="pt-2 flex items-center space-x-6 text-xs text-slate-700 dark:text-slate-300">
-              <label className="flex items-center space-x-2 cursor-pointer">
+              <label htmlFor="field-010" className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={settings.browser.hardwareAcceleration}
@@ -421,7 +414,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
                 <span>Hardware Acceleration</span>
               </label>
 
-              <label className="flex items-center space-x-2 cursor-pointer">
+              <label htmlFor="field-011" className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={settings.browser.enableExtensions}
@@ -444,7 +437,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
         {activeTab === 'network' && (
           <div className="space-y-4 max-w-2xl animate-in fade-in duration-150">
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-012" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Proxy Routing
               </label>
               <select
@@ -475,7 +468,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-013" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 WebRTC Handling Policy
               </label>
               <select
@@ -483,7 +476,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
                 onChange={(e) => {
                   setSettings({
                     ...settings,
-                    network: { ...settings.network, webrtc: e.target.value as any },
+                    network: { ...settings.network, webrtc: e.target.value as ProfileSettingsType['network']['webrtc'] },
                   });
                   setIsDirty(true);
                 }}
@@ -510,7 +503,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
           <div className="space-y-4 max-w-2xl animate-in fade-in duration-150">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-014" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Screen Width (px)
                 </label>
                 <input
@@ -528,7 +521,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-015" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Screen Height (px)
                 </label>
                 <input
@@ -548,7 +541,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-016" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Timezone
                 </label>
                 <select
@@ -571,7 +564,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-017" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Language
                 </label>
                 <select
@@ -624,7 +617,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
           <div className="space-y-4 max-w-2xl animate-in fade-in duration-150">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-018" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Camera
                 </label>
                 <select
@@ -632,7 +625,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
                   onChange={(e) => {
                     setSettings({
                       ...settings,
-                      permissions: { ...settings.permissions, camera: e.target.value as any },
+                      permissions: { ...settings.permissions, camera: e.target.value as ProfileSettingsType['permissions']['camera'] },
                     });
                     setIsDirty(true);
                   }}
@@ -645,7 +638,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-019" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Microphone
                 </label>
                 <select
@@ -653,7 +646,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
                   onChange={(e) => {
                     setSettings({
                       ...settings,
-                      permissions: { ...settings.permissions, microphone: e.target.value as any },
+                      permissions: { ...settings.permissions, microphone: e.target.value as ProfileSettingsType['permissions']['microphone'] },
                     });
                     setIsDirty(true);
                   }}
@@ -668,7 +661,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-020" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Geolocation
                 </label>
                 <select
@@ -676,7 +669,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
                   onChange={(e) => {
                     setSettings({
                       ...settings,
-                      permissions: { ...settings.permissions, geolocation: e.target.value as any },
+                      permissions: { ...settings.permissions, geolocation: e.target.value as ProfileSettingsType['permissions']['geolocation'] },
                     });
                     setIsDirty(true);
                   }}
@@ -689,7 +682,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-021" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Notifications
                 </label>
                 <select
@@ -697,7 +690,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
                   onChange={(e) => {
                     setSettings({
                       ...settings,
-                      permissions: { ...settings.permissions, notifications: e.target.value as any },
+                      permissions: { ...settings.permissions, notifications: e.target.value as ProfileSettingsType['permissions']['notifications'] },
                     });
                     setIsDirty(true);
                   }}
@@ -716,7 +709,7 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
         {activeTab === 'storage' && (
           <div className="space-y-4 max-w-2xl animate-in fade-in duration-150">
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-022" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Isolated Storage Directory
               </label>
               <input
@@ -731,21 +724,21 @@ export const ProfileSettingsPage: React.FC<ProfileSettingsProps> = ({ onNavigate
             </div>
 
             <div className="pt-4 flex items-center space-x-3">
-              <button
+              <button type="button"
                 onClick={() => onNavigate('cookies')}
                 className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-200 flex items-center space-x-1.5"
               >
                 <Globe2 className="w-3.5 h-3.5" />
                 <span>Manage Cookies</span>
               </button>
-              <button
+              <button type="button"
                 onClick={() => onNavigate('history')}
                 className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-200 flex items-center space-x-1.5"
               >
                 <Sliders className="w-3.5 h-3.5" />
                 <span>Manage History</span>
               </button>
-              <button
+              <button type="button"
                 onClick={() => onNavigate('export')}
                 className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-200 flex items-center space-x-1.5"
               >

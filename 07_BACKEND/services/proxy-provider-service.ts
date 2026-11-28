@@ -9,12 +9,11 @@
 
 import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import { encryptData, decryptData } from '../../08_SECURITY/encryption.js';
 import { logActivity } from './audit-service.js';
 import {
   ProxyProviderRegistry,
 } from '../../08_SECURITY/proxy-providers/proxy-provider-registry.js';
-import {
+import type {
   ProxyCatalogQuery,
   ProxyCatalogResult,
   ProxyProviderInfo,
@@ -27,13 +26,45 @@ import {
   ProxyNetworkType,
   ProxySessionType,
 } from '../../10_CONFIG/shared/types/proxy-provider.js';
-import { ProxyItem, CreateProxyDTO } from '../../10_CONFIG/shared/types/proxy.js';
+import type { CreateProxyDTO } from '../../10_CONFIG/shared/types/proxy.js';
 import { createProxy, getProxyById, updateProxy, deleteProxy } from '../../02_BROWSER/services/proxy-service.js';
 import { hasWorkspacePermission } from './team-workspace-service.js';
-import { TeamPermission } from '../../10_CONFIG/shared/types/workspace.js';
+import type { TeamPermission } from '../../10_CONFIG/shared/types/workspace.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('proxy-provider-service');
+
+interface SqliteProxyProviderSessionRow {
+  id: string;
+  provider_id: string;
+  proxy_id: string;
+  user_id: string;
+  workspace_id: string | null;
+  profile_id: string | null;
+  network_type: string;
+  country: string;
+  region: string | null;
+  city: string | null;
+  session_type: string;
+  upstream_session_id: string;
+  ttl_minutes: number | null;
+  expires_at: string | null;
+  rotatable: number;
+  rotation_count: number;
+  status: string;
+  bytes_used: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface StoredProfileNetworkSettings {
+  network?: {
+    proxyId?: string;
+    directConnection?: boolean;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
 
 function safeLogActivity(category: 'PROXY' | 'SYSTEM', level: 'INFO' | 'WARNING' | 'ERROR' | 'SUCCESS', action: string, details: string) {
   try {
@@ -83,15 +114,12 @@ export class ProxyProviderService {
       try {
         const countries = await p.getCountries(networkType);
         for (const c of countries) {
-          if (!countryMap.has(c.code)) {
+          const existing = countryMap.get(c.code);
+          if (!existing) {
             countryMap.set(c.code, { ...c });
-          } else {
-            const existing = countryMap.get(c.code)!;
-            // Merge cities
-            if (c.cities) {
-              const mergedCities = Array.from(new Set([...(existing.cities || []), ...c.cities]));
-              existing.cities = mergedCities;
-            }
+          } else if (c.cities) {
+            const mergedCities = Array.from(new Set([...(existing.cities || []), ...c.cities]));
+            existing.cities = mergedCities;
           }
         }
       } catch (err) {
@@ -251,11 +279,11 @@ export class ProxyProviderService {
           request.profileId,
           canonicalProxy.id
         );
-        const settingsRow = db.prepare('SELECT settings_json FROM profile_settings WHERE profile_id = ?').get(request.profileId) as any;
-        let settingsObj: any = {};
+        const settingsRow = db.prepare('SELECT settings_json FROM profile_settings WHERE profile_id = ?').get<{ settings_json: string | null }>(request.profileId);
+        let settingsObj: StoredProfileNetworkSettings = {};
         if (settingsRow?.settings_json) {
           try {
-            settingsObj = JSON.parse(settingsRow.settings_json);
+            settingsObj = JSON.parse(settingsRow.settings_json) as StoredProfileNetworkSettings;
           } catch (parseErr) {
             log.warn('Failed parsing profile settings_json during proxy assignment', {
               profileId: request.profileId,
@@ -270,8 +298,8 @@ export class ProxyProviderService {
           request.profileId,
           JSON.stringify(settingsObj)
         );
-      } catch (err: any) {
-        safeLogActivity('PROXY', 'WARNING', 'Profile Assign Failed', err.message);
+      } catch (err: unknown) {
+        safeLogActivity('PROXY', 'WARNING', 'Profile Assign Failed', err instanceof Error ? err.message : String(err));
       }
     }
 
@@ -282,10 +310,14 @@ export class ProxyProviderService {
       `Generated ${request.networkType} session via ${provider.name} in ${request.country.toUpperCase()} for user ${userId}`
     );
 
-    const sessionRecord = this.getSessionById(sessionId)!;
+    const sessionRecord = this.getSessionById(sessionId);
+    const canonicalProxyRecord = getProxyById(canonicalProxy.id);
+    if (!sessionRecord || !canonicalProxyRecord) {
+      throw new Error(`Failed to reload generated proxy session "${sessionId}".`);
+    }
     return {
       session: sessionRecord,
-      proxy: getProxyById(canonicalProxy.id)!,
+      proxy: canonicalProxyRecord,
     };
   }
 
@@ -416,14 +448,14 @@ export class ProxyProviderService {
         SELECT workspace_id FROM team_workspace_members WHERE user_id = ? AND status = 'ACTIVE'
       )
       ORDER BY created_at DESC
-    `).all(userId, userId) as any[];
+    `).all<SqliteProxyProviderSessionRow>(userId, userId);
 
     return rows.map(this.mapSessionRow);
   }
 
   public getSessionById(id: string): ProxySessionRecord | null {
     const db = getDatabase();
-    const row = db.prepare('SELECT * FROM proxy_provider_sessions WHERE id = ?').get(id) as any;
+    const row = db.prepare('SELECT * FROM proxy_provider_sessions WHERE id = ?').get<SqliteProxyProviderSessionRow>(id);
     if (!row) return null;
     return this.mapSessionRow(row);
   }
@@ -433,7 +465,6 @@ export class ProxyProviderService {
    */
   public async getUsage(sessionId?: string, context?: UserContext): Promise<ProxyUsageReport> {
     const userId = context?.userId || 'default-user';
-    const db = getDatabase();
 
     if (sessionId) {
       const session = this.getSessionById(sessionId);
@@ -471,7 +502,7 @@ export class ProxyProviderService {
     };
   }
 
-  private mapSessionRow(row: any): ProxySessionRecord {
+  private mapSessionRow(row: SqliteProxyProviderSessionRow): ProxySessionRecord {
     return {
       id: row.id,
       providerId: row.provider_id,

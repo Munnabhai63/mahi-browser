@@ -1,4 +1,4 @@
-import React from 'react';
+import type React from 'react';
 import {
   Globe2,
   Lock,
@@ -10,7 +10,7 @@ import {
   Laptop,
   CheckCircle2,
 } from 'lucide-react';
-import { WebTab } from '../components/WebDashboardLayout.js';
+import type { WebTab } from '../components/WebDashboardLayout.js';
 import { APP_VERSION } from '../../../10_CONFIG/shared/version.js';
 
 interface OverviewPageProps {
@@ -34,7 +34,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   metrics,
   onNavigate,
   onOpenCreateProfile,
-  onOpenCreateWorkspace,
+  onOpenCreateWorkspace: _onOpenCreateWorkspace,
   isDesktopOnline,
 }) => {
   return (
@@ -68,9 +68,10 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
       {/* Primary Metrics Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Total Profiles */}
-        <div
+        <button
+          type="button"
           onClick={() => onNavigate('profiles')}
-          className="p-4 bg-[#0c1222] border border-slate-800 hover:border-teal-500/40 rounded-2xl cursor-pointer transition-all space-y-2 group"
+          className="text-left p-4 bg-[#0c1222] border border-slate-800 hover:border-teal-500/40 rounded-2xl cursor-pointer transition-all space-y-2 group"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-slate-400">Total Profiles</span>
@@ -82,12 +83,13 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
           <div className="text-[10px] text-teal-400 flex items-center space-x-1">
             <span>{metrics.syncedProfiles} Cloud Synced</span>
           </div>
-        </div>
+        </button>
 
         {/* Locked / Running */}
-        <div
+        <button
+          type="button"
           onClick={() => onNavigate('profiles')}
-          className="p-4 bg-[#0c1222] border border-slate-800 hover:border-amber-500/40 rounded-2xl cursor-pointer transition-all space-y-2 group"
+          className="text-left p-4 bg-[#0c1222] border border-slate-800 hover:border-amber-500/40 rounded-2xl cursor-pointer transition-all space-y-2 group"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-slate-400">Locked / Running</span>
@@ -99,12 +101,13 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
           <div className="text-[10px] text-amber-400">
             {metrics.lockedProfiles > 0 ? 'Active distributed locks' : 'No active session locks'}
           </div>
-        </div>
+        </button>
 
         {/* Team Workspaces */}
-        <div
+        <button
+          type="button"
           onClick={() => onNavigate('workspaces')}
-          className="p-4 bg-[#0c1222] border border-slate-800 hover:border-cyan-500/40 rounded-2xl cursor-pointer transition-all space-y-2 group"
+          className="text-left p-4 bg-[#0c1222] border border-slate-800 hover:border-cyan-500/40 rounded-2xl cursor-pointer transition-all space-y-2 group"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-slate-400">Workspaces</span>
@@ -114,12 +117,13 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
           </div>
           <div className="text-2xl font-bold text-white font-mono">{metrics.workspaceCount}</div>
           <div className="text-[10px] text-cyan-400">RBAC Team Domains</div>
-        </div>
+        </button>
 
         {/* Commercial Proxies */}
-        <div
+        <button
+          type="button"
           onClick={() => onNavigate('proxies')}
-          className="p-4 bg-[#0c1222] border border-slate-800 hover:border-emerald-500/40 rounded-2xl cursor-pointer transition-all space-y-2 group"
+          className="text-left p-4 bg-[#0c1222] border border-slate-800 hover:border-emerald-500/40 rounded-2xl cursor-pointer transition-all space-y-2 group"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-slate-400">Active Proxies</span>
@@ -129,7 +133,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
           </div>
           <div className="text-2xl font-bold text-white font-mono">{metrics.activeProxies}</div>
           <div className="text-[10px] text-emerald-400">Catalog Allocated</div>
-        </div>
+        </button>
       </div>
 
       {/* Secondary Metrics / Quick Navigation */}
@@ -144,6 +148,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
               <h3 className="text-xs font-bold text-slate-200">Developer Platform</h3>
             </div>
             <button
+              type="button"
               onClick={() => onNavigate('developer')}
               className="text-indigo-400 hover:text-indigo-300 text-xs flex items-center space-x-1"
             >
@@ -176,6 +181,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
               <h3 className="text-xs font-bold text-slate-200">Desktop Client Status</h3>
             </div>
             <button
+              type="button"
               onClick={() => onNavigate('devices')}
               className="text-teal-400 hover:text-teal-300 text-xs flex items-center space-x-1"
             >

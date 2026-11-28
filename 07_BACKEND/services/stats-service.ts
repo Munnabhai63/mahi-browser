@@ -162,7 +162,7 @@ export function recordSessionStop(profileId: string): void {
   if (existing.lastSessionStartedAt) {
     const startMs = new Date(existing.lastSessionStartedAt).getTime();
     const stopMs = Date.now();
-    if (!isNaN(startMs) && stopMs > startMs) {
+    if (!Number.isNaN(startMs) && stopMs > startMs) {
       deltaSec = Math.floor((stopMs - startMs) / 1000);
     }
   }

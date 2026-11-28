@@ -1,17 +1,57 @@
 import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import {
+import type {
   CommercialUser,
   CommercialRole,
   CommercialUserStatus,
   RegisterUserDTO,
   LoginUserDTO,
-  AuthSessionResponse,
 } from '../../10_CONFIG/shared/types/commercial.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 import { getJwtSecret } from '../../08_SECURITY/install-secrets.js';
 import { createLogger } from '../utils/logger.js';
 const log = createLogger('commercial-auth-service');
+
+interface SqliteCommercialUserRow {
+  id: string;
+  email: string;
+  password_hash: string;
+  salt: string;
+  name: string;
+  role: string;
+  status: string;
+  plan_id: string | null;
+  bonus_profiles: number | null;
+  bonus_proxy_bytes: number | null;
+  feature_overrides: string | null;
+  trial_started_at: string | null;
+  trial_expires_at: string | null;
+  trial_used: number | null;
+  signup_intent: string | null;
+  pending_plan_id: string | null;
+  pending_billing_cycle: string | null;
+  google_sub: string | null;
+  avatar_url: string | null;
+  auth_provider: string | null;
+  accepted_terms: number | null;
+  terms_version: string | null;
+  created_at: string;
+  updated_at: string;
+  last_login_at: string | null;
+}
+
+interface SqliteFallbackAuthUserRow {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  status: string;
+  plan_id: string | null;
+  plan_tier?: string | null;
+  created_at: string;
+  updated_at: string;
+  last_login_at: string | null;
+}
 
 const JWT_EXPIRATION_HOURS = 24 * 7; // 7 days
 
@@ -64,7 +104,7 @@ export function verifyToken(token: string): { userId: string; email: string; rol
 export function registerUser(dto: RegisterUserDTO, ipAddress?: string, explicitId?: string): { success: boolean; user?: CommercialUser; token?: string; error?: string } {
   const db = getDatabase();
   const email = (dto.email || '').trim().toLowerCase();
-  if (!email || !email.includes('@')) {
+  if (!email?.includes('@')) {
     return { success: false, error: 'A valid email address is required.' };
   }
 
@@ -72,7 +112,7 @@ export function registerUser(dto: RegisterUserDTO, ipAddress?: string, explicitI
     return { success: false, error: 'Password must be at least 8 characters long.' };
   }
 
-  const existing = db.prepare('SELECT id FROM commercial_users WHERE email = ?').get(email) as any;
+  const existing = db.prepare('SELECT id FROM commercial_users WHERE email = ?').get(email) as { id: string } | undefined;
   if (existing) {
     if (!explicitId || existing.id !== explicitId) {
       return { success: false, error: 'An account with this email address already exists.' };
@@ -155,7 +195,10 @@ export function registerUser(dto: RegisterUserDTO, ipAddress?: string, explicitI
     result: 'SUCCESS',
   });
 
-  const user = getUserById(id)!;
+  const user = getUserById(id);
+  if (!user) {
+    throw new Error(`Registered commercial user ${id} could not be retrieved`);
+  }
   const token = signToken({ userId: user.id, email: user.email, role: user.role });
 
   return { success: true, user, token };
@@ -187,7 +230,7 @@ export function syncSupabaseUser(user: { id: string; email: string; name?: strin
       db.prepare('UPDATE commercial_users SET last_login_at = ? WHERE id = ?').run(new Date().toISOString(), user.id);
     }
     return { success: true };
-  } catch (err: any) {
+  } catch (err: unknown) {
     log.error('syncSupabaseUser error:', err);
     return { success: false };
   }
@@ -200,7 +243,7 @@ export function loginUser(dto: LoginUserDTO, ipAddress?: string): { success: boo
     return { success: false, error: 'Email and password are required.' };
   }
 
-  const row = db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(email) as any;
+  const row = db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(email) as SqliteCommercialUserRow | undefined;
   if (!row) {
     logCommercialAudit({
       actorId: 'anonymous',
@@ -284,7 +327,10 @@ export function loginUser(dto: LoginUserDTO, ipAddress?: string): { success: boo
     result: 'SUCCESS',
   });
 
-  const user = getUserById(row.id)!;
+  const user = getUserById(row.id);
+  if (!user) {
+    throw new Error(`Authenticated user ${row.id} could not be retrieved`);
+  }
   const token = signToken({ userId: user.id, email: user.email, role: user.role });
 
   return { success: true, user, token };
@@ -292,12 +338,12 @@ export function loginUser(dto: LoginUserDTO, ipAddress?: string): { success: boo
 
 export function getUserById(userId: string): CommercialUser | null {
   const db = getDatabase();
-  const row = db.prepare('SELECT * FROM commercial_users WHERE id = ? OR email = ?').get(userId, userId) as any;
+  const row = db.prepare('SELECT * FROM commercial_users WHERE id = ? OR email = ?').get(userId, userId) as SqliteCommercialUserRow | undefined;
   if (row) {
     let featureOverrides: Record<string, boolean> = {};
     if (row.feature_overrides) {
       try {
-        featureOverrides = JSON.parse(row.feature_overrides);
+        featureOverrides = JSON.parse(row.feature_overrides) as Record<string, boolean>;
       } catch (parseErr) {
         log.warn('Failed parsing user feature_overrides JSON in getUserById', {
           userId: row.id,
@@ -337,11 +383,11 @@ export function getUserById(userId: string): CommercialUser | null {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       lastLoginAt: row.last_login_at || undefined,
-    } as any;
+    };
   }
 
   // Fallback to central auth_users table
-  const authRow = db.prepare('SELECT * FROM auth_users WHERE id = ? OR email = ?').get(userId, userId) as any;
+  const authRow = db.prepare('SELECT * FROM auth_users WHERE id = ? OR email = ?').get(userId, userId) as SqliteFallbackAuthUserRow | undefined;
   if (authRow) {
     const role: CommercialRole = (authRow.role === 'ADMIN' || authRow.role === 'SUPER_ADMIN') ? authRow.role : 'USER';
     const status: CommercialUserStatus = authRow.status === 'BANNED' ? 'BANNED' : authRow.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE';
@@ -363,7 +409,7 @@ export function getUserById(userId: string): CommercialUser | null {
 
 export function getUserByEmail(email: string): CommercialUser | null {
   const db = getDatabase();
-  const row = db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(email.trim().toLowerCase()) as any;
+  const row = db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(email.trim().toLowerCase()) as SqliteCommercialUserRow | undefined;
   if (!row) return null;
   return {
     id: row.id,
@@ -371,7 +417,7 @@ export function getUserByEmail(email: string): CommercialUser | null {
     name: row.name,
     role: row.role as CommercialRole,
     status: row.status as CommercialUserStatus,
-    planId: row.plan_id,
+    planId: row.plan_id || 'plan_free',
     acceptedTerms: row.accepted_terms === 1 ? true : row.accepted_terms === 0 ? false : undefined,
     termsVersion: row.terms_version || undefined,
     createdAt: row.created_at,
@@ -384,8 +430,8 @@ export function getAllUsers(filter?: { status?: string; role?: string; searchQue
   const db = getDatabase();
   let query = 'SELECT * FROM commercial_users WHERE 1=1';
   let countQuery = 'SELECT COUNT(*) as count FROM commercial_users WHERE 1=1';
-  const params: any[] = [];
-  const countParams: any[] = [];
+  const params: Array<string | number> = [];
+  const countParams: Array<string | number> = [];
 
   if (filter?.status) {
     query += ' AND status = ?';
@@ -415,8 +461,8 @@ export function getAllUsers(filter?: { status?: string; role?: string; searchQue
   query += ' LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
-  const total = (db.prepare(countQuery).get(...countParams) as any)?.count || 0;
-  const rows = db.prepare(query).all(...params) as any[];
+  const total = db.prepare(countQuery).get<{ count?: number }>(...countParams)?.count || 0;
+  const rows = db.prepare(query).all<SqliteCommercialUserRow>(...params);
 
   const users = rows.map((r) => {
     let featureOverrides: Record<string, boolean> = {};
@@ -436,7 +482,7 @@ export function getAllUsers(filter?: { status?: string; role?: string; searchQue
       name: r.name,
       role: r.role as CommercialRole,
       status: r.status as CommercialUserStatus,
-      planId: r.plan_id,
+      planId: r.plan_id || 'plan_free',
       bonusProfiles: r.bonus_profiles || 0,
       bonusProxyBytes: r.bonus_proxy_bytes || 0,
       featureOverrides,

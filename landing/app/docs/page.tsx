@@ -1,4 +1,3 @@
-import React from 'react';
 import type { Metadata } from 'next';
 import { getAllDocs } from '../../lib/mdx';
 import DocsSidebar from '../../components/DocsSidebar';

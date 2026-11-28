@@ -1,12 +1,18 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { MobileTouchGesture } from '../../../10_CONFIG/shared/types/mobile';
+import type React from 'react';
+import { useState, useRef, useEffect } from 'react';
+
+export type MobileCloudInputPayload =
+  | { type: 'mouseClick'; x: number; y: number; button: 'left' | 'right' | 'middle'; clickCount: number }
+  | { type: 'mouseWheel'; x: number; y: number; deltaX: number; deltaY: number }
+  | { type: 'keyDown'; key: string; code: string }
+  | Record<string, unknown>;
 
 interface MobileCloudViewerProps {
   sessionId?: string;
   profileId?: string;
   profileName?: string;
   onEndSession: (sessionId: string) => Promise<void>;
-  onSendInput: (sessionId: string, inputPayload: any) => void;
+  onSendInput: (sessionId: string, inputPayload: MobileCloudInputPayload) => void;
   onNavigateUrl: (sessionId: string, url: string) => void;
 }
 
@@ -22,9 +28,9 @@ export const MobileCloudViewer: React.FC<MobileCloudViewerProps> = ({
   const [urlInput, setUrlInput] = useState('https://www.google.com');
   const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'RECONNECTING' | 'DISCONNECTED'>('DISCONNECTED');
   const [qualityMode, setQualityMode] = useState<'auto' | 'low' | 'balanced' | 'high'>('balanced');
-  const [latencyMs, setLatencyMs] = useState(0);
-  const [fps, setFps] = useState(0);
-  const [bytesReceived, setBytesReceived] = useState(0);
+  const [latencyMs] = useState(0);
+  const [fps] = useState(0);
+  const [bytesReceived] = useState(0);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [softKeyBuffer, setSoftKeyBuffer] = useState('');
   const [isLandscape, setIsLandscape] = useState(false);
@@ -189,7 +195,7 @@ export const MobileCloudViewer: React.FC<MobileCloudViewerProps> = ({
           {/* Quality Mode */}
           <select
             value={qualityMode}
-            onChange={(e) => setQualityMode(e.target.value as any)}
+            onChange={(e) => setQualityMode(e.target.value as 'auto' | 'low' | 'balanced' | 'high')}
             style={{
               background: '#0F172A',
               border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -207,6 +213,7 @@ export const MobileCloudViewer: React.FC<MobileCloudViewerProps> = ({
 
           {connectionStatus !== 'CONNECTED' ? (
             <button
+              type="button"
               onClick={handleReconnect}
               style={{
                 padding: '4px 8px',
@@ -222,6 +229,7 @@ export const MobileCloudViewer: React.FC<MobileCloudViewerProps> = ({
             </button>
           ) : (
             <button
+              type="button"
               onClick={() => onEndSession(sessionId)}
               style={{
                 padding: '4px 10px',
@@ -265,6 +273,7 @@ export const MobileCloudViewer: React.FC<MobileCloudViewerProps> = ({
           }}
         />
         <button
+          type="button"
           onClick={() => {
             setCurrentUrl(urlInput);
             onNavigateUrl(sessionId, urlInput);
@@ -345,6 +354,7 @@ export const MobileCloudViewer: React.FC<MobileCloudViewerProps> = ({
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button
+            type="button"
             onClick={() => setIsKeyboardOpen(!isKeyboardOpen)}
             style={{
               padding: '6px 12px',
@@ -365,6 +375,7 @@ export const MobileCloudViewer: React.FC<MobileCloudViewerProps> = ({
           {/* Quick Remote Navigation Buttons */}
           <div style={{ display: 'flex', gap: 6 }}>
             <button
+              type="button"
               onClick={() => handleKeySubmit('Backspace')}
               style={{
                 padding: '6px 10px',
@@ -379,6 +390,7 @@ export const MobileCloudViewer: React.FC<MobileCloudViewerProps> = ({
               ⌫ Backspace
             </button>
             <button
+              type="button"
               onClick={() => handleKeySubmit('Enter')}
               style={{
                 padding: '6px 10px',
@@ -426,6 +438,7 @@ export const MobileCloudViewer: React.FC<MobileCloudViewerProps> = ({
               }}
             />
             <button
+              type="button"
               onClick={() => {
                 if (softKeyBuffer) {
                   for (const ch of softKeyBuffer) {

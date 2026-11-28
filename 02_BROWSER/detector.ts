@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { BrowserEngine } from '../10_CONFIG/shared/types/profile.js';
+import type { BrowserEngine } from '../10_CONFIG/shared/types/profile.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
 import {
   isManagedEngineInstalled,
@@ -31,7 +31,7 @@ export function detectSystemBrowsers(): DetectedBrowser[] {
 
   if (platform === 'win32') {
     const localAppData = process.env.LOCALAPPDATA || '';
-    const programFiles = process.env['ProgramFiles'] || 'C:\\Program Files';
+    const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
     const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
 
     const chromeCandidates = [
@@ -174,7 +174,7 @@ export function getCamoufoxExecutablePath(): string | null {
   if (fs.existsSync(markerPath)) {
     try {
       const marker = JSON.parse(fs.readFileSync(markerPath, 'utf8'));
-      if (marker && marker.executablePath && fs.existsSync(marker.executablePath)) {
+      if (marker?.executablePath && fs.existsSync(marker.executablePath)) {
         const stat = fs.statSync(marker.executablePath);
         if (stat.size > 10 * 1024 * 1024) {
           return marker.executablePath;
@@ -256,7 +256,7 @@ export function getCamoufoxExecutablePath(): string | null {
   // 3. Check OS standard locations
   if (platform === 'win32') {
     const localAppData = process.env.LOCALAPPDATA || '';
-    const programFiles = process.env['ProgramFiles'] || 'C:\\Program Files';
+    const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
     const candidates = [
       path.join(localAppData, 'Camoufox', 'camoufox.exe'),
       path.join(localAppData, 'camoufox', 'camoufox', 'Cache', 'camoufox.exe'),

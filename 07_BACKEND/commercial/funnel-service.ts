@@ -26,7 +26,7 @@ export interface FunnelEventDTO {
   billingCycle?: string;
   sourceUrl?: string;
   ipAddress?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface FunnelMetricsSummary {
@@ -74,8 +74,8 @@ export function recordFunnelEvent(dto: FunnelEventDTO): { success: boolean; even
     );
 
     return { success: true, eventId: id };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -94,15 +94,15 @@ export function getFunnelMetrics(): FunnelMetricsSummary {
       countMap[r.event_name] = Number(r.count);
     }
 
-    const trialCtaClicks = countMap['trial_cta_clicked'] || 0;
-    const signupStarts = countMap['signup_started'] || 0;
-    const signupCompletions = countMap['signup_completed'] || 0;
-    const emailVerifications = countMap['email_verified'] || 0;
-    const trialActivations = countMap['trial_activated'] || 0;
-    const checkoutStarts = countMap['checkout_started'] || 0;
-    const paymentCompletions = countMap['payment_completed'] || 0;
-    const downloads = countMap['download_started'] || 0;
-    const desktopLogins = countMap['desktop_first_login'] || 0;
+    const trialCtaClicks = countMap.trial_cta_clicked || 0;
+    const signupStarts = countMap.signup_started || 0;
+    const signupCompletions = countMap.signup_completed || 0;
+    const emailVerifications = countMap.email_verified || 0;
+    const trialActivations = countMap.trial_activated || 0;
+    const checkoutStarts = countMap.checkout_started || 0;
+    const paymentCompletions = countMap.payment_completed || 0;
+    const downloads = countMap.download_started || 0;
+    const desktopLogins = countMap.desktop_first_login || 0;
 
     const conversionRateSignupToTrial = signupCompletions > 0
       ? Math.round((trialActivations / signupCompletions) * 100)

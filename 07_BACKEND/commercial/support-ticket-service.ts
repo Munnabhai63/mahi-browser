@@ -21,6 +21,44 @@ import { websiteUrl } from '../../10_CONFIG/shared/site-config.js';
 import { createLogger } from '../utils/logger.js';
 const log = createLogger('support-ticket-service');
 
+interface SqliteSupportTicketRow {
+  id: string;
+  ticket_number: string;
+  category: SupportTicket['category'];
+  user_email: string | null;
+  user_name: string | null;
+  message: string;
+  reply: string | null;
+  source: string;
+  status: SupportTicket['status'];
+  is_escalated: number;
+  escalation_reason: string | null;
+  email_sent: number;
+  admin_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapSupportTicketRow(r: SqliteSupportTicketRow): SupportTicket {
+  return {
+    id: r.id,
+    ticketNumber: r.ticket_number,
+    category: r.category,
+    userEmail: r.user_email || undefined,
+    userName: r.user_name || undefined,
+    message: r.message,
+    reply: r.reply || undefined,
+    source: r.source,
+    status: r.status,
+    isEscalated: Boolean(r.is_escalated),
+    escalationReason: r.escalation_reason || undefined,
+    emailSent: Boolean(r.email_sent),
+    adminNotes: r.admin_notes || undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
 export interface SupportTicket {
   id: string;
   ticketNumber: string;
@@ -321,7 +359,7 @@ export async function handleSupportChatMessage(dto: SupportChatRequest): Promise
 export function getSupportTickets(filter?: { status?: string; category?: string; escalatedOnly?: boolean }): SupportTicket[] {
   const db = getDatabase();
   let query = 'SELECT * FROM support_tickets WHERE 1=1';
-  const params: any[] = [];
+  const params: string[] = [];
 
   if (filter?.status) {
     query += ' AND status = ?';
@@ -337,24 +375,8 @@ export function getSupportTickets(filter?: { status?: string; category?: string;
 
   query += ' ORDER BY created_at DESC LIMIT 100';
 
-  const rows = db.prepare(query).all(...params) as any[];
-  return rows.map((r) => ({
-    id: r.id,
-    ticketNumber: r.ticket_number,
-    category: r.category,
-    userEmail: r.user_email || undefined,
-    userName: r.user_name || undefined,
-    message: r.message,
-    reply: r.reply || undefined,
-    source: r.source,
-    status: r.status,
-    isEscalated: Boolean(r.is_escalated),
-    escalationReason: r.escalation_reason || undefined,
-    emailSent: Boolean(r.email_sent),
-    adminNotes: r.admin_notes || undefined,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-  }));
+  const rows = db.prepare(query).all<SqliteSupportTicketRow>(...params);
+  return rows.map(mapSupportTicketRow);
 }
 
 export function updateSupportTicketStatus(
@@ -364,7 +386,7 @@ export function updateSupportTicketStatus(
   actorName: string = 'Admin'
 ): { success: boolean; data?: SupportTicket; error?: string } {
   const db = getDatabase();
-  const existing = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id) as any;
+  const existing = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id) as SqliteSupportTicketRow | undefined;
   if (!existing) {
     return { success: false, error: 'Support ticket not found.' };
   }
@@ -391,26 +413,10 @@ export function updateSupportTicketStatus(
     log.warn('[SupportService] Audit logging warning:', auditErr);
   }
 
-  const updated = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id) as any;
+  const updated = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get<SqliteSupportTicketRow>(id) ?? existing;
   return {
     success: true,
-    data: {
-      id: updated.id,
-      ticketNumber: updated.ticket_number,
-      category: updated.category,
-      userEmail: updated.user_email || undefined,
-      userName: updated.user_name || undefined,
-      message: updated.message,
-      reply: updated.reply || undefined,
-      source: updated.source,
-      status: updated.status,
-      isEscalated: Boolean(updated.is_escalated),
-      escalationReason: updated.escalation_reason || undefined,
-      emailSent: Boolean(updated.email_sent),
-      adminNotes: updated.admin_notes || undefined,
-      createdAt: updated.created_at,
-      updatedAt: updated.updated_at,
-    },
+    data: mapSupportTicketRow(updated),
   };
 }
 
@@ -426,7 +432,7 @@ export function replySupportTicket(
   actorName: string = 'Admin'
 ): { success: boolean; data?: SupportTicket; error?: string } {
   const db = getDatabase();
-  const existing = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id) as any;
+  const existing = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id) as SqliteSupportTicketRow | undefined;
   if (!existing) {
     return { success: false, error: 'Support ticket not found.' };
   }
@@ -453,26 +459,10 @@ export function replySupportTicket(
     log.warn('[SupportService] Audit logging warning:', auditErr);
   }
 
-  const updated = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id) as any;
+  const updated = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get<SqliteSupportTicketRow>(id) ?? existing;
   return {
     success: true,
-    data: {
-      id: updated.id,
-      ticketNumber: updated.ticket_number,
-      category: updated.category,
-      userEmail: updated.user_email || undefined,
-      userName: updated.user_name || undefined,
-      message: updated.message,
-      reply: updated.reply || undefined,
-      source: updated.source,
-      status: updated.status,
-      isEscalated: Boolean(updated.is_escalated),
-      escalationReason: updated.escalation_reason || undefined,
-      emailSent: Boolean(updated.email_sent),
-      adminNotes: updated.admin_notes || undefined,
-      createdAt: updated.created_at,
-      updatedAt: updated.updated_at,
-    },
+    data: mapSupportTicketRow(updated),
   };
 }
 
@@ -485,11 +475,11 @@ export function getSupportTicketMetrics(): {
 } {
   const db = getDatabase();
   try {
-    const total = (db.prepare('SELECT COUNT(*) as c FROM support_tickets').get() as any)?.c || 0;
-    const open = (db.prepare("SELECT COUNT(*) as c FROM support_tickets WHERE status = 'OPEN'").get() as any)?.c || 0;
-    const inProgress = (db.prepare("SELECT COUNT(*) as c FROM support_tickets WHERE status = 'IN_PROGRESS'").get() as any)?.c || 0;
-    const resolved = (db.prepare("SELECT COUNT(*) as c FROM support_tickets WHERE status IN ('RESOLVED', 'CLOSED')").get() as any)?.c || 0;
-    const escalated = (db.prepare("SELECT COUNT(*) as c FROM support_tickets WHERE is_escalated = 1 AND status != 'CLOSED'").get() as any)?.c || 0;
+    const total = (db.prepare('SELECT COUNT(*) as c FROM support_tickets').get() as { c?: number } | undefined)?.c || 0;
+    const open = (db.prepare("SELECT COUNT(*) as c FROM support_tickets WHERE status = 'OPEN'").get() as { c?: number } | undefined)?.c || 0;
+    const inProgress = (db.prepare("SELECT COUNT(*) as c FROM support_tickets WHERE status = 'IN_PROGRESS'").get() as { c?: number } | undefined)?.c || 0;
+    const resolved = (db.prepare("SELECT COUNT(*) as c FROM support_tickets WHERE status IN ('RESOLVED', 'CLOSED')").get() as { c?: number } | undefined)?.c || 0;
+    const escalated = (db.prepare("SELECT COUNT(*) as c FROM support_tickets WHERE is_escalated = 1 AND status != 'CLOSED'").get() as { c?: number } | undefined)?.c || 0;
 
     return { total, open, inProgress, resolved, escalated };
   } catch {

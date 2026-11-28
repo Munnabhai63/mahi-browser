@@ -7,6 +7,8 @@
  * and unnatural zero-millisecond click intervals.
  */
 
+import type { Page } from 'rebrowser-playwright-core';
+
 export interface Point {
   x: number;
   y: number;
@@ -82,7 +84,7 @@ export function generateHumanPath(start: Point, end: Point, steps = 25, jitter =
     // Asymmetric human acceleration profile: fast ballistic acceleration, gradual deceleration
     const easedT = t < 0.4
       ? 2.5 * t * t
-      : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      : 1 - (-2 * t + 2) ** 2 / 2;
     const clampedT = Math.max(0, Math.min(1, easedT));
     const pt = cubicBezierPoint(start, cp1, cp2, intermediateTarget, clampedT);
 
@@ -119,7 +121,7 @@ export function generateHumanPath(start: Point, end: Point, steps = 25, jitter =
 /**
  * Simulates a humanized mouse move and click on a target selector using Playwright Page
  */
-export async function humanClick(page: any, selector: string, options?: HumanizerOptions): Promise<void> {
+export async function humanClick(page: Page, selector: string, options?: HumanizerOptions): Promise<void> {
   const element = await page.waitForSelector(selector, { state: 'visible', timeout: 15000 });
   const box = await element.boundingBox();
   if (!box) {
@@ -159,7 +161,7 @@ export async function humanClick(page: any, selector: string, options?: Humanize
 /**
  * Simulates organic human typing into an input field with variable speed and micro-pauses
  */
-export async function humanType(page: any, selector: string, text: string, options?: { minDelay?: number; maxDelay?: number }): Promise<void> {
+export async function humanType(page: Page, selector: string, text: string, options?: { minDelay?: number; maxDelay?: number }): Promise<void> {
   await humanClick(page, selector);
 
   const min = options?.minDelay || 45;
@@ -347,7 +349,7 @@ export async function idleMouseMicroJitter(
 
     // Pick a 1-2px micro-tremor offset around currentPos (avoid always landing on 0,0)
     let dx = randomIntBetween(-maxRadius, maxRadius);
-    let dy = randomIntBetween(-maxRadius, maxRadius);
+    const dy = randomIntBetween(-maxRadius, maxRadius);
     if (dx === 0 && dy === 0) {
       dx = Math.random() < 0.5 ? 1 : -1;
     }

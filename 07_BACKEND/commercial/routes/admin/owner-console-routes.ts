@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import type { PrismaClient } from '@prisma/client';
 import { sendJSON, parseBody } from '../router-shared.js';
 import { validateStrictBody } from '../../../utils/app-error.js';
 import {
@@ -9,7 +10,7 @@ import {
   OwnerKillSwitchSchema,
 } from '../../validation/commercial-schemas.js';
 import { calculateExpiryDate, generateLicenseKey, revokeLicense } from '../../../../04_LICENSING/license-engine.js';
-import { LicenseDurationType } from '../../../../10_CONFIG/shared/types/license.js';
+import type { LicenseDurationType } from '../../../../10_CONFIG/shared/types/license.js';
 import {
   isOwnerConfigured,
   verifyOwnerTotp,
@@ -29,7 +30,8 @@ import { isPostgresConfigured } from '../../../../06_DATABASE/central-repository
 import { getPrismaClient } from '../../../../06_DATABASE/prisma-client.js';
 import { resolveCommercialPlan } from '../../payment-service.js';
 import {
-  AdminRouteContext,
+  type AdminResolvedUser,
+  type AdminRouteContext,
   requireAdminAccess,
   getOwnerSessionCookie,
   requireOwnerSession,
@@ -38,11 +40,25 @@ import {
   resolveTrustedClientIp,
 } from './admin-shared.js';
 import { createLogger } from '../../../utils/logger.js';
+
 const log = createLogger('owner-console-routes');
 
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function hasPgModels(prisma: Partial<PrismaClient> | null, ...keys: Array<keyof PrismaClient>): prisma is PrismaClient {
+  if (!prisma) return false;
+  return keys.every((key) => Boolean(prisma[key]));
+}
+
+interface SqliteLicenseIdRow {
+  id: string;
+}
+
 async function syncCommercialUserPlanPg(
-  prisma: any,
-  targetUser: any,
+  prisma: Partial<PrismaClient>,
+  targetUser: AdminResolvedUser,
   userId: string,
   planId: string,
   now: string,
@@ -61,7 +77,7 @@ async function syncCommercialUserPlanPg(
         data: {
           id: userId,
           email: targetUser.email,
-          password_hash: targetUser.passwordHash || 'OAUTH_MIRROR',
+          password_hash: targetUser.passwordHash || targetUser.password_hash || 'OAUTH_MIRROR',
           salt: targetUser.salt || 'OAUTH_MIRROR',
           name: targetUser.name || targetUser.email.split('@')[0],
           role: targetUser.role || 'USER',
@@ -73,8 +89,42 @@ async function syncCommercialUserPlanPg(
         },
       });
     }
-  } catch (err: any) {
-    log.warn(`[OwnerService] commercial_users ${label} skipped/warn:`, err?.message);
+  } catch (err: unknown) {
+    log.warn(`[OwnerService] commercial_users ${label} skipped/warn:`, errMsg(err));
+  }
+}
+
+async function syncCommercialUserStatusPg(
+  prisma: Partial<PrismaClient>,
+  userId: string,
+  status: string,
+  now: string,
+  label: string
+): Promise<void> {
+  try {
+    if (typeof prisma.commercial_users?.findFirst !== 'function') return;
+    const commUser = await prisma.commercial_users.findFirst({ where: { id: userId } });
+    if (commUser) {
+      await prisma.commercial_users.update({ where: { id: userId }, data: { status, updated_at: now } });
+    }
+  } catch (err: unknown) {
+    log.warn(`[OwnerService] commercial_users ${label} status update skipped/warn:`, errMsg(err));
+  }
+}
+
+async function deactivateUserDevicesPg(prisma: Partial<PrismaClient>, userId: string): Promise<void> {
+  try {
+    if (typeof prisma.licenses?.findMany !== 'function') return;
+    const userLicenses = await prisma.licenses.findMany({ where: { account_id: userId }, select: { id: true } });
+    const licIds = userLicenses.map((l) => l.id);
+    if (licIds.length > 0 && typeof prisma.license_devices?.updateMany === 'function') {
+      await prisma.license_devices.updateMany({
+        where: { license_id: { in: licIds }, status: 'ACTIVE' },
+        data: { status: 'DEACTIVATED' },
+      });
+    }
+  } catch (err: unknown) {
+    log.warn('[OwnerService] license_devices deactivation skipped/warn:', errMsg(err));
   }
 }
 
@@ -197,14 +247,14 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
     const expiresAt = calculateExpiryDate(durationType, now, body?.customExpiresAt);
     const maxDevices = targetPlan.limits?.maxDevices && targetPlan.limits.maxDevices > 0 ? targetPlan.limits.maxDevices : 1;
     const customerName = (targetUser.name || targetUser.email || userId).trim();
-    const notes = `Admin-granted | Plan: ${targetPlan.id}${body?.reason ? ' | Reason: ' + body.reason : ''}`;
+    const notes = `Admin-granted | Plan: ${targetPlan.id}${body?.reason ? ` | Reason: ${body.reason}` : ''}`;
+
     const { rawKey, keyHash, keyMasked } = generateLicenseKey();
     const licenseId = crypto.randomUUID();
-    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
-    const pgReady = prisma && ['licenses', 'auth_users'].every((m) => !!(prisma as any)[m]);
+    const prisma = isPostgresConfigured() ? (getPrismaClient() as Partial<PrismaClient> | null) : null;
     let planSyncFailed = false;
 
-    if (prisma && pgReady) {
+    if (hasPgModels(prisma, 'licenses', 'auth_users')) {
       try {
         await prisma.licenses.create({
           data: {
@@ -225,8 +275,8 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
             notes,
           },
         });
-      } catch (err: any) {
-        log.error('[OwnerService][CRITICAL] Postgres license create failed:', err?.message || err);
+      } catch (err: unknown) {
+        log.error('[OwnerService][CRITICAL] Postgres license create failed:', errMsg(err));
         sendJSON(res, 500, { success: false, error: 'Failed to create license in database' });
         return true;
       }
@@ -236,16 +286,17 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           where: { id: userId },
           data: { plan_id: targetPlan.id, profile_quota: targetPlan.limits?.maxProfiles, updated_at: now },
         });
-      } catch (err: any) {
-        log.error('[OwnerService][CRITICAL] PG plan sync error', err?.message);
+      } catch (err: unknown) {
+        log.error('[OwnerService][CRITICAL] PG plan sync error', errMsg(err));
         planSyncFailed = true;
       }
 
       await syncCommercialUserPlanPg(prisma, targetUser, userId, targetPlan.id, now, 'plan sync');
 
       try {
-        if (typeof (prisma as any).commercial_subscriptions?.create === 'function') {
-          await (prisma as any).commercial_subscriptions.create({
+        const partialPrisma = prisma as Partial<PrismaClient>;
+        if (typeof partialPrisma.commercial_subscriptions?.create === 'function') {
+          await partialPrisma.commercial_subscriptions.create({
             data: {
               id: `sub_${crypto.randomUUID()}`,
               user_id: userId,
@@ -260,8 +311,8 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
             },
           });
         }
-      } catch (err: any) {
-        log.warn('[OwnerService] commercial_subscriptions grant sync skipped/warn:', err?.message);
+      } catch (err: unknown) {
+        log.warn('[OwnerService] commercial_subscriptions grant sync skipped/warn:', errMsg(err));
       }
     } else {
       try {
@@ -273,9 +324,21 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
             created_at, created_by, revoked_at, last_validation_at, notes
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
-          licenseId, keyHash, keyMasked, customerName, userId,
-          'ACTIVE', durationType, maxDevices, now, expiresAt,
-          now, 'OWNER', null, null, notes
+          licenseId,
+          keyHash,
+          keyMasked,
+          customerName,
+          userId,
+          'ACTIVE',
+          durationType,
+          maxDevices,
+          now,
+          expiresAt,
+          now,
+          'OWNER',
+          null,
+          null,
+          notes
         );
 
         try {
@@ -283,8 +346,8 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
             db.prepare('UPDATE auth_users SET plan_id = ?, updated_at = ? WHERE id = ?').run(targetPlan.id, now, userId);
           }
           db.prepare('UPDATE commercial_users SET plan_id = ?, updated_at = ? WHERE id = ?').run(targetPlan.id, now, userId);
-        } catch (e: any) {
-          log.error('[OwnerService][CRITICAL] SQLite plan sync error', e?.message);
+        } catch (e: unknown) {
+          log.error('[OwnerService][CRITICAL] SQLite plan sync error', errMsg(e));
           planSyncFailed = true;
         }
 
@@ -293,12 +356,21 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
             INSERT INTO commercial_subscriptions (
               id, user_id, plan_id, license_id, status, billing_cycle, starts_at, expires_at, payment_provider, created_at
             ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 'OWNER_GRANT', ?)
-          `).run(`sub_${crypto.randomUUID()}`, userId, targetPlan.id, licenseId, durationType === '1_YEAR' ? 'ANNUAL' : 'MONTHLY', now, expiresAt, now);
-        } catch (e: any) {
-          log.warn('[OwnerService] SQLite subscription grant sync warn:', e?.message);
+          `).run(
+            `sub_${crypto.randomUUID()}`,
+            userId,
+            targetPlan.id,
+            licenseId,
+            durationType === '1_YEAR' ? 'ANNUAL' : 'MONTHLY',
+            now,
+            expiresAt,
+            now
+          );
+        } catch (e: unknown) {
+          log.warn('[OwnerService] SQLite subscription grant sync warn:', errMsg(e));
         }
-      } catch (err: any) {
-        log.error('[OwnerService][CRITICAL] SQLite license create failed:', err?.message || err);
+      } catch (err: unknown) {
+        log.error('[OwnerService][CRITICAL] SQLite license create failed:', errMsg(err));
         sendJSON(res, 500, { success: false, error: 'Failed to create license' });
         return true;
       }
@@ -337,47 +409,49 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
       if (body?.licenseId) {
         if (await revokeLicense(String(body.licenseId).trim(), reason)) revokedCount++;
       } else {
-        const prisma = isPostgresConfigured() ? getPrismaClient() : null;
-        const pgReady = prisma && !!(prisma as any).licenses;
-        const userLicenses = prisma && pgReady
+        const prisma = isPostgresConfigured() ? (getPrismaClient() as Partial<PrismaClient> | null) : null;
+        const userLicenses: SqliteLicenseIdRow[] = hasPgModels(prisma, 'licenses')
           ? await prisma.licenses.findMany({
               where: { account_id: userId, status: { in: ['ACTIVE', 'NOT_ACTIVATED', 'EXPIRED'] } },
               select: { id: true },
             })
           : (getDatabase()
               .prepare("SELECT id FROM licenses WHERE account_id = ? AND status IN ('ACTIVE', 'NOT_ACTIVATED', 'EXPIRED')")
-              .all(userId) as any[]);
+              .all(userId) as unknown as SqliteLicenseIdRow[]);
         for (const lic of userLicenses) {
           if (await revokeLicense(lic.id, reason)) revokedCount++;
         }
       }
-    } catch (err: any) {
-      log.error('[OwnerService][CRITICAL] License revoke error during remove:', err?.message || err);
+    } catch (err: unknown) {
+      log.error('[OwnerService][CRITICAL] License revoke error during remove:', errMsg(err));
       sendJSON(res, 500, { success: false, error: 'Failed to revoke licenses' });
       return true;
     }
 
     const now = new Date().toISOString();
     let planSyncFailed = false;
-    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
-    const pgReady = prisma && !!(prisma as any).auth_users;
+    const prisma = isPostgresConfigured() ? (getPrismaClient() as Partial<PrismaClient> | null) : null;
 
-    if (prisma && pgReady) {
+    if (hasPgModels(prisma, 'auth_users')) {
       try {
         await prisma.auth_users.update({ where: { id: userId }, data: { plan_id: 'plan_free', updated_at: now } });
-      } catch (err: any) {
-        log.error('[OwnerService][CRITICAL] PG plan reset error', err?.message);
+      } catch (err: unknown) {
+        log.error('[OwnerService][CRITICAL] PG plan reset error', errMsg(err));
         planSyncFailed = true;
       }
       try {
-        if (typeof (prisma as any).commercial_users?.findFirst === 'function') {
-          const commUser = await prisma.commercial_users.findFirst({ where: { id: userId } });
+        const partialPrisma = prisma as Partial<PrismaClient>;
+        if (typeof partialPrisma.commercial_users?.findFirst === 'function') {
+          const commUser = await partialPrisma.commercial_users.findFirst({ where: { id: userId } });
           if (commUser) {
-            await prisma.commercial_users.update({ where: { id: userId }, data: { plan_id: 'plan_free', updated_at: now } });
+            await partialPrisma.commercial_users.update({
+              where: { id: userId },
+              data: { plan_id: 'plan_free', updated_at: now },
+            });
           }
         }
-      } catch (err: any) {
-        log.warn('[OwnerService] commercial_users plan reset skipped/warn:', err?.message);
+      } catch (err: unknown) {
+        log.warn('[OwnerService] commercial_users plan reset skipped/warn:', errMsg(err));
       }
     } else {
       try {
@@ -421,18 +495,17 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
 
     const fromPlan = targetUser.plan_id || 'unknown';
     const now = new Date().toISOString();
-    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
-    const pgReady = prisma && !!(prisma as any).auth_users;
+    const prisma = isPostgresConfigured() ? (getPrismaClient() as Partial<PrismaClient> | null) : null;
     const isPaidPlan = targetPlan.id !== 'plan_free' && targetPlan.id !== 'free';
 
-    if (prisma && pgReady) {
+    if (hasPgModels(prisma, 'auth_users')) {
       try {
         await prisma.auth_users.update({
           where: { id: userId },
           data: { plan_id: targetPlan.id, profile_quota: targetPlan.limits?.maxProfiles, updated_at: now },
         });
-      } catch (err: any) {
-        log.error('[OwnerService][CRITICAL] PG set-plan error', err?.message);
+      } catch (err: unknown) {
+        log.error('[OwnerService][CRITICAL] PG set-plan error', errMsg(err));
         sendJSON(res, 500, { success: false, error: 'Failed to update plan in database' });
         return true;
       }
@@ -440,9 +513,10 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
       await syncCommercialUserPlanPg(prisma, targetUser, userId, targetPlan.id, now, 'set-plan');
 
       try {
-        if (isPaidPlan && typeof (prisma as any).commercial_subscriptions?.create === 'function') {
+        const partialPrisma = prisma as Partial<PrismaClient>;
+        if (isPaidPlan && typeof partialPrisma.commercial_subscriptions?.create === 'function') {
           const expDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-          await (prisma as any).commercial_subscriptions.create({
+          await partialPrisma.commercial_subscriptions.create({
             data: {
               id: `sub_${crypto.randomUUID()}`,
               user_id: userId,
@@ -455,14 +529,14 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
               created_at: now,
             },
           });
-        } else if (!isPaidPlan && typeof (prisma as any).commercial_subscriptions?.updateMany === 'function') {
-          await (prisma as any).commercial_subscriptions.updateMany({
+        } else if (!isPaidPlan && typeof partialPrisma.commercial_subscriptions?.updateMany === 'function') {
+          await partialPrisma.commercial_subscriptions.updateMany({
             where: { user_id: userId, status: 'ACTIVE' },
             data: { status: 'CANCELLED' },
           });
         }
-      } catch (err: any) {
-        log.warn('[OwnerService] commercial_subscriptions set-plan sync skipped/warn:', err?.message);
+      } catch (err: unknown) {
+        log.warn('[OwnerService] commercial_subscriptions set-plan sync skipped/warn:', errMsg(err));
       }
     } else {
       try {
@@ -478,16 +552,18 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
               ) VALUES (?, ?, ?, 'ACTIVE', 'MONTHLY', ?, ?, 'OWNER_SET_PLAN', ?)
             `).run(`sub_${crypto.randomUUID()}`, userId, targetPlan.id, now, expDate, now);
           } else {
-            db.prepare("UPDATE commercial_subscriptions SET status = 'CANCELLED' WHERE user_id = ? AND status = 'ACTIVE'").run(userId);
+            db.prepare("UPDATE commercial_subscriptions SET status = 'CANCELLED' WHERE user_id = ? AND status = 'ACTIVE'").run(
+              userId
+            );
           }
         } catch (syncErr) {
           log.warn('Failed syncing SQLite subscription state during owner set-plan', {
             userId,
-            err: syncErr instanceof Error ? syncErr.message : String(syncErr),
+            err: errMsg(syncErr),
           });
         }
-      } catch (err: any) {
-        log.error('[OwnerService][CRITICAL] SQLite set-plan error', err?.message);
+      } catch (err: unknown) {
+        log.error('[OwnerService][CRITICAL] SQLite set-plan error', errMsg(err));
         sendJSON(res, 500, { success: false, error: 'Failed to update plan' });
         return true;
       }
@@ -524,40 +600,19 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
     const { userId } = resolved;
 
     const now = new Date().toISOString();
-    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
-    const pgReady = prisma && !!(prisma as any).auth_users;
+    const prisma = isPostgresConfigured() ? (getPrismaClient() as Partial<PrismaClient> | null) : null;
 
-    if (prisma && pgReady) {
+    if (hasPgModels(prisma, 'auth_users')) {
       try {
         await prisma.auth_users.update({ where: { id: userId }, data: { status: newStatus, updated_at: now } });
-      } catch (err: any) {
-        log.error('[OwnerService][CRITICAL] PG status update failed:', err?.message);
+      } catch (err: unknown) {
+        log.error('[OwnerService][CRITICAL] PG status update failed:', errMsg(err));
         sendJSON(res, 500, { success: false, error: 'Failed to update user status in database' });
         return true;
       }
-      try {
-        if (typeof (prisma as any).commercial_users?.findFirst === 'function') {
-          const commUser = await prisma.commercial_users.findFirst({ where: { id: userId } });
-          if (commUser) {
-            await prisma.commercial_users.update({ where: { id: userId }, data: { status: newStatus, updated_at: now } });
-          }
-        }
-      } catch (err: any) {
-        log.warn('[OwnerService] commercial_users status update skipped/warn:', err?.message);
-      }
+      await syncCommercialUserStatusPg(prisma, userId, newStatus, now, 'suspend/resume');
       if (isSuspend) {
-        try {
-          const userLicenses = await prisma.licenses.findMany({ where: { account_id: userId }, select: { id: true } });
-          const licIds = userLicenses.map((l: any) => l.id);
-          if (licIds.length > 0 && typeof (prisma as any).license_devices?.updateMany === 'function') {
-            await prisma.license_devices.updateMany({
-              where: { license_id: { in: licIds }, status: 'ACTIVE' },
-              data: { status: 'DEACTIVATED' },
-            });
-          }
-        } catch (err: any) {
-          log.warn('[OwnerService] license_devices deactivation skipped/warn:', err?.message);
-        }
+        await deactivateUserDevicesPg(prisma, userId);
       }
     } else {
       try {
@@ -569,7 +624,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           log.warn('Failed updating companion commercial_users status on suspend/resume', {
             userId,
             newStatus,
-            err: syncErr instanceof Error ? syncErr.message : String(syncErr),
+            err: errMsg(syncErr),
           });
         }
         if (isSuspend) {
@@ -581,12 +636,12 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           } catch (devErr) {
             log.warn('Failed deactivating license devices on suspend', {
               userId,
-              err: devErr instanceof Error ? devErr.message : String(devErr),
+              err: errMsg(devErr),
             });
           }
         }
-      } catch (err: any) {
-        log.error('[OwnerService][CRITICAL] SQLite status update failed:', err?.message);
+      } catch (err: unknown) {
+        log.error('[OwnerService][CRITICAL] SQLite status update failed:', errMsg(err));
         sendJSON(res, 500, { success: false, error: 'Failed to update user status' });
         return true;
       }
@@ -621,50 +676,31 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
     const now = new Date().toISOString();
     const reason = body?.reason || 'User banned by owner';
     let revokedCount = 0;
-    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
-    const pgReady = prisma && !!(prisma as any).auth_users;
+    const prisma = isPostgresConfigured() ? (getPrismaClient() as Partial<PrismaClient> | null) : null;
 
-    if (prisma && pgReady) {
+    if (hasPgModels(prisma, 'auth_users')) {
       try {
         await prisma.auth_users.update({ where: { id: userId }, data: { status: 'BANNED', updated_at: now } });
-      } catch (err: any) {
-        log.error('[OwnerService][CRITICAL] PG ban status update failed:', err?.message);
+      } catch (err: unknown) {
+        log.error('[OwnerService][CRITICAL] PG ban status update failed:', errMsg(err));
         sendJSON(res, 500, { success: false, error: 'Failed to ban user in database' });
         return true;
       }
+      await syncCommercialUserStatusPg(prisma, userId, 'BANNED', now, 'ban');
       try {
-        if (typeof (prisma as any).commercial_users?.findFirst === 'function') {
-          const commUser = await prisma.commercial_users.findFirst({ where: { id: userId } });
-          if (commUser) {
-            await prisma.commercial_users.update({ where: { id: userId }, data: { status: 'BANNED', updated_at: now } });
+        if (typeof (prisma as Partial<PrismaClient>).licenses?.findMany === 'function') {
+          const userLicenses = await prisma.licenses.findMany({
+            where: { account_id: userId, status: { in: ['ACTIVE', 'NOT_ACTIVATED', 'EXPIRED'] } },
+            select: { id: true },
+          });
+          for (const lic of userLicenses) {
+            if (await revokeLicense(lic.id, reason)) revokedCount++;
           }
         }
-      } catch (err: any) {
-        log.warn('[OwnerService] commercial_users ban status update skipped/warn:', err?.message);
+      } catch (err: unknown) {
+        log.error('[OwnerService][CRITICAL] Mass license revoke failed on ban:', errMsg(err));
       }
-      try {
-        const userLicenses = await prisma.licenses.findMany({
-          where: { account_id: userId, status: { in: ['ACTIVE', 'NOT_ACTIVATED', 'EXPIRED'] } },
-          select: { id: true },
-        });
-        for (const lic of userLicenses) {
-          if (await revokeLicense(lic.id, reason)) revokedCount++;
-        }
-      } catch (err: any) {
-        log.error('[OwnerService][CRITICAL] Mass license revoke failed on ban:', err?.message);
-      }
-      try {
-        const allUserLicenses = await prisma.licenses.findMany({ where: { account_id: userId }, select: { id: true } });
-        const licIds = allUserLicenses.map((l: any) => l.id);
-        if (licIds.length > 0 && typeof (prisma as any).license_devices?.updateMany === 'function') {
-          await prisma.license_devices.updateMany({
-            where: { license_id: { in: licIds }, status: 'ACTIVE' },
-            data: { status: 'DEACTIVATED' },
-          });
-        }
-      } catch (err: any) {
-        log.warn('[OwnerService] license_devices deactivation skipped/warn:', err?.message);
-      }
+      await deactivateUserDevicesPg(prisma, userId);
     } else {
       try {
         const db = getDatabase();
@@ -674,12 +710,12 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
         } catch (syncErr) {
           log.warn('Failed updating companion commercial_users status on ban', {
             userId,
-            err: syncErr instanceof Error ? syncErr.message : String(syncErr),
+            err: errMsg(syncErr),
           });
         }
-        const userLicenses = db.prepare(
-          "SELECT id FROM licenses WHERE account_id = ? AND status IN ('ACTIVE', 'NOT_ACTIVATED', 'EXPIRED')"
-        ).all(userId) as any[];
+        const userLicenses = db
+          .prepare("SELECT id FROM licenses WHERE account_id = ? AND status IN ('ACTIVE', 'NOT_ACTIVATED', 'EXPIRED')")
+          .all(userId) as unknown as SqliteLicenseIdRow[];
         for (const lic of userLicenses) {
           if (await revokeLicense(lic.id, reason)) revokedCount++;
         }
@@ -691,11 +727,11 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
         } catch (devErr) {
           log.warn('Failed deactivating license devices on ban', {
             userId,
-            err: devErr instanceof Error ? devErr.message : String(devErr),
+            err: errMsg(devErr),
           });
         }
-      } catch (err: any) {
-        log.error('[OwnerService][CRITICAL] SQLite ban failed:', err?.message);
+      } catch (err: unknown) {
+        log.error('[OwnerService][CRITICAL] SQLite ban failed:', errMsg(err));
         sendJSON(res, 500, { success: false, error: 'Failed to ban user' });
         return true;
       }
@@ -728,27 +764,17 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
     const { userId } = resolved;
 
     const now = new Date().toISOString();
-    const prisma = isPostgresConfigured() ? getPrismaClient() : null;
-    const pgReady = prisma && !!(prisma as any).auth_users;
+    const prisma = isPostgresConfigured() ? (getPrismaClient() as Partial<PrismaClient> | null) : null;
 
-    if (prisma && pgReady) {
+    if (hasPgModels(prisma, 'auth_users')) {
       try {
         await prisma.auth_users.update({ where: { id: userId }, data: { status: 'ACTIVE', updated_at: now } });
-      } catch (err: any) {
-        log.error('[OwnerService][CRITICAL] PG unban failed:', err?.message);
+      } catch (err: unknown) {
+        log.error('[OwnerService][CRITICAL] PG unban failed:', errMsg(err));
         sendJSON(res, 500, { success: false, error: 'Failed to unban user in database' });
         return true;
       }
-      try {
-        if (typeof (prisma as any).commercial_users?.findFirst === 'function') {
-          const commUser = await prisma.commercial_users.findFirst({ where: { id: userId } });
-          if (commUser) {
-            await prisma.commercial_users.update({ where: { id: userId }, data: { status: 'ACTIVE', updated_at: now } });
-          }
-        }
-      } catch (err: any) {
-        log.warn('[OwnerService] commercial_users unban status update skipped/warn:', err?.message);
-      }
+      await syncCommercialUserStatusPg(prisma, userId, 'ACTIVE', now, 'unban');
     } else {
       try {
         const db = getDatabase();
@@ -758,11 +784,11 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
         } catch (syncErr) {
           log.warn('Failed updating companion commercial_users status on unban', {
             userId,
-            err: syncErr instanceof Error ? syncErr.message : String(syncErr),
+            err: errMsg(syncErr),
           });
         }
-      } catch (err: any) {
-        log.error('[OwnerService][CRITICAL] SQLite unban failed:', err?.message);
+      } catch (err: unknown) {
+        log.error('[OwnerService][CRITICAL] SQLite unban failed:', errMsg(err));
         sendJSON(res, 500, { success: false, error: 'Failed to unban user' });
         return true;
       }

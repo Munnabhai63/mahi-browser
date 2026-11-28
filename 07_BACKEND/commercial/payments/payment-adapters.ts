@@ -1,15 +1,38 @@
 import crypto from 'node:crypto';
-import { CommercialPlan } from '../../../10_CONFIG/shared/types/commercial.js';
+import type { CommercialPlan } from '../../../10_CONFIG/shared/types/commercial.js';
 import { apiUrl, websiteUrl } from '../../../10_CONFIG/shared/site-config.js';
 import {
-  CheckoutSessionRequest,
-  CheckoutSessionResponse,
+  type CheckoutSessionRequest,
+  type CheckoutSessionResponse,
   PaymentGatewayNotConfiguredError,
-  PaymentProvider,
-  PaymentProviderType,
-  PaymentWebhookEvent,
+  type PaymentProvider,
+  type PaymentProviderType,
+  type PaymentWebhookEvent,
   hashWebhookContent,
 } from './payment-types.js';
+
+interface StripeSessionCreateResponse {
+  id: string;
+  url?: string;
+  currency?: string;
+}
+
+interface RazorpayOrderCreateResponse {
+  id: string;
+  amount: number;
+}
+
+interface YoupiCreatePaymentResponse {
+  paymentId?: string;
+  id?: string;
+  checkoutUrl?: string;
+  orderId?: string;
+  queuePosition?: number;
+}
+
+function getAdapterErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 export class StripePaymentAdapter implements PaymentProvider {
   public readonly name: PaymentProviderType = 'stripe';
@@ -84,7 +107,7 @@ export class StripePaymentAdapter implements PaymentProvider {
         throw new Error(`Stripe API error (${response.status}): ${errText}`);
       }
 
-      const sessionData = (await response.json()) as any;
+      const sessionData = (await response.json()) as StripeSessionCreateResponse;
       return {
         sessionId: sessionData.id,
         checkoutUrl: sessionData.url || `https://checkout.stripe.com/c/pay/${sessionData.id}`,
@@ -100,9 +123,9 @@ export class StripePaymentAdapter implements PaymentProvider {
           stripePublicKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
         },
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof PaymentGatewayNotConfiguredError) throw err;
-      throw new Error(`Failed to create Stripe checkout session: ${err.message}`);
+      throw new Error(`Failed to create Stripe checkout session: ${getAdapterErrorMessage(err)}`);
     }
   }
 
@@ -151,7 +174,7 @@ export class StripePaymentAdapter implements PaymentProvider {
       provider: 'stripe',
       userId: dataObj.metadata?.userId || dataObj.client_reference_id || 'unknown_user',
       planId: dataObj.metadata?.planId || 'plan_pro',
-      billingCycle: (dataObj.metadata?.billingCycle as any) || 'MONTHLY',
+      billingCycle: dataObj.metadata?.billingCycle === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY',
       amountCents: dataObj.amount_total ?? dataObj.amount ?? 2900,
       currency: (dataObj.currency || 'USD').toUpperCase(),
       externalPaymentId: dataObj.payment_intent || dataObj.id || `pi_${contentHash.slice(0, 24)}`,
@@ -242,7 +265,7 @@ export class RazorpayPaymentAdapter implements PaymentProvider {
         throw new Error(`Razorpay API error (${response.status}): ${errText}`);
       }
 
-      const orderData = (await response.json()) as any;
+      const orderData = (await response.json()) as RazorpayOrderCreateResponse;
       return {
         sessionId: orderData.id,
         checkoutUrl: `https://checkout.razorpay.com/v1/checkout.html?order_id=${orderData.id}`,
@@ -263,9 +286,9 @@ export class RazorpayPaymentAdapter implements PaymentProvider {
           notes: orderPayload.notes,
         },
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof PaymentGatewayNotConfiguredError) throw err;
-      throw new Error(`Failed to create Razorpay order: ${err.message}`);
+      throw new Error(`Failed to create Razorpay order: ${getAdapterErrorMessage(err)}`);
     }
   }
 
@@ -498,7 +521,7 @@ export class YoupiPgPaymentAdapter implements PaymentProvider {
         throw new Error(`YouPI-PG payment creation failed [HTTP ${res.status}]: ${errText}`);
       }
 
-      const data = (await res.json()) as any;
+      const data = (await res.json()) as YoupiCreatePaymentResponse;
       const sessionId = data.paymentId || data.id || orderId;
       const checkoutUrl = resolveCheckoutUrl(sessionId, data.checkoutUrl);
 
@@ -518,7 +541,7 @@ export class YoupiPgPaymentAdapter implements PaymentProvider {
           queuePosition: data.queuePosition || 0,
         },
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (isTest && !process.env.YOUPI_PG_LIVE_CALL) {
         const sessionId = `youpi_cs_${crypto.randomBytes(16).toString('hex')}`;
         const checkoutUrl = resolveCheckoutUrl(sessionId);

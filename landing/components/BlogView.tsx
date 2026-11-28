@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { getFeaturedPost, getGridPosts } from '../lib/blogData';
 
@@ -95,10 +95,11 @@ export default function BlogView() {
 
                 {/* Right Column: Visual Graphic */}
                 <div className="relative aspect-[16/10] sm:aspect-[16/9] w-full rounded-[4px] overflow-hidden bg-zinc-300">
-                  <img
+                  <Image
                     src={featured.image}
                     alt={featured.title}
-                    className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500 ease-out"
+                    fill
+                    className="object-cover group-hover:scale-[1.02] transition-transform duration-500 ease-out"
                   />
                 </div>
               </div>
@@ -127,11 +128,12 @@ export default function BlogView() {
                   </div>
 
                   {/* 16:9 Photography Card */}
-                  <div className="aspect-[16/9] w-full rounded-[4px] overflow-hidden bg-zinc-200 mb-4">
-                    <img
+                  <div className="relative aspect-[16/9] w-full rounded-[4px] overflow-hidden bg-zinc-200 mb-4">
+                    <Image
                       src={post.image}
                       alt={post.title}
-                      className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500 ease-out"
+                      fill
+                      className="object-cover group-hover:scale-[1.03] transition-transform duration-500 ease-out"
                     />
                   </div>
 
@@ -194,9 +196,11 @@ export default function BlogView() {
 
               {/* Right Column: Dashboard UI Mockup */}
               <div className="lg:w-[58%] rounded-[4px] overflow-hidden flex items-center justify-center bg-[#1e2022]">
-                <img
+                <Image
                   src="/assets/blog/cta_dashboard.png"
                   alt="See Why Top Growth Fleets Choose MAHI Browser"
+                  width={800}
+                  height={520}
                   className="w-full h-full object-cover object-center"
                 />
               </div>

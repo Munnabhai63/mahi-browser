@@ -4,7 +4,7 @@
  */
 
 import crypto from 'node:crypto';
-import {
+import type {
   ProxyProvider,
   ProviderSessionCredentials,
   ProviderCreateSessionParams,
@@ -12,7 +12,7 @@ import {
   ProviderHealthCheckResult,
   ProviderUsageStats,
 } from '../proxy-provider-interface.js';
-import {
+import type {
   ProxyProviderCapabilities,
   ProxyNetworkType,
   GeoCountryOption,
@@ -99,7 +99,7 @@ export class SmartproxyProvider implements ProxyProvider {
     const host = 'gate.smartproxy.com';
     const port = 7000;
 
-    let expiresAt: string | undefined = undefined;
+    let expiresAt: string | undefined ;
     if (params.sessionType === 'STICKY' && params.ttlMinutes) {
       expiresAt = new Date(Date.now() + params.ttlMinutes * 60 * 1000).toISOString();
     }
@@ -109,7 +109,7 @@ export class SmartproxyProvider implements ProxyProvider {
       port,
       protocol: 'http',
       username,
-      password: this.password!,
+      password: this.password ?? '',
       country: params.country.toUpperCase(),
       city: params.city,
       upstreamSessionId: sessionId,
@@ -117,7 +117,7 @@ export class SmartproxyProvider implements ProxyProvider {
     };
   }
 
-  async rotateSession(upstreamSessionId: string, params: ProviderCreateSessionParams): Promise<ProviderRotateResult> {
+  async rotateSession(_upstreamSessionId: string, params: ProviderCreateSessionParams): Promise<ProviderRotateResult> {
     if (!this.isConfigured()) {
       throw new Error('Smartproxy credentials not configured.');
     }
@@ -133,7 +133,7 @@ export class SmartproxyProvider implements ProxyProvider {
       host: 'gate.smartproxy.com',
       port: 7000,
       username,
-      password: this.password!,
+      password: this.password ?? '',
     };
   }
 

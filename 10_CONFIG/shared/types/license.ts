@@ -116,3 +116,11 @@ export interface LicenseValidationStatus {
   message: string;
 }
 
+export interface OnlineLicenseStatus {
+  verified: boolean;
+  revoked: boolean;
+  graceExpired: boolean;
+  offlineDaysLeft: number;
+  statusText: string;
+}
+

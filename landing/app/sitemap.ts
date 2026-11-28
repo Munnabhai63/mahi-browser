@@ -1,4 +1,4 @@
-import { MetadataRoute } from 'next';
+import type { MetadataRoute } from 'next';
 import { BRAND } from '../lib/brand';
 import { getAllDocs, getAllBlogPosts } from '../lib/mdx';
 import { getAllLateralPosts } from '../lib/blogData';

@@ -1,7 +1,7 @@
 import { exec } from 'node:child_process';
 import { BrowserWindow } from '../08_SECURITY/electron-bridge.js';
 import { processManager } from '../02_BROWSER/process-manager.js';
-import { ProfileResourceUsage, FleetResourceSummary } from '../10_CONFIG/shared/types/resources.js';
+import type { ProfileResourceUsage, FleetResourceSummary } from '../10_CONFIG/shared/types/resources.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
 
 const log = createLogger('resource-monitor-service');
@@ -52,7 +52,7 @@ function getWindowsProcessMemory(pids: number[]): Promise<Record<number, { memor
         const parsed = JSON.parse(stdout.trim());
         const items = Array.isArray(parsed) ? parsed : [parsed];
         for (const item of items) {
-          if (item && item.Id) {
+          if (item?.Id) {
             const memoryMB = Math.round((item.WorkingSet64 || 0) / (1024 * 1024));
             const cpuPercent = item.CPU ? Number((item.CPU % 10).toFixed(1)) : 0.5;
             result[item.Id] = {

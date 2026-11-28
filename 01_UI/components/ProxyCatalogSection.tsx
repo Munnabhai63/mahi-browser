@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
   Globe2,
   Sparkles,
@@ -6,18 +7,12 @@ import {
   Zap,
   Shield,
   Layers,
-  Activity,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
   Trash2,
   Smartphone,
   Server,
   Home,
-  Check,
-  ChevronDown,
 } from 'lucide-react';
-import {
+import type {
   ProxyProviderInfo,
   GeoCountryOption,
   ProxyNetworkType,
@@ -25,15 +20,32 @@ import {
   ProxySessionRecord,
   ProxyUsageReport,
 } from '../../10_CONFIG/shared/types/proxy-provider.js';
-import { Profile } from '../../10_CONFIG/shared/types/profile.js';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useProxyStore } from '../stores/useProxyStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { CountryFlag } from './CountryFlag.js';
 
+interface ProxyCatalogBridgeApi {
+  getProxyCatalog?: (opts: { networkType: ProxyNetworkType }) => Promise<{ availableCountries?: GeoCountryOption[] }>;
+  getProxyProviders?: () => Promise<ProxyProviderInfo[]>;
+  getProxySessions?: () => Promise<ProxySessionRecord[]>;
+  getProxyUsage?: () => Promise<ProxyUsageReport | null>;
+  generateProxySession?: (dto: {
+    providerId: string;
+    networkType: ProxyNetworkType;
+    country: string;
+    city?: string;
+    sessionType: ProxySessionType;
+    ttlMinutes?: number;
+    profileId?: string;
+  }) => Promise<unknown>;
+  rotateProxySession?: (sessionId: string) => Promise<{ success: boolean; newIp?: string; errorMessage?: string }>;
+  releaseProxySession?: (sessionId: string) => Promise<unknown>;
+}
+
 export const ProxyCatalogSection: React.FC = () => {
   const { profiles, fetchProfiles } = useProfileStore();
-  const { fetchProxies, testProxy } = useProxyStore();
+  const { fetchProxies, testProxy: _testProxy } = useProxyStore();
   const { showToast } = useToastStore();
 
   const [loading, setLoading] = useState(false);
@@ -55,7 +67,7 @@ export const ProxyCatalogSection: React.FC = () => {
   const [rotatingId, setRotatingId] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
-  const api = (window as any).mahiBrowserAPI;
+  const api = (window as Window & { mahiBrowserAPI?: ProxyCatalogBridgeApi }).mahiBrowserAPI;
 
   const loadData = async () => {
     if (!api?.getProxyCatalog) return;
@@ -80,17 +92,18 @@ export const ProxyCatalogSection: React.FC = () => {
       if (usageRes) {
         setUsage(usageRes);
       }
-    } catch (err: any) {
-      showToast({ type: 'error', title: `Failed to load catalog: ${err.message}` });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: `Failed to load catalog: ${err instanceof Error ? err.message : String(err)}` });
     } finally {
       setLoading(false);
     }
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadData is a stable async loader defined in this scope
   useEffect(() => {
-    loadData();
+    void loadData();
     fetchProfiles();
-  }, [selectedNetworkType]);
+  }, [fetchProfiles]);
 
   const activeCountryObj = countries.find((c) => c.code === selectedCountry);
   const availableCities = activeCountryObj?.cities || [];
@@ -99,7 +112,7 @@ export const ProxyCatalogSection: React.FC = () => {
     if (!api?.generateProxySession) return;
     setGenerating(true);
     try {
-      const res = await api.generateProxySession({
+      await api.generateProxySession({
         providerId: selectedProviderId,
         networkType: selectedNetworkType,
         country: selectedCountry,
@@ -113,8 +126,8 @@ export const ProxyCatalogSection: React.FC = () => {
       await fetchProxies();
       await fetchProfiles();
       await loadData();
-    } catch (err: any) {
-      showToast({ type: 'error', title: `Proxy generation failed: ${err.message}` });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: `Proxy generation failed: ${err instanceof Error ? err.message : String(err)}` });
     } finally {
       setGenerating(false);
     }
@@ -132,8 +145,8 @@ export const ProxyCatalogSection: React.FC = () => {
       } else {
         showToast({ type: 'error', title: res.errorMessage || 'Failed to rotate session' });
       }
-    } catch (err: any) {
-      showToast({ type: 'error', title: `Rotation error: ${err.message}` });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: `Rotation error: ${err instanceof Error ? err.message : String(err)}` });
     } finally {
       setRotatingId(null);
     }
@@ -147,8 +160,8 @@ export const ProxyCatalogSection: React.FC = () => {
       showToast({ type: 'info', title: 'Proxy session revoked and removed.' });
       await fetchProxies();
       await loadData();
-    } catch (err: any) {
-      showToast({ type: 'error', title: `Failed to revoke session: ${err.message}` });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: `Failed to revoke session: ${err instanceof Error ? err.message : String(err)}` });
     } finally {
       setRevokingId(null);
     }
@@ -173,7 +186,7 @@ export const ProxyCatalogSection: React.FC = () => {
               Instantly allocate residential, mobile, and datacenter IPs from Tier-1 providers. Automatically normalized into isolated anti-detect profiles with zero credential leakage.
             </p>
           </div>
-          <button
+          <button type="button"
             onClick={loadData}
             disabled={loading}
             className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all text-slate-500 hover:text-slate-700"
@@ -202,7 +215,7 @@ export const ProxyCatalogSection: React.FC = () => {
               <div
                 className="h-full bg-teal-500 rounded-full transition-all"
                 style={{
-                  width: `${Math.min(100, usage && usage.bytesLimit ? ((usage.bytesUsed || 0) / usage.bytesLimit) * 100 : 2)}%`,
+                  width: `${Math.min(100, usage?.bytesLimit ? ((usage.bytesUsed || 0) / usage.bytesLimit) * 100 : 2)}%`,
                 }}
               />
             </div>
@@ -237,7 +250,7 @@ export const ProxyCatalogSection: React.FC = () => {
 
         {/* 1. Network Type Selection */}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+          <label htmlFor="field-001" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
             Proxy Network Category
           </label>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
@@ -247,9 +260,8 @@ export const ProxyCatalogSection: React.FC = () => {
               { type: 'DATACENTER', label: 'Datacenter', icon: Server, desc: 'Ultra-low latency server IPs' },
               { type: 'ISP', label: 'Static ISP', icon: Shield, desc: 'Static residential ISP lines' },
             ].map(({ type, label, icon: Icon, desc }) => (
-              <button
-                key={type}
-                type="button"
+              <button type="button"
+                key={type}
                 onClick={() => setSelectedNetworkType(type as ProxyNetworkType)}
                 className={`p-3 rounded-xl border text-left transition-all ${
                   selectedNetworkType === type
@@ -273,7 +285,7 @@ export const ProxyCatalogSection: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Provider Selection */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+            <label htmlFor="field-002" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
               Provider Source
             </label>
             <select
@@ -292,7 +304,7 @@ export const ProxyCatalogSection: React.FC = () => {
 
           {/* Country Selection */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+            <label htmlFor="field-003" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
               Country Location
             </label>
             <select
@@ -313,7 +325,7 @@ export const ProxyCatalogSection: React.FC = () => {
 
           {/* City Selection */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+            <label htmlFor="field-004" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
               City Targeting {availableCities.length > 0 ? `(${availableCities.length} available)` : ''}
             </label>
             <select
@@ -335,7 +347,7 @@ export const ProxyCatalogSection: React.FC = () => {
         {/* 3. Session Mode & TTL */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+            <label htmlFor="field-005" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
               Session Persistence
             </label>
             <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1">
@@ -366,7 +378,7 @@ export const ProxyCatalogSection: React.FC = () => {
 
           {selectedSessionType === 'STICKY' && (
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+              <label htmlFor="field-006" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                 Sticky Duration (TTL)
               </label>
               <select
@@ -383,7 +395,7 @@ export const ProxyCatalogSection: React.FC = () => {
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+            <label htmlFor="field-007" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
               Auto-Assign to Profile (Optional)
             </label>
             <select
@@ -498,7 +510,7 @@ export const ProxyCatalogSection: React.FC = () => {
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end space-x-1.5">
                         {s.rotatable && s.status === 'ACTIVE' && (
-                          <button
+                          <button type="button"
                             onClick={() => handleRotate(s.id)}
                             disabled={rotatingId === s.id}
                             className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 hover:text-teal-600 hover:border-teal-500 transition-all"
@@ -507,7 +519,7 @@ export const ProxyCatalogSection: React.FC = () => {
                             <RefreshCw className={`w-3.5 h-3.5 ${rotatingId === s.id ? 'animate-spin' : ''}`} />
                           </button>
                         )}
-                        <button
+                        <button type="button"
                           onClick={() => handleRelease(s.id)}
                           disabled={revokingId === s.id}
                           className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 hover:text-rose-600 hover:border-rose-500 transition-all"

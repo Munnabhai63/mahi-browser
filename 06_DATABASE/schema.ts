@@ -2,6 +2,7 @@ import {
   backupDatabaseBeforeMigration,
   getDatabase,
   initSqlEngine,
+  type SqliteWrapper,
 } from './connection.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
 
@@ -209,7 +210,7 @@ CREATE INDEX IF NOT EXISTS idx_web_handoff_expires ON web_handoff_sessions(expir
 CREATE INDEX IF NOT EXISTS idx_web_handoff_used ON web_handoff_sessions(used);
 `;
 
-export function tableExists(db: any, tableName: string): boolean {
+export function tableExists(db: SqliteWrapper, tableName: string): boolean {
   try {
     const row = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(tableName);
     return !!row;
@@ -218,7 +219,7 @@ export function tableExists(db: any, tableName: string): boolean {
   }
 }
 
-export function columnExists(db: any, tableName: string, columnName: string): boolean {
+export function columnExists(db: SqliteWrapper, tableName: string, columnName: string): boolean {
   try {
     if (!tableExists(db, tableName)) return false;
     const columns = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
@@ -228,13 +229,13 @@ export function columnExists(db: any, tableName: string, columnName: string): bo
   }
 }
 
-export function addColumnIfNotExists(db: any, tableName: string, columnName: string, columnDef: string): void {
+export function addColumnIfNotExists(db: SqliteWrapper, tableName: string, columnName: string, columnDef: string): void {
   if (tableExists(db, tableName) && !columnExists(db, tableName, columnName)) {
     db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDef}`);
   }
 }
 
-export function runMigration(db: any, version: number, name: string, fn: () => void): void {
+export function runMigration(db: SqliteWrapper, version: number, name: string, fn: () => void): void {
   const check = db.prepare('SELECT version FROM schema_migrations WHERE version = ?').get(version);
   if (check) return;
 
@@ -268,7 +269,7 @@ export function runMigration(db: any, version: number, name: string, fn: () => v
   }
 }
 
-export function getAppSchemaVersion(db?: any): number {
+export function getAppSchemaVersion(db?: SqliteWrapper): number {
   try {
     const conn = db || getDatabase();
     const row = conn.prepare('SELECT MAX(version) as ver FROM app_schema_version').get() as
@@ -280,7 +281,7 @@ export function getAppSchemaVersion(db?: any): number {
   }
 }
 
-export function stampAppSchemaVersion(db: any, version: number): void {
+export function stampAppSchemaVersion(db: SqliteWrapper, version: number): void {
   const existing = db
     .prepare('SELECT version FROM app_schema_version WHERE version = ?')
     .get(version);

@@ -3,7 +3,7 @@
  * Phase 5 Architecture
  */
 
-import { ProxyItem, ProxyProtocol } from './proxy.js';
+import type { ProxyItem } from './proxy.js';
 
 export type ProxyNetworkType = 'RESIDENTIAL' | 'MOBILE' | 'DATACENTER' | 'ISP' | 'DEDICATED';
 

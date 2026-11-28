@@ -5,8 +5,7 @@ import { createProfile, getProfileStoragePath } from './profile-service.js';
 import { createProxy } from './proxy-service.js';
 import { getDefaultProfileSettings, generateConsistentEnvironmentSettings } from '../../10_CONFIG/shared/constants/defaults.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
-import { CookieItem } from '../../10_CONFIG/shared/types/cookie.js';
-import { Profile } from '../../10_CONFIG/shared/types/profile.js';
+import type { CookieItem } from '../../10_CONFIG/shared/types/cookie.js';
 import { createLogger } from '../../07_BACKEND/utils/logger.js';
 
 const log = createLogger('universal-importer-service');
@@ -92,7 +91,7 @@ export function parseNetscapeCookies(rawText: string, profileId = ''): CookieIte
           name,
           value,
           path,
-          expires: isNaN(expiresRaw) || expiresRaw <= 0 ? Math.floor(Date.now() / 1000) + 86400 * 365 : expiresRaw,
+          expires: Number.isNaN(expiresRaw) || expiresRaw <= 0 ? Math.floor(Date.now() / 1000) + 86400 * 365 : expiresRaw,
           httpOnly: isHttpOnly,
           secure,
           sameSite: 'Lax',
@@ -107,11 +106,24 @@ export function parseNetscapeCookies(rawText: string, profileId = ''): CookieIte
 /**
  * Parses JSON cookie array
  */
-export function parseJsonCookies(rawJson: string | any[], profileId = ''): CookieItem[] {
-  let list: any[] = [];
+interface RawCookieEntry {
+  domain?: unknown;
+  name?: unknown;
+  value?: unknown;
+  path?: unknown;
+  expirationDate?: unknown;
+  expires?: unknown;
+  httpOnly?: unknown;
+  secure?: unknown;
+  sameSite?: unknown;
+}
+
+export function parseJsonCookies(rawJson: string | RawCookieEntry[], profileId = ''): CookieItem[] {
+  let list: RawCookieEntry[] = [];
   if (typeof rawJson === 'string') {
     try {
-      list = JSON.parse(rawJson);
+      const parsed: unknown = JSON.parse(rawJson);
+      list = Array.isArray(parsed) ? (parsed as RawCookieEntry[]) : [];
     } catch {
       return [];
     }
@@ -123,15 +135,17 @@ export function parseJsonCookies(rawJson: string | any[], profileId = ''): Cooki
 
   const cookies: CookieItem[] = [];
   for (const c of list) {
-    if (!c || !c.name || !c.domain) continue;
+    if (!c?.name || !c.domain) continue;
 
-    let expires = c.expirationDate || c.expires;
-    if (typeof expires === 'number' && expires > 0) {
-      if (expires > 10000000000) expires = Math.floor(expires / 1000); // ms to sec
+    const rawExp = c.expirationDate ?? c.expires;
+    let expires: number;
+    if (typeof rawExp === 'number' && rawExp > 0) {
+      expires = rawExp > 10000000000 ? Math.floor(rawExp / 1000) : rawExp;
     } else {
       expires = Math.floor(Date.now() / 1000) + 86400 * 365;
     }
 
+    const sameSiteVal = c.sameSite === 'Strict' || c.sameSite === 'Lax' || c.sameSite === 'None' ? c.sameSite : 'Lax';
     cookies.push({
       id: crypto.randomUUID(),
       profileId,
@@ -142,7 +156,7 @@ export function parseJsonCookies(rawJson: string | any[], profileId = ''): Cooki
       expires,
       httpOnly: Boolean(c.httpOnly),
       secure: Boolean(c.secure),
-      sameSite: c.sameSite || 'Lax',
+      sameSite: sameSiteVal,
     });
   }
 
@@ -159,68 +173,85 @@ function normalizeProtocol(raw: unknown): ParsedProxyInfo['protocol'] {
   return 'http';
 }
 
-function mapCompetitorJsonItems(rawObj: any): { format: 'gologin' | 'adspower' | 'dolphin' | null; items: any[] } | null {
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(val: unknown): UnknownRecord {
+  return val && typeof val === 'object' && !Array.isArray(val) ? (val as UnknownRecord) : {};
+}
+
+function asStr(val: unknown): string | undefined {
+  return typeof val === 'string' && val.length > 0 ? val : undefined;
+}
+
+function mapCompetitorJsonItems(rawObj: unknown): { format: 'gologin' | 'adspower' | 'dolphin' | null; items: UnknownRecord[] } | null {
   if (!rawObj || typeof rawObj !== 'object') return null;
 
+  if (Array.isArray(rawObj)) {
+    const items = rawObj as UnknownRecord[];
+    const first = items[0];
+    if (!first || typeof first !== 'object') return null;
+    if (first.user_proxy_config || first.fingerprint_config || first.user_id) {
+      return { format: 'adspower', items };
+    }
+    if (first.browserType === 'anty' || (first.useragent && typeof first.useragent === 'object') || first.mainWebsite !== undefined) {
+      return { format: 'dolphin', items };
+    }
+    if (first.navigator || first.webGLMetadata || first.proxyEnabled !== undefined) {
+      return { format: 'gologin', items };
+    }
+    return null;
+  }
+
+  const rec = rawObj as UnknownRecord;
   // GoLogin object export: { profiles: [...] } or single GoLogin profile
-  if (Array.isArray(rawObj.profiles)) {
-    return { format: 'gologin', items: rawObj.profiles };
+  if (Array.isArray(rec.profiles)) {
+    return { format: 'gologin', items: rec.profiles as UnknownRecord[] };
   }
   // AdsPower object export: { list: [...] } or { data: { list: [...] } }
-  if (Array.isArray(rawObj.list)) {
-    return { format: 'adspower', items: rawObj.list };
+  if (Array.isArray(rec.list)) {
+    return { format: 'adspower', items: rec.list as UnknownRecord[] };
   }
-  if (rawObj.data && Array.isArray(rawObj.data.list)) {
-    return { format: 'adspower', items: rawObj.data.list };
+  const dataRec = asRecord(rec.data);
+  if (Array.isArray(dataRec.list)) {
+    return { format: 'adspower', items: dataRec.list as UnknownRecord[] };
   }
   // Dolphin{anty} object export: { data: [...] }
-  if (Array.isArray(rawObj.data)) {
-    return { format: 'dolphin', items: rawObj.data };
-  }
-  if (!Array.isArray(rawObj)) return null;
-
-  const first = rawObj[0];
-  if (!first || typeof first !== 'object') return null;
-  if (first.user_proxy_config || first.fingerprint_config || first.user_id) {
-    return { format: 'adspower', items: rawObj };
-  }
-  if (first.browserType === 'anty' || (first.useragent && typeof first.useragent === 'object') || first.mainWebsite !== undefined) {
-    return { format: 'dolphin', items: rawObj };
-  }
-  if (first.navigator || first.webGLMetadata || first.proxyEnabled !== undefined) {
-    return { format: 'gologin', items: rawObj };
+  if (Array.isArray(rec.data)) {
+    return { format: 'dolphin', items: rec.data as UnknownRecord[] };
   }
   return null;
 }
 
-function parseCompetitorProfileEntry(item: any, idx: number, format: 'gologin' | 'adspower' | 'dolphin'): ParsedAccountItem {
+function parseCompetitorProfileEntry(item: UnknownRecord, idx: number, format: 'gologin' | 'adspower' | 'dolphin'): ParsedAccountItem {
   if (format === 'gologin') {
-    const p = item.proxy;
+    const p = asRecord(item.proxy);
     let proxy: ParsedProxyInfo | undefined;
-    if (p && typeof p === 'object' && p.mode !== 'none' && p.host && p.port) {
+    if (item.proxy && typeof item.proxy === 'object' && p.mode !== 'none' && p.host && p.port) {
       proxy = {
         protocol: normalizeProtocol(p.mode || p.protocol),
         host: String(p.host),
         port: Number(p.port) || 8080,
-        username: p.username || undefined,
-        password: p.password || undefined,
+        username: asStr(p.username),
+        password: asStr(p.password),
       };
     }
-    const ua = item.navigator?.userAgent || item.userAgent || undefined;
-    const screenRes = typeof item.navigator?.resolution === 'string' ? item.navigator.resolution.split('x') : [];
-    const sw = Number(screenRes[0]) || Number(item.navigator?.screenWidth) || undefined;
-    const sh = Number(screenRes[1]) || Number(item.navigator?.screenHeight) || undefined;
+    const nav = asRecord(item.navigator);
+    const ua = asStr(nav.userAgent) || asStr(item.userAgent);
+    const screenRes = typeof nav.resolution === 'string' ? nav.resolution.split('x') : [];
+    const sw = Number(screenRes[0]) || Number(nav.screenWidth) || undefined;
+    const sh = Number(screenRes[1]) || Number(nav.screenHeight) || undefined;
+    const tzObj = asRecord(item.timezone);
     return {
-      name: item.name || item.profileName || `GoLogin Profile ${idx + 1}`,
+      name: asStr(item.name) || asStr(item.profileName) || `GoLogin Profile ${idx + 1}`,
       proxy,
-      cookies: Array.isArray(item.cookies) ? parseJsonCookies(item.cookies) : undefined,
+      cookies: Array.isArray(item.cookies) ? parseJsonCookies(item.cookies as RawCookieEntry[]) : undefined,
       userAgent: ua,
-      timezone: item.timezone?.id || item.timezone || undefined,
-      language: item.navigator?.language || undefined,
+      timezone: asStr(tzObj.id) || asStr(item.timezone),
+      language: asStr(nav.language),
       screenWidth: sw,
       screenHeight: sh,
       sourceFormat: 'gologin',
-      notes: item.notes || undefined,
+      notes: asStr(item.notes),
       tags: Array.isArray(item.folders) && item.folders.length > 0
         ? item.folders.map(String)
         : (Array.isArray(item.tags) ? item.tags.map(String) : ['GoLogin', 'Imported']),
@@ -229,70 +260,77 @@ function parseCompetitorProfileEntry(item: any, idx: number, format: 'gologin' |
   }
 
   if (format === 'adspower') {
-    const upc = item.user_proxy_config || {};
+    const upc = asRecord(item.user_proxy_config);
     let proxy: ParsedProxyInfo | undefined;
     if (upc.proxy_type && upc.proxy_type !== 'noproxy' && upc.proxy_host && upc.proxy_port) {
       proxy = {
         protocol: normalizeProtocol(upc.proxy_type),
         host: String(upc.proxy_host),
         port: Number(upc.proxy_port) || 8080,
-        username: upc.proxy_user || undefined,
-        password: upc.proxy_password || undefined,
+        username: asStr(upc.proxy_user),
+        password: asStr(upc.proxy_password),
       };
-    } else if (item.proxy && typeof item.proxy === 'string') {
+    } else if (typeof item.proxy === 'string') {
       proxy = parseProxyString(item.proxy);
     }
-    const fp = item.fingerprint_config || {};
+    const fp = asRecord(item.fingerprint_config);
     let cookies: CookieItem[] | undefined;
-    if (Array.isArray(item.cookie)) cookies = parseJsonCookies(item.cookie);
+    if (Array.isArray(item.cookie)) cookies = parseJsonCookies(item.cookie as RawCookieEntry[]);
     else if (typeof item.cookie === 'string' && item.cookie.trim()) cookies = parseJsonCookies(item.cookie);
-    else if (Array.isArray(item.cookies)) cookies = parseJsonCookies(item.cookies);
-    const langs = Array.isArray(fp.language) ? fp.language : undefined;
+    else if (Array.isArray(item.cookies)) cookies = parseJsonCookies(item.cookies as RawCookieEntry[]);
+    const langs = Array.isArray(fp.language) ? (fp.language as unknown[]) : undefined;
     return {
-      name: item.name || item.user_id || item.username || `AdsPower Profile ${idx + 1}`,
-      usernameOrEmail: item.username || item.email || undefined,
-      password: item.password || undefined,
+      name: asStr(item.name) || asStr(item.user_id) || asStr(item.username) || `AdsPower Profile ${idx + 1}`,
+      usernameOrEmail: asStr(item.username) || asStr(item.email),
+      password: asStr(item.password),
       proxy,
       cookies,
-      userAgent: fp.ua || item.ua || item.userAgent || undefined,
-      timezone: fp.timezone || item.timezone || undefined,
-      language: langs?.[0] || fp.page_language || undefined,
+      userAgent: asStr(fp.ua) || asStr(item.ua) || asStr(item.userAgent),
+      timezone: asStr(fp.timezone) || asStr(item.timezone),
+      language: asStr(langs?.[0]) || asStr(fp.page_language),
       sourceFormat: 'adspower',
-      notes: item.remark || item.notes || undefined,
-      tags: Array.isArray(item.tags) ? item.tags.map(String) : [item.group_name || 'AdsPower', 'Imported'].filter(Boolean),
+      notes: asStr(item.remark) || asStr(item.notes),
+      tags: Array.isArray(item.tags)
+        ? item.tags.map(String)
+        : [asStr(item.group_name) || 'AdsPower', 'Imported'].filter(Boolean),
       rawLine: JSON.stringify(item),
     };
   }
 
   // Dolphin{anty}
-  const dp = item.proxy;
+  const dp = asRecord(item.proxy);
   let proxy: ParsedProxyInfo | undefined;
-  if (dp && typeof dp === 'object' && dp.host && dp.port) {
+  if (item.proxy && typeof item.proxy === 'object' && dp.host && dp.port) {
     proxy = {
       protocol: normalizeProtocol(dp.type || dp.protocol),
       host: String(dp.host),
       port: Number(dp.port) || 8080,
-      username: dp.login || dp.username || undefined,
-      password: dp.password || undefined,
+      username: asStr(dp.login) || asStr(dp.username),
+      password: asStr(dp.password),
     };
   }
-  const ua = typeof item.useragent === 'object' ? item.useragent?.value : (item.useragent || item.userAgent);
-  const sw = Number(item.screen?.width) || undefined;
-  const sh = Number(item.screen?.height) || undefined;
+  const uaObj = asRecord(item.useragent);
+  const ua = typeof item.useragent === 'object' ? asStr(uaObj.value) : (asStr(item.useragent) || asStr(item.userAgent));
+  const screenObj = asRecord(item.screen);
+  const sw = Number(screenObj.width) || undefined;
+  const sh = Number(screenObj.height) || undefined;
   let cookies: CookieItem[] | undefined;
-  if (Array.isArray(item.cookies)) cookies = parseJsonCookies(item.cookies);
+  if (Array.isArray(item.cookies)) cookies = parseJsonCookies(item.cookies as RawCookieEntry[]);
   else if (typeof item.cookies === 'string') cookies = parseJsonCookies(item.cookies);
+  const tzObj = asRecord(item.timezone);
+  const localeObj = asRecord(item.locale);
+  const notesObj = asRecord(item.notes);
   return {
-    name: item.name || `Dolphin Profile ${idx + 1}`,
+    name: asStr(item.name) || `Dolphin Profile ${idx + 1}`,
     proxy,
     cookies,
-    userAgent: ua || undefined,
-    timezone: item.timezone?.value || (typeof item.timezone === 'string' ? item.timezone : undefined),
-    language: item.locale?.value || undefined,
+    userAgent: ua,
+    timezone: asStr(tzObj.value) || (typeof item.timezone === 'string' ? item.timezone : undefined),
+    language: asStr(localeObj.value),
     screenWidth: sw,
     screenHeight: sh,
     sourceFormat: 'dolphin',
-    notes: item.notes?.content || (typeof item.notes === 'string' ? item.notes : undefined),
+    notes: asStr(notesObj.content) || (typeof item.notes === 'string' ? item.notes : undefined),
     tags: Array.isArray(item.tags) && item.tags.length > 0 ? item.tags.map(String) : ['Dolphin', 'Imported'],
     rawLine: JSON.stringify(item),
   };
@@ -332,7 +370,7 @@ export function detectAndParseAccountData(rawInput: string): ParsedAccountItem[]
     try {
       const parsed = JSON.parse(trimmedInput);
       const competitor = mapCompetitorJsonItems(parsed);
-      if (competitor && competitor.format && Array.isArray(competitor.items)) {
+      if (competitor?.format && Array.isArray(competitor.items)) {
         const fmt = competitor.format;
         return competitor.items.map((item, idx) => parseCompetitorProfileEntry(item, idx, fmt));
       }
@@ -506,13 +544,13 @@ function parseDelimitedLine(line: string, index: number): ParsedAccountItem | nu
       password: parts[4],
     };
   } else if (parts.length === 4) {
-    if (isNaN(Number(parts[1])) && !isNaN(Number(parts[3]))) {
+    if (Number.isNaN(Number(parts[1])) && !Number.isNaN(Number(parts[3]))) {
       // email:password:host:port
       usernameOrEmail = parts[0];
       password = parts[1];
       name = usernameOrEmail;
       proxy = { protocol: 'http', host: parts[2], port: parseInt(parts[3], 10) || 8080 };
-    } else if (!isNaN(Number(parts[1]))) {
+    } else if (!Number.isNaN(Number(parts[1]))) {
       // host:port:user:pass
       name = `Proxy Profile ${parts[0]}:${parts[1]}`;
       proxy = { protocol: 'http', host: parts[0], port: parseInt(parts[1], 10) || 8080, username: parts[2], password: parts[3] };
@@ -522,7 +560,7 @@ function parseDelimitedLine(line: string, index: number): ParsedAccountItem | nu
     name = parts[0];
     proxy = { protocol: 'http', host: parts[1], port: parseInt(parts[2], 10) || 8080 };
   } else if (parts.length === 2) {
-    if (!isNaN(Number(parts[1]))) {
+    if (!Number.isNaN(Number(parts[1]))) {
       // host:port
       name = `Proxy ${parts[0]}:${parts[1]}`;
       proxy = { protocol: 'http', host: parts[0], port: parseInt(parts[1], 10) || 8080 };
@@ -579,13 +617,19 @@ function parseProxyString(raw: string): ParsedProxyInfo | undefined {
   return undefined;
 }
 
-function normalizeProxy(p: any): ParsedProxyInfo {
+function normalizeProxy(p: {
+  protocol?: unknown;
+  host?: unknown;
+  port?: unknown;
+  username?: unknown;
+  password?: unknown;
+}): ParsedProxyInfo {
   return {
-    protocol: p.protocol || 'http',
-    host: p.host || '127.0.0.1',
+    protocol: normalizeProtocol(p.protocol),
+    host: typeof p.host === 'string' && p.host ? p.host : '127.0.0.1',
     port: Number(p.port) || 8080,
-    username: p.username,
-    password: p.password,
+    username: typeof p.username === 'string' ? p.username : undefined,
+    password: typeof p.password === 'string' ? p.password : undefined,
   };
 }
 
@@ -614,7 +658,7 @@ export async function executeBulkImport(
 
       // 2. Create Proxy (if proxy configured)
       let boundProxyId: string | undefined;
-      if (acc.proxy && acc.proxy.host && acc.proxy.port) {
+      if (acc.proxy?.host && acc.proxy.port) {
         try {
           const proxyRec = createProxy({
             name: `${acc.name} Proxy (${acc.proxy.host})`,
@@ -626,8 +670,8 @@ export async function executeBulkImport(
             notes: `Auto-imported for profile "${acc.name}"`,
           });
           boundProxyId = proxyRec.id;
-        } catch (proxyErr: any) {
-          errors.push(`Proxy creation warning for "${acc.name}": ${proxyErr.message}`);
+        } catch (proxyErr: unknown) {
+          errors.push(`Proxy creation warning for "${acc.name}": ${proxyErr instanceof Error ? proxyErr.message : String(proxyErr)}`);
         }
       }
 
@@ -675,7 +719,7 @@ export async function executeBulkImport(
       };
 
 
-      const created = createProfile(profileDto as any);
+      const created = createProfile(profileDto);
       createdProfileIds.push(created.id);
 
       // 4. Inject Cookies (if provided)
@@ -689,8 +733,8 @@ export async function executeBulkImport(
           const readyCookies = acc.cookies.map((c) => ({ ...c, id: crypto.randomUUID(), profileId: created.id }));
           fs.writeFileSync(cookiesFile, JSON.stringify(readyCookies, null, 2), 'utf8');
           cookieCount = readyCookies.length;
-        } catch (cErr: any) {
-          errors.push(`Cookie injection failed for "${acc.name}": ${cErr.message}`);
+        } catch (cErr: unknown) {
+          errors.push(`Cookie injection failed for "${acc.name}": ${cErr instanceof Error ? cErr.message : String(cErr)}`);
         }
       }
 
@@ -700,8 +744,8 @@ export async function executeBulkImport(
         proxyBound: Boolean(boundProxyId),
         cookiesCount: cookieCount,
       });
-    } catch (err: any) {
-      errors.push(`Failed to import account "${acc.name}": ${err.message}`);
+    } catch (err: unknown) {
+      errors.push(`Failed to import account "${acc.name}": ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

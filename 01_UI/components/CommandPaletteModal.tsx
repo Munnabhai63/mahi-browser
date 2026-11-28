@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import type React from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Search,
   Plus,
@@ -14,16 +15,11 @@ import {
   Puzzle,
   Bot,
   Activity,
-  HardDrive,
-  RefreshCw,
   Key,
-  X,
-  ExternalLink,
-  Laptop,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useAccountStore } from '../stores/useAccountStore.js';
-import { NavigationPage } from './Sidebar.js';
+import type { NavigationPage } from './Sidebar.js';
 
 interface CommandPaletteModalProps {
   isOpen: boolean;
@@ -256,10 +252,14 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   };
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop click-outside dismiss
+    // biome-ignore lint/a11y/useKeyWithClickEvents: Escape is handled by input onKeyDown
     <div
       className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-start justify-center pt-24 p-4 animate-in fade-in duration-100"
       onClick={onClose}
     >
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: prevent click inside modal dialog from bubbling to backdrop */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: inner modal card only stops mouse click propagation */}
       <div
         className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-100 flex flex-col max-h-[70vh]"
         onClick={(e) => e.stopPropagation()}
@@ -294,7 +294,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             filteredCommands.map((cmd, idx) => {
               const isSelected = idx === selectedIndex;
               return (
-                <button
+                <button type="button"
                   key={cmd.id}
                   onClick={cmd.action}
                   onMouseEnter={() => setSelectedIndex(idx)}

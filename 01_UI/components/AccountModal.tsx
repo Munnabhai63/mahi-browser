@@ -25,7 +25,7 @@ import { useToastStore } from '../stores/useToastStore.js';
 import { BrandLogo } from './BrandLogo.js';
 import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
 import { getSiteConfig, websiteUrl } from '../../10_CONFIG/shared/site-config.js';
-import { fetchMyLicense, MyLicenseResponse } from '../api-fallback.js';
+import { fetchMyLicense, type MyLicenseResponse } from '../api-fallback.js';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -89,9 +89,25 @@ const DESKTOP_PLANS: DesktopPlanOption[] = [
   },
 ];
 
-function formatAuthError(err: any): string {
+function getErrorMessageText(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === 'string' && err) return err;
+  if (err && typeof err === 'object' && 'message' in err && typeof (err as { message?: unknown }).message === 'string') {
+    return (err as { message: string }).message || fallback;
+  }
+  return fallback;
+}
+
+function formatAuthError(err: unknown): string {
   if (!err) return 'An unexpected error occurred. Please try again.';
-  let msg = typeof err === 'string' ? err : err.message || err.error || '';
+  const errRec = typeof err === 'object' ? (err as { message?: unknown; error?: unknown }) : null;
+  let msg = typeof err === 'string'
+    ? err
+    : typeof errRec?.message === 'string'
+      ? errRec.message
+      : typeof errRec?.error === 'string'
+        ? errRec.error
+        : '';
   msg = msg.replace(/^Error invoking remote method '[^']+':\s*Error:\s*/i, '');
   msg = msg.replace(/^Error invoking remote method '[^']+':\s*/i, '');
   msg = msg.replace(/^Error:\s*/i, '');
@@ -215,7 +231,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       ...(Array.isArray(pricingCatalog.business) ? pricingCatalog.business : []),
     ];
     return DESKTOP_PLANS.map((basePlan) => {
-      const remote = remoteRows.find((r: any) => r?.planId === basePlan.id);
+      const remote = remoteRows.find((r) => r?.planId === basePlan.id);
       if (!remote) return basePlan;
       const authoritativePaise =
         basePlan.billingCycle === 'MONTHLY'
@@ -264,7 +280,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       setSuccessInfo(null);
       setDeviceMismatchError(false);
     }
-  }, [isOpen, isUserLoggedIn]);
+  }, [isOpen, isUserLoggedIn, fetchPlanLimits, fetchPricingCatalog, fetchPaymentInfo, fetchPaymentHistory, fetchActiveSessions]);
 
   // Fetch payment coordinates and dynamic pricing on mount with silent fallback
   useEffect(() => {
@@ -293,7 +309,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       });
       onClose();
     }
-  }, [isOpen, isGoogleLoading, isUserLoggedIn, accountSession?.email]);
+  }, [isOpen, isGoogleLoading, isUserLoggedIn, accountSession?.email, showToast, onClose]);
 
   // Listen for account:statusChanged IPC event from deep-link login
   useEffect(() => {
@@ -387,8 +403,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           setErrorMessage(formatAuthError(errStr));
         }
       }
-    } catch (err: any) {
-      const msg = err.message || 'Signup failed.';
+    } catch (err: unknown) {
+      const msg = getErrorMessageText(err, 'Signup failed.');
       if (msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('already registered')) {
         setErrorMessage('This email is already registered on MAHI Browser. Switched to Sign In — please enter your password or continue with Google.');
         setActiveTab('signin');
@@ -415,15 +431,15 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           ticket = initRes.ticket;
           googleAuthUrl = initRes.authUrl;
         }
-      } catch (err: any) {
-        console.warn('[AccountModal] IPC startDesktopOAuth failed, using fallback:', err?.message);
+      } catch (err: unknown) {
+        console.warn('[AccountModal] IPC startDesktopOAuth failed, using fallback:', getErrorMessageText(err, 'Unknown error'));
       }
     }
 
     const adminBaseUrl = getAdminApiBaseUrl();
 
     if (!googleAuthUrl) {
-      ticket = 'dsk_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+      ticket = `dsk_${Math.random().toString(36).substring(2, 10)}${Date.now().toString(36)}`;
       googleAuthUrl = `${adminBaseUrl}/api/v1/auth/google/start?intent=desktop_login&handoff=${encodeURIComponent(ticket)}`;
     }
     
@@ -447,7 +463,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           // Authenticated status returns single-use authorization code (NEVER raw session token)
           if (data.authenticated && data.code) {
             clearInterval(pollInterval);
-            let loginRes: any;
+            let loginRes: { success: boolean; error?: string } | undefined;
             if (window.mahiAPI?.accountExchangeDesktopCode) {
               loginRes = await window.mahiAPI.accountExchangeDesktopCode(ticket, data.code);
             } else {
@@ -495,8 +511,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       } else {
         setErrorMessage(formatAuthError(res.error || 'Failed to authenticate session token.'));
       }
-    } catch (err: any) {
-      setErrorMessage(formatAuthError(err.message || 'Token verification failed.'));
+    } catch (err: unknown) {
+      setErrorMessage(formatAuthError(getErrorMessageText(err, 'Token verification failed.')));
     } finally {
       setIsLoading(false);
     }
@@ -535,7 +551,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
         }
       } else {
         const errStr = res.error || 'Invalid credentials.';
-        if (errStr.toLowerCase().includes('google') || (res as any).code === 'GOOGLE_ACCOUNT') {
+        if (errStr.toLowerCase().includes('google') || (res as { code?: string }).code === 'GOOGLE_ACCOUNT') {
           setErrorMessage('This account was created with Google. Click "Continue with Google" above or use Forgot Password to set a password.');
         } else {
           setErrorMessage(formatAuthError(errStr));
@@ -544,14 +560,15 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           setDeviceMismatchError(true);
         }
       }
-    } catch (err: any) {
-      const msg = err.message || 'Login failed.';
-      if (msg.toLowerCase().includes('google') || err.code === 'GOOGLE_ACCOUNT') {
+    } catch (err: unknown) {
+      const msg = getErrorMessageText(err, 'Login failed.');
+      const errMeta = err && typeof err === 'object' ? (err as { code?: string; device_limit?: boolean }) : undefined;
+      if (msg.toLowerCase().includes('google') || errMeta?.code === 'GOOGLE_ACCOUNT') {
         setErrorMessage('This account was created with Google. Click "Continue with Google" above or use Forgot Password to set a password.');
       } else {
         setErrorMessage(formatAuthError(msg));
       }
-      if (err.device_limit) {
+      if (errMeta?.device_limit) {
         setDeviceMismatchError(true);
       }
     } finally {
@@ -583,8 +600,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       } else {
         setErrorMessage(res.error || 'Verification failed. The token may be expired or invalid.');
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Verification failed.');
+    } catch (err: unknown) {
+      setErrorMessage(getErrorMessageText(err, 'Verification failed.'));
     } finally {
       setIsLoading(false);
     }
@@ -608,8 +625,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       } else {
         setErrorMessage(res.error || 'Failed to resend verification.');
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Network error.');
+    } catch (err: unknown) {
+      setErrorMessage(getErrorMessageText(err, 'Network error.'));
     } finally {
       setIsLoading(false);
     }
@@ -639,8 +656,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       } else {
         setErrorMessage(res.error || 'Failed to request reset token.');
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Network error.');
+    } catch (err: unknown) {
+      setErrorMessage(getErrorMessageText(err, 'Network error.'));
     } finally {
       setIsLoading(false);
     }
@@ -679,8 +696,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       } else {
         setErrorMessage(res.error || 'Password reset failed. Token may be invalid or expired.');
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Network error.');
+    } catch (err: unknown) {
+      setErrorMessage(getErrorMessageText(err, 'Network error.'));
     } finally {
       setIsLoading(false);
     }
@@ -738,8 +755,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
       } else {
         setErrorMessage(res.error || 'Device switch rejected by cooldown.');
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to switch device.');
+    } catch (err: unknown) {
+      setErrorMessage(getErrorMessageText(err, 'Failed to switch device.'));
     } finally {
       setIsLoading(false);
     }
@@ -793,11 +810,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
         title: 'Checkout Failed',
         message: res?.error || 'Failed to initialize checkout session.',
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         type: 'error',
         title: 'Checkout Error',
-        message: err.message || 'Failed to start online checkout.',
+        message: getErrorMessageText(err, 'Failed to start online checkout.'),
       });
     }
   };
@@ -848,11 +865,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           message: res.error || 'Failed to submit transaction reference.',
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         type: 'error',
         title: 'Error',
-        message: err.message || 'Payment submission failed.',
+        message: getErrorMessageText(err, 'Payment submission failed.'),
       });
     } finally {
       setIsSubmittingPayment(false);
@@ -895,11 +912,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           message: res.error || 'Failed to submit TRC-20 transaction hash.',
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         type: 'error',
         title: 'Error',
-        message: err.message || 'Crypto submission failed.',
+        message: getErrorMessageText(err, 'Crypto submission failed.'),
       });
     } finally {
       setIsSubmittingPayment(false);
@@ -1064,7 +1081,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                 <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
                   Your Licence
                 </div>
-                {myLicense && myLicense.hasLicense ? (
+                {myLicense?.hasLicense ? (
                   <div className="space-y-2 text-xs">
                     <div className="font-mono text-xs tracking-wider bg-slate-900/80 p-2.5 rounded-xl border border-slate-700 text-slate-100 select-all">
                       {myLicense.keyMasked}
@@ -1104,7 +1121,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
                 {activeSessions && activeSessions.length > 0 ? (
                   <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
-                    {activeSessions.map((s: any) => (
+                    {activeSessions.map((s) => (
                       <div
                         key={s.id}
                         className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs"
@@ -1178,9 +1195,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                       {dynamicPlans.map((p) => {
                         const isSelected = p.id === activePlanMeta.id;
                         return (
-                          <button
-                            key={p.id}
-                            type="button"
+                          <button type="button"
+                            key={p.id}
                             onClick={() => handleSelectPlan(p)}
                             className={`w-full text-left p-2.5 rounded-xl border transition flex items-center justify-between gap-2 ${
                               isSelected
@@ -1459,7 +1475,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                         ) : paymentMethod === 'crypto' ? (
                           <>
                             <div>
-                              <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                              <label htmlFor="field-001" className="text-[11px] font-bold text-slate-300 block mb-1">
                                 TRON (TRC-20) Transaction Hash <span className="text-rose-400">*</span>
                               </label>
                               <input
@@ -1494,7 +1510,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                         ) : (
                           <>
                             <div>
-                              <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                              <label htmlFor="field-002" className="text-[11px] font-bold text-slate-300 block mb-1">
                                 UTR / Bank Reference Number <span className="text-rose-400">*</span>
                               </label>
                               <input
@@ -1644,7 +1660,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                     disabled={isLoading || isGoogleLoading}
                     className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs shadow-md transition flex items-center justify-center gap-2.5 active:scale-[0.99]"
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24">
+                    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24">
                       <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3h3.88c2.27-2.09 3.665-5.17 3.665-9.09z"/>
                       <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.1C3.28 21.44 7.35 24 12 24z"/>
                       <path fill="#FBBC05" d="M5.28 14.32c-.25-.72-.38-1.49-.38-2.32s.13-1.6.38-2.32V6.57H1.25C.45 8.15 0 9.99 0 12s.45 3.85 1.25 5.43l4.03-3.11z"/>
@@ -1678,7 +1694,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
                   <form onSubmit={handleLoginSubmit} className="space-y-3.5">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-400 mb-1">Email Address</label>
+                      <label htmlFor="field-003" className="block text-xs font-semibold text-slate-400 mb-1">Email Address</label>
                       <div className="relative">
                         <Mail size={15} className="absolute left-3.5 top-3 text-slate-500" />
                         <input
@@ -1694,7 +1710,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
                     <div>
                       <div className="flex items-center justify-between mb-1">
-                        <label className="text-xs font-semibold text-slate-400">Password</label>
+                        <label htmlFor="field-004" className="text-xs font-semibold text-slate-400">Password</label>
                         <button
                           type="button"
                           onClick={() => { setActiveTab('forgot'); setErrorMessage(null); setSuccessInfo(null); }}
@@ -1727,7 +1743,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                     {/* Web Token Paste Option (For smooth desktop handoff from browser) */}
                     {showTokenInput ? (
                       <div className="mt-3 p-3 rounded-xl bg-slate-950 border border-teal-800/60 space-y-2">
-                        <label className="block text-[11px] font-semibold text-teal-400">
+                        <label htmlFor="field-005" className="block text-[11px] font-semibold text-teal-400">
                           Paste Session Token from Browser:
                         </label>
                         <div className="flex gap-2">
@@ -1822,7 +1838,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                     disabled={isLoading || isGoogleLoading}
                     className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs shadow-md transition flex items-center justify-center gap-2.5 active:scale-[0.99] mb-3"
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24">
+                    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24">
                       <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3h3.88c2.27-2.09 3.665-5.17 3.665-9.09z"/>
                       <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.1C3.28 21.44 7.35 24 12 24z"/>
                       <path fill="#FBBC05" d="M5.28 14.32c-.25-.72-.38-1.49-.38-2.32s.13-1.6.38-2.32V6.57H1.25C.45 8.15 0 9.99 0 12s.45 3.85 1.25 5.43l4.03-3.11z"/>
@@ -1839,7 +1855,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
                   <form onSubmit={handleSignupSubmit} className="space-y-3.5">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-400 mb-1">Email Address</label>
+                      <label htmlFor="field-006" className="block text-xs font-semibold text-slate-400 mb-1">Email Address</label>
                       <div className="relative">
                         <Mail size={15} className="absolute left-3.5 top-3 text-slate-500" />
                         <input
@@ -1855,7 +1871,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1">Password</label>
+                        <label htmlFor="field-007" className="block text-xs font-semibold text-slate-400 mb-1">Password</label>
                         <div className="relative">
                           <Lock size={15} className="absolute left-3.5 top-3 text-slate-500" />
                           <input
@@ -1871,7 +1887,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1">Confirm Password</label>
+                        <label htmlFor="field-008" className="block text-xs font-semibold text-slate-400 mb-1">Confirm Password</label>
                         <div className="relative">
                           <Lock size={15} className="absolute left-3.5 top-3 text-slate-500" />
                           <input
@@ -1928,7 +1944,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
                   <form onSubmit={handleVerifyEmailSubmit} className="space-y-4">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-400 mb-1">Verification Token</label>
+                      <label htmlFor="field-009" className="block text-xs font-semibold text-slate-400 mb-1">Verification Token</label>
                       <div className="relative">
                         <KeyRound size={15} className="absolute left-3.5 top-3 text-slate-500" />
                         <input
@@ -1984,7 +2000,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
                   <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-400 mb-1">Account Email</label>
+                      <label htmlFor="field-010" className="block text-xs font-semibold text-slate-400 mb-1">Account Email</label>
                       <div className="relative">
                         <Mail size={15} className="absolute left-3.5 top-3 text-slate-500" />
                         <input
@@ -2038,7 +2054,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
                   <form onSubmit={handleResetPasswordSubmit} className="space-y-3.5">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-400 mb-1">Reset Token</label>
+                      <label htmlFor="field-011" className="block text-xs font-semibold text-slate-400 mb-1">Reset Token</label>
                       <div className="relative">
                         <KeyRound size={15} className="absolute left-3.5 top-3 text-slate-500" />
                         <input
@@ -2054,7 +2070,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1">New Password</label>
+                        <label htmlFor="field-012" className="block text-xs font-semibold text-slate-400 mb-1">New Password</label>
                         <div className="relative">
                           <Lock size={15} className="absolute left-3.5 top-3 text-slate-500" />
                           <input
@@ -2070,7 +2086,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1">Confirm New Password</label>
+                        <label htmlFor="field-013" className="block text-xs font-semibold text-slate-400 mb-1">Confirm New Password</label>
                         <div className="relative">
                           <Lock size={15} className="absolute left-3.5 top-3 text-slate-500" />
                           <input

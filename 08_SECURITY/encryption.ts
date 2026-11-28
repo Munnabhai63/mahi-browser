@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { app, safeStorage } from './electron-bridge.js';
+import { safeStorage } from './electron-bridge.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
 const log = createLogger('encryption');
@@ -28,7 +28,7 @@ function writeMasterKeyFile(keyPath: string, keyBuffer: Buffer): void {
   if (isSafeStorageAvailable()) {
     try {
       const encrypted = safeStorage.encryptString(keyHex);
-      payload = 'SAFE_STORAGE_V1:' + encrypted.toString('base64');
+      payload = `SAFE_STORAGE_V1:${encrypted.toString('base64')}`;
     } catch (err) {
       log.warn('[SECURITY] safeStorage.encryptString failed for master key, falling back to restricted file permissions:', err);
     }

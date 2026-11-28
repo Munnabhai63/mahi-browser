@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import {
   BRAND_CONFIG,
   PRIMARY_LOGO,
@@ -19,7 +20,7 @@ export interface BrandLogoProps {
 function resolveAssetSrc(assetPath: string): string {
   if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
     if (assetPath.startsWith('/')) {
-      return '.' + assetPath;
+      return `.${assetPath}`;
     }
   }
   return assetPath;
@@ -49,7 +50,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
 
   const finalSrc = resolveAssetSrc(src);
 
-  const style: React.CSSProperties & { [key: string]: any } = {
+  const style: React.CSSProperties & { WebkitUserDrag?: string; userDrag?: string } = {
     objectFit: 'contain',
     userSelect: 'none',
     WebkitUserSelect: 'none',
@@ -72,7 +73,10 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
         style={style}
-        onClick={onClick as any}
+        onClick={onClick as React.MouseEventHandler<SVGSVGElement> | undefined}
+        onKeyDown={onClick ? (e: React.KeyboardEvent<SVGSVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.dispatchEvent(new MouseEvent('click', { bubbles: true })); } } : undefined}
+        role={onClick ? 'button' : undefined}
+        tabIndex={onClick ? 0 : undefined}
         className={`select-none shrink-0 pointer-events-auto ${className}`}
         aria-label={alt}
       >
@@ -100,6 +104,9 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
       onDragStart={(e) => e.preventDefault()}
       onError={() => setHasError(true)}
       onClick={onClick}
+      onKeyDown={onClick ? (e: React.KeyboardEvent<HTMLImageElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } } : undefined}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
       className={`object-contain select-none shrink-0 pointer-events-auto ${className}`}
       loading="eager"
       decoding="async"

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import type React from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Play,
   Layers,
@@ -11,9 +12,18 @@ import {
   Trash2,
   FileText,
 } from 'lucide-react';
-import { api } from '../api/api-client.js';
-import { TeamWorkspace } from '../../../10_CONFIG/shared/types/workspace.js';
-import { WebProfileItem } from './ProfilesPage.js';
+import { api, type RemoteWorkflowScheduleDTO, type RemoteAutomationTemplate } from '../api/api-client.js';
+import type { AutomationWorkflow, WorkflowExecutionLog, WorkflowStepLog } from '../../../10_CONFIG/shared/types/automation.js';
+import type { TeamWorkspace } from '../../../10_CONFIG/shared/types/workspace.js';
+import type { WebProfileItem } from './ProfilesPage.js';
+
+type WorkflowRunItem = WorkflowExecutionLog & { durationMs?: number };
+type AutomationTemplateItem = RemoteAutomationTemplate;
+
+interface RunLogsModalState {
+  runId: string;
+  logs: WorkflowStepLog[];
+}
 
 interface AutomationPageProps {
   currentWorkspace: TeamWorkspace | null;
@@ -28,22 +38,22 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'workflows' | 'history' | 'schedules' | 'templates'>('workflows');
   const [isLoading, setIsLoading] = useState(false);
-  const [workflows, setWorkflows] = useState<any[]>([]);
-  const [runs, setRuns] = useState<any[]>([]);
-  const [schedules, setSchedules] = useState<any[]>([]);
-  const [templates, setTemplates] = useState<any[]>([]);
+  const [workflows, setWorkflows] = useState<AutomationWorkflow[]>([]);
+  const [runs, setRuns] = useState<WorkflowRunItem[]>([]);
+  const [schedules, setSchedules] = useState<RemoteWorkflowScheduleDTO[]>([]);
+  const [templates, setTemplates] = useState<AutomationTemplateItem[]>([]);
 
   // Selected workflow & logs view modal
-  const [selectedWorkflow, setSelectedWorkflow] = useState<any | null>(null);
-  const [selectedRunLogs, setSelectedRunLogs] = useState<any | null>(null);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<AutomationWorkflow | null>(null);
+  const [selectedRunLogs, setSelectedRunLogs] = useState<RunLogsModalState | null>(null);
   const [isRunModalOpen, setIsRunModalOpen] = useState(false);
   const [selectedRunProfileId, setSelectedRunProfileId] = useState<string>('');
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const showToast = (type: 'success' | 'error', message: string) => {
+  const showToast = useCallback((type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 4000);
-  };
+  }, []);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -64,13 +74,13 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [currentWorkspace]);
+  }, [currentWorkspace, showToast]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  const handleStartRun = async (workflow: any) => {
+  const handleStartRun = async (workflow: AutomationWorkflow) => {
     setSelectedWorkflow(workflow);
     if (profiles.length > 0) {
       setSelectedRunProfileId(profiles[0].id);
@@ -138,6 +148,7 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
 
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => loadData()}
             disabled={isLoading}
             className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition"
@@ -164,6 +175,7 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
       {/* Tabs */}
       <div className="flex border-b border-slate-200 dark:border-slate-800 gap-6 text-sm">
         <button
+          type="button"
           onClick={() => setActiveTab('workflows')}
           className={`pb-3 font-semibold transition border-b-2 flex items-center gap-2 ${
             activeTab === 'workflows'
@@ -175,6 +187,7 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
           Workflows ({workflows.length})
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('history')}
           className={`pb-3 font-semibold transition border-b-2 flex items-center gap-2 ${
             activeTab === 'history'
@@ -186,6 +199,7 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
           Run History ({runs.length})
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('schedules')}
           className={`pb-3 font-semibold transition border-b-2 flex items-center gap-2 ${
             activeTab === 'schedules'
@@ -197,6 +211,7 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
           Schedules ({schedules.length})
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('templates')}
           className={`pb-3 font-semibold transition border-b-2 flex items-center gap-2 ${
             activeTab === 'templates'
@@ -248,6 +263,7 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
 
               <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <button
+                  type="button"
                   onClick={() => handleStartRun(wf)}
                   className="flex-1 flex items-center justify-center gap-2 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-sm transition"
                 >
@@ -305,6 +321,7 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
                     <td className="px-4 py-3 text-slate-500">{new Date(r.startedAt).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right space-x-2">
                       <button
+                        type="button"
                         onClick={() => handleViewLogs(r.id)}
                         className="px-2 py-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
                       >
@@ -312,6 +329,7 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
                       </button>
                       {r.status === 'RUNNING' && (
                         <button
+                          type="button"
                           onClick={() => handleStopRun(r.id)}
                           className="px-2 py-1 text-xs text-rose-600 hover:underline"
                         >
@@ -351,9 +369,9 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {schedules.map((s) => (
-                  <tr key={s.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
-                    <td className="px-4 py-3 font-mono text-[11px] text-slate-500">{s.id.substring(0, 10)}...</td>
+                {schedules.map((s, idx) => (
+                  <tr key={s.id ?? `sched-${idx}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
+                    <td className="px-4 py-3 font-mono text-[11px] text-slate-500">{(s.id ?? '').substring(0, 10)}...</td>
                     <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">{s.workflowId}</td>
                     <td className="px-4 py-3">
                       <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-[10px] font-medium rounded-full">
@@ -379,7 +397,9 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
                     <td className="px-4 py-3 text-slate-500">{s.timezone}</td>
                     <td className="px-4 py-3 text-right">
                       <button
+                        type="button"
                         onClick={async () => {
+                          if (!s.id) return;
                           await api.deleteSchedule(s.id);
                           loadData();
                         }}
@@ -445,10 +465,11 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
             </p>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+              <label htmlFor="auto-select-profile" className="text-xs font-semibold text-slate-600 dark:text-slate-400">
                 Select Profile
               </label>
               <select
+                id="auto-select-profile"
                 value={selectedRunProfileId}
                 onChange={(e) => setSelectedRunProfileId(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs"
@@ -463,12 +484,14 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
 
             <div className="flex justify-end gap-2 pt-2">
               <button
+                type="button"
                 onClick={() => setIsRunModalOpen(false)}
                 className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={executeRun}
                 className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition"
               >
@@ -489,6 +512,7 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
                 Step Execution Logs ({selectedRunLogs.runId.substring(0, 12)})
               </h3>
               <button
+                type="button"
                 onClick={() => setSelectedRunLogs(null)}
                 className="text-xs text-slate-400 hover:text-slate-600"
               >
@@ -497,9 +521,9 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-              {Array.isArray(selectedRunLogs.logs) && selectedRunLogs.logs.map((log: any, idx: number) => (
+              {Array.isArray(selectedRunLogs.logs) && selectedRunLogs.logs.map((log: WorkflowStepLog, idx: number) => (
                 <div
-                  key={idx}
+                  key={`${log.stepId}-${log.stepType}-${log.timestamp ?? log.durationMs}`}
                   className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs space-y-1"
                 >
                   <div className="flex items-center justify-between font-mono text-[11px]">

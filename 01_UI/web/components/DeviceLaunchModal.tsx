@@ -1,5 +1,5 @@
-import React from 'react';
-import { AlertTriangle, Download, Laptop, X, ShieldAlert } from 'lucide-react';
+import type React from 'react';
+import { AlertTriangle, Laptop, X } from 'lucide-react';
 
 interface DeviceLaunchModalProps {
   isOpen: boolean;
@@ -30,6 +30,7 @@ export const DeviceLaunchModal: React.FC<DeviceLaunchModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors"
           >
@@ -62,6 +63,7 @@ export const DeviceLaunchModal: React.FC<DeviceLaunchModalProps> = ({
         <div className="flex items-center justify-end space-x-3 pt-2">
           {onNavigateToDevices && (
             <button
+              type="button"
               onClick={() => {
                 onClose();
                 onNavigateToDevices();
@@ -72,6 +74,7 @@ export const DeviceLaunchModal: React.FC<DeviceLaunchModalProps> = ({
             </button>
           )}
           <button
+            type="button"
             onClick={onClose}
             className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-teal-600/20 transition-all"
           >

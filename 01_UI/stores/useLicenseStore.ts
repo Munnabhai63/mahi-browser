@@ -1,7 +1,6 @@
 import { create } from 'zustand';
-import {
+import type {
   LicenseRecord,
-  LicenseStatus,
   LicenseValidationResult,
   CreateLicenseDTO,
   CreateLicenseResponse,
@@ -50,13 +49,14 @@ export const useLicenseStore = create<LicenseState>((set, get) => ({
       const res = await window.mahiAPI.getLicenseStatus();
       set({ currentLicenseStatus: res, isLoading: false });
       return res;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : undefined;
       const fallback: LicenseValidationResult = {
         isValid: false,
         status: 'NOT_ACTIVATED',
-        message: err?.message || 'Error checking license',
+        message: errMsg || 'Error checking license',
       };
-      set({ currentLicenseStatus: fallback, isLoading: false, error: err?.message });
+      set({ currentLicenseStatus: fallback, isLoading: false, error: errMsg });
       return fallback;
     }
   },
@@ -72,9 +72,10 @@ export const useLicenseStore = create<LicenseState>((set, get) => ({
       await get().fetchCurrentStatus();
       set({ isLoading: false });
       return { success: res.success, message: res.message };
-    } catch (err: any) {
-      set({ isLoading: false, error: err?.message });
-      return { success: false, message: err?.message || 'Activation failed' };
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : undefined;
+      set({ isLoading: false, error: errMsg });
+      return { success: false, message: errMsg || 'Activation failed' };
     }
   },
 
@@ -91,11 +92,12 @@ export const useLicenseStore = create<LicenseState>((set, get) => ({
         isLoading: false,
       });
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : undefined;
       set({
         isAdminAuthenticated: false,
         isLoading: false,
-        error: err?.message || 'Invalid admin credentials',
+        error: errMsg || 'Invalid admin credentials',
       });
       return false;
     }
@@ -107,8 +109,8 @@ export const useLicenseStore = create<LicenseState>((set, get) => ({
     try {
       const list = await window.mahiAPI.adminGetLicenses(adminSecret, filter);
       set({ adminLicenses: list });
-    } catch (err: any) {
-      set({ error: err?.message });
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : String(err) });
     }
   },
 

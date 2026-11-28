@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
   ShieldAlert,
   ShieldCheck,
-  Shield,
   Zap,
   Activity,
   RefreshCw,
@@ -14,14 +14,12 @@ import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
-  Sparkles,
   ArrowRight,
-  Monitor,
   Clock,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
-import { ProfileAuditReport, DiagnosticCheck, DiagnosticStatus } from '../../10_CONFIG/shared/types/diagnostics.js';
+import type { ProfileAuditReport, DiagnosticStatus } from '../../10_CONFIG/shared/types/diagnostics.js';
 
 export const Diagnostics: React.FC = () => {
   const { profiles, fetchProfiles } = useProfileStore();
@@ -43,9 +41,10 @@ export const Diagnostics: React.FC = () => {
     }
   }, [profiles, selectedProfileId]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runAudit is a stable async handler; selectedProfileId is the real dep
   useEffect(() => {
     if (selectedProfileId) {
-      runAudit(selectedProfileId);
+      void runAudit(selectedProfileId);
     }
   }, [selectedProfileId]);
 
@@ -56,12 +55,12 @@ export const Diagnostics: React.FC = () => {
         const res = await window.mahiAPI.diagnosticsAudit(profileId);
         setReport(res);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Audit failed:', err);
       showToast({
         type: 'error',
         title: 'Audit Failed',
-        message: err?.message || 'Could not complete profile diagnostics audit.',
+        message: err instanceof Error ? err.message : 'Could not complete profile diagnostics audit.',
       });
     } finally {
       setLoading(false);
@@ -82,12 +81,12 @@ export const Diagnostics: React.FC = () => {
           message: 'Profile configuration discrepancies resolved.',
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Auto fix failed:', err);
       showToast({
         type: 'error',
         title: 'Auto-Fix Failed',
-        message: err?.message || 'Could not resolve diagnostic issues.',
+        message: err instanceof Error ? err.message : 'Could not resolve diagnostic issues.',
       });
     } finally {
       setFixing(false);
@@ -181,7 +180,7 @@ export const Diagnostics: React.FC = () => {
             ))}
           </select>
 
-          <button
+          <button type="button"
             onClick={() => selectedProfileId && runAudit(selectedProfileId)}
             disabled={loading || !selectedProfileId}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 transition-all shadow-xs disabled:opacity-50"
@@ -190,7 +189,7 @@ export const Diagnostics: React.FC = () => {
             <span>Re-Audit</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={handleAutoFix}
             disabled={fixing || !selectedProfileId || report?.overallScore === 100}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-xs font-bold text-white shadow-sm shadow-teal-600/20 active:scale-95 transition-all disabled:opacity-50"
@@ -219,7 +218,7 @@ export const Diagnostics: React.FC = () => {
 
             <div className="my-6 flex items-center justify-center">
               <div className="relative flex items-center justify-center">
-                <svg className="w-44 h-44 transform -rotate-90">
+                <svg aria-hidden="true" className="w-44 h-44 transform -rotate-90">
                   <circle
                     cx="88"
                     cy="88"
@@ -332,7 +331,7 @@ export const Diagnostics: React.FC = () => {
               </div>
 
               {report.overallScore < 100 && (
-                <button
+                <button type="button"
                   onClick={handleAutoFix}
                   disabled={fixing}
                   className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-sm transition-all shrink-0 active:scale-95"
@@ -351,7 +350,7 @@ export const Diagnostics: React.FC = () => {
         {/* Category Filters */}
         <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto">
           {['ALL', 'NETWORK', 'CANVAS', 'WEBGL', 'AUDIO', 'HARDWARE', 'LOCALE'].map((cat) => (
-            <button
+            <button type="button"
               key={cat}
               onClick={() => setFilterCategory(cat)}
               className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
@@ -368,7 +367,7 @@ export const Diagnostics: React.FC = () => {
         {/* Status Filters */}
         <div className="flex items-center gap-1">
           {['ALL', 'FAIL', 'WARN', 'PASS'].map((st) => (
-            <button
+            <button type="button"
               key={st}
               onClick={() => setFilterStatus(st)}
               className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${

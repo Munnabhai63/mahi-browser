@@ -1,4 +1,4 @@
-import { Metadata } from 'next';
+import type { Metadata } from 'next';
 import CustomersView from '../../components/CustomersView';
 
 export const metadata: Metadata = {

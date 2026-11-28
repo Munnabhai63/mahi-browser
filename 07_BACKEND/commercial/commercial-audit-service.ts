@@ -1,11 +1,25 @@
 import crypto from 'node:crypto';
-import { getDatabase } from '../../06_DATABASE/connection.js';
-import { CommercialAuditLog, CommercialAuditResult, CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
+import { getDatabase, type SqliteWrapper } from '../../06_DATABASE/connection.js';
+import type { CommercialAuditLog, CommercialAuditResult, CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('commercial-audit-service');
 
-function ensureAuditTable(db: any): void {
+interface SqliteCommercialAuditRow {
+  id: string;
+  actor_id: string;
+  actor_name: string;
+  actor_role: string;
+  action: string;
+  target_type: string;
+  target_id: string | null;
+  details: string;
+  ip_address: string | null;
+  result: string;
+  created_at: string;
+}
+
+function ensureAuditTable(db: SqliteWrapper): void {
   try {
     db.exec(`
       CREATE TABLE IF NOT EXISTS commercial_audit_logs (
@@ -101,8 +115,8 @@ export function getCommercialAuditLogs(filter?: {
   ensureAuditTable(db);
   let query = 'SELECT * FROM commercial_audit_logs WHERE 1=1';
   let countQuery = 'SELECT COUNT(*) as count FROM commercial_audit_logs WHERE 1=1';
-  const params: any[] = [];
-  const countParams: any[] = [];
+  const params: Array<string | number> = [];
+  const countParams: Array<string | number> = [];
 
   if (filter?.action) {
     query += ' AND action = ?';
@@ -141,8 +155,8 @@ export function getCommercialAuditLogs(filter?: {
   query += ' LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
-  const total = (db.prepare(countQuery).get(...countParams) as any)?.count || 0;
-  const rows = db.prepare(query).all(...params) as any[];
+  const total = db.prepare(countQuery).get<{ count: number }>(...countParams)?.count || 0;
+  const rows = db.prepare(query).all<SqliteCommercialAuditRow>(...params);
 
   const logs = rows.map((r) => ({
     id: r.id,

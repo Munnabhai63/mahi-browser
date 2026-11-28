@@ -31,7 +31,7 @@ export interface SystemAlert {
   title: string;
   details: string;
   timestamp: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface HealthCheckReport {
@@ -89,10 +89,10 @@ export class TelemetryMonitorService {
     const start = Date.now();
     try {
       const db = getDatabase();
-      const row = db.prepare('SELECT 1 as ping').get() as any;
-      if (!row || row.ping !== 1) throw new Error('Database ping query returned invalid result');
+      const row = db.prepare('SELECT 1 as ping').get<{ ping: number }>();
+      if (row?.ping !== 1) throw new Error('Database ping query returned invalid result');
 
-      const countRow = db.prepare("SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table'").get() as any;
+      const countRow = db.prepare("SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table'").get<{ cnt: number }>();
       const latencyMs = Date.now() - start;
 
       return {
@@ -100,13 +100,13 @@ export class TelemetryMonitorService {
         latencyMs,
         tablesCount: countRow?.cnt || 0,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.dispatchAlert({
         id: `alert_db_${Date.now()}`,
         subsystem: 'DB',
         severity: 'CRITICAL',
         title: 'Database Health Check Failed',
-        details: err.message,
+        details: err instanceof Error ? err.message : String(err),
         timestamp: new Date().toISOString(),
       });
       return { status: 'ERROR', latencyMs: Date.now() - start, tablesCount: 0 };
@@ -123,13 +123,13 @@ export class TelemetryMonitorService {
         status: 'OK',
         providerName: storage.name,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.dispatchAlert({
         id: `alert_storage_${Date.now()}`,
         subsystem: 'STORAGE',
         severity: 'CRITICAL',
         title: 'Storage Health Check Failed',
-        details: err.message,
+        details: err instanceof Error ? err.message : String(err),
         timestamp: new Date().toISOString(),
       });
       return { status: 'ERROR', providerName: 'unavailable' };
@@ -221,7 +221,7 @@ export class TelemetryMonitorService {
         const cert = socket.getPeerCertificate();
         socket.end();
 
-        if (!cert || !cert.valid_to) {
+        if (!cert?.valid_to) {
           return resolve({ valid: false, daysRemaining: 0 });
         }
 
@@ -271,8 +271,8 @@ export class TelemetryMonitorService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(alert),
         });
-      } catch (err: any) {
-        log.error(`[TelemetryMonitor:ERROR] Failed to dispatch webhook alert: ${err.message}`);
+      } catch (err: unknown) {
+        log.error(`[TelemetryMonitor:ERROR] Failed to dispatch webhook alert: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   }

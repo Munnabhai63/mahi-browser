@@ -76,7 +76,93 @@ export interface OfflineQueueItem {
   id: string;
   endpoint: string;
   method: 'POST' | 'PUT' | 'DELETE';
-  payload?: any;
+  payload?: Record<string, unknown> | unknown;
   timestamp: number;
   retryCount: number;
+}
+
+export interface MobileRotatorAdbDevice {
+  id: string;
+  model: string;
+  product?: string;
+  status: 'device' | 'offline' | 'unauthorized';
+}
+
+export interface MobileRotatorAdbStatus {
+  installed: boolean;
+  adbPath: string | null;
+  source: 'env' | 'custom' | 'bundled' | 'managed' | 'sdk' | 'path' | 'missing';
+  managedInstallDir: string;
+  platform: string;
+  downloadUrl: string;
+  version?: string;
+  error?: string;
+}
+
+export interface MobileRotatorInstallResult {
+  success: boolean;
+  adbPath?: string;
+  version?: string;
+  error?: string;
+}
+
+export interface MobileRotatorIpInfo {
+  ip: string;
+  country?: string;
+  countryCode?: string;
+  city?: string;
+  isp?: string;
+  error?: string;
+}
+
+export interface MobileRotatorConfig {
+  method: 'adb' | 'webhook';
+  adbDeviceId?: string;
+  customAdbPath?: string;
+  airplaneDelayMs: number;
+  webhookUrl?: string;
+  webhookMethod?: 'GET' | 'POST';
+  autoRotateOnProfileStart: boolean;
+  mobileModeEnabled: boolean;
+  minIntervalSeconds: number;
+}
+
+export interface MobileRotatorRotateOptions {
+  triggerSource?: 'manual' | 'profile-start';
+  profileId?: string;
+  overrideConfig?: Partial<MobileRotatorConfig>;
+  bypassCooldown?: boolean;
+}
+
+export interface MobileRotatorRotationResult {
+  success: boolean;
+  ipChanged: boolean;
+  skippedByCooldown?: boolean;
+  cooldownRemainingSeconds?: number;
+  oldIp: string;
+  newIp: string;
+  isp?: string;
+  country?: string;
+  city?: string;
+  deviceId?: string;
+  strategy?: string;
+  durationMs: number;
+  errorMessage?: string;
+  timestamp: string;
+}
+
+export interface MobileRotatorHistoryEntry {
+  id: string;
+  timestamp: string;
+  method: 'adb' | 'webhook';
+  oldIp: string;
+  newIp: string;
+  ipChanged: boolean;
+  durationMs: number;
+  status: 'SUCCESS' | 'NO_CHANGE' | 'COOLDOWN_SKIPPED' | 'FAILED';
+  triggerSource: 'manual' | 'profile-start';
+  profileId?: string;
+  deviceId?: string;
+  strategy?: string;
+  message?: string;
 }

@@ -1,14 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
   Cloud,
-  CloudRain,
   UploadCloud,
   DownloadCloud,
   Trash2,
   RefreshCw,
   Lock,
-  CheckCircle2,
-  AlertCircle,
   HardDrive,
   ShieldAlert,
   ArrowRight,
@@ -18,7 +16,7 @@ import {
 import { useToastStore } from '../stores/useToastStore.js';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { ConfirmModal } from './ConfirmModal.js';
-import { NavigationPage } from './Sidebar.js';
+import type { NavigationPage } from './Sidebar.js';
 
 interface CloudProfile {
   id: string;
@@ -42,7 +40,7 @@ interface CloudSyncSectionProps {
   onProfileRestored?: () => void;
 }
 
-export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, onProfileRestored }) => {
+export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate: _onNavigate, onProfileRestored }) => {
   const { showToast } = useToastStore();
   const { openAccountModal } = useAccountStore();
 
@@ -56,7 +54,7 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
   const [keyDerivationVersion, setKeyDerivationVersion] = useState<1 | 2>(1);
   const [showPassphrase, setShowPassphrase] = useState(false);
 
-  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [_syncingId, _setSyncingId] = useState<string | null>(null);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [progressMsg, setProgressMsg] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CloudProfile | null>(null);
@@ -89,22 +87,27 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
       if (cfg) {
         setAutoSync(cfg.autoSync !== false);
         setPassphrase(cfg.syncPassphrase || 'mahi-cloud-sync');
-        setKeyDerivationVersion((cfg as any).keyDerivationVersion === 2 ? 2 : 1);
+        setKeyDerivationVersion('keyDerivationVersion' in cfg && cfg.keyDerivationVersion === 2 ? 2 : 1);
       }
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Cloud Sync', message: err.message || 'Failed to connect to cloud service' });
+    } catch (err: unknown) {
+      showToast({
+        type: 'error',
+        title: 'Cloud Sync',
+        message: err instanceof Error ? err.message : 'Failed to connect to cloud service',
+      });
     } finally {
       setLoading(false);
     }
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadData is a stable async loader defined in this scope
   useEffect(() => {
-    loadData();
+    void loadData();
 
     // Listen to sync progress events
     let cleanup: (() => void) | undefined;
     if (window.mahiAPI?.onSyncProgress) {
-      cleanup = window.mahiAPI.onSyncProgress((ev: any) => {
+      cleanup = window.mahiAPI.onSyncProgress((ev) => {
         if (ev.stage === 'ERROR') {
           setProgressMsg(null);
           showToast({ type: 'error', title: 'Sync Error', message: ev.error || 'Sync failed' });
@@ -121,15 +124,15 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
     return () => {
       if (cleanup) cleanup();
     };
-  }, []);
+  }, [showToast]);
 
   const handleToggleAutoSync = async (enabled: boolean) => {
     setAutoSync(enabled);
     try {
       await window.mahiAPI.setCloudSyncConfig({ autoSync: enabled, syncPassphrase: passphrase });
       showToast({ type: 'success', title: 'Settings Saved', message: `Auto-sync is now ${enabled ? 'ENABLED' : 'DISABLED'}` });
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Settings Error', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Settings Error', message: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -141,8 +144,8 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
     try {
       await window.mahiAPI.setCloudSyncConfig({ autoSync, syncPassphrase: passphrase.trim(), keyDerivationVersion });
       showToast({ type: 'success', title: 'Passphrase Updated', message: 'Encryption passphrase updated.' });
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Settings Error', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Settings Error', message: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -157,15 +160,15 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
       return;
     }
     try {
-      await window.mahiAPI.setCloudSyncConfig({ autoSync, syncPassphrase: cleanPass, keyDerivationVersion: 2 } as any);
+      await window.mahiAPI.setCloudSyncConfig({ autoSync, syncPassphrase: cleanPass, keyDerivationVersion: 2 });
       setKeyDerivationVersion(2);
       showToast({
         type: 'success',
         title: 'Upgraded to Key Derivation v2',
         message: 'New backups use randomized per-backup PBKDF2 salts while legacy v1 backups remain decryptable.',
       });
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Upgrade Error', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Upgrade Error', message: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -179,8 +182,8 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
       });
       showToast({ type: 'success', title: 'Profile Restored', message: `Profile "${restored.name}" restored to this PC!` });
       if (onProfileRestored) onProfileRestored();
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Restore Failed', message: err.message || 'Decryption or restore failed.' });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Restore Failed', message: err instanceof Error ? err.message : 'Decryption or restore failed.' });
     } finally {
       setRestoringId(null);
       setProgressMsg(null);
@@ -196,8 +199,8 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
       showToast({ type: 'info', title: 'Syncing', message: 'Enqueuing all profiles for cloud backup...' });
       await window.mahiAPI.syncAllProfiles();
       loadData();
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Sync All Failed', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Sync All Failed', message: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -214,7 +217,7 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
           {deniedReason || 'Upgrade to MAHI PRO to securely backup, synchronize, and restore your anti-detect browser profiles across multiple computers.'}
         </p>
         <div className="flex items-center space-x-3">
-          <button
+          <button type="button"
             onClick={() => openAccountModal('PRO')}
             className="px-5 py-2.5 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-600/25 flex items-center space-x-2 transition"
           >
@@ -252,7 +255,7 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
           </div>
 
           <div className="flex items-center space-x-2">
-            <button
+            <button type="button"
               onClick={handleSyncAll}
               disabled={loading}
               className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-md shadow-teal-600/20 flex items-center space-x-1.5 transition active:scale-95 disabled:opacity-50"
@@ -260,7 +263,7 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
               <UploadCloud className="w-4 h-4" />
               <span>Sync All Profiles</span>
             </button>
-            <button
+            <button type="button"
               onClick={loadData}
               disabled={loading}
               className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition"
@@ -310,13 +313,13 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
       {/* Sync Configuration Options */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
-          <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 mb-1.5">
+          <label htmlFor="field-001" className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 mb-1.5">
             Auto-Sync on Profile Close / Save
           </label>
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
             Automatically package, encrypt, and upload profile sessions when closing the browser window.
           </p>
-          <label className="relative inline-flex items-center cursor-pointer">
+          <label htmlFor="field-002" className="relative inline-flex items-center cursor-pointer">
             <input
               type="checkbox"
               checked={autoSync}
@@ -331,7 +334,7 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 mb-1.5">
+          <label htmlFor="field-003" className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 mb-1.5">
             <Lock className="w-3.5 h-3.5 text-teal-500" />
             Zero-Knowledge Sync Passphrase
           </label>
@@ -355,7 +358,7 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
                 {showPassphrase ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
             </div>
-            <button
+            <button type="button"
               onClick={handleSavePassphrase}
               className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-xl transition"
             >
@@ -428,7 +431,7 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
                     </td>
                     <td className="py-3.5 px-6 text-right">
                       <div className="inline-flex items-center space-x-2">
-                        <button
+                        <button type="button"
                           onClick={() => handleRestore(p)}
                           disabled={isRestoring}
                           className="px-3 py-1.5 bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 hover:bg-teal-100 dark:hover:bg-teal-900/50 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition disabled:opacity-50"
@@ -436,7 +439,7 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
                           <DownloadCloud className={`w-3.5 h-3.5 ${isRestoring ? 'animate-bounce' : ''}`} />
                           <span>{isRestoring ? 'Restoring...' : 'Restore to this PC'}</span>
                         </button>
-                        <button
+                        <button type="button"
                           onClick={() => handleDelete(p)}
                           className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
                           title="Delete from Cloud"
@@ -467,8 +470,8 @@ export const CloudSyncSection: React.FC<CloudSyncSectionProps> = ({ onNavigate, 
             await window.mahiAPI.deleteCloudProfile(target.id);
             showToast({ type: 'success', title: 'Deleted', message: `Profile "${target.name}" deleted from Cloud.` });
             loadData();
-          } catch (err: any) {
-            showToast({ type: 'error', title: 'Delete Failed', message: err.message });
+          } catch (err: unknown) {
+            showToast({ type: 'error', title: 'Delete Failed', message: err instanceof Error ? err.message : String(err) });
           }
         }}
         onCancel={() => setDeleteTarget(null)}

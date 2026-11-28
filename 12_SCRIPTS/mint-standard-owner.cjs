@@ -1,6 +1,6 @@
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
 const initSqlJs = require('sql.js');
 
 async function main() {
@@ -11,10 +11,10 @@ async function main() {
   const db = new SQL.Database(fileBuffer);
 
   const bytes = crypto.randomBytes(16).toString('hex').toUpperCase();
-  const rawKey = 'MAHI-' + bytes.substring(0, 4) + '-' + bytes.substring(4, 8) + '-' + bytes.substring(8, 12) + '-' + bytes.substring(12, 16);
+  const rawKey = `MAHI-${bytes.substring(0, 4)}-${bytes.substring(4, 8)}-${bytes.substring(8, 12)}-${bytes.substring(12, 16)}`;
   const normalizedKey = rawKey.toUpperCase().replace(/[^A-Z0-9]/g, '');
   const keyHash = crypto.createHash('sha256').update(normalizedKey).digest('hex');
-  const keyMasked = 'MAHI-****-****-' + bytes.substring(12, 16);
+  const keyMasked = `MAHI-****-****-${bytes.substring(12, 16)}`;
   
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -43,7 +43,7 @@ async function main() {
   fs.writeFileSync(dbPath, Buffer.from(data));
 
   console.log('===STANDARD_KEY===');
-  console.log('KEY:' + rawKey);
+  console.log(`KEY:${rawKey}`);
   console.log('===END===');
 }
 

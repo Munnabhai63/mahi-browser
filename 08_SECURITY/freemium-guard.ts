@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { app } from './electron-bridge.js';
 import { FREE_PROFILE_LIMIT, PRO_PROFILE_LIMIT } from '../10_CONFIG/freemium-limits.js';
 import { verifyLicense } from './license-service.js';
 import { isOnlineRevoked, isGraceExpired } from './license-status-service.js';
@@ -316,15 +315,24 @@ export function assertCapability(capability: string): void {
   }
 
   // 2. Capabilities requiring BUSINESS tier
+  const throwFeatureGate = (requiredPlan: 'BUSINESS' | 'PRO', message: string): never => {
+    const err = new Error(message) as Error & {
+      code: 'FEATURE_NOT_INCLUDED';
+      capability: string;
+      requiredPlan: 'BUSINESS' | 'PRO';
+    };
+    err.code = 'FEATURE_NOT_INCLUDED';
+    err.capability = capability;
+    err.requiredPlan = requiredPlan;
+    throw err;
+  };
+
   if (capability === 'workspace.team') {
     if (!isUserBusiness()) {
-      const err = new Error(
+      throwFeatureGate(
+        'BUSINESS',
         `FEATURE_NOT_INCLUDED: Feature "${capability}" requires a MAHI BUSINESS subscription. Please upgrade to unlock team workspaces.`
       );
-      (err as any).code = 'FEATURE_NOT_INCLUDED';
-      (err as any).capability = capability;
-      (err as any).requiredPlan = 'BUSINESS';
-      throw err;
     }
     return;
   }
@@ -332,13 +340,10 @@ export function assertCapability(capability: string): void {
   // 3. Capabilities requiring PRO or BUSINESS
   const isPro = isUserPro();
   if (!isPro) {
-    const err = new Error(
+    throwFeatureGate(
+      'PRO',
       `FEATURE_NOT_INCLUDED: Feature "${capability}" requires MAHI PRO or Business plan. Please upgrade to unlock.`
     );
-    (err as any).code = 'FEATURE_NOT_INCLUDED';
-    (err as any).capability = capability;
-    (err as any).requiredPlan = 'PRO';
-    throw err;
   }
 }
 

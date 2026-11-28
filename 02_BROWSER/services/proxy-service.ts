@@ -1,9 +1,6 @@
 import crypto from 'node:crypto';
-import net from 'node:net';
-import http from 'node:http';
-import https from 'node:https';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import {
+import type {
   ProxyItem,
   CreateProxyDTO,
   UpdateProxyDTO,
@@ -35,6 +32,7 @@ export function getProxies(): ProxyItem[] {
     password_encrypted: string | null;
     country_region: string | null;
     country_name: string | null;
+    city?: string | null;
     public_ip: string | null;
     notes: string | null;
     status: string;
@@ -55,7 +53,7 @@ export function getProxies(): ProxyItem[] {
     hasPassword: Boolean(r.password_encrypted),
     countryRegion: r.country_region || undefined,
     countryName: r.country_name || undefined,
-    city: (r as any).city || undefined,
+    city: r.city || undefined,
     ip: r.public_ip || undefined,
     notes: r.notes || undefined,
     status: r.status as ProxyStatus,
@@ -84,6 +82,7 @@ export function getProxyById(id: string): ProxyItem | null {
     password_encrypted: string | null;
     country_region: string | null;
     country_name: string | null;
+    city?: string | null;
     public_ip: string | null;
     notes: string | null;
     status: string;
@@ -106,7 +105,7 @@ export function getProxyById(id: string): ProxyItem | null {
     hasPassword: Boolean(row.password_encrypted),
     countryRegion: row.country_region || undefined,
     countryName: row.country_name || undefined,
-    city: (row as any).city || undefined,
+    city: row.city || undefined,
     ip: row.public_ip || undefined,
     notes: row.notes || undefined,
     status: row.status as ProxyStatus,
@@ -127,7 +126,7 @@ export function getDecryptedProxyCredentials(id: string): { username?: string; p
 
   if (!row) return null;
 
-  let password: string | undefined = undefined;
+  let password: string | undefined ;
   if (row.password_encrypted) {
     try {
       password = decryptData(row.password_encrypted);
@@ -143,7 +142,7 @@ export function getDecryptedProxyCredentials(id: string): { username?: string; p
 }
 
 export function createProxy(dto: CreateProxyDTO): ProxyItem {
-  assertCanCreateProxy(1, (dto as any)?.ownerId);
+  assertCanCreateProxy(1, (dto as CreateProxyDTO & { ownerId?: string })?.ownerId);
 
   const db = getDatabase();
   const id = crypto.randomUUID();
@@ -179,7 +178,11 @@ export function createProxy(dto: CreateProxyDTO): ProxyItem {
 
   logActivity('PROXY', 'SUCCESS', 'Create Proxy', `Created proxy "${dto.name}" (${dto.protocol}://${dto.host}:${dto.port})`);
 
-  return getProxyById(id)!;
+  const created = getProxyById(id);
+  if (!created) {
+    throw new Error(`Created proxy ${id} could not be retrieved`);
+  }
+  return created;
 }
 
 export function updateProxy(id: string, dto: UpdateProxyDTO): ProxyItem {
@@ -190,7 +193,7 @@ export function updateProxy(id: string, dto: UpdateProxyDTO): ProxyItem {
   }
 
   const now = new Date().toISOString();
-  let encryptedPassword = undefined;
+  let encryptedPassword: string | null | undefined;
   if (dto.password !== undefined) {
     encryptedPassword = dto.password ? encryptData(dto.password) : null;
   }
@@ -214,7 +217,11 @@ export function updateProxy(id: string, dto: UpdateProxyDTO): ProxyItem {
 
   logActivity('PROXY', 'INFO', 'Update Proxy', `Updated proxy "${dto.name || existing.name}"`);
 
-  return getProxyById(id)!;
+  const updated = getProxyById(id);
+  if (!updated) {
+    throw new Error(`Updated proxy ${id} could not be retrieved`);
+  }
+  return updated;
 }
 
 export function deleteProxy(id: string): boolean {
@@ -323,7 +330,7 @@ export function parseUniversalProxyString(raw: string): CreateProxyDTO | null {
     }
   }
 
-  if (!host || isNaN(port) || port <= 0 || port > 65535) {
+  if (!host || Number.isNaN(port) || port <= 0 || port > 65535) {
     return null;
   }
 
@@ -348,14 +355,14 @@ export async function parseAndCreateProxy(rawString: string, customName?: string
     throw new Error('Invalid proxy format. Supported formats: ip:port:user:pass, http://user:pass@ip:port, or ip:port');
   }
 
-  if (customName && customName.trim()) {
+  if (customName?.trim()) {
     parsed.name = customName.trim();
   }
 
   const proxy = createProxy(parsed);
   const testResult = await testAndSaveProxyStatus(proxy.id);
 
-  const updatedProxy = getProxyById(proxy.id)!;
+  const updatedProxy = getProxyById(proxy.id) ?? proxy;
   return { proxy: updatedProxy, testResult };
 }
 

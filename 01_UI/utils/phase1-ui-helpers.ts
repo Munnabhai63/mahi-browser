@@ -281,7 +281,7 @@ export function reduceSyncProgressMap(
   prev: SyncProgressMap,
   ev: SyncProgressEvent
 ): SyncProgressMap {
-  if (!ev || !ev.profileId) return prev;
+  if (!ev?.profileId) return prev;
   const isFinished =
     ev.stage === 'COMPLETED' ||
     ev.stage === 'ERROR' ||

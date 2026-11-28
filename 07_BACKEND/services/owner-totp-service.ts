@@ -138,9 +138,10 @@ export function isOwnerConfigured(): boolean {
  * Fails closed if owner console is not configured.
  */
 export function verifyOwnerTotp(code: string, nowMs = Date.now()): boolean {
-  if (!isOwnerConfigured()) return false;
+  const secret = process.env.MAHI_OWNER_TOTP_SECRET;
+  if (!isOwnerConfigured() || !secret) return false;
   try {
-    const secretBuf = base32Decode(process.env.MAHI_OWNER_TOTP_SECRET!);
+    const secretBuf = base32Decode(secret);
     return totpVerify(secretBuf, code, 1, nowMs);
   } catch {
     return false;

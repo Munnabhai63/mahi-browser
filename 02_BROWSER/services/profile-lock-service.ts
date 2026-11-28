@@ -1,13 +1,22 @@
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import { ProfileLock } from '../../10_CONFIG/shared/types/platform.js';
+import type { ProfileLock } from '../../10_CONFIG/shared/types/platform.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
 
 // Auto lock expiry: 30 minutes in milliseconds
 const LOCK_TIMEOUT_MS = 30 * 60 * 1000;
 
+interface SqliteProfileLockRow {
+  profile_id: string;
+  locked_by_user_id: string;
+  locked_by_user_name: string;
+  locked_by_device_id: string;
+  locked_at: string;
+  expires_at: string;
+}
+
 export function getProfileLock(profileId: string): ProfileLock | null {
   const db = getDatabase();
-  const row = db.prepare('SELECT * FROM profile_locks WHERE profile_id = ?').get(profileId) as any;
+  const row = db.prepare('SELECT * FROM profile_locks WHERE profile_id = ?').get(profileId) as SqliteProfileLockRow | undefined;
   if (!row) return null;
 
   const now = Date.now();

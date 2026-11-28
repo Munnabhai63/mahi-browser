@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 
 const FEATURED_SLIDES = [
@@ -93,7 +94,7 @@ export default function CustomersView() {
     }, TICK);
 
     return () => clearInterval(timer);
-  }, [isPaused, activeSlide]);
+  }, [isPaused]);
 
   const current = FEATURED_SLIDES[activeSlide];
 
@@ -135,7 +136,7 @@ export default function CustomersView() {
                 onClick={trackDownload}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-[#080808] text-white px-6 py-2.5 text-xs sm:text-[14px] font-medium transition-all duration-200 hover:bg-zinc-800 active:scale-[0.98] shadow-sm"
               >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
                 Download Free (15 Profiles)
@@ -155,11 +156,13 @@ export default function CustomersView() {
           {/* ========================================================================= */}
           <div className="w-full mt-14 sm:mt-18 pt-8 border-t border-[#e6e3e3]">
             <div className="flex items-center justify-between gap-6 sm:gap-8 md:gap-10 overflow-x-auto no-scrollbar py-2">
-              {PLATFORM_LOGOS.map((logo, idx) => (
-                <div key={idx} className="flex-shrink-0 flex items-center justify-center group" title={logo.name}>
-                  <img
+              {PLATFORM_LOGOS.map((logo) => (
+                <div key={logo.name} className="flex-shrink-0 flex items-center justify-center group" title={logo.name}>
+                  <Image
                     src={logo.src}
                     alt={logo.name}
+                    width={120}
+                    height={24}
                     className={`${logo.h} w-auto max-w-[120px] object-contain brightness-0 contrast-200 opacity-60 group-hover:opacity-100 transition-opacity duration-200`}
                   />
                 </div>
@@ -177,7 +180,8 @@ export default function CustomersView() {
         <div className="w-full max-w-[1440px] mx-auto px-6 sm:px-10 lg:px-16">
           
           {/* Card Container: #e5e5e3 muted background matching Lateral reference */}
-          <div
+          <section
+            aria-label="Featured customer case study"
             className="relative rounded-2xl sm:rounded-3xl bg-[#e5e5e3] overflow-hidden shadow-sm flex flex-col lg:flex-row items-stretch"
             onMouseEnter={() => setIsPaused(true)}
             onMouseLeave={() => setIsPaused(false)}
@@ -235,9 +239,9 @@ export default function CustomersView() {
 
               {/* Slide Navigation Dots */}
               <div className="flex items-center gap-2 pt-6 mt-6 border-t border-[rgba(0,0,0,0.08)]">
-                {FEATURED_SLIDES.map((_, idx) => (
+                {FEATURED_SLIDES.map((slide, idx) => (
                   <button
-                    key={idx}
+                    key={slide.company}
                     type="button"
                     onClick={() => {
                       setActiveSlide(idx);
@@ -257,14 +261,15 @@ export default function CustomersView() {
 
             {/* Right Photo Column: Full Natural Photographic Colors (NO GRAYSCALE) */}
             <div className="lg:w-[48%] relative min-h-[340px] sm:min-h-[420px] lg:min-h-full overflow-hidden bg-zinc-200">
-              <img
+              <Image
                 src={current.image}
                 alt={current.company}
-                className="w-full h-full object-cover object-center block transition-all duration-500 ease-out"
+                fill
+                className="object-cover object-center block transition-all duration-500 ease-out"
               />
             </div>
 
-          </div>
+          </section>
 
         </div>
       </section>
@@ -284,11 +289,12 @@ export default function CustomersView() {
                   AFFILIATE & MEDIA BUYING
                 </span>
               </div>
-              <div className="w-full aspect-[16/10] rounded-[6px] overflow-hidden mb-3.5 bg-zinc-200">
-                <img
+              <div className="relative w-full aspect-[16/10] rounded-[6px] overflow-hidden mb-3.5 bg-zinc-200">
+                <Image
                   src="/assets/customers/lattice_case.jpg"
                   alt="Apex Media Buying Fleet"
-                  className="w-full h-full object-cover block group-hover:scale-[1.02] transition-transform duration-500 ease-out"
+                  fill
+                  className="object-cover block group-hover:scale-[1.02] transition-transform duration-500 ease-out"
                 />
               </div>
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#8c8c8c] mb-1.5">
@@ -309,11 +315,12 @@ export default function CustomersView() {
                   E-COMMERCE MULTI-STORE
                 </span>
               </div>
-              <div className="w-full aspect-[16/10] rounded-[6px] overflow-hidden mb-3.5 bg-zinc-200">
-                <img
+              <div className="relative w-full aspect-[16/10] rounded-[6px] overflow-hidden mb-3.5 bg-zinc-200">
+                <Image
                   src="/assets/customers/westbridge_exec.jpg"
                   alt="OmniScale Multi-Store Operations"
-                  className="w-full h-full object-cover block group-hover:scale-[1.02] transition-transform duration-500 ease-out"
+                  fill
+                  className="object-cover block group-hover:scale-[1.02] transition-transform duration-500 ease-out"
                 />
               </div>
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#8c8c8c] mb-1.5">
@@ -334,11 +341,12 @@ export default function CustomersView() {
                   DATA EXTRACTION & SCRAPING
                 </span>
               </div>
-              <div className="w-full aspect-[16/10] rounded-[6px] overflow-hidden mb-3.5 bg-zinc-200">
-                <img
+              <div className="relative w-full aspect-[16/10] rounded-[6px] overflow-hidden mb-3.5 bg-zinc-200">
+                <Image
                   src="/assets/customers/greythorne_case.jpg"
                   alt="Nexus Data Labs Cluster"
-                  className="w-full h-full object-cover block group-hover:scale-[1.02] transition-transform duration-500 ease-out"
+                  fill
+                  className="object-cover block group-hover:scale-[1.02] transition-transform duration-500 ease-out"
                 />
               </div>
               <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-[#8c8c8c] mb-1.5">
@@ -387,7 +395,7 @@ export default function CustomersView() {
                   onClick={trackDownload}
                   className="inline-flex items-center justify-center gap-2 rounded-full bg-white text-black px-7 py-3 text-xs sm:text-[13px] font-medium transition-all duration-200 hover:bg-zinc-200 active:scale-[0.98] shadow-lg shadow-white/5"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
                   Download Free (15 Profiles)

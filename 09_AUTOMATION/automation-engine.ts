@@ -18,9 +18,9 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { chromium, firefox, Page } from 'rebrowser-playwright-core';
-import { getDatabase } from '../06_DATABASE/connection.js';
-import {
+import { chromium, firefox, type Browser, type BrowserContext, type Page } from 'rebrowser-playwright-core';
+import { getDatabase, type SqliteWrapper } from '../06_DATABASE/connection.js';
+import type {
   AutomationWorkflow,
   AutomationStep,
   WorkflowExecutionLog,
@@ -38,7 +38,7 @@ import { getProxyById, getDecryptedProxyCredentials } from '../02_BROWSER/servic
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { getProfileDebugPort, markCleanExit } from '../02_BROWSER/launcher.js';
 import { processManager } from '../02_BROWSER/process-manager.js';
-import { solveCaptcha, getCaptchaConfig } from './captcha-service.js';
+import { getCaptchaConfig } from './captcha-service.js';
 import { humanClick, humanType } from './ai-humanizer.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
 
@@ -56,8 +56,77 @@ interface ActiveRunController {
   abortController: AbortController;
   isPaused: boolean;
   resumeResolve?: () => void;
-  context?: any;
-  browser?: any;
+  context?: BrowserContext | null;
+  browser?: Browser | null;
+}
+
+interface SqliteWorkflowRow {
+  id: string;
+  name: string;
+  description: string | null;
+  version: number | null;
+  workspace_id: string | null;
+  default_profile_id: string | null;
+  variables_json: string | null;
+  tags_json: string | null;
+  settings_json: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface SqliteAutomationStepRow {
+  id: string;
+  step_order: number;
+  type: AutomationStep['type'];
+  label: string | null;
+  target: string | null;
+  value: string | null;
+  timeout_ms: number | null;
+  continue_on_error: number;
+  retry_count: number | null;
+  retry_delay_ms: number | null;
+  condition_json: string | null;
+  loop_config_json: string | null;
+  output_variable_name: string | null;
+  is_secret: number;
+}
+
+interface SqliteWorkflowVersionRow {
+  id: string;
+  workflow_id: string;
+  version: number;
+  definition_json: string;
+  created_at: string;
+}
+
+export interface WorkflowVersionRecord {
+  id: string;
+  workflowId: string;
+  version: number;
+  definition: Partial<AutomationWorkflow>;
+  createdAt: string;
+}
+
+export interface DryRunStepPlanItem {
+  order: number;
+  type: AutomationStep['type'];
+  label: string;
+  target?: string;
+  timeoutMs: number;
+  hasCondition: boolean;
+  isLoop: boolean;
+  retries: number;
+}
+
+interface SqliteWorkflowLogRow {
+  id: string;
+  workflow_id: string;
+  profile_id: string;
+  status: string;
+  logs_json: string;
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number | null;
 }
 
 const activeRuns = new Map<string, ActiveRunController>();
@@ -68,7 +137,7 @@ export function getActiveRun(runId: string): ActiveRunController | undefined {
 
 export function pauseWorkflowRun(runId: string): boolean {
   const run = activeRuns.get(runId);
-  if (!run || run.status !== 'RUNNING') return false;
+  if (run?.status !== 'RUNNING') return false;
   run.isPaused = true;
   run.status = 'PAUSED';
   return true;
@@ -76,7 +145,7 @@ export function pauseWorkflowRun(runId: string): boolean {
 
 export function resumeWorkflowRun(runId: string): boolean {
   const run = activeRuns.get(runId);
-  if (!run || run.status !== 'PAUSED') return false;
+  if (run?.status !== 'PAUSED') return false;
   run.isPaused = false;
   run.status = 'RUNNING';
   if (run.resumeResolve) {
@@ -139,7 +208,7 @@ export function interpolateVariables(
 ): string {
   if (!text || typeof text !== 'string') return text;
   return text.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (_, varName) => {
-    if (Object.prototype.hasOwnProperty.call(variables, varName)) {
+    if (Object.hasOwn(variables, varName)) {
       if (redactSecrets && secretNames.has(varName)) {
         return '[REDACTED]';
       }
@@ -193,12 +262,12 @@ export async function evaluateCondition(
     }
 
     case 'TEXT_CONTAINS': {
-      const pageText = target ? (await page.innerText(target).catch(() => '')) : (await page.innerText('body').catch(() => ''));
+      const pageText = (target ? (await page.textContent(target).catch(() => '')) : (await page.textContent('body').catch(() => ''))) ?? '';
       return expectedValue ? pageText.includes(expectedValue) : false;
     }
 
     case 'TEXT_NOT_CONTAINS': {
-      const pageText = target ? (await page.innerText(target).catch(() => '')) : (await page.innerText('body').catch(() => ''));
+      const pageText = (target ? (await page.textContent(target).catch(() => '')) : (await page.textContent('body').catch(() => ''))) ?? '';
       return expectedValue ? !pageText.includes(expectedValue) : true;
     }
 
@@ -230,20 +299,20 @@ export async function evaluateCondition(
 
 export function getWorkflows(): AutomationWorkflow[] {
   const db = getDatabase();
-  const rows = db.prepare('SELECT * FROM automation_workflows ORDER BY name ASC').all() as any[];
+  const rows = db.prepare('SELECT * FROM automation_workflows ORDER BY name ASC').all<SqliteWorkflowRow>();
 
   return rows.map((r) => mapWorkflowRecord(r, db));
 }
 
 export function getWorkflowById(id: string): AutomationWorkflow | null {
   const db = getDatabase();
-  const r = db.prepare('SELECT * FROM automation_workflows WHERE id = ?').get(id) as any;
+  const r = db.prepare('SELECT * FROM automation_workflows WHERE id = ?').get<SqliteWorkflowRow>(id);
   if (!r) return null;
   return mapWorkflowRecord(r, db);
 }
 
-function mapWorkflowRecord(r: any, db: any): AutomationWorkflow {
-  const stepRows = db.prepare('SELECT * FROM automation_steps WHERE workflow_id = ? ORDER BY step_order ASC').all(r.id) as any[];
+function mapWorkflowRecord(r: SqliteWorkflowRow, db: SqliteWrapper): AutomationWorkflow {
+  const stepRows = db.prepare('SELECT * FROM automation_steps WHERE workflow_id = ? ORDER BY step_order ASC').all<SqliteAutomationStepRow>(r.id);
 
   const steps: AutomationStep[] = stepRows.map((s) => ({
     id: s.id,
@@ -256,29 +325,29 @@ function mapWorkflowRecord(r: any, db: any): AutomationWorkflow {
     continueOnError: Boolean(s.continue_on_error),
     retryCount: s.retry_count || 0,
     retryDelayMs: s.retry_delay_ms || 1000,
-    condition: s.condition_json ? JSON.parse(s.condition_json) : undefined,
-    loopConfig: s.loop_config_json ? JSON.parse(s.loop_config_json) : undefined,
+    condition: s.condition_json ? (JSON.parse(s.condition_json) as StepCondition) : undefined,
+    loopConfig: s.loop_config_json ? (JSON.parse(s.loop_config_json) as AutomationStep['loopConfig']) : undefined,
     outputVariableName: s.output_variable_name || undefined,
     isSecret: Boolean(s.is_secret),
   }));
 
   let variables: WorkflowVariable[] = [];
   try {
-    variables = r.variables_json ? JSON.parse(r.variables_json) : [];
+    variables = r.variables_json ? (JSON.parse(r.variables_json) as WorkflowVariable[]) : [];
   } catch (err) {
     log.warn('automation-engine workflow variables_json parse failed', { workflowId: r.id, err });
   }
 
   let tags: string[] = [];
   try {
-    tags = r.tags_json ? JSON.parse(r.tags_json) : [];
+    tags = r.tags_json ? (JSON.parse(r.tags_json) as string[]) : [];
   } catch (err) {
     log.warn('automation-engine workflow tags_json parse failed', { workflowId: r.id, err });
   }
 
-  let executionPolicy: any = undefined;
+  let executionPolicy: AutomationWorkflow['executionPolicy'];
   try {
-    executionPolicy = r.settings_json ? JSON.parse(r.settings_json) : undefined;
+    executionPolicy = r.settings_json ? (JSON.parse(r.settings_json) as AutomationWorkflow['executionPolicy']) : undefined;
   } catch (err) {
     log.warn('automation-engine workflow settings_json parse failed', { workflowId: r.id, err });
   }
@@ -304,7 +373,7 @@ export function saveWorkflow(workflow: Partial<AutomationWorkflow>): AutomationW
   const id = workflow.id || crypto.randomUUID();
   const now = new Date().toISOString();
 
-  const existing = db.prepare('SELECT * FROM automation_workflows WHERE id = ?').get(id) as any;
+  const existing = db.prepare('SELECT * FROM automation_workflows WHERE id = ?').get<SqliteWorkflowRow>(id);
   let newVersion = 1;
 
   if (existing) {
@@ -379,7 +448,7 @@ export function saveWorkflow(workflow: Partial<AutomationWorkflow>): AutomationW
     for (let i = 0; i < workflow.steps.length; i++) {
       const s = workflow.steps[i];
       let stepId = s.id || crypto.randomUUID();
-      const existing = db.prepare('SELECT workflow_id FROM automation_steps WHERE id = ?').get(stepId) as any;
+      const existing = db.prepare('SELECT workflow_id FROM automation_steps WHERE id = ?').get<{ workflow_id: string }>(stepId);
       if (existing && existing.workflow_id !== id) {
         stepId = crypto.randomUUID();
       }
@@ -404,7 +473,11 @@ export function saveWorkflow(workflow: Partial<AutomationWorkflow>): AutomationW
   }
 
   logActivity('AUTOMATION', 'SUCCESS', 'Save Workflow', `Saved workflow "${workflow.name}" (v${newVersion})`);
-  return getWorkflowById(id)!;
+  const saved = getWorkflowById(id);
+  if (!saved) {
+    throw new Error(`Saved workflow ${id} could not be retrieved`);
+  }
+  return saved;
 }
 
 export function deleteWorkflow(id: string): boolean {
@@ -435,15 +508,15 @@ export function duplicateWorkflow(workflowId: string, newName?: string): Automat
   });
 }
 
-export function getWorkflowVersions(workflowId: string): any[] {
+export function getWorkflowVersions(workflowId: string): WorkflowVersionRecord[] {
   const db = getDatabase();
   try {
-    const rows = db.prepare('SELECT * FROM automation_versions WHERE workflow_id = ? ORDER BY version DESC').all(workflowId) as any[];
+    const rows = db.prepare('SELECT * FROM automation_versions WHERE workflow_id = ? ORDER BY version DESC').all<SqliteWorkflowVersionRow>(workflowId);
     return rows.map((r) => ({
       id: r.id,
       workflowId: r.workflow_id,
       version: r.version,
-      definition: JSON.parse(r.definition_json),
+      definition: JSON.parse(r.definition_json) as Partial<AutomationWorkflow>,
       createdAt: r.created_at,
     }));
   } catch {
@@ -492,14 +565,17 @@ export function exportWorkflow(workflowId: string): string {
 }
 
 export function importWorkflow(jsonString: string, workspaceId?: string): AutomationWorkflow {
-  let parsed: any;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(jsonString);
   } catch {
     throw new Error('Invalid JSON format');
   }
 
-  const raw = parsed.workflow || parsed;
+  const parsedObj = (parsed && typeof parsed === 'object' ? parsed : {}) as {
+    workflow?: Partial<AutomationWorkflow>;
+  } & Partial<AutomationWorkflow>;
+  const raw = parsedObj.workflow || parsedObj;
   if (!raw.name || !Array.isArray(raw.steps)) {
     throw new Error('Invalid workflow schema: missing name or steps array');
   }
@@ -523,7 +599,7 @@ export function importWorkflow(jsonString: string, workspaceId?: string): Automa
     description: raw.description || 'Imported Workflow',
     workspaceId: workspaceId || raw.workspaceId,
     defaultProfileId: undefined,
-    steps: raw.steps.map((s: any, idx: number) => ({
+    steps: raw.steps.map((s, idx: number) => ({
       ...s,
       id: crypto.randomUUID(),
       order: idx,
@@ -540,7 +616,7 @@ export function importWorkflow(jsonString: string, workspaceId?: string): Automa
 
 export function validateWorkflow(workflow: Partial<AutomationWorkflow>): { isValid: boolean; valid: boolean; errors: string[] } {
   const errors: string[] = [];
-  if (!workflow.name || !workflow.name.trim()) {
+  if (!workflow.name?.trim()) {
     errors.push('Workflow name is required');
   }
 
@@ -570,7 +646,7 @@ export function validateWorkflow(workflow: Partial<AutomationWorkflow>): { isVal
   return { isValid: ok, valid: ok, errors };
 }
 
-export async function dryRunWorkflow(dto: RunWorkflowDTO): Promise<{ success: boolean; stepsPlan: any[]; validationErrors: string[] }> {
+export async function dryRunWorkflow(dto: RunWorkflowDTO): Promise<{ success: boolean; stepsPlan: DryRunStepPlanItem[]; validationErrors: string[] }> {
   const workflow = getWorkflowById(dto.workflowId);
   if (!workflow) {
     return { success: false, stepsPlan: [], validationErrors: ['Workflow not found'] };
@@ -670,7 +746,7 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
         profile.settings.browser.customExecutablePath
       );
 
-  let proxyConfig: { server: string; username?: string; password?: string } | undefined = undefined;
+  let proxyConfig: { server: string; username?: string; password?: string } | undefined ;
   if (!profile.settings.network.directConnection && profile.settings.network.proxyId) {
     const proxy = getProxyById(profile.settings.network.proxyId);
     if (proxy) {
@@ -683,11 +759,11 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
     }
   }
 
-  let context: any = null;
-  let browser: any = null;
+  let context: BrowserContext | null = null;
+  let browser: Browser | null = null;
   let startedByAutomation = false;
   let hasFailed = false;
-  let failedStepId: string | undefined = undefined;
+  let failedStepId: string | undefined ;
   let totalRetries = 0;
   let lastStepSuccess = true;
   const isAlreadyRunning = processManager.isProfileRunning(profile.id);
@@ -838,10 +914,10 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
       const resolvedValue = interpolateVariables(step.value || '', runtimeVariables, secretVariableNames, false);
 
       const stepStart = Date.now();
-      let output: string | undefined = undefined;
-      let screenshotBase64: string | undefined = undefined;
+      let output: string | undefined ;
+      let screenshotBase64: string | undefined ;
       let stepStatus: 'SUCCESS' | 'FAILED' | 'SKIPPED' = 'SUCCESS';
-      let stepError: string | undefined = undefined;
+      let stepError: string | undefined ;
 
       const maxRetries = step.retryCount || 0;
       let attempts = 0;
@@ -953,8 +1029,8 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
               let max = 3000;
               if (val.includes('-')) {
                 const parts = val.split('-').map((p) => parseInt(p.trim(), 10));
-                min = isNaN(parts[0]) ? 1000 : parts[0];
-                max = isNaN(parts[1]) ? 3000 : parts[1];
+                min = Number.isNaN(parts[0]) ? 1000 : parts[0];
+                max = Number.isNaN(parts[1]) ? 3000 : parts[1];
               }
               const chosen = Math.floor(Math.random() * (max - min + 1)) + min;
               await page.waitForTimeout(chosen);
@@ -983,7 +1059,7 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
 
             case 'EXTRACT_TEXT': {
               if (!resolvedTarget) throw new Error('Extract text selector is required');
-              const text = await page.innerText(resolvedTarget, { timeout });
+              const text = (await page.textContent(resolvedTarget, { timeout })) ?? '';
               if (step.outputVariableName) {
                 runtimeVariables[step.outputVariableName] = text;
               }
@@ -1016,7 +1092,7 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
             }
 
             case 'SOLVE_CAPTCHA': {
-              const cfg = getCaptchaConfig();
+              getCaptchaConfig();
               output = 'Captcha auto-bypass executed';
               break;
             }
@@ -1035,7 +1111,7 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
               const evalRes = await page.evaluate((c: string) => {
                 try {
                   return (new Function(c))();
-                } catch (e: any) {
+                } catch (e: unknown) {
                   return String(e);
                 }
               }, code);
@@ -1198,14 +1274,14 @@ export function getWorkflowLogs(workflowId?: string): WorkflowExecutionLog[] {
   }
 
   query += ' ORDER BY started_at DESC LIMIT 50';
-  const rows = db.prepare(query).all(...params) as any[];
+  const rows = db.prepare(query).all<SqliteWorkflowLogRow>(...params);
 
   return rows.map((r) => ({
     id: r.id,
     workflowId: r.workflow_id,
     profileId: r.profile_id,
     status: r.status as WorkflowExecutionStatus,
-    stepLogs: JSON.parse(r.logs_json),
+    stepLogs: JSON.parse(r.logs_json) as WorkflowStepLog[],
     startedAt: r.started_at,
     completedAt: r.completed_at || undefined,
     totalDurationMs: r.duration_ms || undefined,
@@ -1230,7 +1306,7 @@ export async function runWorkflowConcurrently(dto: RunWorkflowBatchDTO): Promise
       try {
         const log = await runWorkflow({ workflowId, profileId: pid, workspaceId: dto.workspaceId });
         results.push(log);
-      } catch (err: any) {
+      } catch (err: unknown) {
         results.push({
           id: crypto.randomUUID(),
           workflowId,
@@ -1243,7 +1319,7 @@ export async function runWorkflowConcurrently(dto: RunWorkflowBatchDTO): Promise
               stepType: 'OPEN_URL',
               status: 'FAILED',
               durationMs: 0,
-              error: err.message || 'Concurrent execution error',
+              error: err instanceof Error ? err.message : 'Concurrent execution error',
             },
           ],
         });

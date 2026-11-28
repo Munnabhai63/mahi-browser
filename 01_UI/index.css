@@ -82,7 +82,6 @@
 img[alt*="MAHI"],
 img[src*="/brand/"] {
   -webkit-user-drag: none;
-  user-drag: none;
   user-select: none;
   -webkit-user-select: none;
   object-fit: contain;
@@ -92,13 +91,13 @@ img[src*="/brand/"] {
 .interactive-control {
   transition: all 150ms ease-in-out;
 }
-.interactive-control:active:not(:disabled) {
-  transform: scale(0.98);
-}
 .interactive-control:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
+}
+.interactive-control:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 

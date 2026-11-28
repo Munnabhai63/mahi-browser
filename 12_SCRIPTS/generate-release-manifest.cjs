@@ -33,7 +33,7 @@ function generateReleaseManifest(options = {}) {
   );
   const setupExes = allExes.filter((f) => /Setup/.test(f));
   if (setupExes.length !== 1) {
-    throw new Error('Expected exactly one Setup exe, found: ' + setupExes.join(', '));
+    throw new Error(`Expected exactly one Setup exe, found: ${setupExes.join(', ')}`);
   }
 
   const manifestFiles = allExes.map((fileName) => {

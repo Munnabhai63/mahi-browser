@@ -1,22 +1,15 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import {
   Download,
-  Lock,
   CheckCircle2,
-  Folder,
-  Globe2,
-  ScrollText,
-  Puzzle,
-  Sliders,
-  ArrowLeft,
-  Copy,
   Layers,
   FileText,
   Archive,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 
 interface ExportProfileProps {
   onNavigate: (page: NavigationPage) => void;
@@ -34,7 +27,7 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
 
   // Single Archive Options
   const [includeCookies, setIncludeCookies] = useState(true);
-  const [includeHistory, setIncludeHistory] = useState(false);
+  const [includeHistory, _setIncludeHistory] = useState(false);
   const [includeExtensions, setIncludeExtensions] = useState(true);
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,7 +36,7 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
   const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>(profiles.map((p) => p.id));
 
   // Netscape Cookies Preview State
-  const [netscapeText, setNetscapeText] = useState('');
+  const [_netscapeText, setNetscapeText] = useState('');
 
   const handleExportSingle = async () => {
     if (!profile) return;
@@ -109,8 +102,8 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
         title: 'Netscape Cookies Exported',
         message: `Saved Netscape cookie file to ${savePath}`,
       });
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Cookie Export Failed', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Cookie Export Failed', message: err instanceof Error ? err.message : String(err) });
     } finally {
       setLoading(false);
     }
@@ -148,8 +141,8 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
         });
         onNavigate('profiles');
       }
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Bulk Export Failed', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Bulk Export Failed', message: err instanceof Error ? err.message : String(err) });
     } finally {
       setLoading(false);
     }
@@ -213,7 +206,7 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
         {mode === 'SINGLE_ARCHIVE' && (
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-001" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Select Profile to Export
               </label>
               <select
@@ -234,7 +227,7 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
                 Components to Include
               </span>
               <div className="space-y-2 text-xs">
-                <label className="flex items-center space-x-2.5 cursor-pointer">
+                <label htmlFor="field-002" className="flex items-center space-x-2.5 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={includeCookies}
@@ -243,7 +236,7 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
                   />
                   <span>Include Session Cookies (retains logins and authentication)</span>
                 </label>
-                <label className="flex items-center space-x-2.5 cursor-pointer">
+                <label htmlFor="field-003" className="flex items-center space-x-2.5 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={includeExtensions}
@@ -256,7 +249,7 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
             </div>
 
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-004" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Optional Encryption Password
               </label>
               <input
@@ -274,7 +267,7 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
         {mode === 'NETSCAPE_COOKIES' && (
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-005" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Select Profile
               </label>
               <select
@@ -308,7 +301,7 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
         {mode === 'BULK_BACKUP' && (
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              <label htmlFor="field-006" className="text-xs font-bold text-slate-700 dark:text-slate-300">
                 Select Profiles to Include in Backup ({bulkSelectedIds.length} chosen)
               </label>
               <div className="space-x-2 text-xs">
@@ -333,9 +326,8 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
               {profiles.map((p) => {
                 const isSelected = bulkSelectedIds.includes(p.id);
                 return (
-                  <button
-                    key={p.id}
-                    type="button"
+                  <button type="button"
+                    key={p.id}
                     onClick={() => {
                       if (isSelected) {
                         setBulkSelectedIds(bulkSelectedIds.filter((id) => id !== p.id));
@@ -361,7 +353,7 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
 
       {/* Action Footer */}
       <div className="flex items-center justify-between pt-6 border-t border-slate-200 dark:border-slate-800">
-        <button
+        <button type="button"
           onClick={() => onNavigate('profiles')}
           className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200"
         >
@@ -369,7 +361,7 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
         </button>
 
         {mode === 'SINGLE_ARCHIVE' && (
-          <button
+          <button type="button"
             onClick={handleExportSingle}
             disabled={loading || !profile}
             className="px-6 py-2.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-40 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-600/20 flex items-center space-x-2 active:scale-95 transition-all"
@@ -380,7 +372,7 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
         )}
 
         {mode === 'NETSCAPE_COOKIES' && (
-          <button
+          <button type="button"
             onClick={handleExportNetscape}
             disabled={loading || !profile}
             className="px-6 py-2.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-40 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-600/20 flex items-center space-x-2 active:scale-95 transition-all"
@@ -391,7 +383,7 @@ export const ExportProfilePage: React.FC<ExportProfileProps> = ({ onNavigate }) 
         )}
 
         {mode === 'BULK_BACKUP' && (
-          <button
+          <button type="button"
             onClick={handleExportBulk}
             disabled={loading || bulkSelectedIds.length === 0}
             className="px-6 py-2.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-40 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-600/20 flex items-center space-x-2 active:scale-95 transition-all"

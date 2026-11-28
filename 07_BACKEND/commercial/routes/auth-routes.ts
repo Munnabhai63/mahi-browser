@@ -1,6 +1,6 @@
-import http from 'node:http';
+import type http from 'node:http';
 import crypto from 'node:crypto';
-import { URL } from 'node:url';
+import type { URL } from 'node:url';
 import {
   sendJSON,
   parseBody,
@@ -13,7 +13,8 @@ import {
   appendSetCookies,
   extractRequestAuthToken,
   desktopAuthTickets,
-  WebHandoffSession,
+  type AuthPublicUser,
+  type WebHandoffSession,
   webHandoffSessions,
   pruneWebHandoffSessions,
   getDesktopAuthSuccessHtml,
@@ -47,7 +48,6 @@ import {
   verifyEmailToken,
   resendEmailVerification,
   loginCentralUser,
-  logoutSession,
   refreshAccessToken,
   logoutSessionAsync,
   logoutByRefreshTokenAsync,
@@ -58,12 +58,10 @@ import {
   resetPasswordWithToken,
   getCentralUserByIdAsync,
   getCentralUserByEmail,
-  getCentralUserByEmailAsync,
 } from '../../../05_AUTH/central-auth-service.js';
 import {
   registerUser,
   loginUser,
-  signToken,
   getUserById,
 } from '../commercial-auth-service.js';
 import {
@@ -75,8 +73,8 @@ import {
   authenticateWithGoogleClaimsAsync,
   getGoogleOAuthConfig,
   normalizePlanId,
-  GoogleClaims,
-  OAuthStateRecord,
+  type GoogleClaims,
+  type OAuthStateRecord,
 } from '../google-oauth-service.js';
 import {
   evaluateUserEntitlements,
@@ -86,6 +84,7 @@ import {
 import { TRIAL_CONFIG } from '../canonical-plan-catalog.js';
 import { getDatabase } from '../../../06_DATABASE/connection.js';
 import { isPostgresConfigured, getCentralRepository } from '../../../06_DATABASE/central-repository.js';
+import type { WebHandoffUserPayload } from '../../../06_DATABASE/central-repository-types.js';
 import { recordFunnelEvent } from '../funnel-service.js';
 import { reconcileUserPlanOnLogin } from '../commercial-reconcile-service.js';
 import { CURRENT_TERMS_VERSION } from '../../../10_CONFIG/shared/types/commercial.js';
@@ -95,7 +94,7 @@ const log = createLogger('auth-routes');
 export async function handleAuthRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  pathname: string,
+  _pathname: string,
   method: string,
   parsedUrl: URL,
   routePath: string,
@@ -276,7 +275,7 @@ export async function handleAuthRoutes(
       return true;
     }
 
-    let commUserResult: any;
+    let commUserResult: ReturnType<typeof registerUser> | undefined;
     try {
       commUserResult = registerUser({
         email: regEmail,
@@ -288,14 +287,15 @@ export async function handleAuthRoutes(
         acceptedTerms: true,
         termsVersion: termsVer,
       }, clientIp, result.user?.id);
-    } catch (err: any) {
-      log.error(`[REGISTER] commercial mirror write failed for user ${result.user?.id}: ${err?.message || err}`);
+    } catch (err: unknown) {
+      log.error(`[REGISTER] commercial mirror write failed for user ${result.user?.id}: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    const registeredUser = commUserResult?.user || result.user;
+    const commUser = commUserResult?.user;
+    const registeredUser = commUser || result.user;
     const token = commUserResult?.token || result.tokens?.accessToken;
-    const isTrial = registeredUser?.signupIntent === 'trial' || body.intent === 'trial';
-    const trialExpiresAt = registeredUser?.trialExpiresAt;
+    const isTrial = commUser?.signupIntent === 'trial' || body.intent === 'trial';
+    const trialExpiresAt = commUser?.trialExpiresAt;
     const planId = registeredUser?.planId || (isTrial ? TRIAL_CONFIG.trialPlanId : 'plan_free');
 
     // Record privacy-safe conversion funnel event
@@ -517,7 +517,7 @@ export async function handleAuthRoutes(
       });
     }
 
-    let auth;
+    let auth: ReturnType<typeof generateOAuthAuthorization>;
     try {
       auth = generateOAuthAuthorization({
         intent,
@@ -528,8 +528,8 @@ export async function handleAuthRoutes(
         acceptedTerms,
         termsVersion,
       });
-    } catch (err: any) {
-      if (err?.message === 'GOOGLE_OAUTH_NOT_CONFIGURED') {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'GOOGLE_OAUTH_NOT_CONFIGURED') {
         const acceptsJson = req.headers.accept?.includes('application/json') || req.headers['x-requested-with'];
         if (acceptsJson) {
           sendJSON(res, 503, {
@@ -627,9 +627,9 @@ export async function handleAuthRoutes(
       // Check if this was a desktop login flow and update tickets with single-use authCode
       const handoffMatch = stateRecord.returnUrl?.match(/handoff=([^&]+)/);
       const handoffTicket = handoffMatch ? decodeURIComponent(handoffMatch[1]) : '';
-      if (handoffTicket && desktopAuthTickets.has(handoffTicket)) {
-        const ticketRec = desktopAuthTickets.get(handoffTicket)!;
-        const authCode = 'mb_code_' + crypto.randomBytes(32).toString('hex');
+      const ticketRec = handoffTicket ? desktopAuthTickets.get(handoffTicket) : undefined;
+      if (ticketRec && authResult.user) {
+        const authCode = `mb_code_${crypto.randomBytes(32).toString('hex')}`;
         ticketRec.authCode = authCode;
         ticketRec.token = authResult.token;
         ticketRec.user = authResult.user;
@@ -652,7 +652,7 @@ export async function handleAuthRoutes(
       } else {
         const ticketRec = handoffTicket ? desktopAuthTickets.get(handoffTicket) : null;
         const codeParam = ticketRec?.authCode ? `&code=${encodeURIComponent(ticketRec.authCode)}` : '';
-        targetUrl = `/auth/desktop-success?handoff=${encodeURIComponent(handoffTicket)}${codeParam}&email=${encodeURIComponent(authResult.user.email)}&plan=${encodeURIComponent(authResult.user.planId || 'trial')}`;
+        targetUrl = `/auth/desktop-success?handoff=${encodeURIComponent(handoffTicket)}${codeParam}&email=${encodeURIComponent(authResult.user?.email || '')}&plan=${encodeURIComponent(authResult.user?.planId || 'trial')}`;
 
         // CRITICAL SECURITY HARDENING: Never expose raw JWT session token in redirect URL, query strings or cookies!
         res.writeHead(302, {
@@ -676,8 +676,8 @@ export async function handleAuthRoutes(
       });
       res.end();
       return true;
-    } catch (err: any) {
-      const msg = typeof err?.message === 'string' ? err.message : '';
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
       const safeErrorCode = msg.startsWith('GOOGLE_EMAIL_NOT_VERIFIED')
         ? 'google_email_not_verified'
         : msg.startsWith('GOOGLE_ID_TOKEN_')
@@ -723,7 +723,7 @@ export async function handleAuthRoutes(
 
   // 2.2 Secure PKCE Authorization Code Exchange (RFC 8252 Hardened)
   if (routePath === '/api/v1/auth/desktop-exchange' && method === 'POST') {
-    let rawBody: any = {};
+    let rawBody: Record<string, unknown> = {};
     try {
       rawBody = await parseBody(req);
     } catch {
@@ -803,7 +803,7 @@ export async function handleAuthRoutes(
         });
         return true;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400, fallbackMessage: 'Invalid payload' });
       return true;
     }
@@ -904,7 +904,7 @@ export async function handleAuthRoutes(
 
     const now = Date.now();
     let token: string | null = null;
-    let user: any = null;
+    let user: AuthPublicUser | WebHandoffUserPayload | null = null;
 
     // Multi-replica production mode: when PostgreSQL is configured, the central DB is the
     // single source of truth across all gateway replicas. Consume atomically via CentralRepository.
@@ -979,7 +979,7 @@ export async function handleAuthRoutes(
     }
 
     // Optional deviceId validation if present in body and session
-    if (body?.deviceId && user?.deviceId && body.deviceId !== user.deviceId) {
+    if (body?.deviceId && typeof user?.deviceId === 'string' && body.deviceId !== user.deviceId) {
       sendJSON(res, 403, { success: false, error: 'Handoff code device mismatch.' });
       return true;
     }
@@ -1050,7 +1050,7 @@ export async function handleAuthRoutes(
           claims = await fetchGoogleProfile(tokens.accessToken);
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, {
         fallbackStatus: 401,
         fallbackMessage: 'Google credential verification failed.',
@@ -1083,7 +1083,7 @@ export async function handleAuthRoutes(
     };
 
     const authResult = await authenticateWithGoogleClaimsAsync(claims, stateContext, clientIp);
-    if (!authResult.success) {
+    if (!authResult.success || !authResult.user) {
       sendJSON(res, 400, { success: false, error: authResult.error });
       return true;
     }
@@ -1153,7 +1153,7 @@ export async function handleAuthRoutes(
     if (!parsed.ok) return true;
     const cookieRefreshToken = parseCookies(req)[AUTH_REFRESH_COOKIE_NAME] || '';
     const rawRefreshToken = parsed.data.refreshToken || cookieRefreshToken;
-    const sessionId = parsed.data.sessionId || (auth as any)?.sessionId;
+    const sessionId = parsed.data.sessionId || auth?.sessionId;
     const revokedBySession = sessionId ? await logoutSessionAsync(sessionId, clientIp) : false;
     if (rawRefreshToken && !revokedBySession) {
       await logoutByRefreshTokenAsync(rawRefreshToken, clientIp);
@@ -1214,7 +1214,7 @@ export async function handleAuthRoutes(
       sendJSON(res, 401, { success: false, error: 'Unauthorized. Bearer token required.' });
       return true;
     }
-    const currentSessionId = (auth as any).sessionId;
+    const currentSessionId = auth.sessionId;
     const sessions = await listUserSessionsAsync(auth.userId, currentSessionId);
     sendJSON(res, 200, { success: true, data: sessions });
     return true;
@@ -1243,7 +1243,7 @@ export async function handleAuthRoutes(
     const rawBody = await parseBody(req);
     const parsed = validateStrictBody(RevokeAllSessionsSchema, rawBody, res);
     if (!parsed.ok) return true;
-    const currentSessionId = (auth as any).sessionId;
+    const currentSessionId = auth.sessionId;
     const revokedCount = await revokeAllUserSessionsAsync(auth.userId, parsed.data.keepCurrent ? currentSessionId : undefined, clientIp);
     sendJSON(res, 200, { success: true, revokedCount });
     return true;

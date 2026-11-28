@@ -1,6 +1,5 @@
-import React from 'react';
 import Link from 'next/link';
-import { DocItem } from '../lib/mdx';
+import type { DocItem } from '../lib/mdx';
 import { BRAND } from '../lib/brand';
 
 interface DocsSidebarProps {

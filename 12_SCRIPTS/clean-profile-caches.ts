@@ -56,7 +56,7 @@ export async function runCli(): Promise<void> {
   const result = await cleanProfileCaches({ baseDir, apply, includeTestProfiles });
   const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
 
-  console.log('\n' + '='.repeat(78));
+  console.log(`\n${'='.repeat(78)}`);
   console.log('CACHE CLEANING REPORT');
   console.log('='.repeat(78));
   console.log(`Target Base Dir:        ${result.baseDir}`);
@@ -74,7 +74,7 @@ export async function runCli(): Promise<void> {
     }
   }
   console.log(`Scan Time Elapsed:      ${elapsedSec}s`);
-  console.log('='.repeat(78) + '\n');
+  console.log(`${'='.repeat(78)}\n`);
 }
 
 // Auto-run if executed directly via CLI

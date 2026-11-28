@@ -1,7 +1,7 @@
-import { Profile } from './profile.js';
-import { CookieItem } from './cookie.js';
-import { HistoryItem } from './history.js';
-import { ExtensionItem } from './extension.js';
+import type { Profile } from './profile.js';
+import type { CookieItem } from './cookie.js';
+import type { HistoryItem } from './history.js';
+import type { ExtensionItem } from './extension.js';
 
 export interface MahiProfileArchiveData {
   formatVersion: '1.0';

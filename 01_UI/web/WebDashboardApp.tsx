@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
+import type React from 'react';
+import { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { useWebAuthStore } from './state/useWebAuthStore.js';
 import { api } from './api/api-client.js';
-import { WebDashboardLayout, WebTab } from './components/WebDashboardLayout.js';
+import { WebDashboardLayout, type WebTab } from './components/WebDashboardLayout.js';
 import { PageLoadingFallback } from '../components/PageFallback.js';
 import type { WebProfileItem } from './pages/ProfilesPage.js';
 import type { WebProxySession } from './pages/ProxiesPage.js';
@@ -27,20 +28,20 @@ const CloudSessionViewer = lazy(() =>
   import('./components/CloudSessionViewer.js').then((m) => ({ default: m.CloudSessionViewer }))
 );
 
-import {
+import type {
   TeamWorkspace,
   TeamWorkspaceMember,
   TeamRole,
   TeamProfileShare,
 } from '../../10_CONFIG/shared/types/workspace.js';
-import {
+import type {
   RemoteApiKeyRecord,
   CreateRemoteApiKeyDTO,
   WebhookEndpointRecord,
   CreateWebhookEndpointDTO,
   WebhookDeliveryRecord,
 } from '../../10_CONFIG/shared/types/remote-api.js';
-import { ProxyUsageReport } from '../../10_CONFIG/shared/types/proxy-provider.js';
+import type { ProxyUsageReport } from '../../10_CONFIG/shared/types/proxy-provider.js';
 
 export const WebDashboardApp: React.FC = () => {
   const {
@@ -112,8 +113,8 @@ export const WebDashboardApp: React.FC = () => {
       // 1. Load Profiles
       const profRes = await api.listProfiles();
       if (profRes.success && profRes.data) {
-        const mappedProfiles: WebProfileItem[] = profRes.data.map((p: any) => ({
-          id: p.id || p.profileId,
+        const mappedProfiles: WebProfileItem[] = profRes.data.map((p) => ({
+          id: p.id || p.profileId || '',
           name: p.name || 'Unnamed Profile',
           folder: p.folder,
           tags: p.tags,
@@ -148,12 +149,16 @@ export const WebDashboardApp: React.FC = () => {
       }
 
       // 5. Load Active Sessions / Devices
+      const normalizeDevicePlatform = (raw?: string): WebDeviceSession['platform'] => {
+        if (raw === 'macos' || raw === 'linux' || raw === 'mobile' || raw === 'web') return raw;
+        return 'windows';
+      };
       const sessionsRes = await api.getActiveSessions();
       if (sessionsRes.success && sessionsRes.data) {
-        const mappedDevices: WebDeviceSession[] = sessionsRes.data.map((s: any) => ({
+        const mappedDevices: WebDeviceSession[] = sessionsRes.data.map((s) => ({
           sessionId: s.sessionId || s.id || `sess_${Math.random()}`,
           deviceName: s.deviceName || (s.platform ? `${s.platform} Workstation` : 'Windows Desktop Client'),
-          platform: s.platform || 'windows',
+          platform: normalizeDevicePlatform(s.platform),
           ipAddress: s.ipAddress || '127.0.0.1',
           isOnline: s.isOnline !== undefined ? s.isOnline : true,
           lastSeenAt: s.lastSeenAt || new Date().toISOString(),
@@ -288,8 +293,8 @@ export const WebDashboardApp: React.FC = () => {
       } else {
         setBannerNotice({ type: 'error', message: `Cloud Browser Launch Failed: ${res.error?.message || 'Unknown error'}` });
       }
-    } catch (err: any) {
-      setBannerNotice({ type: 'error', message: `Failed to launch Cloud Browser: ${err.message}` });
+    } catch (err: unknown) {
+      setBannerNotice({ type: 'error', message: `Failed to launch Cloud Browser: ${err instanceof Error ? err.message : String(err)}` });
     }
   };
 
@@ -480,8 +485,9 @@ export const WebDashboardApp: React.FC = () => {
 
   const handleLoadDeliveries = async (id: string) => {
     const res = await api.getWebhookDeliveries(id);
-    if (res.success && res.data) {
-      setDeliveries((prev) => ({ ...prev, [id]: res.data! }));
+    const deliveryList = res.data;
+    if (res.success && deliveryList) {
+      setDeliveries((prev) => ({ ...prev, [id]: deliveryList }));
     }
   };
 
@@ -503,10 +509,19 @@ export const WebDashboardApp: React.FC = () => {
 
   // Derive real current user role in active workspace
   const currentMember = members.find((m) => m.userId === user?.id);
+  const normalizeDashboardRole = (rawRole?: string): 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER' | null => {
+    const upper = rawRole?.toUpperCase();
+    if (upper === 'OWNER' || upper === 'ADMIN' || upper === 'VIEWER' || upper === 'MEMBER') {
+      return upper;
+    }
+    return null;
+  };
   const currentUserRole: 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER' =
-    currentWorkspace?.ownerUserId === user?.id || (currentWorkspace?.userRole === 'OWNER')
+    currentWorkspace?.ownerUserId === user?.id || currentWorkspace?.userRole === 'OWNER'
       ? 'OWNER'
-      : ((currentMember?.role?.toUpperCase() as any) || (currentWorkspace?.userRole as any) || 'MEMBER');
+      : normalizeDashboardRole(currentMember?.role) ||
+        normalizeDashboardRole(currentWorkspace?.userRole) ||
+        'MEMBER';
 
   return (
     <WebDashboardLayout
@@ -527,6 +542,7 @@ export const WebDashboardApp: React.FC = () => {
         }`}>
           <span>{bannerNotice.message}</span>
           <button
+            type="button"
             onClick={() => setBannerNotice(null)}
             className="text-slate-400 hover:text-white ml-2 text-sm font-bold"
           >

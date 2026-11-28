@@ -45,7 +45,7 @@ function stampBuildInfo() {
   };
 
   const outputPath = path.join(rootDir, 'build-info.json');
-  fs.writeFileSync(outputPath, JSON.stringify(buildInfo, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(outputPath, `${JSON.stringify(buildInfo, null, 2)}\n`, 'utf8');
   console.log(`[STAMP_BUILD_INFO] Successfully stamped build-info.json:`);
   console.log(JSON.stringify(buildInfo, null, 2));
 

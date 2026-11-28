@@ -1,22 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Bot,
   Key,
-  DollarSign,
   RefreshCw,
   CheckCircle2,
   AlertTriangle,
   Zap,
   ShieldCheck,
-  Globe,
   Sliders,
   Play,
   Copy,
   Check,
   ExternalLink,
-  Sparkles,
 } from 'lucide-react';
-import {
+import type {
   CaptchaConfig,
   CaptchaProvider,
   CaptchaType,
@@ -79,8 +76,9 @@ export const CaptchaSettings: React.FC = () => {
   const [solveResult, setSolveResult] = useState<CaptchaSolveResult | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional mount-only call
   useEffect(() => {
-    loadConfig();
+    void loadConfig();
   }, []);
 
   const loadConfig = async () => {
@@ -126,11 +124,11 @@ export const CaptchaSettings: React.FC = () => {
           await fetchBalance(config.provider, config.apiKey);
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         type: 'error',
         title: 'Save Failed',
-        message: err.message || 'Could not save captcha config',
+        message: err instanceof Error ? err.message : 'Could not save captcha config',
       });
     } finally {
       setSaving(false);
@@ -173,8 +171,8 @@ export const CaptchaSettings: React.FC = () => {
           });
         }
       }
-    } catch (err: any) {
-      setSolveResult({ success: false, error: err.message });
+    } catch (err: unknown) {
+      setSolveResult({ success: false, error: err instanceof Error ? err.message : String(err) });
     } finally {
       setSolving(false);
     }
@@ -206,7 +204,7 @@ export const CaptchaSettings: React.FC = () => {
           </p>
         </div>
 
-        <button
+        <button type="button"
           onClick={handleSave}
           disabled={saving}
           className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-xs font-bold text-white shadow-sm shadow-teal-600/20 transition-all active:scale-95 disabled:opacity-50 self-start sm:self-auto"
@@ -232,14 +230,17 @@ export const CaptchaSettings: React.FC = () => {
                 return (
                   <div
                     key={prov.id}
-                    onClick={() => setConfig({ ...config, provider: prov.id })}
-                    className={`p-4 rounded-xl border cursor-pointer transition-all duration-200 flex flex-col justify-between ${
+                    className={`p-4 rounded-xl border transition-all duration-200 flex flex-col justify-between ${
                       isSelected
                         ? 'bg-teal-500/5 border-teal-500 dark:border-teal-500/80 ring-1 ring-teal-500/40 shadow-sm'
                         : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                     }`}
                   >
-                    <div>
+                    <button
+                      type="button"
+                      onClick={() => setConfig({ ...config, provider: prov.id })}
+                      className="text-left w-full flex-1 cursor-pointer focus:outline-none"
+                    >
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-slate-900 dark:text-white text-sm">
                           {prov.name}
@@ -249,14 +250,13 @@ export const CaptchaSettings: React.FC = () => {
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
                         {prov.desc}
                       </p>
-                    </div>
+                    </button>
 
                     <a
                       href={prov.website}
                       target="_blank"
                       rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 flex items-center gap-1 mt-3 hover:underline"
+                      className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 flex items-center gap-1 mt-3 hover:underline w-fit"
                     >
                       Get API Key <ExternalLink className="w-3 h-3" />
                     </a>
@@ -267,7 +267,7 @@ export const CaptchaSettings: React.FC = () => {
 
             {/* API Key Input */}
             <div className="pt-3">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+              <label htmlFor="field-001" className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
                 {config.provider.toUpperCase()} API KEY
               </label>
               <div className="flex items-center gap-3">
@@ -282,7 +282,7 @@ export const CaptchaSettings: React.FC = () => {
                   />
                 </div>
 
-                <button
+                <button type="button"
                   onClick={() => fetchBalance(config.provider, config.apiKey)}
                   disabled={balanceLoading || !config.apiKey}
                   className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 transition-all flex items-center gap-1.5 disabled:opacity-50 shrink-0"
@@ -425,7 +425,7 @@ export const CaptchaSettings: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="field-002" className="block text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
               Protocol Type
             </label>
             <select
@@ -441,7 +441,7 @@ export const CaptchaSettings: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="field-003" className="block text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
               Target Website URL
             </label>
             <input
@@ -454,7 +454,7 @@ export const CaptchaSettings: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="field-004" className="block text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
               SiteKey / Widget Key
             </label>
             <input
@@ -468,7 +468,7 @@ export const CaptchaSettings: React.FC = () => {
         </div>
 
         <div className="flex items-center justify-between pt-2">
-          <button
+          <button type="button"
             onClick={handleTestSolve}
             disabled={solving || !config.apiKey}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-xs font-bold text-white shadow-xs transition-all active:scale-95 disabled:opacity-50"
@@ -500,7 +500,7 @@ export const CaptchaSettings: React.FC = () => {
               <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">
                 Generated Response Token
               </span>
-              <button
+              <button type="button"
                 onClick={handleCopyToken}
                 className="text-xs text-teal-600 dark:text-teal-400 font-bold flex items-center gap-1 hover:underline"
               >

@@ -1,6 +1,7 @@
-import React, { useState, memo } from 'react';
+import type React from 'react';
+import { useState, memo } from 'react';
 import { Play, Globe2, Tag } from 'lucide-react';
-import { ProxyItem } from '../../../10_CONFIG/shared/types/proxy.js';
+import type { ProxyItem } from '../../../10_CONFIG/shared/types/proxy.js';
 
 export interface StaggerLaunchModalProps {
   selectedCount: number;
@@ -36,7 +37,7 @@ export const StaggerLaunchModal: React.FC<StaggerLaunchModalProps> = memo(({
               </div>
             </div>
             {!isLaunching && (
-              <button onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold p-1.5">
+              <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold p-1.5">
                 ✕
               </button>
             )}
@@ -65,7 +66,7 @@ export const StaggerLaunchModal: React.FC<StaggerLaunchModalProps> = memo(({
           ) : (
             <div className="py-5 space-y-4">
               <div>
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                <label htmlFor="field-001" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
                   Stagger Delay (Time between each window)
                 </label>
                 <div className="grid grid-cols-4 gap-2">
@@ -75,9 +76,8 @@ export const StaggerLaunchModal: React.FC<StaggerLaunchModalProps> = memo(({
                     { label: '2.5s (Heavy)', value: 2500 },
                     { label: '4.0s (Light PC)', value: 4000 },
                   ].map((item) => (
-                    <button
-                      key={item.value}
-                      type="button"
+                    <button type="button"
+                      key={item.value}
                       onClick={() => setStaggerDelayMs(item.value)}
                       className={`p-2.5 rounded-xl border text-center text-xs font-bold transition-all ${
                         staggerDelayMs === item.value
@@ -158,26 +158,25 @@ export const BulkProxyModal: React.FC<BulkProxyModalProps> = memo(({
                 <p className="text-xs text-slate-400">Single proxy, Round-Robin distribution, or direct</p>
               </div>
             </div>
-            <button onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold p-1.5">
+            <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold p-1.5">
               ✕
             </button>
           </div>
 
           <div className="py-4 space-y-4">
             <div>
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
+              <label htmlFor="field-002" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
                 Distribution Mode
               </label>
               <div className="grid grid-cols-3 gap-2">
-                {[
+                {([
                   { id: 'single', label: '1 Proxy to All', desc: 'Same proxy for all' },
                   { id: 'round-robin', label: 'Round-Robin', desc: 'Distribute proxy list' },
                   { id: 'clear', label: 'Direct Connection', desc: 'Remove proxy' },
-                ].map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setBulkProxyMode(m.id as any)}
+                ] as const).map((m) => (
+                  <button type="button"
+                    key={m.id}
+                    onClick={() => setBulkProxyMode(m.id)}
                     className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
                       bulkProxyMode === m.id
                         ? 'border-cyan-500 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-2 font-bold'
@@ -195,7 +194,7 @@ export const BulkProxyModal: React.FC<BulkProxyModalProps> = memo(({
               <>
                 {proxies.length > 0 && (
                   <div>
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                    <label htmlFor="field-003" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
                       Select from Saved Proxies ({proxies.length} available)
                     </label>
                     <select
@@ -221,7 +220,7 @@ export const BulkProxyModal: React.FC<BulkProxyModalProps> = memo(({
                 )}
 
                 <div>
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                  <label htmlFor="field-004" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
                     Or Paste Proxies (1 per line, format: host:port or host:port:user:pass)
                   </label>
                   <textarea
@@ -295,14 +294,14 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = memo(({
                 <p className="text-xs text-slate-400">Batch update folder and tags</p>
               </div>
             </div>
-            <button onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold p-1.5">
+            <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold p-1.5">
               ✕
             </button>
           </div>
 
           <div className="py-4 space-y-3.5">
             <div>
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              <label htmlFor="field-005" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">
                 Set Folder (Move profiles)
               </label>
               <input
@@ -315,7 +314,7 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = memo(({
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              <label htmlFor="field-006" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">
                 Add Tags (Comma separated)
               </label>
               <input
@@ -328,7 +327,7 @@ export const BulkEditModal: React.FC<BulkEditModalProps> = memo(({
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              <label htmlFor="field-007" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">
                 Remove Tags (Comma separated)
               </label>
               <input

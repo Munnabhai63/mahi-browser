@@ -171,3 +171,19 @@ export interface AuditTrailEvent {
   metadataJson?: string;
   timestamp: string;
 }
+
+export interface DistributionInfo {
+  localIps: string[];
+  port: number;
+  downloadUrl: string;
+  networkDownloadUrls: string[];
+  setupAvailable: boolean;
+  portableAvailable: boolean;
+  setupFileName: string;
+  portableFileName: string;
+  setupPath: string;
+  portablePath: string;
+  setupSizeMB: number;
+  portableSizeMB: number;
+  version: string;
+}

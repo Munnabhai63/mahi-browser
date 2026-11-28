@@ -4,21 +4,21 @@ import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import https from 'node:https';
 import http from 'node:http';
-import { app, BrowserWindow } from './electron-bridge.js';
+import { BrowserWindow } from './electron-bridge.js';
 import { getHWID, verifyLicense } from './license-service.js';
 import { ADMIN_API_BASE_URL, isOnlineRevoked, isGraceExpired } from './license-status-service.js';
 import { hasValidLicense, assertCanCreateProfile } from './freemium-guard.js';
 import { hasValidAccountSubscription, getAccountSyncKey, loadEncryptedSession, loadEncryptedSessionAsync, readCachedStatus, readCachedStatusAsync } from './account-service.js';
 import { resolveCapabilitiesForCanonicalPlan } from '../07_BACKEND/commercial/canonical-plan-catalog.js';
 import { getProfileById, getProfiles, getProfileStoragePath } from '../02_BROWSER/services/profile-service.js';
+import type { Profile } from '../10_CONFIG/shared/types/profile.js';
 import {
-  exportProfileToArchive,
   importProfileFromArchive,
   isPathExcludedFromSync,
   packProfileSessionTarGz,
   unpackProfileSessionTarGz
 } from '../02_BROWSER/services/archive-service.js';
-import {
+import type {
   CloudProfileMetadata,
   CloudSyncUsage,
   CloudSyncConfig,
@@ -403,7 +403,7 @@ export async function applyCookiesDeltaPayload(
     : decryptedBuffer.toString('utf8');
 
   const payload = JSON.parse(rawJson) as CookieDeltaPayload;
-  if (!payload || payload.format !== 'mahi-cookies-delta-v1') {
+  if (payload?.format !== 'mahi-cookies-delta-v1') {
     throw new Error('INVALID_COOKIE_DELTA: Unsupported cookie delta payload format');
   }
 
@@ -952,7 +952,7 @@ export function resetQueuePausedStatus(): void {
 }
 
 export function broadcastSyncToast(type: 'info' | 'warning' | 'error' | 'success', title: string, message: string): void {
-  if (typeof BrowserWindow !== 'undefined' && BrowserWindow && BrowserWindow.getAllWindows) {
+  if (BrowserWindow?.getAllWindows) {
     try {
       BrowserWindow.getAllWindows().forEach((win) => {
         if (!win.isDestroyed()) {
@@ -968,7 +968,7 @@ export function broadcastSyncToast(type: 'info' | 'warning' | 'error' | 'success
 }
 
 function broadcastProgress(event: CloudSyncProgressEvent): void {
-  if (typeof BrowserWindow !== 'undefined' && BrowserWindow && BrowserWindow.getAllWindows) {
+  if (BrowserWindow?.getAllWindows) {
     try {
       BrowserWindow.getAllWindows().forEach((win) => {
         if (!win.isDestroyed()) {
@@ -1277,7 +1277,7 @@ export async function uploadProfileToCloud(
             err: parseErr instanceof Error ? parseErr.message : String(parseErr),
           });
         }
-        const errObj: any = new Error(errMsg);
+        const errObj = new Error(errMsg) as Error & { status?: number };
         errObj.status = sessionRes.statusCode;
         throw errObj;
       }
@@ -1392,13 +1392,13 @@ export async function uploadProfileToCloud(
         }
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     await updateLocalSyncStatusAsync(profileId, 'ERROR');
     broadcastProgress({
       stage: 'ERROR',
       profileId,
       percent: 0,
-      error: err.message
+      error: err instanceof Error ? err.message : String(err),
     });
     throw err;
   } finally {
@@ -1441,7 +1441,7 @@ export async function downloadAndRestoreProfile(
     targetLocalProfileId?: string;
     mode?: CloudSyncMode;
   }
-): Promise<any> {
+): Promise<Profile> {
   // Resolve targetLocalId candidate:
   // 1) Explicit targetLocalProfileId from options
   // 2) Profile bound locally to cloudProfileId in sync-bindings
@@ -1553,8 +1553,8 @@ export async function downloadAndRestoreProfile(
       authTag: sessionData.authTag,
       userMasterKey: effectivePassphrase,
     });
-  } catch (decErr: any) {
-    throw new Error(`Decryption failed: ${decErr.message}`);
+  } catch (decErr: unknown) {
+    throw new Error(`Decryption failed: ${decErr instanceof Error ? decErr.message : String(decErr)}`);
   }
 
   if (!localProfile && !targetLocalId && sessionData.localProfileId) {
@@ -1686,7 +1686,7 @@ export async function downloadAndRestoreProfile(
   }
 
   try {
-    let restored: any;
+    let restored: Profile;
     if (isTarGz) {
       // Modern pure-Node POSIX ustar session.tar.gz unpack
       if (!localProfile) {
@@ -1765,7 +1765,7 @@ export async function downloadAndRestoreProfile(
     logActivity('PROFILE', 'SUCCESS', 'Cloud Restore', `Restored profile "${restored.name}" from cloud (v${sessionData.version})`, restored.id, restored.name);
 
     return restored;
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Atomic rollback: restore previous state if backup exists
     const rollbackTarget = localProfile ? getProfileStoragePath(localProfile.id) : existingStorageDir;
     if (backupStorageDir && (await pathExists(backupStorageDir)) && rollbackTarget) {
@@ -1854,7 +1854,7 @@ export async function deleteCloudProfile(cloudProfileId: string): Promise<boolea
 export async function resolveSyncConflict(
   profileId: string,
   resolution: 'DOWNLOAD_LATEST' | 'KEEP_LOCAL_AS_NEW' | 'OVERWRITE_FORCE'
-): Promise<any> {
+): Promise<Profile | UploadProfileResult> {
   const binding = await getProfileCloudBindingAsync(profileId);
   const profile = getProfileById(profileId);
   if (!profile) {
@@ -2132,13 +2132,15 @@ export async function processSyncQueue(): Promise<void> {
         }
         queue.shift(); // remove on success
         await saveQueueAsync(queue);
-      } catch (err: any) {
-        const status = err.status || (
-          err.message.includes('401') ? 401 :
-          err.message.includes('403') ? 403 :
-          err.message.includes('409') ? 409 :
-          err.message.includes('413') ? 413 :
-          err.message.includes('507') ? 507 : 500
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const errWithStatus = err && typeof err === 'object' ? (err as { status?: number }) : undefined;
+        const status = errWithStatus?.status || (
+          msg.includes('401') ? 401 :
+          msg.includes('403') ? 403 :
+          msg.includes('409') ? 409 :
+          msg.includes('413') ? 413 :
+          msg.includes('507') ? 507 : 500
         );
 
         if (status === 401 || status === 403) {
@@ -2160,7 +2162,10 @@ export async function processSyncQueue(): Promise<void> {
           break;
         }
 
-        log.warn(`[CloudSync] Queue item ${item.profileId} failed (attempt ${item.attempts + 1}):`, err.message);
+        log.warn(
+          `[CloudSync] Queue item ${item.profileId} failed (attempt ${item.attempts + 1}):`,
+          err instanceof Error ? err.message : String(err)
+        );
         item.attempts += 1;
         if (item.attempts >= 5) {
           await updateLocalSyncStatusAsync(item.profileId, 'ERROR');
@@ -2272,8 +2277,8 @@ export async function syncProfileIfCloudNewer(profileId: string): Promise<boolea
     }
 
     return false;
-  } catch (err: any) {
-    log.warn(`[CloudSync] Background sync check failed for ${profileId} (continuing offline):`, err?.message);
+  } catch (err: unknown) {
+    log.warn(`[CloudSync] Background sync check failed for ${profileId} (continuing offline):`, err instanceof Error ? err.message : String(err));
     return false;
   }
 }

@@ -1,3 +1,5 @@
+import type { PartialProfileSettings, ProfileSettings } from '../types/profile.js';
+
 /**
  * Pure, 100% browser-safe statistical fingerprint coherence validation & normalization.
  * ZERO Node.js imports (no node:fs, node:path, node:crypto, etc.) so this module can safely
@@ -87,10 +89,42 @@ export interface WebGpuAdapterConfig {
   description?: string;
 }
 
-export interface FingerprintCoherenceReport {
+export interface FingerprintCoherenceReport<T = ProfileSettings> {
   valid: boolean;
-  normalizedSettings: any;
+  normalizedSettings: T;
   warnings: string[];
+}
+
+interface CoherentMutableSettings {
+  browser: {
+    engine?: string;
+    userAgent?: string;
+    [key: string]: unknown;
+  };
+  fingerprint: {
+    platform?: string;
+    isM1?: boolean;
+    architecture?: string;
+    webglVendor?: string;
+    webglRenderer?: string;
+    maxTouchPoints?: number;
+    hardwareConcurrency?: number;
+    deviceMemory?: number;
+    fonts?: string[];
+    [key: string]: unknown;
+  };
+  display: {
+    screenWidth?: number;
+    screenHeight?: number;
+    deviceScaleFactor?: number;
+    [key: string]: unknown;
+  };
+  locale: Record<string, unknown>;
+  mobile?: {
+    enable?: boolean;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
 }
 
 const MAC_ONLY_FONTS = new Set([
@@ -109,9 +143,11 @@ const WIN_ONLY_FONTS = new Set([
  * Detects and corrects contradictory fingerprint tuples across OS platform, GPU renderer,
  * WebGPU Dawn descriptors, touch points, screen resolution, and hardware capacity.
  */
-export function validateAndNormalizeFingerprintCoherence(settings: any): FingerprintCoherenceReport {
+export function validateAndNormalizeFingerprintCoherence<
+  T extends PartialProfileSettings | ProfileSettings | null | undefined = ProfileSettings
+>(settings: T): FingerprintCoherenceReport<T> {
   const warnings: string[] = [];
-  const normalized = JSON.parse(JSON.stringify(settings || {}));
+  const normalized = JSON.parse(JSON.stringify(settings || {})) as CoherentMutableSettings;
 
   normalized.browser = normalized.browser || {};
   normalized.fingerprint = normalized.fingerprint || {};
@@ -230,20 +266,22 @@ export function validateAndNormalizeFingerprintCoherence(settings: any): Fingerp
   // 2. Hardware Capacity Bounds (Prevent unrealistic synthetic values)
   const validConcurrency = [2, 4, 6, 8, 12, 16, 24, 32];
   if (fp.hardwareConcurrency && !validConcurrency.includes(fp.hardwareConcurrency)) {
+    const currentConcurrency = fp.hardwareConcurrency;
     const closest = validConcurrency.reduce((prev: number, curr: number) =>
-      Math.abs(curr - fp.hardwareConcurrency) < Math.abs(prev - fp.hardwareConcurrency) ? curr : prev
+      Math.abs(curr - currentConcurrency) < Math.abs(prev - currentConcurrency) ? curr : prev
     );
-    warnings.push(`hardwareConcurrency ${fp.hardwareConcurrency} is an unnatural anomaly. Clamped to ${closest}.`);
+    warnings.push(`hardwareConcurrency ${currentConcurrency} is an unnatural anomaly. Clamped to ${closest}.`);
     fp.hardwareConcurrency = closest;
   }
 
   const validDeviceMemory = [1, 2, 4, 8, 16, 32];
   if (fp.deviceMemory && !validDeviceMemory.includes(fp.deviceMemory)) {
+    const currentMemory = fp.deviceMemory;
     const anomalyClamp = [1, 2, 4, 8, 16];
     const closest = anomalyClamp.reduce((prev: number, curr: number) =>
-      Math.abs(curr - fp.deviceMemory) < Math.abs(prev - fp.deviceMemory) ? curr : prev
+      Math.abs(curr - currentMemory) < Math.abs(prev - currentMemory) ? curr : prev
     );
-    warnings.push(`deviceMemory ${fp.deviceMemory} is an unnatural anomaly. Clamped to ${closest}.`);
+    warnings.push(`deviceMemory ${currentMemory} is an unnatural anomaly. Clamped to ${closest}.`);
     fp.deviceMemory = closest;
   }
 
@@ -289,7 +327,7 @@ export function validateAndNormalizeFingerprintCoherence(settings: any): Fingerp
 
   return {
     valid: warnings.length === 0,
-    normalizedSettings: normalized,
+    normalizedSettings: normalized as unknown as T,
     warnings,
   };
 }

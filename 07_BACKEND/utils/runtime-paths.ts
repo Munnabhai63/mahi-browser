@@ -10,13 +10,26 @@ const log = createLogger('runtime-paths');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+interface ElectronAppLike {
+  isPackaged?: boolean;
+  getPath?: (name: 'userData' | 'downloads') => string;
+  getAppPath?: () => string;
+}
+
+interface ElectronModuleLike {
+  app?: ElectronAppLike;
+  default?: { app?: ElectronAppLike };
+}
+
+type ProcessWithResources = NodeJS.Process & { resourcesPath?: string };
+
 /**
  * Safely resolves the Electron app object if running in an Electron main process.
  * In Vitest or standalone Node.js environments, returns null.
  */
-function getElectronApp(): any {
+function getElectronApp(): ElectronAppLike | null {
   try {
-    const electronObj = electron as any;
+    const electronObj = electron as ElectronModuleLike;
     if (electronObj && typeof electronObj.app === 'object' && electronObj.app !== null) {
       return electronObj.app;
     }
@@ -181,8 +194,9 @@ export function getWritableSubdir(subdirName: string): string {
  */
 export function getBundledResourcePath(...segments: string[]): string | undefined {
   const app = getElectronApp();
+  const proc = process as ProcessWithResources;
   const candidates: (string | null | undefined)[] = [
-    (process as any).resourcesPath ? path.join((process as any).resourcesPath, ...segments) : null,
+    proc.resourcesPath ? path.join(proc.resourcesPath, ...segments) : null,
     (() => {
       if (app && typeof app.getAppPath === 'function') {
         try {
@@ -219,8 +233,9 @@ export function getBundledResourcePath(...segments: string[]): string | undefine
  */
 export function getLandingBaseDir(): string {
   const app = getElectronApp();
+  const proc = process as ProcessWithResources;
   const candidates: (string | null | undefined)[] = [
-    (process as any).resourcesPath ? path.join((process as any).resourcesPath, 'landing') : null,
+    proc.resourcesPath ? path.join(proc.resourcesPath, 'landing') : null,
     (() => {
       if (app && typeof app.getAppPath === 'function') {
         try {

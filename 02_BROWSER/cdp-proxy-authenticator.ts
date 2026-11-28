@@ -1,10 +1,43 @@
 import net from 'node:net';
-import http from 'node:http';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
 const log = createLogger('cdp-proxy-authenticator');
 
+interface CdpSocketLike {
+  readyState: number;
+  send(data: string): void;
+  close(): void;
+  onopen: (() => void) | null;
+  onmessage: ((event: { data: unknown }) => void) | null;
+  onerror: ((err: unknown) => void) | null;
+  onclose: (() => void) | null;
+}
+
+interface CdpVersionResponse {
+  webSocketDebuggerUrl?: string;
+}
+
+interface CdpAuthChallenge {
+  source?: string;
+  origin?: string;
+}
+
+interface CdpIncomingMessage {
+  method?: string;
+  sessionId?: string;
+  params?: {
+    sessionId?: string;
+    requestId?: string;
+    authChallenge?: CdpAuthChallenge;
+  };
+}
+
+interface GlobalWithDebugAndWs {
+  __mahiDebugLog?: (msg: string) => void;
+  WebSocket?: new (url: string) => CdpSocketLike;
+}
+
 function debugLog(msg: string) {
-  const fn = (globalThis as any).__mahiDebugLog;
+  const fn = (globalThis as GlobalWithDebugAndWs).__mahiDebugLog;
   if (fn) fn(msg);
   else log.info(msg);
 }
@@ -54,7 +87,7 @@ export async function attachCdpProxyAuthenticator(
   debugLog(`[CDP Authenticator] Initializing background authenticator for profile "${profileId}" on port ${port}...`);
 
   let isClosed = false;
-  let ws: any = null;
+  let ws: CdpSocketLike | null = null;
   let authAttempts = 0;
   const maxAuthAttempts = 5;
 
@@ -67,8 +100,8 @@ export async function attachCdpProxyAuthenticator(
           signal: AbortSignal.timeout(1000),
         });
         if (res.ok) {
-          const data = (await res.json()) as any;
-          if (data && data.webSocketDebuggerUrl) {
+          const data = (await res.json()) as CdpVersionResponse;
+          if (data?.webSocketDebuggerUrl) {
             return data.webSocketDebuggerUrl;
           }
         }
@@ -87,7 +120,7 @@ export async function attachCdpProxyAuthenticator(
     const wsUrl = await getWebSocketDebuggerUrl();
     debugLog(`[CDP Authenticator] Connected to Chromium CDP: ${wsUrl}`);
 
-    const WebSocketClass = (globalThis as any).WebSocket;
+    const WebSocketClass = (globalThis as GlobalWithDebugAndWs).WebSocket;
     if (!WebSocketClass) {
       debugLog(`[CDP Authenticator WARNING] globalThis.WebSocket not found.`);
       return { close: () => {} };
@@ -95,9 +128,13 @@ export async function attachCdpProxyAuthenticator(
 
     ws = new WebSocketClass(wsUrl);
     let msgId = 1;
-    const send = (method: string, params: any = {}, sessionId?: string) => {
-      if (!ws || ws.readyState !== 1) return;
-      const payload: any = { id: msgId++, method, params };
+    const send = (method: string, params: Record<string, unknown> = {}, sessionId?: string) => {
+      if (ws?.readyState !== 1) return;
+      const payload: { id: number; method: string; params: Record<string, unknown>; sessionId?: string } = {
+        id: msgId++,
+        method,
+        params,
+      };
       if (sessionId) payload.sessionId = sessionId;
       ws.send(JSON.stringify(payload));
     };
@@ -115,9 +152,9 @@ export async function attachCdpProxyAuthenticator(
       send('Fetch.enable', { handleAuthRequests: true });
     };
 
-    ws.onmessage = (event: any) => {
+    ws.onmessage = (event: { data: unknown }) => {
       try {
-        const msg = JSON.parse(event.data);
+        const msg = JSON.parse(String(event.data)) as CdpIncomingMessage;
 
         // When a new page/target is created, enable Fetch on that session
         if (msg.method === 'Target.attachedToTarget' && msg.params?.sessionId) {
@@ -126,7 +163,7 @@ export async function attachCdpProxyAuthenticator(
 
         // When Chromium receives a Proxy 407 Authentication Required challenge
         if (msg.method === 'Fetch.authRequired') {
-          const { requestId, authChallenge } = msg.params;
+          const { requestId, authChallenge } = msg.params || {};
           const sessionId = msg.sessionId;
 
           debugLog(
@@ -175,8 +212,11 @@ export async function attachCdpProxyAuthenticator(
       }
     };
 
-    ws.onerror = (err: any) => {
-      debugLog(`[CDP Authenticator] WebSocket error: ${err?.message || err}`);
+    ws.onerror = (err: unknown) => {
+      const errMsg = typeof err === 'object' && err !== null && 'message' in err
+        ? String((err as { message?: unknown }).message)
+        : String(err);
+      debugLog(`[CDP Authenticator] WebSocket error: ${errMsg}`);
     };
 
     ws.onclose = () => {

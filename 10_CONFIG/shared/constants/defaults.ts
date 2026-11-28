@@ -1,4 +1,4 @@
-import { ProfileSettings, AppSettings, StatisticalProfileOptions } from '../types/index.js';
+import type { ProfileSettings, AppSettings, StatisticalProfileOptions } from '../types/index.js';
 import { MANAGED_ENGINE_VERSION } from '../../engine-config.js';
 import {
   validateAndNormalizeFingerprintCoherence,
@@ -193,8 +193,9 @@ export function deriveLocaleFromGeo(geo?: {
 
 function createSeededRng(seed: number) {
   let a = seed;
-  return function () {
-    let t = (a += 0x6d2b79f5);
+  return () => {
+    a += 0x6d2b79f5;
+    let t = a;
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -383,7 +384,7 @@ export function generateConsistentEnvironmentSettings(options: StatisticalProfil
   let screenWidth = 1920;
   let screenHeight = 1080;
   let deviceScaleFactor = 1;
-  let colorDepth = 24;
+  const colorDepth = 24;
 
   if (isMobile) {
     const mobileResolutions = [
@@ -451,7 +452,7 @@ export function generateConsistentEnvironmentSettings(options: StatisticalProfil
   const architecture = isMobile ? 'arm' : (isMacM1 ? 'arm64' : 'x86_64');
   const fonts = [...(OS_FONTS[targetOs] || OS_FONTS.windows)];
 
-  let clientHints: any = undefined;
+  let clientHints: NonNullable<ProfileSettings['fingerprint']>['clientHints'] ;
   if (engine !== 'camoufox') {
     const { greaseBrand, greaseVersion } = getDeterministicGreaseTriplet(seedNum);
     const brands = engine === 'edge'

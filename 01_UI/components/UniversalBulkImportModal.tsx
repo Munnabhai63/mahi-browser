@@ -1,40 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
   X,
   FileText,
   Upload,
-  Layers,
-  CheckCircle,
-  AlertCircle,
   Shield,
-  Globe,
-  Sliders,
   Sparkles,
   ArrowRight,
-  Database,
 } from 'lucide-react';
 import { useToastStore } from '../stores/useToastStore.js';
 import { useProfileStore } from '../stores/useProfileStore.js';
+import type { ParsedAccountImportItem } from '../../10_CONFIG/shared/types/profile.js';
 
-interface ParsedAccountItem {
-  name: string;
-  usernameOrEmail?: string;
-  password?: string;
-  proxy?: {
-    protocol: string;
-    host: string;
-    port: number;
-    username?: string;
-    password?: string;
-  };
-  cookies?: any[];
-  userAgent?: string;
-  timezone?: string;
-  sourceFormat?: 'gologin' | 'adspower' | 'dolphin' | 'generic';
-  notes?: string;
-  tags?: string[];
-  rawLine?: string;
-}
+type ParsedAccountItem = ParsedAccountImportItem;
 
 interface UniversalBulkImportModalProps {
   isOpen: boolean;
@@ -55,7 +33,7 @@ export const UniversalBulkImportModal: React.FC<UniversalBulkImportModalProps> =
   const [browserEngine, setBrowserEngine] = useState<'chrome' | 'edge' | 'chromium' | 'camoufox'>('chrome');
   const [customTag, setCustomTag] = useState('Bulk-Import');
   const [isImporting, setIsImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState(0);
+  const [_importProgress, setImportProgress] = useState(0);
 
   // Live Auto-Parser on text input
   useEffect(() => {
@@ -133,11 +111,11 @@ export const UniversalBulkImportModal: React.FC<UniversalBulkImportModalProps> =
           });
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         type: 'error',
         title: 'Import Error',
-        message: err.message || 'Bulk import process failed',
+        message: err instanceof Error ? err.message : 'Bulk import process failed',
       });
     } finally {
       setIsImporting(false);
@@ -163,7 +141,7 @@ export const UniversalBulkImportModal: React.FC<UniversalBulkImportModalProps> =
               </p>
             </div>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="w-8 h-8 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-slate-200"
           >
@@ -234,7 +212,7 @@ export const UniversalBulkImportModal: React.FC<UniversalBulkImportModalProps> =
               className="w-full p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-mono text-xs text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none resize-none leading-relaxed"
             />
             <div className="absolute right-3 bottom-3 flex items-center space-x-2">
-              <label className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer shadow-sm flex items-center space-x-1.5">
+              <label htmlFor="field-001" className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer shadow-sm flex items-center space-x-1.5">
                 <FileText className="w-3.5 h-3.5 text-teal-500" />
                 <span>Upload .txt / .csv / .json</span>
                 <input
@@ -265,7 +243,7 @@ export const UniversalBulkImportModal: React.FC<UniversalBulkImportModalProps> =
               <div className="max-h-44 overflow-y-auto space-y-1.5 custom-scrollbar text-xs">
                 {parsedItems.map((item, idx) => (
                   <div
-                    key={idx}
+                    key={`${item.name}-${item.usernameOrEmail ?? ''}-${item.proxy?.host ?? 'direct'}-${item.proxy?.port ?? 0}`}
                     className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-xl flex items-center justify-between gap-3"
                   >
                     <div className="flex items-center space-x-2 min-w-0">
@@ -306,7 +284,7 @@ export const UniversalBulkImportModal: React.FC<UniversalBulkImportModalProps> =
           {/* Import Configuration Settings */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
             <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label htmlFor="field-002" className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
                 Assign Folder
               </label>
               <input
@@ -318,12 +296,12 @@ export const UniversalBulkImportModal: React.FC<UniversalBulkImportModalProps> =
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label htmlFor="field-003" className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
                 Fingerprint OS
               </label>
               <select
                 value={targetOs}
-                onChange={(e) => setTargetOs(e.target.value as any)}
+                onChange={(e) => setTargetOs(e.target.value as 'windows' | 'macos' | 'linux')}
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 font-medium"
               >
                 <option value="windows">Windows 11 / 10</option>
@@ -333,12 +311,12 @@ export const UniversalBulkImportModal: React.FC<UniversalBulkImportModalProps> =
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label htmlFor="field-004" className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
                 Browser Engine
               </label>
               <select
                 value={browserEngine}
-                onChange={(e) => setBrowserEngine(e.target.value as any)}
+                onChange={(e) => setBrowserEngine(e.target.value as 'chrome' | 'edge' | 'chromium' | 'camoufox')}
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 font-medium"
               >
                 <option value="chrome">Google Chrome</option>
@@ -349,7 +327,7 @@ export const UniversalBulkImportModal: React.FC<UniversalBulkImportModalProps> =
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label htmlFor="field-005" className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
                 Custom Tag
               </label>
               <input

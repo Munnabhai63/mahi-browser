@@ -2,18 +2,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { app, dialog } from '../../08_SECURITY/electron-bridge.js';
+import { app } from '../../08_SECURITY/electron-bridge.js';
 import { getWritableUserDataDir } from '../utils/runtime-paths.js';
 import { getProfiles, createProfile } from '../../02_BROWSER/services/profile-service.js';
 import { getProxies, createProxy } from '../../02_BROWSER/services/proxy-service.js';
 import { getWorkflows, saveWorkflow } from '../../09_AUTOMATION/automation-engine.js';
 import { getWorkspaces, createWorkspace } from '../../02_BROWSER/services/workspace-service.js';
-import { getAppSettings, updateAppSettings } from './settings-service.js';
-import {
+import { getAppSettings } from './settings-service.js';
+import type {
   MasterVaultBundle,
   MasterVaultExportOptions,
   MasterVaultImportResult,
 } from '../../10_CONFIG/shared/types/resources.js';
+import type { ProxyProtocol } from '../../10_CONFIG/shared/types/proxy.js';
 import { logActivity } from './audit-service.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -123,7 +124,7 @@ export async function importMasterVault(bundleJson: string, password?: string): 
     let payloadString = '';
 
     if (bundle.encrypted) {
-      if (!password || !password.trim()) {
+      if (!password?.trim()) {
         throw new Error('This vault backup is encrypted. Please provide the master password to restore.');
       }
       if (!bundle.salt || !bundle.iv || !bundle.authTag) {
@@ -158,7 +159,7 @@ export async function importMasterVault(bundleJson: string, password?: string): 
         try {
           createProxy({
             name: p.name || 'Restored Proxy',
-            protocol: (p.protocol || p.type || 'http') as any,
+            protocol: (p.protocol || p.type || 'http') as ProxyProtocol,
             host: p.host,
             port: p.port,
             username: p.username,

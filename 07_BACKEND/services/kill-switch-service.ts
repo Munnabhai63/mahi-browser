@@ -14,12 +14,12 @@
  *   - Safe in-memory fallback when neither SQLite nor PG nor Redis is initialized
  */
 
-import http from 'node:http';
+import type http from 'node:http';
 import { AppError } from '../utils/app-error.js';
 import { isRedisConfigured, getRedisClient } from '../../08_SECURITY/redis-lock-service.js';
 import { isPostgresConfigured } from '../../06_DATABASE/central-repository.js';
 import { getPrismaClient } from '../../06_DATABASE/prisma-client.js';
-import { getDatabase, SqliteWrapper } from '../../06_DATABASE/connection.js';
+import { getDatabase, type SqliteWrapper } from '../../06_DATABASE/connection.js';
 import { createLogger } from '../utils/logger.js';
 const log = createLogger('kill-switch-service');
 
@@ -59,25 +59,46 @@ function tryGetSqlite(): SqliteWrapper | null {
   }
 }
 
-function getCapablePgPrisma(): any | null {
+interface PgRawPrismaClient {
+  $queryRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+  $executeRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+}
+
+interface RedisKvClient {
+  get: (key: string) => Promise<string | null>;
+  set: (key: string, value: string) => Promise<unknown>;
+  del?: (key: string) => Promise<unknown>;
+}
+
+function getCapablePgPrisma(): PgRawPrismaClient | null {
   if (!isPostgresConfigured()) return null;
-  const prisma = getPrismaClient() as any;
-  if (!prisma || typeof prisma.$queryRaw !== 'function' || typeof prisma.$executeRaw !== 'function') {
+  const prisma: unknown = getPrismaClient();
+  if (
+    !prisma ||
+    typeof prisma !== 'object' ||
+    typeof (prisma as Partial<PgRawPrismaClient>).$queryRaw !== 'function' ||
+    typeof (prisma as Partial<PgRawPrismaClient>).$executeRaw !== 'function'
+  ) {
     return null;
   }
-  return prisma;
+  return prisma as PgRawPrismaClient;
 }
 
-function getRedisKvClient(): any | null {
+function getRedisKvClient(): RedisKvClient | null {
   if (!isRedisConfigured()) return null;
-  const client = getRedisClient() as any;
-  if (!client || typeof client.get !== 'function' || typeof client.set !== 'function') {
+  const client: unknown = getRedisClient();
+  if (
+    !client ||
+    typeof client !== 'object' ||
+    typeof (client as Partial<RedisKvClient>).get !== 'function' ||
+    typeof (client as Partial<RedisKvClient>).set !== 'function'
+  ) {
     return null;
   }
-  return client;
+  return client as RedisKvClient;
 }
 
-async function ensurePgFlagsTable(prisma: any): Promise<boolean> {
+async function ensurePgFlagsTable(prisma: PgRawPrismaClient): Promise<boolean> {
   if (pgFlagsTableReady.has(prisma)) return true;
   try {
     await prisma.$executeRaw`
@@ -90,8 +111,8 @@ async function ensurePgFlagsTable(prisma: any): Promise<boolean> {
     `;
     pgFlagsTableReady.add(prisma);
     return true;
-  } catch (err: any) {
-    log.warn('[KillSwitch] PostgreSQL flags table init warning:', err?.message || err);
+  } catch (err: unknown) {
+    log.warn('[KillSwitch] PostgreSQL flags table init warning:', err instanceof Error ? err.message : String(err));
     return false;
   }
 }
@@ -99,8 +120,10 @@ async function ensurePgFlagsTable(prisma: any): Promise<boolean> {
 function parsePersistedRecord(raw: unknown): PersistedKillSwitchRecord | null {
   if (!raw) return null;
   try {
-    const obj = typeof raw === 'string' ? JSON.parse(raw) : (raw as any);
-    if (typeof obj?.enabled !== 'boolean') return null;
+    const parsed: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!parsed || typeof parsed !== 'object') return null;
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj.enabled !== 'boolean') return null;
     return {
       enabled: obj.enabled,
       reason: typeof obj.reason === 'string' ? obj.reason : null,
@@ -124,8 +147,8 @@ async function readPersistedKillSwitchRecordAsync(): Promise<{
       if (parsed) {
         return { record: parsed, source: 'redis' };
       }
-    } catch (err: any) {
-      log.warn('[KillSwitch] Redis read warning, checking database:', err?.message || err);
+    } catch (err: unknown) {
+      log.warn('[KillSwitch] Redis read warning, checking database:', err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -148,8 +171,8 @@ async function readPersistedKillSwitchRecordAsync(): Promise<{
           return { record: parsed, source: 'database' };
         }
       }
-    } catch (err: any) {
-      log.warn('[KillSwitch] PostgreSQL read warning, falling back:', err?.message || err);
+    } catch (err: unknown) {
+      log.warn('[KillSwitch] PostgreSQL read warning, falling back:', err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -268,8 +291,8 @@ export async function setEmergencyKillSwitchAsync(params: {
   if (redis) {
     try {
       await redis.set(KILL_SWITCH_REDIS_KEY, payload);
-    } catch (err: any) {
-      log.warn('[KillSwitch] Redis sync write warning:', err?.message || err);
+    } catch (err: unknown) {
+      log.warn('[KillSwitch] Redis sync write warning:', err instanceof Error ? err.message : String(err));
     }
   }
 

@@ -7,7 +7,7 @@
  * piped file streams (`Readable.pipe(res)`), and live SSE streams (`res.write(...)`).
  */
 
-import http from 'node:http';
+import type http from 'node:http';
 import crypto from 'node:crypto';
 import { Writable, PassThrough } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -36,6 +36,11 @@ type BridgeOutcome =
   | { kind: 'stream'; statusCode: number; stream: PassThrough }
   | { kind: 'unhandled' };
 
+export interface RawBridgeRequest extends http.IncomingMessage {
+  body?: unknown;
+  rawBuffer?: Buffer;
+}
+
 class FastifyResponseBridge extends Writable {
   public statusCode = 200;
   public statusMessage = '';
@@ -63,13 +68,13 @@ class FastifyResponseBridge extends Writable {
 
   public setHeader(name: string, value: number | string | readonly string[]): this {
     if (!this.headersSent) {
-      this.reply.header(name, value as any);
+      this.reply.header(name, value as Parameters<FastifyReply['header']>[1]);
     }
     return this;
   }
 
   public getHeader(name: string): number | string | string[] | undefined {
-    return this.reply.getHeader(name) as any;
+    return this.reply.getHeader(name) as number | string | string[] | undefined;
   }
 
   public hasHeader(name: string): boolean {
@@ -77,7 +82,7 @@ class FastifyResponseBridge extends Writable {
   }
 
   public getHeaders(): Record<string, number | string | string[] | undefined> {
-    return this.reply.getHeaders() as any;
+    return this.reply.getHeaders() as Record<string, number | string | string[] | undefined>;
   }
 
   public removeHeader(name: string): void {
@@ -106,7 +111,7 @@ class FastifyResponseBridge extends Writable {
     if (headersObj && !Array.isArray(headersObj)) {
       for (const [k, v] of Object.entries(headersObj)) {
         if (v !== undefined) {
-          this.reply.header(k, v as any);
+          this.reply.header(k, v as Parameters<FastifyReply['header']>[1]);
         }
       }
     }
@@ -116,11 +121,20 @@ class FastifyResponseBridge extends Writable {
   }
 
   override end(cb?: () => void): this;
-  override end(chunk: any, cb?: () => void): this;
-  override end(chunk: any, encoding: BufferEncoding, cb?: () => void): this;
-  override end(chunk?: any, encodingOrCb?: BufferEncoding | (() => void), cb?: () => void): this {
+  override end(chunk: unknown, cb?: () => void): this;
+  override end(chunk: unknown, encoding: BufferEncoding, cb?: () => void): this;
+  override end(chunk?: unknown, encodingOrCb?: BufferEncoding | (() => void), cb?: () => void): this {
     this.endInvoked = true;
-    return super.end(chunk, encodingOrCb as any, cb);
+    if (typeof chunk === 'function') {
+      return super.end(chunk);
+    }
+    if (typeof encodingOrCb === 'function') {
+      return super.end(chunk, encodingOrCb);
+    }
+    if (encodingOrCb !== undefined) {
+      return super.end(chunk, encodingOrCb, cb);
+    }
+    return super.end(chunk);
   }
 
   private ensureStreamStarted(): PassThrough {
@@ -147,11 +161,15 @@ class FastifyResponseBridge extends Writable {
   }
 
   override _write(
-    chunk: any,
+    chunk: unknown,
     encoding: BufferEncoding,
     callback: (error?: Error | null) => void
   ): void {
-    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), encoding);
+    const buf = Buffer.isBuffer(chunk)
+      ? chunk
+      : chunk instanceof Uint8Array
+        ? Buffer.from(chunk)
+        : Buffer.from(String(chunk), encoding);
     const contentType = String(this.reply.getHeader('content-type') || '').toLowerCase();
 
     // Only enter PassThrough streaming when callers use res.write() directly (SSE or piped streams)
@@ -245,7 +263,7 @@ class FastifyResponseBridge extends Writable {
 }
 
 export function normalizeBridgeRequest(request: FastifyRequest): URL {
-  const req = request.raw as any;
+  const req = request.raw as RawBridgeRequest;
   req.body = request.body;
   if (req.rawBuffer === undefined) {
     if (Buffer.isBuffer(request.body)) {

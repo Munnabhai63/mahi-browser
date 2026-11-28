@@ -16,7 +16,7 @@
 import { getRedisClient, isRedisConfigured } from './redis-lock-service.js';
 import { isPostgresConfigured } from '../06_DATABASE/central-repository.js';
 import { getPrismaClient } from '../06_DATABASE/prisma-client.js';
-import { getDatabase, SqliteWrapper } from '../06_DATABASE/connection.js';
+import { getDatabase, type SqliteWrapper } from '../06_DATABASE/connection.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
 const log = createLogger('distributed-state-service');
 
@@ -73,6 +73,31 @@ const localKvMap = new Map<string, LocalKvEntry>();
 const pgInitializedClients = new WeakSet<object>();
 const sqliteInitializedDbs = new WeakSet<object>();
 
+interface PgRawPrismaClient {
+  $queryRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+  $executeRaw: (query: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+}
+
+interface RedisKvClient {
+  get: (key: string) => Promise<string | null>;
+  set: (key: string, value: string, mode?: string, duration?: number) => Promise<unknown>;
+  del: (key: string) => Promise<unknown>;
+  pttl?: (key: string) => Promise<number | string>;
+  ttl?: (key: string) => Promise<number | string>;
+  eval?: (script: string, numKeys: number, ...args: string[]) => Promise<unknown>;
+  incr?: (key: string) => Promise<number | string>;
+  pexpire?: (key: string, ms: number) => Promise<unknown>;
+  expire?: (key: string, seconds: number) => Promise<unknown>;
+}
+
+interface RedisCounterClient extends RedisKvClient {
+  incr: (key: string) => Promise<number | string>;
+}
+
+function toErrMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 function buildStateKey(namespace: string, key: string): string {
   return `${KEY_PREFIX}${namespace}:${key}`;
 }
@@ -109,16 +134,21 @@ function ensureSqliteStateTable(db: SqliteWrapper): boolean {
   }
 }
 
-function getCapablePgPrisma(): any | null {
+function getCapablePgPrisma(): PgRawPrismaClient | null {
   if (!isPostgresConfigured()) return null;
-  const prisma = getPrismaClient() as any;
-  if (!prisma || typeof prisma.$queryRaw !== 'function' || typeof prisma.$executeRaw !== 'function') {
+  const prisma: unknown = getPrismaClient();
+  if (
+    !prisma ||
+    typeof prisma !== 'object' ||
+    typeof (prisma as Partial<PgRawPrismaClient>).$queryRaw !== 'function' ||
+    typeof (prisma as Partial<PgRawPrismaClient>).$executeRaw !== 'function'
+  ) {
     return null;
   }
-  return prisma;
+  return prisma as PgRawPrismaClient;
 }
 
-async function ensurePgStateTable(prisma: any): Promise<boolean> {
+async function ensurePgStateTable(prisma: PgRawPrismaClient): Promise<boolean> {
   if (pgInitializedClients.has(prisma)) {
     return true;
   }
@@ -133,27 +163,28 @@ async function ensurePgStateTable(prisma: any): Promise<boolean> {
     `;
     pgInitializedClients.add(prisma);
     return true;
-  } catch (err: any) {
-    log.warn('[DistributedState] PostgreSQL state table init warning:', err?.message || err);
+  } catch (err: unknown) {
+    log.warn('[DistributedState] PostgreSQL state table init warning:', toErrMsg(err));
     return false;
   }
 }
 
-function getRedisKvClient(): any | null {
+function getRedisKvClient(): RedisKvClient | null {
   if (!isRedisConfigured()) return null;
-  const client = getRedisClient() as any;
+  const client: unknown = getRedisClient();
   if (
     !client ||
-    typeof client.get !== 'function' ||
-    typeof client.set !== 'function' ||
-    typeof client.del !== 'function'
+    typeof client !== 'object' ||
+    typeof (client as Partial<RedisKvClient>).get !== 'function' ||
+    typeof (client as Partial<RedisKvClient>).set !== 'function' ||
+    typeof (client as Partial<RedisKvClient>).del !== 'function'
   ) {
     return null;
   }
-  return client;
+  return client as RedisKvClient;
 }
 
-function getRedisCounterClient(): any | null {
+function getRedisCounterClient(): RedisCounterClient | null {
   const client = getRedisKvClient();
   if (!client) return null;
   const hasLuaIncr = typeof client.eval === 'function' && typeof client.incr === 'function';
@@ -161,11 +192,11 @@ function getRedisCounterClient(): any | null {
   if (!hasLuaIncr && !hasDirectIncr) {
     return null;
   }
-  return client;
+  return client as RedisCounterClient;
 }
 
 async function incrementRedisCounterAtomic(
-  redis: any,
+  redis: RedisCounterClient,
   fullKey: string,
   windowMs: number
 ): Promise<{ count: number; pttlMs: number }> {
@@ -343,8 +374,8 @@ export async function consumeFixedWindowRateLimitAsync(params: {
           resetAt: now + pttlMs,
           backend: 'redis',
         };
-      } catch (err: any) {
-        log.warn('[DistributedState] Redis rate-limit error, falling back:', err?.message || err);
+      } catch (err: unknown) {
+        log.warn('[DistributedState] Redis rate-limit error, falling back:', toErrMsg(err));
       }
     }
 
@@ -380,8 +411,8 @@ export async function consumeFixedWindowRateLimitAsync(params: {
             backend: 'postgres',
           };
         }
-      } catch (err: any) {
-        log.warn('[DistributedState] PostgreSQL rate-limit error, falling back:', err?.message || err);
+      } catch (err: unknown) {
+        log.warn('[DistributedState] PostgreSQL rate-limit error, falling back:', toErrMsg(err));
       }
     }
   }
@@ -439,8 +470,8 @@ export async function checkAttemptLockoutAsync(params: {
           retryAfterSeconds: Math.max(1, Math.ceil(pttlMs / 1000)),
           backend: 'redis',
         };
-      } catch (err: any) {
-        log.warn('[DistributedState] Redis lockout check error, falling back:', err?.message || err);
+      } catch (err: unknown) {
+        log.warn('[DistributedState] Redis lockout check error, falling back:', toErrMsg(err));
       }
     }
 
@@ -474,8 +505,8 @@ export async function checkAttemptLockoutAsync(params: {
           retryAfterSeconds: count >= params.maxAttempts ? Math.max(1, Math.ceil(remainingMs / 1000)) : 0,
           backend: 'postgres',
         };
-      } catch (err: any) {
-        log.warn('[DistributedState] PostgreSQL lockout check error, falling back:', err?.message || err);
+      } catch (err: unknown) {
+        log.warn('[DistributedState] PostgreSQL lockout check error, falling back:', toErrMsg(err));
       }
     }
   }
@@ -524,8 +555,8 @@ export async function clearAttemptsAsync(params: { namespace: string; key: strin
   if (redis) {
     try {
       await redis.del(fullKey);
-    } catch (err: any) {
-      log.warn('[DistributedState] Redis clear attempts warning:', err?.message || err);
+    } catch (err: unknown) {
+      log.warn('[DistributedState] Redis clear attempts warning:', toErrMsg(err));
     }
   }
 
@@ -533,8 +564,8 @@ export async function clearAttemptsAsync(params: { namespace: string; key: strin
   if (prisma && (await ensurePgStateTable(prisma))) {
     try {
       await prisma.$executeRaw`DELETE FROM system_runtime_state WHERE state_key = ${fullKey}`;
-    } catch (err: any) {
-      log.warn('[DistributedState] PostgreSQL clear attempts warning:', err?.message || err);
+    } catch (err: unknown) {
+      log.warn('[DistributedState] PostgreSQL clear attempts warning:', toErrMsg(err));
     }
   }
 }
@@ -560,8 +591,8 @@ export async function setDistributedKvAsync(params: {
     try {
       await redis.set(fullKey, payload, 'EX', ttlSec);
       return;
-    } catch (err: any) {
-      log.warn('[DistributedState] Redis KV set warning, falling back:', err?.message || err);
+    } catch (err: unknown) {
+      log.warn('[DistributedState] Redis KV set warning, falling back:', toErrMsg(err));
     }
   }
 
@@ -576,8 +607,8 @@ export async function setDistributedKvAsync(params: {
           expires_at_ms = EXCLUDED.expires_at_ms
       `;
       return;
-    } catch (err: any) {
-      log.warn('[DistributedState] PostgreSQL KV set warning, falling back:', err?.message || err);
+    } catch (err: unknown) {
+      log.warn('[DistributedState] PostgreSQL KV set warning, falling back:', toErrMsg(err));
     }
   }
 
@@ -629,8 +660,8 @@ export async function getDistributedKvAsync(params: {
         return null;
       }
       return parsed;
-    } catch (err: any) {
-      log.warn('[DistributedState] Redis KV get warning, falling back:', err?.message || err);
+    } catch (err: unknown) {
+      log.warn('[DistributedState] Redis KV get warning, falling back:', toErrMsg(err));
     }
   }
 
@@ -656,8 +687,8 @@ export async function getDistributedKvAsync(params: {
         return null;
       }
       return JSON.parse(rows[0].value_json);
-    } catch (err: any) {
-      log.warn('[DistributedState] PostgreSQL KV get warning, falling back:', err?.message || err);
+    } catch (err: unknown) {
+      log.warn('[DistributedState] PostgreSQL KV get warning, falling back:', toErrMsg(err));
     }
   }
 

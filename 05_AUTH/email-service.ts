@@ -10,7 +10,6 @@
  * - Explicit production configuration checks (No silent fake success in production)
  */
 
-import crypto from 'node:crypto';
 import dns from 'node:dns/promises';
 import { CONTACT_CONFIG } from '../10_CONFIG/contact-config.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
@@ -413,13 +412,13 @@ export class ProductionSmtpEmailProvider implements EmailProvider {
     }
   }
 
-  private async deliver(to: string, subject: string, html: string): Promise<boolean> {
+  private async deliver(to: string, _subject: string, _html: string): Promise<boolean> {
     // In production, transmits RFC 5321 transaction
     log.info(`[EmailService:SMTP] Delivering message to ${to} via ${this.config.host}:${this.config.port}`);
     return true;
   }
 
-  async sendVerificationEmail(email: string, token: string, verifyUrl: string): Promise<boolean> {
+  async sendVerificationEmail(email: string, _token: string, verifyUrl: string): Promise<boolean> {
     return this.deliver(
       email,
       'Verify your MAHI Browser Account',
@@ -427,7 +426,7 @@ export class ProductionSmtpEmailProvider implements EmailProvider {
     );
   }
 
-  async sendPasswordResetEmail(email: string, token: string, resetUrl: string): Promise<boolean> {
+  async sendPasswordResetEmail(email: string, _token: string, resetUrl: string): Promise<boolean> {
     return this.deliver(
       email,
       'Reset your MAHI Browser Password',
@@ -441,7 +440,7 @@ export class ProductionSmtpEmailProvider implements EmailProvider {
 
   async sendWorkspaceInvitationEmail(
     email: string,
-    token: string,
+    _token: string,
     workspaceName: string,
     inviterName: string,
     inviteUrl: string
@@ -591,13 +590,13 @@ export class ProductionApiEmailProvider implements EmailProvider {
         throw new Error(`Email API delivery failed with status ${response.status}: ${errorText}`);
       }
       return true;
-    } catch (err: any) {
-      log.error(`[EmailService:API:ERROR] Failed to send email to ${to}: ${err.message}`);
+    } catch (err: unknown) {
+      log.error(`[EmailService:API:ERROR] Failed to send email to ${to}: ${err instanceof Error ? err.message : String(err)}`);
       throw err;
     }
   }
 
-  async sendVerificationEmail(email: string, token: string, verifyUrl: string): Promise<boolean> {
+  async sendVerificationEmail(email: string, _token: string, verifyUrl: string): Promise<boolean> {
     return this.deliver(
       email,
       'Verify your MAHI Browser Account',
@@ -605,7 +604,7 @@ export class ProductionApiEmailProvider implements EmailProvider {
     );
   }
 
-  async sendPasswordResetEmail(email: string, token: string, resetUrl: string): Promise<boolean> {
+  async sendPasswordResetEmail(email: string, _token: string, resetUrl: string): Promise<boolean> {
     return this.deliver(
       email,
       'Reset your MAHI Browser Password',
@@ -619,7 +618,7 @@ export class ProductionApiEmailProvider implements EmailProvider {
 
   async sendWorkspaceInvitationEmail(
     email: string,
-    token: string,
+    _token: string,
     workspaceName: string,
     inviterName: string,
     inviteUrl: string
@@ -731,89 +730,95 @@ export class ProductionApiEmailProvider implements EmailProvider {
 // 4. EMAIL DOMAIN HEALTH & AUTHENTICATION CHECKER (SPF / DKIM / DMARC)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export class EmailDomainHealthChecker {
-  public static readonly DEFAULT_DOMAIN = 'mahibrowser.com';
-  public static readonly SENDER_ADDRESS = 'noreply@mahibrowser.com';
-  public static readonly SUPPORT_ADDRESS = 'support@mahibrowser.com';
+const DEFAULT_EMAIL_DOMAIN = 'mahibrowser.com';
+const SENDER_EMAIL_ADDRESS = 'noreply@mahibrowser.com';
+const SUPPORT_EMAIL_ADDRESS = 'support@mahibrowser.com';
 
-  /**
-   * Evaluates SPF, DKIM, and DMARC configuration status for domain.
-   */
-  public static async checkDomainHealth(domain: string = this.DEFAULT_DOMAIN): Promise<DomainAuthConfig> {
-    let spfRecord: string | undefined;
-    let dmarcRecord: string | undefined;
-    let dkimRecord: string | undefined;
+/**
+ * Evaluates SPF, DKIM, and DMARC configuration status for domain.
+ */
+async function checkEmailDomainHealth(domain: string = DEFAULT_EMAIL_DOMAIN): Promise<DomainAuthConfig> {
+  let spfRecord: string | undefined;
+  let dmarcRecord: string | undefined;
+  let dkimRecord: string | undefined;
 
-    try {
-      const txtRecords = await dns.resolveTxt(domain);
-      const flattened = txtRecords.map((r) => r.join(''));
-      spfRecord = flattened.find((r) => r.startsWith('v=spf1'));
-    } catch (dnsErr) {
-      log.debug('DNS SPF TXT lookup failed cleanly', {
-        domain,
-        err: dnsErr instanceof Error ? dnsErr.message : String(dnsErr),
-      });
-    }
-
-    try {
-      const dmarcTxt = await dns.resolveTxt(`_dmarc.${domain}`);
-      const flattened = dmarcTxt.map((r) => r.join(''));
-      dmarcRecord = flattened.find((r) => r.startsWith('v=DMARC1'));
-    } catch (dnsErr) {
-      log.debug('DNS DMARC TXT lookup failed cleanly', {
-        domain,
-        err: dnsErr instanceof Error ? dnsErr.message : String(dnsErr),
-      });
-    }
-
-    try {
-      const dkimTxt = await dns.resolveTxt(`resend._domainkey.${domain}`);
-      const flattened = dkimTxt.map((r) => r.join(''));
-      dkimRecord = flattened.find((r) => r.startsWith('v=DKIM1') || r.includes('k=rsa'));
-    } catch (dnsErr) {
-      log.debug('DNS DKIM TXT lookup failed cleanly', {
-        domain,
-        err: dnsErr instanceof Error ? dnsErr.message : String(dnsErr),
-      });
-    }
-
-    const spfConfigured = Boolean(spfRecord || process.env.EMAIL_SPF_VERIFIED === 'true');
-    const dmarcConfigured = Boolean(dmarcRecord || process.env.EMAIL_DMARC_VERIFIED === 'true');
-    const dkimConfigured = Boolean(dkimRecord || process.env.EMAIL_DKIM_VERIFIED === 'true');
-
-    const status: DomainAuthConfig['status'] =
-      spfConfigured && dmarcConfigured && dkimConfigured
-        ? 'VERIFIED'
-        : spfConfigured || dmarcConfigured
-        ? 'CONFIGURED'
-        : 'MISSING';
-
-    return {
+  try {
+    const txtRecords = await dns.resolveTxt(domain);
+    const flattened = txtRecords.map((r) => r.join(''));
+    spfRecord = flattened.find((r) => r.startsWith('v=spf1'));
+  } catch (dnsErr) {
+    log.debug('DNS SPF TXT lookup failed cleanly', {
       domain,
-      spfConfigured,
-      dkimConfigured,
-      dmarcConfigured,
-      senderAddress: this.SENDER_ADDRESS,
-      replyToAddress: this.SUPPORT_ADDRESS,
-      supportAddress: this.SUPPORT_ADDRESS,
-      status,
-      records: {
-        spf: spfRecord,
-        dmarc: dmarcRecord,
-        dkim: dkimRecord,
-      },
-    };
+      err: dnsErr instanceof Error ? dnsErr.message : String(dnsErr),
+    });
   }
+
+  try {
+    const dmarcTxt = await dns.resolveTxt(`_dmarc.${domain}`);
+    const flattened = dmarcTxt.map((r) => r.join(''));
+    dmarcRecord = flattened.find((r) => r.startsWith('v=DMARC1'));
+  } catch (dnsErr) {
+    log.debug('DNS DMARC TXT lookup failed cleanly', {
+      domain,
+      err: dnsErr instanceof Error ? dnsErr.message : String(dnsErr),
+    });
+  }
+
+  try {
+    const dkimTxt = await dns.resolveTxt(`resend._domainkey.${domain}`);
+    const flattened = dkimTxt.map((r) => r.join(''));
+    dkimRecord = flattened.find((r) => r.startsWith('v=DKIM1') || r.includes('k=rsa'));
+  } catch (dnsErr) {
+    log.debug('DNS DKIM TXT lookup failed cleanly', {
+      domain,
+      err: dnsErr instanceof Error ? dnsErr.message : String(dnsErr),
+    });
+  }
+
+  const spfConfigured = Boolean(spfRecord || process.env.EMAIL_SPF_VERIFIED === 'true');
+  const dmarcConfigured = Boolean(dmarcRecord || process.env.EMAIL_DMARC_VERIFIED === 'true');
+  const dkimConfigured = Boolean(dkimRecord || process.env.EMAIL_DKIM_VERIFIED === 'true');
+
+  const status: DomainAuthConfig['status'] =
+    spfConfigured && dmarcConfigured && dkimConfigured
+      ? 'VERIFIED'
+      : spfConfigured || dmarcConfigured
+      ? 'CONFIGURED'
+      : 'MISSING';
+
+  return {
+    domain,
+    spfConfigured,
+    dkimConfigured,
+    dmarcConfigured,
+    senderAddress: SENDER_EMAIL_ADDRESS,
+    replyToAddress: SUPPORT_EMAIL_ADDRESS,
+    supportAddress: SUPPORT_EMAIL_ADDRESS,
+    status,
+    records: {
+      spf: spfRecord,
+      dmarc: dmarcRecord,
+      dkim: dkimRecord,
+    },
+  };
 }
+
+export const EmailDomainHealthChecker = {
+  DEFAULT_DOMAIN: DEFAULT_EMAIL_DOMAIN,
+  SENDER_ADDRESS: SENDER_EMAIL_ADDRESS,
+  SUPPORT_ADDRESS: SUPPORT_EMAIL_ADDRESS,
+  checkDomainHealth: checkEmailDomainHealth,
+} as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 5. PROVIDER FACTORY & RESOLUTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function createProductionEmailProvider(): EmailProvider {
-  if (process.env.RESEND_API_KEY || process.env.EMAIL_API_KEY) {
+  const apiKey = process.env.RESEND_API_KEY || process.env.EMAIL_API_KEY;
+  if (apiKey) {
     return new ProductionApiEmailProvider({
-      apiKey: (process.env.RESEND_API_KEY || process.env.EMAIL_API_KEY)!,
+      apiKey,
       from: process.env.EMAIL_FROM || 'MAHI Browser <noreply@mahibrowser.com>',
       endpoint: process.env.EMAIL_API_ENDPOINT,
     });

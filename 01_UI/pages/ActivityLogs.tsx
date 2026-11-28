@@ -1,34 +1,32 @@
-import React, { useEffect, useState } from 'react';
+import type React from 'react';
+import { useEffect, useState } from 'react';
 import {
-  ScrollText,
   Search,
   Trash2,
-  Filter,
   CheckCircle2,
   AlertCircle,
   AlertTriangle,
   Info,
   RefreshCw,
   Activity,
-  Shield,
 } from 'lucide-react';
 import { useLogStore } from '../stores/useLogStore.js';
-import { LogCategory, LogSeverity } from '../../10_CONFIG/shared/types/logs.js';
+import type { LogCategory, LogSeverity } from '../../10_CONFIG/shared/types/logs.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 
 interface ActivityLogsProps {
   onNavigate: (page: NavigationPage) => void;
 }
 
-export const ActivityLogsPage: React.FC<ActivityLogsProps> = ({ onNavigate }) => {
+export const ActivityLogsPage: React.FC<ActivityLogsProps> = ({ onNavigate: _onNavigate }) => {
   const { logs, fetchLogs, clearLogs, filter, setFilter } = useLogStore();
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     fetchLogs();
-  }, []);
+  }, [fetchLogs]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -81,7 +79,7 @@ export const ActivityLogsPage: React.FC<ActivityLogsProps> = ({ onNavigate }) =>
         </div>
 
         <div className="flex items-center space-x-2">
-          <button
+          <button type="button"
             onClick={handleRefresh}
             disabled={isRefreshing}
             className="p-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition active:scale-95 shadow-xs"
@@ -90,7 +88,7 @@ export const ActivityLogsPage: React.FC<ActivityLogsProps> = ({ onNavigate }) =>
             <RefreshCw className={`w-4 h-4 text-teal-500 ${isRefreshing ? 'animate-spin' : ''}`} />
           </button>
 
-          <button
+          <button type="button"
             onClick={() => setIsClearConfirmOpen(true)}
             disabled={logs.length === 0}
             className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-40 text-rose-600 dark:text-rose-400 border border-rose-500/20 text-xs font-semibold rounded-xl flex items-center space-x-1.5 transition-colors active:scale-95 shadow-xs"

@@ -125,7 +125,7 @@ async function runSmokeTest() {
       let logContents = '';
       for (const logPath of crashLogCandidates) {
         if (fs.existsSync(logPath)) {
-          logContents += fs.readFileSync(logPath, 'utf8') + '\n';
+          logContents += `${fs.readFileSync(logPath, 'utf8')}\n`;
         }
       }
 

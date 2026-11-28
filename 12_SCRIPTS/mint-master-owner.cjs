@@ -1,9 +1,9 @@
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
 const initSqlJs = require('sql.js');
 
-const os = require('os');
+const os = require('node:os');
 
 function resolveDatabasePath() {
   if (process.env.MAHI_DB_PATH) return process.env.MAHI_DB_PATH;
@@ -30,10 +30,10 @@ async function main() {
   const db = new SQL.Database(fileBuffer);
 
   const bytes = crypto.randomBytes(16).toString('hex').toUpperCase();
-  const rawKey = 'MAHI-OWNER-' + bytes.substring(0, 4) + '-' + bytes.substring(4, 8) + '-' + bytes.substring(8, 12);
+  const rawKey = `MAHI-OWNER-${bytes.substring(0, 4)}-${bytes.substring(4, 8)}-${bytes.substring(8, 12)}`;
   const normalizedKey = rawKey.toUpperCase().replace(/[^A-Z0-9]/g, '');
   const keyHash = crypto.createHash('sha256').update(normalizedKey).digest('hex');
-  const keyMasked = 'MAHI-OWNER-****-****-' + bytes.substring(8, 12);
+  const keyMasked = `MAHI-OWNER-****-****-${bytes.substring(8, 12)}`;
   
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -62,7 +62,7 @@ async function main() {
   fs.writeFileSync(dbPath, Buffer.from(data));
 
   console.log('===MASTER_KEY_RESULT===');
-  console.log('KEY:' + rawKey);
+  console.log(`KEY:${rawKey}`);
   console.log('CUSTOMER:Master Owner (Lifetime Enterprise)');
   console.log('DEVICES:100 Seats');
   console.log('VALIDITY:LIFETIME (Permanent)');

@@ -1,12 +1,23 @@
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import { SoftwareVersionRecord, CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
+import type { SoftwareVersionRecord, CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 
 export const CURRENT_SOFTWARE_VERSION = '2.0.0';
 
+interface SqliteSoftwareVersionRow {
+  id: string;
+  version: string;
+  release_notes: string;
+  min_supported_version: string;
+  download_url_setup: string | null;
+  download_url_portable: string | null;
+  is_mandatory: number;
+  released_at: string;
+}
+
 export function getSoftwareVersions(): SoftwareVersionRecord[] {
   const db = getDatabase();
-  const rows = db.prepare('SELECT * FROM software_versions ORDER BY released_at DESC').all() as any[];
+  const rows = db.prepare('SELECT * FROM software_versions ORDER BY released_at DESC').all() as SqliteSoftwareVersionRow[];
 
   if (rows.length === 0) {
     const defaultVersion: SoftwareVersionRecord = {

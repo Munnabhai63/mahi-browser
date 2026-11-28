@@ -4,7 +4,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import * as electron from '../../08_SECURITY/electron-bridge.js';
-import {
+import type {
   ExportProfileOptions,
   BulkExportOptions,
   ImportProfileOptions,
@@ -13,7 +13,47 @@ import {
   CrossPlatformImportResult,
   MahiProfileArchiveData,
 } from '../../10_CONFIG/shared/types/archive.js';
-import { Profile } from '../../10_CONFIG/shared/types/profile.js';
+import type { Profile } from '../../10_CONFIG/shared/types/profile.js';
+import type { ProxyProtocol } from '../../10_CONFIG/shared/types/proxy.js';
+
+interface ElectronAppBridgeLike {
+  app?: { getPath?: (name: 'downloads' | 'userData') => string };
+  default?: { app?: { getPath?: (name: 'downloads' | 'userData') => string } };
+}
+
+interface CrossPlatformRawProxy {
+  host?: string;
+  ip?: string;
+  server?: string;
+  port?: string | number;
+  type?: string;
+  protocol?: string;
+  username?: string;
+  login?: string;
+  password?: string;
+  pass?: string;
+}
+
+interface CrossPlatformRawProfile {
+  name?: string;
+  title?: string;
+  profile_name?: string;
+  userAgent?: string;
+  user_agent?: string;
+  ua?: string;
+  tags?: string[];
+  cookies?: unknown;
+  cookie?: unknown;
+  proxy?: CrossPlatformRawProxy;
+}
+
+function normalizeImportedProtocol(raw?: string): ProxyProtocol {
+  const lower = (raw || 'http').toLowerCase();
+  if (lower === 'https' || lower === 'socks5' || lower === 'socks4') {
+    return lower;
+  }
+  return 'http';
+}
 import { getProfileById, createProfile, getProfileStoragePath } from './profile-service.js';
 import { getCookies, importCookies } from './cookie-service.js';
 import { getHistory } from './history-service.js';
@@ -36,7 +76,7 @@ interface RawArchiveFileStructure {
 
 function getDefaultExportDir(): string {
   try {
-    const electronObj = electron as any;
+    const electronObj = electron as ElectronAppBridgeLike;
     const app = electronObj?.app || electronObj?.default?.app;
     if (app && typeof app.getPath === 'function') {
       const p = app.getPath('downloads');
@@ -181,7 +221,7 @@ function createTarHeader(
   header.write(name, 0, 100, 'utf8');
 
   // 100-107: mode (8 bytes octal)
-  header.write(mode.toString(8).padStart(6, '0') + ' \0', 100, 8, 'ascii');
+  header.write(`${mode.toString(8).padStart(6, '0')} \0`, 100, 8, 'ascii');
 
   // 108-115: uid
   header.write('000000 \0', 108, 8, 'ascii');
@@ -190,11 +230,11 @@ function createTarHeader(
   header.write('000000 \0', 116, 8, 'ascii');
 
   // 124-135: size (12 bytes octal)
-  const sizeOctal = size.toString(8).padStart(11, '0') + ' ';
+  const sizeOctal = `${size.toString(8).padStart(11, '0')} `;
   header.write(sizeOctal, 124, 12, 'ascii');
 
   // 136-147: mtime (12 bytes octal)
-  const mtimeOctal = mtime.toString(8).padStart(11, '0') + ' ';
+  const mtimeOctal = `${mtime.toString(8).padStart(11, '0')} `;
   header.write(mtimeOctal, 136, 12, 'ascii');
 
   // 148-155: chksum (initialized to 8 spaces)
@@ -227,7 +267,7 @@ function createTarHeader(
   }
 
   // Write checksum: 6 octal digits + null + space
-  const chksumOctal = sum.toString(8).padStart(6, '0') + '\0 ';
+  const chksumOctal = `${sum.toString(8).padStart(6, '0')}\0 `;
   header.write(chksumOctal, 148, 8, 'ascii');
 
   return header;
@@ -237,7 +277,7 @@ function createTarHeader(
  * Creates GNU @LongLink tar blocks (header + padded data) for paths exceeding POSIX ustar limits.
  */
 function createGnuLongLinkBlocks(relPath: string): Buffer[] {
-  const pathBuf = Buffer.from(relPath + '\0', 'utf8');
+  const pathBuf = Buffer.from(`${relPath}\0`, 'utf8');
   const longLinkHeader = createTarHeader('././@LongLink', pathBuf.length, 0o644, 0, 'L');
   const pad = (512 - (pathBuf.length % 512)) % 512;
   const blocks = [longLinkHeader, pathBuf];
@@ -363,7 +403,7 @@ export async function packProfileSessionTarGz(
 export async function unpackProfileSessionTarGz(
   tarGzBufferOrPath: Buffer | string,
   targetProfileId: string
-): Promise<{ fileCount: number; bytesExtracted: number; profileMetadata?: any }> {
+): Promise<{ fileCount: number; bytesExtracted: number; profileMetadata?: Record<string, unknown> }> {
   let rawBuffer: Buffer;
   if (typeof tarGzBufferOrPath === 'string') {
     if (!fs.existsSync(tarGzBufferOrPath)) {
@@ -386,7 +426,7 @@ export async function unpackProfileSessionTarGz(
   let offset = 0;
   let fileCount = 0;
   let bytesExtracted = 0;
-  let profileMetadata: any = null;
+  let profileMetadata: Record<string, unknown> | null = null;
   let pendingLongPath: string | null = null;
 
   while (offset + 512 <= tarBuf.length) {
@@ -430,8 +470,8 @@ export async function unpackProfileSessionTarGz(
       relPath = pendingLongPath;
       pendingLongPath = null;
     } else {
-      let name = headerBuf.toString('utf8', 0, 100).replace(/\0.*$/, '').trim();
-      let prefix = headerBuf.toString('utf8', 345, 500).replace(/\0.*$/, '').trim();
+      const name = headerBuf.toString('utf8', 0, 100).replace(/\0.*$/, '').trim();
+      const prefix = headerBuf.toString('utf8', 345, 500).replace(/\0.*$/, '').trim();
       relPath = prefix ? `${prefix}/${name}` : name;
     }
 
@@ -692,7 +732,7 @@ export function previewProfileArchive(filePath: string, password?: string): Impo
         };
       }
 
-      const salt = Buffer.from(fileStructure.saltHex!, 'hex');
+      const salt = Buffer.from(fileStructure.saltHex ?? '', 'hex');
       const derivedKey = deriveKeyFromPassword(password, salt);
       try {
         jsonStr = decryptData(fileStructure.payload, derivedKey);
@@ -764,8 +804,11 @@ export function importProfileFromArchive(options: ImportProfileOptions) {
 
   let jsonStr: string;
   if (fileStructure.isEncrypted) {
-    const salt = Buffer.from(fileStructure.saltHex!, 'hex');
-    const derivedKey = deriveKeyFromPassword(options.password!, salt);
+    if (!fileStructure.saltHex || !options.password) {
+      throw new Error('Encrypted profile archive requires password and salt');
+    }
+    const salt = Buffer.from(fileStructure.saltHex, 'hex');
+    const derivedKey = deriveKeyFromPassword(options.password, salt);
     jsonStr = decryptData(fileStructure.payload, derivedKey);
   } else {
     try {
@@ -818,7 +861,7 @@ export function importProfileFromArchive(options: ImportProfileOptions) {
 
   logActivity('PROFILE', 'SUCCESS', 'Import Profile', `Imported profile archive into "${profileName}"`, newProfile.id, profileName);
 
-  return getProfileById(newProfile.id)!;
+  return getProfileById(newProfile.id) ?? newProfile;
 }
 
 /**
@@ -929,11 +972,12 @@ export function importCrossPlatformProfiles(dto: CrossPlatformImportDTO): CrossP
   const importedProfiles: Profile[] = [];
   const errors: string[] = [];
 
-  let parsed: any;
+  let parsed: CrossPlatformRawProfile | CrossPlatformRawProfile[];
   try {
-    parsed = JSON.parse(jsonData);
-  } catch (err: any) {
-    return { success: false, importedCount: 0, profiles: [], errors: [`Invalid JSON: ${err.message}`] };
+    parsed = JSON.parse(jsonData) as CrossPlatformRawProfile | CrossPlatformRawProfile[];
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    return { success: false, importedCount: 0, profiles: [], errors: [`Invalid JSON: ${errMsg}`] };
   }
 
   const items = Array.isArray(parsed) ? parsed : [parsed];
@@ -956,13 +1000,13 @@ export function importCrossPlatformProfiles(dto: CrossPlatformImportDTO): CrossP
         // Map proxy if present
         const pHost = item.proxy.host || item.proxy.ip || item.proxy.server;
         const pPort = parseInt(String(item.proxy.port), 10);
-        if (pHost && !isNaN(pPort)) {
+        if (pHost && !Number.isNaN(pPort)) {
           try {
             const createdProxy = createProxy({
               name: `${name} Proxy`,
               host: pHost,
               port: pPort,
-              protocol: (item.proxy.type || item.proxy.protocol || 'http').toLowerCase() as any,
+              protocol: normalizeImportedProtocol(item.proxy.type || item.proxy.protocol),
               username: item.proxy.username || item.proxy.login,
               password: item.proxy.password || item.proxy.pass,
             });
@@ -992,8 +1036,9 @@ export function importCrossPlatformProfiles(dto: CrossPlatformImportDTO): CrossP
       }
 
       importedProfiles.push(newProfile);
-    } catch (itemErr: any) {
-      errors.push(`Item ${i + 1} (${item.name || 'unnamed'}): ${itemErr.message}`);
+    } catch (itemErr: unknown) {
+      const errMsg = itemErr instanceof Error ? itemErr.message : String(itemErr);
+      errors.push(`Item ${i + 1} (${item.name || 'unnamed'}): ${errMsg}`);
     }
   }
 

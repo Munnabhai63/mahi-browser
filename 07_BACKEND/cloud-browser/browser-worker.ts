@@ -13,7 +13,7 @@
  * - Clean shutdown, flush wait, and secure workspace wipe
  */
 
-import { spawn, exec, ChildProcess } from 'node:child_process';
+import { spawn, exec, type ChildProcess } from 'node:child_process';
 import http from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
@@ -26,9 +26,10 @@ import {
 } from '../../02_BROWSER/managed-engine.js';
 import { resolveExecutablePath } from '../../02_BROWSER/detector.js';
 import { getProxyById, getDecryptedProxyCredentials } from '../../02_BROWSER/services/proxy-service.js';
-import { createProxyTunnel, ProxyTunnelHandle } from '../../02_BROWSER/proxy-tunnel.js';
+import { createProxyTunnel, type ProxyTunnelHandle } from '../../02_BROWSER/proxy-tunnel.js';
 import { prepareCleanProfilePreferences } from '../../02_BROWSER/launcher.js';
 import { createLogger } from '../utils/logger.js';
+import type { PartialProfileSettings, ProfileSettings } from '../../10_CONFIG/shared/types/profile.js';
 
 const log = createLogger('browser-worker');
 
@@ -37,7 +38,7 @@ export interface CloudWorkerLaunchOptions {
   userId: string;
   profileId: string;
   runtimeDir: string;
-  settings?: any;
+  settings?: PartialProfileSettings | ProfileSettings;
   startupUrl?: string;
   resourceClass?: 'STANDARD' | 'PRO' | 'HIGH_PERF';
 }
@@ -270,7 +271,7 @@ export class BrowserWorkerManager {
               });
             }
           }
-          (proc as any).killed = true;
+          (proc as unknown as { killed: boolean }).killed = true;
         } catch (stopErr) {
           log.warn('Cloud worker stop routine encountered unexpected error', {
             sessionId,

@@ -31,3 +31,49 @@ export interface CloudSyncProgressEvent {
   message?: string;
   error?: string;
 }
+
+export type CloudSyncMode = 'full' | 'cookies_only';
+
+export interface CloudSyncUploadOptions {
+  force?: boolean;
+  baseVersion?: number;
+  mode?: CloudSyncMode;
+}
+
+export interface CloudSyncUploadResult {
+  success: boolean;
+  skipped?: boolean;
+  reason?: 'unchanged';
+  mode?: CloudSyncMode;
+  manifestHash?: string;
+  cloudProfile?: {
+    id: string;
+    version?: number;
+    deltaVersion?: number;
+    name?: string;
+  };
+  conflict?: boolean;
+  currentCloudVersion?: number;
+  localBaseVersion?: number;
+}
+
+export interface CloudSyncRestoreOptions {
+  overrideName?: string;
+  targetFolder?: string;
+  passphrase?: string;
+  version?: number;
+  targetLocalProfileId?: string;
+  mode?: CloudSyncMode;
+}
+
+export type CloudSyncConflictResolution =
+  | 'DOWNLOAD_LATEST'
+  | 'KEEP_LOCAL_AS_NEW'
+  | 'OVERWRITE_FORCE';
+
+export interface RestoredCloudProfileSummary {
+  id: string;
+  name: string;
+  folder?: string;
+  status?: string;
+}

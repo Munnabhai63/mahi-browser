@@ -18,12 +18,15 @@ const isWebDashboard =
    window.location.hostname.startsWith('app.') ||
    localStorage.getItem('mahi_app_mode') === 'web');
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <Suspense fallback={<PageLoadingFallback fullScreen label="Starting MAHI Browser..." />}>
-        {isWebDashboard ? <WebDashboardApp /> : <App />}
-      </Suspense>
-    </ErrorBoundary>
-  </React.StrictMode>
-);
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoadingFallback fullScreen label="Starting MAHI Browser..." />}>
+          {isWebDashboard ? <WebDashboardApp /> : <App />}
+        </Suspense>
+      </ErrorBoundary>
+    </React.StrictMode>
+  );
+}

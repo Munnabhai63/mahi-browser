@@ -1,6 +1,7 @@
-import React, { useState, memo } from 'react';
+import type React from 'react';
+import { useState, memo } from 'react';
 import { Shield, Activity, Play, Sparkles, Cookie } from 'lucide-react';
-import { Profile } from '../../../10_CONFIG/shared/types/profile.js';
+import type { Profile } from '../../../10_CONFIG/shared/types/profile.js';
 import { CountryFlag } from '../CountryFlag.js';
 
 export type WarmerDepth = 'quick' | 'standard' | 'deep';
@@ -40,10 +41,10 @@ export const UniversalProxyModal: React.FC<UniversalProxyModalProps> = memo(({
         setRawTestResult(parsed.testResult);
         await onFetchProxies();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setRawTestResult({
         success: false,
-        errorMessage: err.message || 'Invalid proxy format',
+        errorMessage: err instanceof Error ? err.message : 'Invalid proxy format',
       });
     } finally {
       setIsTestingRawProxy(false);
@@ -73,14 +74,14 @@ export const UniversalProxyModal: React.FC<UniversalProxyModalProps> = memo(({
               <p className="text-[11px] text-slate-400">Paste in any standard format (ip:port:user:pass)</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold">
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold">
             ✕
           </button>
         </div>
 
         <div className="p-6 space-y-4">
           <div>
-            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Universal Proxy String *</label>
+            <label htmlFor="field-001" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Universal Proxy String *</label>
             <input
               type="text"
               value={rawProxyInput}
@@ -196,7 +197,7 @@ export const StealthTesterModal: React.FC<{
             <p className="text-[11px] text-slate-400">Test {profile.name} on live detection checkers</p>
           </div>
         </div>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold">
+        <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold">
           ✕
         </button>
       </div>
@@ -208,9 +209,8 @@ export const StealthTesterModal: React.FC<{
 
         <div className="space-y-2 pt-1">
           {STEALTH_CHECKERS.map((item) => (
-            <button
-              key={item.url}
-              type="button"
+            <button type="button"
+              key={item.url}
               onClick={() => onLaunchChecker(item.url)}
               className="w-full p-3 bg-slate-50 dark:bg-slate-950/70 hover:bg-teal-500/5 dark:hover:bg-teal-500/10 border border-slate-200 dark:border-slate-800 hover:border-teal-500/40 rounded-2xl flex items-center justify-between text-left transition-all group"
             >
@@ -284,7 +284,7 @@ export const SingleWarmerModal: React.FC<{
             <p className="text-[11px] text-slate-400">Warm profile "{profile.name}"</p>
           </div>
         </div>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold" disabled={isWarming}>
+        <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold" disabled={isWarming}>
           ✕
         </button>
       </div>
@@ -295,11 +295,10 @@ export const SingleWarmerModal: React.FC<{
         </p>
 
         <div className="space-y-2">
-          <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Select Warmup Depth</label>
+          <label htmlFor="field-002" className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Select Warmup Depth</label>
           {SINGLE_WARM_OPTIONS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
+            <button type="button"
+              key={item.id}
               onClick={() => onChangeMode(item.id)}
               className={`w-full p-3 rounded-2xl border text-left transition-all flex items-center justify-between ${
                 warmerMode === item.id
@@ -365,7 +364,7 @@ export const BulkWarmerModal: React.FC<{
             <p className="text-[11px] text-slate-400">Farming {selectedCount} selected profiles</p>
           </div>
         </div>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold" disabled={isWarming}>
+        <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold" disabled={isWarming}>
           ✕
         </button>
       </div>
@@ -376,11 +375,10 @@ export const BulkWarmerModal: React.FC<{
         </p>
 
         <div className="space-y-2">
-          <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Select Warmup Depth</label>
+          <label htmlFor="field-003" className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Select Warmup Depth</label>
           {BULK_WARM_OPTIONS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
+            <button type="button"
+              key={item.id}
               onClick={() => onChangeMode(item.id)}
               className={`w-full p-3 rounded-2xl border text-left transition-all ${
                 warmerMode === item.id

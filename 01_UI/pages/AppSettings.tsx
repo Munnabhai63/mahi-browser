@@ -1,15 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Settings,
   Shield,
-  Lock,
-  Cpu,
-  Terminal,
-  KeyRound,
   Copy,
   CheckCircle2,
   Save,
-  Globe2,
   DownloadCloud,
   RefreshCw,
   AlertCircle,
@@ -18,10 +13,10 @@ import {
 } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
-import { AppSettings } from '../../10_CONFIG/shared/types/settings.js';
-import { UpdateConfig, UpdateStatusEvent } from '../../10_CONFIG/shared/types/updater.js';
-import { ProfileCacheCleanupResult } from '../../10_CONFIG/shared/types/ipc.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { AppSettings } from '../../10_CONFIG/shared/types/settings.js';
+import type { UpdateConfig, UpdateStatusEvent } from '../../10_CONFIG/shared/types/updater.js';
+import type { ProfileCacheCleanupResult } from '../../10_CONFIG/shared/types/ipc.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
 
@@ -29,8 +24,8 @@ interface AppSettingsPageProps {
   onNavigate: (page: NavigationPage) => void;
 }
 
-export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) => {
-  const { settings, fetchSettings, updateSettings, theme, setTheme } = useSettingsStore();
+export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate: _onNavigate }) => {
+  const { settings, fetchSettings, updateSettings, setTheme } = useSettingsStore();
   const { showToast } = useToastStore();
 
   const [activeTab, setActiveTab] = useState<'general' | 'privacy' | 'security' | 'performance' | 'api' | 'updates'>('general');
@@ -80,7 +75,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
         setEngineStatus({ installed: s.installed, version: s.version });
       }).catch((err) => { console.debug('[AppSettings] getManagedEngineStatus failed', err); });
     }
-  }, []);
+  }, [fetchSettings]);
 
   useEffect(() => {
     setFormData(JSON.parse(JSON.stringify(settings)));
@@ -108,8 +103,8 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
           showToast({ type: 'error', title: 'Update Notice', message: res.error || 'Update check encountered an issue.' });
         }
       }
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Update Check Error', message: err.message });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Update Check Error', message: err instanceof Error ? err.message : String(err) });
     } finally {
       setIsCheckingUpdate(false);
     }
@@ -152,8 +147,8 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
           showToast({ type: 'error', title: 'Repair Failed', message: result.error || 'Could not repair the browser engine. Please reinstall MAHI Browser.' });
         }
       }
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Repair Error', message: err.message || 'Unexpected error during engine repair.' });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Repair Error', message: err instanceof Error ? err.message : 'Unexpected error during engine repair.' });
     } finally {
       setIsRepairingEngine(false);
     }
@@ -172,11 +167,11 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
           message: `Found ${res.cacheFoldersMatched} cache folder(s) (${res.mbReclaimable.toLocaleString()} MB reclaimable).`,
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         type: 'error',
         title: 'Cache Scan Failed',
-        message: err?.message || 'Could not scan profile caches.',
+        message: err instanceof Error ? err.message : 'Could not scan profile caches.',
       });
     } finally {
       setIsScanningCache(false);
@@ -199,11 +194,11 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
               : `Freed ${res.mbReclaimable.toLocaleString()} MB across ${res.deletedFolders} cache folder(s).`,
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         type: 'error',
         title: 'Cache Cleanup Error',
-        message: err?.message || 'Unexpected error during cache cleanup.',
+        message: err instanceof Error ? err.message : 'Unexpected error during cache cleanup.',
       });
     } finally {
       setIsCleaningCache(false);
@@ -221,7 +216,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
           </p>
         </div>
 
-        <button
+        <button type="button"
           onClick={handleSave}
           className="px-5 py-2 bg-teal-600 hover:bg-teal-500 text-white font-semibold text-xs rounded-xl shadow-sm flex items-center space-x-1.5 active:scale-95 transition-all"
         >
@@ -233,16 +228,16 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
       {/* Tabs */}
       <div className="flex items-center space-x-1 border-b border-slate-200 dark:border-slate-800 text-xs font-semibold">
         {[
-          { id: 'general', label: 'General' },
-          { id: 'privacy', label: 'Privacy' },
-          { id: 'security', label: 'Security & App Lock' },
-          { id: 'performance', label: 'Performance' },
-          { id: 'api', label: 'Local REST API' },
-          { id: 'updates', label: 'Updates & Channel' },
+          { id: 'general' as const, label: 'General' },
+          { id: 'privacy' as const, label: 'Privacy' },
+          { id: 'security' as const, label: 'Security & App Lock' },
+          { id: 'performance' as const, label: 'Performance' },
+          { id: 'api' as const, label: 'Local REST API' },
+          { id: 'updates' as const, label: 'Updates & Channel' },
         ].map((tab) => (
-          <button
+          <button type="button"
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => setActiveTab(tab.id)}
             className={`px-4 py-3 border-b-2 transition-colors ${
               activeTab === tab.id
                 ? 'border-teal-500 text-teal-600 dark:text-teal-400'
@@ -260,17 +255,18 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
         {activeTab === 'general' && (
           <div className="space-y-5 max-w-2xl animate-in fade-in duration-150 text-xs">
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-001" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Interface Theme
               </label>
               <select
                 value={formData.general.theme}
                 onChange={(e) => {
+                  const nextTheme = e.target.value as 'light' | 'dark' | 'system';
                   setFormData({
                     ...formData,
-                    general: { ...formData.general, theme: e.target.value as any },
+                    general: { ...formData.general, theme: nextTheme },
                   });
-                  setTheme(e.target.value as any);
+                  setTheme(nextTheme);
                 }}
                 className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl"
               >
@@ -281,7 +277,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-002" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Default Browser Engine
               </label>
               <select
@@ -289,7 +285,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
                 onChange={(e) =>
                   setFormData({
                     ...formData,
-                    general: { ...formData.general, defaultBrowserEngine: e.target.value as any },
+                    general: { ...formData.general, defaultBrowserEngine: e.target.value as 'chrome' | 'edge' | 'chromium' | 'camoufox' },
                   })
                 }
                 className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl"
@@ -302,7 +298,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-003" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Startup Action
               </label>
               <select
@@ -310,7 +306,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
                 onChange={(e) =>
                   setFormData({
                     ...formData,
-                    general: { ...formData.general, startupBehavior: e.target.value as any },
+                    general: { ...formData.general, startupBehavior: e.target.value as 'dashboard' | 'last_profiles' | 'none' },
                   })
                 }
                 className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl"
@@ -327,7 +323,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
         {activeTab === 'privacy' && (
           <div className="space-y-4 max-w-2xl animate-in fade-in duration-150 text-xs">
             <div className="space-y-3">
-              <label className="flex items-center space-x-2.5 cursor-pointer">
+              <label htmlFor="field-004" className="flex items-center space-x-2.5 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={formData.privacy.clearDataOnExit}
@@ -344,7 +340,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
                 </span>
               </label>
 
-              <label className="flex items-center space-x-2.5 cursor-pointer">
+              <label htmlFor="field-005" className="flex items-center space-x-2.5 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={formData.privacy.doNotTrack}
@@ -408,7 +404,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
 
               {formData.security.appLockEnabled && (
                 <div>
-                  <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  <label htmlFor="field-006" className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
                     Current PIN
                   </label>
                   <input
@@ -422,7 +418,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
               )}
 
               <div>
-                <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                <label htmlFor="field-007" className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
                   {formData.security.appLockEnabled ? 'New PIN' : 'Set Application Lock PIN'}
                 </label>
                 <input
@@ -452,7 +448,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
         {activeTab === 'performance' && (
           <div className="space-y-4 max-w-2xl animate-in fade-in duration-150 text-xs">
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-008" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Maximum Concurrent Active Browser Profiles
               </label>
               <input
@@ -485,9 +481,9 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
                     )}
                   </span>
                 </div>
-                <button
+                <button type="button"
                   id="btn-repair-engine"
-                  type="button"
+
                   disabled={isRepairingEngine}
                   onClick={handleRepairEngine}
                   className="px-4 py-2 bg-slate-700 hover:bg-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-semibold rounded-xl flex items-center gap-2 transition active:scale-95 disabled:opacity-50 text-xs"
@@ -517,9 +513,9 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
+                  <button type="button"
                     id="btn-scan-cache"
-                    type="button"
+
                     disabled={isScanningCache || isCleaningCache}
                     onClick={handleScanCache}
                     className="px-3.5 py-2 bg-slate-700 hover:bg-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-semibold rounded-xl flex items-center gap-1.5 transition active:scale-95 disabled:opacity-50 text-xs"
@@ -529,9 +525,9 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
                   </button>
 
                   {!showCleanConfirm && (
-                    <button
+                    <button type="button"
                       id="btn-clean-cache"
-                      type="button"
+
                       disabled={
                         isScanningCache ||
                         isCleaningCache ||
@@ -555,9 +551,9 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
                     Delete {cacheReport.cacheFoldersMatched} temporary cache folder(s) ({cacheReport.mbReclaimable.toLocaleString()} MB)?
                   </span>
                   <div className="flex items-center gap-2">
-                    <button
+                    <button type="button"
                       id="btn-confirm-clean-cache"
-                      type="button"
+
                       disabled={isCleaningCache}
                       onClick={handleApplyCacheCleanup}
                       className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-lg text-[11px] transition active:scale-95"
@@ -650,7 +646,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-009" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Bearer Authentication Token
               </label>
               <div className="flex items-center space-x-2">
@@ -745,7 +741,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
 
             {/* Channel Selection */}
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-010" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Release Channel
               </label>
               <select
@@ -768,7 +764,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
 
             {/* Automation Preferences */}
             <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
-              <label className="flex items-center space-x-2.5 cursor-pointer">
+              <label htmlFor="field-011" className="flex items-center space-x-2.5 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={updateConfig.autoCheck}
@@ -787,7 +783,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
                 </div>
               </label>
 
-              <label className="flex items-center space-x-2.5 cursor-pointer">
+              <label htmlFor="field-012" className="flex items-center space-x-2.5 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={updateConfig.autoDownload}
@@ -806,7 +802,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
                 </div>
               </label>
 
-              <label className="flex items-center space-x-2.5 cursor-pointer">
+              <label htmlFor="field-013" className="flex items-center space-x-2.5 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={updateConfig.notifyBeforeRestart}

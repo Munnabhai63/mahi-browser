@@ -3,12 +3,12 @@
  * Phase 5 Architecture
  */
 
-import { ProxyProvider } from './proxy-provider-interface.js';
+import type { ProxyProvider } from './proxy-provider-interface.js';
 import { MockProxyProvider } from './adapters/mock-proxy-provider.js';
 import { BrightDataProxyProvider } from './adapters/brightdata-adapter.js';
 import { OxylabsProxyProvider } from './adapters/oxylabs-adapter.js';
 import { SmartproxyProvider } from './adapters/smartproxy-adapter.js';
-import {
+import type {
   ProxyProviderInfo,
   ProxyNetworkType,
   ProxySessionType,
@@ -116,8 +116,6 @@ export class ProxyProviderRegistry {
             return candidate;
           }
         } catch {
-          // Failover to next candidate
-          continue;
         }
       }
     }

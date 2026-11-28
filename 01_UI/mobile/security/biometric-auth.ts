@@ -56,7 +56,7 @@ export class BiometricAuthService {
   /**
    * Requests user authentication via BiometricPrompt.
    */
-  public async promptAuthenticate(reason = 'Unlock MAHI Browser'): Promise<{ success: boolean; error?: string }> {
+  public async promptAuthenticate(_reason = 'Unlock MAHI Browser'): Promise<{ success: boolean; error?: string }> {
     if (!this.isEnabledInSettings) {
       this.isUnlockedForSession = true;
       return { success: true };

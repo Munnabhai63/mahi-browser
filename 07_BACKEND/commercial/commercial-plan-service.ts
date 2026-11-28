@@ -1,10 +1,26 @@
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import { CommercialPlan, CommercialPlanLimits, CommercialPlanTier, CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
+import type { CommercialPlan, CommercialPlanLimits, CommercialPlanTier, CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
-import { CANONICAL_PLAN_CATALOG, legacyPlanIdToCanonical, INITIAL_PLAN_PRICES, calculateAuthoritativeOrderTotal } from './canonical-plan-catalog.js';
+import { CANONICAL_PLAN_CATALOG, legacyPlanIdToCanonical, calculateAuthoritativeOrderTotal } from './canonical-plan-catalog.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('commercial-plan-service');
+
+interface SqliteCommercialPlanRow {
+  id: string;
+  name: string;
+  tier: string;
+  price_monthly: number;
+  price_annual: number;
+  limits_json: string | null;
+  is_active: number;
+  created_at: string;
+}
+
+function getCanonicalPlanSpec(canonicalId: string | null) {
+  if (!canonicalId) return null;
+  return (CANONICAL_PLAN_CATALOG as Record<string, (typeof CANONICAL_PLAN_CATALOG)[keyof typeof CANONICAL_PLAN_CATALOG]>)[canonicalId] || null;
+}
 
 export const DEFAULT_COMMERCIAL_PLANS: CommercialPlan[] = [
   {
@@ -152,7 +168,7 @@ export const DEFAULT_COMMERCIAL_PLANS: CommercialPlan[] = [
 
 export function getCommercialPlans(includeInactive = false): CommercialPlan[] {
   const db = getDatabase();
-  const rows = db.prepare('SELECT * FROM commercial_plans ORDER BY price_monthly ASC').all() as any[];
+  const rows = db.prepare('SELECT * FROM commercial_plans ORDER BY price_monthly ASC').all<SqliteCommercialPlanRow>();
 
   if (rows.length === 0) {
     // Seed default plans
@@ -195,9 +211,9 @@ export function getCommercialPlanById(planId: string): CommercialPlan | null {
   const normalizedId = resolved.startsWith('mahi_')
     ? resolved
     : (resolved.startsWith('plan_') ? resolved : `plan_${resolved}`);
-  let row = db.prepare('SELECT * FROM commercial_plans WHERE id = ? OR id = ?').get(resolved, normalizedId) as any;
+  let row = db.prepare('SELECT * FROM commercial_plans WHERE id = ? OR id = ?').get<SqliteCommercialPlanRow>(resolved, normalizedId);
   if (!row) {
-    row = db.prepare('SELECT * FROM commercial_plans WHERE LOWER(tier) = ?').get(resolved.toLowerCase()) as any;
+    row = db.prepare('SELECT * FROM commercial_plans WHERE LOWER(tier) = ?').get<SqliteCommercialPlanRow>(resolved.toLowerCase());
   }
   if (!row) {
     // Prefer exact default plan IDs (e.g. plan_pro, plan_free, mahi_starter/growth/ultimate)
@@ -213,7 +229,7 @@ export function getCommercialPlanById(planId: string): CommercialPlan | null {
 
     // Check canonical catalog (Pro 10, 25, 50, 100, team aliases, etc.)
     const canonicalId = legacyPlanIdToCanonical(planId);
-    const canonical = canonicalId ? (CANONICAL_PLAN_CATALOG as any)[canonicalId] : null;
+    const canonical = getCanonicalPlanSpec(canonicalId);
     if (canonical && canonicalId) {
       const orderTotalMonthly = calculateAuthoritativeOrderTotal({ planId: canonicalId, billingCycle: 'MONTHLY', currency: 'INR' });
       const orderTotalAnnual = calculateAuthoritativeOrderTotal({ planId: canonicalId, billingCycle: 'ANNUAL', currency: 'INR' });
@@ -290,7 +306,11 @@ export function createCommercialPlan(dto: {
     details: `Created new plan "${dto.name}" (${dto.tier}) with maxProfiles=${dto.limits.maxProfiles}, maxDevices=${dto.limits.maxDevices}`,
   });
 
-  return getCommercialPlanById(id)!;
+  const createdPlan = getCommercialPlanById(id);
+  if (!createdPlan) {
+    throw new Error(`Created commercial plan ${id} could not be retrieved`);
+  }
+  return createdPlan;
 }
 
 export function updateCommercialPlan(
@@ -352,10 +372,10 @@ export function updateCommercialPlan(
   return updated;
 }
 
-function mapRowToPlan(r: any): CommercialPlan {
+function mapRowToPlan(r: SqliteCommercialPlanRow): CommercialPlan {
   const defaultPlan = DEFAULT_COMMERCIAL_PLANS.find((p) => p.id === r.id);
   const canonicalId = legacyPlanIdToCanonical(r.id);
-  const canonical = canonicalId ? (CANONICAL_PLAN_CATALOG as any)[canonicalId] : null;
+  const canonical = getCanonicalPlanSpec(canonicalId);
   let limits: CommercialPlanLimits = defaultPlan
     ? { ...defaultPlan.limits }
     : {

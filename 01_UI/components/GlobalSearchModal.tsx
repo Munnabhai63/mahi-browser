@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import type React from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Layers, Shield, PlaySquare, Play, Square, X, ArrowRight } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useProxyStore } from '../stores/useProxyStore.js';
 import { useAutomationStore } from '../stores/useAutomationStore.js';
-import { NavigationPage } from './Sidebar.js';
+import type { NavigationPage } from './Sidebar.js';
 
 interface GlobalSearchModalProps {
   isOpen: boolean;
@@ -13,7 +14,7 @@ interface GlobalSearchModalProps {
 
 export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, onClose, onNavigate }) => {
   const [query, setQuery] = useState('');
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [_selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { profiles, startProfile, stopProfile, setSelectedProfileId } = useProfileStore();
@@ -76,7 +77,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
             placeholder="Search profiles, proxies, workflows (Ctrl+K)..."
             className="flex-1 bg-transparent border-none outline-none text-slate-800 dark:text-slate-100 placeholder-slate-400 text-sm"
           />
-          <button onClick={onClose} className="p-1 rounded-md text-slate-400 hover:text-slate-200">
+          <button type="button" onClick={onClose} className="p-1 rounded-md text-slate-400 hover:text-slate-200">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -93,14 +94,17 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
                   return (
                     <div
                       key={p.id}
-                      onClick={() => {
-                        setSelectedProfileId(p.id);
-                        onNavigate('profile-settings');
-                        onClose();
-                      }}
-                      className="group px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer flex items-center justify-between transition-colors"
+                      className="group px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 flex items-center justify-between transition-colors"
                     >
-                      <div className="flex items-center space-x-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedProfileId(p.id);
+                          onNavigate('profile-settings');
+                          onClose();
+                        }}
+                        className="flex items-center space-x-3 flex-1 text-left cursor-pointer focus:outline-none"
+                      >
                         <div className="p-2 rounded-md bg-teal-500/10 text-teal-600 dark:text-teal-400">
                           <Layers className="w-4 h-4" />
                         </div>
@@ -112,11 +116,11 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
                             Folder: {p.folder} {p.tags.length > 0 && `• ${p.tags.join(', ')}`}
                           </p>
                         </div>
-                      </div>
+                      </button>
 
                       <div className="flex items-center space-x-2">
                         {isRunning ? (
-                          <button
+                          <button type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               stopProfile(p.id);
@@ -127,7 +131,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
                             <span>Stop</span>
                           </button>
                         ) : (
-                          <button
+                          <button type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               startProfile(p.id);
@@ -152,13 +156,14 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
               <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">Proxies</div>
               <div className="space-y-1 mt-1">
                 {filteredProxies.map((pr) => (
-                  <div
+                  <button
+                    type="button"
                     key={pr.id}
                     onClick={() => {
                       onNavigate('proxies');
                       onClose();
                     }}
-                    className="px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer flex items-center justify-between"
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer flex items-center justify-between"
                   >
                     <div className="flex items-center space-x-3">
                       <div className="p-2 rounded-md bg-indigo-500/10 text-indigo-500">
@@ -172,7 +177,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
                       </div>
                     </div>
                     <ArrowRight className="w-4 h-4 text-slate-400" />
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -184,13 +189,14 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
               <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">Automation</div>
               <div className="space-y-1 mt-1">
                 {filteredWorkflows.map((w) => (
-                  <div
+                  <button
+                    type="button"
                     key={w.id}
                     onClick={() => {
                       onNavigate('automation');
                       onClose();
                     }}
-                    className="px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer flex items-center justify-between"
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/80 cursor-pointer flex items-center justify-between"
                   >
                     <div className="flex items-center space-x-3">
                       <div className="p-2 rounded-md bg-amber-500/10 text-amber-500">
@@ -202,7 +208,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({ isOpen, on
                       </div>
                     </div>
                     <ArrowRight className="w-4 h-4 text-slate-400" />
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>

@@ -1,20 +1,22 @@
-import http from 'node:http';
+import type http from 'node:http';
 import crypto from 'node:crypto';
 import { verifyAccessToken } from '../../../05_AUTH/central-auth-service.js';
 import { verifyToken } from '../commercial-auth-service.js';
 import { verifyAdminAccess } from '../../../05_AUTH/admin-auth.js';
 import { isValidAdminWebSecret } from '../../../08_SECURITY/install-secrets.js';
-import { CommercialRole } from '../../../10_CONFIG/shared/types/commercial.js';
+import type { CommercialRole } from '../../../10_CONFIG/shared/types/commercial.js';
 import { getDatabase } from '../../../06_DATABASE/connection.js';
 import { getCentralRepository, isPostgresConfigured } from '../../../06_DATABASE/central-repository.js';
+import type { AuthUserRecord } from '../../../06_DATABASE/central-repository-types.js';
 import { getPrismaClient } from '../../../06_DATABASE/prisma-client.js';
+import type { PrismaClient } from '@prisma/client';
 import {
   resolveTrustedClientIp,
   normalizeIp,
   isTrustedOrigin,
   readBoundedBuffer,
   parseBoundedJson,
-  BoundedBodyOptions,
+  type BoundedBodyOptions,
 } from '../../utils/http-security.js';
 import {
   consumeFixedWindowRateLimitAsync,
@@ -26,10 +28,38 @@ const log = createLogger('router-shared');
 
 export { resolveTrustedClientIp };
 
+export interface ResponseWithReq extends http.ServerResponse {
+  __req?: http.IncomingMessage;
+}
+
+interface SqliteSessionRow {
+  id: string;
+  user_id: string;
+  is_revoked: number | boolean;
+  expires_at: string | Date | null;
+}
+
+interface SqliteAuthUserLookupRow {
+  id: string;
+  email: string;
+  role: string;
+  status?: string;
+}
+
+export interface AuthPublicUser {
+  id: string;
+  email: string;
+  name?: string | null;
+  role?: string;
+  status?: string;
+  planId?: string;
+  [key: string]: unknown;
+}
+
 export function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown): void {
   const existingOrigin = typeof res?.getHeader === 'function' ? res.getHeader('Access-Control-Allow-Origin') : undefined;
   if (!existingOrigin && typeof res?.setHeader === 'function') {
-    const req = (res as any).__req as http.IncomingMessage | undefined;
+    const req = (res as ResponseWithReq).__req;
     const origin = (req?.headers?.origin as string) || '';
     if (origin && isTrustedOrigin(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
@@ -47,8 +77,8 @@ export function sendJSON(res: http.ServerResponse, statusCode: number, data: unk
   res.end(JSON.stringify(data));
 }
 
-export function parseBody(req: http.IncomingMessage, options: BoundedBodyOptions = {}): Promise<any> {
-  return parseBoundedJson(req, options);
+export function parseBody<T = Record<string, unknown>>(req: http.IncomingMessage, options: BoundedBodyOptions = {}): Promise<T> {
+  return parseBoundedJson<T>(req, options);
 }
 
 export function parseRawBuffer(req: http.IncomingMessage, options: BoundedBodyOptions = {}): Promise<Buffer> {
@@ -118,7 +148,7 @@ function resolveCookieSecurityAttributes(req?: http.IncomingMessage): {
   const isHttps =
     reqProto === 'https' ||
     originHeader.startsWith('https://') ||
-    Boolean((req?.socket as any)?.encrypted);
+    Boolean((req?.socket as { encrypted?: boolean } | undefined)?.encrypted);
 
   const useSecure = isHttps || (isProdNonElectron && !isLocalHost);
   const secureAttr = useSecure ? '; Secure' : '';
@@ -211,7 +241,7 @@ export function extractRequestAuthToken(req: http.IncomingMessage): {
   source: 'bearer' | 'cookie' | 'none';
 } {
   const authHeader =
-    (req.headers['authorization'] as string) ||
+    req.headers.authorization ||
     (req.headers['x-mahi-token'] ? `Bearer ${req.headers['x-mahi-token']}` : '');
   if (authHeader.startsWith('Bearer ')) {
     const bearer = authHeader.substring(7).trim();
@@ -222,7 +252,7 @@ export function extractRequestAuthToken(req: http.IncomingMessage): {
 
   const cookies = parseCookies(req);
   const cookieToken = cookies[AUTH_SESSION_COOKIE_NAME] || cookies[LEGACY_AUTH_COOKIE_NAME];
-  if (cookieToken && cookieToken.trim()) {
+  if (cookieToken?.trim()) {
     return { token: cookieToken.trim(), source: 'cookie' };
   }
 
@@ -250,9 +280,9 @@ export function verifySqliteUserAndSession(
     return { active: true, foundInDb: false };
   }
 
-  let userRow: any = null;
+  let userRow: SqliteAuthUserLookupRow | undefined;
   try {
-    userRow = db.prepare('SELECT id, email, role, status FROM auth_users WHERE id = ?').get(userId);
+    userRow = db.prepare('SELECT id, email, role, status FROM auth_users WHERE id = ?').get(userId) as SqliteAuthUserLookupRow | undefined;
   } catch (err) {
     log.debug('SQLite auth_users lookup skipped in verifySqliteUserAndSession', {
       userId,
@@ -261,7 +291,7 @@ export function verifySqliteUserAndSession(
   }
   if (!userRow) {
     try {
-      userRow = db.prepare('SELECT id, email, role, status FROM commercial_users WHERE id = ?').get(userId);
+      userRow = db.prepare('SELECT id, email, role, status FROM commercial_users WHERE id = ?').get(userId) as SqliteAuthUserLookupRow | undefined;
     } catch (err) {
       log.debug('SQLite commercial_users lookup skipped in verifySqliteUserAndSession', {
         userId,
@@ -286,7 +316,7 @@ export function verifySqliteUserAndSession(
     try {
       const sessionRow = db
         .prepare('SELECT id, user_id, is_revoked, expires_at FROM auth_sessions WHERE id = ?')
-        .get(sessionId) as any;
+        .get(sessionId) as SqliteSessionRow | undefined;
       if (sessionRow) {
         if (sessionRow.user_id !== userId) {
           return { active: false, foundInDb: true };
@@ -332,10 +362,10 @@ export async function verifyPostgresOrSqliteUserAndSessionAsync(
     return verifySqliteUserAndSession(userId, sessionId);
   }
 
-  const prisma = getPrismaClient() as any;
+  const prisma = getPrismaClient() as Partial<PrismaClient> | null;
   const repo = getCentralRepository();
 
-  let userRow: any = null;
+  let userRow: AuthUserRecord | null = null;
   let userLookupRan = false;
   try {
     if (typeof repo.findAuthUserById === 'function') {
@@ -349,7 +379,7 @@ export async function verifyPostgresOrSqliteUserAndSessionAsync(
   if (!userRow && typeof repo.findCommercialUserById === 'function') {
     try {
       const commRow = await repo.findCommercialUserById(userId);
-      if (commRow) userRow = commRow;
+      if (commRow) userRow = commRow as unknown as AuthUserRecord;
     } catch (err) {
       log.debug('PG findCommercialUserById fallback skipped', {
         userId,
@@ -371,9 +401,9 @@ export async function verifyPostgresOrSqliteUserAndSessionAsync(
 
   if (sessionId && prisma?.auth_sessions && typeof prisma.auth_sessions.findUnique === 'function') {
     try {
-      const sessionRow = await prisma.auth_sessions.findUnique({
+      const sessionRow = (await prisma.auth_sessions.findUnique({
         where: { id: sessionId },
-      });
+      })) as unknown as SqliteSessionRow | null;
       if (sessionRow) {
         if (sessionRow.user_id !== userId) {
           return { active: false, foundInDb: true };
@@ -485,9 +515,17 @@ export async function getAuthUserAsync(
   };
 }
 
+function extractBodyAdminSecret(body: unknown): string {
+  if (body && typeof body === 'object' && 'adminSecret' in body) {
+    const val = (body as { adminSecret?: unknown }).adminSecret;
+    if (typeof val === 'string') return val;
+  }
+  return '';
+}
+
 export function checkAdminAuth(
   req: http.IncomingMessage,
-  body?: any,
+  body?: unknown,
   options?: { allowedRoles?: CommercialRole[] }
 ): { isAdmin: boolean; isNonStaff?: boolean; actor: { id: string; name: string; role: CommercialRole } } {
   const allowedRoles = options?.allowedRoles ?? ['SUPER_ADMIN', 'ADMIN'];
@@ -503,7 +541,7 @@ export function checkAdminAuth(
 
   // 2. Check X-Admin-Secret header or body secret
   const headerSecret = req.headers['x-admin-secret'] as string;
-  const secret = headerSecret || (body && body.adminSecret) || '';
+  const secret = headerSecret || extractBodyAdminSecret(body);
   if (secret && (verifyAdminAccess(secret) || isValidAdminWebSecret(secret))) {
     return {
       isAdmin: true,
@@ -520,7 +558,7 @@ export function checkAdminAuth(
 
 export async function checkAdminAuthAsync(
   req: http.IncomingMessage,
-  body?: any,
+  body?: unknown,
   options?: { allowedRoles?: CommercialRole[] }
 ): Promise<{ isAdmin: boolean; isNonStaff: boolean; actor: { id: string; name: string; role: CommercialRole } }> {
   const allowedRoles = options?.allowedRoles ?? ['SUPER_ADMIN', 'ADMIN'];
@@ -535,7 +573,7 @@ export async function checkAdminAuthAsync(
   }
 
   const headerSecret = req.headers['x-admin-secret'] as string;
-  const secret = headerSecret || (body && body.adminSecret) || '';
+  const secret = headerSecret || extractBodyAdminSecret(body);
   if (secret && (verifyAdminAccess(secret) || isValidAdminWebSecret(secret))) {
     return {
       isAdmin: true,
@@ -554,7 +592,7 @@ export async function checkAdminAuthAsync(
 export function signAccountStatus(canonical: string): string {
   const privateKey = process.env.MAHI_STATUS_PRIVATE_KEY || process.env.RSA_PRIVATE_KEY;
   const isProdNonElectron = process.env.NODE_ENV === 'production' && !process.versions?.electron;
-  if (!privateKey || !privateKey.trim()) {
+  if (!privateKey?.trim()) {
     if (isProdNonElectron) {
       throw new Error('[AccountStatus] MAHI_STATUS_PRIVATE_KEY (or RSA_PRIVATE_KEY) is required in production.');
     }
@@ -565,11 +603,12 @@ export function signAccountStatus(canonical: string): string {
     const signer = crypto.createSign('SHA256');
     signer.update(canonical);
     return signer.sign(formatted, 'base64');
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
     if (isProdNonElectron) {
-      throw new Error(`[AccountStatus] Failed to sign account status in production: ${err?.message || err}`);
+      throw new Error(`[AccountStatus] Failed to sign account status in production: ${msg}`);
     }
-    log.warn('[AccountStatus] sign error:', err?.message);
+    log.warn('[AccountStatus] sign error:', msg);
     return '';
   }
 }
@@ -582,7 +621,7 @@ export interface DesktopAuthTicket {
   codeChallenge?: string;
   authCode?: string;
   token?: string;
-  user?: any;
+  user?: AuthPublicUser;
   email?: string;
   planId?: string;
   createdAt: number;
@@ -596,7 +635,7 @@ export interface WebHandoffSession {
   code: string;
   userId: string;
   token: string;
-  user: any;
+  user: AuthPublicUser;
   createdAt: number;
   expiresAt: number;
   used: boolean;

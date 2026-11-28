@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Shield, Globe, Clock, RefreshCw, X } from 'lucide-react';
+import type React from 'react';
+import { useState } from 'react';
+import { Shield, Globe, Clock, X } from 'lucide-react';
 
 interface ProxySessionModalProps {
   isOpen: boolean;
@@ -51,8 +52,8 @@ export const ProxySessionModal: React.FC<ProxySessionModalProps> = ({
         ttlMinutes: sessionType === 'STICKY' ? ttlMinutes : undefined,
       });
       onClose();
-    } catch (err: any) {
-      setError(err.message || 'Failed to generate proxy session');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to generate proxy session');
     } finally {
       setIsSubmitting(false);
     }
@@ -71,7 +72,7 @@ export const ProxySessionModal: React.FC<ProxySessionModalProps> = ({
               <p className="text-xs text-slate-400">Allocate from built-in commercial catalog</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg">
+          <button type="button" onClick={onClose} className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -84,11 +85,12 @@ export const ProxySessionModal: React.FC<ProxySessionModalProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
+            <label htmlFor="proxy-modal-country" className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
               <Globe className="w-3.5 h-3.5 text-slate-400" />
               <span>Target Country</span>
             </label>
             <select
+              id="proxy-modal-country"
               value={country}
               onChange={(e) => setCountry(e.target.value)}
               className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-teal-500/50"
@@ -102,7 +104,7 @@ export const ProxySessionModal: React.FC<ProxySessionModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">Network Tier</label>
+            <span className="block text-xs font-semibold text-slate-300">Network Tier</span>
             <div className="grid grid-cols-3 gap-2">
               {['RESIDENTIAL', 'DATACENTER', 'MOBILE'].map((tier) => (
                 <button
@@ -122,7 +124,7 @@ export const ProxySessionModal: React.FC<ProxySessionModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">Session Mode</label>
+            <span className="block text-xs font-semibold text-slate-300">Session Mode</span>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -154,11 +156,12 @@ export const ProxySessionModal: React.FC<ProxySessionModalProps> = ({
 
           {sessionType === 'STICKY' && (
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
+              <label htmlFor="proxy-modal-ttl" className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />
                 <span>Session Duration (TTL Minutes)</span>
               </label>
               <select
+                id="proxy-modal-ttl"
                 value={ttlMinutes}
                 onChange={(e) => setTtlMinutes(Number(e.target.value))}
                 className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-teal-500/50"

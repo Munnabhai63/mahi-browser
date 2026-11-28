@@ -4,7 +4,7 @@
  */
 
 import crypto from 'node:crypto';
-import {
+import type {
   ProxyProvider,
   ProviderSessionCredentials,
   ProviderCreateSessionParams,
@@ -12,7 +12,7 @@ import {
   ProviderHealthCheckResult,
   ProviderUsageStats,
 } from '../proxy-provider-interface.js';
-import {
+import type {
   ProxyProviderCapabilities,
   ProxyNetworkType,
   GeoCountryOption,
@@ -58,7 +58,7 @@ export class MockProxyProvider implements ProxyProvider {
     this.failureReason = reason;
   }
 
-  async getCountries(networkType: ProxyNetworkType): Promise<GeoCountryOption[]> {
+  async getCountries(_networkType: ProxyNetworkType): Promise<GeoCountryOption[]> {
     if (this.shouldSimulateFailure) {
       throw new Error(this.failureReason);
     }
@@ -122,7 +122,7 @@ export class MockProxyProvider implements ProxyProvider {
     const randomOctet2 = 10 + Math.floor(Math.random() * 200);
     const ip = `${randomOctet1}.${randomOctet2}.45.89`;
 
-    let expiresAt: string | undefined = undefined;
+    let expiresAt: string | undefined ;
     if (params.sessionType === 'STICKY' && params.ttlMinutes) {
       expiresAt = new Date(Date.now() + params.ttlMinutes * 60 * 1000).toISOString();
     }

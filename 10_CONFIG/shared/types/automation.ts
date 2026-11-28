@@ -198,3 +198,65 @@ export interface RpaTemplate {
   variables?: WorkflowVariable[];
   steps: Omit<AutomationStep, 'id' | 'order'>[];
 }
+
+export interface CookieWarmerProgress {
+  profileId: string;
+  totalSites: number;
+  currentSiteIndex: number;
+  currentSiteUrl: string;
+  sitesVisited: number;
+  sitesFailed: number;
+  retriesCount: number;
+  percent: number;
+  status: 'STARTING' | 'WARMING' | 'PAUSED' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
+}
+
+export interface CookieWarmProfileOptions {
+  mode?: 'quick' | 'standard' | 'deep' | 'custom';
+  customSiteCount?: number;
+  customUrls?: string[];
+  categories?: string[];
+  delayBetweenSitesMs?: number;
+  maxSiteRetries?: number;
+  onProgress?: (progress: CookieWarmerProgress) => void;
+  templateId?: string;
+  workspaceId?: string;
+}
+
+export interface CookieWarmProfileResult {
+  success: boolean;
+  profileId: string;
+  profileName: string;
+  mode: string;
+  visitedSitesCount: number;
+  visitedUrls: string[];
+  farmedCookiesCount: number;
+  durationMs: number;
+  completedAt: string;
+  errorMessage?: string;
+  retriesAttempted?: number;
+}
+
+export interface CookieWarmBulkProfilesResult {
+  successCount: number;
+  failureCount: number;
+  results: CookieWarmProfileResult[];
+}
+
+export interface SynchronizerConfigState {
+  syncClicks: boolean;
+  syncTyping: boolean;
+  syncScroll: boolean;
+  syncNavigation: boolean;
+  humanDelayMinMs: number;
+  humanDelayMaxMs: number;
+}
+
+export interface SynchronizerStatusState {
+  enabled: boolean;
+  masterProfileId?: string | null;
+  activeProfiles?: string[];
+  config?: Partial<SynchronizerConfigState>;
+  mirroredActionCount?: number;
+  startedAt?: string | null;
+}

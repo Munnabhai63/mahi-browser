@@ -1,6 +1,6 @@
-import React from 'react';
+import type React from 'react';
 import { CheckCircle2, AlertCircle, Info, AlertTriangle, X } from 'lucide-react';
-import { useToastStore, ToastItem } from '../stores/useToastStore.js';
+import { useToastStore, } from '../stores/useToastStore.js';
 
 export const ToastContainer: React.FC = () => {
   const { toasts, removeToast } = useToastStore();
@@ -44,7 +44,7 @@ export const ToastContainer: React.FC = () => {
               </button>
             )}
           </div>
-          <button
+          <button type="button"
             onClick={() => removeToast(toast.id)}
             className="text-slate-400 hover:text-white transition-colors"
           >

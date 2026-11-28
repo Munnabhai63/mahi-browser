@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import { Webhook, Copy, Check, AlertTriangle, X, ShieldCheck } from 'lucide-react';
-import { CreateWebhookEndpointDTO } from '../../../10_CONFIG/shared/types/remote-api.js';
+import type { CreateWebhookEndpointDTO } from '../../../10_CONFIG/shared/types/remote-api.js';
 
 interface CreateWebhookModalProps {
   isOpen: boolean;
@@ -8,13 +9,15 @@ interface CreateWebhookModalProps {
   onSubmit: (dto: CreateWebhookEndpointDTO) => Promise<{ secret: string; url: string }>;
 }
 
-const AVAILABLE_EVENTS = [
+type WebhookEventType = NonNullable<CreateWebhookEndpointDTO['events']>[number];
+
+const AVAILABLE_EVENTS: ReadonlyArray<{ id: WebhookEventType; label: string; desc: string }> = [
   { id: 'profile.created', label: 'profile.created', desc: 'Fires when a browser profile is initialized' },
   { id: 'profile.updated', label: 'profile.updated', desc: 'Fires on metadata, folder, or config modification' },
   { id: 'profile.deleted', label: 'profile.deleted', desc: 'Fires when a profile is permanently destroyed' },
-  { id: 'sync.completed', label: 'sync.completed', desc: 'Fires on zero-knowledge cloud state synchronization' },
-  { id: 'workspace.member_invited', label: 'workspace.member_invited', desc: 'Fires when a user receives a team invitation' },
-  { id: 'proxy.session_created', label: 'proxy.session_created', desc: 'Fires when a commercial proxy session is allocated' },
+  { id: 'profile.synced', label: 'profile.synced', desc: 'Fires on zero-knowledge cloud state synchronization' },
+  { id: 'workspace.member.invited', label: 'workspace.member.invited', desc: 'Fires when a user receives a team invitation' },
+  { id: 'proxy.created', label: 'proxy.created', desc: 'Fires when a commercial proxy session is allocated' },
 ];
 
 export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
@@ -24,9 +27,9 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
 }) => {
   const [url, setUrl] = useState('');
   const [description, setDescription] = useState('');
-  const [selectedEvents, setSelectedEvents] = useState<string[]>([
+  const [selectedEvents, setSelectedEvents] = useState<WebhookEventType[]>([
     'profile.created',
-    'sync.completed',
+    'profile.synced',
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +40,7 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleToggleEvent = (eventId: string) => {
+  const handleToggleEvent = (eventId: WebhookEventType) => {
     if (selectedEvents.includes(eventId)) {
       setSelectedEvents(selectedEvents.filter((e) => e !== eventId));
     } else {
@@ -66,12 +69,12 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
     try {
       const result = await onSubmit({
         url: cleanUrl,
-        events: selectedEvents as any,
+        events: selectedEvents,
         description: description.trim() || undefined,
       });
       setRevealedSecret(result.secret);
-    } catch (err: any) {
-      setError(err.message || 'Failed to create webhook endpoint');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create webhook endpoint');
     } finally {
       setIsSubmitting(false);
     }
@@ -89,7 +92,7 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
     setRevealedSecret(null);
     setUrl('');
     setDescription('');
-    setSelectedEvents(['profile.created', 'sync.completed']);
+    setSelectedEvents(['profile.created', 'profile.synced']);
     onClose();
   };
 
@@ -120,9 +123,10 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Signing Secret</label>
+              <label htmlFor="wh-signing-secret" className="text-xs font-semibold text-slate-300">Signing Secret</label>
               <div className="flex items-center space-x-2">
                 <input
+                  id="wh-signing-secret"
                   type="text"
                   readOnly
                   value={revealedSecret}
@@ -162,7 +166,7 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
                   <p className="text-xs text-slate-400">Receive real-time event notifications via signed HTTP POST</p>
                 </div>
               </div>
-              <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg">
+              <button type="button" onClick={onClose} className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -175,8 +179,9 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-300">Endpoint URL *</label>
+                <label htmlFor="wh-endpoint-url" className="text-xs font-semibold text-slate-300">Endpoint URL *</label>
                 <input
+                  id="wh-endpoint-url"
                   type="url"
                   required
                   value={url}
@@ -188,8 +193,9 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-300">Description (Optional)</label>
+                <label htmlFor="wh-description" className="text-xs font-semibold text-slate-300">Description (Optional)</label>
                 <input
+                  id="wh-description"
                   type="text"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -199,10 +205,10 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                <div className="text-xs font-semibold text-slate-300 flex items-center justify-between">
                   <span>Subscribed Events</span>
                   <span className="text-[11px] text-teal-400">{selectedEvents.length} selected</span>
-                </label>
+                </div>
                 <div className="max-h-44 overflow-y-auto p-2 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5 custom-scrollbar">
                   {AVAILABLE_EVENTS.map((event) => {
                     const isChecked = selectedEvents.includes(event.id);

@@ -14,12 +14,11 @@ import { sendSafeError } from '../utils/app-error.js';
 import { buildHtmlSecurityHeaders } from '../utils/security-headers.js';
 import { getProfiles, getProfileById, createProfile, updateProfile, deleteProfile, cloneProfile } from '../../02_BROWSER/services/profile-service.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
-import { getProxies, createProxy, updateProxy, deleteProxy, testProxyConnection } from '../../02_BROWSER/services/proxy-service.js';
-import { getFolders, createFolder, updateFolder, deleteFolder } from '../../02_BROWSER/services/folder-service.js';
-import { getProfileLock, acquireProfileLock, releaseProfileLock } from '../../02_BROWSER/services/profile-lock-service.js';
-import { getFeatureFlags, isFeatureEnabled, updateFeatureFlag } from '../services/feature-flag-service.js';
+import { getProxies, createProxy } from '../../02_BROWSER/services/proxy-service.js';
+import { getFolders, createFolder } from '../../02_BROWSER/services/folder-service.js';
+import { getFeatureFlags, updateFeatureFlag } from '../services/feature-flag-service.js';
 import { getFleetDevices, getLiveTelemetry, revokeDevice } from '../services/fleet-service.js';
-import { validateCurrentLicense, activateLicense, createLicense, getLicenses, revokeLicense, extendLicense } from '../../04_LICENSING/license-engine.js';
+import { validateCurrentLicense, getLicenses, revokeLicense, extendLicense } from '../../04_LICENSING/license-engine.js';
 import fs from 'node:fs';
 import { getActivityLogs } from '../services/audit-service.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
@@ -41,16 +40,29 @@ import {
   checkSuperAdminRateLimit,
   recordFailedSuperAdminAttempt,
   recordSuccessfulSuperAdminAttempt,
-  RequestAuth,
+  type RequestAuth,
 } from '../api/local-api-server.js';
 import { verifyAdminAccess } from '../../05_AUTH/admin-auth.js';
 import { isValidAdminWebSecret, getApiAuthToken } from '../../08_SECURITY/install-secrets.js';
 import { getProfileDebugPort } from '../../02_BROWSER/launcher.js';
+import type { CreateProfileDTO, UpdateProfileDTO } from '../../10_CONFIG/shared/types/profile.js';
+import type { CreateProxyDTO } from '../../10_CONFIG/shared/types/proxy.js';
+import type { FeatureFlagDefinition } from '../../10_CONFIG/shared/types/platform.js';
 import { createLogger } from '../utils/logger.js';
 const log = createLogger('app');
 
+interface ResponseWithReq extends http.ServerResponse {
+  __req?: http.IncomingMessage;
+}
+
+type AuthBodyLike = { adminSecret?: unknown; secret?: unknown } & Record<string, unknown>;
+
+function toErrMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
-  const req = (res as any).__req as http.IncomingMessage | undefined;
+  const req = (res as ResponseWithReq).__req;
   const corsHeaders = req ? getCorsHeaders(req) : {};
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
@@ -60,7 +72,7 @@ function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
 }
 
 function sendHTML(res: http.ServerResponse, statusCode: number, html: string) {
-  const req = (res as any).__req as http.IncomingMessage | undefined;
+  const req = (res as ResponseWithReq).__req;
   const corsHeaders = req ? getCorsHeaders(req) : {};
   res.writeHead(statusCode, {
     'Content-Type': 'text/html; charset=utf-8',
@@ -71,7 +83,7 @@ function sendHTML(res: http.ServerResponse, statusCode: number, html: string) {
 }
 
 async function sendFile(res: http.ServerResponse, filePath: string, filename: string): Promise<void> {
-  const req = (res as any).__req as http.IncomingMessage | undefined;
+  const req = (res as ResponseWithReq).__req;
   const corsHeaders = req ? getCorsHeaders(req) : {};
   let stat: fs.Stats;
   try {
@@ -154,7 +166,7 @@ function requireUserOrAdminAuth(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   parsedUrl: URL,
-  body?: any,
+  body?: AuthBodyLike,
   requiredScope?: string
 ): RequestAuth | null {
   const auth = authenticateRequest(req, parsedUrl, body);
@@ -172,7 +184,7 @@ function requireUserOrAdminAuth(
   return auth;
 }
 
-function requireMasterAdminAuth(req: http.IncomingMessage, res: http.ServerResponse, parsedUrl: URL, body?: any): RequestAuth | null {
+function requireMasterAdminAuth(req: http.IncomingMessage, res: http.ServerResponse, parsedUrl: URL, body?: AuthBodyLike): RequestAuth | null {
   const auth = authenticateRequest(req, parsedUrl, body);
   if (!auth.authenticated) {
     sendJSON(res, 401, { success: false, error: 'Unauthorized. Authentication credentials required.' });
@@ -204,8 +216,8 @@ function pipeReadStream(filePath: string, res: http.ServerResponse): http.Server
   return stream.pipe(res);
 }
 
-function parseBody(req: http.IncomingMessage): Promise<any> {
-  return parseBoundedJson(req, { invalidJsonMessage: 'Invalid JSON payload' });
+function parseBody<T = Record<string, unknown>>(req: http.IncomingMessage): Promise<T> {
+  return parseBoundedJson<T>(req, { invalidJsonMessage: 'Invalid JSON payload' });
 }
 
 function resolveCleanPath(pathname: string): string {
@@ -406,7 +418,7 @@ export async function handleBinaryDownloadRoutes(
   ) {
     const dlAuth = await verifyDownloadAccess(req, parsedUrl);
     if (!dlAuth.authorized) {
-      const acceptHeader = req.headers['accept'] || '';
+      const acceptHeader = req.headers.accept || '';
       if (acceptHeader.includes('text/html') && dlAuth.status === 401) {
         res.writeHead(302, { Location: '/signup?intent=trial&returnUrl=/download' });
         res.end();
@@ -427,7 +439,7 @@ export async function handleBinaryDownloadRoutes(
   if (cleanPath === '/download/portable' || cleanPath === '/api/v2/download/portable') {
     const dlAuth = await verifyDownloadAccess(req, parsedUrl);
     if (!dlAuth.authorized) {
-      const acceptHeader = req.headers['accept'] || '';
+      const acceptHeader = req.headers.accept || '';
       if (acceptHeader.includes('text/html') && dlAuth.status === 401) {
         res.writeHead(302, { Location: '/signup?intent=trial&returnUrl=/download' });
         res.end();
@@ -463,7 +475,7 @@ export async function handleCentralV2Routes(
       sendJSON(res, 429, { success: false, error: 'Too many failed authentication attempts. Please try again later.' });
       return true;
     }
-    const body = await parseBody(req);
+    const body = await parseBody<{ secret?: string; pin?: string }>(req);
     const secret = body.secret || body.pin || '';
     if (verifyAdminAccess(secret) || isValidAdminWebSecret(secret)) {
       recordSuccessfulSuperAdminAttempt(clientIp);
@@ -508,7 +520,7 @@ export async function handleCentralV2Routes(
 
   const flagMatch = pathname.match(/^\/api\/v2\/feature-flags\/([a-zA-Z0-9_-]+)$/);
   if (flagMatch && method === 'PUT') {
-    const body = await parseBody(req);
+    const body = await parseBody<Partial<FeatureFlagDefinition> & AuthBodyLike>(req);
     if (!requireMasterAdminAuth(req, res, parsedUrl, body)) return true;
     const flagKey = flagMatch[1];
     const updated = updateFeatureFlag(flagKey, body);
@@ -527,7 +539,7 @@ export async function handleCentralV2Routes(
 
   if (pathname === '/api/v2/profiles' && method === 'POST') {
     try {
-      const body = await parseBody(req);
+      const body = await parseBody<CreateProfileDTO & AuthBodyLike>(req);
       const auth = requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write');
       if (!auth) return true;
       const ownerId = auth.userId || getLocalApiOwnerId();
@@ -535,7 +547,7 @@ export async function handleCentralV2Routes(
       assertCanCreateProfile(1, effectiveOwnerId);
       const profile = createProfile({ ...body, ownerId: effectiveOwnerId });
       sendJSON(res, 201, { success: true, data: profile });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: getErrorStatusCode(err, 400) });
     }
     return true;
@@ -558,7 +570,7 @@ export async function handleCentralV2Routes(
       return true;
     }
     if (method === 'PUT') {
-      const body = await parseBody(req);
+      const body = await parseBody<UpdateProfileDTO & AuthBodyLike>(req);
       const auth = requireUserOrAdminAuth(req, res, parsedUrl, body, 'profiles:write');
       if (!auth) return true;
       const ownerId = auth.role === 'master_admin' ? undefined : (auth.userId || getLocalApiOwnerId());
@@ -589,7 +601,7 @@ export async function handleCentralV2Routes(
   // Profile Launch / Stop: /api/v2/profiles/:id/start & /api/v2/profiles/:id/stop
   const profileActionMatch = pathname.match(/^\/api\/v2\/profiles\/([a-zA-Z0-9_-]+)\/(start|stop|clone)$/);
   if (profileActionMatch && method === 'POST') {
-    const body = await parseBody(req);
+    const body = await parseBody<{ name?: string } & AuthBodyLike>(req);
     const action = profileActionMatch[2];
     const requiredScope = action === 'clone' ? 'profiles:write' : 'profiles:launch';
     const auth = requireUserOrAdminAuth(req, res, parsedUrl, body, requiredScope);
@@ -613,7 +625,7 @@ export async function handleCentralV2Routes(
         assertCanCreateProfile(1, ownerId);
         const cloned = cloneProfile(profileId, body.name || undefined, ownerId);
         sendJSON(res, 201, { success: true, data: cloned });
-      } catch (err: any) {
+      } catch (err: unknown) {
         sendSafeError(res, err, { fallbackStatus: 400 });
       }
       return true;
@@ -627,7 +639,7 @@ export async function handleCentralV2Routes(
     return true;
   }
   if (pathname === '/api/v2/folders' && method === 'POST') {
-    const body = await parseBody(req);
+    const body = await parseBody<{ name: string; parentId?: string | null; color?: string; icon?: string } & AuthBodyLike>(req);
     if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return true;
     const folder = createFolder(body.name, body.parentId, body.color, body.icon);
     sendJSON(res, 201, { success: true, data: folder });
@@ -641,7 +653,7 @@ export async function handleCentralV2Routes(
     return true;
   }
   if (pathname === '/api/v2/proxies' && method === 'POST') {
-    const body = await parseBody(req);
+    const body = await parseBody<CreateProxyDTO & AuthBodyLike>(req);
     if (!requireUserOrAdminAuth(req, res, parsedUrl, body)) return true;
     const proxy = createProxy(body);
     sendJSON(res, 201, { success: true, data: proxy });
@@ -681,33 +693,33 @@ export async function handleCentralV2Routes(
   }
 
   if (pathname === '/api/v2/licenses/revoke' && method === 'POST') {
-    const body = await parseBody(req);
+    const body = await parseBody<{ licenseId: string; reason?: string } & AuthBodyLike>(req);
     if (!requireMasterAdminAuth(req, res, parsedUrl, body)) return true;
     try {
       const ok = await revokeLicense(body.licenseId, body.reason || 'Revoked from Web Admin');
       sendJSON(res, 200, { success: ok });
-    } catch (e: any) {
-      log.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+    } catch (e: unknown) {
+      log.error('[LicenseEngine][CRITICAL] admin license op failed', toErrMsg(e));
       sendJSON(res, 500, { success: false, error: 'License operation failed.' });
     }
     return true;
   }
 
   if (pathname === '/api/v2/licenses/extend' && method === 'POST') {
-    const body = await parseBody(req);
+    const body = await parseBody<{ licenseId: string; additionalDays?: string | number } & AuthBodyLike>(req);
     if (!requireMasterAdminAuth(req, res, parsedUrl, body)) return true;
     try {
       const record = await extendLicense({
         licenseId: body.licenseId,
-        additionalDays: parseInt(body.additionalDays, 10) || 30,
+        additionalDays: parseInt(String(body.additionalDays ?? ''), 10) || 30,
       });
       if (!record) {
         sendJSON(res, 404, { success: false, error: 'License not found' });
         return true;
       }
       sendJSON(res, 200, { success: true, data: record });
-    } catch (e: any) {
-      log.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+    } catch (e: unknown) {
+      log.error('[LicenseEngine][CRITICAL] admin license op failed', toErrMsg(e));
       sendJSON(res, 500, { success: false, error: 'License operation failed.' });
     }
     return true;
@@ -724,7 +736,7 @@ export async function handleCentralV2Routes(
       const db = getDatabase();
       const licenses = db.prepare('SELECT * FROM licenses ORDER BY created_at DESC').all();
       sendJSON(res, 200, { success: true, data: licenses });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 500 });
     }
     return true;
@@ -736,7 +748,7 @@ export async function handleCentralV2Routes(
       return true;
     }
     try {
-      const body = await parseBody(req);
+      const body = await parseBody<{ action?: string; id?: string } & AuthBodyLike>(req);
       if (!requireMasterAdminAuth(req, res, parsedUrl, body)) return true;
       const db = getDatabase();
 
@@ -751,7 +763,7 @@ export async function handleCentralV2Routes(
       }
 
       sendJSON(res, 200, { success: true });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: getErrorStatusCode(err, 500) });
     }
     return true;
@@ -775,7 +787,7 @@ export async function handleCentralV2Routes(
       const db = getDatabase();
       const rows = db.prepare(`SELECT * FROM ${tableName} LIMIT 100`).all();
       sendJSON(res, 200, { success: true, data: rows });
-    } catch (dbErr: any) {
+    } catch (dbErr: unknown) {
       sendSafeError(res, dbErr, { fallbackStatus: 500 });
     }
     return true;
@@ -799,8 +811,8 @@ export async function handleCentralV2Routes(
   return false;
 }
 
-export async function handleCentralApiRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<any> {
-  (res as any).__req = req;
+export async function handleCentralApiRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  (res as ResponseWithReq).__req = req;
 
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -832,9 +844,9 @@ export async function handleCentralApiRequest(req: http.IncomingMessage, res: ht
       return;
     }
 
-    return sendJSON(res, 404, { success: false, error: `Route ${method} ${pathname} not found` });
-  } catch (err: any) {
-    return sendSafeError(res, err, { fallbackStatus: getErrorStatusCode(err, 500) });
+    sendJSON(res, 404, { success: false, error: `Route ${method} ${pathname} not found` });
+  } catch (err: unknown) {
+    sendSafeError(res, err, { fallbackStatus: getErrorStatusCode(err, 500) });
   }
 }
 

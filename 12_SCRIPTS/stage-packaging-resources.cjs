@@ -16,9 +16,9 @@ function resolveAuthoritativeEngineVersion() {
     const engineConfigPath = path.join(rootDir, '10_CONFIG', 'engine-config.ts');
     const raw = fs.readFileSync(engineConfigPath, 'utf8');
     const prodMatch = raw.match(/export const AUTHORITATIVE_PRODUCTION_VERSION\s*=\s*'([^']+)'/);
-    if (prodMatch && prodMatch[1]) return prodMatch[1];
+    if (prodMatch?.[1]) return prodMatch[1];
     const managedMatch = raw.match(/export const MANAGED_ENGINE_VERSION\s*=\s*'([^']+)'/);
-    if (managedMatch && managedMatch[1]) return managedMatch[1];
+    if (managedMatch?.[1]) return managedMatch[1];
   } catch {}
   return '138.0.7204.0';
 }

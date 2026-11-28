@@ -2,7 +2,7 @@ import { app, BrowserWindow } from '../../08_SECURITY/electron-bridge.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import {
+import type {
   UpdateState,
   UpdateChannel,
   UpdateProgress,
@@ -10,11 +10,11 @@ import {
   UpdateConfig,
   UpdateInstallOptions,
   UpdateInstallResult,
+  UpdateReleaseFile,
   UpdateReleaseManifest,
 } from '../../10_CONFIG/shared/types/updater.js';
 import { logActivity } from './audit-service.js';
 import {
-  validateSemVer,
   compareSemVer,
   isValidTransition,
   validateUpdateManifest,
@@ -22,7 +22,7 @@ import {
 } from './updater-validator.js';
 import { getActiveUpdateProvider } from './updater-provider.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
-import { getDatabase, flushDatabaseToDisk } from '../../06_DATABASE/connection.js';
+import { flushDatabaseToDisk } from '../../06_DATABASE/connection.js';
 import { getWritableUserDataDir } from '../utils/runtime-paths.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 import { getDefaultUpdateFeedUrl, getSiteConfig } from '../../10_CONFIG/shared/site-config.js';
@@ -77,7 +77,7 @@ export function sanitizeFeedUrl(input: unknown): string {
     if (u.protocol !== 'https:') return defaultFeed;
     if (!getAllowedUpdateFeedHosts().includes(u.hostname.toLowerCase())) return defaultFeed;
     const s = u.toString();
-    return s.endsWith('/') ? s : s + '/';
+    return s.endsWith('/') ? s : `${s}/`;
   } catch {
     return defaultFeed;
   }
@@ -146,16 +146,41 @@ export function getSafeAppVersion(): string {
   return APP_VERSION;
 }
 
-const esmRequire = createRequire(import.meta.url);
-let autoUpdaterInstance: any = null;
+interface AutoUpdaterUpdateInfo {
+  version: string;
+  releaseNotes?: unknown;
+}
 
-function getAutoUpdater(): any {
+interface AutoUpdaterLike {
+  channel: string;
+  autoDownload: boolean;
+  autoInstallOnAppQuit: boolean;
+  setFeedURL(options: { provider: 'generic'; url: string }): void;
+  on(event: 'checking-for-update' | 'update-not-available', handler: () => void): void;
+  on(event: 'update-available' | 'update-downloaded', handler: (info: AutoUpdaterUpdateInfo) => void): void;
+  on(event: 'download-progress', handler: (progressObj: UpdateProgress) => void): void;
+  on(event: 'error', handler: (err: unknown) => void): void;
+  checkForUpdates(): Promise<{ updateInfo?: AutoUpdaterUpdateInfo | null } | null>;
+  downloadUpdate(): Promise<unknown>;
+  quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
+}
+
+const esmRequire = createRequire(import.meta.url);
+let autoUpdaterInstance: AutoUpdaterLike | null = null;
+
+function getAutoUpdater(): AutoUpdaterLike | null {
   if (autoUpdaterInstance) return autoUpdaterInstance;
   try {
-    const updaterMod = esmRequire('electron-updater');
-    autoUpdaterInstance = updaterMod.autoUpdater || updaterMod.default?.autoUpdater || updaterMod;
+    const updaterMod = esmRequire('electron-updater') as {
+      autoUpdater?: AutoUpdaterLike;
+      default?: { autoUpdater?: AutoUpdaterLike };
+    } & Partial<AutoUpdaterLike>;
+    autoUpdaterInstance =
+      updaterMod.autoUpdater ||
+      updaterMod.default?.autoUpdater ||
+      (updaterMod as AutoUpdaterLike);
     return autoUpdaterInstance;
-  } catch (err) {
+  } catch (err: unknown) {
     log.warn('[UpdaterService] Failed to load autoUpdater:', err);
     return null;
   }
@@ -169,7 +194,6 @@ let updateStatus: UpdateStatusEvent = {
 };
 
 let currentPendingManifest: UpdateReleaseManifest | null = null;
-let downloadedFilePath: string | null = null;
 let isManualCheck = false;
 let recurringTimer: NodeJS.Timeout | null = null;
 let isInitialized = false;
@@ -181,7 +205,7 @@ export function broadcastStatus(status: UpdateStatusEvent): void {
     channel: activeConfig.channel,
   };
 
-  if (typeof BrowserWindow !== 'undefined' && BrowserWindow && BrowserWindow.getAllWindows) {
+  if (BrowserWindow?.getAllWindows) {
     try {
       BrowserWindow.getAllWindows().forEach((win) => {
         if (!win.isDestroyed()) {
@@ -230,7 +254,7 @@ export function initAutoUpdater(): void {
       }
     });
 
-    autoUpdater.on('update-available', (info: any) => {
+    autoUpdater.on('update-available', (info: AutoUpdaterUpdateInfo) => {
       safeLogActivity('INFO', 'Auto-Updater', `Update available: v${info.version} (Channel: ${activeConfig.channel})`);
       updateStatus = {
         state: 'AVAILABLE',
@@ -269,7 +293,7 @@ export function initAutoUpdater(): void {
       broadcastStatus(updateStatus);
     });
 
-    autoUpdater.on('update-downloaded', (info: any) => {
+    autoUpdater.on('update-downloaded', (info: AutoUpdaterUpdateInfo) => {
       updateStatus = {
         state: 'DOWNLOADED',
         currentVersion: getSafeAppVersion(),
@@ -280,7 +304,7 @@ export function initAutoUpdater(): void {
       safeLogActivity('INFO', 'Auto-Updater', `Update v${info.version} downloaded and verified. Ready to install.`);
     });
 
-    autoUpdater.on('error', (err: any) => {
+    autoUpdater.on('error', (err: unknown) => {
       const errorMsg = err instanceof Error ? err.message : String(err);
       safeLogActivity('WARNING', 'Auto-Updater', `Update check/download notice: ${errorMsg}`);
 
@@ -299,7 +323,7 @@ export function initAutoUpdater(): void {
   }
 
   // Periodic check if autoCheck is enabled
-  if (app && app.isPackaged && activeConfig.autoCheck) {
+  if (app?.isPackaged && activeConfig.autoCheck) {
     setTimeout(() => {
       checkForAppUpdates(false);
     }, 10000);
@@ -331,12 +355,12 @@ export async function checkForAppUpdates(manual = true, overrideChannel?: Update
 
   try {
     // 1. Packaged Electron runtime path
-    if (app && app.isPackaged) {
+    if (app?.isPackaged) {
       const autoUpdater = getAutoUpdater();
       if (!autoUpdater) return updateStatus;
       autoUpdater.channel = targetChannel === 'BETA' ? 'beta' : 'latest';
       const checkResult = await autoUpdater.checkForUpdates();
-      if (checkResult && checkResult.updateInfo) {
+      if (checkResult?.updateInfo) {
         const remoteVersion = checkResult.updateInfo.version;
         const currentVer = getSafeAppVersion();
         const cmp = compareSemVer(remoteVersion, currentVer);
@@ -377,7 +401,7 @@ export async function checkForAppUpdates(manual = true, overrideChannel?: Update
 
     // Validate manifest security
     const validation = validateUpdateManifest(manifest, getSafeAppVersion(), targetChannel);
-    if (!validation.valid) {
+    if (!validation.valid || !validation.validatedManifest) {
       const isDowngradeOrCurrent = validation.error?.includes('Downgrade or duplicate');
       if (isDowngradeOrCurrent) {
         const upToDate: UpdateStatusEvent = {
@@ -399,7 +423,7 @@ export async function checkForAppUpdates(manual = true, overrideChannel?: Update
       return errResult;
     }
 
-    currentPendingManifest = validation.validatedManifest!;
+    currentPendingManifest = validation.validatedManifest;
     const availResult: UpdateStatusEvent = {
       state: 'AVAILABLE',
       currentVersion: getSafeAppVersion(),
@@ -432,15 +456,15 @@ export async function checkForAppUpdates(manual = true, overrideChannel?: Update
   }
 }
 
-function pickPrimaryArtifact(manifest: any): any {
-  const files = Array.isArray(manifest && manifest.files) ? manifest.files : [];
+function pickPrimaryArtifact(manifest: UpdateReleaseManifest | null): UpdateReleaseFile | null {
+  const files = manifest && Array.isArray(manifest.files) ? manifest.files : [];
   if (!files.length) return null;
-  return files.find((f: any) => /Setup/i.test((f && f.name) || '')) || files[0];
+  return files.find((f) => /Setup/i.test(f.name || '')) || files[0];
 }
 
 export async function startDownloadUpdate(): Promise<boolean> {
   try {
-    if (app && app.isPackaged) {
+    if (app?.isPackaged) {
       const autoUpdater = getAutoUpdater();
       if (!autoUpdater) return false;
       await autoUpdater.downloadUpdate();
@@ -520,7 +544,6 @@ export async function startDownloadUpdate(): Promise<boolean> {
       }
     }
 
-    downloadedFilePath = destPath;
     broadcastStatus({
       state: 'DOWNLOADED',
       currentVersion: getSafeAppVersion(),
@@ -590,14 +613,14 @@ export async function applyAndRestartUpdate(options?: UpdateInstallOptions): Pro
   safeLogActivity('INFO', 'Auto-Updater', `Applying update and restarting application.`);
 
   try {
-    if (app && app.isPackaged) {
+    if (app?.isPackaged) {
       const autoUpdater = getAutoUpdater();
       if (!autoUpdater) return { success: false, error: 'autoUpdater not available' };
       // Pass (isSilent: true, isForceRunAfter: true) for zero-wizard seamless background update
       autoUpdater.quitAndInstall(true, true);
     } else {
       // Development / Staging simulation
-      if (app && typeof app.relaunch === 'function') {
+      if (typeof app?.relaunch === 'function') {
         app.relaunch();
         app.quit();
       }
@@ -669,6 +692,5 @@ export function resetUpdaterStateForTesting(): void {
     channel: activeConfig.channel,
   };
   currentPendingManifest = null;
-  downloadedFilePath = null;
   isManualCheck = false;
 }

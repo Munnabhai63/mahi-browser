@@ -1,12 +1,11 @@
-import React from 'react';
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
   getAllLateralPosts,
   getPostBySlug,
   getRelatedPosts,
-  LateralPost,
 } from '../../../lib/blogData';
 import { getAllBlogPosts, getBlogPostBySlug } from '../../../lib/mdx';
 import MarkdownView from '../../../components/MarkdownView';
@@ -123,11 +122,12 @@ export default async function SingleBlogPostPage({ params }: BlogPostPageProps) 
           </header>
 
           {/* Featured Wide Image */}
-          <div className="w-full aspect-[16/9] sm:aspect-[21/9] rounded-[4px] overflow-hidden bg-zinc-200 shadow-sm max-w-[1380px]">
-            <img
+          <div className="relative w-full aspect-[16/9] sm:aspect-[21/9] rounded-[4px] overflow-hidden bg-zinc-200 shadow-sm max-w-[1380px]">
+            <Image
               src={post.image}
               alt={post.title}
-              className="w-full h-full object-cover object-center"
+              fill
+              className="object-cover object-center"
             />
           </div>
 
@@ -153,9 +153,11 @@ export default async function SingleBlogPostPage({ params }: BlogPostPageProps) 
                     AUTHOR
                   </div>
                   <div className="flex items-center gap-3">
-                    <img
+                    <Image
                       src={post.authorImage || '/assets/company/mahipal_founder.jpg'}
                       alt={post.authorName || 'Mahipal Choudhary'}
+                      width={40}
+                      height={40}
                       className="w-10 h-10 rounded-full object-cover bg-zinc-200"
                     />
                     <div>
@@ -183,26 +185,26 @@ export default async function SingleBlogPostPage({ params }: BlogPostPageProps) 
 
             {/* Right Column: Editorial Body Paragraphs */}
             <article className="lg:col-span-8 space-y-8 max-w-[780px]">
-              {post.sections.map((sec, idx) => (
-                <section key={idx} className="space-y-4">
+              {post.sections.map((sec) => (
+                <section key={`sec-${sec.heading || sec.paragraphs[0]?.slice(0, 32) || 'block'}`} className="space-y-4">
                   {sec.heading && (
                     <h2 className="font-['Spectral',serif] text-2xl sm:text-[30px] font-light leading-[1.25] tracking-[-0.03em] text-[#080808] pt-4">
                       {sec.heading}
                     </h2>
                   )}
-                  {sec.paragraphs.map((p, pIdx) => {
+                  {sec.paragraphs.map((p) => {
                     if (p.startsWith('LIST:')) {
                       const items = p.replace('LIST:', '').split(' | ');
                       return (
-                        <ul key={pIdx} className="list-disc pl-5 space-y-2 text-[#333333] text-[15px] sm:text-[16px] leading-relaxed my-4">
-                          {items.map((item, itemIdx) => (
-                            <li key={itemIdx}>{item}</li>
+                        <ul key={`list-${p.slice(0, 48)}`} className="list-disc pl-5 space-y-2 text-[#333333] text-[15px] sm:text-[16px] leading-relaxed my-4">
+                          {items.map((item) => (
+                            <li key={`item-${item}`}>{item}</li>
                           ))}
                         </ul>
                       );
                     }
                     return (
-                      <p key={pIdx} className="text-[#333333] text-[16px] sm:text-[17px] leading-[1.65] font-normal">
+                      <p key={`p-${p.slice(0, 48)}`} className="text-[#333333] text-[16px] sm:text-[17px] leading-[1.65] font-normal">
                         {p}
                       </p>
                     );
@@ -246,11 +248,12 @@ export default async function SingleBlogPostPage({ params }: BlogPostPageProps) 
                       {rel.category}
                     </div>
 
-                    <div className="aspect-[16/9] w-full rounded-[4px] overflow-hidden bg-zinc-200 mb-4">
-                      <img
+                    <div className="relative aspect-[16/9] w-full rounded-[4px] overflow-hidden bg-zinc-200 mb-4">
+                      <Image
                         src={rel.image}
                         alt={rel.title}
-                        className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500 ease-out"
+                        fill
+                        className="object-cover group-hover:scale-[1.03] transition-transform duration-500 ease-out"
                       />
                     </div>
 

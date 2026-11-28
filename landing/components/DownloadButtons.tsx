@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BRAND } from '../lib/brand';
 
 export type OperatingSystem = 'windows' | 'mac' | 'linux';
@@ -272,6 +272,7 @@ export default function DownloadButtons() {
             <div className="flex flex-wrap items-center gap-2">
               {!trialActivated ? (
                 <button
+                  type="button"
                   onClick={handleActivateTrial}
                   className="rounded-full bg-white text-black px-4 py-1.5 text-xs font-medium hover:bg-zinc-200 transition"
                 >
@@ -283,6 +284,7 @@ export default function DownloadButtons() {
                 </span>
               )}
               <button
+                type="button"
                 onClick={handleDeepLinkHandoff}
                 disabled={isHandoffLoading}
                 className="rounded-full border border-white/20 bg-white/[0.05] hover:bg-white/10 px-4 py-1.5 text-xs font-medium text-white transition"
@@ -326,6 +328,7 @@ export default function DownloadButtons() {
           <div className="shrink-0">
             {primaryOption.comingSoon ? (
               <button
+                type="button"
                 disabled
                 className="inline-flex items-center justify-center gap-3 rounded-full bg-zinc-900 text-zinc-400 border border-white/10 px-8 py-3.5 text-[14px] font-medium cursor-not-allowed select-none"
               >
@@ -337,7 +340,7 @@ export default function DownloadButtons() {
                 onClick={() => trackDownload(primaryOption)}
                 className="inline-flex items-center justify-center gap-3 rounded-full bg-white text-black px-8 py-3.5 text-[14px] font-medium shadow-xl hover:bg-zinc-200 transition-all duration-200 active:scale-[0.98]"
               >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
                 <span>Download for Windows</span>
@@ -385,6 +388,7 @@ export default function DownloadButtons() {
                 <span className="text-[11px] text-white/30 font-mono">v{BRAND.version}</span>
                 {opt.comingSoon ? (
                   <button
+                    type="button"
                     disabled
                     className="text-[11px] font-mono text-zinc-500 cursor-not-allowed select-none border border-white/10 rounded-full px-2.5 py-0.5 bg-white/[0.02]"
                   >
@@ -397,7 +401,7 @@ export default function DownloadButtons() {
                     className="inline-flex items-center gap-1.5 text-xs font-medium text-white hover:underline underline-offset-4 transition"
                   >
                     <span>Download {opt.fileExt}</span>
-                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                     </svg>
                   </a>

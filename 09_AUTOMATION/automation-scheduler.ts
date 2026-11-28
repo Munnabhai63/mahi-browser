@@ -12,13 +12,29 @@
 
 import crypto from 'node:crypto';
 import { getDatabase } from '../06_DATABASE/connection.js';
-import { AutomationSchedule } from '../10_CONFIG/shared/types/automation.js';
+import type { AutomationSchedule } from '../10_CONFIG/shared/types/automation.js';
 import { getWorkflowById, runWorkflow } from './automation-engine.js';
 import { getProfileById } from '../02_BROWSER/services/profile-service.js';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
 
 const log = createLogger('automation-scheduler');
+
+interface SqliteScheduleRow {
+  id: string;
+  workflow_id: string;
+  profile_id: string | null;
+  profile_ids_json: string | null;
+  workspace_id: string | null;
+  schedule_type: AutomationSchedule['scheduleType'];
+  cron_expression: string | null;
+  timezone: string | null;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  status: AutomationSchedule['status'];
+  created_at: string;
+  updated_at: string;
+}
 
 export interface CreateScheduleDTO {
   workflowId: string;
@@ -73,7 +89,7 @@ class AutomationSchedulerService {
       const activeRows = db.prepare(`
         SELECT * FROM automation_schedules
         WHERE status = 'ACTIVE' AND next_run_at IS NOT NULL AND next_run_at <= ?
-      `).all(nowIso) as any[];
+      `).all<SqliteScheduleRow>(nowIso);
 
       for (const row of activeRows) {
         const schedule = this.mapRow(row);
@@ -151,15 +167,16 @@ class AutomationSchedulerService {
         profileId,
         workspaceId: schedule.workspaceId,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       logActivity(
         'AUTOMATION',
         'ERROR',
         'SCHEDULE_EXECUTION_FAILED',
-        `Scheduled execution failed: ${err.message}`,
+        `Scheduled execution failed: ${errMsg}`,
         profileId,
         undefined,
-        { scheduleId: schedule.id, error: err.message }
+        { scheduleId: schedule.id, error: errMsg }
       );
     } finally {
       this.activeRunningScheduleIds.delete(schedule.id);
@@ -226,19 +243,23 @@ class AutomationSchedulerService {
       { scheduleId: id, scheduleType: dto.scheduleType }
     );
 
-    return this.getSchedule(id)!;
+    const created = this.getSchedule(id);
+    if (!created) {
+      throw new Error(`Created schedule ${id} could not be retrieved`);
+    }
+    return created;
   }
 
   public getSchedule(id: string): AutomationSchedule | null {
     const db = getDatabase();
-    const row = db.prepare('SELECT * FROM automation_schedules WHERE id = ?').get(id) as any;
+    const row = db.prepare('SELECT * FROM automation_schedules WHERE id = ?').get<SqliteScheduleRow>(id);
     return row ? this.mapRow(row) : null;
   }
 
   public listSchedules(filter?: { workspaceId?: string; status?: string; workflowId?: string }): AutomationSchedule[] {
     const db = getDatabase();
     let query = 'SELECT * FROM automation_schedules WHERE 1=1';
-    const params: any[] = [];
+    const params: string[] = [];
 
     if (filter?.workspaceId) {
       query += ' AND workspace_id = ?';
@@ -254,7 +275,7 @@ class AutomationSchedulerService {
     }
 
     query += ' ORDER BY created_at DESC';
-    const rows = db.prepare(query).all(...params) as any[];
+    const rows = db.prepare(query).all<SqliteScheduleRow>(...params);
     return rows.map((r) => this.mapRow(r));
   }
 
@@ -329,8 +350,8 @@ class AutomationSchedulerService {
     );
   }
 
-  private mapRow(row: any): AutomationSchedule {
-    let profileIds: string[] | undefined = undefined;
+  private mapRow(row: SqliteScheduleRow): AutomationSchedule {
+    let profileIds: string[] | undefined ;
     if (row.profile_ids_json) {
       try {
         profileIds = JSON.parse(row.profile_ids_json);

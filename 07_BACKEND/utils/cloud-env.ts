@@ -125,8 +125,8 @@ export function validateCloudEnv(rawEnv: NodeJS.ProcessEnv = process.env): Cloud
   // 1. Validate core cryptographic secrets (JWT, Master Admin, RSA status signing key)
   try {
     validateProductionSecrets();
-  } catch (err: any) {
-    issues.push(err?.message || 'Core production secrets failed validation.');
+  } catch (err: unknown) {
+    issues.push(err instanceof Error ? err.message : 'Core production secrets failed validation.');
   }
 
   // 2. Forbid dangerous test / bypass flags in production

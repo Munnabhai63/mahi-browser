@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
+import type { PrismaClient } from '@prisma/client';
 import { getDatabase } from '../06_DATABASE/connection.js';
 import { isPostgresConfigured } from '../06_DATABASE/central-repository.js';
 import { getPrismaClient } from '../06_DATABASE/prisma-client.js';
-import {
+import type {
   LicenseRecord,
   LicenseDurationType,
   LicenseStatus,
@@ -15,6 +16,62 @@ import {
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { getDeviceId, getLegacyDeviceId, getDeviceName } from '../03_HARDWARE/device-id.js';
 import { getInstallSecrets } from '../08_SECURITY/install-secrets.js';
+
+interface SqliteLicenseRow {
+  id: string;
+  key_masked: string;
+  customer_name: string;
+  account_id: string | null;
+  status: LicenseStatus;
+  duration_type: LicenseDurationType;
+  max_devices: number;
+  starts_at: string;
+  expires_at: string | null;
+  created_at: string;
+  created_by: string;
+  revoked_at: string | null;
+  last_validation_at: string | null;
+  notes: string | null;
+}
+
+interface SqliteLicenseDeviceRow {
+  id: string;
+  license_id: string;
+  device_id: string;
+  device_name: string;
+  ip_address: string | null;
+  activated_at: string;
+  last_seen_at: string;
+  status: ActivatedDevice['status'];
+}
+
+interface SqliteLocalLicenseCacheRow {
+  license_id: string;
+  device_id: string;
+  cached_status: string | null;
+  grace_expires_at: string | null;
+  signature: string | null;
+}
+
+interface SqliteCountRow {
+  count?: number;
+}
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function hasPgLicenseModels(prisma: Partial<PrismaClient> | null): prisma is PrismaClient {
+  return Boolean(
+    prisma?.licenses &&
+      prisma?.license_devices &&
+      typeof prisma.licenses.findFirst === 'function' &&
+      typeof prisma.licenses.update === 'function' &&
+      prisma?.commercial_audit_logs &&
+      typeof prisma.commercial_audit_logs.create === 'function' &&
+      typeof prisma.license_devices.updateMany === 'function'
+  );
+}
 
 function signLocalLicenseCache(licenseId: string, status: string, graceExpires: string): string {
   const hmacKey = getInstallSecrets().adminSalt || getInstallSecrets().jwtSecret;
@@ -137,7 +194,10 @@ export function createLicense(dto: CreateLicenseDTO, createdBy = 'OWNER'): Creat
     `Created ${dto.durationType} license for "${dto.customerName}" (Max Devices: ${dto.maxDevices || 1})`
   );
 
-  const license = getLicenseById(id)!;
+  const license = getLicenseById(id);
+  if (!license) {
+    throw new Error(`Created license ${id} could not be reloaded`);
+  }
   return {
     success: true,
     rawLicenseKey: rawKey,
@@ -150,12 +210,13 @@ export function createLicense(dto: CreateLicenseDTO, createdBy = 'OWNER'): Creat
  */
 export function getLicenseById(id: string): LicenseRecord | null {
   const db = getDatabase();
-  const row = db.prepare('SELECT * FROM licenses WHERE id = ?').get(id) as any;
+  const row = db.prepare('SELECT * FROM licenses WHERE id = ?').get(id) as unknown as SqliteLicenseRow | undefined;
   if (!row) return null;
 
-  const devicesCount = (db.prepare(
-    "SELECT COUNT(*) as count FROM license_devices WHERE license_id = ? AND status = 'ACTIVE'"
-  ).get(id) as any)?.count || 0;
+  const countRow = db
+    .prepare("SELECT COUNT(*) as count FROM license_devices WHERE license_id = ? AND status = 'ACTIVE'")
+    .get(id) as unknown as SqliteCountRow | undefined;
+  const devicesCount = countRow?.count || 0;
 
   const evaluatedStatus = evaluateServerStatus(row.status, row.expires_at, row.revoked_at);
   if (evaluatedStatus !== row.status) {
@@ -187,7 +248,7 @@ export function getLicenseById(id: string): LicenseRecord | null {
 export function getLicenses(filter?: { status?: string; searchQuery?: string }): LicenseRecord[] {
   const db = getDatabase();
   let query = 'SELECT * FROM licenses WHERE 1=1';
-  const params: any[] = [];
+  const params: string[] = [];
 
   if (filter?.status) {
     query += ' AND status = ?';
@@ -202,11 +263,12 @@ export function getLicenses(filter?: { status?: string; searchQuery?: string }):
 
   query += ' ORDER BY created_at DESC';
 
-  const rows = db.prepare(query).all(...params) as any[];
+  const rows = db.prepare(query).all(...params) as unknown as SqliteLicenseRow[];
   return rows.map((r) => {
-    const devicesCount = (db.prepare(
-      "SELECT COUNT(*) as count FROM license_devices WHERE license_id = ? AND status = 'ACTIVE'"
-    ).get(r.id) as any)?.count || 0;
+    const countRow = db
+      .prepare("SELECT COUNT(*) as count FROM license_devices WHERE license_id = ? AND status = 'ACTIVE'")
+      .get(r.id) as unknown as SqliteCountRow | undefined;
+    const devicesCount = countRow?.count || 0;
 
     const evaluatedStatus = evaluateServerStatus(r.status, r.expires_at, r.revoked_at);
 
@@ -246,7 +308,9 @@ export function activateLicense(
   }
 
   const keyHash = hashLicenseKey(normalizedKey);
-  const row = db.prepare('SELECT * FROM licenses WHERE license_key_hash = ?').get(keyHash) as any;
+  const row = db
+    .prepare('SELECT * FROM licenses WHERE license_key_hash = ?')
+    .get(keyHash) as unknown as SqliteLicenseRow | undefined;
 
   if (!row) {
     return { success: false, status: 'NOT_ACTIVATED', message: 'Invalid license key. No matching license found.' };
@@ -269,12 +333,12 @@ export function activateLicense(
   // Check device registration (supports both new stable HWID and legacy v1.2.2 deviceId)
   const legacyDeviceId = deviceId === getDeviceId() ? getLegacyDeviceId() : undefined;
   const existingDevice = legacyDeviceId
-    ? (db.prepare(
-        'SELECT * FROM license_devices WHERE license_id = ? AND device_id IN (?, ?)'
-      ).get(row.id, deviceId, legacyDeviceId) as any)
-    : (db.prepare(
-        'SELECT * FROM license_devices WHERE license_id = ? AND device_id = ?'
-      ).get(row.id, deviceId) as any);
+    ? (db
+        .prepare('SELECT * FROM license_devices WHERE license_id = ? AND device_id IN (?, ?)')
+        .get(row.id, deviceId, legacyDeviceId) as unknown as SqliteLicenseDeviceRow | undefined)
+    : (db
+        .prepare('SELECT * FROM license_devices WHERE license_id = ? AND device_id = ?')
+        .get(row.id, deviceId) as unknown as SqliteLicenseDeviceRow | undefined);
 
   const now = new Date().toISOString();
 
@@ -286,9 +350,10 @@ export function activateLicense(
     );
   } else {
     // Check max devices limit
-    const activeCount = (db.prepare(
-      "SELECT COUNT(*) as count FROM license_devices WHERE license_id = ? AND status = 'ACTIVE'"
-    ).get(row.id) as any)?.count || 0;
+    const activeCountRow = db
+      .prepare("SELECT COUNT(*) as count FROM license_devices WHERE license_id = ? AND status = 'ACTIVE'")
+      .get(row.id) as unknown as SqliteCountRow | undefined;
+    const activeCount = activeCountRow?.count || 0;
 
     if (activeCount >= row.max_devices) {
       return {
@@ -325,7 +390,14 @@ export function activateLicense(
 
   logActivity('SECURITY', 'SUCCESS', 'Activate License', `Device "${deviceName}" activated for "${row.customer_name}"`, undefined, row.customer_name);
 
-  const fullLicense = getLicenseById(row.id)!;
+  const fullLicense = getLicenseById(row.id);
+  if (!fullLicense) {
+    return {
+      success: false,
+      status: 'NOT_ACTIVATED',
+      message: 'Activated license record could not be loaded.',
+    };
+  }
   return {
     success: true,
     status: 'ACTIVE',
@@ -339,7 +411,9 @@ export function activateLicense(
  */
 export function validateCurrentLicense(targetDeviceId?: string): LicenseValidationResult {
   const db = getDatabase();
-  const cache = db.prepare('SELECT * FROM local_license_cache LIMIT 1').get() as any;
+  const cache = db.prepare('SELECT * FROM local_license_cache LIMIT 1').get() as unknown as
+    | SqliteLocalLicenseCacheRow
+    | undefined;
 
   if (!cache) {
     return { isValid: false, status: 'NOT_ACTIVATED', message: 'No license active on this device.' };
@@ -399,11 +473,11 @@ export function validateCurrentLicense(targetDeviceId?: string): LicenseValidati
     ? [targetDeviceId]
     : Array.from(new Set([getDeviceId(), cache.device_id, getLegacyDeviceId()].filter(Boolean)));
 
-  let device: any = null;
+  let device: SqliteLicenseDeviceRow | undefined;
   for (const cid of candidateDeviceIds) {
-    device = db.prepare(
-      "SELECT * FROM license_devices WHERE license_id = ? AND device_id = ? AND status = 'ACTIVE'"
-    ).get(license.id, cid);
+    device = db
+      .prepare("SELECT * FROM license_devices WHERE license_id = ? AND device_id = ? AND status = 'ACTIVE'")
+      .get(license.id, cid) as unknown as SqliteLicenseDeviceRow | undefined;
     if (device) break;
   }
 
@@ -431,17 +505,11 @@ export function validateCurrentLicense(targetDeviceId?: string): LicenseValidati
  * Revokes a license (Admin/Owner action).
  */
 export function revokeLicense(licenseId: string, reason = 'Revoked by administrator'): boolean | Promise<boolean> {
-  const prisma = isPostgresConfigured() ? getPrismaClient() : null;
-  const pgReady = !!(prisma && (prisma as any).licenses && (prisma as any).license_devices
-      && typeof (prisma as any).licenses.findFirst === 'function'
-      && typeof (prisma as any).licenses.update === 'function'
-      && (prisma as any).commercial_audit_logs
-      && typeof (prisma as any).commercial_audit_logs.create === 'function'
-      && typeof (prisma as any).license_devices.updateMany === 'function');
+  const prisma = isPostgresConfigured() ? (getPrismaClient() as Partial<PrismaClient> | null) : null;
+  const pgReady = hasPgLicenseModels(prisma);
   if (prisma && !pgReady) console.warn('[LicenseEngine][PG_CAPABILITY_MISSING] licenses models unavailable; using local SQLite');
-  const pgPath = !!(prisma && pgReady);
 
-  if (!pgPath) {
+  if (!pgReady) {
     const db = getDatabase();
     const now = new Date().toISOString();
 
@@ -462,41 +530,32 @@ export function revokeLicense(licenseId: string, reason = 'Revoked by administra
 
   // PG branch - SEQUENTIAL ops ONLY (NO $transaction; same contract as F5/3B1-REPAIR):
   return (async () => {
-    // 1) const existing = await prisma.licenses.findFirst({ where: { id: licenseId } });
-    const existing = await (prisma as any).licenses.findFirst({ where: { id: licenseId } });
+    const existing = await prisma.licenses.findFirst({ where: { id: licenseId } });
     if (!existing) return false;
 
-    // 2) const now = new Date().toISOString();
     const now = new Date().toISOString();
-    try {
-      await (prisma as any).licenses.update({
-        where: { id: existing.id },
-        data: {
-          status: 'REVOKED',
-          revoked_at: now,
-          notes: [existing.notes, `[REVOKED: ${reason}]`].filter(Boolean).join(' | '),
-        },
-      });
-    } catch (e: any) {
-      throw e;
-    }
+    await prisma.licenses.update({
+      where: { id: existing.id },
+      data: {
+        status: 'REVOKED',
+        revoked_at: now,
+        notes: [existing.notes, `[REVOKED: ${reason}]`].filter(Boolean).join(' | '),
+      },
+    });
 
-    // 3) try { await prisma.license_devices.updateMany({ where: { license_id: existing.id }, data: { status: 'DEACTIVATED' } }); } catch (e: any) { console.warn(...); }
     try {
-      await (prisma as any).license_devices.updateMany({
+      await prisma.license_devices.updateMany({
         where: { license_id: existing.id },
         data: { status: 'DEACTIVATED' },
       });
-    } catch (e: any) {
-      console.warn('[LicenseEngine] Failed to deactivate license devices in PG:', e?.message || e);
+    } catch (e: unknown) {
+      console.warn('[LicenseEngine] Failed to deactivate license devices in PG:', errMsg(e));
     }
 
-    // 4) local_license_cache UNTOUCHED (log: '[LicenseEngine][PG_SKIP] local_license_cache is desktop-only; not applicable in Postgres')
     console.log('[LicenseEngine][PG_SKIP] local_license_cache is desktop-only; not applicable in Postgres');
 
-    // 5) audit (warn-only): action 'LICENSE_REVOKED', target_type 'LICENSE', target_id licenseId, details JSON.stringify({ reason })
     try {
-      await (prisma as any).commercial_audit_logs.create({
+      await prisma.commercial_audit_logs.create({
         data: {
           id: crypto.randomUUID(),
           actor_id: 'ADMIN',
@@ -510,18 +569,16 @@ export function revokeLicense(licenseId: string, reason = 'Revoked by administra
           created_at: now,
         },
       });
-    } catch (e: any) {
-      console.warn('[LicenseEngine] Failed to create audit log in PG:', e?.message || e);
+    } catch (e: unknown) {
+      console.warn('[LicenseEngine] Failed to create audit log in PG:', errMsg(e));
     }
 
-    // 6) try { logActivity(...) } catch warn
     try {
       logActivity('SECURITY', 'WARNING', 'Revoke License', `License ID ${licenseId} revoked: ${reason}`);
-    } catch (e: any) {
-      console.warn('[LicenseEngine] logActivity failed:', e?.message || e);
+    } catch (e: unknown) {
+      console.warn('[LicenseEngine] logActivity failed:', errMsg(e));
     }
 
-    // 7) return true;
     return true;
   })();
 }
@@ -530,17 +587,11 @@ export function revokeLicense(licenseId: string, reason = 'Revoked by administra
  * Extends the expiry of an existing license (Admin/Owner action).
  */
 export function extendLicense(dto: ExtendLicenseDTO): LicenseRecord | null | Promise<LicenseRecord | null> {
-  const prisma = isPostgresConfigured() ? getPrismaClient() : null;
-  const pgReady = !!(prisma && (prisma as any).licenses && (prisma as any).license_devices
-      && typeof (prisma as any).licenses.findFirst === 'function'
-      && typeof (prisma as any).licenses.update === 'function'
-      && (prisma as any).commercial_audit_logs
-      && typeof (prisma as any).commercial_audit_logs.create === 'function'
-      && typeof (prisma as any).license_devices.updateMany === 'function');
+  const prisma = isPostgresConfigured() ? (getPrismaClient() as Partial<PrismaClient> | null) : null;
+  const pgReady = hasPgLicenseModels(prisma);
   if (prisma && !pgReady) console.warn('[LicenseEngine][PG_CAPABILITY_MISSING] licenses models unavailable; using local SQLite');
-  const pgPath = !!(prisma && pgReady);
 
-  if (!pgPath) {
+  if (!pgReady) {
     const db = getDatabase();
     const current = getLicenseById(dto.licenseId);
     if (!current) return null;
@@ -573,11 +624,9 @@ export function extendLicense(dto: ExtendLicenseDTO): LicenseRecord | null | Pro
 
   // PG branch - SEQUENTIAL ops ONLY:
   return (async () => {
-    // 1) const existing = await prisma.licenses.findFirst({ where: { id: dto.licenseId } });
-    const existing = await (prisma as any).licenses.findFirst({ where: { id: dto.licenseId } });
+    const existing = await prisma.licenses.findFirst({ where: { id: dto.licenseId } });
     if (!existing) return null;
 
-    // 2) calculate newExpiresAt from dto (same Math.max(Date.now(), new Date(expires_at).getTime()) base time).
     let newExpiresAt: string | null = null;
     if (dto.newExpiresAt) {
       newExpiresAt = new Date(dto.newExpiresAt).toISOString();
@@ -586,19 +635,16 @@ export function extendLicense(dto: ExtendLicenseDTO): LicenseRecord | null | Pro
       newExpiresAt = new Date(baseTime + dto.additionalDays * 24 * 60 * 60 * 1000).toISOString();
     }
 
-    // 3) const newStatus = existing.status === 'EXPIRED' ? 'ACTIVE' : existing.status;
     const newStatus = existing.status === 'EXPIRED' ? 'ACTIVE' : existing.status;
 
-    // 4) await prisma.licenses.update({ where: { id: existing.id }, data: { expires_at: newExpiresAt, status: newStatus, revoked_at: null } });
-    await (prisma as any).licenses.update({
+    await prisma.licenses.update({
       where: { id: existing.id },
       data: { expires_at: newExpiresAt, status: newStatus, revoked_at: null },
     });
 
-    // 5) audit (warn-only): action 'LICENSE_EXTENDED', details JSON.stringify({ newExpiresAt, customerName: existing.customer_name })
     const now = new Date().toISOString();
     try {
-      await (prisma as any).commercial_audit_logs.create({
+      await prisma.commercial_audit_logs.create({
         data: {
           id: crypto.randomUUID(),
           actor_id: 'ADMIN',
@@ -612,11 +658,10 @@ export function extendLicense(dto: ExtendLicenseDTO): LicenseRecord | null | Pro
           created_at: now,
         },
       });
-    } catch (e: any) {
-      console.warn('[LicenseEngine] Failed to create audit log in PG:', e?.message || e);
+    } catch (e: unknown) {
+      console.warn('[LicenseEngine] Failed to create audit log in PG:', errMsg(e));
     }
 
-    // 6) try { logActivity(...) } catch warn
     try {
       logActivity(
         'SECURITY',
@@ -624,29 +669,28 @@ export function extendLicense(dto: ExtendLicenseDTO): LicenseRecord | null | Pro
         'Extend License',
         `Extended license "${existing.customer_name}" to ${newExpiresAt || 'Lifetime'}`
       );
-    } catch (e: any) {
-      console.warn('[LicenseEngine] logActivity failed:', e?.message || e);
+    } catch (e: unknown) {
+      console.warn('[LicenseEngine] logActivity failed:', errMsg(e));
     }
 
-    // 7) return record shaped EXACTLY like legacy getLicenseById would return:
     let devicesCount = 0;
     try {
-      devicesCount = await (prisma as any).license_devices.count({
+      devicesCount = await prisma.license_devices.count({
         where: { license_id: dto.licenseId, status: 'ACTIVE' },
       });
-    } catch (e: any) {
-      console.warn('[LicenseEngine] Failed to count devices in PG:', e?.message || e);
+    } catch (e: unknown) {
+      console.warn('[LicenseEngine] Failed to count devices in PG:', errMsg(e));
     }
 
     const evaluatedStatus = evaluateServerStatus(newStatus as LicenseStatus, newExpiresAt, null);
     if (evaluatedStatus !== newStatus) {
       try {
-        await (prisma as any).licenses.update({
+        await prisma.licenses.update({
           where: { id: existing.id },
           data: { status: evaluatedStatus },
         });
-      } catch (e: any) {
-        console.warn('[LicenseEngine] Failed to update evaluated status in PG:', e?.message || e);
+      } catch (e: unknown) {
+        console.warn('[LicenseEngine] Failed to update evaluated status in PG:', errMsg(e));
       }
     }
 
@@ -677,7 +721,9 @@ export function extendLicense(dto: ExtendLicenseDTO): LicenseRecord | null | Pro
  */
 export function getLicenseDevices(licenseId: string): ActivatedDevice[] {
   const db = getDatabase();
-  const rows = db.prepare('SELECT * FROM license_devices WHERE license_id = ? ORDER BY activated_at DESC').all(licenseId) as any[];
+  const rows = db
+    .prepare('SELECT * FROM license_devices WHERE license_id = ? ORDER BY activated_at DESC')
+    .all(licenseId) as unknown as SqliteLicenseDeviceRow[];
   return rows.map((r) => ({
     id: r.id,
     licenseId: r.license_id,

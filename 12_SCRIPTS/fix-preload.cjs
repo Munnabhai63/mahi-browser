@@ -1,8 +1,8 @@
 // Post-build: rename preload to .cjs and copy CJS content
 // Node.js treats .js files as ESM when package.json has "type": "module"
 // Electron preload MUST be CommonJS, so we use .cjs extension
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const src = path.join(__dirname, '..', '10_CONFIG', 'preload', 'preload.cjs');
 const destDir = path.join(__dirname, '..', 'dist-electron', 'preload');
@@ -17,7 +17,7 @@ console.log('fix-preload: src =', src, 'exists =', fs.existsSync(src));
 
 if (fs.existsSync(src)) {
   // Validate syntax before copying to prevent shipping broken preload
-  const { execFileSync } = require('child_process');
+  const { execFileSync } = require('node:child_process');
   try {
     execFileSync(process.execPath, ['-c', src], { stdio: 'pipe' });
     console.log('✓ Preload syntax validated successfully.');

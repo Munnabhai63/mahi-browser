@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import { DeviceRecord, FleetTelemetry } from '../../10_CONFIG/shared/types/platform.js';
+import type { DeviceRecord, FleetTelemetry } from '../../10_CONFIG/shared/types/platform.js';
 import { processManager } from '../../02_BROWSER/process-manager.js';
 import { getDeviceId, getDeviceName } from '../../03_HARDWARE/device-id.js';
 import { logActivity } from './audit-service.js';
@@ -23,9 +23,22 @@ export function getLocalDeviceRecord(): DeviceRecord {
   };
 }
 
+interface SqliteFleetDeviceRow {
+  id: string;
+  device_id: string;
+  user_id: string;
+  device_name: string;
+  os: string;
+  client_version: string;
+  ip_address: string;
+  status: string;
+  last_seen_at: string;
+  registered_at: string;
+}
+
 export function getFleetDevices(): DeviceRecord[] {
   const db = getDatabase();
-  const rows = db.prepare('SELECT * FROM fleet_devices ORDER BY last_seen_at DESC').all() as any[];
+  const rows = db.prepare('SELECT * FROM fleet_devices ORDER BY last_seen_at DESC').all<SqliteFleetDeviceRow>();
 
   // Always ensure local device is present in list
   const local = getLocalDeviceRecord();
@@ -45,7 +58,7 @@ export function getFleetDevices(): DeviceRecord[] {
   return rows.map(mapRowToDevice);
 }
 
-function mapRowToDevice(r: any): DeviceRecord {
+function mapRowToDevice(r: SqliteFleetDeviceRow): DeviceRecord {
   return {
     id: r.id,
     deviceId: r.device_id,
@@ -71,8 +84,8 @@ export function getLiveTelemetry(): FleetTelemetry {
   let totalIdle = 0;
   let totalTick = 0;
   for (const cpu of cpus) {
-    for (const type in cpu.times) {
-      totalTick += (cpu.times as any)[type];
+    for (const timeVal of Object.values(cpu.times)) {
+      totalTick += timeVal;
     }
     totalIdle += cpu.times.idle;
   }

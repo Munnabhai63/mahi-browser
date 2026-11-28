@@ -1,4 +1,4 @@
-import React from 'react';
+import type React from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 
 interface ConfirmModalProps {
@@ -35,19 +35,19 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">{title}</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{message}</p>
           </div>
-          <button onClick={onCancel} className="text-slate-400 hover:text-slate-200">
+          <button type="button" onClick={onCancel} className="text-slate-400 hover:text-slate-200">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="flex items-center justify-end space-x-3 mt-6">
-          <button
+          <button type="button"
             onClick={onCancel}
             className="px-4 py-2 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           >
             {cancelLabel}
           </button>
-          <button
+          <button type="button"
             onClick={onConfirm}
             className={`px-4 py-2 text-xs font-semibold rounded-lg text-white transition-all shadow-sm active:scale-95 ${
               isDestructive

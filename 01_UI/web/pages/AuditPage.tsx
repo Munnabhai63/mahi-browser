@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Activity, Search, RefreshCw, Filter, ShieldCheck, Key, Webhook, Globe2, Layers } from 'lucide-react';
+import type React from 'react';
+import { useState } from 'react';
+import { Activity, Search, RefreshCw, Key, Webhook, Globe2, Layers } from 'lucide-react';
 
 export interface WebAuditItem {
   id: string;

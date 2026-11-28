@@ -1,6 +1,6 @@
 import { FingerprintGenerator } from 'fingerprint-generator';
 import { HeaderGenerator } from 'header-generator';
-import { ProfileSettings, StatisticalProfileOptions } from '../10_CONFIG/shared/types/profile.js';
+import type { ProfileSettings, StatisticalProfileOptions } from '../10_CONFIG/shared/types/profile.js';
 import { MANAGED_ENGINE_VERSION } from '../10_CONFIG/engine-config.js';
 import {
   validateAndNormalizeFingerprintCoherence,
@@ -93,8 +93,9 @@ function getGenerators(): { fg: FingerprintGenerator; hg: HeaderGenerator } {
  */
 function createSeededRng(seed: number) {
   let a = seed;
-  return function () {
-    let t = (a += 0x6d2b79f5);
+  return () => {
+    a += 0x6d2b79f5;
+    let t = a;
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -138,31 +139,58 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
   let targetTimezone = options.timezone || regionData.timezone;
   let targetLanguagesList = regionData.languagesList;
 
+interface BrandVersionEntry {
+  brand: string;
+  version: string;
+}
+
+interface BayesianUserAgentDataLike {
+  brands?: BrandVersionEntry[];
+  fullVersionList?: BrandVersionEntry[];
+  platform?: string;
+  platformVersion?: string;
+  architecture?: string;
+  model?: string;
+  bitness?: string;
+}
+
+type FgOptions = NonNullable<Parameters<FingerprintGenerator['getFingerprint']>[0]>;
+type HgOptions = NonNullable<Parameters<HeaderGenerator['getHeaders']>[0]>;
+type FgOperatingSystem = NonNullable<FgOptions['operatingSystems']>[number];
+type HgOperatingSystem = NonNullable<HgOptions['operatingSystems']>[number];
+type BayesianFingerprint = ReturnType<FingerprintGenerator['getFingerprint']>['fingerprint'] & {
+  navigator?: {
+    userAgentData?: BayesianUserAgentDataLike;
+  };
+};
+type BayesianHeaders = ReturnType<HeaderGenerator['getHeaders']>;
+
   // 3. Bayesian Generation via FingerprintGenerator & HeaderGenerator (only when unseeded)
-  let bayesianFp: any = null;
-  let bayesianHeaders: any = null;
+  let bayesianFp: BayesianFingerprint | null = null;
+  let bayesianHeaders: BayesianHeaders | null = null;
   if (options.seed === undefined) {
     try {
       const { fg, hg } = getGenerators();
-      const osMap: Record<string, string> = {
+      const osMap: Record<'windows' | 'macos' | 'linux' | 'android', FgOperatingSystem & HgOperatingSystem> = {
         windows: 'windows',
         macos: 'macos',
         linux: 'linux',
         android: 'android',
       };
+      const resolvedOs = osMap[targetOs] || 'windows';
       bayesianFp = fg.getFingerprint({
-        operatingSystems: [osMap[targetOs] as any],
+        operatingSystems: [resolvedOs],
         devices: [isMobile ? 'mobile' : 'desktop'],
         browsers: engine === 'camoufox'
-          ? [{ name: 'firefox' as any }]
-          : [{ name: engine === 'edge' ? ('edge' as any) : ('chrome' as any) }],
-      })?.fingerprint;
+          ? [{ name: 'firefox' }]
+          : [{ name: engine === 'edge' ? 'edge' : 'chrome' }],
+      })?.fingerprint as BayesianFingerprint | undefined ?? null;
 
       bayesianHeaders = hg.getHeaders({
-        operatingSystems: [osMap[targetOs] as any],
+        operatingSystems: [resolvedOs],
         browsers: engine === 'camoufox'
-          ? [{ name: 'firefox' as any }]
-          : [{ name: engine === 'edge' ? ('edge' as any) : ('chrome' as any) }],
+          ? [{ name: 'firefox' }]
+          : [{ name: engine === 'edge' ? 'edge' : 'chrome' }],
       });
 
       if (!options.locale && bayesianHeaders) {
@@ -298,7 +326,7 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
 
   // 7. Hardware Capacity & Touch Points
   let hardwareConcurrency = isMobile ? 8 : (isMac ? (isMacM1 ? 8 : 4) : ([8, 12, 16] as const)[Math.floor(rng() * 3)]);
-  let deviceMemory = isMobile ? 8 : ([4, 8, 16] as const)[Math.floor(rng() * 3)];
+  let deviceMemory: number = isMobile ? 8 : ([4, 8, 16] as const)[Math.floor(rng() * 3)];
   if (options.seed === undefined && bayesianFp?.navigator?.hardwareConcurrency) {
     hardwareConcurrency = bayesianFp.navigator.hardwareConcurrency;
   }
@@ -314,7 +342,7 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
   const fonts = [...(OS_FONTS[targetOs] || OS_FONTS.windows)];
 
   // 9. Client Hints (for Chromium-family engines)
-  let clientHints: any = undefined;
+  let clientHints: NonNullable<ProfileSettings['fingerprint']>['clientHints'] ;
   if (engine !== 'camoufox') {
     if (options.seed === undefined && bayesianFp?.navigator?.userAgentData?.brands?.length) {
       const isGreaseBrand = (name: string): boolean => {
@@ -334,7 +362,8 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
         return rawName;
       };
 
-      let brands = bayesianFp.navigator.userAgentData.brands.map((b: any) => {
+      const uaData = bayesianFp.navigator.userAgentData;
+      let brands: BrandVersionEntry[] = (uaData.brands ?? []).map((b) => {
         const brandName = normalizeBrandName(b.brand);
         if (brandName === 'Chromium' || brandName === targetPrimaryBrand) {
           return { brand: brandName, version: chromeMajor };
@@ -342,18 +371,19 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
         return { brand: brandName, version: b.version };
       });
 
-      if (!brands.some((b: any) => b.brand === targetPrimaryBrand)) {
+      if (!brands.some((b) => b.brand === targetPrimaryBrand)) {
         brands.push({ brand: targetPrimaryBrand, version: chromeMajor });
       }
       const seenBrands = new Set<string>();
-      brands = brands.filter((b: any) => {
+      brands = brands.filter((b) => {
         if (seenBrands.has(b.brand)) return false;
         seenBrands.add(b.brand);
         return true;
       });
 
-      let rawFullVersionList = bayesianFp.navigator.userAgentData.fullVersionList || brands.map((b: any) => ({ brand: b.brand, version: `${b.version}.0.0.0` }));
-      let fullVersionList = rawFullVersionList.map((b: any) => {
+      const rawFullVersionList: BrandVersionEntry[] =
+        uaData.fullVersionList || brands.map((b) => ({ brand: b.brand, version: `${b.version}.0.0.0` }));
+      let fullVersionList: BrandVersionEntry[] = rawFullVersionList.map((b) => {
         const brandName = normalizeBrandName(b.brand);
         if (brandName === 'Chromium' || brandName === targetPrimaryBrand) {
           return { brand: brandName, version: MANAGED_ENGINE_VERSION };
@@ -361,11 +391,11 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
         return { brand: brandName, version: b.version };
       });
 
-      if (!fullVersionList.some((fv: any) => fv.brand === targetPrimaryBrand)) {
+      if (!fullVersionList.some((fv) => fv.brand === targetPrimaryBrand)) {
         fullVersionList.push({ brand: targetPrimaryBrand, version: MANAGED_ENGINE_VERSION });
       }
       const seenFv = new Set<string>();
-      fullVersionList = fullVersionList.filter((b: any) => {
+      fullVersionList = fullVersionList.filter((b) => {
         if (seenFv.has(b.brand)) return false;
         seenFv.add(b.brand);
         return true;
@@ -373,11 +403,11 @@ export function generateStatisticalProfileSettings(options: StatisticalProfileOp
       clientHints = {
         brands,
         mobile: isMobile,
-        platform: bayesianFp.navigator.userAgentData.platform || (isWindows ? 'Windows' : (isMac ? 'macOS' : (isLinux ? 'Linux' : 'Android'))),
-        platformVersion: bayesianFp.navigator.userAgentData.platformVersion || (isWindows ? '15.0.0' : (isMac ? '14.5.0' : '6.5.0')),
-        architecture: bayesianFp.navigator.userAgentData.architecture || (isMobile ? 'arm' : (isMacM1 ? 'arm' : 'x86')),
-        model: bayesianFp.navigator.userAgentData.model || (isMobile ? 'Pixel 8' : ''),
-        bitness: bayesianFp.navigator.userAgentData.bitness || '64',
+        platform: uaData.platform || (isWindows ? 'Windows' : (isMac ? 'macOS' : (isLinux ? 'Linux' : 'Android'))),
+        platformVersion: uaData.platformVersion || (isWindows ? '15.0.0' : (isMac ? '14.5.0' : '6.5.0')),
+        architecture: uaData.architecture || (isMobile ? 'arm' : (isMacM1 ? 'arm' : 'x86')),
+        model: uaData.model || (isMobile ? 'Pixel 8' : ''),
+        bitness: uaData.bitness || '64',
         fullVersionList,
       };
     } else {

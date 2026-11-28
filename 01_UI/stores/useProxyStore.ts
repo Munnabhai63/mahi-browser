@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ProxyItem, CreateProxyDTO, UpdateProxyDTO, ProxyTestResult } from '../../10_CONFIG/shared/types/proxy.js';
+import type { ProxyItem, CreateProxyDTO, UpdateProxyDTO, ProxyTestResult } from '../../10_CONFIG/shared/types/proxy.js';
 import { useToastStore } from './useToastStore.js';
 
 interface ProxyState {

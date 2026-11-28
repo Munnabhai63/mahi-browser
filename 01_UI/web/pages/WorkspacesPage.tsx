@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import {
   Layers,
   UserPlus,
@@ -7,7 +8,7 @@ import {
   Share2,
   Plus,
 } from 'lucide-react';
-import {
+import type {
   TeamWorkspace,
   TeamWorkspaceMember,
   TeamRole,
@@ -37,13 +38,13 @@ export const WorkspacesPage: React.FC<WorkspacesPageProps> = ({
   members,
   sharedProfiles,
   currentUserRole = 'OWNER',
-  isLoading,
+  isLoading: _isLoading,
   onSelectWorkspace,
   onCreateWorkspace,
   onInviteMember,
   onUpdateRole,
   onRemoveMember,
-  onShareProfile,
+  onShareProfile: _onShareProfile,
 }) => {
   const [activeTab, setActiveTab] = useState<'MEMBERS' | 'SHARES' | 'SETTINGS'>('MEMBERS');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -120,9 +121,10 @@ export const WorkspacesPage: React.FC<WorkspacesPageProps> = ({
       {/* Workspace Selection Shelf */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Personal Workspace Card */}
-        <div
+        <button
+          type="button"
           onClick={() => onSelectWorkspace(null)}
-          className={`p-4 rounded-2xl border cursor-pointer transition-all ${
+          className={`text-left p-4 rounded-2xl border cursor-pointer transition-all ${
             !currentWorkspace
               ? 'bg-teal-500/10 border-teal-500/40 shadow-lg shadow-teal-500/5'
               : 'bg-[#0c1222] border-slate-800 hover:border-slate-700'
@@ -137,14 +139,15 @@ export const WorkspacesPage: React.FC<WorkspacesPageProps> = ({
               <div className="text-[10px] text-slate-400">Single-tenant private isolation</div>
             </div>
           </div>
-        </div>
+        </button>
 
         {/* Team Workspaces */}
         {workspaces.map((ws) => (
-          <div
+          <button
+            type="button"
             key={ws.id}
             onClick={() => onSelectWorkspace(ws)}
-            className={`p-4 rounded-2xl border cursor-pointer transition-all ${
+            className={`text-left p-4 rounded-2xl border cursor-pointer transition-all ${
               currentWorkspace?.id === ws.id
                 ? 'bg-teal-500/10 border-teal-500/40 shadow-lg shadow-teal-500/5'
                 : 'bg-[#0c1222] border-slate-800 hover:border-slate-700'
@@ -162,7 +165,7 @@ export const WorkspacesPage: React.FC<WorkspacesPageProps> = ({
               </div>
               <span className="text-[10px] text-teal-400 font-mono font-semibold">Active</span>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -173,6 +176,7 @@ export const WorkspacesPage: React.FC<WorkspacesPageProps> = ({
           <div className="p-4 border-b border-slate-800 flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center space-x-2">
               <button
+                type="button"
                 onClick={() => setActiveTab('MEMBERS')}
                 className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                   activeTab === 'MEMBERS'
@@ -183,6 +187,7 @@ export const WorkspacesPage: React.FC<WorkspacesPageProps> = ({
                 Team Members ({members.length})
               </button>
               <button
+                type="button"
                 onClick={() => setActiveTab('SHARES')}
                 className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                   activeTab === 'SHARES'

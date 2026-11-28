@@ -16,6 +16,21 @@ import { getCommercialPlanById } from './commercial-plan-service.js';
 import { createLogger } from '../utils/logger.js';
 const log = createLogger('commercial-reconcile-service');
 
+interface SqliteSubscriptionRow {
+  id: string;
+  plan_id: string;
+  status: string;
+  expires_at: string | null;
+}
+
+interface SqliteAuthPlanRow {
+  plan_id: string | null;
+}
+
+function getReconcileErrMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 const inFlightReconciliations = new Set<string>();
 
 export function getPlanRank(planId: string | null | undefined): number {
@@ -65,15 +80,15 @@ export async function reconcileUserPlanOnLogin(
     const now = new Date().toISOString();
 
     // Query user's subscriptions ordered by created_at DESC
-    let subs: any[] = [];
+    let subs: SqliteSubscriptionRow[] = [];
     try {
       subs = db.prepare(`
         SELECT * FROM commercial_subscriptions
         WHERE user_id = ?
         ORDER BY created_at DESC
-      `).all(userId) as any[];
-    } catch (err: any) {
-      log.error('[Reconcile] Error fetching subscriptions for user', userId, err?.message);
+      `).all<SqliteSubscriptionRow>(userId);
+    } catch (err: unknown) {
+      log.error('[Reconcile] Error fetching subscriptions for user', userId, getReconcileErrMsg(err));
       return { reconciled: false };
     }
 
@@ -86,12 +101,12 @@ export async function reconcileUserPlanOnLogin(
         if (pgUser?.plan_id) {
           currentPlan = pgUser.plan_id;
         }
-      } catch (err: any) {
-        log.error('[Reconcile] Error reading PG user plan for', userId, err?.message);
+      } catch (err: unknown) {
+        log.error('[Reconcile] Error reading PG user plan for', userId, getReconcileErrMsg(err));
       }
     } else {
       try {
-        const row = db.prepare('SELECT plan_id FROM auth_users WHERE id = ?').get(userId) as any;
+        const row = db.prepare('SELECT plan_id FROM auth_users WHERE id = ?').get<SqliteAuthPlanRow>(userId);
         if (row?.plan_id) {
           currentPlan = row.plan_id;
         }
@@ -134,8 +149,8 @@ export async function reconcileUserPlanOnLogin(
             plan_id: targetPlan,
             profile_quota: targetProfiles,
           });
-        } catch (err: any) {
-          log.error('[Reconcile][CRITICAL] PG plan upgrade failed for user', userId, err?.message);
+        } catch (err: unknown) {
+          log.error('[Reconcile][CRITICAL] PG plan upgrade failed for user', userId, getReconcileErrMsg(err));
           return { reconciled: false, planId: currentPlan };
         }
       }
@@ -176,8 +191,8 @@ export async function reconcileUserPlanOnLogin(
             plan_id: 'plan_free',
             profile_quota: freeQuota,
           });
-        } catch (err: any) {
-          log.error('[Reconcile][CRITICAL] PG plan reset failed for user', userId, err?.message);
+        } catch (err: unknown) {
+          log.error('[Reconcile][CRITICAL] PG plan reset failed for user', userId, getReconcileErrMsg(err));
           return { reconciled: false, planId: currentPlan };
         }
       }

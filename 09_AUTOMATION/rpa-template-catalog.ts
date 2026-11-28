@@ -6,7 +6,7 @@
  * with built-in humanized delays, natural mouse curves, and cookie retention.
  */
 
-import { AutomationStep } from '../10_CONFIG/shared/types/automation.js';
+import type { AutomationStep } from '../10_CONFIG/shared/types/automation.js';
 
 export interface RpaTemplate {
   id: string;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { BRAND } from '../lib/brand';
 
 export interface FaqItem {
@@ -78,7 +78,7 @@ export default function FaqAccordion({ items = DEFAULT_FAQS }: { items?: FaqItem
           const isOpen = openIndexes.includes(idx);
           return (
             <div
-              key={idx}
+              key={item.question}
               className={`rounded-xl border transition-all duration-200 overflow-hidden ${
                 isOpen
                   ? 'border-black/25 bg-white shadow-md'
@@ -97,7 +97,7 @@ export default function FaqAccordion({ items = DEFAULT_FAQS }: { items?: FaqItem
                     isOpen ? 'rotate-180 bg-black text-white border-black' : ''
                   }`}
                 >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </span>

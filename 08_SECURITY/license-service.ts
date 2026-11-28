@@ -26,7 +26,7 @@ function getMachineGuid(): string {
         { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] }
       );
       const match = output.match(/MachineGuid\s+REG_SZ\s+([A-Fa-f0-9-]+)/i);
-      if (match && match[1]) {
+      if (match?.[1]) {
         return match[1].trim();
       }
     } else if (process.platform === 'darwin') {
@@ -35,7 +35,7 @@ function getMachineGuid(): string {
         { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] }
       );
       const match = output.match(/"IOPlatformUUID"\s*=\s*"([^"]+)"/i);
-      if (match && match[1]) {
+      if (match?.[1]) {
         return match[1].trim();
       }
     } else {
@@ -66,7 +66,7 @@ export function getHWID(): string {
   if (cachedHwid) return cachedHwid;
   try {
     const machineGuid = getMachineGuid();
-    const cpuModel = (os.cpus() && os.cpus()[0]?.model) || '';
+    const cpuModel = (os.cpus()?.[0]?.model) || '';
     const mem = os.totalmem ? os.totalmem() : 0;
     const raw = `${machineGuid}:${cpuModel}:${mem}`;
     const hash = crypto.createHash('sha256').update(raw).digest('hex').toUpperCase();
@@ -74,7 +74,7 @@ export function getHWID(): string {
     // Format as XXXX-XXXX-XXXX-XXXX
     cachedHwid = `MAHI-${short.substring(0,4)}-${short.substring(4,8)}-${short.substring(8,12)}-${short.substring(12,16)}`;
     return cachedHwid;
-  } catch (e) {
+  } catch {
     return 'MAHI-UNKNOWN-HWID';
   }
 }
@@ -120,7 +120,7 @@ export function verifyLicense(licenseKey: string): { valid: boolean; error?: str
       valid: true, 
       expiresAt: new Date(data.exp).toISOString()
     };
-  } catch (e) {
+  } catch {
     return { valid: false, error: 'Invalid license key' };
   }
 }

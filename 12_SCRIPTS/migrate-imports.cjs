@@ -1,5 +1,5 @@
-﻿const fs = require('fs');
-const path = require('path');
+﻿const fs = require('node:fs');
+const path = require('node:path');
 
 function getFiles(dir, fileList = []) {
   if (!fs.existsSync(dir)) return fileList;
@@ -145,7 +145,7 @@ for (const f of allFiles) {
       newToOldFileMap[norm] = norm.replace('10_CONFIG/preload/', 'src/preload/');
     } else if (norm.startsWith('11_TESTS/')) {
       const baseName = path.posix.basename(norm);
-      newToOldFileMap[norm] = 'tests/' + baseName;
+      newToOldFileMap[norm] = `tests/${baseName}`;
     }
   }
 }
@@ -157,11 +157,11 @@ for (const f of allFiles) {
   const oldPath = newToOldFileMap[normNew];
   if (!oldPath) continue;
 
-  let content = fs.readFileSync(f, 'utf8');
+  const content = fs.readFileSync(f, 'utf8');
   let changed = false;
 
   // Match import and export statements
-  const newContent = content.replace(/(from\s+['])([\.\/][^']+)(['])/g, (match, prefix, importPath, suffix) => {
+  const newContent = content.replace(/(from\s+['])([./][^']+)(['])/g, (match, prefix, importPath, suffix) => {
  const resolvedOld = resolveOldPath(oldPath, importPath);
  const newTarget = findNewTargetPath(resolvedOld);
 
@@ -169,7 +169,7 @@ for (const f of allFiles) {
  const currentNewDir = path.posix.dirname(normNew);
  let relativeNew = path.posix.relative(currentNewDir, newTarget);
  if (!relativeNew.startsWith('.')) {
- relativeNew = './' + relativeNew;
+ relativeNew = `./${relativeNew}`;
  }
  changed = true;
  return prefix + relativeNew + suffix;

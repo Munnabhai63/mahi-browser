@@ -1,12 +1,23 @@
 import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import { ProfileFolder } from '../../10_CONFIG/shared/types/platform.js';
+import type { ProfileFolder } from '../../10_CONFIG/shared/types/platform.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
+
+interface SqliteFolderRow {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  color: string | null;
+  icon: string | null;
+  workspace_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export function getFolders(workspaceId?: string): ProfileFolder[] {
   const db = getDatabase();
   let query = 'SELECT * FROM profile_folders';
-  const params: any[] = [];
+  const params: string[] = [];
 
   if (workspaceId) {
     query += ' WHERE workspace_id = ? OR workspace_id IS NULL';
@@ -14,11 +25,11 @@ export function getFolders(workspaceId?: string): ProfileFolder[] {
   }
   query += ' ORDER BY name ASC';
 
-  const rows = db.prepare(query).all(...params) as any[];
+  const rows = db.prepare(query).all<SqliteFolderRow>(...params);
 
   return rows.map((r) => {
     // Count active profiles in this folder
-    const countRow = db.prepare('SELECT COUNT(*) as count FROM profiles WHERE folder = ? AND deleted_at IS NULL').get(r.name) as any;
+    const countRow = db.prepare('SELECT COUNT(*) as count FROM profiles WHERE folder = ? AND deleted_at IS NULL').get<{ count: number }>(r.name);
     return {
       id: r.id,
       name: r.name,
@@ -60,14 +71,14 @@ export function createFolder(name: string, parentId?: string | null, color = '#1
 
 export function updateFolder(id: string, updates: { name?: string; parentId?: string | null; color?: string; icon?: string }): ProfileFolder | null {
   const db = getDatabase();
-  const existing = db.prepare('SELECT * FROM profile_folders WHERE id = ?').get(id) as any;
+  const existing = db.prepare('SELECT * FROM profile_folders WHERE id = ?').get<SqliteFolderRow>(id);
   if (!existing) return null;
 
   const now = new Date().toISOString();
   const name = updates.name !== undefined ? updates.name.trim() : existing.name;
   const parentId = updates.parentId !== undefined ? updates.parentId : existing.parent_id;
-  const color = updates.color !== undefined ? updates.color : existing.color;
-  const icon = updates.icon !== undefined ? updates.icon : existing.icon;
+  const color = updates.color !== undefined ? updates.color : (existing.color || '#14b8a6');
+  const icon = updates.icon !== undefined ? updates.icon : (existing.icon || 'Folder');
 
   // If name changed, rename folder reference in profiles
   if (name !== existing.name) {
@@ -88,7 +99,7 @@ export function updateFolder(id: string, updates: { name?: string; parentId?: st
     parentId,
     color,
     icon,
-    workspaceId: existing.workspace_id,
+    workspaceId: existing.workspace_id || undefined,
     createdAt: existing.created_at,
     updatedAt: now,
   };
@@ -96,7 +107,7 @@ export function updateFolder(id: string, updates: { name?: string; parentId?: st
 
 export function deleteFolder(id: string, targetFolderName = 'General'): boolean {
   const db = getDatabase();
-  const existing = db.prepare('SELECT * FROM profile_folders WHERE id = ?').get(id) as any;
+  const existing = db.prepare('SELECT * FROM profile_folders WHERE id = ?').get<SqliteFolderRow>(id);
   if (!existing) return false;
 
   // Move existing profiles to target folder

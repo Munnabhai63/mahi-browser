@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import initSqlJs from 'sql.js';
-import { getPrismaClient, isPostgresConfigured, disconnectPrisma } from '../06_DATABASE/prisma-client.js';
+import { getPrismaClient, disconnectPrisma } from '../06_DATABASE/prisma-client.js';
 
 interface MigrationStats {
   table: string;
@@ -20,10 +20,18 @@ interface MigrationStats {
   error?: string;
 }
 
+interface PrismaUpsertDelegate {
+  upsert: (args: {
+    where: Record<string, unknown>;
+    create: Record<string, unknown>;
+    update: Record<string, unknown>;
+  }) => Promise<unknown>;
+}
+
 export async function migrateSqliteToPostgres(options?: {
   sqlitePath?: string;
   dryRun?: boolean;
-  prismaOverride?: any;
+  prismaOverride?: Record<string, unknown>;
 }): Promise<{ success: boolean; stats: MigrationStats[]; error?: string }> {
   const isDryRun = options?.dryRun ?? process.argv.includes('--dry-run');
   const customSqliteArg = process.argv.find((a) => a.startsWith('--sqlite-path='));
@@ -60,13 +68,13 @@ export async function migrateSqliteToPostgres(options?: {
 
   const stats: MigrationStats[] = [];
 
-  const readSqliteRows = (tableName: string): any[] => {
+  const readSqliteRows = (tableName: string): Record<string, unknown>[] => {
     try {
       const res = db.exec(`SELECT * FROM ${tableName}`);
       if (res.length === 0) return [];
       const columns = res[0].columns;
-      return res[0].values.map((row: any[]) => {
-        const obj: Record<string, any> = {};
+      return res[0].values.map((row: unknown[]) => {
+        const obj: Record<string, unknown> = {};
         columns.forEach((col: string, idx: number) => {
           obj[col] = row[idx];
         });
@@ -115,7 +123,14 @@ export async function migrateSqliteToPostgres(options?: {
     }
 
     try {
-      const model = (prisma as any)[table];
+      const modelCandidate = (prisma as unknown as Record<string, unknown>)[table];
+      const model =
+        typeof modelCandidate === 'object' &&
+        modelCandidate !== null &&
+        'upsert' in modelCandidate &&
+        typeof (modelCandidate as { upsert?: unknown }).upsert === 'function'
+          ? (modelCandidate as PrismaUpsertDelegate)
+          : null;
       if (!model) {
         stat.skippedCount = rows.length;
         stat.error = `Prisma model for table ${table} not found`;
@@ -126,10 +141,10 @@ export async function migrateSqliteToPostgres(options?: {
       for (const row of rows) {
         // Prepare row types matching schema
         const data = { ...row };
-        if (data.storage_bytes !== undefined) data.storage_bytes = BigInt(data.storage_bytes || 0);
-        if (data.bonus_proxy_bytes !== undefined) data.bonus_proxy_bytes = BigInt(data.bonus_proxy_bytes || 0);
-        if (data.file_size !== undefined) data.file_size = BigInt(data.file_size || 0);
-        if (data.expected_size !== undefined) data.expected_size = BigInt(data.expected_size || 0);
+        if (data.storage_bytes !== undefined) data.storage_bytes = BigInt((data.storage_bytes as string | number | bigint) || 0);
+        if (data.bonus_proxy_bytes !== undefined) data.bonus_proxy_bytes = BigInt((data.bonus_proxy_bytes as string | number | bigint) || 0);
+        if (data.file_size !== undefined) data.file_size = BigInt((data.file_size as string | number | bigint) || 0);
+        if (data.expected_size !== undefined) data.expected_size = BigInt((data.expected_size as string | number | bigint) || 0);
         if (data.created_at && typeof data.created_at === 'number') data.created_at = BigInt(data.created_at);
         if (data.expires_at && typeof data.expires_at === 'number') data.expires_at = BigInt(data.expires_at);
 
@@ -146,8 +161,8 @@ export async function migrateSqliteToPostgres(options?: {
           stat.skippedCount++;
         }
       }
-    } catch (err: any) {
-      stat.error = err?.message || 'Migration error';
+    } catch (err: unknown) {
+      stat.error = err instanceof Error ? err.message : 'Migration error';
     }
 
     stats.push(stat);
@@ -165,7 +180,7 @@ export async function migrateSqliteToPostgres(options?: {
 }
 
 // Direct CLI Execution
-if (process.argv[1] && process.argv[1].includes('migrate-sqlite-to-postgres')) {
+if (process.argv[1]?.includes('migrate-sqlite-to-postgres')) {
   migrateSqliteToPostgres()
     .then(async (res) => {
       await disconnectPrisma();

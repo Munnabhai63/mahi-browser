@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
-import { PUBLIC_PLANS, PublicPlan } from '../lib/plans';
+import { PUBLIC_PLANS, type PublicPlan } from '../lib/plans';
 import { BRAND } from '../lib/brand';
 
 export default function PricingTable() {
@@ -20,11 +21,20 @@ export default function PricingTable() {
     fetch(`${BRAND.apiUrl}/api/v1/pricing/catalog`)
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
-        const catalogPlans = json?.data?.plans || json?.data?.catalog?.plans || json?.data;
+        const catalogPlans = (json?.data?.plans || json?.data?.catalog?.plans || json?.data) as Array<{
+          planId?: string;
+          id?: string;
+          monthlyPricePaise?: number;
+          annualPricePaise?: number;
+          price?: {
+            monthlyPricePaise?: number;
+            annualPricePaise?: number;
+          };
+        }> | undefined;
         if (Array.isArray(catalogPlans)) {
           setPlans((prev) =>
             prev.map((local) => {
-              const matched = catalogPlans.find((r: any) => r.planId === local.id || r.id === local.id);
+              const matched = catalogPlans.find((r) => r.planId === local.id || r.id === local.id);
               if (!matched) return local;
               const monthlyInr = matched.monthlyPricePaise
                 ? matched.monthlyPricePaise / 100
@@ -55,9 +65,12 @@ export default function PricingTable() {
 
     fetch(`${BRAND.apiUrl}/api/v1/billing/gateways`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
+      .then((data: {
+        gateways?: Array<{ id?: string; upiId?: string; qrAsset?: string }>;
+        support?: { email?: string; whatsappUrl?: string; whatsappRawNumber?: string };
+      } | null) => {
         if (Array.isArray(data?.gateways)) {
-          const upiManual = data.gateways.find((g: any) => g.id === 'upi_manual');
+          const upiManual = data.gateways.find((g) => g.id === 'upi_manual');
           if (upiManual?.upiId) setUpiId(upiManual.upiId);
           if (upiManual?.qrAsset) setUpiQrAsset(upiManual.qrAsset);
         }
@@ -87,6 +100,7 @@ export default function PricingTable() {
         {/* Category Tabs */}
         <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800/80">
           <button
+            type="button"
             onClick={() => setCategory('PERSONAL')}
             className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${
               category === 'PERSONAL'
@@ -97,6 +111,7 @@ export default function PricingTable() {
             Personal & Creators
           </button>
           <button
+            type="button"
             onClick={() => setCategory('BUSINESS')}
             className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${
               category === 'BUSINESS'
@@ -135,6 +150,7 @@ export default function PricingTable() {
           {(['INR', 'USD', 'EUR'] as const).map((c) => (
             <button
               key={c}
+              type="button"
               onClick={() => setCurrency(c)}
               className={`rounded-lg px-2.5 py-1.5 transition ${
                 currency === c
@@ -197,9 +213,9 @@ export default function PricingTable() {
 
               {/* Feature Checklist */}
               <ul className="mt-6 space-y-3 text-xs text-slate-300">
-                {plan.features.map((feat, idx) => (
-                  <li key={idx} className="flex items-start gap-2.5">
-                    <svg className="h-4 w-4 flex-shrink-0 text-emerald-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {plan.features.map((feat) => (
+                  <li key={feat} className="flex items-start gap-2.5">
+                    <svg className="h-4 w-4 flex-shrink-0 text-emerald-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                     </svg>
                     <span>{feat}</span>
@@ -240,8 +256,10 @@ export default function PricingTable() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="relative w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl text-center space-y-4">
             <button
+              type="button"
               onClick={() => setShowUpiModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-white"
+              aria-label="Close modal"
             >
               ✕
             </button>
@@ -250,9 +268,11 @@ export default function PricingTable() {
               Scan with Google Pay, PhonePe, Paytm, or BHIM. Zero processing surcharges.
             </p>
             <div className="mx-auto flex justify-center p-3 bg-white rounded-xl w-48 h-48 border-4 border-emerald-500/40">
-              <img
+              <Image
                 src={upiQrAsset}
                 alt="MAHI Browser UPI QR"
+                width={168}
+                height={168}
                 className="w-full h-full object-contain"
               />
             </div>

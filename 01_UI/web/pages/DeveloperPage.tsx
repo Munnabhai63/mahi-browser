@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import {
   Key,
   Webhook,
@@ -7,14 +8,14 @@ import {
   RefreshCw,
   Send,
 } from 'lucide-react';
-import {
+import type {
   RemoteApiKeyRecord,
   CreateRemoteApiKeyDTO,
   WebhookEndpointRecord,
   CreateWebhookEndpointDTO,
   WebhookDeliveryRecord,
 } from '../../../10_CONFIG/shared/types/remote-api.js';
-import { TeamWorkspace } from '../../../10_CONFIG/shared/types/workspace.js';
+import type { TeamWorkspace } from '../../../10_CONFIG/shared/types/workspace.js';
 import { CreateApiKeyModal } from '../components/ApiKeyModal.js';
 import { CreateWebhookModal } from '../components/WebhookModal.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
@@ -45,11 +46,11 @@ export const DeveloperPage: React.FC<DeveloperPageProps> = ({
   onRefresh,
   onCreateApiKey,
   onRevokeApiKey,
-  onRotateApiKey,
+  onRotateApiKey: _onRotateApiKey,
   onCreateWebhook,
   onDeleteWebhook,
   onTestWebhook,
-  onRotateWebhookSecret,
+  onRotateWebhookSecret: _onRotateWebhookSecret,
   onLoadDeliveries,
 }) => {
   const [activeTab, setActiveTab] = useState<'KEYS' | 'WEBHOOKS' | 'DOCS'>('KEYS');
@@ -150,6 +151,7 @@ export const DeveloperPage: React.FC<DeveloperPageProps> = ({
         {/* Navigation Tabs */}
         <div className="p-4 border-b border-slate-800 flex items-center space-x-2">
           <button
+            type="button"
             onClick={() => setActiveTab('KEYS')}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
               activeTab === 'KEYS'
@@ -160,6 +162,7 @@ export const DeveloperPage: React.FC<DeveloperPageProps> = ({
             API Keys ({apiKeys.length})
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('WEBHOOKS')}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
               activeTab === 'WEBHOOKS'
@@ -170,6 +173,7 @@ export const DeveloperPage: React.FC<DeveloperPageProps> = ({
             Outbound Webhooks ({webhooks.length})
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('DOCS')}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
               activeTab === 'DOCS'
@@ -415,6 +419,7 @@ export const DeveloperPage: React.FC<DeveloperPageProps> = ({
                         Delivery History for Endpoint: {selectedWebhookDeliveries}
                       </h4>
                       <button
+                        type="button"
                         onClick={() => setSelectedWebhookDeliveries(null)}
                         className="text-xs text-slate-400 hover:text-slate-200"
                       >

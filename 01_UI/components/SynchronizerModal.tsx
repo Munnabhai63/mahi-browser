@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
   X,
   Sparkles,
@@ -12,12 +13,9 @@ import {
   Crown,
   CheckCircle,
   AlertTriangle,
-  Zap,
-  Activity,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
-import { Profile } from '../../10_CONFIG/shared/types/profile.js';
 
 interface SynchronizerModalProps {
   isOpen: boolean;
@@ -44,6 +42,7 @@ export const SynchronizerModal: React.FC<SynchronizerModalProps> = ({ isOpen, on
   );
 
   // Initial load & periodic refresh of profile statuses while modal is open
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadStatus is a stable async loader defined in this scope
   useEffect(() => {
     if (!isOpen) return;
 
@@ -56,7 +55,7 @@ export const SynchronizerModal: React.FC<SynchronizerModalProps> = ({ isOpen, on
     }, 1200);
 
     return () => clearInterval(interval);
-  }, [isOpen]);
+  }, [isOpen, fetchProfiles]);
 
   // Sync masterId and selectedSlaves when running profiles change
   useEffect(() => {
@@ -69,7 +68,7 @@ export const SynchronizerModal: React.FC<SynchronizerModalProps> = ({ isOpen, on
         setSelectedSlaves(runningProfiles.filter((p) => p.id !== masterId).map((p) => p.id));
       }
     }
-  }, [runningProfiles.map((p) => p.id).join(','), masterId]);
+  }, [masterId, runningProfiles[0].id, selectedSlaves.length, runningProfiles.some, runningProfiles.length, runningProfiles.filter]);
 
   const loadStatus = async () => {
     try {
@@ -167,11 +166,11 @@ export const SynchronizerModal: React.FC<SynchronizerModalProps> = ({ isOpen, on
           });
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         type: 'error',
         title: 'Synchronizer Error',
-        message: err.message || 'Failed to toggle synchronizer',
+        message: err instanceof Error ? err.message : 'Failed to toggle synchronizer',
       });
     }
   };
@@ -214,7 +213,7 @@ export const SynchronizerModal: React.FC<SynchronizerModalProps> = ({ isOpen, on
               </p>
             </div>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="w-8 h-8 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-slate-200"
           >
@@ -253,7 +252,7 @@ export const SynchronizerModal: React.FC<SynchronizerModalProps> = ({ isOpen, on
 
           {/* Master Profile Selection */}
           <div className="space-y-2">
-            <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
+            <label htmlFor="field-001" className="font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
               <Crown className="w-4 h-4 text-amber-500 fill-current" />
               <span>Select Master Profile Window</span>
             </label>
@@ -274,7 +273,7 @@ export const SynchronizerModal: React.FC<SynchronizerModalProps> = ({ isOpen, on
           {/* Slave Profiles Target Selection */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="font-bold text-slate-700 dark:text-slate-300">
+              <label htmlFor="field-002" className="font-bold text-slate-700 dark:text-slate-300">
                 Target Slave Windows ({runningProfiles.filter((p) => p.id !== masterId).length})
               </label>
               <button
@@ -297,7 +296,7 @@ export const SynchronizerModal: React.FC<SynchronizerModalProps> = ({ isOpen, on
                 .map((p) => {
                   const isChecked = selectedSlaves.includes(p.id);
                   return (
-                    <label
+                    <label htmlFor="field-003"
                       key={p.id}
                       className={`p-2.5 rounded-xl border flex items-center space-x-2.5 cursor-pointer transition-all ${
                         isChecked
@@ -325,7 +324,7 @@ export const SynchronizerModal: React.FC<SynchronizerModalProps> = ({ isOpen, on
               Mirror Features
             </span>
             <div className="grid grid-cols-2 gap-3">
-              <label className="flex items-center space-x-2 cursor-pointer">
+              <label htmlFor="field-004" className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={syncClicks}
@@ -336,7 +335,7 @@ export const SynchronizerModal: React.FC<SynchronizerModalProps> = ({ isOpen, on
                 <span>Mouse Clicks</span>
               </label>
 
-              <label className="flex items-center space-x-2 cursor-pointer">
+              <label htmlFor="field-005" className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={syncTyping}
@@ -347,7 +346,7 @@ export const SynchronizerModal: React.FC<SynchronizerModalProps> = ({ isOpen, on
                 <span>Text Typing & Enter</span>
               </label>
 
-              <label className="flex items-center space-x-2 cursor-pointer">
+              <label htmlFor="field-006" className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={syncScroll}
@@ -358,7 +357,7 @@ export const SynchronizerModal: React.FC<SynchronizerModalProps> = ({ isOpen, on
                 <span>Page Scrolling</span>
               </label>
 
-              <label className="flex items-center space-x-2 cursor-pointer">
+              <label htmlFor="field-007" className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={syncNavigation}
@@ -374,7 +373,7 @@ export const SynchronizerModal: React.FC<SynchronizerModalProps> = ({ isOpen, on
           {/* Anti-Ban Human Jitter Delay */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
+              <label htmlFor="field-008" className="font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
                 <Sliders className="w-3.5 h-3.5 text-teal-500" />
                 <span>Anti-Ban Human Delay Jitter</span>
               </label>

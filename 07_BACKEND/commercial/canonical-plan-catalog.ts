@@ -10,7 +10,7 @@
  * 4. Entitlements are resolved from this catalog, not from price values.
  */
 
-import {
+import type {
   CanonicalPlanId,
   CanonicalPlanDefinition,
   PlanPrice,
@@ -737,8 +737,9 @@ export function normalizeBillingCycle(rawCycle?: string, planId?: string): Billi
     return 'ANNUAL';
   }
 
-  if (canonicalId && CANONICAL_PLAN_CATALOG[canonicalId]?.defaultBillingCycle) {
-    return CANONICAL_PLAN_CATALOG[canonicalId].defaultBillingCycle!;
+  const defaultCycle = canonicalId ? CANONICAL_PLAN_CATALOG[canonicalId]?.defaultBillingCycle : undefined;
+  if (defaultCycle) {
+    return defaultCycle;
   }
   return 'MONTHLY';
 }

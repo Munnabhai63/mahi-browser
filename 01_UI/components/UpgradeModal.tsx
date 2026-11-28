@@ -1,5 +1,5 @@
-import React from 'react';
-import { Lock, Sparkles, Check, ArrowRight, X, Shield, Users, Cloud, Bot, Zap } from 'lucide-react';
+import type React from 'react';
+import { Lock, Sparkles, Check, ArrowRight, X, Users, } from 'lucide-react';
 import { useAccountStore } from '../stores/useAccountStore.js';
 
 export interface UpgradeModalProps {
@@ -33,7 +33,10 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({
     planLimits?.plan?.startsWith('pro_')
   );
 
-  const freeLimitCount = (planLimits as any)?.freeLimit || (planLimits as any)?.maxProfiles || 15;
+  const freeLimitCount =
+    (planLimits as ({ maxProfiles?: number; freeLimit?: number } | null))?.freeLimit ||
+    planLimits?.maxProfiles ||
+    15;
 
   const proFeatures = [
     `Up to 100 anti-detect browser profiles (vs ${freeLimitCount} Free)`,
@@ -80,7 +83,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({
               <p className="text-xs text-slate-400 mt-0.5">Entitlement Required</p>
             </div>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800/60 transition-colors"
             title="Close"
@@ -113,8 +116,8 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({
               <span>Included in {requiredPlan} Plan</span>
             </div>
             <ul className="space-y-2 text-xs text-slate-300">
-              {displayFeatures.map((feat, idx) => (
-                <li key={idx} className="flex items-start space-x-2.5">
+              {displayFeatures.map((feat) => (
+                <li key={feat} className="flex items-start space-x-2.5">
                   <div className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0 mt-0.5">
                     <Check className="w-3 h-3" />
                   </div>
@@ -134,13 +137,13 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({
 
         {/* Footer CTAs */}
         <div className="p-6 bg-slate-950/80 border-t border-slate-800/80 flex items-center justify-end space-x-3">
-          <button
+          <button type="button"
             onClick={onClose}
             className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
           >
             Maybe Later
           </button>
-          <button
+          <button type="button"
             onClick={handleUpgradeClick}
             className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-teal-500/20 flex items-center space-x-2 active:scale-95 transition-all"
           >

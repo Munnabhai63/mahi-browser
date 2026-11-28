@@ -1,7 +1,38 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { UpdateState, UpdateChannel, UpdateReleaseManifest } from '../../10_CONFIG/shared/types/updater.js';
+import type { UpdateChannel, UpdateReleaseFile, UpdateReleaseManifest, UpdateState } from '../../10_CONFIG/shared/types/updater.js';
+
+interface RawManifestFileInput {
+  url?: string;
+  name?: string;
+  size?: number;
+  sha256?: string;
+  sha512?: string;
+  arch?: UpdateReleaseFile['arch'];
+  platform?: UpdateReleaseFile['platform'];
+  format?: UpdateReleaseFile['format'];
+  signatureStatus?: UpdateReleaseFile['signatureStatus'];
+}
+
+interface RawManifestInput {
+  version?: string;
+  releaseDate?: string;
+  channel?: string;
+  targetPlatform?: UpdateReleaseManifest['targetPlatform'];
+  releaseNotes?: string;
+  notes?: string;
+  mandatory?: boolean;
+  minAppVersion?: string;
+  sha256?: string;
+  sha512?: string;
+  files?: RawManifestFileInput[];
+}
+
+function normalizeHostPlatform(platform: NodeJS.Platform): NonNullable<UpdateReleaseManifest['targetPlatform']> {
+  if (platform === 'win32' || platform === 'darwin') return platform;
+  return 'linux';
+}
 
 /**
  * Validates standard semantic versioning (e.g. 1.1.1, 1.2.0-beta.1).
@@ -82,13 +113,14 @@ export function isValidTransition(from: UpdateState, to: UpdateState): boolean {
  * 4. Files array must contain valid binary URL, positive size, and checksum
  */
 export function validateUpdateManifest(
-  manifest: any,
+  manifestInput: unknown,
   currentVersion: string,
   userChannel: UpdateChannel = 'STABLE'
 ): { valid: boolean; error?: string; validatedManifest?: UpdateReleaseManifest } {
-  if (!manifest || typeof manifest !== 'object') {
+  if (!manifestInput || typeof manifestInput !== 'object') {
     return { valid: false, error: 'Manifest is empty or not a valid JSON object' };
   }
+  const manifest = manifestInput as RawManifestInput;
 
   if (!manifest.version || !validateSemVer(manifest.version)) {
     return { valid: false, error: `Invalid semantic version in manifest: "${manifest.version}"` };
@@ -113,6 +145,7 @@ export function validateUpdateManifest(
 
   // Platform protection: block manifest if explicit targetPlatform doesn't match host
   const currentHostPlatform = process.platform;
+  const fallbackPlatform = normalizeHostPlatform(currentHostPlatform);
   if (manifest.targetPlatform && manifest.targetPlatform !== currentHostPlatform) {
     return {
       valid: false,
@@ -125,7 +158,10 @@ export function validateUpdateManifest(
     return { valid: false, error: 'Manifest contains no release files' };
   }
 
-  const primaryFile = manifest.files.find((f: any) => f.url && (f.sha256 || f.sha512 || manifest.sha512 || manifest.sha256));
+  const primaryFile = manifest.files.find(
+    (f): f is RawManifestFileInput & { url: string } =>
+      Boolean(f?.url && (f.sha256 || f.sha512 || manifest.sha512 || manifest.sha256))
+  );
   if (!primaryFile) {
     return { valid: false, error: 'Manifest missing valid release artifact or cryptographic checksum' };
   }
@@ -143,18 +179,21 @@ export function validateUpdateManifest(
     minAppVersion: manifest.minAppVersion,
     sha256: manifest.sha256 || primaryFile.sha256,
     sha512: manifest.sha512 || primaryFile.sha512,
-    targetPlatform: manifest.targetPlatform || (currentHostPlatform as any),
-    files: manifest.files.map((f: any) => ({
-      url: f.url,
-      name: f.name || path.basename(f.url),
-      size: f.size || 0,
-      sha256: f.sha256 || manifest.sha256,
-      sha512: f.sha512 || manifest.sha512,
-      arch: f.arch || 'x64',
-      platform: f.platform || manifest.targetPlatform || (currentHostPlatform as any),
-      format: f.format,
-      signatureStatus: f.signatureStatus || 'SIGNED',
-    })),
+    targetPlatform: manifest.targetPlatform || fallbackPlatform,
+    files: manifest.files.map((f) => {
+      const fileUrl = f.url || '';
+      return {
+        url: fileUrl,
+        name: f.name || path.basename(fileUrl),
+        size: f.size || 0,
+        sha256: f.sha256 || manifest.sha256,
+        sha512: f.sha512 || manifest.sha512,
+        arch: f.arch || 'x64',
+        platform: f.platform || manifest.targetPlatform || fallbackPlatform,
+        format: f.format,
+        signatureStatus: f.signatureStatus || 'SIGNED',
+      };
+    }),
   };
 
   return { valid: true, validatedManifest: validated };
@@ -217,7 +256,7 @@ export async function verifyFileIntegrity(
     }
 
     return { verified: true, actualHash };
-  } catch (err: any) {
-    return { verified: false, error: err.message };
+  } catch (err: unknown) {
+    return { verified: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

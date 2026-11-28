@@ -33,7 +33,8 @@ import {
 } from '../../pricing-admin-service.js';
 import { revokeLicense, extendLicense } from '../../../../04_LICENSING/license-engine.js';
 import { paymentService } from '../../payment-service.js';
-import { AdminRouteContext, requireAdminAccess } from './admin-shared.js';
+import { type AdminRouteContext, requireAdminAccess } from './admin-shared.js';
+import type { AdminPricingDraft } from '../../../../10_CONFIG/shared/types/commercial.js';
 import { createLogger } from '../../../utils/logger.js';
 const log = createLogger('admin-payments-routes');
 
@@ -55,7 +56,7 @@ export async function handleAdminPaymentRoutes(ctx: AdminRouteContext): Promise<
     if (!adminGate.ok) return true;
     const parsed = validateStrictBody(AdminCreatePlanSchema, rawBody, res);
     if (!parsed.ok) return true;
-    const newPlan = createCommercialPlan(parsed.data as any, adminGate.actor);
+    const newPlan = createCommercialPlan(parsed.data as unknown as Parameters<typeof createCommercialPlan>[0], adminGate.actor);
     sendJSON(res, 201, { success: true, data: newPlan });
     return true;
   }
@@ -68,7 +69,7 @@ export async function handleAdminPaymentRoutes(ctx: AdminRouteContext): Promise<
     const parsed = validateStrictBody(AdminUpdatePlanSchema, rawBody, res);
     if (!parsed.ok) return true;
     const planId = planIdMatch[1];
-    const updated = updateCommercialPlan(planId, parsed.data as any, adminGate.actor);
+    const updated = updateCommercialPlan(planId, parsed.data as unknown as Parameters<typeof updateCommercialPlan>[1], adminGate.actor);
     sendJSON(res, updated ? 200 : 404, { success: Boolean(updated), data: updated });
     return true;
   }
@@ -79,7 +80,7 @@ export async function handleAdminPaymentRoutes(ctx: AdminRouteContext): Promise<
     try {
       const catalog = buildPlanCatalog();
       sendJSON(res, 200, { success: true, data: catalog });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 500 });
     }
     return true;
@@ -106,9 +107,9 @@ export async function handleAdminPaymentRoutes(ctx: AdminRouteContext): Promise<
     const parsed = validateStrictBody(AdminPricingDraftSchema, rawBody, res);
     if (!parsed.ok) return true;
     try {
-      const draft = createPricingDraft(parsed.data as any, adminGate.actor.id, adminGate.actor.name);
+      const draft = createPricingDraft(parsed.data as unknown as Partial<AdminPricingDraft>, adminGate.actor.id, adminGate.actor.name);
       sendJSON(res, 201, { success: true, data: draft });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
@@ -123,9 +124,9 @@ export async function handleAdminPaymentRoutes(ctx: AdminRouteContext): Promise<
     if (!parsed.ok) return true;
     try {
       const version = parseInt(pricingDraftUpdateMatch[1], 10);
-      const updated = updatePricingDraft(version, parsed.data as any, adminGate.actor.id, adminGate.actor.name);
+      const updated = updatePricingDraft(version, parsed.data as unknown as Partial<AdminPricingDraft>, adminGate.actor.id, adminGate.actor.name);
       sendJSON(res, updated ? 200 : 404, { success: Boolean(updated), data: updated });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
@@ -139,7 +140,7 @@ export async function handleAdminPaymentRoutes(ctx: AdminRouteContext): Promise<
       const version = parseInt(pricingPreviewMatch[1], 10);
       const preview = previewPricingChanges(version);
       sendJSON(res, 200, { success: true, data: preview });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 404 });
     }
     return true;
@@ -156,7 +157,7 @@ export async function handleAdminPaymentRoutes(ctx: AdminRouteContext): Promise<
       const version = parseInt(pricingPublishMatch[1], 10);
       const resPublish = publishPricingVersion(version, adminGate.actor.id, adminGate.actor.name);
       sendJSON(res, resPublish.success ? 200 : 400, resPublish);
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
@@ -173,7 +174,7 @@ export async function handleAdminPaymentRoutes(ctx: AdminRouteContext): Promise<
       const version = parseInt(pricingRollbackMatch[1], 10);
       const rolledBack = rollbackPricing(version, adminGate.actor.id, adminGate.actor.name);
       sendJSON(res, rolledBack.success ? 200 : 400, rolledBack);
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
@@ -225,8 +226,8 @@ export async function handleAdminPaymentRoutes(ctx: AdminRouteContext): Promise<
       const ok = await revokeLicense(body.licenseId, body.reason);
       sendJSON(res, ok ? 200 : 404, { success: ok });
       return true;
-    } catch (e: any) {
-      log.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+    } catch (e: unknown) {
+      log.error('[LicenseEngine][CRITICAL] admin license op failed', e instanceof Error ? e.message : String(e));
       sendJSON(res, 500, { success: false, error: 'License operation failed.' });
       return true;
     }
@@ -242,8 +243,8 @@ export async function handleAdminPaymentRoutes(ctx: AdminRouteContext): Promise<
       const record = await extendLicense(parsed.data);
       sendJSON(res, record ? 200 : 404, { success: Boolean(record), data: record });
       return true;
-    } catch (e: any) {
-      log.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+    } catch (e: unknown) {
+      log.error('[LicenseEngine][CRITICAL] admin license op failed', e instanceof Error ? e.message : String(e));
       sendJSON(res, 500, { success: false, error: 'License operation failed.' });
       return true;
     }
@@ -276,7 +277,7 @@ export async function handleAdminPaymentRoutes(ctx: AdminRouteContext): Promise<
         data: result,
       });
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
       return true;
     }
@@ -302,7 +303,7 @@ export async function handleAdminPaymentRoutes(ctx: AdminRouteContext): Promise<
         data: result,
       });
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
       return true;
     }

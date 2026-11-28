@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 
 export interface MobileProxyItem {
   id: string;
@@ -60,10 +61,11 @@ export const MobileProxiesTab: React.FC<MobileProxiesTabProps> = ({
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div>
-            <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>
+            <label htmlFor="mobile-proxy-country" style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>
               Country
             </label>
             <select
+              id="mobile-proxy-country"
               value={selectedCountry}
               onChange={(e) => setSelectedCountry(e.target.value)}
               style={{
@@ -85,10 +87,11 @@ export const MobileProxiesTab: React.FC<MobileProxiesTabProps> = ({
           </div>
 
           <div>
-            <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>
+            <label htmlFor="mobile-proxy-type" style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>
               Pool Type
             </label>
             <select
+              id="mobile-proxy-type"
               value={selectedType}
               onChange={(e) => setSelectedType(e.target.value)}
               style={{
@@ -109,6 +112,7 @@ export const MobileProxiesTab: React.FC<MobileProxiesTabProps> = ({
         </div>
 
         <button
+          type="button"
           onClick={() => onGenerateProxy(selectedCountry, selectedType)}
           disabled={isOffline}
           style={{
@@ -174,6 +178,7 @@ export const MobileProxiesTab: React.FC<MobileProxiesTabProps> = ({
               <span>Assigned Profiles: {p.assignedProfileCount}</span>
               <span>Data Used: {(p.dataUsageBytes / (1024 * 1024)).toFixed(1)} MB</span>
               <button
+                type="button"
                 onClick={() => onRotateProxy(p.id)}
                 disabled={isOffline}
                 style={{

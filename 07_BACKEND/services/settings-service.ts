@@ -1,5 +1,5 @@
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import { AppSettings } from '../../10_CONFIG/shared/types/settings.js';
+import type { AppSettings } from '../../10_CONFIG/shared/types/settings.js';
 import { DEFAULT_APP_SETTINGS } from '../../10_CONFIG/shared/constants/defaults.js';
 import { hashPin, verifyPin } from '../../08_SECURITY/encryption.js';
 import { logActivity } from './audit-service.js';

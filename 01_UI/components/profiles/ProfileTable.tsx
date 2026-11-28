@@ -1,4 +1,5 @@
-import React, { memo } from 'react';
+import type React from 'react';
+import { memo } from 'react';
 import {
   Plus,
   Play,
@@ -10,8 +11,8 @@ import {
   Globe2,
   Shield,
 } from 'lucide-react';
-import { Profile } from '../../../10_CONFIG/shared/types/profile.js';
-import { ProxyItem } from '../../../10_CONFIG/shared/types/proxy.js';
+import type { Profile } from '../../../10_CONFIG/shared/types/profile.js';
+import type { ProxyItem } from '../../../10_CONFIG/shared/types/proxy.js';
 import { ProfileRow } from './ProfileRow.js';
 
 export interface ProfileTableProps {
@@ -111,7 +112,7 @@ export const ProfileTable: React.FC<ProfileTableProps> = memo(({
         <p className="text-xs text-slate-400 max-w-sm mt-1 mb-6">
           No profiles found matching "{searchQuery || activeFolderTab}". Try clearing your search query or switching folders.
         </p>
-        <button
+        <button type="button"
           onClick={onClearFilter}
           className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center space-x-2 active:scale-95 transition-all"
         >
@@ -134,7 +135,7 @@ export const ProfileTable: React.FC<ProfileTableProps> = memo(({
               <div className="flex items-center space-x-1.5 text-slate-500 dark:text-slate-400 font-normal">
                 <span>Name</span>
                 <span className="text-[11px] text-slate-400">↑</span>
-                <button
+                <button type="button"
                   onClick={onInstantCreate}
                   disabled={instantCreating}
                   className="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 disabled:opacity-40 ml-0.5 transition"
@@ -158,8 +159,8 @@ export const ProfileTable: React.FC<ProfileTableProps> = memo(({
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
           {loading && profilesCount === 0
-            ? Array.from({ length: 5 }).map((_, i) => (
-                <tr key={`skeleton-${i}`} className="animate-pulse">
+            ? ['skel-1', 'skel-2', 'skel-3', 'skel-4', 'skel-5'].map((skelId) => (
+                <tr key={skelId} className="animate-pulse">
                   <td className="py-4 px-4 text-center">
                     <div className="w-4 h-4 bg-slate-200 dark:bg-slate-800 rounded mx-auto" />
                   </td>
@@ -255,6 +256,8 @@ export const ProfileTable: React.FC<ProfileTableProps> = memo(({
 
     {/* Context Menu */}
     {contextMenu && (
+      // biome-ignore lint/a11y/noStaticElementInteractions: prevent context menu clicks from dismissing backdrop
+      // biome-ignore lint/a11y/useKeyWithClickEvents: context menu dismissal handled by buttons and backdrop
       <div
         onClick={(e) => e.stopPropagation()}
         style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}

@@ -1,8 +1,9 @@
-import http from 'node:http';
+import type http from 'node:http';
 import crypto from 'node:crypto';
-import { URL } from 'node:url';
+import type { URL } from 'node:url';
+import type { PrismaClient } from '@prisma/client';
 import { sendJSON, checkAdminAuthAsync, resolveTrustedClientIp } from '../router-shared.js';
-import { CommercialRole } from '../../../../10_CONFIG/shared/types/commercial.js';
+import type { CommercialRole } from '../../../../10_CONFIG/shared/types/commercial.js';
 import { isOwnerConfigured, isOwnerSessionAsync } from '../../../services/owner-totp-service.js';
 import { getDatabase } from '../../../../06_DATABASE/connection.js';
 import { isPostgresConfigured } from '../../../../06_DATABASE/central-repository.js';
@@ -10,6 +11,7 @@ import { getPrismaClient } from '../../../../06_DATABASE/prisma-client.js';
 import { getCentralUserByIdAsync, getCentralUserByEmailAsync } from '../../../../05_AUTH/central-auth-service.js';
 import { getUserById, getUserByEmail } from '../../commercial-auth-service.js';
 import { createLogger } from '../../../utils/logger.js';
+
 const log = createLogger('admin-shared');
 
 export interface AdminRouteContext {
@@ -24,6 +26,19 @@ export interface AdminRouteContext {
 
 export type AdminActor = { id: string; name: string; role: CommercialRole };
 
+export interface AdminResolvedUser {
+  id: string;
+  email: string;
+  name?: string;
+  role?: string;
+  status?: string;
+  plan_id?: string;
+  planId?: string;
+  password_hash?: string;
+  passwordHash?: string;
+  salt?: string;
+}
+
 export const MIRROR_MISSING_COMMERCIAL_MSG =
   'This account exists only in the central auth registry (mirror-missing). A commercial record is required before plan/quota/override/device changes. Ask the user to sign in once to create it, then retry.';
 
@@ -31,7 +46,7 @@ export const MIRROR_MISSING_COMMERCIAL_MSG =
 export async function requireAdminAccess(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  body?: any,
+  body?: unknown,
   options?: { hideUnauthenticated?: boolean; forbiddenMessage?: string }
 ): Promise<{ ok: true; actor: AdminActor } | { ok: false }> {
   const authRes = await checkAdminAuthAsync(req, body);
@@ -89,14 +104,14 @@ export async function recordOwnerActionAudit(params: {
   action: string;
   targetType: string;
   targetId: string;
-  details: Record<string, any>;
+  details: Record<string, unknown>;
   ip: string;
 }): Promise<void> {
-  const prisma = isPostgresConfigured() ? getPrismaClient() : null;
+  const prisma = isPostgresConfigured() ? (getPrismaClient() as Partial<PrismaClient> | null) : null;
   const now = new Date().toISOString();
   const detailsStr = JSON.stringify(params.details);
 
-  if (prisma && typeof (prisma as any).commercial_audit_logs?.create === 'function') {
+  if (prisma && typeof prisma.commercial_audit_logs?.create === 'function') {
     try {
       await prisma.commercial_audit_logs.create({
         data: {
@@ -114,8 +129,8 @@ export async function recordOwnerActionAudit(params: {
         },
       });
       return;
-    } catch (err: any) {
-      log.warn('[OwnerService] Postgres audit log write failed (warn-only):', err?.message);
+    } catch (err: unknown) {
+      log.warn('[OwnerService] Postgres audit log write failed (warn-only):', err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -138,13 +153,13 @@ export async function recordOwnerActionAudit(params: {
       'SUCCESS',
       now
     );
-  } catch (err: any) {
-    log.warn('[OwnerService] SQLite audit log write failed (warn-only):', err?.message);
+  } catch (err: unknown) {
+    log.warn('[OwnerService] SQLite audit log write failed (warn-only):', err instanceof Error ? err.message : String(err));
   }
 }
 
 /** Resolves a user by ID or email across central auth and commercial records. */
-export async function resolveTargetUser(rawIdOrEmail: string): Promise<any | null> {
+export async function resolveTargetUser(rawIdOrEmail: string): Promise<AdminResolvedUser | null> {
   if (!rawIdOrEmail) return null;
   let clean = String(rawIdOrEmail).trim();
   if (clean.startsWith('central:')) {
@@ -152,7 +167,7 @@ export async function resolveTargetUser(rawIdOrEmail: string): Promise<any | nul
   }
   try {
     const byId = await getCentralUserByIdAsync(clean);
-    if (byId) return byId;
+    if (byId) return byId as AdminResolvedUser;
   } catch (err) {
     log.debug('Central user lookup by ID failed in admin resolver', {
       err: err instanceof Error ? err.message : String(err),
@@ -161,7 +176,7 @@ export async function resolveTargetUser(rawIdOrEmail: string): Promise<any | nul
 
   try {
     const byEmail = await getCentralUserByEmailAsync(clean);
-    if (byEmail) return byEmail;
+    if (byEmail) return byEmail as AdminResolvedUser;
   } catch (err) {
     log.debug('Central user lookup by email failed in admin resolver', {
       err: err instanceof Error ? err.message : String(err),
@@ -170,7 +185,7 @@ export async function resolveTargetUser(rawIdOrEmail: string): Promise<any | nul
 
   try {
     const comm = getUserById(clean) || getUserByEmail(clean);
-    if (comm) return comm;
+    if (comm) return comm as AdminResolvedUser;
   } catch (err) {
     log.debug('SQLite commercial user lookup failed in admin resolver', {
       err: err instanceof Error ? err.message : String(err),
@@ -185,18 +200,18 @@ export async function resolveOwnerTargetOrRespond(
   res: http.ServerResponse,
   rawUserId: unknown,
   opLabel: string
-): Promise<{ ok: true; user: any; userId: string } | { ok: false }> {
+): Promise<{ ok: true; user: AdminResolvedUser; userId: string } | { ok: false }> {
   const rawTarget = rawUserId ? String(rawUserId).trim() : '';
   if (!rawTarget) {
     sendJSON(res, 400, { success: false, error: 'userId is required' });
     return { ok: false };
   }
 
-  let targetUser: any = null;
+  let targetUser: AdminResolvedUser | null = null;
   try {
     targetUser = await resolveTargetUser(rawTarget);
-  } catch (err: any) {
-    log.error(`[OwnerService][CRITICAL] User lookup error for ${opLabel}:`, err?.message || err);
+  } catch (err: unknown) {
+    log.error(`[OwnerService][CRITICAL] User lookup error for ${opLabel}:`, err instanceof Error ? err.message : String(err));
     sendJSON(res, 500, { success: false, error: 'Database error looking up user' });
     return { ok: false };
   }

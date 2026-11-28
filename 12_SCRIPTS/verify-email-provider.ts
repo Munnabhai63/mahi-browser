@@ -9,7 +9,7 @@ import {
   createProductionEmailProvider,
   ProductionApiEmailProvider,
   ProductionSmtpEmailProvider,
-  EmailProvider,
+  type EmailProvider,
 } from '../05_AUTH/email-service.js';
 
 async function main() {
@@ -28,15 +28,16 @@ async function main() {
   let provider: EmailProvider | null = null;
   try {
     provider = createProductionEmailProvider();
-  } catch (err: any) {
-    if (err.message && err.message.includes('PRODUCTION_EMAIL_UNCONFIGURED')) {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('PRODUCTION_EMAIL_UNCONFIGURED')) {
       console.log('EMAIL: NOT CONFIGURED — transactional email is disabled. Payments still work.');
       console.log('To enable email delivery in production, set either:');
       console.log('  - RESEND_API_KEY (or EMAIL_API_KEY) and EMAIL_FROM in .env');
       console.log('  - SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM in .env');
       process.exit(0);
     }
-    console.error(`[EmailVerification:ERROR] Unexpected error initializing email provider: ${err.message}`);
+    console.error(`[EmailVerification:ERROR] Unexpected error initializing email provider: ${msg}`);
     process.exit(1);
   }
 
@@ -66,8 +67,8 @@ async function main() {
       } else {
         console.log(`[-] Test email delivery failed to dispatch.`);
       }
-    } catch (sendErr: any) {
-      console.error(`[-] Failed sending test email: ${sendErr.message}`);
+    } catch (sendErr: unknown) {
+      console.error(`[-] Failed sending test email: ${sendErr instanceof Error ? sendErr.message : String(sendErr)}`);
     }
   } else {
     console.log('\nTip: To dispatch a live test email to an inbox, run:');

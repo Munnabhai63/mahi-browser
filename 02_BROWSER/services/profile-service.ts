@@ -1,11 +1,11 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { app } from '../../08_SECURITY/electron-bridge.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import {
+import type {
   Profile,
   ProfileSettings,
+  PartialProfileSettings,
   CreateProfileDTO,
   UpdateProfileDTO,
   CloneProfileDTO,
@@ -103,6 +103,7 @@ export function getProfiles(filter: ProfileFilterOptions = {}): Profile[] {
     status: string;
     storage_path: string;
     pinned: number;
+    owner_id?: string | null;
     last_used_at: string | null;
     last_error: string | null;
     created_at: string;
@@ -117,8 +118,9 @@ export function getProfiles(filter: ProfileFilterOptions = {}): Profile[] {
   }[];
   const tagMap = new Map<string, string[]>();
   for (const t of tagRows) {
-    if (!tagMap.has(t.profile_id)) tagMap.set(t.profile_id, []);
-    tagMap.get(t.profile_id)!.push(t.tag_name);
+    const list = tagMap.get(t.profile_id) ?? [];
+    list.push(t.tag_name);
+    tagMap.set(t.profile_id, list);
   }
 
   // Fetch persistent stats for all profiles (single query, avoids N+1)
@@ -145,7 +147,7 @@ export function getProfiles(filter: ProfileFilterOptions = {}): Profile[] {
       status: r.status as ProfileStatus,
       storagePath: r.storage_path,
       pinned: Boolean(r.pinned),
-      ownerId: (r as any).owner_id || undefined,
+      ownerId: r.owner_id || undefined,
       lastUsedAt: r.last_used_at || undefined,
       lastError: r.last_error || undefined,
       createdAt: r.created_at,
@@ -225,6 +227,7 @@ export function getProfileById(id: string, ownerId?: string, options?: { include
     status: string;
     storage_path: string;
     pinned: number;
+    owner_id?: string | null;
     last_used_at: string | null;
     last_error: string | null;
     created_at: string;
@@ -253,7 +256,7 @@ export function getProfileById(id: string, ownerId?: string, options?: { include
     status: row.status as ProfileStatus,
     storagePath: row.storage_path,
     pinned: Boolean(row.pinned),
-    ownerId: (row as any).owner_id || undefined,
+    ownerId: row.owner_id || undefined,
     lastUsedAt: row.last_used_at || undefined,
     lastError: row.last_error || undefined,
     createdAt: row.created_at,
@@ -280,7 +283,7 @@ export function createProfile(dto: CreateProfileDTO): Profile {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const storagePath = getProfileStoragePath(id);
-  const ownerId = (dto as any).ownerId || 'SYSTEM_OWNER';
+  const ownerId = dto.ownerId || 'SYSTEM_OWNER';
 
   const defaultSettings = getDefaultProfileSettings();
   const baseNewDefaults: ProfileSettings = {
@@ -332,7 +335,11 @@ export function createProfile(dto: CreateProfileDTO): Profile {
 
   logActivity('PROFILE', 'SUCCESS', 'Create Profile', `Created profile "${dto.name}"`, id, dto.name);
 
-  return getProfileById(id)!;
+  const created = getProfileById(id);
+  if (!created) {
+    throw new Error(`Created profile ${id} could not be retrieved`);
+  }
+  return created;
 }
 
 export function updateProfile(id: string, dto: UpdateProfileDTO, ownerId?: string): Profile {
@@ -390,10 +397,14 @@ export function updateProfile(id: string, dto: UpdateProfileDTO, ownerId?: strin
 
   logActivity('PROFILE', 'INFO', 'Update Profile', `Updated profile "${dto.name || existing.name}"`, id, dto.name || existing.name);
 
-  return getProfileById(id)!;
+  const updated = getProfileById(id);
+  if (!updated) {
+    throw new Error(`Updated profile ${id} could not be retrieved`);
+  }
+  return updated;
 }
 
-export function updateProfileStatus(id: string, status: ProfileStatus, lastError?: string, activePid?: number): void {
+export function updateProfileStatus(id: string, status: ProfileStatus, lastError?: string, _activePid?: number): void {
   const db = getDatabase();
   const now = new Date().toISOString();
   if (status === 'RUNNING') {
@@ -530,7 +541,11 @@ export function cloneProfile(dtoOrSourceId: CloneProfileDTO | string, maybeNewNa
 
   logActivity('PROFILE', 'SUCCESS', 'Clone Profile', `Cloned profile "${source.name}" to "${dto.newName}"`, newProfile.id, dto.newName);
 
-  return getProfileById(newProfile.id)!;
+  const cloned = getProfileById(newProfile.id);
+  if (!cloned) {
+    throw new Error(`Cloned profile ${newProfile.id} could not be retrieved`);
+  }
+  return cloned;
 }
 
 export interface BulkCreateProfileDTO {
@@ -683,7 +698,7 @@ export function bulkAssignProxies(dto: BulkAssignProxiesDTO, ownerId?: string): 
     const existing = getProfileById(pId, ownerId);
     if (!existing) continue;
 
-    let targetProxyId: string | undefined = undefined;
+    let targetProxyId: string | undefined ;
     if (distributionMode === 'clear') {
       targetProxyId = undefined;
     } else if (distributionMode === 'single') {
@@ -777,6 +792,7 @@ export function getTrashProfiles(ownerId?: string): Profile[] {
     status: string;
     storage_path: string;
     pinned: number;
+    owner_id?: string | null;
     last_used_at: string | null;
     last_error: string | null;
     deleted_at: string | null;
@@ -791,8 +807,9 @@ export function getTrashProfiles(ownerId?: string): Profile[] {
   }[];
   const tagMap = new Map<string, string[]>();
   for (const t of tagRows) {
-    if (!tagMap.has(t.profile_id)) tagMap.set(t.profile_id, []);
-    tagMap.get(t.profile_id)!.push(t.tag_name);
+    const list = tagMap.get(t.profile_id) ?? [];
+    list.push(t.tag_name);
+    tagMap.set(t.profile_id, list);
   }
 
   const statsMap = getAllProfileStats();
@@ -846,7 +863,11 @@ export function restoreProfile(id: string, ownerId?: string): Profile {
   const now = new Date().toISOString();
   db.prepare('UPDATE profiles SET deleted_at = NULL, updated_at = ? WHERE id = ?').run(now, id);
   logActivity('PROFILE', 'SUCCESS', 'Restore Profile', `Restored profile "${existing.name}" from Trash Bin`, id, existing.name);
-  return getProfileById(id, ownerId)!;
+  const restored = getProfileById(id, ownerId);
+  if (!restored) {
+    throw new Error(`Restored profile ${id} could not be retrieved`);
+  }
+  return restored;
 }
 
 /**
@@ -897,7 +918,7 @@ export function claimLegacyProfiles(
   if (!targetOwnerId || targetOwnerId === 'SYSTEM_OWNER' || targetOwnerId === 'LOCAL_CLIENT') {
     return { success: false, claimedCount: 0, claimedIds: [], skippedIds: profileIds || [], error: 'Target owner must be an authenticated account' };
   }
-  if (!evidence || !evidence.userConfirmed) {
+  if (!evidence?.userConfirmed) {
     return { success: false, claimedCount: 0, claimedIds: [], skippedIds: profileIds || [], error: 'User explicit confirmation required to claim unassigned legacy profiles' };
   }
 
@@ -941,8 +962,8 @@ export function claimLegacyProfiles(
     }
   };
 
-  if (typeof (db as any).transaction === 'function') {
-    (db as any).transaction(executeClaim)();
+  if (typeof db.transaction === 'function') {
+    db.transaction(executeClaim)();
   } else {
     executeClaim();
   }
@@ -982,7 +1003,7 @@ export function createAndroidMobileProfile(
 ): Profile {
   const defaultSettings = getDefaultProfileSettings();
 
-  const mobileSettings: Partial<ProfileSettings> = {
+  const mobileSettings: PartialProfileSettings = {
     ...defaultSettings,
     display: {
       screenWidth: 412,
@@ -1012,7 +1033,7 @@ export function createAndroidMobileProfile(
     name: name || `Android - ${model}`,
     description: `Mobile Android Emulation Profile (${model})`,
     
-    settings: mobileSettings as any,
+    settings: mobileSettings,
     ...options,
   });
 }

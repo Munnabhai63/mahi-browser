@@ -85,8 +85,8 @@ async function writeStatusCacheAsync(cache: StatusCache): Promise<void> {
     const dir = path.dirname(file);
     await fs.promises.mkdir(dir, { recursive: true });
     await fs.promises.writeFile(file, JSON.stringify(cache, null, 2), 'utf8');
-  } catch (err: any) {
-    log.error('[LicenseStatusService] Failed to persist status cache asynchronously:', err?.message);
+  } catch (err: unknown) {
+    log.error('[LicenseStatusService] Failed to persist status cache asynchronously:', err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -178,19 +178,6 @@ export function readStatusCache(): StatusCache | null {
     });
   }
   return null;
-}
-
-function writeStatusCache(cache: StatusCache): void {
-  try {
-    const file = getCacheFilePath();
-    const dir = path.dirname(file);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(file, JSON.stringify(cache, null, 2), 'utf8');
-  } catch (err: any) {
-    log.error('[LicenseStatusService] Failed to persist status cache:', err?.message);
-  }
 }
 
 /**
@@ -339,7 +326,7 @@ export function getOnlineStatusSummary(): {
     };
   }
 
-  if (cache && cache.verified_at) {
+  if (cache?.verified_at) {
     const elapsed = Date.now() - cache.verified_at;
     const remainingMs = Math.max(0, GRACE_PERIOD_MS - elapsed);
     const daysLeft = Math.ceil(remainingMs / (24 * 3600 * 1000));
@@ -389,8 +376,8 @@ function broadcastNotification(title: string, message: string, type: 'error' | '
     if (Notification.isSupported()) {
       new Notification({ title, body: message }).show();
     }
-  } catch (err: any) {
-    log.error('[LicenseStatusService] Broadcast error:', err?.message);
+  } catch (err: unknown) {
+    log.error('[LicenseStatusService] Broadcast error:', err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -457,7 +444,7 @@ export async function checkLicenseStatusOnline(): Promise<{
 
     // RULE 5: Anti-rollback protection
     const previousCache = await readStatusCacheAsync();
-    if (previousCache && previousCache.server_time && server_time < previousCache.server_time - 60000) {
+    if (previousCache?.server_time && server_time < previousCache.server_time - 60000) {
       log.warn('[LicenseStatusService] Anti-rollback check failed: server_time is older than previous verified time. Rejecting.');
       return { success: false, error: 'Anti-rollback check failed' };
     }
@@ -498,8 +485,9 @@ export async function checkLicenseStatusOnline(): Promise<{
     }
 
     return { success: true, status };
-  } catch (err: any) {
-    log.warn('[LicenseStatusService] Online check failed (offline or unreachable):', err?.message);
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    log.warn('[LicenseStatusService] Online check failed (offline or unreachable):', errMsg);
 
     // Check if grace period is expired while offline
     if (await isGraceExpiredAsync()) {
@@ -510,7 +498,7 @@ export async function checkLicenseStatusOnline(): Promise<{
       );
     }
 
-    return { success: false, error: err?.message };
+    return { success: false, error: errMsg };
   }
 }
 

@@ -1,5 +1,7 @@
+import type { ProxyProtocol } from '../../../10_CONFIG/shared/types/proxy.js';
+
 export interface ParsedProxyString {
-  protocol: string;
+  protocol: ProxyProtocol;
   host: string;
   port: number;
   username?: string;
@@ -19,12 +21,13 @@ export function parseProxyString(raw: string): ParsedProxyString | null {
 
   s = s.replace(/^["']|["']$/g, '').trim();
 
-  let protocol = 'http';
+  let protocol: ProxyProtocol = 'http';
   let rest = s;
 
   const protoMatch = rest.match(/^(https?|socks[45]?):\/\//i);
   if (protoMatch) {
-    protocol = protoMatch[1].toLowerCase();
+    const matched = protoMatch[1].toLowerCase();
+    protocol = (matched === 'socks' ? 'socks5' : matched) as ProxyProtocol;
     rest = rest.slice(protoMatch[0].length);
   }
 
@@ -48,7 +51,7 @@ export function parseProxyString(raw: string): ParsedProxyString | null {
 
   const host = parts[0].trim();
   const port = parseInt(parts[1].trim(), 10);
-  if (!host || isNaN(port)) return null;
+  if (!host || Number.isNaN(port)) return null;
 
   if (parts.length >= 4 && !username) {
     username = parts[2].trim();

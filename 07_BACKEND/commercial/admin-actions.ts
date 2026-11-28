@@ -14,6 +14,10 @@ const log = createLogger('admin-actions');
 export const MIRROR_MISSING_ERROR_MESSAGE =
   'This account exists only in the central auth registry (mirror-missing). A commercial record is required before plan/quota/override/device changes. Ask the user to sign in once to create it, then retry.';
 
+function isPrismaNotFoundError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && (err as { code?: unknown }).code === 'P2025';
+}
+
 async function insertPostgresAuditLog(
   prisma: NonNullable<ReturnType<typeof getPrismaClient>>,
   params: {
@@ -70,8 +74,8 @@ export async function adminSetUserStatus(
         where: { id: targetId },
         data: { status, updated_at: now },
       });
-    } catch (err: any) {
-      if (err?.code === 'P2025') return { ok: false };
+    } catch (err: unknown) {
+      if (isPrismaNotFoundError(err)) return { ok: false };
       throw err;
     }
 
@@ -95,8 +99,8 @@ export async function adminSetUserStatus(
       where: { id: userId },
       data: { status, updated_at: now },
     });
-  } catch (err: any) {
-    if (err?.code === 'P2025') return { ok: false };
+  } catch (err: unknown) {
+    if (isPrismaNotFoundError(err)) return { ok: false };
     throw err;
   }
 
@@ -145,8 +149,8 @@ export async function adminSetUserPlan(
       where: { id: userId },
       data: { plan_id: planId, updated_at: now },
     });
-  } catch (err: any) {
-    if (err?.code === 'P2025') return { ok: false };
+  } catch (err: unknown) {
+    if (isPrismaNotFoundError(err)) return { ok: false };
     throw err;
   }
 
@@ -319,8 +323,8 @@ export async function adminSetFeatureOverrides(
       where: { id: userId },
       data: { feature_overrides: json, updated_at: now },
     });
-  } catch (err: any) {
-    if (err?.code === 'P2025') return { success: false, error: 'User not found.' };
+  } catch (err: unknown) {
+    if (isPrismaNotFoundError(err)) return { success: false, error: 'User not found.' };
     throw err;
   }
 

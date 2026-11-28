@@ -1,5 +1,6 @@
-import http from 'node:http';
-import { URL } from 'node:url';
+import type http from 'node:http';
+import type { URL } from 'node:url';
+import type { PrismaClient } from '@prisma/client';
 import { sendJSON, parseBody, getAuthUserAsync, signAccountStatus } from './router-shared.js';
 import { sendSafeError, validateStrictBody } from '../../utils/app-error.js';
 import {
@@ -9,16 +10,16 @@ import {
   ActivateLicenseKeySchema,
   RevokeDeviceSchema,
 } from '../validation/commercial-schemas.js';
-import { getCentralUserByIdAsync, verifyAccessToken } from '../../../05_AUTH/central-auth-service.js';
+import { getCentralUserByIdAsync, verifyAccessToken, type AuthUser } from '../../../05_AUTH/central-auth-service.js';
 import { evaluateUserEntitlements, activateCommercialLicenseForUser } from '../commercial-entitlement-service.js';
 import { createDemoRequest } from '../demo-service.js';
 import { recordFunnelEvent } from '../funnel-service.js';
 import { getUserDevices, revokeCommercialDevice, registerOrUpdateDevice } from '../commercial-device-service.js';
-import { getLicenses, evaluateServerStatus } from '../../../04_LICENSING/license-engine.js';
+import { evaluateServerStatus } from '../../../04_LICENSING/license-engine.js';
+import type { LicenseStatus } from '../../../10_CONFIG/shared/types/license.js';
 import { getCommercialPlans, getCommercialPlanById } from '../commercial-plan-service.js';
-import { getActivePricingVersion, buildPlanCatalog } from '../pricing-admin-service.js';
-import { getSoftwareVersions, checkVersionCompatibility } from '../commercial-version-service.js';
-import { reconcileUserPlanOnLogin } from '../commercial-reconcile-service.js';
+import { buildPlanCatalog } from '../pricing-admin-service.js';
+import { checkVersionCompatibility } from '../commercial-version-service.js';
 import { resolveCommercialPlan } from '../payment-service.js';
 import { isPostgresConfigured } from '../../../06_DATABASE/central-repository.js';
 import { getPrismaClient } from '../../../06_DATABASE/prisma-client.js';
@@ -27,6 +28,31 @@ import { rejectIfEmergencyFrozen } from '../../services/kill-switch-service.js';
 import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('client-entitlement-routes');
+
+interface PrismaWithLicenses {
+  licenses?: {
+    findFirst: (args: unknown) => Promise<{ expires_at?: Date | string | null } | null>;
+  };
+}
+
+interface SqliteLicenseRow {
+  id: string;
+  key_masked: string;
+  status: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  notes: string | null;
+  max_devices?: number;
+  created_at?: string | null;
+}
+
+interface CountRow {
+  count?: number;
+}
+
+interface PlanIdRow {
+  plan_id?: string | null;
+}
 
 export async function handleClientEntitlementRoutes(
   req: http.IncomingMessage,
@@ -47,7 +73,7 @@ export async function handleClientEntitlementRoutes(
     const legacyHwidParam = (parsedUrl.searchParams.get('legacyHwid') || parsedUrl.searchParams.get('legacyDeviceId') || '').trim() || undefined;
 
     // 1. Fetch authoritative central user record (Postgres/SQLite)
-    let centralUser: any = null;
+    let centralUser: AuthUser | null = null;
     try {
       centralUser = await getCentralUserByIdAsync(auth.userId);
     } catch (err) {
@@ -65,7 +91,7 @@ export async function handleClientEntitlementRoutes(
 
     // 3. User status check (Banned / Suspended accounts are immediately demoted)
     const isBannedOrSuspended =
-      centralUser?.status === 'BANNED' ||
+      (centralUser?.status as string | undefined) === 'BANNED' ||
       centralUser?.status === 'SUSPENDED' ||
       entitlements?.user?.status === 'BANNED' ||
       entitlements?.user?.status === 'SUSPENDED';
@@ -86,19 +112,28 @@ export async function handleClientEntitlementRoutes(
     const sync_allowed = !isBannedOrSuspended && (entitlements?.features?.['cloud.sync'] ?? (plan !== 'free'));
 
     // 5. Expiration time from entitlement or Postgres license
-    let expires_at: string | null = entitlements?.subscription?.expiresAt || null;
+    const rawSubExpires: unknown = entitlements?.subscription?.expiresAt ?? null;
+    let expires_at: string | null =
+      rawSubExpires instanceof Date
+        ? rawSubExpires.toISOString()
+        : typeof rawSubExpires === 'string'
+          ? rawSubExpires
+          : rawSubExpires != null
+            ? String(rawSubExpires)
+            : null;
     if (isPostgresConfigured()) {
       try {
-        const prisma = getPrismaClient();
-        if (prisma && (prisma as any).licenses) {
-          const activeLic = await (prisma as any).licenses.findFirst({
+        const prisma = getPrismaClient() as unknown as (Partial<PrismaClient> & PrismaWithLicenses) | null;
+        if (prisma?.licenses) {
+          const activeLic = await prisma.licenses.findFirst({
             where: { account_id: auth.userId, status: 'ACTIVE' },
             orderBy: { created_at: 'desc' },
           });
-          if (activeLic?.expires_at) {
-            expires_at = activeLic.expires_at instanceof Date
-              ? activeLic.expires_at.toISOString()
-              : String(activeLic.expires_at);
+          const rawLicExpires: unknown = activeLic?.expires_at ?? null;
+          if (rawLicExpires instanceof Date) {
+            expires_at = rawLicExpires.toISOString();
+          } else if (rawLicExpires != null) {
+            expires_at = String(rawLicExpires);
           }
         }
       } catch (pgErr) {
@@ -107,9 +142,6 @@ export async function handleClientEntitlementRoutes(
           err: pgErr instanceof Error ? pgErr.message : String(pgErr),
         });
       }
-    }
-    if (expires_at && typeof expires_at !== 'string') {
-      expires_at = (expires_at as any) instanceof Date ? (expires_at as any).toISOString() : String(expires_at);
     }
 
     const server_time = Date.now();
@@ -161,7 +193,7 @@ export async function handleClientEntitlementRoutes(
     const rawBody = await parseBody(req);
     const parsed = validateStrictBody(DemoRequestSchema, rawBody, res);
     if (!parsed.ok) return true;
-    const result = createDemoRequest(parsed.data as any);
+    const result = createDemoRequest(parsed.data as unknown as Parameters<typeof createDemoRequest>[0]);
     sendJSON(res, result.success ? 201 : 400, result);
     return true;
   }
@@ -171,7 +203,7 @@ export async function handleClientEntitlementRoutes(
     const parsed = validateStrictBody(FunnelTrackSchema, rawBody, res);
     if (!parsed.ok) return true;
     const result = recordFunnelEvent({
-      ...(parsed.data as any),
+      ...(parsed.data as unknown as Parameters<typeof recordFunnelEvent>[0]),
       ipAddress: clientIp,
     });
     sendJSON(res, result.success ? 200 : 400, result);
@@ -192,7 +224,7 @@ export async function handleClientEntitlementRoutes(
       WHERE account_id = ? 
       ORDER BY CASE WHEN status = 'ACTIVE' THEN 0 ELSE 1 END, created_at DESC 
       LIMIT 1
-    `).get(auth.userId) as any;
+    `).get(auth.userId) as SqliteLicenseRow | undefined;
 
     if (!row) {
       sendJSON(res, 404, { success: false, error: 'NO_LICENSE' });
@@ -201,9 +233,9 @@ export async function handleClientEntitlementRoutes(
 
     const devicesCount = (db.prepare(
       "SELECT COUNT(*) as count FROM license_devices WHERE license_id = ? AND status = 'ACTIVE'"
-    ).get(row.id) as any)?.count || 0;
+    ).get(row.id) as CountRow | undefined)?.count || 0;
 
-    const evaluatedStatus = evaluateServerStatus(row.status, row.expires_at, row.revoked_at);
+    const evaluatedStatus = evaluateServerStatus(row.status as LicenseStatus, row.expires_at, row.revoked_at);
     if (evaluatedStatus !== row.status) {
       try {
         db.prepare('UPDATE licenses SET status = ? WHERE id = ?').run(evaluatedStatus, row.id);
@@ -223,10 +255,10 @@ export async function handleClientEntitlementRoutes(
       if (match) planId = match[1];
     }
     if (!planId) {
-      const subRow = db.prepare('SELECT plan_id FROM commercial_subscriptions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1').get(auth.userId) as any;
+      const subRow = db.prepare('SELECT plan_id FROM commercial_subscriptions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1').get(auth.userId) as PlanIdRow | undefined;
       if (subRow?.plan_id) planId = subRow.plan_id;
       else {
-        const u = db.prepare('SELECT plan_id FROM commercial_users WHERE id = ?').get(auth.userId) as any;
+        const u = db.prepare('SELECT plan_id FROM commercial_users WHERE id = ?').get(auth.userId) as PlanIdRow | undefined;
         if (u?.plan_id) planId = u.plan_id;
       }
     }
@@ -323,7 +355,7 @@ export async function handleClientEntitlementRoutes(
     try {
       const catalog = buildPlanCatalog();
       sendJSON(res, 200, { success: true, data: catalog });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 500 });
     }
     return true;

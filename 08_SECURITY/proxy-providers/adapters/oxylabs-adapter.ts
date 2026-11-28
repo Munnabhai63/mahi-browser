@@ -4,7 +4,7 @@
  */
 
 import crypto from 'node:crypto';
-import {
+import type {
   ProxyProvider,
   ProviderSessionCredentials,
   ProviderCreateSessionParams,
@@ -12,7 +12,7 @@ import {
   ProviderHealthCheckResult,
   ProviderUsageStats,
 } from '../proxy-provider-interface.js';
-import {
+import type {
   ProxyProviderCapabilities,
   ProxyNetworkType,
   GeoCountryOption,
@@ -105,7 +105,7 @@ export class OxylabsProxyProvider implements ProxyProvider {
     const host = 'pr.oxylabs.io';
     const port = 7777;
 
-    let expiresAt: string | undefined = undefined;
+    let expiresAt: string | undefined ;
     if (params.sessionType === 'STICKY' && params.ttlMinutes) {
       expiresAt = new Date(Date.now() + params.ttlMinutes * 60 * 1000).toISOString();
     }
@@ -115,7 +115,7 @@ export class OxylabsProxyProvider implements ProxyProvider {
       port,
       protocol: 'http',
       username,
-      password: this.password!,
+      password: this.password ?? '',
       country: params.country.toUpperCase(),
       city: params.city,
       upstreamSessionId: sessionId,
@@ -123,7 +123,7 @@ export class OxylabsProxyProvider implements ProxyProvider {
     };
   }
 
-  async rotateSession(upstreamSessionId: string, params: ProviderCreateSessionParams): Promise<ProviderRotateResult> {
+  async rotateSession(_upstreamSessionId: string, params: ProviderCreateSessionParams): Promise<ProviderRotateResult> {
     if (!this.isConfigured()) {
       throw new Error('Oxylabs credentials not configured.');
     }
@@ -139,7 +139,7 @@ export class OxylabsProxyProvider implements ProxyProvider {
       host: 'pr.oxylabs.io',
       port: 7777,
       username,
-      password: this.password!,
+      password: this.password ?? '',
     };
   }
 

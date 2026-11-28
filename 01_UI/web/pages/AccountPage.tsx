@@ -1,6 +1,5 @@
-import React from 'react';
+import type React from 'react';
 import {
-  User,
   LogOut,
   CheckCircle2,
 } from 'lucide-react';

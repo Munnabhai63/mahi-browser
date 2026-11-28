@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import { 
   ShieldCheck, 
   Sparkles, 
   Layers, 
   Smartphone, 
-  Zap, 
   ArrowRight, 
   CheckCircle2, 
   Download, 
@@ -18,7 +18,7 @@ import {
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { getDefaultProfileSettings, DEFAULT_USER_AGENTS } from '../../10_CONFIG/shared/constants/defaults.js';
-import { NavigationPage } from './Sidebar.js';
+import type { NavigationPage } from './Sidebar.js';
 import { BrandLogo } from './BrandLogo.js';
 import { useAccountStore } from '../stores/useAccountStore.js';
 
@@ -129,7 +129,7 @@ export const WelcomeWizardModal: React.FC<WelcomeWizardModalProps> = ({ onNaviga
               <p className="text-xs text-slate-400 mt-0.5">Enterprise Anti-Detect & Multi-Session Automation Hub</p>
             </div>
           </div>
-          <button 
+          <button type="button" 
             onClick={handleClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
           >
@@ -424,7 +424,7 @@ export const WelcomeWizardModal: React.FC<WelcomeWizardModalProps> = ({ onNaviga
           {step > 1 ? (
             <button
               type="button"
-              onClick={() => setStep((s) => (s - 1) as any)}
+              onClick={() => setStep((s) => (s === 3 ? 2 : 1))}
               className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white transition"
             >
               Back
@@ -442,7 +442,7 @@ export const WelcomeWizardModal: React.FC<WelcomeWizardModalProps> = ({ onNaviga
           {step < 3 && (
             <button
               type="button"
-              onClick={() => setStep((s) => (s + 1) as any)}
+              onClick={() => setStep((s) => (s === 1 ? 2 : 3))}
               className="px-5 py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition shadow-md shadow-teal-500/20"
             >
               Continue <ArrowRight size={14} />

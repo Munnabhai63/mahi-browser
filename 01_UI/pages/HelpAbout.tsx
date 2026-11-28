@@ -1,27 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import type React from 'react';
+import { useEffect, useState } from 'react';
 import {
-  HelpCircle,
-  Shield,
   Keyboard,
-  Cpu,
   CheckCircle2,
-  ExternalLink,
-  BookOpen,
   Info,
   DownloadCloud,
   RefreshCw,
   Copy,
-  Layers,
   Terminal,
-  Database,
-  Lock,
   AlertCircle,
-  Sparkles,
 } from 'lucide-react';
 import { useToastStore } from '../stores/useToastStore.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 import { BrandLogo } from '../components/BrandLogo.js';
-import { UpdateStatusEvent } from '../../10_CONFIG/shared/types/updater.js';
+import type { UpdateStatusEvent } from '../../10_CONFIG/shared/types/updater.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 import { CONTACT_CONFIG } from '../../10_CONFIG/contact-config.js';
 import { getDefaultUpdateFeedUrl } from '../../10_CONFIG/shared/site-config.js';
@@ -30,7 +22,7 @@ interface HelpAboutProps {
   onNavigate: (page: NavigationPage) => void;
 }
 
-export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
+export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate: _onNavigate }) => {
   const [appVersion, setAppVersion] = useState<string>(APP_VERSION);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusEvent | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);

@@ -6,7 +6,7 @@
  * handles auth, distributed rate limits, idempotency, and delegates to domain modules.
  */
 
-import http from 'node:http';
+import type http from 'node:http';
 import crypto from 'node:crypto';
 import { URL } from 'node:url';
 import {
@@ -24,7 +24,7 @@ import {
   resolveRemoteAuth,
   handleRemoteCorsPreflight,
   makeAccessGuards,
-  RemoteRouteContext,
+  type RemoteRouteContext,
 } from './routes/remote/remote-shared.js';
 import {
   handleRemotePublicBillingRoutes,
@@ -134,7 +134,14 @@ export async function handleRemoteApiRoutes(
   if (idempotencyKey && (method === 'POST' || method === 'PUT')) {
     const cached = getCachedIdempotentResponse(idempotencyKey, auth.userId);
     if (cached) {
-      sendRemoteJSON(req, res, cached.statusCode, cached.response as any, requestId, rateLimit);
+      sendRemoteJSON(
+        req,
+        res,
+        cached.statusCode,
+        cached.response as Parameters<typeof sendRemoteJSON>[3],
+        requestId,
+        rateLimit
+      );
       return true;
     }
   }
@@ -181,8 +188,10 @@ export async function handleRemoteApiRoutes(
       rateLimit
     );
     return true;
-  } catch (err: any) {
+  } catch (err: unknown) {
     const status = getErrorStatusCode(err, 500);
+    const errCode = typeof err === 'object' && err !== null && 'code' in err ? String((err as { code?: unknown }).code || 'INTERNAL_ERROR') : 'INTERNAL_ERROR';
+    const errMessage = err instanceof Error ? err.message : 'An unexpected server error occurred.';
     sendRemoteJSON(
       req,
       res,
@@ -190,8 +199,8 @@ export async function handleRemoteApiRoutes(
       {
         success: false,
         error: {
-          code: err?.code || 'INTERNAL_ERROR',
-          message: err.message || 'An unexpected server error occurred.',
+          code: errCode,
+          message: errMessage,
         },
       },
       requestId,

@@ -10,6 +10,22 @@ import { logCommercialAudit } from './commercial-audit-service.js';
 
 export type DemoRequestStatus = 'NEW' | 'CONTACTED' | 'SCHEDULED' | 'COMPLETED' | 'CLOSED';
 
+export interface SqliteDemoRequestRow {
+  id: string;
+  full_name: string;
+  email: string;
+  company_name: string | null;
+  team_size: string | null;
+  use_case: string | null;
+  contact_method: string | null;
+  preferred_datetime: string | null;
+  message: string | null;
+  status: string;
+  admin_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DemoRequest {
   id: string;
   fullName: string;
@@ -46,7 +62,7 @@ export function createDemoRequest(dto: CreateDemoRequestDTO): { success: boolean
     return { success: false, error: 'Full name is required (min 2 characters).' };
   }
 
-  if (!email || !email.includes('@') || email.length < 5) {
+  if (!email?.includes('@') || email.length < 5) {
     return { success: false, error: 'A valid business email address is required.' };
   }
 
@@ -97,15 +113,15 @@ export function createDemoRequest(dto: CreateDemoRequestDTO): { success: boolean
     };
 
     return { success: true, data: created };
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Failed to submit demo request' };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to submit demo request' };
   }
 }
 
 export function getDemoRequests(statusFilter?: DemoRequestStatus): DemoRequest[] {
   const db = getDatabase();
   let query = 'SELECT * FROM demo_requests';
-  const params: any[] = [];
+  const params: string[] = [];
 
   if (statusFilter) {
     query += ' WHERE status = ?';
@@ -115,7 +131,7 @@ export function getDemoRequests(statusFilter?: DemoRequestStatus): DemoRequest[]
   query += ' ORDER BY created_at DESC';
 
   try {
-    const rows = db.prepare(query).all(...params) as any[];
+    const rows = db.prepare(query).all<SqliteDemoRequestRow>(...params);
     return rows.map((r) => ({
       id: r.id,
       fullName: r.full_name,
@@ -175,17 +191,20 @@ export function updateDemoRequestStatus(
       details: `Demo request ${id} updated to status ${status}`,
     });
 
-    const updated = db.prepare('SELECT * FROM demo_requests WHERE id = ?').get(id) as any;
+    const updated = db.prepare('SELECT * FROM demo_requests WHERE id = ?').get<SqliteDemoRequestRow>(id);
+    if (!updated) {
+      return { success: false, error: 'Demo request not found after update' };
+    }
     return {
       success: true,
       data: {
         id: updated.id,
         fullName: updated.full_name,
         email: updated.email,
-        companyName: updated.company_name,
-        teamSize: updated.team_size,
-        useCase: updated.use_case,
-        contactMethod: updated.contact_method,
+        companyName: updated.company_name || '',
+        teamSize: updated.team_size || '',
+        useCase: updated.use_case || '',
+        contactMethod: updated.contact_method || '',
         preferredDatetime: updated.preferred_datetime || undefined,
         message: updated.message || undefined,
         status: updated.status as DemoRequestStatus,
@@ -194,7 +213,7 @@ export function updateDemoRequestStatus(
         updatedAt: updated.updated_at,
       }
     };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

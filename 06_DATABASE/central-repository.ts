@@ -4,10 +4,51 @@
  * and SQLite for offline local desktop execution and testing.
  */
 
+import type { Prisma, PrismaClient as PrismaClientType } from '@prisma/client';
 import { getPrismaClient, isPostgresConfigured } from './prisma-client.js';
 export { isPostgresConfigured } from './prisma-client.js';
-import { getDatabase } from './connection.js';
+import { getDatabase, type SqliteWrapper } from './connection.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
+import type {
+  AuthSecurityLogResult,
+  AuthSessionCreateInput,
+  AuthSessionRecord,
+  AuthSessionUpdateInput,
+  AuthUserCreateInput,
+  AuthUserRecord,
+  AuthUserUpdateInput,
+  AuthVerificationTokenCreateInput,
+  AuthVerificationTokenRecord,
+  CloudProfileCreateInput,
+  CloudProfileDeltaCreateInput,
+  CloudProfileDeltaRecord,
+  CloudProfileLockRecord,
+  CloudProfileLockUpsertInput,
+  CloudProfileRecord,
+  CloudProfileUpdateInput,
+  CloudProfileVersionCreateInput,
+  CloudProfileVersionRecord,
+  CloudSyncAuditLogResult,
+  CloudUploadSessionCreateInput,
+  CloudUploadSessionRecord,
+  CloudUploadSessionUpdateInput,
+  CommercialUserCreateInput,
+  CommercialUserRecord,
+  CommercialUserUpdateInput,
+  RemoteApiKeyAuditResult,
+  RemoteApiKeyCreateInput,
+  RemoteApiKeyRecord,
+  TeamWorkspaceCreateInput,
+  TeamWorkspaceMemberCreateInput,
+  TeamWorkspaceMemberRecord,
+  TeamWorkspaceRecord,
+  TeamWorkspaceUpdateInput,
+  WebHandoffSessionCreateInput,
+  WebHandoffSessionRecord,
+  WebHandoffUserPayload,
+} from './central-repository-types.js';
+
+export * from './central-repository-types.js';
 
 const log = createLogger('central-repository');
 
@@ -15,105 +56,151 @@ export interface CentralRepository {
   backendName: 'postgres' | 'sqlite';
 
   // Auth Users
-  findAuthUserByEmail(email: string): Promise<any | null>;
-  findAuthUserById(id: string): Promise<any | null>;
-  createAuthUser(data: any): Promise<any>;
-  updateAuthUser(id: string, data: any): Promise<any>;
+  findAuthUserByEmail(email: string): Promise<AuthUserRecord | null>;
+  findAuthUserById(id: string): Promise<AuthUserRecord | null>;
+  createAuthUser(data: AuthUserCreateInput): Promise<AuthUserRecord | null>;
+  updateAuthUser(id: string, data: AuthUserUpdateInput): Promise<AuthUserRecord | null>;
   updateAuthUserTerms(userId: string, acceptedTerms: number, termsVersion: string): Promise<boolean>;
 
   // Auth Sessions
-  createAuthSession(data: any): Promise<any>;
-  findAuthSessionByTokenHash(tokenHash: string): Promise<any | null>;
-  updateAuthSession(id: string, data: any): Promise<any>;
+  createAuthSession(data: AuthSessionCreateInput): Promise<AuthSessionRecord | AuthSessionCreateInput>;
+  findAuthSessionByTokenHash(tokenHash: string): Promise<AuthSessionRecord | null>;
+  updateAuthSession(id: string, data: AuthSessionUpdateInput): Promise<AuthSessionRecord | boolean | null>;
   revokeAuthSession(id: string): Promise<boolean>;
   revokeAllUserSessions(userId: string): Promise<number>;
-  listUserAuthSessions(userId: string): Promise<any[]>;
+  listUserAuthSessions(userId: string): Promise<AuthSessionRecord[]>;
 
   // Verification Tokens
-  createVerificationToken(data: any): Promise<any>;
-  findVerificationTokenByHash(tokenHash: string): Promise<any | null>;
-  consumeVerificationToken(tokenHash: string): Promise<any | null>;
+  createVerificationToken(
+    data: AuthVerificationTokenCreateInput
+  ): Promise<AuthVerificationTokenRecord | AuthVerificationTokenCreateInput>;
+  findVerificationTokenByHash(tokenHash: string): Promise<AuthVerificationTokenRecord | null>;
+  consumeVerificationToken(tokenHash: string): Promise<AuthVerificationTokenRecord | null>;
   invalidatePendingVerificationTokens(userId: string, type?: string): Promise<number>;
 
   // Convenience Aliases for Auth Flow
-  findUserByEmail?(email: string): Promise<any | null>;
-  findUserById?(id: string): Promise<any | null>;
-  createUser?(data: any): Promise<any>;
-  updateUser?(id: string, data: any): Promise<any>;
-  updateUserLastLogin?(id: string, timestamp?: string): Promise<any>;
-  updateUserPassword?(id: string, passwordHash: string, salt: string): Promise<any>;
-  markUserEmailVerified?(id: string): Promise<any>;
-  createSession?(data: any): Promise<any>;
-  findSessionByTokenHash?(tokenHash: string): Promise<any | null>;
-  rotateSessionToken?(sessionId: string, newHash: string, expiresAt: string, ip?: string): Promise<any>;
-  findVerificationToken?(tokenHash: string): Promise<any | null>;
-  markVerificationTokenUsed?(tokenHashOrId: string): Promise<any | null>;
+  findUserByEmail?(email: string): Promise<AuthUserRecord | null>;
+  findUserById?(id: string): Promise<AuthUserRecord | null>;
+  createUser?(data: AuthUserCreateInput): Promise<AuthUserRecord | null>;
+  updateUser?(id: string, data: AuthUserUpdateInput): Promise<AuthUserRecord | null>;
+  updateUserLastLogin?(id: string, timestamp?: string): Promise<AuthUserRecord | null>;
+  updateUserPassword?(id: string, passwordHash: string, salt: string): Promise<AuthUserRecord | null>;
+  markUserEmailVerified?(id: string): Promise<AuthUserRecord | null>;
+  createSession?(data: AuthSessionCreateInput): Promise<AuthSessionRecord | AuthSessionCreateInput>;
+  findSessionByTokenHash?(tokenHash: string): Promise<AuthSessionRecord | null>;
+  rotateSessionToken?(
+    sessionId: string,
+    newHash: string,
+    expiresAt: string,
+    ip?: string
+  ): Promise<AuthSessionRecord | boolean | null>;
+  findVerificationToken?(tokenHash: string): Promise<AuthVerificationTokenRecord | null>;
+  markVerificationTokenUsed?(tokenHashOrId: string): Promise<AuthVerificationTokenRecord | null>;
 
   // Security Logs
-  logAuthSecurity(userId: string | null, action: string, details?: string, ip?: string, result?: string): Promise<any>;
+  logAuthSecurity(
+    userId: string | null,
+    action: string,
+    details?: string,
+    ip?: string,
+    result?: string
+  ): Promise<AuthSecurityLogResult>;
 
   // Commercial Users
-  findCommercialUserById(id: string): Promise<any | null>;
-  findCommercialUserByEmail(email: string): Promise<any | null>;
-  createCommercialUser(data: any): Promise<any>;
-  updateCommercialUser(id: string, data: any): Promise<any>;
+  findCommercialUserById(id: string): Promise<CommercialUserRecord | null>;
+  findCommercialUserByEmail(email: string): Promise<CommercialUserRecord | null>;
+  createCommercialUser(data: CommercialUserCreateInput): Promise<CommercialUserRecord | null>;
+  updateCommercialUser(id: string, data: CommercialUserUpdateInput): Promise<CommercialUserRecord | null>;
 
   // Cloud Profiles
-  findCloudProfileById(id: string): Promise<any | null>;
-  createCloudProfile(data: any): Promise<any>;
-  updateCloudProfile(id: string, data: any): Promise<any>;
+  findCloudProfileById(id: string): Promise<CloudProfileRecord | null>;
+  createCloudProfile(data: CloudProfileCreateInput): Promise<CloudProfileRecord | null>;
+  updateCloudProfile(id: string, data: CloudProfileUpdateInput): Promise<CloudProfileRecord | null>;
   deleteCloudProfile(id: string): Promise<boolean>;
-  listCloudProfiles(ownerId: string): Promise<any[]>;
+  listCloudProfiles(ownerId: string): Promise<CloudProfileRecord[]>;
 
   // Cloud Versions
-  createCloudProfileVersion(data: any): Promise<any>;
-  getLatestCloudProfileVersion(cloudProfileId: string): Promise<any | null>;
-  getCloudProfileVersion(cloudProfileId: string, version: number): Promise<any | null>;
+  createCloudProfileVersion(
+    data: CloudProfileVersionCreateInput
+  ): Promise<CloudProfileVersionRecord | CloudProfileVersionCreateInput>;
+  getLatestCloudProfileVersion(cloudProfileId: string): Promise<CloudProfileVersionRecord | null>;
+  getCloudProfileVersion(cloudProfileId: string, version: number): Promise<CloudProfileVersionRecord | null>;
 
   // Cloud Deltas
-  createCloudProfileDelta?(data: any): Promise<any>;
-  getLatestCloudProfileDelta?(cloudProfileId: string): Promise<any | null>;
+  createCloudProfileDelta?(
+    data: CloudProfileDeltaCreateInput
+  ): Promise<CloudProfileDeltaRecord | CloudProfileDeltaCreateInput | null>;
+  getLatestCloudProfileDelta?(cloudProfileId: string): Promise<CloudProfileDeltaRecord | null>;
 
   // Upload Sessions
-  createUploadSessionRecord(data: any): Promise<any>;
-  findUploadSessionById(id: string): Promise<any | null>;
-  updateUploadSessionRecord(id: string, data: any): Promise<any>;
+  createUploadSessionRecord(
+    data: CloudUploadSessionCreateInput
+  ): Promise<CloudUploadSessionRecord | CloudUploadSessionCreateInput>;
+  findUploadSessionById(id: string): Promise<CloudUploadSessionRecord | null>;
+  updateUploadSessionRecord(
+    id: string,
+    data: CloudUploadSessionUpdateInput
+  ): Promise<CloudUploadSessionRecord | boolean | null>;
 
   // Cloud Sync Audits
-  logCloudSyncAudit(userId: string, action: string, details?: string, cloudProfileId?: string, deviceId?: string): Promise<any>;
+  logCloudSyncAudit(
+    userId: string,
+    action: string,
+    details?: string,
+    cloudProfileId?: string,
+    deviceId?: string
+  ): Promise<CloudSyncAuditLogResult>;
 
   // Team Workspaces
-  findWorkspaceById(id: string): Promise<any | null>;
-  createWorkspace(data: any): Promise<any>;
-  updateWorkspace(id: string, data: any): Promise<any>;
+  findWorkspaceById(id: string): Promise<TeamWorkspaceRecord | null>;
+  createWorkspace(data: TeamWorkspaceCreateInput): Promise<TeamWorkspaceRecord | null>;
+  updateWorkspace(id: string, data: TeamWorkspaceUpdateInput): Promise<TeamWorkspaceRecord | null>;
   deleteWorkspace(id: string): Promise<boolean>;
-  listUserWorkspaces(userId: string): Promise<any[]>;
+  listUserWorkspaces(userId: string): Promise<TeamWorkspaceRecord[]>;
 
   // Team Workspace Members
-  addWorkspaceMember(data: any): Promise<any>;
-  findWorkspaceMember(workspaceId: string, userId: string): Promise<any | null>;
-  listWorkspaceMembers(workspaceId: string): Promise<any[]>;
-  updateWorkspaceMemberRole(workspaceId: string, userId: string, role: string): Promise<any>;
+  addWorkspaceMember(
+    data: TeamWorkspaceMemberCreateInput
+  ): Promise<TeamWorkspaceMemberRecord | TeamWorkspaceMemberCreateInput>;
+  findWorkspaceMember(workspaceId: string, userId: string): Promise<TeamWorkspaceMemberRecord | null>;
+  listWorkspaceMembers(workspaceId: string): Promise<TeamWorkspaceMemberRecord[]>;
+  updateWorkspaceMemberRole(
+    workspaceId: string,
+    userId: string,
+    role: string
+  ): Promise<{ count: number } | boolean>;
   removeWorkspaceMember(workspaceId: string, userId: string): Promise<boolean>;
 
   // Remote API Keys
-  findRemoteApiKeyByHash(keyHash: string): Promise<any | null>;
-  createRemoteApiKey(data: any): Promise<any>;
-  listRemoteApiKeys(userId: string): Promise<any[]>;
+  findRemoteApiKeyByHash(keyHash: string): Promise<RemoteApiKeyRecord | null>;
+  createRemoteApiKey(data: RemoteApiKeyCreateInput): Promise<RemoteApiKeyRecord | RemoteApiKeyCreateInput>;
+  listRemoteApiKeys(userId: string): Promise<RemoteApiKeyRecord[]>;
   revokeRemoteApiKey(id: string, userId?: string): Promise<boolean>;
-  updateRemoteApiKeyLastUsed(id: string): Promise<any>;
+  updateRemoteApiKeyLastUsed(id: string): Promise<RemoteApiKeyRecord | boolean>;
 
   // Remote API Key Audits
-  logRemoteApiKeyAudit(apiKeyId: string, userId: string, endpoint: string, method: string, statusCode: number, ipAddress?: string): Promise<any>;
+  logRemoteApiKeyAudit(
+    apiKeyId: string,
+    userId: string,
+    endpoint: string,
+    method: string,
+    statusCode: number,
+    ipAddress?: string
+  ): Promise<RemoteApiKeyAuditResult>;
 
   // Cloud Profile Locks (DB persistence fallback)
-  findLock(cloudProfileId: string): Promise<any | null>;
-  upsertLock(data: { cloudProfileId: string; deviceId: string; deviceName: string; userId: string; lockedAt: string; expiresAt: string }): Promise<any>;
+  findLock(cloudProfileId: string): Promise<CloudProfileLockRecord | null>;
+  upsertLock(data: CloudProfileLockUpsertInput): Promise<CloudProfileLockRecord | CloudProfileLockUpsertInput>;
   deleteLock(cloudProfileId: string): Promise<boolean>;
 
   // Web Handoff Sessions
-  createWebHandoffSession(data: { code: string; token: string; userJson: string; createdAt: number; expiresAt: number }): Promise<any>;
-  consumeWebHandoffSessionAtomically(code: string, now: number): Promise<{ token: string; user: any } | null>;
+  createWebHandoffSession(
+    data: WebHandoffSessionCreateInput
+  ): Promise<WebHandoffSessionRecord | WebHandoffSessionCreateInput>;
+  consumeWebHandoffSessionAtomically(
+    code: string,
+    now: number
+  ): Promise<{ token: string; user: WebHandoffUserPayload | null } | null>;
 }
 
 // ============================================================================
@@ -123,16 +210,16 @@ export interface CentralRepository {
 export class PostgresCentralRepository implements CentralRepository {
   public backendName: 'postgres' = 'postgres';
 
-  private get client(): any {
+  private get client(): PrismaClientType {
     const prisma = getPrismaClient();
     if (!prisma) {
       throw new Error('PostgresCentralRepository requires DATABASE_URL to be configured');
     }
-    return prisma as any;
+    return prisma;
   }
 
   // --- Auth Users ---
-  async findAuthUserByEmail(email: string): Promise<any | null> {
+  async findAuthUserByEmail(email: string): Promise<AuthUserRecord | null> {
     const norm = email.toLowerCase().trim();
     return this.client.auth_users.findFirst({
       where: {
@@ -141,13 +228,13 @@ export class PostgresCentralRepository implements CentralRepository {
     });
   }
 
-  async findAuthUserById(id: string): Promise<any | null> {
+  async findAuthUserById(id: string): Promise<AuthUserRecord | null> {
     return this.client.auth_users.findUnique({
       where: { id },
     });
   }
 
-  async createAuthUser(data: any): Promise<any> {
+  async createAuthUser(data: AuthUserCreateInput): Promise<AuthUserRecord | null> {
     const normalizedEmail = (data.normalized_email || data.email).toLowerCase().trim();
     return this.client.auth_users.create({
       data: {
@@ -179,7 +266,7 @@ export class PostgresCentralRepository implements CentralRepository {
     });
   }
 
-  async updateAuthUser(id: string, data: any): Promise<any> {
+  async updateAuthUser(id: string, data: AuthUserUpdateInput): Promise<AuthUserRecord | null> {
     return this.client.auth_users.update({
       where: { id },
       data: {
@@ -201,37 +288,40 @@ export class PostgresCentralRepository implements CentralRepository {
       });
       return true;
     } catch (err) {
-      console.error('[PostgresCentralRepository] updateAuthUserTerms error:', err);
+      log.error('[PostgresCentralRepository] updateAuthUserTerms error', {
+        userId,
+        err: err instanceof Error ? err.message : String(err),
+      });
       return false;
     }
   }
 
   // --- Auth Sessions ---
-  async createAuthSession(data: any): Promise<any> {
+  async createAuthSession(data: AuthSessionCreateInput): Promise<AuthSessionRecord> {
     return this.client.auth_sessions.create({
       data: {
         id: data.id,
-        user_id: data.user_id || data.userId,
-        refresh_token_hash: data.refresh_token_hash || data.refreshTokenHash,
-        device_id: data.device_id || data.deviceId,
+        user_id: data.user_id || data.userId || '',
+        refresh_token_hash: data.refresh_token_hash || data.refreshTokenHash || '',
+        device_id: data.device_id || data.deviceId || '',
         device_name: data.device_name || data.deviceName || 'Unknown Device',
         platform: data.platform || 'windows',
         ip_address: data.ip_address || data.ipAddress || null,
         is_revoked: data.is_revoked ? 1 : 0,
         created_at: data.created_at || new Date().toISOString(),
         last_used_at: data.last_used_at || new Date().toISOString(),
-        expires_at: data.expires_at || data.expiresAt,
+        expires_at: data.expires_at || data.expiresAt || '',
       },
     });
   }
 
-  async findAuthSessionByTokenHash(tokenHash: string): Promise<any | null> {
+  async findAuthSessionByTokenHash(tokenHash: string): Promise<AuthSessionRecord | null> {
     return this.client.auth_sessions.findUnique({
       where: { refresh_token_hash: tokenHash },
     });
   }
 
-  async updateAuthSession(id: string, data: any): Promise<any> {
+  async updateAuthSession(id: string, data: AuthSessionUpdateInput): Promise<AuthSessionRecord> {
     return this.client.auth_sessions.update({
       where: { id },
       data,
@@ -258,7 +348,7 @@ export class PostgresCentralRepository implements CentralRepository {
     return res.count ?? 0;
   }
 
-  async listUserAuthSessions(userId: string): Promise<any[]> {
+  async listUserAuthSessions(userId: string): Promise<AuthSessionRecord[]> {
     return this.client.auth_sessions.findMany({
       where: { user_id: userId },
       orderBy: { created_at: 'desc' },
@@ -266,28 +356,28 @@ export class PostgresCentralRepository implements CentralRepository {
   }
 
   // --- Verification Tokens ---
-  async createVerificationToken(data: any): Promise<any> {
+  async createVerificationToken(data: AuthVerificationTokenCreateInput): Promise<AuthVerificationTokenRecord> {
     return this.client.auth_verification_tokens.create({
       data: {
         id: data.id,
-        token_hash: data.token_hash || data.tokenHash,
-        user_id: data.user_id || data.userId,
+        token_hash: data.token_hash || data.tokenHash || '',
+        user_id: data.user_id || data.userId || '',
         email: data.email,
         type: data.type || 'EMAIL_VERIFY',
-        expires_at: data.expires_at || data.expiresAt,
+        expires_at: data.expires_at || data.expiresAt || '',
         created_at: data.created_at || new Date().toISOString(),
         used_at: data.used_at || null,
       },
     });
   }
 
-  async findVerificationTokenByHash(tokenHash: string): Promise<any | null> {
+  async findVerificationTokenByHash(tokenHash: string): Promise<AuthVerificationTokenRecord | null> {
     return this.client.auth_verification_tokens.findUnique({
       where: { token_hash: tokenHash },
     });
   }
 
-  async consumeVerificationToken(tokenHash: string): Promise<any | null> {
+  async consumeVerificationToken(tokenHash: string): Promise<AuthVerificationTokenRecord | null> {
     const token = await this.client.auth_verification_tokens.findUnique({
       where: { token_hash: tokenHash },
     });
@@ -308,44 +398,44 @@ export class PostgresCentralRepository implements CentralRepository {
   }
 
   // Convenience Aliases for Auth Flow
-  async findUserByEmail(email: string): Promise<any | null> {
+  async findUserByEmail(email: string): Promise<AuthUserRecord | null> {
     return this.findAuthUserByEmail(email);
   }
 
-  async findUserById(id: string): Promise<any | null> {
+  async findUserById(id: string): Promise<AuthUserRecord | null> {
     return this.findAuthUserById(id);
   }
 
-  async createUser(data: any): Promise<any> {
+  async createUser(data: AuthUserCreateInput): Promise<AuthUserRecord | null> {
     return this.createAuthUser(data);
   }
 
-  async updateUser(id: string, data: any): Promise<any> {
+  async updateUser(id: string, data: AuthUserUpdateInput): Promise<AuthUserRecord | null> {
     return this.updateAuthUser(id, data);
   }
 
-  async updateUserLastLogin(id: string, timestamp?: string): Promise<any> {
+  async updateUserLastLogin(id: string, timestamp?: string): Promise<AuthUserRecord | null> {
     return this.updateAuthUser(id, { last_login_at: timestamp || new Date().toISOString() });
   }
 
-  async updateUserPassword(id: string, passwordHash: string, salt: string): Promise<any> {
+  async updateUserPassword(id: string, passwordHash: string, salt: string): Promise<AuthUserRecord | null> {
     return this.updateAuthUser(id, { password_hash: passwordHash, salt });
   }
 
-  async markUserEmailVerified(id: string): Promise<any> {
+  async markUserEmailVerified(id: string): Promise<AuthUserRecord | null> {
     const now = new Date().toISOString();
     return this.updateAuthUser(id, { email_verified: 1, email_verified_at: now, status: 'ACTIVE' });
   }
 
-  async createSession(data: any): Promise<any> {
+  async createSession(data: AuthSessionCreateInput): Promise<AuthSessionRecord> {
     return this.createAuthSession(data);
   }
 
-  async findSessionByTokenHash(tokenHash: string): Promise<any | null> {
+  async findSessionByTokenHash(tokenHash: string): Promise<AuthSessionRecord | null> {
     return this.findAuthSessionByTokenHash(tokenHash);
   }
 
-  async rotateSessionToken(sessionId: string, newHash: string, expiresAt: string, ip?: string): Promise<any> {
+  async rotateSessionToken(sessionId: string, newHash: string, expiresAt: string, ip?: string): Promise<AuthSessionRecord> {
     return this.updateAuthSession(sessionId, {
       refresh_token_hash: newHash,
       expires_at: expiresAt,
@@ -354,16 +444,22 @@ export class PostgresCentralRepository implements CentralRepository {
     });
   }
 
-  async findVerificationToken(tokenHash: string): Promise<any | null> {
+  async findVerificationToken(tokenHash: string): Promise<AuthVerificationTokenRecord | null> {
     return this.findVerificationTokenByHash(tokenHash);
   }
 
-  async markVerificationTokenUsed(tokenHashOrId: string): Promise<any | null> {
+  async markVerificationTokenUsed(tokenHashOrId: string): Promise<AuthVerificationTokenRecord | null> {
     return this.consumeVerificationToken(tokenHashOrId);
   }
 
   // --- Security Logs ---
-  async logAuthSecurity(userId: string | null, action: string, details?: string, ip?: string, result = 'SUCCESS'): Promise<any> {
+  async logAuthSecurity(
+    userId: string | null,
+    action: string,
+    details?: string,
+    ip?: string,
+    result = 'SUCCESS'
+  ): Promise<AuthSecurityLogResult> {
     return this.client.auth_security_logs.create({
       data: {
         id: crypto.randomUUID(),
@@ -378,25 +474,25 @@ export class PostgresCentralRepository implements CentralRepository {
   }
 
   // --- Commercial Users ---
-  async findCommercialUserById(id: string): Promise<any | null> {
+  async findCommercialUserById(id: string): Promise<CommercialUserRecord | null> {
     return this.client.commercial_users.findUnique({
       where: { id },
     });
   }
 
-  async findCommercialUserByEmail(email: string): Promise<any | null> {
+  async findCommercialUserByEmail(email: string): Promise<CommercialUserRecord | null> {
     return this.client.commercial_users.findUnique({
       where: { email },
     });
   }
 
-  async createCommercialUser(data: any): Promise<any> {
+  async createCommercialUser(data: CommercialUserCreateInput): Promise<CommercialUserRecord | null> {
     const now = new Date().toISOString();
     return this.client.commercial_users.create({
       data: {
         id: data.id,
         email: data.email,
-        password_hash: data.password_hash || data.passwordHash,
+        password_hash: data.password_hash || data.passwordHash || '',
         salt: data.salt,
         name: data.name || data.email.split('@')[0],
         role: data.role || 'USER',
@@ -404,7 +500,10 @@ export class PostgresCentralRepository implements CentralRepository {
         plan_id: data.plan_id || data.planId || 'plan_free',
         bonus_profiles: data.bonus_profiles ?? data.bonusProfiles ?? 0,
         bonus_proxy_bytes: BigInt(data.bonus_proxy_bytes ?? data.bonusProxyBytes ?? 0),
-        feature_overrides: typeof data.feature_overrides === 'string' ? data.feature_overrides : JSON.stringify(data.feature_overrides || {}),
+        feature_overrides:
+          typeof data.feature_overrides === 'string'
+            ? data.feature_overrides
+            : JSON.stringify(data.feature_overrides || {}),
         created_at: data.created_at || now,
         updated_at: data.updated_at || now,
         last_login_at: data.last_login_at || null,
@@ -412,18 +511,19 @@ export class PostgresCentralRepository implements CentralRepository {
     });
   }
 
-  async updateCommercialUser(id: string, data: any): Promise<any> {
+  async updateCommercialUser(id: string, data: CommercialUserUpdateInput): Promise<CommercialUserRecord | null> {
+    const updateData: Prisma.commercial_usersUpdateInput = {
+      ...data,
+      updated_at: new Date().toISOString(),
+    };
     return this.client.commercial_users.update({
       where: { id },
-      data: {
-        ...data,
-        updated_at: new Date().toISOString(),
-      },
+      data: updateData,
     });
   }
 
   // --- Cloud Profiles ---
-  async findCloudProfileById(id: string): Promise<any | null> {
+  async findCloudProfileById(id: string): Promise<CloudProfileRecord | null> {
     const p = await this.client.cloud_profiles.findUnique({
       where: { id },
     });
@@ -434,12 +534,12 @@ export class PostgresCentralRepository implements CentralRepository {
     };
   }
 
-  async createCloudProfile(data: any): Promise<any> {
+  async createCloudProfile(data: CloudProfileCreateInput): Promise<CloudProfileRecord | null> {
     const created = await this.client.cloud_profiles.create({
       data: {
         id: data.id,
-        owner_id: data.owner_id || data.ownerId,
-        local_profile_id: data.local_profile_id || data.localProfileId,
+        owner_id: data.owner_id || data.ownerId || '',
+        local_profile_id: data.local_profile_id || data.localProfileId || '',
         name: data.name,
         current_version: data.current_version ?? data.currentVersion ?? 1,
         status: data.status || 'ACTIVE',
@@ -454,12 +554,14 @@ export class PostgresCentralRepository implements CentralRepository {
     };
   }
 
-  async updateCloudProfile(id: string, data: any): Promise<any> {
-    const updateData: any = { ...data };
-    if (updateData.storage_bytes !== undefined) {
-      updateData.storage_bytes = BigInt(updateData.storage_bytes);
+  async updateCloudProfile(id: string, data: CloudProfileUpdateInput): Promise<CloudProfileRecord | null> {
+    const updateData: Prisma.cloud_profilesUpdateInput = {
+      ...data,
+      updated_at: new Date().toISOString(),
+    };
+    if (data.storage_bytes !== undefined) {
+      updateData.storage_bytes = BigInt(data.storage_bytes);
     }
-    updateData.updated_at = new Date().toISOString();
 
     const updated = await this.client.cloud_profiles.update({
       where: { id },
@@ -482,31 +584,31 @@ export class PostgresCentralRepository implements CentralRepository {
     }
   }
 
-  async listCloudProfiles(ownerId: string): Promise<any[]> {
+  async listCloudProfiles(ownerId: string): Promise<CloudProfileRecord[]> {
     const profiles = await this.client.cloud_profiles.findMany({
       where: { owner_id: ownerId },
       orderBy: { updated_at: 'desc' },
     });
-    return profiles.map((p: any) => ({
+    return profiles.map((p) => ({
       ...p,
       storage_bytes: Number(p.storage_bytes),
     }));
   }
 
   // --- Cloud Profile Versions ---
-  async createCloudProfileVersion(data: any): Promise<any> {
+  async createCloudProfileVersion(data: CloudProfileVersionCreateInput): Promise<CloudProfileVersionRecord> {
     const version = await this.client.cloud_profile_versions.create({
       data: {
         id: data.id,
-        cloud_profile_id: data.cloud_profile_id || data.cloudProfileId,
+        cloud_profile_id: data.cloud_profile_id || data.cloudProfileId || '',
         version: data.version,
-        object_key: data.object_key || data.objectKey,
+        object_key: data.object_key || data.objectKey || '',
         file_size: BigInt(data.file_size ?? data.fileSize ?? 0),
-        checksum_sha256: data.checksum_sha256 || data.checksumSha256,
-        encrypted_data_key: data.encrypted_data_key || data.encryptedDataKey,
+        checksum_sha256: data.checksum_sha256 || data.checksumSha256 || '',
+        encrypted_data_key: data.encrypted_data_key || data.encryptedDataKey || '',
         iv: data.iv,
-        auth_tag: data.auth_tag || data.authTag,
-        source_device_id: data.source_device_id || data.sourceDeviceId,
+        auth_tag: data.auth_tag || data.authTag || '',
+        source_device_id: data.source_device_id || data.sourceDeviceId || '',
         source_device_name: data.source_device_name || data.sourceDeviceName || null,
         created_at: data.created_at || new Date().toISOString(),
       },
@@ -517,7 +619,7 @@ export class PostgresCentralRepository implements CentralRepository {
     };
   }
 
-  async getLatestCloudProfileVersion(cloudProfileId: string): Promise<any | null> {
+  async getLatestCloudProfileVersion(cloudProfileId: string): Promise<CloudProfileVersionRecord | null> {
     const version = await this.client.cloud_profile_versions.findFirst({
       where: { cloud_profile_id: cloudProfileId },
       orderBy: { version: 'desc' },
@@ -529,7 +631,7 @@ export class PostgresCentralRepository implements CentralRepository {
     };
   }
 
-  async getCloudProfileVersion(cloudProfileId: string, versionNum: number): Promise<any | null> {
+  async getCloudProfileVersion(cloudProfileId: string, versionNum: number): Promise<CloudProfileVersionRecord | null> {
     const version = await this.client.cloud_profile_versions.findFirst({
       where: {
         cloud_profile_id: cloudProfileId,
@@ -543,8 +645,8 @@ export class PostgresCentralRepository implements CentralRepository {
     };
   }
 
-  async createCloudProfileDelta(data: any): Promise<any> {
-    const deltaClient = (this.client as any).cloud_profile_deltas;
+  async createCloudProfileDelta(data: CloudProfileDeltaCreateInput): Promise<CloudProfileDeltaRecord | null> {
+    const deltaClient = (this.client as Partial<PrismaClientType>).cloud_profile_deltas;
     if (!deltaClient || typeof deltaClient.create !== 'function') {
       return null;
     }
@@ -552,18 +654,18 @@ export class PostgresCentralRepository implements CentralRepository {
       const delta = await deltaClient.create({
         data: {
           id: data.id,
-          cloud_profile_id: data.cloud_profile_id || data.cloudProfileId,
+          cloud_profile_id: data.cloud_profile_id || data.cloudProfileId || '',
           base_version: data.base_version ?? data.baseVersion ?? 1,
           delta_version: data.delta_version ?? data.deltaVersion ?? 1,
           delta_type: data.delta_type || data.deltaType || 'cookies_only',
           manifest_hash: data.manifest_hash || data.manifestHash || null,
-          object_key: data.object_key || data.objectKey,
+          object_key: data.object_key || data.objectKey || '',
           file_size: BigInt(data.file_size ?? data.fileSize ?? 0),
-          checksum_sha256: data.checksum_sha256 || data.checksumSha256,
-          encrypted_data_key: data.encrypted_data_key || data.encryptedDataKey,
+          checksum_sha256: data.checksum_sha256 || data.checksumSha256 || '',
+          encrypted_data_key: data.encrypted_data_key || data.encryptedDataKey || '',
           iv: data.iv,
-          auth_tag: data.auth_tag || data.authTag,
-          source_device_id: data.source_device_id || data.sourceDeviceId,
+          auth_tag: data.auth_tag || data.authTag || '',
+          source_device_id: data.source_device_id || data.sourceDeviceId || '',
           source_device_name: data.source_device_name || data.sourceDeviceName || null,
           created_at: data.created_at || new Date().toISOString(),
         },
@@ -577,8 +679,8 @@ export class PostgresCentralRepository implements CentralRepository {
     }
   }
 
-  async getLatestCloudProfileDelta(cloudProfileId: string): Promise<any | null> {
-    const deltaClient = (this.client as any).cloud_profile_deltas;
+  async getLatestCloudProfileDelta(cloudProfileId: string): Promise<CloudProfileDeltaRecord | null> {
+    const deltaClient = (this.client as Partial<PrismaClientType>).cloud_profile_deltas;
     if (!deltaClient || typeof deltaClient.findFirst !== 'function') {
       return null;
     }
@@ -598,21 +700,21 @@ export class PostgresCentralRepository implements CentralRepository {
   }
 
   // --- Upload Sessions ---
-  async createUploadSessionRecord(data: any): Promise<any> {
-    const baseData: any = {
+  async createUploadSessionRecord(data: CloudUploadSessionCreateInput): Promise<CloudUploadSessionRecord> {
+    const baseData: Prisma.cloud_sync_upload_sessionsUncheckedCreateInput = {
       id: data.id,
-      user_id: data.user_id || data.userId,
-      cloud_profile_id: data.cloud_profile_id || data.cloudProfileId,
+      user_id: data.user_id || data.userId || '',
+      cloud_profile_id: data.cloud_profile_id || data.cloudProfileId || '',
       base_version: data.base_version ?? data.baseVersion ?? 0,
       target_version: data.target_version ?? data.targetVersion ?? 1,
-      object_key: data.object_key || data.objectKey,
+      object_key: data.object_key || data.objectKey || '',
       expected_size: BigInt(data.expected_size ?? data.expectedSize ?? 0),
-      expected_checksum: data.expected_checksum || data.expectedChecksum,
-      encrypted_data_key: data.encrypted_data_key || data.encryptedDataKey,
+      expected_checksum: data.expected_checksum || data.expectedChecksum || '',
+      encrypted_data_key: data.encrypted_data_key || data.encryptedDataKey || '',
       iv: data.iv,
-      auth_tag: data.auth_tag || data.authTag,
+      auth_tag: data.auth_tag || data.authTag || '',
       status: data.status || 'PENDING',
-      expires_at: data.expires_at || data.expiresAt,
+      expires_at: data.expires_at || data.expiresAt || '',
       created_at: data.created_at || new Date().toISOString(),
     };
     try {
@@ -621,14 +723,14 @@ export class PostgresCentralRepository implements CentralRepository {
           ...baseData,
           archive_format: data.archive_format || data.archiveFormat || 'full',
           manifest_hash: data.manifest_hash || data.manifestHash || null,
-        } as any,
+        },
       });
     } catch {
       return this.client.cloud_sync_upload_sessions.create({ data: baseData });
     }
   }
 
-  async findUploadSessionById(id: string): Promise<any | null> {
+  async findUploadSessionById(id: string): Promise<CloudUploadSessionRecord | null> {
     const s = await this.client.cloud_sync_upload_sessions.findUnique({
       where: { id },
     });
@@ -639,15 +741,22 @@ export class PostgresCentralRepository implements CentralRepository {
     };
   }
 
-  async updateUploadSessionRecord(id: string, data: any): Promise<any> {
+  async updateUploadSessionRecord(id: string, data: CloudUploadSessionUpdateInput): Promise<CloudUploadSessionRecord> {
+    const updateData: Prisma.cloud_sync_upload_sessionsUpdateInput = { ...data };
     return this.client.cloud_sync_upload_sessions.update({
       where: { id },
-      data,
+      data: updateData,
     });
   }
 
   // --- Cloud Sync Audits ---
-  async logCloudSyncAudit(userId: string, action: string, details?: string, cloudProfileId?: string, deviceId?: string): Promise<any> {
+  async logCloudSyncAudit(
+    userId: string,
+    action: string,
+    details?: string,
+    cloudProfileId?: string,
+    deviceId?: string
+  ): Promise<CloudSyncAuditLogResult> {
     return this.client.cloud_sync_audit_logs.create({
       data: {
         id: crypto.randomUUID(),
@@ -662,19 +771,19 @@ export class PostgresCentralRepository implements CentralRepository {
   }
 
   // --- Team Workspaces ---
-  async findWorkspaceById(id: string): Promise<any | null> {
+  async findWorkspaceById(id: string): Promise<TeamWorkspaceRecord | null> {
     return this.client.team_workspaces.findUnique({
       where: { id },
     });
   }
 
-  async createWorkspace(data: any): Promise<any> {
+  async createWorkspace(data: TeamWorkspaceCreateInput): Promise<TeamWorkspaceRecord | null> {
     return this.client.team_workspaces.create({
       data: {
         id: data.id,
         name: data.name,
         description: data.description || '',
-        owner_user_id: data.owner_user_id || data.ownerUserId,
+        owner_user_id: data.owner_user_id || data.ownerUserId || '',
         status: data.status || 'ACTIVE',
         created_at: data.created_at || new Date().toISOString(),
         updated_at: data.updated_at || new Date().toISOString(),
@@ -682,7 +791,7 @@ export class PostgresCentralRepository implements CentralRepository {
     });
   }
 
-  async updateWorkspace(id: string, data: any): Promise<any> {
+  async updateWorkspace(id: string, data: TeamWorkspaceUpdateInput): Promise<TeamWorkspaceRecord | null> {
     return this.client.team_workspaces.update({
       where: { id },
       data: {
@@ -703,25 +812,22 @@ export class PostgresCentralRepository implements CentralRepository {
     }
   }
 
-  async listUserWorkspaces(userId: string): Promise<any[]> {
+  async listUserWorkspaces(userId: string): Promise<TeamWorkspaceRecord[]> {
     return this.client.team_workspaces.findMany({
       where: {
-        OR: [
-          { owner_user_id: userId },
-          { members: { some: { user_id: userId, status: 'ACTIVE' } } },
-        ],
+        OR: [{ owner_user_id: userId }, { members: { some: { user_id: userId, status: 'ACTIVE' } } }],
       },
       orderBy: { created_at: 'desc' },
     });
   }
 
   // --- Team Workspace Members ---
-  async addWorkspaceMember(data: any): Promise<any> {
+  async addWorkspaceMember(data: TeamWorkspaceMemberCreateInput): Promise<TeamWorkspaceMemberRecord> {
     return this.client.team_workspace_members.create({
       data: {
         id: data.id,
-        workspace_id: data.workspace_id || data.workspaceId,
-        user_id: data.user_id || data.userId,
+        workspace_id: data.workspace_id || data.workspaceId || '',
+        user_id: data.user_id || data.userId || '',
         role: data.role || 'MEMBER',
         status: data.status || 'ACTIVE',
         invited_by: data.invited_by || data.invited_by_user_id || data.invitedByUserId || null,
@@ -731,20 +837,20 @@ export class PostgresCentralRepository implements CentralRepository {
     });
   }
 
-  async findWorkspaceMember(workspaceId: string, userId: string): Promise<any | null> {
+  async findWorkspaceMember(workspaceId: string, userId: string): Promise<TeamWorkspaceMemberRecord | null> {
     return this.client.team_workspace_members.findFirst({
       where: { workspace_id: workspaceId, user_id: userId },
     });
   }
 
-  async listWorkspaceMembers(workspaceId: string): Promise<any[]> {
+  async listWorkspaceMembers(workspaceId: string): Promise<TeamWorkspaceMemberRecord[]> {
     return this.client.team_workspace_members.findMany({
       where: { workspace_id: workspaceId },
       orderBy: { created_at: 'asc' },
     });
   }
 
-  async updateWorkspaceMemberRole(workspaceId: string, userId: string, role: string): Promise<any> {
+  async updateWorkspaceMemberRole(workspaceId: string, userId: string, role: string): Promise<{ count: number }> {
     return this.client.team_workspace_members.updateMany({
       where: { workspace_id: workspaceId, user_id: userId },
       data: { role },
@@ -763,21 +869,21 @@ export class PostgresCentralRepository implements CentralRepository {
   }
 
   // --- Remote API Keys ---
-  async findRemoteApiKeyByHash(keyHash: string): Promise<any | null> {
+  async findRemoteApiKeyByHash(keyHash: string): Promise<RemoteApiKeyRecord | null> {
     return this.client.remote_api_keys.findUnique({
       where: { key_hash: keyHash },
     });
   }
 
-  async createRemoteApiKey(data: any): Promise<any> {
+  async createRemoteApiKey(data: RemoteApiKeyCreateInput): Promise<RemoteApiKeyRecord> {
     return this.client.remote_api_keys.create({
       data: {
         id: data.id,
-        user_id: data.user_id || data.userId,
+        user_id: data.user_id || data.userId || '',
         workspace_id: data.workspace_id || data.workspaceId || null,
         name: data.name,
-        key_prefix: data.key_prefix || data.keyPrefix,
-        key_hash: data.key_hash || data.keyHash,
+        key_prefix: data.key_prefix || data.keyPrefix || '',
+        key_hash: data.key_hash || data.keyHash || '',
         scopes_json: data.scopes_json || data.scopesJson || '["profiles:read"]',
         status: data.status || 'ACTIVE',
         rate_limit_per_min: data.rate_limit_per_min || data.rateLimitPerMin || 120,
@@ -790,7 +896,7 @@ export class PostgresCentralRepository implements CentralRepository {
     });
   }
 
-  async listRemoteApiKeys(userId: string): Promise<any[]> {
+  async listRemoteApiKeys(userId: string): Promise<RemoteApiKeyRecord[]> {
     return this.client.remote_api_keys.findMany({
       where: { user_id: userId },
       orderBy: { created_at: 'desc' },
@@ -799,7 +905,7 @@ export class PostgresCentralRepository implements CentralRepository {
 
   async revokeRemoteApiKey(id: string, userId?: string): Promise<boolean> {
     try {
-      const where: any = { id };
+      const where: Prisma.remote_api_keysWhereInput = { id };
       if (userId) {
         where.user_id = userId;
       }
@@ -813,7 +919,7 @@ export class PostgresCentralRepository implements CentralRepository {
     }
   }
 
-  async updateRemoteApiKeyLastUsed(id: string): Promise<any> {
+  async updateRemoteApiKeyLastUsed(id: string): Promise<RemoteApiKeyRecord> {
     return this.client.remote_api_keys.update({
       where: { id },
       data: { last_used_at: new Date().toISOString() },
@@ -821,7 +927,14 @@ export class PostgresCentralRepository implements CentralRepository {
   }
 
   // --- Remote API Key Audits ---
-  async logRemoteApiKeyAudit(apiKeyId: string, userId: string, endpoint: string, method: string, statusCode: number, ipAddress?: string): Promise<any> {
+  async logRemoteApiKeyAudit(
+    apiKeyId: string,
+    userId: string,
+    endpoint: string,
+    method: string,
+    statusCode: number,
+    ipAddress?: string
+  ): Promise<RemoteApiKeyAuditResult> {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const action = `${method.toUpperCase()} ${endpoint}`;
@@ -840,26 +953,27 @@ export class PostgresCentralRepository implements CentralRepository {
   }
 
   // --- Locks ---
-  async findLock(cloudProfileId: string): Promise<any | null> {
+  async findLock(cloudProfileId: string): Promise<CloudProfileLockRecord | null> {
     return this.client.cloud_profile_locks.findUnique({
       where: { cloud_profile_id: cloudProfileId },
     });
   }
 
-  async upsertLock(data: { cloudProfileId: string; deviceId: string; deviceName: string; userId: string; lockedAt: string; expiresAt: string }): Promise<any> {
+  async upsertLock(data: CloudProfileLockUpsertInput): Promise<CloudProfileLockRecord> {
+    const deviceName = data.deviceName || 'Unknown Device';
     return this.client.cloud_profile_locks.upsert({
       where: { cloud_profile_id: data.cloudProfileId },
       create: {
         cloud_profile_id: data.cloudProfileId,
         device_id: data.deviceId,
-        device_name: data.deviceName,
+        device_name: deviceName,
         user_id: data.userId,
         locked_at: data.lockedAt,
         expires_at: data.expiresAt,
       },
       update: {
         device_id: data.deviceId,
-        device_name: data.deviceName,
+        device_name: deviceName,
         user_id: data.userId,
         locked_at: data.lockedAt,
         expires_at: data.expiresAt,
@@ -878,7 +992,7 @@ export class PostgresCentralRepository implements CentralRepository {
     }
   }
 
-  async createWebHandoffSession(data: { code: string; token: string; userJson: string; createdAt: number; expiresAt: number }): Promise<any> {
+  async createWebHandoffSession(data: WebHandoffSessionCreateInput): Promise<WebHandoffSessionRecord> {
     return this.client.web_handoff_sessions.create({
       data: {
         code: data.code,
@@ -891,7 +1005,10 @@ export class PostgresCentralRepository implements CentralRepository {
     });
   }
 
-  async consumeWebHandoffSessionAtomically(code: string, now: number): Promise<{ token: string; user: any } | null> {
+  async consumeWebHandoffSessionAtomically(
+    code: string,
+    now: number
+  ): Promise<{ token: string; user: WebHandoffUserPayload | null } | null> {
     const updated = await this.client.$executeRaw`
       UPDATE web_handoff_sessions 
       SET used = 1 
@@ -900,11 +1017,11 @@ export class PostgresCentralRepository implements CentralRepository {
     if (updated === 1) {
       const session = await this.client.web_handoff_sessions.findUnique({ where: { code } });
       if (session) {
-        let user: any = null;
+        let user: WebHandoffUserPayload | null = null;
         try {
-          user = JSON.parse(session.user_json);
+          user = JSON.parse(session.user_json) as WebHandoffUserPayload;
         } catch (parseErr) {
-          log.warn('Failed parsing cached SQLite web handoff user_json', {
+          log.warn('Failed parsing PostgreSQL web handoff user_json', {
             err: parseErr instanceof Error ? parseErr.message : String(parseErr),
           });
         }
@@ -919,26 +1036,44 @@ export class PostgresCentralRepository implements CentralRepository {
 // SQLITE REPOSITORY (Local / Existing Database)
 // ============================================================================
 
+type SqliteUpdatableTable =
+  | 'auth_users'
+  | 'auth_sessions'
+  | 'commercial_users'
+  | 'cloud_profiles'
+  | 'cloud_sync_upload_sessions'
+  | 'team_workspaces';
+
 export class SqliteCentralRepository implements CentralRepository {
   public backendName: 'sqlite' = 'sqlite';
 
-  private get db(): any {
+  private get db(): SqliteWrapper {
     return getDatabase();
   }
 
+  private runDynamicUpdate(table: SqliteUpdatableTable, id: string, data: object): boolean {
+    const record = data as Record<string, unknown>;
+    const fields = Object.keys(record);
+    if (fields.length === 0) return false;
+    const sets = fields.map((f) => `${f} = ?`).join(', ');
+    const values = fields.map((f) => record[f]);
+    this.db.prepare(`UPDATE ${table} SET ${sets} WHERE id = ?`).run(...values, id);
+    return true;
+  }
+
   // --- Auth Users ---
-  async findAuthUserByEmail(email: string): Promise<any | null> {
+  async findAuthUserByEmail(email: string): Promise<AuthUserRecord | null> {
     const norm = email.toLowerCase().trim();
     const row = this.db.prepare('SELECT * FROM auth_users WHERE email = ? OR normalized_email = ?').get(email, norm);
-    return row || null;
+    return (row as unknown as AuthUserRecord | undefined) || null;
   }
 
-  async findAuthUserById(id: string): Promise<any | null> {
+  async findAuthUserById(id: string): Promise<AuthUserRecord | null> {
     const row = this.db.prepare('SELECT * FROM auth_users WHERE id = ?').get(id);
-    return row || null;
+    return (row as unknown as AuthUserRecord | undefined) || null;
   }
 
-  async createAuthUser(data: any): Promise<any> {
+  async createAuthUser(data: AuthUserCreateInput): Promise<AuthUserRecord | null> {
     const normalizedEmail = (data.normalized_email || data.email).toLowerCase().trim();
     const now = new Date().toISOString();
     this.db.prepare(`
@@ -978,30 +1113,29 @@ export class SqliteCentralRepository implements CentralRepository {
     return this.findAuthUserById(data.id);
   }
 
-  async updateAuthUser(id: string, data: any): Promise<any> {
-    const fields = Object.keys(data);
-    if (fields.length === 0) return this.findAuthUserById(id);
-    const sets = fields.map((f: string) => `${f} = ?`).join(', ');
-    const values = fields.map((f: string) => data[f]);
-    this.db.prepare(`UPDATE auth_users SET ${sets} WHERE id = ?`).run(...values, id);
+  async updateAuthUser(id: string, data: AuthUserUpdateInput): Promise<AuthUserRecord | null> {
+    this.runDynamicUpdate('auth_users', id, data);
     return this.findAuthUserById(id);
   }
 
   async updateAuthUserTerms(userId: string, acceptedTerms: number, termsVersion: string): Promise<boolean> {
     try {
       const now = new Date().toISOString();
-      const info = this.db.prepare(
-        'UPDATE auth_users SET accepted_terms = ?, terms_version = ?, updated_at = ? WHERE id = ?'
-      ).run(acceptedTerms, termsVersion, now, userId);
+      const info = this.db
+        .prepare('UPDATE auth_users SET accepted_terms = ?, terms_version = ?, updated_at = ? WHERE id = ?')
+        .run(acceptedTerms, termsVersion, now, userId);
       return info.changes > 0;
     } catch (err) {
-      console.error('[SqliteCentralRepository] updateAuthUserTerms error:', err);
+      log.error('[SqliteCentralRepository] updateAuthUserTerms error', {
+        userId,
+        err: err instanceof Error ? err.message : String(err),
+      });
       return false;
     }
   }
 
   // --- Auth Sessions ---
-  async createAuthSession(data: any): Promise<any> {
+  async createAuthSession(data: AuthSessionCreateInput): Promise<AuthSessionCreateInput> {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO auth_sessions (
@@ -1023,18 +1157,13 @@ export class SqliteCentralRepository implements CentralRepository {
     return data;
   }
 
-  async findAuthSessionByTokenHash(tokenHash: string): Promise<any | null> {
+  async findAuthSessionByTokenHash(tokenHash: string): Promise<AuthSessionRecord | null> {
     const row = this.db.prepare('SELECT * FROM auth_sessions WHERE refresh_token_hash = ?').get(tokenHash);
-    return row || null;
+    return (row as unknown as AuthSessionRecord | undefined) || null;
   }
 
-  async updateAuthSession(id: string, data: any): Promise<any> {
-    const fields = Object.keys(data);
-    if (fields.length === 0) return null;
-    const sets = fields.map((f: string) => `${f} = ?`).join(', ');
-    const values = fields.map((f: string) => data[f]);
-    this.db.prepare(`UPDATE auth_sessions SET ${sets} WHERE id = ?`).run(...values, id);
-    return true;
+  async updateAuthSession(id: string, data: AuthSessionUpdateInput): Promise<boolean | null> {
+    return this.runDynamicUpdate('auth_sessions', id, data) ? true : null;
   }
 
   async revokeAuthSession(id: string): Promise<boolean> {
@@ -1047,12 +1176,14 @@ export class SqliteCentralRepository implements CentralRepository {
     return res.changes;
   }
 
-  async listUserAuthSessions(userId: string): Promise<any[]> {
-    return this.db.prepare('SELECT * FROM auth_sessions WHERE user_id = ? ORDER BY created_at DESC').all(userId) as any[];
+  async listUserAuthSessions(userId: string): Promise<AuthSessionRecord[]> {
+    return this.db
+      .prepare('SELECT * FROM auth_sessions WHERE user_id = ? ORDER BY created_at DESC')
+      .all(userId) as unknown as AuthSessionRecord[];
   }
 
   // --- Verification Tokens ---
-  async createVerificationToken(data: any): Promise<any> {
+  async createVerificationToken(data: AuthVerificationTokenCreateInput): Promise<AuthVerificationTokenCreateInput> {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO auth_verification_tokens (id, token_hash, user_id, email, type, expires_at, created_at, used_at)
@@ -1070,12 +1201,12 @@ export class SqliteCentralRepository implements CentralRepository {
     return data;
   }
 
-  async findVerificationTokenByHash(tokenHash: string): Promise<any | null> {
+  async findVerificationTokenByHash(tokenHash: string): Promise<AuthVerificationTokenRecord | null> {
     const row = this.db.prepare('SELECT * FROM auth_verification_tokens WHERE token_hash = ?').get(tokenHash);
-    return row || null;
+    return (row as unknown as AuthVerificationTokenRecord | undefined) || null;
   }
 
-  async consumeVerificationToken(tokenHash: string): Promise<any | null> {
+  async consumeVerificationToken(tokenHash: string): Promise<AuthVerificationTokenRecord | null> {
     const token = await this.findVerificationTokenByHash(tokenHash);
     if (!token || token.used_at) return null;
     const now = new Date().toISOString();
@@ -1085,52 +1216,59 @@ export class SqliteCentralRepository implements CentralRepository {
 
   async invalidatePendingVerificationTokens(userId: string, type = 'EMAIL_VERIFICATION'): Promise<number> {
     const now = new Date().toISOString();
-    const res = this.db.prepare(`
+    const res = this.db
+      .prepare(`
       UPDATE auth_verification_tokens SET used_at = ?
       WHERE user_id = ? AND type = ? AND used_at IS NULL
-    `).run(now, userId, type);
+    `)
+      .run(now, userId, type);
     return res.changes;
   }
 
   // Convenience Aliases for Auth Flow
-  async findUserByEmail(email: string): Promise<any | null> {
+  async findUserByEmail(email: string): Promise<AuthUserRecord | null> {
     return this.findAuthUserByEmail(email);
   }
 
-  async findUserById(id: string): Promise<any | null> {
+  async findUserById(id: string): Promise<AuthUserRecord | null> {
     return this.findAuthUserById(id);
   }
 
-  async createUser(data: any): Promise<any> {
+  async createUser(data: AuthUserCreateInput): Promise<AuthUserRecord | null> {
     return this.createAuthUser(data);
   }
 
-  async updateUser(id: string, data: any): Promise<any> {
+  async updateUser(id: string, data: AuthUserUpdateInput): Promise<AuthUserRecord | null> {
     return this.updateAuthUser(id, data);
   }
 
-  async updateUserLastLogin(id: string, timestamp?: string): Promise<any> {
+  async updateUserLastLogin(id: string, timestamp?: string): Promise<AuthUserRecord | null> {
     return this.updateAuthUser(id, { last_login_at: timestamp || new Date().toISOString() });
   }
 
-  async updateUserPassword(id: string, passwordHash: string, salt: string): Promise<any> {
+  async updateUserPassword(id: string, passwordHash: string, salt: string): Promise<AuthUserRecord | null> {
     return this.updateAuthUser(id, { password_hash: passwordHash, salt });
   }
 
-  async markUserEmailVerified(id: string): Promise<any> {
+  async markUserEmailVerified(id: string): Promise<AuthUserRecord | null> {
     const now = new Date().toISOString();
     return this.updateAuthUser(id, { email_verified: 1, email_verified_at: now, status: 'ACTIVE' });
   }
 
-  async createSession(data: any): Promise<any> {
+  async createSession(data: AuthSessionCreateInput): Promise<AuthSessionCreateInput> {
     return this.createAuthSession(data);
   }
 
-  async findSessionByTokenHash(tokenHash: string): Promise<any | null> {
+  async findSessionByTokenHash(tokenHash: string): Promise<AuthSessionRecord | null> {
     return this.findAuthSessionByTokenHash(tokenHash);
   }
 
-  async rotateSessionToken(sessionId: string, newHash: string, expiresAt: string, ip?: string): Promise<any> {
+  async rotateSessionToken(
+    sessionId: string,
+    newHash: string,
+    expiresAt: string,
+    ip?: string
+  ): Promise<boolean | null> {
     return this.updateAuthSession(sessionId, {
       refresh_token_hash: newHash,
       expires_at: expiresAt,
@@ -1139,16 +1277,22 @@ export class SqliteCentralRepository implements CentralRepository {
     });
   }
 
-  async findVerificationToken(tokenHash: string): Promise<any | null> {
+  async findVerificationToken(tokenHash: string): Promise<AuthVerificationTokenRecord | null> {
     return this.findVerificationTokenByHash(tokenHash);
   }
 
-  async markVerificationTokenUsed(tokenHashOrId: string): Promise<any | null> {
+  async markVerificationTokenUsed(tokenHashOrId: string): Promise<AuthVerificationTokenRecord | null> {
     return this.consumeVerificationToken(tokenHashOrId);
   }
 
   // --- Security Logs ---
-  async logAuthSecurity(userId: string | null, action: string, details?: string, ip?: string, result = 'SUCCESS'): Promise<any> {
+  async logAuthSecurity(
+    userId: string | null,
+    action: string,
+    details?: string,
+    ip?: string,
+    result = 'SUCCESS'
+  ): Promise<AuthSecurityLogResult> {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     this.db.prepare(`
@@ -1159,17 +1303,17 @@ export class SqliteCentralRepository implements CentralRepository {
   }
 
   // --- Commercial Users ---
-  async findCommercialUserById(id: string): Promise<any | null> {
+  async findCommercialUserById(id: string): Promise<CommercialUserRecord | null> {
     const row = this.db.prepare('SELECT * FROM commercial_users WHERE id = ?').get(id);
-    return row || null;
+    return (row as unknown as CommercialUserRecord | undefined) || null;
   }
 
-  async findCommercialUserByEmail(email: string): Promise<any | null> {
+  async findCommercialUserByEmail(email: string): Promise<CommercialUserRecord | null> {
     const row = this.db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(email);
-    return row || null;
+    return (row as unknown as CommercialUserRecord | undefined) || null;
   }
 
-  async createCommercialUser(data: any): Promise<any> {
+  async createCommercialUser(data: CommercialUserCreateInput): Promise<CommercialUserRecord | null> {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO commercial_users (
@@ -1191,22 +1335,18 @@ export class SqliteCentralRepository implements CentralRepository {
     return this.findCommercialUserById(data.id);
   }
 
-  async updateCommercialUser(id: string, data: any): Promise<any> {
-    const fields = Object.keys(data);
-    if (fields.length === 0) return this.findCommercialUserById(id);
-    const sets = fields.map((f: string) => `${f} = ?`).join(', ');
-    const values = fields.map((f: string) => data[f]);
-    this.db.prepare(`UPDATE commercial_users SET ${sets} WHERE id = ?`).run(...values, id);
+  async updateCommercialUser(id: string, data: CommercialUserUpdateInput): Promise<CommercialUserRecord | null> {
+    this.runDynamicUpdate('commercial_users', id, data);
     return this.findCommercialUserById(id);
   }
 
   // --- Cloud Profiles ---
-  async findCloudProfileById(id: string): Promise<any | null> {
+  async findCloudProfileById(id: string): Promise<CloudProfileRecord | null> {
     const row = this.db.prepare('SELECT * FROM cloud_profiles WHERE id = ?').get(id);
-    return row || null;
+    return (row as unknown as CloudProfileRecord | undefined) || null;
   }
 
-  async createCloudProfile(data: any): Promise<any> {
+  async createCloudProfile(data: CloudProfileCreateInput): Promise<CloudProfileRecord | null> {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO cloud_profiles (id, owner_id, local_profile_id, name, current_version, status, storage_bytes, created_at, updated_at)
@@ -1225,12 +1365,8 @@ export class SqliteCentralRepository implements CentralRepository {
     return this.findCloudProfileById(data.id);
   }
 
-  async updateCloudProfile(id: string, data: any): Promise<any> {
-    const fields = Object.keys(data);
-    if (fields.length === 0) return this.findCloudProfileById(id);
-    const sets = fields.map((f: string) => `${f} = ?`).join(', ');
-    const values = fields.map((f: string) => data[f]);
-    this.db.prepare(`UPDATE cloud_profiles SET ${sets} WHERE id = ?`).run(...values, id);
+  async updateCloudProfile(id: string, data: CloudProfileUpdateInput): Promise<CloudProfileRecord | null> {
+    this.runDynamicUpdate('cloud_profiles', id, data);
     return this.findCloudProfileById(id);
   }
 
@@ -1243,12 +1379,14 @@ export class SqliteCentralRepository implements CentralRepository {
     }
   }
 
-  async listCloudProfiles(ownerId: string): Promise<any[]> {
-    return this.db.prepare('SELECT * FROM cloud_profiles WHERE owner_id = ? ORDER BY updated_at DESC').all(ownerId) as any[];
+  async listCloudProfiles(ownerId: string): Promise<CloudProfileRecord[]> {
+    return this.db
+      .prepare('SELECT * FROM cloud_profiles WHERE owner_id = ? ORDER BY updated_at DESC')
+      .all(ownerId) as unknown as CloudProfileRecord[];
   }
 
   // --- Cloud Profile Versions ---
-  async createCloudProfileVersion(data: any): Promise<any> {
+  async createCloudProfileVersion(data: CloudProfileVersionCreateInput): Promise<CloudProfileVersionCreateInput> {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO cloud_profile_versions (
@@ -1272,25 +1410,29 @@ export class SqliteCentralRepository implements CentralRepository {
     return data;
   }
 
-  async getLatestCloudProfileVersion(cloudProfileId: string): Promise<any | null> {
-    const row = this.db.prepare(`
+  async getLatestCloudProfileVersion(cloudProfileId: string): Promise<CloudProfileVersionRecord | null> {
+    const row = this.db
+      .prepare(`
       SELECT * FROM cloud_profile_versions
       WHERE cloud_profile_id = ?
       ORDER BY version DESC
       LIMIT 1
-    `).get(cloudProfileId);
-    return row || null;
+    `)
+      .get(cloudProfileId);
+    return (row as unknown as CloudProfileVersionRecord | undefined) || null;
   }
 
-  async getCloudProfileVersion(cloudProfileId: string, versionNum: number): Promise<any | null> {
-    const row = this.db.prepare(`
+  async getCloudProfileVersion(cloudProfileId: string, versionNum: number): Promise<CloudProfileVersionRecord | null> {
+    const row = this.db
+      .prepare(`
       SELECT * FROM cloud_profile_versions
       WHERE cloud_profile_id = ? AND version = ?
-    `).get(cloudProfileId, versionNum);
-    return row || null;
+    `)
+      .get(cloudProfileId, versionNum);
+    return (row as unknown as CloudProfileVersionRecord | undefined) || null;
   }
 
-  async createCloudProfileDelta(data: any): Promise<any> {
+  async createCloudProfileDelta(data: CloudProfileDeltaCreateInput): Promise<CloudProfileDeltaCreateInput> {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO cloud_profile_deltas (
@@ -1318,18 +1460,20 @@ export class SqliteCentralRepository implements CentralRepository {
     return data;
   }
 
-  async getLatestCloudProfileDelta(cloudProfileId: string): Promise<any | null> {
-    const row = this.db.prepare(`
+  async getLatestCloudProfileDelta(cloudProfileId: string): Promise<CloudProfileDeltaRecord | null> {
+    const row = this.db
+      .prepare(`
       SELECT * FROM cloud_profile_deltas
       WHERE cloud_profile_id = ?
       ORDER BY delta_version DESC
       LIMIT 1
-    `).get(cloudProfileId);
-    return row || null;
+    `)
+      .get(cloudProfileId);
+    return (row as unknown as CloudProfileDeltaRecord | undefined) || null;
   }
 
   // --- Upload Sessions ---
-  async createUploadSessionRecord(data: any): Promise<any> {
+  async createUploadSessionRecord(data: CloudUploadSessionCreateInput): Promise<CloudUploadSessionCreateInput> {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO cloud_sync_upload_sessions (
@@ -1357,22 +1501,23 @@ export class SqliteCentralRepository implements CentralRepository {
     return data;
   }
 
-  async findUploadSessionById(id: string): Promise<any | null> {
+  async findUploadSessionById(id: string): Promise<CloudUploadSessionRecord | null> {
     const row = this.db.prepare('SELECT * FROM cloud_sync_upload_sessions WHERE id = ?').get(id);
-    return row || null;
+    return (row as unknown as CloudUploadSessionRecord | undefined) || null;
   }
 
-  async updateUploadSessionRecord(id: string, data: any): Promise<any> {
-    const fields = Object.keys(data);
-    if (fields.length === 0) return null;
-    const sets = fields.map((f: string) => `${f} = ?`).join(', ');
-    const values = fields.map((f: string) => data[f]);
-    this.db.prepare(`UPDATE cloud_sync_upload_sessions SET ${sets} WHERE id = ?`).run(...values, id);
-    return true;
+  async updateUploadSessionRecord(id: string, data: CloudUploadSessionUpdateInput): Promise<boolean | null> {
+    return this.runDynamicUpdate('cloud_sync_upload_sessions', id, data) ? true : null;
   }
 
   // --- Cloud Sync Audits ---
-  async logCloudSyncAudit(userId: string, action: string, details?: string, cloudProfileId?: string, deviceId?: string): Promise<any> {
+  async logCloudSyncAudit(
+    userId: string,
+    action: string,
+    details?: string,
+    cloudProfileId?: string,
+    deviceId?: string
+  ): Promise<CloudSyncAuditLogResult> {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     this.db.prepare(`
@@ -1383,12 +1528,12 @@ export class SqliteCentralRepository implements CentralRepository {
   }
 
   // --- Team Workspaces ---
-  async findWorkspaceById(id: string): Promise<any | null> {
+  async findWorkspaceById(id: string): Promise<TeamWorkspaceRecord | null> {
     const row = this.db.prepare('SELECT * FROM team_workspaces WHERE id = ?').get(id);
-    return row || null;
+    return (row as unknown as TeamWorkspaceRecord | undefined) || null;
   }
 
-  async createWorkspace(data: any): Promise<any> {
+  async createWorkspace(data: TeamWorkspaceCreateInput): Promise<TeamWorkspaceRecord | null> {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO team_workspaces (id, name, description, owner_user_id, status, created_at, updated_at)
@@ -1405,12 +1550,8 @@ export class SqliteCentralRepository implements CentralRepository {
     return this.findWorkspaceById(data.id);
   }
 
-  async updateWorkspace(id: string, data: any): Promise<any> {
-    const fields = Object.keys(data);
-    if (fields.length === 0) return this.findWorkspaceById(id);
-    const sets = fields.map((f: string) => `${f} = ?`).join(', ');
-    const values = fields.map((f: string) => data[f]);
-    this.db.prepare(`UPDATE team_workspaces SET ${sets} WHERE id = ?`).run(...values, id);
+  async updateWorkspace(id: string, data: TeamWorkspaceUpdateInput): Promise<TeamWorkspaceRecord | null> {
+    this.runDynamicUpdate('team_workspaces', id, data);
     return this.findWorkspaceById(id);
   }
 
@@ -1423,17 +1564,19 @@ export class SqliteCentralRepository implements CentralRepository {
     }
   }
 
-  async listUserWorkspaces(userId: string): Promise<any[]> {
-    return this.db.prepare(`
+  async listUserWorkspaces(userId: string): Promise<TeamWorkspaceRecord[]> {
+    return this.db
+      .prepare(`
       SELECT DISTINCT w.* FROM team_workspaces w
       LEFT JOIN team_workspace_members m ON w.id = m.workspace_id
       WHERE w.owner_user_id = ? OR (m.user_id = ? AND m.status = 'ACTIVE')
       ORDER BY w.created_at DESC
-    `).all(userId, userId) as any[];
+    `)
+      .all(userId, userId) as unknown as TeamWorkspaceRecord[];
   }
 
   // --- Team Workspace Members ---
-  async addWorkspaceMember(data: any): Promise<any> {
+  async addWorkspaceMember(data: TeamWorkspaceMemberCreateInput): Promise<TeamWorkspaceMemberCreateInput> {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO team_workspace_members (
@@ -1452,32 +1595,40 @@ export class SqliteCentralRepository implements CentralRepository {
     return data;
   }
 
-  async findWorkspaceMember(workspaceId: string, userId: string): Promise<any | null> {
-    const row = this.db.prepare('SELECT * FROM team_workspace_members WHERE workspace_id = ? AND user_id = ?').get(workspaceId, userId);
-    return row || null;
+  async findWorkspaceMember(workspaceId: string, userId: string): Promise<TeamWorkspaceMemberRecord | null> {
+    const row = this.db
+      .prepare('SELECT * FROM team_workspace_members WHERE workspace_id = ? AND user_id = ?')
+      .get(workspaceId, userId);
+    return (row as unknown as TeamWorkspaceMemberRecord | undefined) || null;
   }
 
-  async listWorkspaceMembers(workspaceId: string): Promise<any[]> {
-    return this.db.prepare('SELECT * FROM team_workspace_members WHERE workspace_id = ? ORDER BY created_at ASC').all(workspaceId) as any[];
+  async listWorkspaceMembers(workspaceId: string): Promise<TeamWorkspaceMemberRecord[]> {
+    return this.db
+      .prepare('SELECT * FROM team_workspace_members WHERE workspace_id = ? ORDER BY created_at ASC')
+      .all(workspaceId) as unknown as TeamWorkspaceMemberRecord[];
   }
 
-  async updateWorkspaceMemberRole(workspaceId: string, userId: string, role: string): Promise<any> {
-    this.db.prepare('UPDATE team_workspace_members SET role = ? WHERE workspace_id = ? AND user_id = ?').run(role, workspaceId, userId);
+  async updateWorkspaceMemberRole(workspaceId: string, userId: string, role: string): Promise<boolean> {
+    this.db
+      .prepare('UPDATE team_workspace_members SET role = ? WHERE workspace_id = ? AND user_id = ?')
+      .run(role, workspaceId, userId);
     return true;
   }
 
   async removeWorkspaceMember(workspaceId: string, userId: string): Promise<boolean> {
-    const res = this.db.prepare('DELETE FROM team_workspace_members WHERE workspace_id = ? AND user_id = ?').run(workspaceId, userId);
+    const res = this.db
+      .prepare('DELETE FROM team_workspace_members WHERE workspace_id = ? AND user_id = ?')
+      .run(workspaceId, userId);
     return res.changes > 0;
   }
 
   // --- Remote API Keys ---
-  async findRemoteApiKeyByHash(keyHash: string): Promise<any | null> {
+  async findRemoteApiKeyByHash(keyHash: string): Promise<RemoteApiKeyRecord | null> {
     const row = this.db.prepare('SELECT * FROM remote_api_keys WHERE key_hash = ?').get(keyHash);
-    return row || null;
+    return (row as unknown as RemoteApiKeyRecord | undefined) || null;
   }
 
-  async createRemoteApiKey(data: any): Promise<any> {
+  async createRemoteApiKey(data: RemoteApiKeyCreateInput): Promise<RemoteApiKeyCreateInput> {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO remote_api_keys (
@@ -1503,28 +1654,36 @@ export class SqliteCentralRepository implements CentralRepository {
     return data;
   }
 
-  async listRemoteApiKeys(userId: string): Promise<any[]> {
-    return this.db.prepare('SELECT * FROM remote_api_keys WHERE user_id = ? ORDER BY created_at DESC').all(userId) as any[];
+  async listRemoteApiKeys(userId: string): Promise<RemoteApiKeyRecord[]> {
+    return this.db
+      .prepare('SELECT * FROM remote_api_keys WHERE user_id = ? ORDER BY created_at DESC')
+      .all(userId) as unknown as RemoteApiKeyRecord[];
   }
 
   async revokeRemoteApiKey(id: string, userId?: string): Promise<boolean> {
     const now = new Date().toISOString();
-    let res;
-    if (userId) {
-      res = this.db.prepare('UPDATE remote_api_keys SET status = "REVOKED", revoked_at = ? WHERE id = ? AND user_id = ?').run(now, id, userId);
-    } else {
-      res = this.db.prepare('UPDATE remote_api_keys SET status = "REVOKED", revoked_at = ? WHERE id = ?').run(now, id);
-    }
+    const res = userId
+      ? this.db
+          .prepare('UPDATE remote_api_keys SET status = "REVOKED", revoked_at = ? WHERE id = ? AND user_id = ?')
+          .run(now, id, userId)
+      : this.db.prepare('UPDATE remote_api_keys SET status = "REVOKED", revoked_at = ? WHERE id = ?').run(now, id);
     return res.changes > 0;
   }
 
-  async updateRemoteApiKeyLastUsed(id: string): Promise<any> {
+  async updateRemoteApiKeyLastUsed(id: string): Promise<boolean> {
     this.db.prepare('UPDATE remote_api_keys SET last_used_at = ? WHERE id = ?').run(new Date().toISOString(), id);
     return true;
   }
 
   // --- Remote API Key Audits ---
-  async logRemoteApiKeyAudit(apiKeyId: string, userId: string, endpoint: string, method: string, statusCode: number, ipAddress?: string): Promise<any> {
+  async logRemoteApiKeyAudit(
+    apiKeyId: string,
+    userId: string,
+    endpoint: string,
+    method: string,
+    statusCode: number,
+    ipAddress?: string
+  ): Promise<RemoteApiKeyAuditResult> {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const action = `${method.toUpperCase()} ${endpoint}`;
@@ -1537,23 +1696,16 @@ export class SqliteCentralRepository implements CentralRepository {
   }
 
   // --- Locks ---
-  async findLock(cloudProfileId: string): Promise<any | null> {
+  async findLock(cloudProfileId: string): Promise<CloudProfileLockRecord | null> {
     const row = this.db.prepare('SELECT * FROM cloud_profile_locks WHERE cloud_profile_id = ?').get(cloudProfileId);
-    return row || null;
+    return (row as unknown as CloudProfileLockRecord | undefined) || null;
   }
 
-  async upsertLock(data: { cloudProfileId: string; deviceId: string; deviceName: string; userId: string; lockedAt: string; expiresAt: string }): Promise<any> {
+  async upsertLock(data: CloudProfileLockUpsertInput): Promise<CloudProfileLockUpsertInput> {
     this.db.prepare(`
       INSERT OR REPLACE INTO cloud_profile_locks (cloud_profile_id, device_id, device_name, user_id, locked_at, expires_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      data.cloudProfileId,
-      data.deviceId,
-      data.deviceName,
-      data.userId,
-      data.lockedAt,
-      data.expiresAt
-    );
+    `).run(data.cloudProfileId, data.deviceId, data.deviceName, data.userId, data.lockedAt, data.expiresAt);
     return data;
   }
 
@@ -1566,15 +1718,20 @@ export class SqliteCentralRepository implements CentralRepository {
     }
   }
 
-  async createWebHandoffSession(data: { code: string; token: string; userJson: string; createdAt: number; expiresAt: number }): Promise<any> {
-    this.db.prepare(
-      'INSERT INTO web_handoff_sessions (code, token, user_json, created_at, expires_at, used) VALUES (?, ?, ?, ?, ?, 0)'
-    ).run(data.code, data.token, data.userJson, data.createdAt, data.expiresAt);
+  async createWebHandoffSession(data: WebHandoffSessionCreateInput): Promise<WebHandoffSessionCreateInput> {
+    this.db
+      .prepare('INSERT INTO web_handoff_sessions (code, token, user_json, created_at, expires_at, used) VALUES (?, ?, ?, ?, ?, 0)')
+      .run(data.code, data.token, data.userJson, data.createdAt, data.expiresAt);
     return data;
   }
 
-  async consumeWebHandoffSessionAtomically(code: string, now: number): Promise<{ token: string; user: any } | null> {
-    const row = this.db.prepare('SELECT * FROM web_handoff_sessions WHERE code = ?').get(code) as any;
+  async consumeWebHandoffSessionAtomically(
+    code: string,
+    now: number
+  ): Promise<{ token: string; user: WebHandoffUserPayload | null } | null> {
+    const row = this.db
+      .prepare('SELECT * FROM web_handoff_sessions WHERE code = ?')
+      .get(code) as unknown as WebHandoffSessionRecord | undefined;
     if (!row) return null;
     if (row.used === 1 || Number(row.expires_at) <= now) {
       try {
@@ -1586,13 +1743,13 @@ export class SqliteCentralRepository implements CentralRepository {
       }
       return null;
     }
-    const updateRes = this.db.prepare(
-      'UPDATE web_handoff_sessions SET used = 1 WHERE code = ? AND used = 0 AND expires_at > ?'
-    ).run(code, now);
+    const updateRes = this.db
+      .prepare('UPDATE web_handoff_sessions SET used = 1 WHERE code = ? AND used = 0 AND expires_at > ?')
+      .run(code, now);
     if (updateRes.changes === 1) {
-      let user: any = null;
+      let user: WebHandoffUserPayload | null = null;
       try {
-        user = JSON.parse(row.user_json);
+        user = JSON.parse(row.user_json) as WebHandoffUserPayload;
       } catch (parseErr) {
         log.warn('Failed parsing consumed SQLite web_handoff_sessions user_json', {
           err: parseErr instanceof Error ? parseErr.message : String(parseErr),

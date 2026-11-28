@@ -97,7 +97,7 @@ export function unwrapDataKey(wrappedKeyJson: string, userMasterKey: Buffer | st
     const decipher = crypto.createDecipheriv('aes-256-gcm', resolvedKey, keyIv);
     decipher.setAuthTag(keyTag);
     return Buffer.concat([decipher.update(wrapped), decipher.final()]);
-  } catch (err: any) {
+  } catch {
     throw new Error('Failed to unwrap profile encryption key: Invalid passphrase or corrupted key data');
   }
 }
@@ -171,7 +171,7 @@ export function decryptProfileArchive(options: DecryptPackageOptions): Buffer {
     decipher.setAuthTag(Buffer.from(authTag, 'hex'));
     const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
     return plaintext;
-  } catch (err: any) {
-    throw new Error(`Decryption failed: Payload was tampered with or corrupted (${err.message})`);
+  } catch (err: unknown) {
+    throw new Error(`Decryption failed: Payload was tampered with or corrupted (${err instanceof Error ? err.message : String(err)})`);
   }
 }

@@ -53,7 +53,7 @@ export function getReleaseDirectory(): string {
   if (fs.existsSync(relDir)) {
     return relDir;
   }
-  const appDir = (app && app.isPackaged) ? path.dirname(process.execPath) : cwd;
+  const appDir = app?.isPackaged ? path.dirname(process.execPath) : cwd;
   const relInApp = path.join(appDir, 'release');
   if (fs.existsSync(relInApp)) {
     return relInApp;
@@ -194,7 +194,6 @@ export async function fixDesktopShortcuts(): Promise<{ success: boolean; message
     }
 
     const cwd = process.cwd();
-    const desktopDir = path.join(os.homedir(), 'Desktop');
     const iconPath = path.join(cwd, '13_ASSETS', 'resources', 'icon.ico');
 
     // Prefer native unpacked exe if available, fallback to start-app.bat

@@ -1,4 +1,5 @@
-import React, { memo } from 'react';
+import type React from 'react';
+import { memo } from 'react';
 import {
   Plus,
   Play,
@@ -16,8 +17,8 @@ import {
   Smartphone,
   Lock,
 } from 'lucide-react';
-import { Profile } from '../../../10_CONFIG/shared/types/profile.js';
-import { ProxyItem } from '../../../10_CONFIG/shared/types/proxy.js';
+import type { Profile } from '../../../10_CONFIG/shared/types/profile.js';
+import type { ProxyItem } from '../../../10_CONFIG/shared/types/proxy.js';
 import { getLatencyBadgeState, resolveProfileStatusPill } from '../../utils/phase1-ui-helpers.js';
 import { CountryFlag } from '../CountryFlag.js';
 
@@ -46,6 +47,14 @@ export interface ProfileRowProps {
   onDelete: (profileId: string) => void;
 }
 
+type ProfileWithLockFields = Profile & {
+  lockStatus?: { isLocked?: boolean; lockedByDevice?: string; deviceName?: string };
+  lock?: { isLocked?: boolean; lockedByDevice?: string; deviceName?: string };
+  isLocked?: boolean;
+  lockedByDeviceName?: string;
+  lockedBy?: string;
+};
+
 const ProfileStatusPill: React.FC<{
   profile: Profile;
   isStarting: boolean;
@@ -53,11 +62,12 @@ const ProfileStatusPill: React.FC<{
   syncStatus?: string;
   syncProgress?: { percent: number; stage: string };
 }> = ({ profile, isStarting, isRunning, syncStatus, syncProgress }) => {
-  const lockInfo = (profile as any).lockStatus || (profile as any).lock;
-  const isLocked = Boolean((profile as any).isLocked || lockInfo?.isLocked || syncStatus === 'LOCKED');
+  const lockedProfile = profile as ProfileWithLockFields;
+  const lockInfo = lockedProfile.lockStatus || lockedProfile.lock;
+  const isLocked = Boolean(lockedProfile.isLocked || lockInfo?.isLocked || syncStatus === 'LOCKED');
   const deviceName =
-    (profile as any).lockedByDeviceName ||
-    (profile as any).lockedBy ||
+    lockedProfile.lockedByDeviceName ||
+    lockedProfile.lockedBy ||
     lockInfo?.lockedByDevice ||
     lockInfo?.deviceName ||
     'Another Device';
@@ -186,7 +196,7 @@ export const ProfileRow: React.FC<ProfileRowProps> = memo(({
 
       <td className="py-3.5 px-4">
         <div className="flex items-center space-x-3">
-          <button
+          <button type="button"
             onClick={() => onRunOrStop(p)}
             disabled={isStarting}
             className={`px-3 py-1.5 rounded-lg font-bold text-xs flex items-center space-x-1.5 transition-all duration-150 active:scale-[0.98] shadow-xs interactive-control ${
@@ -262,35 +272,38 @@ export const ProfileRow: React.FC<ProfileRowProps> = memo(({
 
       <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300 font-sans text-xs">
         {proxy ? (
-          <span
-            className="cursor-pointer hover:text-emerald-500 transition-colors font-medium"
+          <button
+            type="button"
+            className="cursor-pointer hover:text-emerald-500 transition-colors font-medium text-left"
             onClick={() => onOpenUniversalProxy(p)}
             title="Click to configure proxy"
           >
             {proxy.protocol.toUpperCase()} {proxy.countryRegion ? `· ${proxy.countryRegion}` : ''}
-          </span>
+          </button>
         ) : (
-          <span
+          <button
+            type="button"
             className="text-slate-400 font-sans font-medium cursor-pointer hover:text-emerald-500"
             onClick={() => onOpenUniversalProxy(p)}
             title="Click to paste & test proxy"
           >
             —
-          </span>
+          </button>
         )}
       </td>
 
       <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
         {proxy ? (
           <div className="flex items-center space-x-2 group/proxy">
-            <span
+            <button
+              type="button"
               className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 shadow-xs cursor-pointer hover:border-emerald-500/50 hover:bg-slate-200/60 dark:hover:bg-slate-750 transition select-none"
               onClick={() => onOpenUniversalProxy(p)}
               title={`Proxy: ${proxy.ip || proxy.host}:${proxy.port} (${proxy.countryName || proxy.countryRegion || 'Proxy'})`}
             >
               <CountryFlag countryCode={proxy.countryRegion || 'US'} className="w-3.5 h-2.5" />
               <span>{proxy.countryRegion || 'US'}</span>
-            </span>
+            </button>
 
             {isPingingProxy ? (
               <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700 animate-pulse">
@@ -301,35 +314,38 @@ export const ProfileRow: React.FC<ProfileRowProps> = memo(({
               const badge = getLatencyBadgeState(proxy.status, proxy.latencyMs);
               if (badge.kind === 'timeout') {
                 return (
-                  <span
+                  <button
+                    type="button"
                     onClick={(e) => onPingProxy(proxy.id, e)}
                     className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/15 text-rose-500 border border-rose-500/30 cursor-pointer hover:bg-rose-500/25 transition select-none"
                     title={badge.title}
                   >
                     <span>{badge.text}</span>
-                  </span>
+                  </button>
                 );
               }
               if (badge.kind === 'fast') {
                 return (
-                  <span
+                  <button
+                    type="button"
                     onClick={(e) => onPingProxy(proxy.id, e)}
                     className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 cursor-pointer hover:bg-emerald-500/25 transition select-none"
                     title={badge.title}
                   >
                     <span>{badge.text}</span>
-                  </span>
+                  </button>
                 );
               }
               if (badge.kind === 'moderate') {
                 return (
-                  <span
+                  <button
+                    type="button"
                     onClick={(e) => onPingProxy(proxy.id, e)}
                     className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 cursor-pointer hover:bg-amber-500/25 transition select-none"
                     title={badge.title}
                   >
                     <span>{badge.text}</span>
-                  </span>
+                  </button>
                 );
               }
               return (
@@ -388,7 +404,7 @@ export const ProfileRow: React.FC<ProfileRowProps> = memo(({
 
       <td className="py-3.5 px-4 text-right">
         <div className="flex items-center justify-end space-x-1 opacity-80 group-hover:opacity-100 transition-opacity">
-          <button
+          <button type="button"
             onClick={() => onOpenWarmer(p)}
             className="p-1.5 hover:bg-amber-500/10 rounded-lg text-amber-600 dark:text-amber-400 transition-colors"
             title="Auto-Warm Profile (Farms Google, Wikipedia, Amazon cookies)"
@@ -396,7 +412,7 @@ export const ProfileRow: React.FC<ProfileRowProps> = memo(({
             <Sparkles className="w-3.5 h-3.5" />
           </button>
 
-          <button
+          <button type="button"
             onClick={() => onOpenStealthTest(p)}
             className="p-1.5 hover:bg-teal-500/10 rounded-lg text-teal-600 dark:text-teal-400 transition-colors"
             title="Check Stealth & Anti-Detect Score (Pixelscan / CreepJS / IPHEY)"
@@ -404,7 +420,7 @@ export const ProfileRow: React.FC<ProfileRowProps> = memo(({
             <Shield className="w-3.5 h-3.5" />
           </button>
 
-          <button
+          <button type="button"
             onClick={() => onBackupToCloud(p)}
             className="p-1.5 hover:bg-teal-500/10 rounded-lg text-teal-600 dark:text-teal-400 transition-colors"
             title="Backup Profile to Cloud"
@@ -412,7 +428,7 @@ export const ProfileRow: React.FC<ProfileRowProps> = memo(({
             <UploadCloud className="w-3.5 h-3.5" />
           </button>
 
-          <button
+          <button type="button"
             onClick={() => onOpenSettings(p.id)}
             className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-200 transition-colors"
             title="Profile Settings"
@@ -420,7 +436,7 @@ export const ProfileRow: React.FC<ProfileRowProps> = memo(({
             <SettingsIcon className="w-3.5 h-3.5" />
           </button>
 
-          <button
+          <button type="button"
             onClick={() => onTestProxyForProfile(p)}
             className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 hover:text-teal-500 transition-colors"
             title="Test Proxy Connection"
@@ -428,7 +444,7 @@ export const ProfileRow: React.FC<ProfileRowProps> = memo(({
             <Activity className="w-3.5 h-3.5" />
           </button>
 
-          <button
+          <button type="button"
             onClick={() => onClone(p)}
             className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-200 transition-colors"
             title="Duplicate Profile"
@@ -436,7 +452,7 @@ export const ProfileRow: React.FC<ProfileRowProps> = memo(({
             <Copy className="w-3.5 h-3.5" />
           </button>
 
-          <button
+          <button type="button"
             onClick={() => onDelete(p.id)}
             className="p-1.5 hover:bg-rose-500/10 rounded-lg text-rose-500 transition-colors"
             title="Delete Profile"

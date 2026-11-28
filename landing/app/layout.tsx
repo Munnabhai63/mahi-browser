@@ -1,10 +1,8 @@
 import type { Metadata } from 'next';
-import React from 'react';
 import { Inter, Spectral } from 'next/font/google';
 import './globals.css';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import ChatWidget from '../components/ChatWidget';
 import { BRAND } from '../lib/brand';
 
 const inter = Inter({

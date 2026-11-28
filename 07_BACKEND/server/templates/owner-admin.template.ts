@@ -601,7 +601,7 @@ export function getOwnerAdminTemplateHtml(): string {
 
       if (res.success) {
         msg.className = 'text-xs p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 space-y-1 block';
-        msg.innerHTML = '<div class="font-bold flex items-center space-x-1.5"><span class="text-base">✓</span> <span>Account Upgraded to PRO Successfully!</span></div><div class="text-[11px] text-emerald-400">100 Profiles unlocked. The user\'s Mahi Browser will automatically reflect PRO status. No manual key needed.</div>';
+        msg.innerHTML = '<div class="font-bold flex items-center space-x-1.5"><span class="text-base">✓</span> <span>Account Upgraded to PRO Successfully!</span></div><div class="text-[11px] text-emerald-400">100 Profiles unlocked. The user's Mahi Browser will automatically reflect PRO status. No manual key needed.</div>';
       } else {
         msg.className = 'text-xs p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300';
         msg.innerText = res.error || 'Failed to grant license';

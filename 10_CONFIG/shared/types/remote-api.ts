@@ -3,8 +3,8 @@
  * Phase 6 Architecture
  */
 
-import { TeamRole, TeamPermission } from './workspace.js';
-import { CommercialRole } from './commercial.js';
+import type { TeamRole } from './workspace.js';
+import type { CommercialRole } from './commercial.js';
 
 // ============================================================================
 // REMOTE API SCOPES

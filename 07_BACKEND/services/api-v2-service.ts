@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import { ApiKeyRecord } from '../../10_CONFIG/shared/types/platform.js';
+import type { ApiKeyRecord } from '../../10_CONFIG/shared/types/platform.js';
 import { logActivity } from './audit-service.js';
 
 export function hashApiKey(secretToken: string): string {
@@ -44,7 +44,22 @@ export function generateApiKey(
   return { keyRecord, secretKey };
 }
 
-function mapApiKeyRow(r: any): ApiKeyRecord {
+interface SqliteApiKeyV2Row {
+  id: string;
+  user_id: string;
+  name: string;
+  key_prefix: string;
+  key_hash: string;
+  scopes_json: string | null;
+  rate_limit_per_min: number | null;
+  requests_count_month: number | null;
+  last_used_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+  revoked_at: string | null;
+}
+
+function mapApiKeyRow(r: SqliteApiKeyV2Row): ApiKeyRecord {
   return {
     id: r.id,
     userId: r.user_id,
@@ -54,20 +69,18 @@ function mapApiKeyRow(r: any): ApiKeyRecord {
     scopes: JSON.parse(r.scopes_json || '[]'),
     rateLimitPerMin: r.rate_limit_per_min || 60,
     requestsCountMonth: r.requests_count_month || 0,
-    lastUsedAt: r.last_used_at,
-    expiresAt: r.expires_at,
+    lastUsedAt: r.last_used_at ?? undefined,
+    expiresAt: r.expires_at ?? undefined,
     createdAt: r.created_at,
-    revokedAt: r.revoked_at,
+    revokedAt: r.revoked_at ?? undefined,
   };
 }
 
 export function getApiKeys(userId?: string): ApiKeyRecord[] {
   const db = getDatabase();
-  const rows = (
-    userId
-      ? db.prepare('SELECT * FROM api_keys_v2 WHERE user_id = ? AND revoked_at IS NULL ORDER BY created_at DESC').all(userId)
-      : db.prepare('SELECT * FROM api_keys_v2 WHERE revoked_at IS NULL ORDER BY created_at DESC').all()
-  ) as any[];
+  const rows = userId
+    ? db.prepare('SELECT * FROM api_keys_v2 WHERE user_id = ? AND revoked_at IS NULL ORDER BY created_at DESC').all<SqliteApiKeyV2Row>(userId)
+    : db.prepare('SELECT * FROM api_keys_v2 WHERE revoked_at IS NULL ORDER BY created_at DESC').all<SqliteApiKeyV2Row>();
 
   return rows.map(mapApiKeyRow);
 }
@@ -75,7 +88,7 @@ export function getApiKeys(userId?: string): ApiKeyRecord[] {
 export function getApiKeyById(keyId: string): ApiKeyRecord | null {
   if (!keyId) return null;
   const db = getDatabase();
-  const row = db.prepare('SELECT * FROM api_keys_v2 WHERE id = ? AND revoked_at IS NULL').get(keyId) as any;
+  const row = db.prepare('SELECT * FROM api_keys_v2 WHERE id = ? AND revoked_at IS NULL').get<SqliteApiKeyV2Row>(keyId);
   return row ? mapApiKeyRow(row) : null;
 }
 
@@ -83,7 +96,7 @@ export function validateApiKey(secretKey: string): ApiKeyRecord | null {
   if (!secretKey) return null;
   const hash = hashApiKey(secretKey);
   const db = getDatabase();
-  const row = db.prepare('SELECT * FROM api_keys_v2 WHERE key_hash = ? AND revoked_at IS NULL').get(hash) as any;
+  const row = db.prepare('SELECT * FROM api_keys_v2 WHERE key_hash = ? AND revoked_at IS NULL').get<SqliteApiKeyV2Row>(hash);
   if (!row) return null;
 
   // Increment usage count and update last used
@@ -100,9 +113,9 @@ export function validateApiKey(secretKey: string): ApiKeyRecord | null {
     rateLimitPerMin: row.rate_limit_per_min || 60,
     requestsCountMonth: (row.requests_count_month || 0) + 1,
     lastUsedAt: now,
-    expiresAt: row.expires_at,
+    expiresAt: row.expires_at ?? undefined,
     createdAt: row.created_at,
-    revokedAt: row.revoked_at,
+    revokedAt: row.revoked_at ?? undefined,
   };
 }
 

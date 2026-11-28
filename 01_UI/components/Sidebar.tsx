@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import {
   LayoutDashboard,
   Layers,
@@ -57,6 +58,16 @@ interface SidebarProps {
   onNavigate: (page: NavigationPage) => void;
 }
 
+interface SidebarNavItem {
+  id: NavigationPage;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: string;
+  locked?: boolean;
+  requiredPlan?: 'PRO' | 'BUSINESS';
+  description?: string;
+}
+
 export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => {
   const profiles = useProfileStore((state) => state.profiles);
   const trashProfiles = useProfileStore((state) => state.trashProfiles);
@@ -73,7 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
   const isTeamLocked = !hasCapability('workspace.team');
   const isAutomationLocked = !hasCapability('automation.rpa');
 
-  const navItems = [
+  const navItems: SidebarNavItem[] = [
     { id: 'dashboard' as NavigationPage, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'profiles' as NavigationPage, label: 'Profiles', icon: Layers, badge: runningCount > 0 ? `${runningCount} Active` : undefined },
     {
@@ -137,14 +148,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
             (item.id === 'automation' && currentPage === 'workflow-builder');
 
           return (
-            <button
+            <button type="button"
               key={item.id}
               onClick={() => {
-                if ((item as any).locked) {
+                if (item.locked) {
                   setLockedModalData({
                     featureTitle: item.label,
-                    featureDescription: (item as any).description || '',
-                    requiredPlan: (item as any).requiredPlan || 'PRO',
+                    featureDescription: item.description || '',
+                    requiredPlan: item.requiredPlan || 'PRO',
                   });
                   return;
                 }
@@ -164,7 +175,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
                 <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 ${
                   isActive ? 'bg-slate-950 text-teal-300' : 'bg-teal-950 text-teal-400 border border-teal-800/50 shadow-xs'
                 }`}>
-                  {(item as any).locked && <Lock className="w-2.5 h-2.5 text-amber-400" />}
+                  {item.locked && <Lock className="w-2.5 h-2.5 text-amber-400" />}
                   {item.badge}
                 </span>
               )}
@@ -214,7 +225,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
             </div>
           </div>
           {settings.security.appLockEnabled && (
-            <button
+            <button type="button"
               onClick={lockApp}
               title="Lock Application"
               className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-md transition-colors"

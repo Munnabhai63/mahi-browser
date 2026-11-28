@@ -6,15 +6,27 @@ import { signToken, getUserById } from './commercial-auth-service.js';
 import { CANONICAL_PLAN_CATALOG } from './canonical-plan-catalog.js';
 import { recordFunnelEvent } from './funnel-service.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
-import { CURRENT_TERMS_VERSION } from '../../10_CONFIG/shared/types/commercial.js';
+import {
+  CURRENT_TERMS_VERSION,
+  type CommercialRole,
+  type CommercialUser,
+  type CommercialUserStatus,
+} from '../../10_CONFIG/shared/types/commercial.js';
+import type { AuthUserRecord } from '../../06_DATABASE/central-repository-types.js';
 import { getSiteConfig, getTrustedSiteOrigins } from '../../10_CONFIG/shared/site-config.js';
 import { createLogger } from '../utils/logger.js';
 const log = createLogger('google-oauth-service');
 
+export type GoogleAuthUser = Omit<CommercialUser, 'trialExpiresAt' | 'avatarUrl'> & {
+  trialExpiresAt?: string | null;
+  avatarUrl?: string | null;
+  googleSub?: string;
+};
+
 export interface GoogleAuthResult {
   success: boolean;
   token?: string;
-  user?: any;
+  user?: GoogleAuthUser;
   isNewAccount: boolean;
   isLinked: boolean;
   trialActive: boolean;
@@ -23,9 +35,61 @@ export interface GoogleAuthResult {
   error?: string;
 }
 
+interface SqliteOAuthStateRow {
+  state: string;
+  nonce: string;
+  provider: string;
+  intent: string;
+  plan_id: string;
+  billing_cycle: string;
+  return_url: string;
+  expires_at: string;
+  created_at: string;
+  accepted_terms: number | null;
+  terms_version: string | null;
+}
+
+interface SqliteCommercialOAuthUserRow {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  status: string;
+  plan_id: string;
+  password_hash?: string | null;
+  salt?: string | null;
+  trial_started_at?: string | null;
+  trial_expires_at?: string | null;
+  trial_used?: number | boolean | null;
+  signup_intent?: string | null;
+  google_sub?: string | null;
+  avatar_url?: string | null;
+  auth_provider?: string | null;
+  created_at?: string;
+}
+
+interface JwtTokenHeader {
+  alg?: string;
+  kid?: string;
+}
+
+interface JwtIdTokenPayload {
+  iss?: string;
+  aud?: string | string[];
+  exp?: number;
+  nbf?: number;
+  email_verified?: boolean | string;
+  email?: string;
+  sub?: string;
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+  picture?: string;
+}
+
 export function deriveProfileQuota(planId?: string | null): number {
   if (!planId) return 10;
-  const canonical = (CANONICAL_PLAN_CATALOG as Record<string, any>)[planId];
+  const canonical = (CANONICAL_PLAN_CATALOG as Record<string, { profileLimit?: number } | undefined>)[planId];
   if (canonical?.profileLimit && typeof canonical.profileLimit === 'number') {
     return canonical.profileLimit;
   }
@@ -111,8 +175,11 @@ export function isSafeInternalUrl(url?: string | null): boolean {
     return false;
   }
   // Disallow control characters or newlines
-  if (/[\x00-\x1F\x7F]/.test(trimmed)) {
-    return false;
+  for (let i = 0; i < trimmed.length; i++) {
+    const code = trimmed.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) {
+      return false;
+    }
   }
 
   const ALLOWED_EXACT_OR_PREFIXES = [
@@ -138,7 +205,7 @@ export function isSafeInternalUrl(url?: string | null): boolean {
       const pathname = parsed.pathname.toLowerCase();
       if (pathname === '/') return true;
       return ALLOWED_EXACT_OR_PREFIXES.some(prefix =>
-        pathname === prefix || pathname.startsWith(prefix + '/')
+        pathname === prefix || pathname.startsWith(`${prefix}/`)
       );
     } catch {
       return false;
@@ -161,7 +228,7 @@ export function isSafeInternalUrl(url?: string | null): boolean {
     const pathname = parsed.pathname.toLowerCase();
     if (pathname === '/') return true;
     return ALLOWED_EXACT_OR_PREFIXES.some(prefix =>
-      pathname === prefix || pathname.startsWith(prefix + '/')
+      pathname === prefix || pathname.startsWith(`${prefix}/`)
     );
   } catch {
     return false;
@@ -316,7 +383,7 @@ export function validateAndConsumeOAuthState(state: string): OAuthStateRecord | 
   if (!state || typeof state !== 'string') return null;
   const db = getDatabase();
 
-  const row = db.prepare('SELECT * FROM oauth_states WHERE state = ?').get(state) as any;
+  const row = db.prepare('SELECT * FROM oauth_states WHERE state = ?').get(state) as SqliteOAuthStateRow | undefined;
   if (!row) return null;
 
   // Single-use: delete immediately
@@ -400,8 +467,8 @@ export async function exchangeGoogleAuthorizationCode(code: string, redirectUri:
             idToken: data.id_token,
             expiresIn: data.expires_in,
           });
-        } catch (err: any) {
-          reject(new Error(`Invalid response from Google token endpoint: ${err.message}`));
+        } catch (err: unknown) {
+          reject(new Error(`Invalid response from Google token endpoint: ${err instanceof Error ? err.message : String(err)}`));
         }
       });
     });
@@ -456,8 +523,8 @@ export async function fetchGoogleProfile(accessToken: string): Promise<GoogleCla
             family_name: data.family_name,
             picture: data.picture,
           });
-        } catch (err: any) {
-          reject(new Error(`Invalid response from Google userinfo: ${err.message}`));
+        } catch (err: unknown) {
+          reject(new Error(`Invalid response from Google userinfo: ${err instanceof Error ? err.message : String(err)}`));
         }
       });
     });
@@ -520,8 +587,8 @@ async function fetchGoogleJwks(forceRefresh = false): Promise<GoogleJwkKey[]> {
             const ttlMs = maxAgeMatch ? Math.min(Math.max(parseInt(maxAgeMatch[1], 10) * 1000, 60_000), 3_600_000) : 300_000;
             cachedGoogleJwks = { keys, expiresAt: Date.now() + ttlMs };
             resolve(keys);
-          } catch (err: any) {
-            reject(new Error(`GOOGLE_JWKS_PARSE_ERROR: ${err?.message || 'invalid json'}`));
+          } catch (err: unknown) {
+            reject(new Error(`GOOGLE_JWKS_PARSE_ERROR: ${err instanceof Error ? err.message : 'invalid json'}`));
           }
         });
       }
@@ -551,11 +618,11 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GoogleClaims
     throw new Error('GOOGLE_OAUTH_NOT_CONFIGURED: Missing Google Client ID for audience verification.');
   }
 
-  let header: any;
-  let payload: any;
+  let header: JwtTokenHeader;
+  let payload: JwtIdTokenPayload;
   try {
-    header = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
-    payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    header = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8')) as JwtTokenHeader;
+    payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as JwtIdTokenPayload;
   } catch {
     throw new Error('GOOGLE_ID_TOKEN_INVALID: Corrupt JWT encoding.');
   }
@@ -605,7 +672,7 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GoogleClaims
   const emailVerified = payload?.email_verified === true || payload?.email_verified === 'true';
   const email = typeof payload?.email === 'string' ? payload.email.trim().toLowerCase() : '';
   const sub = typeof payload?.sub === 'string' ? payload.sub.trim() : '';
-  if (!sub || !email || !email.includes('@') || !emailVerified) {
+  if (!sub || !email?.includes('@') || !emailVerified) {
     throw new Error('GOOGLE_EMAIL_NOT_VERIFIED: Token lacks verified Google subject or email.');
   }
 
@@ -632,8 +699,7 @@ export async function authenticateWithGoogleClaimsAsync(
   const db = getDatabase();
 
   if (
-    !claims ||
-    claims.email_verified !== true ||
+    claims?.email_verified !== true ||
     typeof claims.sub !== 'string' ||
     !claims.sub.trim() ||
     typeof claims.email !== 'string' ||
@@ -666,27 +732,28 @@ export async function authenticateWithGoogleClaimsAsync(
   const repo = isPg ? getCentralRepository() : null;
 
   // Step 1: Check PostgreSQL auth_users first if PostgreSQL is active
-  let pgUser: any = null;
+  let pgUser: AuthUserRecord | null = null;
   if (repo) {
     try {
       pgUser = await repo.findAuthUserByEmail(cleanEmail);
-    } catch (e: any) {
-      log.error('[GoogleOAuth] Failed to query PostgreSQL by email:', e?.message);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log.error('[GoogleOAuth] Failed to query PostgreSQL by email:', msg);
       return {
         success: false,
         isNewAccount: false,
         isLinked: false,
         trialActive: false,
         returnUrl: '/signup',
-        error: `DATABASE_SYNC_ERROR: Failed to query PostgreSQL auth_users: ${e?.message || 'unknown'}`,
+        error: `DATABASE_SYNC_ERROR: Failed to query PostgreSQL auth_users: ${msg || 'unknown'}`,
       };
     }
   }
 
   // Step 2: Check local SQLite commercial_users
-  let existingUser = db.prepare('SELECT * FROM commercial_users WHERE google_sub = ?').get(claims.sub) as any;
+  let existingUser = db.prepare('SELECT * FROM commercial_users WHERE google_sub = ?').get(claims.sub) as SqliteCommercialOAuthUserRow | undefined;
   if (!existingUser) {
-    existingUser = db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(cleanEmail) as any;
+    existingUser = db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(cleanEmail) as SqliteCommercialOAuthUserRow | undefined;
   }
 
   // Prevent overwriting an account already bound to a different Google subject ID
@@ -705,12 +772,15 @@ export async function authenticateWithGoogleClaimsAsync(
   }
 
   // Step 3: Enforce account status BEFORE updating or issuing a token
-  if ((pgUser && pgUser.status && pgUser.status !== 'ACTIVE') || (existingUser && existingUser.status && existingUser.status !== 'ACTIVE')) {
+  if (
+    (pgUser?.status && pgUser.status !== 'ACTIVE') ||
+    (existingUser?.status && existingUser.status !== 'ACTIVE')
+  ) {
     const suspendedStatus = (pgUser?.status && pgUser.status !== 'ACTIVE') ? pgUser.status : existingUser?.status;
     logCommercialAudit({
       actorId: pgUser?.id || existingUser?.id || 'unknown',
       actorName: claims.name || cleanEmail,
-      actorRole: pgUser?.role || existingUser?.role || 'USER',
+      actorRole: (pgUser?.role || existingUser?.role || 'USER') as CommercialRole,
       action: 'OAUTH_LOGIN_BLOCKED',
       targetType: 'USER',
       targetId: pgUser?.id || existingUser?.id || 'unknown',
@@ -740,21 +810,24 @@ export async function authenticateWithGoogleClaimsAsync(
 
     // Update PostgreSQL auth_users (NEVER overwrite status)
     try {
-      await repo!.updateAuthUser(userId, {
-        google_sub: claims.sub,
-        avatar_url: claims.picture || pgUser.avatar_url || null,
-        email_verified: 1,
-        last_login_at: now,
-      });
-    } catch (e: any) {
-      log.error('[GoogleOAuth] Failed to update PostgreSQL user:', e?.message);
+      if (repo) {
+        await repo.updateAuthUser(userId, {
+          google_sub: claims.sub,
+          avatar_url: claims.picture || pgUser.avatar_url || null,
+          email_verified: 1,
+          last_login_at: now,
+        });
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log.error('[GoogleOAuth] Failed to update PostgreSQL user:', msg);
       return {
         success: false,
         isNewAccount: false,
         isLinked: false,
         trialActive: false,
         returnUrl: '/signup',
-        error: `DATABASE_SYNC_ERROR: Failed to update user in central PostgreSQL: ${e?.message || 'unknown'}`,
+        error: `DATABASE_SYNC_ERROR: Failed to update user in central PostgreSQL: ${msg || 'unknown'}`,
       };
     }
 
@@ -805,9 +878,9 @@ export async function authenticateWithGoogleClaimsAsync(
           }
 
           db.exec('COMMIT;');
-        } catch (txErr: any) {
+        } catch (txErr: unknown) {
           db.exec('ROLLBACK;');
-          log.error('[GoogleOAuth] Failed to align SQLite user ID with PostgreSQL ID:', txErr?.message);
+          log.error('[GoogleOAuth] Failed to align SQLite user ID with PostgreSQL ID:', txErr instanceof Error ? txErr.message : String(txErr));
           throw txErr;
         } finally {
           try {
@@ -887,7 +960,7 @@ export async function authenticateWithGoogleClaimsAsync(
     logCommercialAudit({
       actorId: userId,
       actorName: pgUser.name || claims.name || cleanEmail,
-      actorRole: pgUser.role || 'USER',
+      actorRole: (pgUser.role || 'USER') as CommercialRole,
       action: isLinked ? 'OAUTH_LINK_GOOGLE' : 'OAUTH_LOGIN_GOOGLE',
       targetType: 'USER',
       targetId: userId,
@@ -950,15 +1023,16 @@ export async function authenticateWithGoogleClaimsAsync(
           updated_at: now,
           last_login_at: now,
         });
-      } catch (e: any) {
-        log.error('[GoogleOAuth] Failed to heal-create user in PostgreSQL:', e?.message);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log.error('[GoogleOAuth] Failed to heal-create user in PostgreSQL:', msg);
         return {
           success: false,
           isNewAccount: false,
           isLinked: false,
           trialActive: false,
           returnUrl: '/signup',
-          error: `DATABASE_SYNC_ERROR: Failed to heal-create user in central PostgreSQL: ${e?.message || 'unknown'}`,
+          error: `DATABASE_SYNC_ERROR: Failed to heal-create user in central PostgreSQL: ${msg || 'unknown'}`,
         };
       }
     }
@@ -966,7 +1040,7 @@ export async function authenticateWithGoogleClaimsAsync(
     logCommercialAudit({
       actorId: userId,
       actorName: existingUser.name,
-      actorRole: existingUser.role || 'USER',
+      actorRole: (existingUser.role || 'USER') as CommercialRole,
       action: isLinked ? 'OAUTH_LINK_GOOGLE' : 'OAUTH_LOGIN_GOOGLE',
       targetType: 'USER',
       targetId: userId,
@@ -1058,8 +1132,9 @@ export async function authenticateWithGoogleClaimsAsync(
           accepted_terms: acceptedTermsInt !== null ? acceptedTermsInt : 0,
           terms_version: termsVersion || CURRENT_TERMS_VERSION,
         });
-      } catch (e: any) {
-        log.error('[GoogleOAuth] Failed to create user in PostgreSQL:', e?.message);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log.error('[GoogleOAuth] Failed to create user in PostgreSQL:', msg);
         try {
           db.prepare('DELETE FROM commercial_users WHERE id = ?').run(userId);
           db.prepare('DELETE FROM auth_users WHERE id = ?').run(userId);
@@ -1075,7 +1150,7 @@ export async function authenticateWithGoogleClaimsAsync(
           isLinked: false,
           trialActive: false,
           returnUrl: '/signup',
-          error: `DATABASE_SYNC_ERROR: Failed to create user in central PostgreSQL: ${e?.message || 'unknown'}`,
+          error: `DATABASE_SYNC_ERROR: Failed to create user in central PostgreSQL: ${msg || 'unknown'}`,
         };
       }
     }
@@ -1125,12 +1200,12 @@ export async function authenticateWithGoogleClaimsAsync(
   }
 
   // Retrieve unified user record
-  const user = getUserById(userId) || {
+  const user: GoogleAuthUser = getUserById(userId) || {
     id: userId,
     email: cleanEmail,
     name: (claims.name || pgUser?.name || cleanEmail.split('@')[0] || 'Google User').trim(),
-    role: (pgUser?.role || 'USER') as any,
-    status: (pgUser?.status || 'ACTIVE') as any,
+    role: (pgUser?.role || 'USER') as CommercialRole,
+    status: (pgUser?.status || 'ACTIVE') as CommercialUserStatus,
     planId: pgUser?.plan_id || planId,
     trialExpiresAt: pgUser?.trial_expires_at || null,
     avatarUrl: claims.picture || pgUser?.avatar_url || null,
@@ -1194,13 +1269,13 @@ export function authenticateWithGoogleClaims(
   });
 
   // Check 1: Find existing user by google_sub
-  let existingUser = db.prepare('SELECT * FROM commercial_users WHERE google_sub = ?').get(claims.sub) as any;
+  let existingUser = db.prepare('SELECT * FROM commercial_users WHERE google_sub = ?').get(claims.sub) as SqliteCommercialOAuthUserRow | undefined;
   let isLinked = false;
   let isNewAccount = false;
 
   // Check 2: Find existing user by email (Account Linking)
   if (!existingUser) {
-    const userByEmail = db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(cleanEmail) as any;
+    const userByEmail = db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(cleanEmail) as SqliteCommercialOAuthUserRow | undefined;
     if (userByEmail) {
       existingUser = userByEmail;
       isLinked = true;
@@ -1208,7 +1283,7 @@ export function authenticateWithGoogleClaims(
   }
 
   // Enforce account status BEFORE updating or issuing a token
-  if (existingUser && existingUser.status && existingUser.status !== 'ACTIVE') {
+  if (existingUser?.status && existingUser.status !== 'ACTIVE') {
     return {
       success: false,
       isNewAccount: false,
@@ -1364,7 +1439,7 @@ export function authenticateWithGoogleClaims(
     logCommercialAudit({
       actorId: userId,
       actorName: existingUser.name,
-      actorRole: existingUser.role || 'USER',
+      actorRole: (existingUser.role || 'USER') as CommercialRole,
       action: 'OAUTH_LOGIN_GOOGLE',
       targetType: 'USER',
       targetId: userId,
@@ -1375,12 +1450,12 @@ export function authenticateWithGoogleClaims(
   }
 
   // Retrieve unified user record
-  const user = getUserById(userId) || {
+  const user: GoogleAuthUser = getUserById(userId) || {
     id: userId,
     email: cleanEmail,
     name: (claims.name || existingUser?.name || cleanEmail.split('@')[0] || 'Google User').trim(),
-    role: (existingUser?.role || 'USER') as any,
-    status: (existingUser?.status || 'ACTIVE') as any,
+    role: (existingUser?.role || 'USER') as CommercialRole,
+    status: (existingUser?.status || 'ACTIVE') as CommercialUserStatus,
     planId: existingUser?.plan_id || planId,
     trialExpiresAt: existingUser?.trial_expires_at || null,
     avatarUrl: claims.picture || existingUser?.avatar_url || null,

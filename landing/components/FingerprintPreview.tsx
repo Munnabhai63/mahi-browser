@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 interface FingerprintState {
   os: 'windows' | 'mac' | 'linux';
@@ -129,6 +129,7 @@ export default function FingerprintPreview() {
 
         <div className="flex flex-wrap items-center gap-2">
           <button
+            type="button"
             onClick={() => handleSelectPreset('win_chrome')}
             className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
               activePresetKey === 'win_chrome'
@@ -139,6 +140,7 @@ export default function FingerprintPreview() {
             Windows / Chrome 138
           </button>
           <button
+            type="button"
             onClick={() => handleSelectPreset('mac_camoufox')}
             className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
               activePresetKey === 'mac_camoufox'
@@ -149,6 +151,7 @@ export default function FingerprintPreview() {
             macOS / Camoufox
           </button>
           <button
+            type="button"
             onClick={() => handleSelectPreset('linux_chrome')}
             className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
               activePresetKey === 'linux_chrome'
@@ -159,6 +162,7 @@ export default function FingerprintPreview() {
             Linux / Vulkan
           </button>
           <button
+            type="button"
             onClick={handleRandomize}
             disabled={isScrambling}
             className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 transition active:scale-95 flex items-center gap-1.5"
@@ -168,6 +172,7 @@ export default function FingerprintPreview() {
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
+              aria-hidden="true"
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
@@ -236,8 +241,8 @@ export default function FingerprintPreview() {
             </span>
           </div>
           <div className="flex flex-wrap gap-1.5 bg-slate-950/80 p-2 rounded border border-slate-800">
-            {currentFp.brands.map((b, i) => (
-              <span key={i} className="rounded bg-slate-800/90 px-2 py-0.5 text-[11px] font-mono text-red-300">
+            {currentFp.brands.map((b) => (
+              <span key={b.brand} className="rounded bg-slate-800/90 px-2 py-0.5 text-[11px] font-mono text-red-300">
                 "{b.brand}": {b.version}
               </span>
             ))}

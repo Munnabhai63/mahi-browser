@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { BRAND } from '../../lib/brand';
 
@@ -60,7 +61,7 @@ export default function FeaturesPage() {
     }, TICK);
 
     return () => clearInterval(timer);
-  }, [isPaused, activeWorkflowTab, workflowTabs.length]);
+  }, [isPaused, workflowTabs.length]);
 
   const selectTab = (idx: number) => {
     setActiveWorkflowTab(idx);
@@ -105,7 +106,7 @@ export default function FeaturesPage() {
                 onClick={trackDownload}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-white text-black px-5 py-2 text-xs sm:text-[13px] font-medium transition-all duration-200 hover:bg-zinc-200 active:scale-[0.98] shadow-sm"
               >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
                 Download Free (15 Profiles)
@@ -127,7 +128,7 @@ export default function FeaturesPage() {
             <div className="relative w-full max-w-6xl mx-auto rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl bg-black">
               
               {/* 1600x900 Hero Image Composite */}
-              <img
+              <Image
                 src="/assets/features_hero_composite.svg"
                 alt="Mahi Browser Enterprise Fleet Operation"
                 className="w-full h-auto object-cover block select-none pointer-events-none"
@@ -141,30 +142,30 @@ export default function FeaturesPage() {
                   
                   {/* Set 1 */}
                   <div className="flex shrink-0 items-center gap-10 sm:gap-14 lg:gap-16 px-6 sm:px-10">
-                    <img src="/assets/img/platforms/meta-logo.svg" alt="Meta" className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/g-ads-logo.svg" alt="Google Ads" className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/tiktok-logo-1.svg" alt="TikTok" className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/amazon-logo-1.svg" alt="Amazon" className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/x-logo.svg" alt="X" className="h-3.5 sm:h-4 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/discord-logo-1.svg" alt="Discord" className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/linkedin-logo-1.svg" alt="LinkedIn" className="h-3.5 sm:h-4 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/reddit-logo-1.svg" alt="Reddit" className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/ebay-logo-1.svg" alt="eBay" className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/youTube-logo.svg" alt="YouTube" className="h-3.5 sm:h-4 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/meta-logo.svg" alt="Meta" width={100} height={20} className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/g-ads-logo.svg" alt="Google Ads" width={110} height={22} className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/tiktok-logo-1.svg" alt="TikTok" width={100} height={20} className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/amazon-logo-1.svg" alt="Amazon" width={100} height={20} className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/x-logo.svg" alt="X" width={20} height={20} className="h-3.5 sm:h-4 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/discord-logo-1.svg" alt="Discord" width={100} height={20} className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/linkedin-logo-1.svg" alt="LinkedIn" width={100} height={20} className="h-3.5 sm:h-4 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/reddit-logo-1.svg" alt="Reddit" width={100} height={20} className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/ebay-logo-1.svg" alt="eBay" width={100} height={20} className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/youTube-logo.svg" alt="YouTube" width={100} height={20} className="h-3.5 sm:h-4 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
                   </div>
 
                   {/* Set 2 (Continuous Loop) */}
                   <div className="flex shrink-0 items-center gap-10 sm:gap-14 lg:gap-16 px-6 sm:px-10" aria-hidden="true">
-                    <img src="/assets/img/platforms/meta-logo.svg" alt="Meta" className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/g-ads-logo.svg" alt="Google Ads" className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/tiktok-logo-1.svg" alt="TikTok" className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/amazon-logo-1.svg" alt="Amazon" className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/x-logo.svg" alt="X" className="h-3.5 sm:h-4 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/discord-logo-1.svg" alt="Discord" className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/linkedin-logo-1.svg" alt="LinkedIn" className="h-3.5 sm:h-4 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/reddit-logo-1.svg" alt="Reddit" className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/ebay-logo-1.svg" alt="eBay" className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
-                    <img src="/assets/img/platforms/youTube-logo.svg" alt="YouTube" className="h-3.5 sm:h-4 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/meta-logo.svg" alt="Meta" width={100} height={20} className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/g-ads-logo.svg" alt="Google Ads" width={110} height={22} className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/tiktok-logo-1.svg" alt="TikTok" width={100} height={20} className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/amazon-logo-1.svg" alt="Amazon" width={100} height={20} className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/x-logo.svg" alt="X" width={20} height={20} className="h-3.5 sm:h-4 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/discord-logo-1.svg" alt="Discord" width={100} height={20} className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/linkedin-logo-1.svg" alt="LinkedIn" width={100} height={20} className="h-3.5 sm:h-4 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/reddit-logo-1.svg" alt="Reddit" width={100} height={20} className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/ebay-logo-1.svg" alt="eBay" width={100} height={20} className="h-4 sm:h-4.5 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
+                    <Image src="/assets/img/platforms/youTube-logo.svg" alt="YouTube" width={100} height={20} className="h-3.5 sm:h-4 w-auto object-contain brightness-0 invert opacity-85 shrink-0" />
                   </div>
 
                 </div>
@@ -229,10 +230,11 @@ export default function FeaturesPage() {
             {/* Card 1: Autonomous Profile Fleet */}
             <div className="flex flex-col">
               <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-200 group shadow-sm">
-                <img
+                <Image
                   src="/assets/M1oxWnB7xb9RowzhF8iZjEdE.jpg"
                   alt="Autonomous Profile Fleet"
-                  className="w-full h-full object-cover block transition-transform duration-500 group-hover:scale-105 select-none pointer-events-none"
+                  fill
+                  className="object-cover block transition-transform duration-500 group-hover:scale-105 select-none pointer-events-none"
                 />
                 <div className="absolute inset-0 flex items-center justify-center p-4">
                   <div className="w-[88%] max-w-[320px] rounded-2xl border border-white/20 bg-black/65 backdrop-blur-xl p-4 sm:p-5 shadow-2xl">
@@ -263,10 +265,11 @@ export default function FeaturesPage() {
             {/* Card 2: Deep Fingerprint Stealth */}
             <div className="flex flex-col">
               <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-200 group shadow-sm">
-                <img
+                <Image
                   src="/assets/KUP2LdDDrV5R1Zsckb8CtPGqFkA.jpg"
                   alt="Deep Fingerprint Stealth"
-                  className="w-full h-full object-cover block transition-transform duration-500 group-hover:scale-105 select-none pointer-events-none"
+                  fill
+                  className="object-cover block transition-transform duration-500 group-hover:scale-105 select-none pointer-events-none"
                 />
                 <div className="absolute inset-0 flex items-center justify-center p-4">
                   <div className="w-[88%] max-w-[320px] rounded-2xl border border-white/20 bg-black/65 backdrop-blur-xl p-4 sm:p-5 shadow-2xl">
@@ -297,10 +300,11 @@ export default function FeaturesPage() {
             {/* Card 3: Complete Fleet Visibility */}
             <div className="flex flex-col">
               <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-zinc-200 group shadow-sm">
-                <img
+                <Image
                   src="/assets/hero_bg_laptop.webp"
                   alt="Complete Fleet Visibility"
-                  className="w-full h-full object-cover block transition-transform duration-500 group-hover:scale-105 select-none pointer-events-none"
+                  fill
+                  className="object-cover block transition-transform duration-500 group-hover:scale-105 select-none pointer-events-none"
                 />
                 <div className="absolute inset-0 flex items-center justify-center p-4">
                   <div className="w-[88%] max-w-[320px] rounded-2xl border border-white/20 bg-black/65 backdrop-blur-xl p-4 sm:p-5 shadow-2xl">
@@ -374,7 +378,8 @@ export default function FeaturesPage() {
           </div>
 
           {/* Interactive 3 Tabs Row with Auto-Progress Animation */}
-          <div 
+          <section
+            aria-label="Workflow tabs navigation"
             className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 lg:gap-12 mt-12 sm:mt-16 mb-8 sm:mb-12"
             onMouseEnter={() => setIsPaused(true)}
             onMouseLeave={() => setIsPaused(false)}
@@ -383,7 +388,7 @@ export default function FeaturesPage() {
               const isActive = activeWorkflowTab === idx;
               return (
                 <button
-                  key={idx}
+                  key={tab.title}
                   type="button"
                   onClick={() => selectTab(idx)}
                   className="text-left group cursor-pointer focus:outline-none flex flex-col items-start"
@@ -424,10 +429,11 @@ export default function FeaturesPage() {
                 </button>
               );
             })}
-          </div>
+          </section>
 
           {/* Dashboard / Laptop Mockup Display Container */}
-          <div 
+          <section
+            aria-label="Workflow visual preview"
             className="relative w-full rounded-2xl overflow-hidden border border-white/10 bg-[#08090b] shadow-2xl transition-all duration-300 group"
             onMouseEnter={() => setIsPaused(true)}
             onMouseLeave={() => setIsPaused(false)}
@@ -439,14 +445,15 @@ export default function FeaturesPage() {
             </div>
 
             <div className="relative w-full aspect-[16/9] overflow-hidden flex items-center justify-center bg-[#030303]">
-              <img
+              <Image
                 key={activeWorkflowTab}
                 src={workflowTabs[activeWorkflowTab]?.image || '/assets/mahi_workflow_laptop.jpg'}
                 alt={workflowTabs[activeWorkflowTab]?.title || 'Mahi Browser Workflow'}
-                className="w-full h-full object-cover select-none pointer-events-none rounded-2xl animate-fadeInScale"
+                fill
+                className="object-cover select-none pointer-events-none rounded-2xl animate-fadeInScale"
               />
             </div>
-          </div>
+          </section>
 
         </div>
       </section>
@@ -497,34 +504,34 @@ export default function FeaturesPage() {
             {/* Row 1: Platforms */}
             <div className="flex overflow-hidden select-none group">
               <div className="flex shrink-0 items-center gap-10 sm:gap-14 animate-marquee group-hover:[animation-play-state:paused]">
-                <img src="/assets/img/platforms/meta-logo.svg" alt="Meta" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/g-ads-logo.svg" alt="Google Ads" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/tiktok-logo-1.svg" alt="TikTok" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/amazon-logo-1.svg" alt="Amazon" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/x-logo.svg" alt="X" className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/discord-logo-1.svg" alt="Discord" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/linkedin-logo-1.svg" alt="LinkedIn" className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/reddit-logo-1.svg" alt="Reddit" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/ebay-logo-1.svg" alt="eBay" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/youTube-logo.svg" alt="YouTube" className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/instagram-logo-1.svg" alt="Instagram" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/facebook-logo-1.svg" alt="Facebook" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/gmail-logo.svg" alt="Gmail" className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/Airbnb-logo.svg" alt="Airbnb" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/etsy-logo-1.svg" alt="Etsy" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/pintrest-logo.svg" alt="Pinterest" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/meta-logo.svg" alt="Meta" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/g-ads-logo.svg" alt="Google Ads" width={110} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/tiktok-logo-1.svg" alt="TikTok" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/amazon-logo-1.svg" alt="Amazon" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/x-logo.svg" alt="X" width={20} height={20} className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/discord-logo-1.svg" alt="Discord" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/linkedin-logo-1.svg" alt="LinkedIn" width={100} height={20} className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/reddit-logo-1.svg" alt="Reddit" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/ebay-logo-1.svg" alt="eBay" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/youTube-logo.svg" alt="YouTube" width={100} height={20} className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/instagram-logo-1.svg" alt="Instagram" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/facebook-logo-1.svg" alt="Facebook" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/gmail-logo.svg" alt="Gmail" width={100} height={20} className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/Airbnb-logo.svg" alt="Airbnb" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/etsy-logo-1.svg" alt="Etsy" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/pintrest-logo.svg" alt="Pinterest" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
               </div>
               <div className="flex shrink-0 items-center gap-10 sm:gap-14 animate-marquee group-hover:[animation-play-state:paused]" aria-hidden="true">
-                <img src="/assets/img/platforms/meta-logo.svg" alt="Meta" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/g-ads-logo.svg" alt="Google Ads" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/tiktok-logo-1.svg" alt="TikTok" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/amazon-logo-1.svg" alt="Amazon" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/x-logo.svg" alt="X" className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/discord-logo-1.svg" alt="Discord" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/linkedin-logo-1.svg" alt="LinkedIn" className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/reddit-logo-1.svg" alt="Reddit" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/ebay-logo-1.svg" alt="eBay" className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
-                <img src="/assets/img/platforms/youTube-logo.svg" alt="YouTube" className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/meta-logo.svg" alt="Meta" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/g-ads-logo.svg" alt="Google Ads" width={110} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/tiktok-logo-1.svg" alt="TikTok" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/amazon-logo-1.svg" alt="Amazon" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/x-logo.svg" alt="X" width={20} height={20} className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/discord-logo-1.svg" alt="Discord" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/linkedin-logo-1.svg" alt="LinkedIn" width={100} height={20} className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/reddit-logo-1.svg" alt="Reddit" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/ebay-logo-1.svg" alt="eBay" width={100} height={24} className="h-5 sm:h-6 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
+                <Image src="/assets/img/platforms/youTube-logo.svg" alt="YouTube" width={100} height={20} className="h-4.5 sm:h-5 w-auto object-contain brightness-0 invert opacity-65 hover:opacity-100 transition-opacity shrink-0" />
               </div>
             </div>
 
@@ -532,65 +539,65 @@ export default function FeaturesPage() {
             <div className="flex overflow-hidden select-none group">
               <div className="flex shrink-0 items-center gap-10 sm:gap-14 animate-marquee-reverse group-hover:[animation-play-state:paused]">
                 <div className="flex items-center gap-2 opacity-65 hover:opacity-100 transition-opacity shrink-0" title="Windows">
-                  <svg className="w-5 h-5 fill-current text-white" viewBox="0 0 24 24"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+                  <svg className="w-5 h-5 fill-current text-white" viewBox="0 0 24 24" aria-hidden="true"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
                   <span className="text-xs font-mono tracking-tight text-zinc-300">Windows</span>
                 </div>
                 <div className="flex items-center gap-2 opacity-65 hover:opacity-100 transition-opacity shrink-0" title="Android">
-                  <img src="/assets/img/features/android-icon.svg" alt="Android" className="w-5 h-5 object-contain brightness-0 invert" />
+                  <Image src="/assets/img/features/android-icon.svg" alt="Android" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert" />
                   <span className="text-xs font-mono tracking-tight text-zinc-300">Android</span>
                 </div>
                 <div className="flex items-center gap-2 opacity-65 hover:opacity-100 transition-opacity shrink-0" title="Chromium Engine">
-                  <img src="/assets/img/features/chrome-icon1.svg" alt="Chromium" className="w-5 h-5 object-contain brightness-0 invert" />
+                  <Image src="/assets/img/features/chrome-icon1.svg" alt="Chromium" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert" />
                   <span className="text-xs font-mono tracking-tight text-zinc-300">Chromium 138</span>
                 </div>
                 <div className="flex items-center gap-2 opacity-65 hover:opacity-100 transition-opacity shrink-0" title="Python SDK">
-                  <svg className="w-5 h-5 fill-current text-white" viewBox="0 0 24 24"><path d="M11.914 0C5.82 0 6.2 2.656 6.2 2.656l.006 2.752h5.8v.826H3.88S0 5.79 0 11.908c0 6.12 3.395 5.908 3.395 5.908h2.025v-2.836s-.11-3.387 3.32-3.387h5.714s3.21.053 3.21-3.11V2.656S18.006 0 11.914 0zm-3.27 1.838a1.05 1.05 0 1 1 0 2.1 1.05 1.05 0 0 1 0-2.1zm3.442 22.162c6.094 0 5.714-2.656 5.714-2.656l-.006-2.752h-5.8v-.826h8.126S24 18.21 24 12.092c0-6.12-3.395-5.908-3.395-5.908h-2.025v2.836s.11 3.387-3.32 3.387h-5.714s-3.21-.053-3.21 3.11v5.828s-.346 2.656 5.746 2.656zm3.27-1.838a1.05 1.05 0 1 1 0-2.1 1.05 1.05 0 0 1 0 2.1z"/></svg>
+                  <svg className="w-5 h-5 fill-current text-white" viewBox="0 0 24 24" aria-hidden="true"><path d="M11.914 0C5.82 0 6.2 2.656 6.2 2.656l.006 2.752h5.8v.826H3.88S0 5.79 0 11.908c0 6.12 3.395 5.908 3.395 5.908h2.025v-2.836s-.11-3.387 3.32-3.387h5.714s3.21.053 3.21-3.11V2.656S18.006 0 11.914 0zm-3.27 1.838a1.05 1.05 0 1 1 0 2.1 1.05 1.05 0 0 1 0-2.1zm3.442 22.162c6.094 0 5.714-2.656 5.714-2.656l-.006-2.752h-5.8v-.826h8.126S24 18.21 24 12.092c0-6.12-3.395-5.908-3.395-5.908h-2.025v2.836s.11 3.387-3.32 3.387h-5.714s-3.21-.053-3.21 3.11v5.828s-.346 2.656 5.746 2.656zm3.27-1.838a1.05 1.05 0 1 1 0-2.1 1.05 1.05 0 0 1 0 2.1z"/></svg>
                   <span className="text-xs font-mono tracking-tight text-zinc-300">Python</span>
                 </div>
                 <div className="flex items-center gap-2 opacity-65 hover:opacity-100 transition-opacity shrink-0" title="Playwright API">
-                  <svg className="w-5 h-5 fill-none stroke-current text-white stroke-2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor"/></svg>
+                  <svg className="w-5 h-5 fill-none stroke-current text-white stroke-2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor"/></svg>
                   <span className="text-xs font-mono tracking-tight text-zinc-300">Playwright</span>
                 </div>
                 <div className="flex items-center gap-2 opacity-65 hover:opacity-100 transition-opacity shrink-0" title="Puppeteer">
-                  <svg className="w-5 h-5 fill-current text-white" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                  <svg className="w-5 h-5 fill-current text-white" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
                   <span className="text-xs font-mono tracking-tight text-zinc-300">Puppeteer</span>
                 </div>
                 <div className="flex items-center gap-2 opacity-65 hover:opacity-100 transition-opacity shrink-0" title="Selenium Grid">
-                  <svg className="w-5 h-5 fill-current text-white" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+                  <svg className="w-5 h-5 fill-current text-white" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
                   <span className="text-xs font-mono tracking-tight text-zinc-300">Selenium</span>
                 </div>
                 <div className="flex items-center gap-2 opacity-65 hover:opacity-100 transition-opacity shrink-0" title="Residential & Mobile Proxies">
-                  <img src="/assets/img/features/proxies-icon1.svg" alt="Proxies" className="w-5 h-5 object-contain brightness-0 invert" />
+                  <Image src="/assets/img/features/proxies-icon1.svg" alt="Proxies" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert" />
                   <span className="text-xs font-mono tracking-tight text-zinc-300">Proxies (4G/5G)</span>
                 </div>
                 <div className="flex items-center gap-2 opacity-65 hover:opacity-100 transition-opacity shrink-0" title="C++ Hardware Fingerprints">
-                  <img src="/assets/img/features/fingerprint-icon1.svg" alt="Fingerprints" className="w-5 h-5 object-contain brightness-0 invert" />
+                  <Image src="/assets/img/features/fingerprint-icon1.svg" alt="Fingerprints" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert" />
                   <span className="text-xs font-mono tracking-tight text-zinc-300">C++ Spoofing</span>
                 </div>
                 <div className="flex items-center gap-2 opacity-65 hover:opacity-100 transition-opacity shrink-0" title="Docker Containerization">
-                  <svg className="w-5 h-5 fill-current text-white" viewBox="0 0 24 24"><path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.186v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.186.185.186zm0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.186.185.186zm-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.186.185.186zm-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.186.186.186zm5.893 2.715h2.118a.186.186 0 00.186-.186V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.186v1.888c0 .102.082.185.185.185zm-2.93 0h2.12a.185.185 0 00.184-.186V9.006a.185.185 0 00-.184-.186H8.1a.185.185 0 00-.185.186v1.888c0 .102.083.185.185.185zm-2.964 0h2.119a.185.185 0 00.185-.186V9.006a.185.185 0 00-.185-.186H5.136a.186.186 0 00-.186.186v1.888c0 .102.084.185.186.185zm-2.928 0h2.119a.185.185 0 00.185-.186V9.006a.185.185 0 00-.185-.186H2.208a.185.185 0 00-.185.186v1.888c0 .102.083.185.185.185zm21.603.627a8.777 8.777 0 00-5.714-3.155.188.188 0 00-.168.077c-.504.665-1.255 1.055-2.072 1.055h-.372a.186.186 0 00-.186.186v3.292c0 .918.746 1.664 1.664 1.664h1.72c2.472 0 4.675-.98 6.305-2.585a.187.187 0 00.04-.194c-.31-.796-.723-1.583-1.217-2.344zM23.978 13.064c-.13-.092-.587-.394-1.442-.408-.667-.01-1.353.15-2.043.479-.65.31-1.306.467-1.95.467-.624 0-1.25-.145-1.874-.436-.64-.298-1.302-.45-1.966-.45-.664 0-1.326.152-1.967.45-.623.29-1.248.436-1.872.436-.643 0-1.302-.157-1.952-.467-.69-.328-1.376-.489-2.043-.479-.854.014-1.312.316-1.441.408a.222.222 0 00-.091.176c0 .878.23 2.656 1.34 4.398 1.135 1.782 2.923 2.868 5.318 3.23 1.326.2 2.673.2 3.999 0 2.396-.362 4.184-1.448 5.319-3.23 1.11-1.742 1.34-3.52 1.34-4.398a.22.22 0 00-.09-.176z"/></svg>
+                  <svg className="w-5 h-5 fill-current text-white" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.186v1.888c0 .102.083.185.185.185m-2.954-5.43h2.118a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.186.185.186zm0 2.716h2.118a.187.187 0 00.186-.186V6.29a.186.186 0 00-.186-.185h-2.118a.185.185 0 00-.185.185v1.887c0 .102.082.186.185.186zm-2.93 0h2.12a.186.186 0 00.184-.186V6.29a.185.185 0 00-.185-.185H8.1a.185.185 0 00-.185.185v1.887c0 .102.083.186.185.186zm-2.964 0h2.119a.186.186 0 00.185-.186V6.29a.185.185 0 00-.185-.185H5.136a.186.186 0 00-.186.185v1.887c0 .102.084.186.186.186zm5.893 2.715h2.118a.186.186 0 00.186-.186V9.006a.186.186 0 00-.186-.186h-2.118a.185.185 0 00-.185.186v1.888c0 .102.082.185.185.185zm-2.93 0h2.12a.185.185 0 00.184-.186V9.006a.185.185 0 00-.184-.186H8.1a.185.185 0 00-.185.186v1.888c0 .102.083.185.185.185zm-2.964 0h2.119a.185.185 0 00.185-.186V9.006a.185.185 0 00-.185-.186H5.136a.186.186 0 00-.186.186v1.888c0 .102.084.185.186.185zm-2.928 0h2.119a.185.185 0 00.185-.186V9.006a.185.185 0 00-.185-.186H2.208a.185.185 0 00-.185.186v1.888c0 .102.083.185.185.185zm21.603.627a8.777 8.777 0 00-5.714-3.155.188.188 0 00-.168.077c-.504.665-1.255 1.055-2.072 1.055h-.372a.186.186 0 00-.186.186v3.292c0 .918.746 1.664 1.664 1.664h1.72c2.472 0 4.675-.98 6.305-2.585a.187.187 0 00.04-.194c-.31-.796-.723-1.583-1.217-2.344zM23.978 13.064c-.13-.092-.587-.394-1.442-.408-.667-.01-1.353.15-2.043.479-.65.31-1.306.467-1.95.467-.624 0-1.25-.145-1.874-.436-.64-.298-1.302-.45-1.966-.45-.664 0-1.326.152-1.967.45-.623.29-1.248.436-1.872.436-.643 0-1.302-.157-1.952-.467-.69-.328-1.376-.489-2.043-.479-.854.014-1.312.316-1.441.408a.222.222 0 00-.091.176c0 .878.23 2.656 1.34 4.398 1.135 1.782 2.923 2.868 5.318 3.23 1.326.2 2.673.2 3.999 0 2.396-.362 4.184-1.448 5.319-3.23 1.11-1.742 1.34-3.52 1.34-4.398a.22.22 0 00-.09-.176z"/></svg>
                   <span className="text-xs font-mono tracking-tight text-zinc-300">Docker</span>
                 </div>
                 <div className="flex items-center gap-2 opacity-65 hover:opacity-100 transition-opacity shrink-0" title="Local Headless REST API">
-                  <svg className="w-5 h-5 fill-none stroke-current text-white stroke-2" viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
+                  <svg className="w-5 h-5 fill-none stroke-current text-white stroke-2" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
                   <span className="text-xs font-mono tracking-tight text-zinc-300">REST API</span>
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-10 sm:gap-14 animate-marquee-reverse group-hover:[animation-play-state:paused]" aria-hidden="true">
                 <div className="flex items-center gap-2 opacity-65 hover:opacity-100 transition-opacity shrink-0">
-                  <svg className="w-5 h-5 fill-current text-white" viewBox="0 0 24 24"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+                  <svg className="w-5 h-5 fill-current text-white" viewBox="0 0 24 24" aria-hidden="true"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
                   <span className="text-xs font-mono tracking-tight text-zinc-300">Windows</span>
                 </div>
                 <div className="flex items-center gap-2 opacity-65 hover:opacity-100 transition-opacity shrink-0">
-                  <img src="/assets/img/features/android-icon.svg" alt="Android" className="w-5 h-5 object-contain brightness-0 invert" />
+                  <Image src="/assets/img/features/android-icon.svg" alt="Android" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert" />
                   <span className="text-xs font-mono tracking-tight text-zinc-300">Android</span>
                 </div>
                 <div className="flex items-center gap-2 opacity-65 hover:opacity-100 transition-opacity shrink-0">
-                  <img src="/assets/img/features/chrome-icon1.svg" alt="Chromium" className="w-5 h-5 object-contain brightness-0 invert" />
+                  <Image src="/assets/img/features/chrome-icon1.svg" alt="Chromium" width={20} height={20} className="w-5 h-5 object-contain brightness-0 invert" />
                   <span className="text-xs font-mono tracking-tight text-zinc-300">Chromium 138</span>
                 </div>
                 <div className="flex items-center gap-2 opacity-65 hover:opacity-100 transition-opacity shrink-0">
-                  <svg className="w-5 h-5 fill-current text-white" viewBox="0 0 24 24"><path d="M11.914 0C5.82 0 6.2 2.656 6.2 2.656l.006 2.752h5.8v.826H3.88S0 5.79 0 11.908c0 6.12 3.395 5.908 3.395 5.908h2.025v-2.836s-.11-3.387 3.32-3.387h5.714s3.21.053 3.21-3.11V2.656S18.006 0 11.914 0zm-3.27 1.838a1.05 1.05 0 1 1 0 2.1 1.05 1.05 0 0 1 0-2.1zm3.442 22.162c6.094 0 5.714-2.656 5.714-2.656l-.006-2.752h-5.8v-.826h8.126S24 18.21 24 12.092c0-6.12-3.395-5.908-3.395-5.908h-2.025v2.836s.11 3.387-3.32 3.387h-5.714s-3.21-.053-3.21 3.11v5.828s-.346 2.656 5.746 2.656zm3.27-1.838a1.05 1.05 0 1 1 0-2.1 1.05 1.05 0 0 1 0 2.1z"/></svg>
+                  <svg className="w-5 h-5 fill-current text-white" viewBox="0 0 24 24" aria-hidden="true"><path d="M11.914 0C5.82 0 6.2 2.656 6.2 2.656l.006 2.752h5.8v.826H3.88S0 5.79 0 11.908c0 6.12 3.395 5.908 3.395 5.908h2.025v-2.836s-.11-3.387 3.32-3.387h5.714s3.21.053 3.21-3.11V2.656S18.006 0 11.914 0zm-3.27 1.838a1.05 1.05 0 1 1 0 2.1 1.05 1.05 0 0 1 0-2.1zm3.442 22.162c6.094 0 5.714-2.656 5.714-2.656l-.006-2.752h-5.8v-.826h8.126S24 18.21 24 12.092c0-6.12-3.395-5.908-3.395-5.908h-2.025v2.836s.11 3.387-3.32 3.387h-5.714s-3.21-.053-3.21 3.11v5.828s-.346 2.656 5.746 2.656zm3.27-1.838a1.05 1.05 0 1 1 0-2.1 1.05 1.05 0 0 1 0 2.1z"/></svg>
                   <span className="text-xs font-mono tracking-tight text-zinc-300">Python</span>
                 </div>
               </div>
@@ -650,11 +657,11 @@ export default function FeaturesPage() {
               {/* Card 1: Affiliate Marketing */}
               <div className="flex flex-col group">
                 <div className="aspect-[4/3] w-full overflow-hidden rounded-[6px] bg-[#08090b] relative border border-[#222329] shadow-sm">
-                  <img
+                  <Image
                     src="/assets/solutions/solution_affiliate.svg"
                     alt="Affiliate Marketing"
-                    className="w-full h-full object-contain transition-transform duration-500 ease-out group-hover:scale-[1.02]"
-                    loading="lazy"
+                    fill
+                    className="object-contain transition-transform duration-500 ease-out group-hover:scale-[1.02]"
                   />
                 </div>
                 <div className="mt-4 flex flex-col">
@@ -670,11 +677,11 @@ export default function FeaturesPage() {
               {/* Card 2: E-Commerce Fleets */}
               <div className="flex flex-col group">
                 <div className="aspect-[4/3] w-full overflow-hidden rounded-[6px] bg-[#08090b] relative border border-[#222329] shadow-sm">
-                  <img
+                  <Image
                     src="/assets/solutions/solution_ecommerce.svg"
                     alt="E-Commerce Fleets"
-                    className="w-full h-full object-contain transition-transform duration-500 ease-out group-hover:scale-[1.02]"
-                    loading="lazy"
+                    fill
+                    className="object-contain transition-transform duration-500 ease-out group-hover:scale-[1.02]"
                   />
                 </div>
                 <div className="mt-4 flex flex-col">
@@ -690,11 +697,11 @@ export default function FeaturesPage() {
               {/* Card 3: Web Scraping & Data */}
               <div className="flex flex-col group">
                 <div className="aspect-[4/3] w-full overflow-hidden rounded-[6px] bg-[#08090b] relative border border-[#222329] shadow-sm">
-                  <img
+                  <Image
                     src="/assets/solutions/solution_scraping.svg"
                     alt="Web Scraping & Data"
-                    className="w-full h-full object-contain transition-transform duration-500 ease-out group-hover:scale-[1.02]"
-                    loading="lazy"
+                    fill
+                    className="object-contain transition-transform duration-500 ease-out group-hover:scale-[1.02]"
                   />
                 </div>
                 <div className="mt-4 flex flex-col">
@@ -710,11 +717,11 @@ export default function FeaturesPage() {
               {/* Card 4: Social Media Operations */}
               <div className="flex flex-col group">
                 <div className="aspect-[4/3] w-full overflow-hidden rounded-[6px] bg-[#08090b] relative border border-[#222329] shadow-sm">
-                  <img
+                  <Image
                     src="/assets/solutions/solution_social.svg"
                     alt="Social Media Operations"
-                    className="w-full h-full object-contain transition-transform duration-500 ease-out group-hover:scale-[1.02]"
-                    loading="lazy"
+                    fill
+                    className="object-contain transition-transform duration-500 ease-out group-hover:scale-[1.02]"
                   />
                 </div>
                 <div className="mt-4 flex flex-col">
@@ -744,12 +751,12 @@ export default function FeaturesPage() {
             
             {/* Left Photo Wrapper */}
             <div className="w-full lg:flex-1 lg:pr-8 flex items-center justify-center">
-              <div className="w-full aspect-square rounded-[4px] overflow-hidden bg-zinc-300">
-                <img
+              <div className="relative w-full aspect-square rounded-[4px] overflow-hidden bg-zinc-300">
+                <Image
                   src="/assets/testimonial_jane.jpg"
                   alt="Jane Berwick"
-                  className="w-full h-full object-cover object-top rounded-[4px]"
-                  loading="lazy"
+                  fill
+                  className="object-cover object-top rounded-[4px]"
                 />
               </div>
             </div>
@@ -758,9 +765,11 @@ export default function FeaturesPage() {
             <div className="w-full lg:flex-[1.25] flex flex-col justify-between self-stretch lg:border-l lg:border-[rgba(158,158,157,0.4)] lg:pl-8 pt-4 lg:pt-0">
               <div>
                 <div className="mb-6 opacity-85">
-                  <img
+                  <Image
                     src="/assets/westbridge_logo.svg"
                     alt="Westbridge"
+                    width={140}
+                    height={20}
                     className="h-5 w-auto object-contain"
                   />
                 </div>
@@ -850,9 +859,11 @@ export default function FeaturesPage() {
                   </p>
                 </div>
                 <div className="pt-12">
-                  <img
+                  <Image
                     src="/assets/security/soc2_shield.svg"
                     alt="Zero CDP Leaks"
+                    width={48}
+                    height={48}
                     className="w-12 h-12 opacity-80 group-hover:opacity-100 transition-opacity"
                   />
                 </div>
@@ -869,9 +880,11 @@ export default function FeaturesPage() {
                   </p>
                 </div>
                 <div className="pt-12">
-                  <img
+                  <Image
                     src="/assets/security/iso27001.svg"
                     alt="Client-Side AES-256"
+                    width={48}
+                    height={48}
                     className="w-12 h-12 opacity-80 group-hover:opacity-100 transition-opacity"
                   />
                 </div>
@@ -888,9 +901,11 @@ export default function FeaturesPage() {
                   </p>
                 </div>
                 <div className="pt-12">
-                  <img
+                  <Image
                     src="/assets/security/gdpr_stars.svg"
                     alt="Distributed Team Locking"
+                    width={48}
+                    height={48}
                     className="w-12 h-12 opacity-80 group-hover:opacity-100 transition-opacity"
                   />
                 </div>
@@ -962,8 +977,9 @@ export default function FeaturesPage() {
             ].map((item, idx) => {
               const isOpen = openFaq === idx;
               return (
-                <div key={idx} className="border-b border-zinc-300/80">
+                <div key={item.q} className="border-b border-zinc-300/80">
                   <button
+                    type="button"
                     onClick={() => setOpenFaq(isOpen ? null : idx)}
                     className="w-full py-6 flex items-center justify-between text-left gap-4 group"
                   >
@@ -1015,7 +1031,7 @@ export default function FeaturesPage() {
                   onClick={trackDownload}
                   className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full bg-white text-black text-xs sm:text-sm font-medium hover:bg-zinc-200 transition-colors shadow-sm"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
                   Download Free (15 Profiles)
@@ -1031,11 +1047,12 @@ export default function FeaturesPage() {
 
             {/* Right Mockup */}
             <div className="lg:col-span-6 flex justify-center">
-              <div className="w-full max-w-lg aspect-[16/10] rounded-[4px] overflow-hidden border border-zinc-800 shadow-xl bg-zinc-900">
-                <img
+              <div className="relative w-full max-w-lg aspect-[16/10] rounded-[4px] overflow-hidden border border-zinc-800 shadow-xl bg-zinc-900">
+                <Image
                   src="/assets/mahi_workflow_dashboard.jpg"
                   alt="Mahi Browser Dashboard"
-                  className="w-full h-full object-cover"
+                  fill
+                  className="object-cover"
                 />
               </div>
             </div>

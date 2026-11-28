@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import { Key, Check, Copy, X } from 'lucide-react';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { BrandLogo } from './BrandLogo.js';
-import { fetchMyLicense, MyLicenseResponse } from '../api-fallback.js';
+import { fetchMyLicense, type MyLicenseResponse } from '../api-fallback.js';
 import { websiteUrl } from '../../10_CONFIG/shared/site-config.js';
 
 interface CommercialUserModalProps {
@@ -21,7 +22,7 @@ export const CommercialUserModal: React.FC<CommercialUserModalProps> = ({ isOpen
 
   useEffect(() => {
     // Fetch HWID on mount
-    (window.mahiAPI as any).getHwid().then((res: string) => setHwid(res)).catch((err: unknown) => { console.debug('[CommercialUserModal] getHwid probe failed', err); });
+    window.mahiAPI.getHwid().then((res: string) => setHwid(res)).catch((err: unknown) => { console.debug('[CommercialUserModal] getHwid probe failed', err); });
     fetchMyLicense().then(setMyLicense).catch(() => setMyLicense(null));
   }, []);
 
@@ -29,7 +30,7 @@ export const CommercialUserModal: React.FC<CommercialUserModalProps> = ({ isOpen
     if (commercialUser && onClose) {
       onClose();
     }
-  }, [commercialUser]);
+  }, [commercialUser, onClose]);
 
   if (!isOpen) return null;
 
@@ -88,7 +89,7 @@ export const CommercialUserModal: React.FC<CommercialUserModalProps> = ({ isOpen
           {/* Your Licence Block */}
           <div className="w-full bg-slate-900/60 border border-slate-700 rounded-xl p-3 mb-4 text-xs">
             <div className="font-semibold text-slate-300 uppercase tracking-wider text-[10px] mb-1.5">Your Licence</div>
-            {myLicense && myLicense.hasLicense ? (
+            {myLicense?.hasLicense ? (
               <div className="space-y-1">
                 <div className="font-mono text-xs bg-slate-950/80 p-2 rounded border border-slate-800 text-slate-100 select-all">
                   {myLicense.keyMasked}
@@ -109,7 +110,7 @@ export const CommercialUserModal: React.FC<CommercialUserModalProps> = ({ isOpen
 
           <form onSubmit={handleSubmit} className="w-full space-y-5">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 ml-1">Hardware ID (HWID)</label>
+              <label htmlFor="field-001" className="text-xs font-semibold text-slate-600 dark:text-slate-300 ml-1">Hardware ID (HWID)</label>
               <div className="relative group">
                 <input
                   type="text"
@@ -130,7 +131,7 @@ export const CommercialUserModal: React.FC<CommercialUserModalProps> = ({ isOpen
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 ml-1">License Key</label>
+              <label htmlFor="field-002" className="text-xs font-semibold text-slate-600 dark:text-slate-300 ml-1">License Key</label>
               <div className="relative">
                 <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input

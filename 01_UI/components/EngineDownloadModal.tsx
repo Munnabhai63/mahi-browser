@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import { DownloadCloud, RefreshCw, AlertCircle, CheckCircle2, ShieldCheck, HardDrive } from 'lucide-react';
-import { ManagedEngineStatus, CamoufoxProgressEvent } from '../../10_CONFIG/shared/types/ipc.js';
+import type { ManagedEngineStatus, CamoufoxProgressEvent } from '../../10_CONFIG/shared/types/ipc.js';
 
 export interface UnifiedEngineProgressState {
   engineName: string;
@@ -184,7 +185,7 @@ export const EngineDownloadModal: React.FC = () => {
               <span className="flex items-center gap-1.5">
                 <HardDrive className="w-3.5 h-3.5" /> Disk space verified
               </span>
-              <button
+              <button type="button"
                 onClick={handleRetry}
                 disabled={isRetrying}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-xl text-xs flex items-center gap-1.5 transition-colors shadow-sm disabled:opacity-50"

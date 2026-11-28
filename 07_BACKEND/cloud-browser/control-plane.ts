@@ -18,7 +18,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { getWritableSubdir } from '../utils/runtime-paths.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import {
+import type {
   CloudBrowserSession,
   CloudSessionState,
   RequestCloudSessionDTO,
@@ -39,6 +39,10 @@ import { workerProfileLoader } from './worker-profile-loader.js';
 import { browserWorkerManager } from './browser-worker.js';
 import { sessionGateway } from './session-gateway.js';
 import { resourceLimiter } from './resource-limiter.js';
+
+function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 export interface StartCloudSessionResult {
   sessionId: string;
@@ -78,7 +82,7 @@ export class CloudBrowserControlPlane {
 
     // 1. Central Account Validation
     const user = getCentralUserById(userId);
-    if (!user || user.status !== 'ACTIVE') {
+    if (user?.status !== 'ACTIVE') {
       throw new Error('AUTH_FAILED: User account is inactive, suspended, or does not exist.');
     }
 
@@ -140,11 +144,11 @@ export class CloudBrowserControlPlane {
 
     // 6. State Machine: ALLOCATING
     this.updateSessionStatus(sessionId, 'ALLOCATING');
-    let worker;
+    let worker: ReturnType<typeof sessionScheduler.allocateWorker>;
     try {
       worker = sessionScheduler.allocateWorker(regionId, resourceClass);
-    } catch (allocErr: any) {
-      this.updateSessionStatus(sessionId, 'FAILED', allocErr.message);
+    } catch (allocErr: unknown) {
+      this.updateSessionStatus(sessionId, 'FAILED', toErrorMessage(allocErr));
       releaseProfileLock(userId, dto.profileId, lockDeviceId);
       throw allocErr;
     }
@@ -160,7 +164,7 @@ export class CloudBrowserControlPlane {
     // 7. State Machine: PREPARING_PROFILE
     this.updateSessionStatus(sessionId, 'PREPARING_PROFILE');
     const runtimeDir = path.join(this.basePath, sessionId);
-    let preparedProfile;
+    let preparedProfile: Awaited<ReturnType<typeof workerProfileLoader.prepareWorkerProfile>>;
     try {
       preparedProfile = await workerProfileLoader.prepareWorkerProfile({
         sessionId,
@@ -169,8 +173,8 @@ export class CloudBrowserControlPlane {
         workspaceId: dto.workspaceId,
         targetDir: runtimeDir,
       });
-    } catch (prepErr: any) {
-      this.updateSessionStatus(sessionId, 'FAILED', prepErr.message);
+    } catch (prepErr: unknown) {
+      this.updateSessionStatus(sessionId, 'FAILED', toErrorMessage(prepErr));
       sessionScheduler.releaseWorkerSlot(worker.id);
       releaseProfileLock(userId, dto.profileId, lockDeviceId);
       await workerProfileLoader.cleanWorkerDirectoryAsync(runtimeDir);
@@ -179,7 +183,7 @@ export class CloudBrowserControlPlane {
 
     // 8. State Machine: STARTING_BROWSER
     this.updateSessionStatus(sessionId, 'STARTING_BROWSER');
-    let workerInstance;
+    let workerInstance: Awaited<ReturnType<typeof browserWorkerManager.launchWorker>>;
     try {
       workerInstance = await browserWorkerManager.launchWorker({
         sessionId,
@@ -190,8 +194,8 @@ export class CloudBrowserControlPlane {
         startupUrl: dto.startupUrl,
         resourceClass,
       });
-    } catch (launchErr: any) {
-      this.updateSessionStatus(sessionId, 'FAILED', launchErr.message);
+    } catch (launchErr: unknown) {
+      this.updateSessionStatus(sessionId, 'FAILED', toErrorMessage(launchErr));
       sessionScheduler.releaseWorkerSlot(worker.id);
       releaseProfileLock(userId, dto.profileId, lockDeviceId);
       await workerProfileLoader.cleanWorkerDirectoryAsync(runtimeDir);
@@ -204,9 +208,9 @@ export class CloudBrowserControlPlane {
 
     try {
       await sessionGateway.attachSession(sessionId, workerInstance.cdpPort);
-    } catch (attachErr: any) {
+    } catch (attachErr: unknown) {
       await workerInstance.stop();
-      this.updateSessionStatus(sessionId, 'FAILED', attachErr.message);
+      this.updateSessionStatus(sessionId, 'FAILED', toErrorMessage(attachErr));
       sessionScheduler.releaseWorkerSlot(worker.id);
       releaseProfileLock(userId, dto.profileId, lockDeviceId);
       await workerProfileLoader.cleanWorkerDirectoryAsync(runtimeDir);
@@ -228,7 +232,10 @@ export class CloudBrowserControlPlane {
     this.recordEvent(sessionId, userId, 'SESSION_RUNNING', { cdpPort: workerInstance.cdpPort, startedAt });
 
     // 11. Register Resource Limiter
-    const sessionRecord = this.getSession(sessionId)!;
+    const sessionRecord = this.getSession(sessionId);
+    if (!sessionRecord) {
+      throw new Error(`Cloud browser session ${sessionId} could not be retrieved`);
+    }
     resourceLimiter.trackSession({
       session: sessionRecord,
       onTimeout: async (reason) => {
@@ -321,8 +328,8 @@ export class CloudBrowserControlPlane {
       });
       newVersion = syncRes.newVersion;
       this.recordEvent(sessionId, userId, 'PROFILE_SYNC_COMPLETED', { newVersion });
-    } catch (syncErr: any) {
-      this.recordEvent(sessionId, userId, 'PROFILE_SYNC_FAILED', { error: syncErr.message });
+    } catch (syncErr: unknown) {
+      this.recordEvent(sessionId, userId, 'PROFILE_SYNC_FAILED', { error: toErrorMessage(syncErr) });
     }
 
     // 4. Secure Cleanup of Worker Directory
@@ -414,7 +421,7 @@ export class CloudBrowserControlPlane {
              error_message as errorMessage, created_at as createdAt, updated_at as updatedAt
       FROM cloud_browser_sessions
       WHERE id = ?
-    `).get(sessionId) as any;
+    `).get<CloudBrowserSession>(sessionId);
 
     return row || null;
   }
@@ -424,7 +431,7 @@ export class CloudBrowserControlPlane {
    */
   public listSessions(userId: string, workspaceId?: string, limit = 20): CloudBrowserSession[] {
     const db = getDatabase();
-    let rows: any[];
+    let rows: CloudBrowserSession[];
     if (workspaceId) {
       rows = db.prepare(`
         SELECT id, user_id as userId, workspace_id as workspaceId,
@@ -436,7 +443,7 @@ export class CloudBrowserControlPlane {
         FROM cloud_browser_sessions
         WHERE workspace_id = ?
         ORDER BY created_at DESC LIMIT ?
-      `).all(workspaceId, limit);
+      `).all<CloudBrowserSession>(workspaceId, limit);
     } else {
       rows = db.prepare(`
         SELECT id, user_id as userId, workspace_id as workspaceId,
@@ -448,7 +455,7 @@ export class CloudBrowserControlPlane {
         FROM cloud_browser_sessions
         WHERE user_id = ?
         ORDER BY created_at DESC LIMIT ?
-      `).all(userId, limit);
+      `).all<CloudBrowserSession>(userId, limit);
     }
 
     return rows;
@@ -460,7 +467,7 @@ export class CloudBrowserControlPlane {
       SELECT COUNT(id) as count
       FROM cloud_browser_sessions
       WHERE user_id = ? AND status IN ('REQUESTED', 'ALLOCATING', 'PREPARING_PROFILE', 'STARTING_BROWSER', 'RUNNING', 'IDLE_WARNING')
-    `).get(userId) as any;
+    `).get<{ count: number }>(userId);
     return row?.count || 0;
   }
 

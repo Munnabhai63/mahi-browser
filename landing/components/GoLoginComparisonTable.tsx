@@ -185,9 +185,9 @@ export default function GoLoginComparisonTable() {
                   </tr>
 
                   {/* Category Data Rows */}
-                  {rows.map((row, idx) => (
+                  {rows.map((row) => (
                     <tr
-                      key={idx}
+                      key={row.feature}
                       className="transition-colors duration-150 hover:bg-zinc-50/70"
                     >
                       <td className="p-4 sm:p-5 font-normal text-zinc-800 align-middle">
@@ -199,7 +199,7 @@ export default function GoLoginComparisonTable() {
                       <td className="p-4 sm:p-5 font-medium text-zinc-900 bg-red-50/30 border-x border-red-200/40 align-middle">
                         <div className="flex items-start gap-2.5">
                           <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                             </svg>
                           </span>
@@ -246,7 +246,7 @@ export default function GoLoginComparisonTable() {
             href="/download?auto=true"
             className="inline-flex items-center justify-center gap-2 rounded-full bg-white text-black px-6 py-2.5 text-xs sm:text-[13px] font-medium transition-all duration-200 hover:bg-zinc-200 active:scale-[0.98] shadow-sm"
           >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
             Download Free (15 Profiles)

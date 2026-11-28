@@ -6,33 +6,139 @@
  * Never directly accesses SQLite, PostgreSQL, R2, or internal backend services.
  */
 
-import {
+import type {
   RemoteApiResponse,
   RemoteApiKeyRecord,
+  RemoteApiKeyAuditRecord,
   CreateRemoteApiKeyDTO,
   WebhookEndpointRecord,
   CreateWebhookEndpointDTO,
   WebhookDeliveryRecord,
   RemoteProfileRunResult,
 } from '../../../10_CONFIG/shared/types/remote-api.js';
-import {
+import type {
   TeamWorkspace,
   TeamWorkspaceMember,
   TeamRole,
   TeamProfileShare,
+  TeamWorkspaceInviteResult,
 } from '../../../10_CONFIG/shared/types/workspace.js';
-import {
+import type {
   ProxyCatalogResult,
   ProxySessionResult,
   ProxyRotationResult,
   ProxyUsageReport,
 } from '../../../10_CONFIG/shared/types/proxy-provider.js';
+import type {
+  AutomationSchedule,
+  AutomationWorkflow,
+  WorkflowExecutionLog,
+  WorkflowStepLog,
+} from '../../../10_CONFIG/shared/types/automation.js';
+import type {
+  CloudBrowserRegion,
+  CloudBrowserSession,
+  CloudClientAction,
+  CloudSessionState,
+} from '../../../10_CONFIG/shared/types/cloud-browser.js';
+import type {
+  MobileDeviceTokenRecord,
+  MobileNotificationPreferences,
+  MobileNotificationRecord,
+} from '../../../10_CONFIG/shared/types/mobile.js';
 import { getCloudGatewayUrl } from '../../../10_CONFIG/shared/network-endpoints.js';
 
 export interface ApiClientConfig {
   baseUrl?: string;
   getAccessToken?: () => string | null;
   onUnauthorized?: () => void;
+}
+
+export interface RemoteProfileRecord {
+  id: string;
+  profileId?: string;
+  name: string;
+  description?: string;
+  folder?: string;
+  notes?: string;
+  status?: string;
+  tags?: string[];
+  pinned?: boolean;
+  syncStatus?: 'SYNCED' | 'PENDING' | 'CONFLICT' | 'OFFLINE' | 'LOCKED' | 'FAILED';
+  isLocked?: boolean;
+  lockedBy?: string;
+  version?: number;
+  proxyConfig?: {
+    host?: string;
+    port?: number;
+  };
+  lastSyncAt?: string;
+  lastUsedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RemoteActiveSessionRecord {
+  id?: string;
+  sessionId?: string;
+  deviceName?: string;
+  platform?: string;
+  ipAddress?: string;
+  isOnline?: boolean;
+  lastSeenAt?: string;
+  clientVersion?: string;
+  isCurrent?: boolean;
+}
+
+export interface RemoteWorkflowScheduleDTO {
+  id?: string;
+  workflowId: string;
+  profileId?: string;
+  profileIds?: string[];
+  workspaceId?: string;
+  scheduleType: AutomationSchedule['scheduleType'];
+  cronExpression?: string;
+  timezone: string;
+  nextRunAt?: string;
+  lastRunAt?: string;
+  status?: AutomationSchedule['status'];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RemoteAutomationTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  siteCount?: number;
+  sites?: Array<{ url: string; name: string; category: string; weight: number }>;
+}
+
+export interface StartCloudSessionDTO {
+  sessionId: string;
+  status: CloudSessionState;
+  streamGatewayUrl: string;
+  streamToken: string;
+  regionId: string;
+  workerId: string;
+  startedAt: string;
+  maxDurationSeconds: number;
+  idleTimeoutSeconds: number;
+}
+
+export interface StopCloudSessionDTO {
+  sessionId?: string;
+  status?: CloudSessionState;
+  durationSeconds?: number;
+  endedAt?: string;
+  stopped?: boolean;
+}
+
+export interface CloudBrowserUsageDTO {
+  totalDurationSeconds: number;
+  totalSessions: number;
+  activeSessions: number;
 }
 
 export class WebApiClient {
@@ -84,8 +190,8 @@ export class WebApiClient {
       ...(options.headers as Record<string, string> || {}),
     };
 
-    if (token && !headers['Authorization'] && !headers['X-API-Key']) {
-      headers['Authorization'] = `Bearer ${token}`;
+    if (token && !headers.Authorization && !headers['X-API-Key']) {
+      headers.Authorization = `Bearer ${token}`;
     }
 
     try {
@@ -95,11 +201,18 @@ export class WebApiClient {
         headers,
       });
 
-      let json: any;
+      let json: RemoteApiResponse<T>;
       try {
-        json = await res.json();
+        json = (await res.json()) as RemoteApiResponse<T>;
       } catch {
-        json = { success: false, error: { code: 'INVALID_RESPONSE', message: 'Failed to parse JSON response' } };
+        json = {
+          success: false,
+          error: {
+            code: 'INVALID_RESPONSE',
+            message: 'Failed to parse JSON response',
+            requestId: headers['X-Request-Id'],
+          },
+        };
       }
 
       if (res.status === 401) {
@@ -112,16 +225,19 @@ export class WebApiClient {
         json.error = {
           code: `HTTP_${res.status}`,
           message: res.statusText || 'Request failed',
+          requestId: headers['X-Request-Id'],
         };
       }
 
       return json;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error && err.message ? err.message : 'Network request failed. Please check connectivity.';
       return {
         success: false,
         error: {
           code: 'NETWORK_ERROR',
-          message: err.message || 'Network request failed. Please check connectivity.',
+          message,
           requestId: headers['X-Request-Id'],
         },
       };
@@ -188,7 +304,7 @@ export class WebApiClient {
   }
 
   public async getActiveSessions() {
-    return this.request<any[]>('/api/v1/auth/sessions', { method: 'GET' });
+    return this.request<RemoteActiveSessionRecord[]>('/api/v1/auth/sessions', { method: 'GET' });
   }
 
   public async revokeSession(sessionId: string) {
@@ -207,25 +323,25 @@ export class WebApiClient {
     if (params.status) qs.set('status', params.status);
 
     const query = qs.toString() ? `?${qs.toString()}` : '';
-    return this.request<any[]>(`/api/v1/remote/profiles${query}`, { method: 'GET' });
+    return this.request<RemoteProfileRecord[]>(`/api/v1/remote/profiles${query}`, { method: 'GET' });
   }
 
   public async getProfile(profileId: string) {
-    return this.request<any>(`/api/v1/remote/profiles/${profileId}`, { method: 'GET' });
+    return this.request<RemoteProfileRecord>(`/api/v1/remote/profiles/${profileId}`, { method: 'GET' });
   }
 
   public async createProfile(dto: { name: string; folder?: string; description?: string; tags?: string[] }, idempotencyKey?: string) {
     const headers: Record<string, string> = {};
     if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
 
-    return this.request<any>('/api/v1/remote/profiles', {
+    return this.request<RemoteProfileRecord>('/api/v1/remote/profiles', {
       method: 'POST',
       body: JSON.stringify(dto),
     }, headers);
   }
 
   public async updateProfile(profileId: string, dto: { name?: string; notes?: string; folder?: string }) {
-    return this.request<any>(`/api/v1/remote/profiles/${profileId}`, {
+    return this.request<RemoteProfileRecord>(`/api/v1/remote/profiles/${profileId}`, {
       method: 'PUT',
       body: JSON.stringify(dto),
     });
@@ -268,7 +384,7 @@ export class WebApiClient {
   }
 
   public async inviteWorkspaceMember(workspaceId: string, email: string, role: TeamRole = 'MEMBER') {
-    return this.request<any>(`/api/v1/remote/workspaces/${workspaceId}/members/invite`, {
+    return this.request<TeamWorkspaceInviteResult>(`/api/v1/remote/workspaces/${workspaceId}/members/invite`, {
       method: 'POST',
       body: JSON.stringify({ email, role }),
     });
@@ -364,7 +480,7 @@ export class WebApiClient {
   }
 
   public async getApiKeyAudits(keyId: string) {
-    return this.request<any[]>(`/api/v1/remote/api-keys/${keyId}/audits`, { method: 'GET' });
+    return this.request<RemoteApiKeyAuditRecord[]>(`/api/v1/remote/api-keys/${keyId}/audits`, { method: 'GET' });
   }
 
   // ==========================================================================
@@ -414,11 +530,11 @@ export class WebApiClient {
 
   public async listWorkflows(workspaceId?: string) {
     const query = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
-    return this.request<any[]>(`/api/v1/remote/automation/workflows${query}`, { method: 'GET' });
+    return this.request<AutomationWorkflow[]>(`/api/v1/remote/automation/workflows${query}`, { method: 'GET' });
   }
 
   public async getWorkflow(workflowId: string) {
-    return this.request<any>(`/api/v1/remote/automation/workflows/${workflowId}`, { method: 'GET' });
+    return this.request<AutomationWorkflow>(`/api/v1/remote/automation/workflows/${workflowId}`, { method: 'GET' });
   }
 
   public async runWorkflow(workflowId: string, profileId?: string) {
@@ -433,11 +549,11 @@ export class WebApiClient {
 
   public async getWorkflowRuns(workflowId?: string) {
     const query = workflowId ? `?workflowId=${encodeURIComponent(workflowId)}` : '';
-    return this.request<any[]>(`/api/v1/remote/automation/runs${query}`, { method: 'GET' });
+    return this.request<WorkflowExecutionLog[]>(`/api/v1/remote/automation/runs${query}`, { method: 'GET' });
   }
 
   public async getWorkflowRunLogs(runId: string) {
-    return this.request<any[]>(`/api/v1/remote/automation/runs/${runId}`, { method: 'GET' });
+    return this.request<WorkflowStepLog[]>(`/api/v1/remote/automation/runs/${runId}`, { method: 'GET' });
   }
 
   public async stopWorkflowRun(runId: string) {
@@ -448,11 +564,11 @@ export class WebApiClient {
 
   public async listSchedules(workspaceId?: string) {
     const query = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
-    return this.request<any[]>(`/api/v1/remote/automation/schedules${query}`, { method: 'GET' });
+    return this.request<RemoteWorkflowScheduleDTO[]>(`/api/v1/remote/automation/schedules${query}`, { method: 'GET' });
   }
 
-  public async createSchedule(dto: any) {
-    return this.request<any>('/api/v1/remote/automation/schedules', {
+  public async createSchedule(dto: RemoteWorkflowScheduleDTO) {
+    return this.request<RemoteWorkflowScheduleDTO>('/api/v1/remote/automation/schedules', {
       method: 'POST',
       body: JSON.stringify(dto),
     });
@@ -465,7 +581,7 @@ export class WebApiClient {
   }
 
   public async getAutomationTemplates() {
-    return this.request<any[]>('/api/v1/remote/automation/templates', { method: 'GET' });
+    return this.request<RemoteAutomationTemplate[]>('/api/v1/remote/automation/templates', { method: 'GET' });
   }
 
   // ========================================================================
@@ -481,22 +597,22 @@ export class WebApiClient {
     idleTimeoutSeconds?: number;
     startupUrl?: string;
   }) {
-    return this.request<any>('/api/v1/remote/cloud-browser/sessions', {
+    return this.request<StartCloudSessionDTO>('/api/v1/remote/cloud-browser/sessions', {
       method: 'POST',
       body: JSON.stringify(dto),
     });
   }
 
   public async listCloudSessions() {
-    return this.request<any[]>('/api/v1/remote/cloud-browser/sessions', { method: 'GET' });
+    return this.request<CloudBrowserSession[]>('/api/v1/remote/cloud-browser/sessions', { method: 'GET' });
   }
 
   public async getCloudSession(sessionId: string) {
-    return this.request<any>(`/api/v1/remote/cloud-browser/sessions/${sessionId}`, { method: 'GET' });
+    return this.request<CloudBrowserSession>(`/api/v1/remote/cloud-browser/sessions/${sessionId}`, { method: 'GET' });
   }
 
   public async stopCloudSession(sessionId: string, reason?: string) {
-    return this.request<any>(`/api/v1/remote/cloud-browser/sessions/${sessionId}/stop`, {
+    return this.request<StopCloudSessionDTO>(`/api/v1/remote/cloud-browser/sessions/${sessionId}/stop`, {
       method: 'POST',
       body: JSON.stringify({ reason: reason || 'USER_REQUESTED' }),
     });
@@ -510,17 +626,17 @@ export class WebApiClient {
   }
 
   public async listCloudRegions() {
-    return this.request<any[]>('/api/v1/remote/cloud-browser/regions', { method: 'GET' });
+    return this.request<CloudBrowserRegion[]>('/api/v1/remote/cloud-browser/regions', { method: 'GET' });
   }
 
   public async getCloudUsage() {
-    return this.request<any>('/api/v1/remote/cloud-browser/usage', { method: 'GET' });
+    return this.request<CloudBrowserUsageDTO>('/api/v1/remote/cloud-browser/usage', { method: 'GET' });
   }
 
-  public async sendCloudInput(sessionId: string, action: any, streamToken?: string) {
+  public async sendCloudInput(sessionId: string, action: CloudClientAction, streamToken?: string) {
     const headers: Record<string, string> = {};
     if (streamToken) headers['x-stream-token'] = streamToken;
-    return this.request<any>(`/api/v1/remote/cloud-browser/sessions/${sessionId}/input`, {
+    return this.request<{ success?: boolean }>(`/api/v1/remote/cloud-browser/sessions/${sessionId}/input`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ action }),
@@ -538,7 +654,7 @@ export class WebApiClient {
     osVersion?: string;
     appVersion?: string;
   }) {
-    return this.request<any>('/api/v1/remote/mobile/device-token', {
+    return this.request<MobileDeviceTokenRecord>('/api/v1/remote/mobile/device-token', {
       method: 'POST',
       body: JSON.stringify(dto),
     });
@@ -552,7 +668,7 @@ export class WebApiClient {
 
   public async getMobileNotifications(unreadOnly = false) {
     const query = unreadOnly ? '?unread=true' : '';
-    return this.request<any[]>(`/api/v1/remote/mobile/notifications${query}`, { method: 'GET' });
+    return this.request<MobileNotificationRecord[]>(`/api/v1/remote/mobile/notifications${query}`, { method: 'GET' });
   }
 
   public async markMobileNotificationRead(notificationId: string) {
@@ -562,11 +678,11 @@ export class WebApiClient {
   }
 
   public async getMobileNotificationPreferences() {
-    return this.request<any>('/api/v1/remote/mobile/notifications/preferences', { method: 'GET' });
+    return this.request<MobileNotificationPreferences>('/api/v1/remote/mobile/notifications/preferences', { method: 'GET' });
   }
 
-  public async updateMobileNotificationPreferences(preferences: any) {
-    return this.request<any>('/api/v1/remote/mobile/notifications/preferences', {
+  public async updateMobileNotificationPreferences(preferences: Partial<MobileNotificationPreferences>) {
+    return this.request<MobileNotificationPreferences>('/api/v1/remote/mobile/notifications/preferences', {
       method: 'PUT',
       body: JSON.stringify(preferences),
     });

@@ -2,8 +2,9 @@ import crypto from 'node:crypto';
 import { getDatabase } from '../../../06_DATABASE/connection.js';
 import { isPostgresConfigured, getCentralRepository } from '../../../06_DATABASE/central-repository.js';
 import { getCommercialPlanById } from '../commercial-plan-service.js';
-import { BillingCycleType } from '../../../10_CONFIG/shared/types/commercial.js';
+import type { BillingCycleType } from '../../../10_CONFIG/shared/types/commercial.js';
 import {
+  type AuthoritativeOrderTotal,
   calculateAuthoritativeOrderTotal,
   legacyPlanIdToCanonical,
   normalizeBillingCycle,
@@ -15,13 +16,15 @@ import { createLicense } from '../../../04_LICENSING/license-engine.js';
 import { assertNotEmergencyFrozen } from '../../services/kill-switch-service.js';
 import { websiteUrl } from '../../../10_CONFIG/shared/site-config.js';
 import {
-  CheckoutSessionRequest,
-  CheckoutSessionResponse,
-  PaymentInvoiceRecord,
-  PaymentProvider,
-  PaymentProviderType,
-  PaymentWebhookEvent,
-  UserSubscriptionSummary,
+  type CheckoutSessionRequest,
+  type CheckoutSessionResponse,
+  type CommercialPaymentRow,
+  type PaymentInvoiceRecord,
+  type PaymentProvider,
+  type PaymentProviderType,
+  type PaymentWebhookEvent,
+  type PgBillingClient,
+  type UserSubscriptionSummary,
   calculatePlanAmountCents,
   isPgUniqueViolation,
   isStrictProductionPostgres,
@@ -30,7 +33,34 @@ import {
   withPgTransaction,
 } from './payment-types.js';
 import { createLogger } from '../../utils/logger.js';
+
 const log = createLogger('payment-activation');
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+interface SqliteSubscriptionRow {
+  plan_id: string;
+  billing_cycle: string;
+  starts_at: string;
+  expires_at: string | null;
+}
+
+interface SqliteInvoiceRow {
+  id: string;
+  invoice_number: string;
+  amount_cents: number;
+  currency: string;
+  period_start: string;
+  period_end: string;
+  pdf_url: string | null;
+  created_at: string;
+}
+
+interface SqliteIdRow {
+  id: string;
+}
 
 export async function createCheckoutSessionImpl(
   req: CheckoutSessionRequest,
@@ -42,24 +72,25 @@ export async function createCheckoutSessionImpl(
   const pgClient = resolvePgBillingClient(['commercial_payments', 'auth_users']);
   const db = pgClient ? null : getDatabase();
 
-  let userCheck: any = null;
+  let userCheck: SqliteIdRow | null = null;
   if (pgClient) {
     userCheck =
-      (await pgClient.auth_users.findFirst({ where: { id: req.userId }, select: { id: true } })) ||
+      (await pgClient.auth_users?.findFirst({ where: { id: req.userId }, select: { id: true } })) ||
       (typeof pgClient.commercial_users?.findFirst === 'function'
         ? await pgClient.commercial_users.findFirst({ where: { id: req.userId }, select: { id: true } })
         : null);
   } else if (db) {
     userCheck =
-      db.prepare('SELECT id FROM auth_users WHERE id = ?').get(req.userId) ||
-      db.prepare('SELECT id FROM commercial_users WHERE id = ?').get(req.userId);
+      (db.prepare('SELECT id FROM auth_users WHERE id = ?').get(req.userId) as unknown as SqliteIdRow | undefined) ||
+      (db.prepare('SELECT id FROM commercial_users WHERE id = ?').get(req.userId) as unknown as SqliteIdRow | undefined) ||
+      null;
   }
   if (!userCheck) {
     throw new Error(`User account "${req.userId}" does not exist.`);
   }
 
   const plan = getCommercialPlanById(req.planId);
-  if (!plan || !plan.isActive) {
+  if (!plan?.isActive) {
     throw new Error(`Selected plan "${req.planId}" is not available for purchase.`);
   }
 
@@ -74,7 +105,7 @@ export async function createCheckoutSessionImpl(
   };
 
   let amountCents: number;
-  let authoritativeBreakdown: any = null;
+  let authoritativeBreakdown: AuthoritativeOrderTotal | null = null;
   const isLegacyPlan = plan.id.startsWith('plan_') && plan.priceMonthly > 0;
 
   if (isLegacyPlan && !normalizedReq.extraMembers && !normalizedReq.extraProxyGb && (!normalizedReq.currency || normalizedReq.currency === 'USD')) {
@@ -91,28 +122,30 @@ export async function createCheckoutSessionImpl(
     authoritativeBreakdown = orderTotal;
   }
 
-  const formatExistingCheckout = (existing: any): CheckoutSessionResponse => ({
+  const formatExistingCheckout = (existing: CommercialPaymentRow): CheckoutSessionResponse => ({
     sessionId: existing.id,
     checkoutUrl: existing.receipt_url || websiteUrl(`/pricing?sessionId=${encodeURIComponent(existing.id)}`, { productionFallback: true }),
-    orderId: existing.external_order_id,
+    orderId: existing.external_order_id || existing.id,
     amountCents: existing.amount_cents,
     currency: existing.currency,
     provider: existing.provider as PaymentProviderType,
     planId: existing.plan_id,
-    billingCycle: existing.billing_cycle as any,
+    billingCycle: existing.billing_cycle as BillingCycleType,
     createdAt: existing.created_at,
   });
 
   if (req.idempotencyKey) {
-    let existing: any = null;
+    let existing: CommercialPaymentRow | null = null;
     if (pgClient) {
-      existing = await pgClient.commercial_payments.findFirst({
-        where: { external_order_id: req.idempotencyKey, status: 'PENDING' },
-      });
+      existing =
+        (await pgClient.commercial_payments?.findFirst({
+          where: { external_order_id: req.idempotencyKey, status: 'PENDING' },
+        })) || null;
     } else if (db) {
-      existing = db.prepare(
-        "SELECT * FROM commercial_payments WHERE external_order_id = ? AND status = 'PENDING'"
-      ).get(req.idempotencyKey) as any;
+      existing =
+        (db
+          .prepare("SELECT * FROM commercial_payments WHERE external_order_id = ? AND status = 'PENDING'")
+          .get(req.idempotencyKey) as unknown as CommercialPaymentRow | undefined) || null;
     }
     if (existing) {
       return formatExistingCheckout(existing);
@@ -138,14 +171,17 @@ export async function createCheckoutSessionImpl(
   });
   if (pgClient) {
     const winner = await withPgTransaction(pgClient, async (tx) => {
+      if (!tx.commercial_payments) {
+        throw new Error('PG commercial_payments delegate unavailable');
+      }
       if (normalizedReq.idempotencyKey) {
-        let lockedExisting: any = null;
+        let lockedExisting: CommercialPaymentRow | null = null;
         if (typeof tx.$queryRaw === 'function') {
           const rows = (await tx.$queryRaw`
             SELECT * FROM commercial_payments
             WHERE external_order_id = ${normalizedReq.idempotencyKey} AND status = 'PENDING'
             LIMIT 1 FOR UPDATE
-          `) as any[];
+          `) as CommercialPaymentRow[];
           lockedExisting = rows?.[0] || null;
         } else {
           lockedExisting = await tx.commercial_payments.findFirst({
@@ -182,9 +218,9 @@ export async function createCheckoutSessionImpl(
   } else if (db) {
     const writeCheckoutSqlite = () => {
       if (normalizedReq.idempotencyKey) {
-        const existing = db.prepare(
-          "SELECT * FROM commercial_payments WHERE external_order_id = ? AND status = 'PENDING'"
-        ).get(normalizedReq.idempotencyKey) as any;
+        const existing = db
+          .prepare("SELECT * FROM commercial_payments WHERE external_order_id = ? AND status = 'PENDING'")
+          .get(normalizedReq.idempotencyKey) as unknown as CommercialPaymentRow | undefined;
         if (existing) {
           return formatExistingCheckout(existing);
         }
@@ -213,9 +249,7 @@ export async function createCheckoutSessionImpl(
       );
       return session;
     };
-    return typeof (db as any).transaction === 'function'
-      ? (db as any).transaction(writeCheckoutSqlite)()
-      : writeCheckoutSqlite();
+    return typeof db.transaction === 'function' ? db.transaction(writeCheckoutSqlite)() : writeCheckoutSqlite();
   }
 
   return session;
@@ -223,12 +257,12 @@ export async function createCheckoutSessionImpl(
 
 export function validateWebhookEventAmountAndPlan(event: PaymentWebhookEvent): void {
   if (event.type === 'payment.succeeded' || event.type === 'payment.failed') {
-    if (!event.planId || !event.planId.trim()) {
+    if (!event.planId?.trim()) {
       throw new Error('PLAN_NOT_FOUND: Webhook references missing or empty planId.');
     }
   }
 
-  if (!event.planId || !event.planId.trim()) {
+  if (!event.planId?.trim()) {
     return;
   }
 
@@ -278,8 +312,8 @@ export async function activateSubscriptionFromPaymentImpl(params: {
   externalPaymentId: string;
   externalOrderId?: string;
   receiptUrl?: string;
-  metadata?: Record<string, any>;
-  tx?: any;
+  metadata?: Record<string, unknown>;
+  tx?: PgBillingClient;
   targetPaymentId?: string;
   alreadyClaimedPaymentId?: string;
 }): Promise<{
@@ -337,7 +371,7 @@ export async function activateSubscriptionFromPaymentImpl(params: {
   }
 
   if (pgClient && pgReady) {
-    const executePgActivation = async (tx: any): Promise<{
+    const executePgActivation = async (tx: PgBillingClient): Promise<{
       earlyReturn?: {
         subscription: UserSubscriptionSummary;
         invoice: PaymentInvoiceRecord;
@@ -345,15 +379,25 @@ export async function activateSubscriptionFromPaymentImpl(params: {
         planSyncFailed?: boolean;
       };
     }> => {
-      let existingPayment: any = null;
+      if (
+        !tx.commercial_payments ||
+        !tx.commercial_subscriptions ||
+        !tx.commercial_billing_invoices ||
+        !tx.licenses ||
+        !tx.auth_users
+      ) {
+        throw new Error('PG billing delegates unavailable inside transaction');
+      }
+
+      let existingPayment: CommercialPaymentRow | null = null;
       if (typeof tx.$queryRaw === 'function') {
         const rows = params.targetPaymentId
           ? ((await tx.$queryRaw`
               SELECT * FROM commercial_payments WHERE id = ${params.targetPaymentId} LIMIT 1 FOR UPDATE
-            `) as any[])
+            `) as CommercialPaymentRow[])
           : ((await tx.$queryRaw`
               SELECT * FROM commercial_payments WHERE external_payment_id = ${params.externalPaymentId} LIMIT 1 FOR UPDATE
-            `) as any[]);
+            `) as CommercialPaymentRow[]);
         existingPayment = rows?.[0] || null;
       } else {
         existingPayment = params.targetPaymentId
@@ -385,7 +429,7 @@ export async function activateSubscriptionFromPaymentImpl(params: {
               planId: existingSub?.plan_id || targetPlan.id,
               planName: targetPlan.name,
               status: 'ACTIVE',
-              billingCycle: (existingSub?.billing_cycle || effectiveCycle) as any,
+              billingCycle: (existingSub?.billing_cycle || effectiveCycle) as BillingCycleType,
               startsAt: existingSub?.starts_at || now,
               expiresAt: existingSub?.expires_at || expiresAt,
               maxProfiles: targetPlan.limits.maxProfiles,
@@ -497,8 +541,8 @@ export async function activateSubscriptionFromPaymentImpl(params: {
             },
           });
         }
-      } catch (err: any) {
-        log.error('[PaymentService][CRITICAL] PG plan sync error', err?.message);
+      } catch (err: unknown) {
+        log.error('[PaymentService][CRITICAL] PG plan sync error', errMsg(err));
         planSyncFailed = true;
       }
 
@@ -523,8 +567,8 @@ export async function activateSubscriptionFromPaymentImpl(params: {
             log.warn(`[PaymentService] Mirror-missing user ${params.userId} in commercial_users; skipping commercial_users update.`);
           }
         }
-      } catch (err: any) {
-        log.warn(`[PaymentService] Failed to update commercial_users plan_id for ${params.userId}:`, err?.message);
+      } catch (err: unknown) {
+        log.warn(`[PaymentService] Failed to update commercial_users plan_id for ${params.userId}:`, errMsg(err));
       }
 
       const existingLicense = await tx.licenses.findFirst({
@@ -614,15 +658,17 @@ export async function activateSubscriptionFromPaymentImpl(params: {
     const runUpdates = () => {
       const existingPayment = (params.targetPaymentId
         ? db.prepare('SELECT * FROM commercial_payments WHERE id = ?').get(params.targetPaymentId)
-        : db.prepare('SELECT * FROM commercial_payments WHERE external_payment_id = ?').get(params.externalPaymentId)) as any;
+        : db.prepare('SELECT * FROM commercial_payments WHERE external_payment_id = ?').get(params.externalPaymentId)) as unknown as
+        | CommercialPaymentRow
+        | undefined;
 
       if (!params.alreadyClaimedPaymentId && existingPayment?.status === 'SUCCEEDED') {
-        const existingSub = db.prepare(
-          "SELECT * FROM commercial_subscriptions WHERE user_id = ? AND status = 'ACTIVE' ORDER BY starts_at DESC LIMIT 1"
-        ).get(params.userId) as any;
-        const existingInv = db.prepare(
-          'SELECT * FROM commercial_billing_invoices WHERE payment_id = ? LIMIT 1'
-        ).get(params.externalPaymentId) as any;
+        const existingSub = db
+          .prepare("SELECT * FROM commercial_subscriptions WHERE user_id = ? AND status = 'ACTIVE' ORDER BY starts_at DESC LIMIT 1")
+          .get(params.userId) as unknown as SqliteSubscriptionRow | undefined;
+        const existingInv = db
+          .prepare('SELECT * FROM commercial_billing_invoices WHERE payment_id = ? LIMIT 1')
+          .get(params.externalPaymentId) as unknown as SqliteInvoiceRow | undefined;
 
         earlySqliteResult = {
           subscription: {
@@ -630,7 +676,7 @@ export async function activateSubscriptionFromPaymentImpl(params: {
             planId: existingSub?.plan_id || targetPlan.id,
             planName: targetPlan.name,
             status: 'ACTIVE',
-            billingCycle: (existingSub?.billing_cycle || effectiveCycle) as any,
+            billingCycle: (existingSub?.billing_cycle || effectiveCycle) as BillingCycleType,
             startsAt: existingSub?.starts_at || now,
             expiresAt: existingSub?.expires_at || expiresAt,
             maxProfiles: targetPlan.limits.maxProfiles,
@@ -737,8 +783,8 @@ export async function activateSubscriptionFromPaymentImpl(params: {
           SET plan_id = ?, profile_quota = ?, updated_at = ?
           WHERE id = ?
         `).run(targetPlan.id, targetPlan.limits.maxProfiles, now, params.userId);
-      } catch (err: any) {
-        log.error('[PaymentService] SQLite auth_users plan update error:', err?.message);
+      } catch (err: unknown) {
+        log.error('[PaymentService] SQLite auth_users plan update error:', errMsg(err));
       }
 
       try {
@@ -747,14 +793,14 @@ export async function activateSubscriptionFromPaymentImpl(params: {
           SET plan_id = ?
           WHERE id = ?
         `).run(targetPlan.id, params.userId);
-      } catch (err: any) {
-        log.error('[PaymentService] SQLite commercial_users plan update error:', err?.message);
+      } catch (err: unknown) {
+        log.error('[PaymentService] SQLite commercial_users plan update error:', errMsg(err));
       }
 
       try {
-        const existingLicence = db.prepare(
-          'SELECT id, key_masked FROM licenses WHERE account_id = ? AND (notes LIKE ? OR notes LIKE ?)'
-        ).get(params.userId, `%${params.externalPaymentId}%`, `%${subId}%`) as any;
+        const existingLicence = db
+          .prepare('SELECT id, key_masked FROM licenses WHERE account_id = ? AND (notes LIKE ? OR notes LIKE ?)')
+          .get(params.userId, `%${params.externalPaymentId}%`, `%${subId}%`) as unknown as SqliteIdRow | undefined;
 
         if (!existingLicence) {
           let customerName = params.userId;
@@ -765,7 +811,7 @@ export async function activateSubscriptionFromPaymentImpl(params: {
           } catch (err) {
             log.debug('Customer name lookup fell back to userId during SQLite license minting', {
               userId: params.userId,
-              err: err instanceof Error ? err.message : String(err),
+              err: errMsg(err),
             });
           }
 
@@ -779,21 +825,21 @@ export async function activateSubscriptionFromPaymentImpl(params: {
             notes: `Plan: ${params.planId} | Payment: ${params.externalPaymentId} | Sub: ${subId}`,
           }, 'PAYMENT_GATEWAY');
 
-          if (created && created.rawLicenseKey) {
+          if (created?.rawLicenseKey) {
             licenceResult = {
               rawKey: created.rawLicenseKey,
               keyMasked: created.license.keyMasked,
             };
           }
         }
-      } catch (licErr: any) {
-        log.warn(`[PaymentService] licence creation failed for user ${params.userId}:`, licErr?.message || licErr);
+      } catch (licErr: unknown) {
+        log.warn(`[PaymentService] licence creation failed for user ${params.userId}:`, errMsg(licErr));
         licenceResult = null;
       }
     };
 
-    if (typeof (db as any).transaction === 'function') {
-      (db as any).transaction(runUpdates)();
+    if (typeof db.transaction === 'function') {
+      db.transaction(runUpdates)();
     } else {
       runUpdates();
     }
@@ -809,8 +855,8 @@ export async function activateSubscriptionFromPaymentImpl(params: {
           plan_id: targetPlan.id,
           profile_quota: targetPlan.limits.maxProfiles,
         });
-      } catch (err: any) {
-        log.error('[PaymentService][CRITICAL] PG plan sync error', err?.message);
+      } catch (err: unknown) {
+        log.error('[PaymentService][CRITICAL] PG plan sync error', errMsg(err));
         planSyncFailed = true;
       }
     }
@@ -880,6 +926,9 @@ export async function handleWebhookImpl(
 
   if (pgClient) {
     return await withPgTransaction(pgClient, async (tx) => {
+      if (!tx.commercial_webhook_events || !tx.commercial_payments) {
+        throw new Error('PG webhook billing delegates unavailable inside transaction');
+      }
       let claimed = false;
       if (typeof tx.$queryRaw === 'function') {
         const rows = (await tx.$queryRaw`
@@ -887,7 +936,7 @@ export async function handleWebhookImpl(
           VALUES (${event.id}, ${event.provider}, ${event.type}, ${rawPayload}, 'PROCESSING', ${now})
           ON CONFLICT (id) DO NOTHING
           RETURNING id
-        `) as any[];
+        `) as SqliteIdRow[];
         claimed = Array.isArray(rows) && rows.length > 0;
       } else {
         const existing = await tx.commercial_webhook_events.findFirst({
@@ -907,7 +956,7 @@ export async function handleWebhookImpl(
               },
             });
             claimed = true;
-          } catch (dupErr: any) {
+          } catch (dupErr: unknown) {
             if (!isPgUniqueViolation(dupErr)) throw dupErr;
             claimed = false;
           }
@@ -928,7 +977,7 @@ export async function handleWebhookImpl(
         const lookupKeys = [event.externalPaymentId, event.externalOrderId].filter(
           (v): v is string => typeof v === 'string' && v.trim().length > 0
         );
-        let correlatedPayment: any = null;
+        let correlatedPayment: CommercialPaymentRow | null = null;
         if (lookupKeys.length > 0) {
           if (typeof tx.$queryRaw === 'function') {
             for (const key of lookupKeys) {
@@ -936,7 +985,7 @@ export async function handleWebhookImpl(
                 SELECT * FROM commercial_payments
                 WHERE external_payment_id = ${key} OR external_order_id = ${key} OR id = ${key}
                 LIMIT 1 FOR UPDATE
-              `) as any[];
+              `) as CommercialPaymentRow[];
               if (rows?.[0]) {
                 correlatedPayment = rows[0];
                 break;
@@ -1002,7 +1051,7 @@ export async function handleWebhookImpl(
           },
         });
       } else if (event.type === 'subscription.cancelled') {
-        await tx.commercial_subscriptions.updateMany({
+        await tx.commercial_subscriptions?.updateMany({
           where: { user_id: event.userId, status: 'ACTIVE' },
           data: { status: 'CANCELLED', updated_at: now },
         });
@@ -1052,13 +1101,14 @@ export async function handleWebhookImpl(
       const lookupKeys = [event.externalPaymentId, event.externalOrderId].filter(
         (v): v is string => typeof v === 'string' && v.trim().length > 0
       );
-      let correlatedPayment: any = null;
+      let correlatedPayment: CommercialPaymentRow | null = null;
       for (const key of lookupKeys) {
-        correlatedPayment = db
-          .prepare(
-            'SELECT * FROM commercial_payments WHERE external_payment_id = ? OR external_order_id = ? OR id = ? LIMIT 1'
-          )
-          .get(key, key, key) as any;
+        correlatedPayment =
+          (db
+            .prepare(
+              'SELECT * FROM commercial_payments WHERE external_payment_id = ? OR external_order_id = ? OR id = ? LIMIT 1'
+            )
+            .get(key, key, key) as unknown as CommercialPaymentRow | undefined) || null;
         if (correlatedPayment) break;
       }
       if (correlatedPayment) {

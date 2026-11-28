@@ -8,9 +8,9 @@
  * - Existing users with real profiles remain completely unaffected
  */
 
-import { Profile, ProfileSettings, CreateProfileDTO } from '../../10_CONFIG/shared/types/profile.js';
+import type { Profile, ProfileSettings, CreateProfileDTO } from '../../10_CONFIG/shared/types/profile.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
-import { createProfile, getProfiles } from './profile-service.js';
+import { createProfile } from './profile-service.js';
 import { assertCanCreateProfile } from '../../08_SECURITY/freemium-guard.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { CHROMIUM_PRODUCTION_VERSION } from '../../10_CONFIG/engine-config.js';

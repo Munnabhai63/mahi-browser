@@ -3,7 +3,7 @@ import https from 'node:https';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { UpdateChannel, UpdateReleaseManifest, UpdateProgress } from '../../10_CONFIG/shared/types/updater.js';
+import type { UpdateChannel, UpdateReleaseManifest, UpdateProgress } from '../../10_CONFIG/shared/types/updater.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 import { getDefaultUpdateFeedUrl } from '../../10_CONFIG/shared/site-config.js';
 import { createLogger } from '../utils/logger.js';
@@ -80,8 +80,12 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
                 try {
                   const parsed = JSON.parse(data);
                   resolve(parsed);
-                } catch (parseErr: any) {
-                  reject(new Error(`Failed to parse update manifest JSON: ${parseErr?.message || parseErr}`));
+                } catch (parseErr: unknown) {
+                  reject(
+                    new Error(
+                      `Failed to parse update manifest JSON: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`
+                    )
+                  );
                 }
               });
             }
@@ -95,7 +99,7 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
           req.on('error', (err) => {
             reject(new Error(`Update check network failure: ${err.message}`));
           });
-        } catch (err: any) {
+        } catch (err: unknown) {
           reject(err instanceof Error ? err : new Error(String(err)));
         }
       });

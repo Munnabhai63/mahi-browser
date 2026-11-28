@@ -72,13 +72,27 @@ async function runLocalProbeServer(): Promise<{ server: http.Server; url: string
     res.end(PROBE_HTML);
   });
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     server.listen(0, '127.0.0.1', () => {
-      const addr = server.address() as any;
+      const addr = server.address();
+      if (!addr || typeof addr === 'string') {
+        reject(new Error('Failed to bind local probe server port'));
+        return;
+      }
       resolve({ server, url: `http://127.0.0.1:${addr.port}` });
     });
   });
 }
+
+interface CreepProbeWindowResult {
+  webdriver?: boolean;
+  webdriverDescriptor?: string;
+  clientHintsBrands?: string;
+  canvasHash?: string;
+  [key: string]: unknown;
+}
+
+type ProbeWindow = Window & { __results?: CreepProbeWindowResult };
 
 async function verifyCreepJs() {
   console.log('===============================================================');
@@ -139,43 +153,43 @@ async function verifyCreepJs() {
     await page1.goto(url);
     await page1.waitForTimeout(1000);
 
-    const results1 = await page1.evaluate(() => (window as any).__results);
+    const results1 = await page1.evaluate(() => (window as ProbeWindow).__results);
     console.log('[CreepJS Probe Results (Run 1)]:', JSON.stringify(results1, null, 2));
 
     let passed = true;
-    if (results1.webdriver !== false) {
-      console.error('FAIL: navigator.webdriver !== false (was ' + results1.webdriver + ')');
+    if (results1?.webdriver !== false) {
+      console.error(`FAIL: navigator.webdriver !== false (was ${String(results1?.webdriver)})`);
       passed = false;
     } else {
       console.log('PASS: navigator.webdriver === false');
     }
 
-    if (!results1.webdriverDescriptor.includes('[native code]')) {
+    if (!results1?.webdriverDescriptor?.includes('[native code]')) {
       console.error('FAIL: navigator.webdriver prototype does not return [native code]');
       passed = false;
     } else {
       console.log('PASS: navigator.webdriver prototype contains [native code]');
     }
 
-    if (results1.hasCdc) {
+    if (results1?.hasCdc) {
       console.error('FAIL: cdc_* automation artifacts detected');
       passed = false;
     } else {
       console.log('PASS: cdc_* automation artifacts completely scrubbed');
     }
 
-    if (results1.hasMahiLeaks) {
+    if (results1?.hasMahiLeaks) {
       console.error('FAIL: __MAHI properties leaked to window');
       passed = false;
     } else {
       console.log('PASS: Zero MAHI properties leaked to window');
     }
 
-    if (!results1.clientHintsBrands.includes('Google Chrome') && !results1.clientHintsBrands.includes('Chromium')) {
-      console.error('FAIL: sec-ch-ua brand signature missing Chrome/Chromium: ' + results1.clientHintsBrands);
+    if (!results1?.clientHintsBrands?.includes('Google Chrome') && !results1?.clientHintsBrands?.includes('Chromium')) {
+      console.error(`FAIL: sec-ch-ua brand signature missing Chrome/Chromium: ${String(results1?.clientHintsBrands)}`);
       passed = false;
     } else {
-      console.log('PASS: Client Hints brands aligned with target engine (' + results1.clientHintsBrands + ')');
+      console.log(`PASS: Client Hints brands aligned with target engine (${results1.clientHintsBrands})`);
     }
 
     await context1.close();
@@ -201,10 +215,10 @@ async function verifyCreepJs() {
     await page2.goto(url);
     await page2.waitForTimeout(1000);
 
-    const results2 = await page2.evaluate(() => (window as any).__results);
-    console.log('[CreepJS Probe Results (Run 2)] Canvas Hash Length:', results2.canvasHash?.length);
+    const results2 = await page2.evaluate(() => (window as ProbeWindow).__results);
+    console.log('[CreepJS Probe Results (Run 2)] Canvas Hash Length:', results2?.canvasHash?.length);
 
-    if (results1.canvasHash === results2.canvasHash) {
+    if (results1?.canvasHash === results2?.canvasHash) {
       console.log('PASS: Canvas hash is 100% deterministic across consecutive launches with same seed');
     } else {
       console.error('FAIL: Canvas hash variance detected between identical seeded runs');
@@ -223,14 +237,14 @@ async function verifyCreepJs() {
         });
         const camouPage = await camouContext.newPage();
         await camouPage.goto(url);
-        const camouResults = await camouPage.evaluate(() => (window as any).__results);
+        const camouResults = await camouPage.evaluate(() => (window as ProbeWindow).__results);
         console.log('[Camoufox Probe Results]:', JSON.stringify(camouResults, null, 2));
-        if (camouResults.webdriver === false) {
+        if (camouResults?.webdriver === false) {
           console.log('PASS: Camoufox navigator.webdriver === false');
         }
         await camouContext.close();
-      } catch (camouErr: any) {
-        console.log(`[Camoufox Probe Note]: ${camouErr.message}`);
+      } catch (camouErr: unknown) {
+        console.log(`[Camoufox Probe Note]: ${camouErr instanceof Error ? camouErr.message : String(camouErr)}`);
       }
     }
 
@@ -266,7 +280,7 @@ async function verifyCreepJs() {
   }
 }
 
-if (process.argv[1] && process.argv[1].includes('verify-creepjs')) {
+if (process.argv[1]?.includes('verify-creepjs')) {
   verifyCreepJs().catch((err) => {
     console.error('[CreepJS Probe ERROR]:', err);
     process.exit(1);

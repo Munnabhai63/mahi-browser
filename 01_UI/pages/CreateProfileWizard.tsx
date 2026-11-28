@@ -1,9 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Layers,
-  Globe2,
-  Shield,
-  Sliders,
   CheckCircle2,
   ArrowRight,
   ArrowLeft,
@@ -13,14 +10,13 @@ import {
   Terminal,
   Smartphone,
   Cpu,
-  Plus,
   X,
   Zap,
   Loader2,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useProxyStore } from '../stores/useProxyStore.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 import {
   DEFAULT_USER_AGENTS,
   SCREEN_RESOLUTIONS,
@@ -29,7 +25,7 @@ import {
   getDefaultProfileSettings,
   generateConsistentEnvironmentSettings,
 } from '../../10_CONFIG/shared/constants/defaults.js';
-import { ProfileSettings } from '../../10_CONFIG/shared/types/profile.js';
+import type { ProfileSettings } from '../../10_CONFIG/shared/types/profile.js';
 
 interface CreateProfileWizardProps {
   onNavigate: (page: NavigationPage) => void;
@@ -43,7 +39,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
   const [isDeploying, setIsDeploying] = useState(false);
 
   // Step 1: Basic Info
-  const [name, setName] = useState('New Profile ' + Math.floor(Math.random() * 1000));
+  const [name, setName] = useState(`New Profile ${Math.floor(Math.random() * 1000)}`);
   const [description, setDescription] = useState('');
   const [folder, setFolder] = useState('General');
   const [tags, setTags] = useState<string[]>(['Workspace']);
@@ -55,7 +51,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
 
   useEffect(() => {
     fetchProxies();
-  }, []);
+  }, [fetchProxies]);
 
   const handleAddTag = () => {
     if (tagInput.trim() && !tags.includes(tagInput.trim())) {
@@ -166,7 +162,8 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
             { num: 4, label: 'Environment' },
             { num: 5, label: 'Summary' },
           ].map((s) => (
-            <div
+            <button
+              type="button"
               key={s.num}
               onClick={() => s.num < step && setStep(s.num)}
               className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
@@ -179,7 +176,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
             >
               <div className="text-[10px] uppercase tracking-wider">Step {s.num}</div>
               <div className="text-xs truncate">{s.label}</div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -190,7 +187,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
         {step === 1 && (
           <div className="space-y-4 animate-in fade-in duration-150">
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-001" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Profile Name <span className="text-rose-500">*</span>
               </label>
               <input
@@ -204,7 +201,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-002" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Folder Category
                 </label>
                 <input
@@ -217,7 +214,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-003" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Description
                 </label>
                 <input
@@ -231,7 +228,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-004" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Profile Tags
               </label>
               <div className="flex items-center space-x-2">
@@ -239,7 +236,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
                   type="text"
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); } }}
                   placeholder="Type tag and press Add or Enter..."
                   className="flex-1 px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500"
                 />
@@ -269,7 +266,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-005" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Notes
               </label>
               <textarea
@@ -304,7 +301,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
               </div>
 
               <div className="mb-3">
-                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                <label htmlFor="field-006" className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
                   Operating System & Device Type
                 </label>
                 <div className="grid grid-cols-4 gap-2">
@@ -321,9 +318,9 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
                     const isSelected = os.id === 'android' ? isAndroidSelected : os.id === 'mac' ? isMacSelected : os.id === 'linux' ? isLinuxSelected : isWinSelected;
                     const Icon = os.icon;
                     return (
-                      <button
+                      <button type="button"
                         key={os.id}
-                        type="button"
+
                         onClick={() => {
                           if (os.id === 'android') {
                             const androidUa = DEFAULT_USER_AGENTS.find((u) => u.value.includes('Pixel 8'))?.value ||
@@ -388,7 +385,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  <label htmlFor="field-007" className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
                     Proxy Attachment
                   </label>
                   <select
@@ -419,12 +416,12 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  <label htmlFor="field-008" className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
                     Browser Engine
                   </label>
                   <select
                     value={settings.browser.engine}
-                    onChange={(e) => handleEngineChange(e.target.value as any)}
+                    onChange={(e) => handleEngineChange(e.target.value as ProfileSettings['browser']['engine'])}
                     className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500 capitalize"
                   >
                     <option value="chromium">Chromium 138 (Stealth)</option>
@@ -467,7 +464,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
           <div className="space-y-4 animate-in fade-in duration-150">
             {/* Target Operating System (GoLogin & MostLogin OS Selector) */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+              <label htmlFor="field-009" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
                 Target Operating System
               </label>
               <div className="grid grid-cols-4 gap-3">
@@ -484,7 +481,8 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
                   const isSelected = os.id === 'android' ? isAndroidSelected : os.id === 'mac' ? isMacSelected : os.id === 'linux' ? isLinuxSelected : isWinSelected;
                   const Icon = os.icon;
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={os.id}
                       onClick={() => {
                         if (os.id === 'android') {
@@ -531,7 +529,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
                           });
                         }
                       }}
-                      className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                      className={`text-left p-3.5 rounded-xl border cursor-pointer transition-all ${
                         isSelected
                           ? 'bg-teal-500/10 border-teal-500 text-teal-600 dark:text-teal-400 font-bold shadow-xs'
                           : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
@@ -547,26 +545,27 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
                       </div>
                       <div className="text-xs font-bold">{os.name}</div>
                       <div className="text-[11px] text-slate-400">{os.desc}</div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
             </div>
 
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mt-2">
+            <label htmlFor="field-010" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mt-2">
               Browser Engine Architecture
             </label>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
+              {([
                 { id: 'chromium', name: 'Chromium 138', desc: 'Native C++ Stealth Engine' },
                 { id: 'camoufox', name: 'Camoufox', desc: 'Patched Firefox Engine' },
                 { id: 'chrome', name: 'Google Chrome', desc: 'Standard Chrome runtime' },
                 { id: 'edge', name: 'Microsoft Edge', desc: 'Edge Chromium runtime' },
-              ].map((eng) => (
-                <div
+              ] as const).map((eng) => (
+                <button
+                  type="button"
                   key={eng.id}
-                  onClick={() => handleEngineChange(eng.id as any)}
-                  className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                  onClick={() => handleEngineChange(eng.id)}
+                  className={`text-left p-3.5 rounded-xl border cursor-pointer transition-all ${
                     settings.browser.engine === eng.id
                       ? 'bg-teal-500/10 border-teal-500 text-teal-600 dark:text-teal-400 font-bold'
                       : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
@@ -575,12 +574,12 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
                   <Cpu className="w-5 h-5 mb-1.5" />
                   <div className="text-xs font-bold">{eng.name}</div>
                   <div className="text-[11px] text-slate-400">{eng.desc}</div>
-                </div>
+                </button>
               ))}
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-011" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 User Agent Preset
               </label>
               <select
@@ -609,7 +608,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-012" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Startup URL
                 </label>
                 <input
@@ -627,7 +626,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-013" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Homepage
                 </label>
                 <input
@@ -646,7 +645,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
             </div>
 
             <div className="pt-2 flex items-center space-x-6 text-xs text-slate-700 dark:text-slate-300">
-              <label className="flex items-center space-x-2 cursor-pointer">
+              <label htmlFor="field-014" className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={settings.browser.hardwareAcceleration}
@@ -661,7 +660,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
                 <span>Enable Hardware Acceleration (GPU)</span>
               </label>
 
-              <label className="flex items-center space-x-2 cursor-pointer">
+              <label htmlFor="field-015" className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={settings.browser.enableExtensions}
@@ -683,14 +682,15 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
         {step === 3 && (
           <div className="space-y-5 animate-in fade-in duration-150">
             <div className="grid grid-cols-2 gap-4">
-              <div
+              <button
+                type="button"
                 onClick={() =>
                   setSettings({
                     ...settings,
                     network: { ...settings.network, directConnection: true, proxyId: undefined },
                   })
                 }
-                className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                className={`text-left p-4 rounded-xl border cursor-pointer transition-all ${
                   settings.network.directConnection
                     ? 'bg-teal-500/10 border-teal-500 text-teal-600 dark:text-teal-400 font-bold'
                     : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
@@ -698,16 +698,17 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
               >
                 <div className="text-sm font-bold">Direct Connection</div>
                 <div className="text-xs text-slate-400 mt-1">Use standard local system network without proxy.</div>
-              </div>
+              </button>
 
-              <div
+              <button
+                type="button"
                 onClick={() =>
                   setSettings({
                     ...settings,
                     network: { ...settings.network, directConnection: false },
                   })
                 }
-                className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                className={`text-left p-4 rounded-xl border cursor-pointer transition-all ${
                   !settings.network.directConnection
                     ? 'bg-indigo-500/10 border-indigo-500 text-indigo-500 font-bold'
                     : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
@@ -715,23 +716,24 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
               >
                 <div className="text-sm font-bold">Assigned Proxy</div>
                 <div className="text-xs text-slate-400 mt-1">Route browser traffic through a saved proxy server.</div>
-              </div>
+              </button>
             </div>
 
             {!settings.network.directConnection && (
               <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                <label htmlFor="field-016" className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                   Select Proxy Endpoint
                 </label>
                 {proxies.length === 0 ? (
                   <div className="text-xs text-slate-400">
                     No proxies configured yet.{' '}
-                    <span
+                    <button
+                      type="button"
                       onClick={() => onNavigate('proxies')}
                       className="text-teal-500 underline cursor-pointer"
                     >
                       Go to Proxy Manager to add one.
-                    </span>
+                    </button>
                   </div>
                 ) : (
                   <select
@@ -756,7 +758,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
             )}
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="field-017" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 WebRTC Policy
               </label>
               <select
@@ -764,7 +766,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
                 onChange={(e) =>
                   setSettings({
                     ...settings,
-                    network: { ...settings.network, webrtc: e.target.value as any },
+                    network: { ...settings.network, webrtc: e.target.value as ProfileSettings['network']['webrtc'] },
                   })
                 }
                 className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-teal-500"
@@ -790,7 +792,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
           <div className="space-y-4 animate-in fade-in duration-150">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-018" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Screen Resolution
                 </label>
                 <select
@@ -813,7 +815,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-019" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Timezone
                 </label>
                 <select
@@ -837,7 +839,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-020" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Primary Language
                 </label>
                 <select
@@ -864,7 +866,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-021" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Device Scale Factor
                 </label>
                 <select
@@ -886,7 +888,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
             </div>
 
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+              <label htmlFor="field-022" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
                 Browser Permissions Policy
               </label>
               <div className="grid grid-cols-3 gap-3 text-xs">
@@ -897,7 +899,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
                     onChange={(e) =>
                       setSettings({
                         ...settings,
-                        permissions: { ...settings.permissions, geolocation: e.target.value as any },
+                        permissions: { ...settings.permissions, geolocation: e.target.value as ProfileSettings['permissions']['geolocation'] },
                       })
                     }
                     className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs"
@@ -917,8 +919,8 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
                         ...settings,
                         permissions: {
                           ...settings.permissions,
-                          camera: e.target.value as any,
-                          microphone: e.target.value as any,
+                          camera: e.target.value as ProfileSettings['permissions']['camera'],
+                          microphone: e.target.value as ProfileSettings['permissions']['microphone'],
                         },
                       })
                     }
@@ -937,7 +939,7 @@ export const CreateProfileWizard: React.FC<CreateProfileWizardProps> = ({ onNavi
                     onChange={(e) =>
                       setSettings({
                         ...settings,
-                        permissions: { ...settings.permissions, notifications: e.target.value as any },
+                        permissions: { ...settings.permissions, notifications: e.target.value as ProfileSettings['permissions']['notifications'] },
                       })
                     }
                     className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs"

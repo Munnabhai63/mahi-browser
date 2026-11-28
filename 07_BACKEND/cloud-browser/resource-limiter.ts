@@ -11,7 +11,7 @@
 
 import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import {
+import type {
   CloudBrowserSession,
   CloudResourceClass,
 } from '../../10_CONFIG/shared/types/cloud-browser.js';
@@ -143,7 +143,7 @@ export class ResourceLimiter {
              COUNT(id) as totalSessions
       FROM cloud_browser_usage
       WHERE user_id = ?
-    `).get(userId) as any;
+    `).get(userId) as { totalSeconds: number; totalSessions: number } | undefined;
 
     const activeCount = Array.from(this.trackedSessions.values()).filter((s) => s.userId === userId).length;
 

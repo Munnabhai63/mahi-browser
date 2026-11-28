@@ -1,4 +1,4 @@
-import http from 'node:http';
+import type http from 'node:http';
 import { EventEmitter } from 'node:events';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { isTrustedOrigin } from '../07_BACKEND/server/cloud-gateway.js';
@@ -8,9 +8,20 @@ import { createLogger } from '../07_BACKEND/utils/logger.js';
 const log = createLogger('sync-hub');
 
 
+export interface SyncActionPayload {
+  xRatio?: number;
+  yRatio?: number;
+  button?: number;
+  value?: string;
+  key?: string;
+  scrollYRatio?: number;
+  url?: string;
+  [key: string]: unknown;
+}
+
 export interface SyncAction {
   type: 'CLICK' | 'TYPE' | 'KEY' | 'SCROLL' | 'NAVIGATE' | 'START_WARMUP';
-  payload: any;
+  payload?: SyncActionPayload;
   timestamp: number;
 }
 
@@ -53,7 +64,6 @@ class SynchronizerHub extends EventEmitter {
 
   // Support multiple active tabs / windows per profile
   private sseClients: Map<string, Set<http.ServerResponse>> = new Map();
-  private heartbeatTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     super();
@@ -63,8 +73,7 @@ class SynchronizerHub extends EventEmitter {
     });
 
     // Keep-alive heartbeat every 15s to prevent connection timeouts
-
-    this.heartbeatTimer = setInterval(() => {
+    setInterval(() => {
       for (const [pId, clientSet] of this.sseClients.entries()) {
         for (const res of clientSet) {
           try {
@@ -169,16 +178,21 @@ class SynchronizerHub extends EventEmitter {
 
 
   public registerClient(profileId: string, res: http.ServerResponse, origin?: string): void {
-    if (!this.sseClients.has(profileId)) {
-      this.sseClients.set(profileId, new Set());
+    let clientSet = this.sseClients.get(profileId);
+    if (!clientSet) {
+      clientSet = new Set();
+      this.sseClients.set(profileId, clientSet);
     }
-    const clientSet = this.sseClients.get(profileId)!;
     clientSet.add(res);
 
+    const resWithReq = res as http.ServerResponse & {
+      __req?: { headers?: { origin?: string } };
+      req?: { headers?: { origin?: string } };
+    };
     const requestOrigin =
       origin ||
-      ((res as any).__req?.headers?.origin as string | undefined) ||
-      ((res as any).req?.headers?.origin as string | undefined) ||
+      resWithReq.__req?.headers?.origin ||
+      resWithReq.req?.headers?.origin ||
       '';
     const headers: Record<string, string> = {
       'Content-Type': 'text/event-stream',
@@ -214,9 +228,9 @@ class SynchronizerHub extends EventEmitter {
     return this.sseClients.size;
   }
 
-  private broadcastSystemNotification(payload: any): void {
+  private broadcastSystemNotification(payload: Record<string, unknown>): void {
     const dataStr = JSON.stringify(payload);
-    for (const [pId, clientSet] of this.sseClients.entries()) {
+    for (const [, clientSet] of this.sseClients.entries()) {
       for (const res of clientSet) {
         try {
           res.write(`data: ${dataStr}\n\n`);
@@ -250,7 +264,7 @@ class SynchronizerHub extends EventEmitter {
 
     // Native CDP Dispatching (Zero Mixed Content restrictions, full OS-level simulation)
     if (action.type === 'CLICK' && action.payload) {
-      cdpSynchronizer.dispatchCdpClick(action.payload.xRatio, action.payload.yRatio, action.payload.button || 0);
+      cdpSynchronizer.dispatchCdpClick(action.payload.xRatio ?? 0, action.payload.yRatio ?? 0, action.payload.button || 0);
     } else if (action.type === 'TYPE' && action.payload) {
       cdpSynchronizer.dispatchCdpType(action.payload.value || '', false);
     } else if (action.type === 'KEY' && action.payload) {

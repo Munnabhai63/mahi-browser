@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import {
   Sliders,
   Sparkles,
@@ -6,10 +7,7 @@ import {
   Globe2,
   Shield,
   CheckCircle2,
-  Copy,
-  RefreshCw,
   Cpu,
-  Layers,
 } from 'lucide-react';
 import {
   DEFAULT_USER_AGENTS,
@@ -19,10 +17,10 @@ import {
   generateConsistentEnvironmentSettings,
   getDefaultProfileSettings,
 } from '../../10_CONFIG/shared/constants/defaults.js';
-import { ProfileSettings } from '../../10_CONFIG/shared/types/profile.js';
+import type { ProfileSettings } from '../../10_CONFIG/shared/types/profile.js';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 
 interface BrowserEnvironmentProps {
   onNavigate: (page: NavigationPage) => void;
@@ -30,7 +28,7 @@ interface BrowserEnvironmentProps {
 
 export const BrowserEnvironmentPage: React.FC<BrowserEnvironmentProps> = ({ onNavigate }) => {
   const [config, setConfig] = useState<ProfileSettings>(getDefaultProfileSettings());
-  const { profiles, createProfile } = useProfileStore();
+  const { createProfile } = useProfileStore();
   const { showToast } = useToastStore();
 
   const handleRandomize = () => {
@@ -67,7 +65,7 @@ export const BrowserEnvironmentPage: React.FC<BrowserEnvironmentProps> = ({ onNa
         </div>
 
         <div className="flex items-center space-x-3">
-          <button
+          <button type="button"
             onClick={handleRandomize}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl shadow-sm flex items-center space-x-1.5 active:scale-95 transition-all"
           >
@@ -75,7 +73,7 @@ export const BrowserEnvironmentPage: React.FC<BrowserEnvironmentProps> = ({ onNa
             <span>Generate Test Consistency</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={handleCreateProfileWithEnv}
             className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold rounded-xl shadow-sm flex items-center space-x-1.5 active:scale-95 transition-all"
           >
@@ -96,13 +94,13 @@ export const BrowserEnvironmentPage: React.FC<BrowserEnvironmentProps> = ({ onNa
 
           <div className="space-y-3 text-xs">
             <div>
-              <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Engine</label>
+              <label htmlFor="field-001" className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Engine</label>
               <select
                 value={config.browser.engine}
                 onChange={(e) =>
                   setConfig({
                     ...config,
-                    browser: { ...config.browser, engine: e.target.value as any },
+                    browser: { ...config.browser, engine: e.target.value as ProfileSettings['browser']['engine'] },
                   })
                 }
                 className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl"
@@ -114,7 +112,7 @@ export const BrowserEnvironmentPage: React.FC<BrowserEnvironmentProps> = ({ onNa
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">User Agent Preset</label>
+              <label htmlFor="field-002" className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">User Agent Preset</label>
               <select
                 value={config.browser.userAgent}
                 onChange={(e) =>
@@ -144,7 +142,7 @@ export const BrowserEnvironmentPage: React.FC<BrowserEnvironmentProps> = ({ onNa
 
           <div className="space-y-3 text-xs">
             <div>
-              <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Resolution Preset</label>
+              <label htmlFor="field-003" className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Resolution Preset</label>
               <select
                 value={`${config.display.screenWidth}x${config.display.screenHeight}`}
                 onChange={(e) => {
@@ -165,7 +163,7 @@ export const BrowserEnvironmentPage: React.FC<BrowserEnvironmentProps> = ({ onNa
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Scale Factor</label>
+              <label htmlFor="field-004" className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Scale Factor</label>
               <select
                 value={config.display.deviceScaleFactor}
                 onChange={(e) =>
@@ -194,7 +192,7 @@ export const BrowserEnvironmentPage: React.FC<BrowserEnvironmentProps> = ({ onNa
 
           <div className="space-y-3 text-xs">
             <div>
-              <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Timezone</label>
+              <label htmlFor="field-005" className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Timezone</label>
               <select
                 value={config.locale.timezone}
                 onChange={(e) =>
@@ -214,7 +212,7 @@ export const BrowserEnvironmentPage: React.FC<BrowserEnvironmentProps> = ({ onNa
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Language</label>
+              <label htmlFor="field-006" className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Language</label>
               <select
                 value={config.locale.language}
                 onChange={(e) =>
@@ -244,13 +242,13 @@ export const BrowserEnvironmentPage: React.FC<BrowserEnvironmentProps> = ({ onNa
 
           <div className="space-y-3 text-xs">
             <div>
-              <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">WebRTC Policy</label>
+              <label htmlFor="field-007" className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">WebRTC Policy</label>
               <select
                 value={config.network.webrtc}
                 onChange={(e) =>
                   setConfig({
                     ...config,
-                    network: { ...config.network, webrtc: e.target.value as any },
+                    network: { ...config.network, webrtc: e.target.value as ProfileSettings['network']['webrtc'] },
                   })
                 }
                 className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl"
@@ -281,13 +279,13 @@ export const BrowserEnvironmentPage: React.FC<BrowserEnvironmentProps> = ({ onNa
           <div className="space-y-3 text-xs">
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Camera</label>
+                <label htmlFor="field-008" className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Camera</label>
                 <select
                   value={config.permissions.camera}
                   onChange={(e) =>
                     setConfig({
                       ...config,
-                      permissions: { ...config.permissions, camera: e.target.value as any },
+                      permissions: { ...config.permissions, camera: e.target.value as ProfileSettings['permissions']['camera'] },
                     })
                   }
                   className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl"
@@ -299,13 +297,13 @@ export const BrowserEnvironmentPage: React.FC<BrowserEnvironmentProps> = ({ onNa
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Geolocation</label>
+                <label htmlFor="field-009" className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Geolocation</label>
                 <select
                   value={config.permissions.geolocation}
                   onChange={(e) =>
                     setConfig({
                       ...config,
-                      permissions: { ...config.permissions, geolocation: e.target.value as any },
+                      permissions: { ...config.permissions, geolocation: e.target.value as ProfileSettings['permissions']['geolocation'] },
                     })
                   }
                   className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl"

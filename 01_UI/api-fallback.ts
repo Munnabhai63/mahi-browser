@@ -1,7 +1,21 @@
-import { MahiBrowserAPI } from '../10_CONFIG/shared/types/ipc.js';
+import type { MahiBrowserAPI } from '../10_CONFIG/shared/types/ipc.js';
+import type { ProfileAuditReport } from '../10_CONFIG/shared/types/diagnostics.js';
+import type { ExtensionItem } from '../10_CONFIG/shared/types/extension.js';
+import type { Profile } from '../10_CONFIG/shared/types/profile.js';
+import type { AppSettings } from '../10_CONFIG/shared/types/settings.js';
+import type { CloudSyncConfig } from '../10_CONFIG/shared/types/sync.js';
 import { APP_VERSION } from '../10_CONFIG/shared/version.js';
 import { CONTACT_CONFIG } from '../10_CONFIG/contact-config.js';
 import { DEFAULT_LOCAL_DAEMON_PORT, getLocalDaemonBaseUrl } from '../10_CONFIG/shared/network-endpoints.js';
+
+function toErrorMessage(err: unknown, fallback = 'Unknown error'): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (err && typeof err === 'object' && 'message' in err) {
+    const msg = (err as { message?: unknown }).message;
+    if (typeof msg === 'string' && msg) return msg;
+  }
+  return fallback;
+}
 
 // Resilient API fallback — routes ALL calls through the local REST API
 // This activates when preload/IPC is not available (e.g. ESM preload failure)
@@ -75,21 +89,23 @@ export interface MyLicenseResponse {
 
 export async function fetchMyLicense(): Promise<MyLicenseResponse | null> {
   try {
-    let res: any;
+    let res: { success?: boolean; data?: MyLicenseResponse } | null = null;
     try {
       res = await apiGet('/me/license');
-    } catch (err: any) {
-      if (err?.message?.includes('NO_LICENSE') || err?.status === 404) {
+    } catch (err: unknown) {
+      const apiErr = err as { message?: string; status?: number } | null;
+      if (apiErr?.message?.includes('NO_LICENSE') || apiErr?.status === 404) {
         return null;
       }
       res = await apiGet('/api/v1/me/license');
     }
-    if (res && res.success && res.data) {
+    if (res?.success && res.data) {
       return res.data;
     }
     return null;
-  } catch (err: any) {
-    if (err?.message?.includes('NO_LICENSE') || err?.status === 404) {
+  } catch (err: unknown) {
+    const apiErr = err as { message?: string; status?: number } | null;
+    if (apiErr?.message?.includes('NO_LICENSE') || apiErr?.status === 404) {
       return null;
     }
     return null;
@@ -125,8 +141,8 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
         try {
           const res = await apiPost(`/profiles/${id}/start`);
           results.push({ profileId: id, success: !!res.success, pid: res.pid, error: res.error });
-        } catch (err: any) {
-          results.push({ profileId: id, success: false, error: err.message });
+        } catch (err: unknown) {
+          results.push({ profileId: id, success: false, error: toErrorMessage(err, 'Start failed') });
         }
         if (i < profileIds.length - 1 && delayMs && delayMs > 0) {
           await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -317,9 +333,9 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     getExtensions: async (profileId) => { try { const r = await apiGet(`/extensions/${profileId}`); return Array.isArray(r) ? r : (r.data || []); } catch { return []; } },
     getStoreExtensions: async () => [],
     installExtension: async (dto) => { const r = await apiPost('/extensions', dto); return r.data || r; },
-    installExtensionFromStore: async () => ({} as any),
+    installExtensionFromStore: async () => ({} as unknown as ExtensionItem),
     installExtensionBatch: async () => ({ installedCount: 0, extensions: [] }),
-    installFromWebStoreUrl: async () => ({} as any),
+    installFromWebStoreUrl: async () => ({} as unknown as ExtensionItem),
     toggleExtension: async (profileId, extensionId, enabled) => { await apiPut(`/extensions/${profileId}/${extensionId}`, { enabled }); return true; },
     removeExtension: async (profileId, extensionId) => { await apiDelete(`/extensions/${profileId}/${extensionId}`); return true; },
 
@@ -337,9 +353,9 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
 
     // Archives
     previewImportProfile: async () => ({ valid: true, isEncrypted: false, profileName: 'Imported', cookieCount: 0, extensionCount: 0, browserEngine: 'chrome' as const, formatVersion: '1.0', exportedAt: new Date().toISOString(), folder: 'General', tags: [], historyCount: 0 }),
-    importProfile: async () => ({} as any),
+    importProfile: async () => ({} as unknown as Profile),
     exportProfile: async () => ({ success: true, filePath: '' }),
-    exportNetscapeCookies: async (profileId: string, targetFilePath?: string) => '# Netscape HTTP Cookie File\n',
+    exportNetscapeCookies: async (_profileId: string, _targetFilePath?: string) => '# Netscape HTTP Cookie File\n',
     exportBulkProfiles: async () => ({ success: true, filePath: '', profileCount: 0 }),
     importCrossPlatformProfiles: async () => ({ success: true, importedCount: 0, profiles: [] }),
 
@@ -360,8 +376,8 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     }),
     checkOnlineLicenseNow: async () => ({ success: true, status: 'active' }),
     activateLicense: async (dto) => {
-      try { return await apiPost('/license/activate', dto); } catch (e: any) {
-        return { success: false, status: 'NOT_ACTIVATED' as const, message: e.message || 'Activation failed' };
+      try { return await apiPost('/license/activate', dto); } catch (e: unknown) {
+        return { success: false, status: 'NOT_ACTIVATED' as const, message: toErrorMessage(e, 'Activation failed') };
       }
     },
     adminCreateLicense: async (dto, secret) => {
@@ -407,10 +423,10 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
           security: { appLockEnabled: false, appLockTimeoutMinutes: 15, encryptionAlgorithm: 'aes-256-gcm' },
           performance: { maxConcurrentProfiles: 10, hardwareAcceleration: true, memorySaver: true },
           advanced: { enableDebugLogs: false, developerMode: false, enableLocalApi: true, apiPort: DEFAULT_LOCAL_DAEMON_PORT, apiAuthToken: getAuthToken() },
-        } as any;
+        } as unknown as AppSettings;
       }
     },
-    updateAppSettings: async (s: any) => { try { return await apiPut('/settings', s); } catch { return s; } },
+    updateAppSettings: async (s) => { try { return await apiPut('/settings', s); } catch { return s as unknown as AppSettings; } },
     verifyAppPin: async () => true,
     setAppPin: async () => true,
     getActivityLogs: async () => { try { const r = await apiGet('/logs'); return Array.isArray(r) ? r : (r.data || []); } catch { return []; } },
@@ -423,23 +439,37 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     mobileRotatorCheckIp: async () => { try { return await apiGet('/mobile-rotator/check-ip'); } catch { return { ip: 'Unknown', error: 'Local API daemon unavailable' }; } },
     mobileRotatorGetDevices: async () => { try { return await apiGet('/mobile-rotator/devices'); } catch { return []; } },
     mobileRotatorRotate: async (config) => { const r = await apiPost('/mobile-rotator/rotate', config || {}); return r.data || r; },
-    mobileRotatorGetConfig: async () => { try { return await apiGet('/mobile-rotator/config'); } catch { return {}; } },
+    mobileRotatorGetConfig: async () => { try { return await apiGet('/mobile-rotator/config'); } catch { return { method: 'adb', airplaneDelayMs: 2500, autoRotateOnProfileStart: false, mobileModeEnabled: false, minIntervalSeconds: 30 }; } },
     mobileRotatorSaveConfig: async (config) => { const r = await apiPost('/mobile-rotator/config', config); return r.data || r; },
-    mobileRotatorGetAdbStatus: async () => { try { return await apiGet('/mobile-rotator/adb-status'); } catch { return { installed: false, adbPath: null, source: 'missing' }; } },
+    mobileRotatorGetAdbStatus: async () => { try { return await apiGet('/mobile-rotator/adb-status'); } catch { return { installed: false, adbPath: null, source: 'missing', managedInstallDir: '', platform: 'win32', downloadUrl: '' }; } },
     mobileRotatorInstallAdb: async () => { return await apiPost('/mobile-rotator/install-adb', {}); },
     mobileRotatorGetHistory: async () => { try { return await apiGet('/mobile-rotator/history'); } catch { return []; } },
     mobileRotatorClearHistory: async () => { try { await apiDelete('/mobile-rotator/history'); return true; } catch { return false; } },
 
     // Universal Bulk Importer
     importerParsePreview: async (rawText) => { try { return (await apiPost('/importer/preview', { rawText })).data || []; } catch { return []; } },
-    importerExecuteBulkImport: async (accounts, options) => { try { return (await apiPost('/importer/execute', { accounts, options })).data || {}; } catch { return { success: false, totalImported: 0 }; } },
+    importerExecuteBulkImport: async (accounts, options) => { try { return (await apiPost('/importer/execute', { accounts, options })).data || {}; } catch { return { success: false, totalImported: 0, failedCount: 0, createdProfileIds: [], createdProfiles: [], errors: [], durationMs: 0 }; } },
     importerParseNetscape: async (rawText) => { try { return (await apiPost('/importer/netscape', { rawText })).data || []; } catch { return []; } },
 
     // Multi-Window Synchronizer
     synchronizerStart: async (masterId, active, config) => { try { return (await apiPost('/synchronizer/start', { masterId, active, config })).data || {}; } catch { return { enabled: true }; } },
     synchronizerStop: async () => { try { return (await apiPost('/synchronizer/stop', {})).data || {}; } catch { return { enabled: false }; } },
     synchronizerGetStatus: async () => { try { return await apiGet('/synchronizer/status'); } catch { return { enabled: false, config: {} }; } },
-    synchronizerUpdateConfig: async (config) => { try { return (await apiPut('/synchronizer/config', config)).data || {}; } catch { return {}; } },
+    synchronizerUpdateConfig: async (config) => {
+      try {
+        return (await apiPut('/synchronizer/config', config)).data || {};
+      } catch {
+        return {
+          syncClicks: true,
+          syncTyping: true,
+          syncScroll: true,
+          syncNavigation: true,
+          humanDelayMinMs: 0,
+          humanDelayMaxMs: 0,
+          ...config,
+        };
+      }
+    },
 
     // Diagnostics
     diagnosticsAudit: async (profileId: string) => {
@@ -454,7 +484,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
           failCount: 0,
           checks: [],
           auditedAt: new Date().toISOString(),
-        } as any;
+        } satisfies ProfileAuditReport;
       }
     },
     diagnosticsAutoFix: async (profileId: string) => {
@@ -469,7 +499,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
           failCount: 0,
           checks: [],
           auditedAt: new Date().toISOString(),
-        } as any;
+        } satisfies ProfileAuditReport;
       }
     },
 
@@ -479,15 +509,15 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
         return { enabled: false, provider: '2captcha', apiKey: '', autoSolveInBrowser: true, autoSolveInRpa: true, timeoutSeconds: 60 };
       }
     },
-    captchaSaveConfig: async (config: any) => {
+    captchaSaveConfig: async (config) => {
       try { await apiPost('/captcha/config', config); return true; } catch { return true; }
     },
-    captchaCheckBalance: async (provider: any, apiKey: string) => {
+    captchaCheckBalance: async (provider, apiKey: string) => {
       try { return await apiPost('/captcha/balance', { provider, apiKey }); } catch {
         return { provider, balance: 14.25, currency: 'USD', success: true };
       }
     },
-    captchaSolve: async (request: any) => {
+    captchaSolve: async (request) => {
       try { return await apiPost('/captcha/solve', request); } catch {
         return { success: true, token: 'mock_turnstile_token_123', solveTimeSeconds: 4.2 };
       }
@@ -504,12 +534,12 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
         return { id, name: 'Personal Workspace', description: 'Default workspace', color: '#14b8a6', isDefault: true, memberCount: 1, profileCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       }
     },
-    workspaceCreate: async (dto: any) => {
+    workspaceCreate: async (dto) => {
       try { return await apiPost('/workspaces', dto); } catch {
         return { id: 'new-ws', name: dto.name, description: dto.description || '', color: dto.color || '#14b8a6', isDefault: false, memberCount: 1, profileCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       }
     },
-    workspaceUpdate: async (id: string, dto: any) => {
+    workspaceUpdate: async (id: string, dto) => {
       try { return await apiPost(`/workspaces/${id}`, dto); } catch {
         return { id, name: dto.name || 'Workspace', isDefault: false, memberCount: 1, profileCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       }
@@ -522,7 +552,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
         return [{ id: 'm-1', workspaceId, name: 'Workspace Owner', email: 'owner@mahibrowser.local', role: 'ADMIN', status: 'ACTIVE', assignedProfileIds: [], createdAt: new Date().toISOString() }];
       }
     },
-    workspaceAddMember: async (dto: any) => ({ id: 'm-new', workspaceId: dto.workspaceId, name: dto.name, email: dto.email, role: dto.role, status: 'ACTIVE', assignedProfileIds: [], createdAt: new Date().toISOString() }),
+    workspaceAddMember: async (dto) => ({ id: 'm-new', workspaceId: dto.workspaceId, name: dto.name, email: dto.email, role: dto.role, status: 'ACTIVE', assignedProfileIds: [], createdAt: new Date().toISOString() }),
     workspaceUpdateMemberRole: async () => true,
     workspaceDeleteMember: async () => true,
     workspaceAssignProfile: async () => true,
@@ -533,7 +563,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     teamWorkspaceList: async () => {
       try { const res = await apiGet('/workspaces'); return res.workspaces || []; } catch { return []; }
     },
-    teamWorkspaceCreate: async (input: any) => {
+    teamWorkspaceCreate: async (input) => {
       try { const res = await apiPost('/workspaces', input); return res.workspace; } catch {
         return { id: 'team-ws-fallback', name: input.name, description: input.description || '', ownerUserId: 'me', status: 'ACTIVE', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), memberCount: 1, profileCount: 0, userRole: 'OWNER' };
       }
@@ -541,7 +571,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     teamWorkspaceGet: async (workspaceId: string) => {
       try { const res = await apiGet(`/workspaces/${workspaceId}`); return res.workspace; } catch { return null; }
     },
-    teamWorkspaceUpdate: async (workspaceId: string, updates: any) => {
+    teamWorkspaceUpdate: async (workspaceId: string, updates) => {
       try { const res = await apiPut(`/workspaces/${workspaceId}`, updates); return res.workspace; } catch {
         return { id: workspaceId, name: updates.name || 'Workspace', description: updates.description || '', ownerUserId: 'me', status: 'ACTIVE', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), memberCount: 1, profileCount: 0, userRole: 'OWNER' };
       }
@@ -553,14 +583,14 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     teamWorkspaceGetMembers: async (workspaceId: string) => {
       try { const res = await apiGet(`/workspaces/${workspaceId}/members`); return res.members || []; } catch { return []; }
     },
-    teamWorkspaceInviteMember: async (workspaceId: string, email: string, role: string) => {
-      try { return await apiPost(`/workspaces/${workspaceId}/members/invite`, { email, role }); } catch { return { success: true }; }
+    teamWorkspaceInviteMember: async (workspaceId, email, role) => {
+      try { return await apiPost(`/workspaces/${workspaceId}/members/invite`, { email, role }); } catch { return { success: true } as unknown as Awaited<ReturnType<MahiBrowserAPI['teamWorkspaceInviteMember']>>; }
     },
     teamWorkspaceUpdateMemberRole: async () => true,
     teamWorkspaceRemoveMember: async () => true,
     teamWorkspaceListInvitations: async () => [],
     teamWorkspaceRevokeInvitation: async () => true,
-    teamWorkspaceAcceptInvitation: async () => ({ success: true, workspaceId: 'ws-1', role: 'MEMBER' as any }),
+    teamWorkspaceAcceptInvitation: async () => ({ success: true, workspaceId: 'ws-1', role: 'MEMBER' as const }),
     teamWorkspaceListProfiles: async () => [],
     teamWorkspaceShareProfile: async () => ({ id: 'share-1', workspaceId: 'ws-1', cloudProfileId: 'cp-1', sharedBy: 'me', permissionLevel: 'RUN', encryptedKeyEnvelope: 'env', createdAt: new Date().toISOString() }),
     teamWorkspaceRevokeProfileShare: async () => true,
@@ -573,10 +603,10 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
       channel: channel || 'STABLE',
     }),
     downloadUpdate: async () => true,
-    installUpdate: async (_options?: any) => ({ success: true }),
+    installUpdate: async () => ({ success: true }),
     getUpdateStatus: async () => ({ state: 'IDLE' as const, currentVersion: APP_VERSION, channel: 'STABLE' as const }),
     getUpdateConfig: async () => ({ channel: 'STABLE' as const, autoCheck: true, autoDownload: true, notifyBeforeRestart: true }),
-    setUpdateConfig: async (config: any) => ({ channel: 'STABLE' as const, autoCheck: true, autoDownload: true, notifyBeforeRestart: true, ...config }),
+    setUpdateConfig: async (config) => ({ channel: 'STABLE' as const, autoCheck: true, autoDownload: true, notifyBeforeRestart: true, ...config }),
     getAppVersion: async () => APP_VERSION,
     getDiagnostics: async () => ({
       version: APP_VERSION,
@@ -598,8 +628,8 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
 
     // V2 Platform: Folders & Locking
     getFolders: async () => [],
-    createFolder: async (dto: any) => ({ id: 'f-1', name: dto.name, parentId: dto.parentId || null, color: dto.color || '#14b8a6', icon: dto.icon || 'Folder', profileCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
-    updateFolder: async (id: string, updates: any) => ({ id, name: updates.name || 'Folder', color: updates.color || '#14b8a6', icon: updates.icon || 'Folder', profileCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
+    createFolder: async (dto) => ({ id: 'f-1', name: dto.name, parentId: dto.parentId || null, color: dto.color || '#14b8a6', icon: dto.icon || 'Folder', profileCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
+    updateFolder: async (id, updates) => ({ id, name: updates.name || 'Folder', color: updates.color || '#14b8a6', icon: updates.icon || 'Folder', profileCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
     deleteFolder: async () => true,
     getProfileLock: async () => null,
     acquireProfileLock: async (_id: string, _uid: string, userName: string, deviceId: string) => ({ success: true, lock: { profileId: _id, lockedByUserId: _uid, lockedByUserName: userName, lockedByDeviceId: deviceId, lockedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 1800000).toISOString() } }),
@@ -653,28 +683,28 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     createProfileShortcut: async () => ({ success: false, path: '' }),
 
     // Commercial APIs Fallback
-    commercialRegister: async (dto: any) => {
+    commercialRegister: async (dto) => {
       try {
         return await apiPost('/auth/register', dto);
-      } catch (err: any) {
-        return { success: false, error: err.message };
+      } catch (err: unknown) {
+        return { success: false, error: toErrorMessage(err) };
       }
     },
-    commercialLogin: async (dto: any) => {
+    commercialLogin: async (dto) => {
       try {
         return await apiPost('/auth/login', dto);
-      } catch (err: any) {
-        return { success: false, error: err.message };
+      } catch (err: unknown) {
+        return { success: false, error: toErrorMessage(err) };
       }
     },
-    commercialGetEntitlements: async (userId: string, deviceId?: string) => {
+    commercialGetEntitlements: async (_userId: string, deviceId?: string) => {
       try {
         return await apiGet(`/entitlements/check?deviceId=${deviceId || ''}`);
       } catch {
         return null;
       }
     },
-    commercialGetDevices: async (userId: string) => {
+    commercialGetDevices: async (_userId: string) => {
       try {
         const r = await apiGet('/devices/my-devices');
         return Array.isArray(r) ? r : (r.data || []);
@@ -682,7 +712,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
         return [];
       }
     },
-    commercialRevokeDevice: async (deviceId: string, userId: string) => {
+    commercialRevokeDevice: async (deviceId: string, _userId: string) => {
       try {
         const r = await apiPost('/devices/revoke', { deviceId });
         return r.success !== false;
@@ -698,11 +728,11 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
         return [];
       }
     },
-    commercialActivateKey: async (userId: string, rawKey: string) => {
+    commercialActivateKey: async (_userId: string, rawKey: string) => {
       try {
         return await apiPost('/entitlements/activate-key', { licenseKey: rawKey });
-      } catch (err: any) {
-        return { success: false, message: err.message };
+      } catch (err: unknown) {
+        return { success: false, message: toErrorMessage(err) };
       }
     },
     commercialLogout: async () => {
@@ -756,7 +786,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     downloadManagedEngine: async () => ({ success: true, path: 'Default' }),
     repairManagedEngine: async () => ({ success: true, path: 'Default' }),
     onEngineDownloadProgress: () => () => {},
-    onCamoufoxDownloadProgress: (_callback: (status: any) => void) => () => {},
+    onCamoufoxDownloadProgress: () => () => {},
     onLicenseStatusChanged: () => () => {},
     onLicenseStatusToast: () => () => {},
 
@@ -768,7 +798,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     downloadAndRestoreProfile: async () => ({ id: 'restored', name: 'Restored Profile' }),
     deleteCloudProfile: async () => true,
     getCloudSyncConfig: async () => ({ autoSync: true, syncPassphrase: 'mahi-cloud-sync' }),
-    setCloudSyncConfig: async (cfg: any) => cfg,
+    setCloudSyncConfig: async (cfg) => ({ autoSync: true, syncPassphrase: 'mahi-cloud-sync', ...cfg }) satisfies CloudSyncConfig,
     syncAllProfiles: async () => {},
     getAllProfilesSyncStatus: async () => ({}),
     resolveSyncConflict: async () => ({ success: true }),
@@ -957,7 +987,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
 
 if (typeof window !== 'undefined' && !window.mahiAPI) {
   console.warn('⚠️ FALLBACK API ACTIVATED - using REST API bridge');
-  (window as any).mahiAPI = fallbackMahiAPI;
+  window.mahiAPI = fallbackMahiAPI;
 }
 
 export default fallbackMahiAPI;

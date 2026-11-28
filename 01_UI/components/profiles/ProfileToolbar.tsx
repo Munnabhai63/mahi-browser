@@ -1,4 +1,5 @@
-import React, { memo } from 'react';
+import type React from 'react';
+import { memo } from 'react';
 import {
   Plus,
   Play,
@@ -21,7 +22,7 @@ import {
   Radio,
   AlertTriangle,
 } from 'lucide-react';
-import { NavigationPage } from '../Sidebar.js';
+import type { NavigationPage } from '../Sidebar.js';
 
 export interface MobileRotatorSummary {
   installed: boolean;
@@ -151,7 +152,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
     <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
       <div className="flex items-center space-x-2">
         {folders.slice(0, 5).map((folder) => (
-          <button
+          <button type="button"
             key={folder}
             onClick={() => {
               onSelectFolderTab(folder);
@@ -188,6 +189,8 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
             </button>
 
             {isFolderOverflowOpen && (
+              // biome-ignore lint/a11y/noStaticElementInteractions: prevent dropdown clicks from closing popover
+              // biome-ignore lint/a11y/useKeyWithClickEvents: dropdown items are interactive buttons
               <div
                 onClick={(e) => e.stopPropagation()}
                 className="absolute left-0 top-full mt-1.5 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 py-1.5 max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in duration-100"
@@ -196,9 +199,8 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
                   Folders ({folders.length - 5})
                 </div>
                 {folders.slice(5).map((folder) => (
-                  <button
-                    key={folder}
-                    type="button"
+                  <button type="button"
+                    key={folder}
                     onClick={() => {
                       onSelectFolderTab(folder);
                       onCloseFolderOverflow();
@@ -218,7 +220,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
           </div>
         )}
 
-        <button
+        <button type="button"
           onClick={() => onNavigate('workspaces')}
           className="px-2 py-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition text-xs font-bold"
           title="Manage Folders & Workspaces"
@@ -226,7 +228,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
           •••
         </button>
 
-        <button
+        <button type="button"
           onClick={() => onSelectFolderTab('ANDROID_MOBILE')}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
             activeFolderTab === 'ANDROID_MOBILE'
@@ -238,7 +240,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
           <span>Android</span>
         </button>
 
-        <button
+        <button type="button"
           onClick={() => onSelectFolderTab('CLOUD_SYNC')}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
             activeFolderTab === 'CLOUD_SYNC'
@@ -250,7 +252,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
           <span>Cloud Sync</span>
         </button>
 
-        <button
+        <button type="button"
           onClick={() => onSelectFolderTab('STARTER_TEMPLATES')}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
             activeFolderTab === 'STARTER_TEMPLATES'
@@ -309,7 +311,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
           )}
         </div>
 
-        <button
+        <button type="button"
           onClick={onRefreshProfiles}
           className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-200 transition-colors"
           title="Refresh"
@@ -317,7 +319,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
 
-        <button
+        <button type="button"
           onClick={onOpenQuickCreate}
           className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-600/20 flex items-center space-x-1.5 active:scale-95 transition-all interactive-control"
         >
@@ -325,7 +327,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
           <span>Quick Profile</span>
         </button>
 
-        <button
+        <button type="button"
           onClick={onOpenBulkCreate}
           className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold text-xs rounded-xl shadow-xs flex items-center space-x-1.5 active:scale-95 transition-all"
           title="Create 5, 10, 20 or more profiles at once"
@@ -334,7 +336,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
           <span>Bulk Create</span>
         </button>
 
-        <button
+        <button type="button"
           onClick={onOpenUniversalImport}
           className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-600/20 flex items-center space-x-1.5 active:scale-95 transition-all"
           title="Import 50+ Accounts from TXT, CSV, Netscape or JSON with cookies & proxies"
@@ -343,7 +345,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
           <span>Bulk Import</span>
         </button>
 
-        <button
+        <button type="button"
           onClick={onOpenSynchronizer}
           className={`px-3.5 py-2 font-bold text-xs rounded-xl shadow-md flex items-center space-x-1.5 active:scale-95 transition-all ${
             isSyncActive
@@ -357,7 +359,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
         </button>
 
         {runningCount > 0 && (
-          <button
+          <button type="button"
             onClick={onOptimizeMemory}
             disabled={isOptimizingMemory}
             className="px-3.5 py-2 bg-gradient-to-r from-teal-600/80 to-cyan-600/80 hover:from-teal-500 hover:to-cyan-500 text-white font-bold text-xs rounded-xl shadow-md shadow-teal-500/20 flex items-center space-x-1.5 active:scale-95 transition-all disabled:opacity-50"
@@ -368,7 +370,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
           </button>
         )}
 
-        <button
+        <button type="button"
           onClick={() => onNavigate('create-profile')}
           className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs rounded-xl transition-all"
         >
@@ -426,7 +428,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
             {selectedIdsCount}
           </span>
           <span className="font-semibold text-slate-700 dark:text-slate-200">profiles selected</span>
-          <button
+          <button type="button"
             onClick={onClearSelection}
             className="text-slate-400 hover:text-slate-200 text-[11px] underline ml-2"
           >
@@ -434,7 +436,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
           </button>
         </div>
         <div className="flex items-center space-x-2.5">
-          <button
+          <button type="button"
             onClick={onOpenStaggerLaunch}
             className={`px-3.5 py-1.5 rounded-xl font-bold flex items-center space-x-1.5 shadow-sm transition-all active:scale-95 ${
               mobileModeEnabled && selectedIdsCount > 1
@@ -451,7 +453,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
             <span>Launch Selected ({selectedIdsCount})</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={onBulkStop}
             className="px-3 py-1.5 bg-amber-600 text-white rounded-xl font-bold flex items-center space-x-1.5 hover:bg-amber-500 shadow-sm transition-all active:scale-95"
             title="Stop all running selected profiles"
@@ -460,7 +462,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
             <span>Stop All</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={onOpenBulkProxy}
             className="px-3 py-1.5 bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 text-white rounded-xl font-bold flex items-center space-x-1.5 shadow-sm transition-all active:scale-95"
             title="Assign single proxy or round-robin distribute proxy list"
@@ -469,7 +471,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
             <span>Assign Proxy</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={onOpenBulkEdit}
             className="px-3 py-1.5 bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 text-white rounded-xl font-bold flex items-center space-x-1.5 shadow-sm transition-all active:scale-95"
             title="Batch edit folder and tags"
@@ -478,7 +480,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
             <span>Edit Tags/Folder</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={onOpenBulkWarm}
             className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl font-bold flex items-center space-x-1.5 hover:from-amber-600 hover:to-amber-700 shadow-sm transition-all active:scale-95"
             title="Auto-Farm Cookies for selected profiles"
@@ -487,7 +489,7 @@ export const ProfileToolbar: React.FC<ProfileToolbarProps> = memo(({
             <span>Auto-Warm ({selectedIdsCount})</span>
           </button>
 
-          <button
+          <button type="button"
             onClick={onOpenBulkDelete}
             className="px-3 py-1.5 bg-rose-600/90 text-white rounded-xl font-bold flex items-center space-x-1.5 hover:bg-rose-600 shadow-sm transition-all active:scale-95"
           >

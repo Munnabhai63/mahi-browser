@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { getDatabase } from '../06_DATABASE/connection.js';
-import { getAdminSalt, getMasterAdminSecret } from '../08_SECURITY/install-secrets.js';
+import { getMasterAdminSecret } from '../08_SECURITY/install-secrets.js';
 import { constantTimeEqualStrings } from '../07_BACKEND/utils/http-security.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
 const log = createLogger('admin-auth');
@@ -19,7 +19,7 @@ export function hashPinScrypt(pin: string, saltHex?: string): string {
  * Verifies a PIN against a scrypt-v1 formatted hash using constant-time comparison.
  */
 export function verifyPinScrypt(pin: string, storedFormatted: string): boolean {
-  if (!storedFormatted || !storedFormatted.startsWith('scrypt$')) return false;
+  if (!storedFormatted?.startsWith('scrypt$')) return false;
   const parts = storedFormatted.split('$');
   if (parts.length < 4) return false;
   const saltHex = parts[2];
@@ -97,8 +97,8 @@ export function verifyAdminAccess(providedSecretOrKey: string): boolean {
         db.prepare("UPDATE app_settings SET value_json = ?, updated_at = ? WHERE key = 'owner_pin'").run(newValueJson, now);
         return true;
       }
-    } catch (err: any) {
-      log.error('[AdminAuth] Error verifying owner_pin:', err?.message);
+    } catch (err: unknown) {
+      log.error('[AdminAuth] Error verifying owner_pin:', err instanceof Error ? err.message : String(err));
     }
   }
 

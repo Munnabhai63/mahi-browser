@@ -1,7 +1,9 @@
-import http from 'node:http';
-import { URL } from 'node:url';
+import type http from 'node:http';
+import type { URL } from 'node:url';
 import { sendJSON, parseBody, parseRawBuffer, getAuthUserAsync } from './router-shared.js';
+import { getErrorStatusCode } from '../../utils/http-security.js';
 import { sendSafeError, validateStrictBody } from '../../utils/app-error.js';
+import type { TeamRole } from '../../../10_CONFIG/shared/types/workspace.js';
 import {
   SyncUploadSessionSchema,
   SyncFinalizeUploadSchema,
@@ -58,11 +60,11 @@ import {
 export async function handleCloudSyncRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  pathname: string,
+  _pathname: string,
   method: string,
   parsedUrl: URL,
   routePath: string,
-  clientIp: string
+  _clientIp: string
 ): Promise<boolean> {
   if (routePath.startsWith('/api/v1/sync') || routePath.startsWith('/api/v1/storage')) {
     if (await rejectIfEmergencyFrozen(res, 'cloud_sync')) return true;
@@ -92,9 +94,8 @@ export async function handleCloudSyncRoutes(
       const buffer = await parseRawBuffer(req, { maxBytes: 250 * 1024 * 1024, timeoutMs: 120_000 });
       const putResult = await storage.putObject(key, buffer);
       sendJSON(res, 200, { success: true, size: putResult.size });
-    } catch (err: any) {
-      const status = typeof err?.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : 500;
-      sendSafeError(res, err, { fallbackStatus: status });
+    } catch (err: unknown) {
+      sendSafeError(res, err, { fallbackStatus: getErrorStatusCode(err) });
     }
     return true;
   }
@@ -130,7 +131,7 @@ export async function handleCloudSyncRoutes(
         'Content-Length': buffer.length,
       });
       res.end(buffer);
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 500 });
     }
     return true;
@@ -159,7 +160,7 @@ export async function handleCloudSyncRoutes(
     try {
       const deleted = await storage.deleteObject(key);
       sendJSON(res, deleted ? 200 : 404, { success: deleted });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 500 });
     }
     return true;
@@ -215,7 +216,7 @@ export async function handleCloudSyncRoutes(
     try {
       await deleteCloudProfile(user.userId, syncProfileDetailMatch[1]);
       sendJSON(res, 200, { success: true });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 404 });
     }
     return true;
@@ -237,7 +238,7 @@ export async function handleCloudSyncRoutes(
       } else {
         sendJSON(res, 200, { success: true, ...result });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
@@ -253,17 +254,17 @@ export async function handleCloudSyncRoutes(
       const rawBody = await parseBody(req);
       const parsed = validateStrictBody(SyncFinalizeUploadSchema, rawBody, res);
       if (!parsed.ok) return true;
-      const body = parsed.data as any;
+      const body = parsed.data;
       const result = await finalizeUploadSession(
         user.userId,
         body.sessionId,
-        body.profileName,
-        body.localProfileId,
-        body.deviceId,
+        body.profileName || '',
+        body.localProfileId || '',
+        body.deviceId || '',
         body.deviceName
       );
       sendJSON(res, 200, result);
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
@@ -280,11 +281,12 @@ export async function handleCloudSyncRoutes(
       const parsed = validateStrictBody(SyncDownloadSessionSchema, rawBody, res);
       if (!parsed.ok) return true;
       const body = parsed.data;
+      const mode = body.mode === 'cookies_only' ? 'cookies_only' : body.mode === 'full' ? 'full' : undefined;
       const result = await createDownloadSession(user.userId, body.cloudProfileId, body.version, {
-        mode: body.mode as any,
+        mode,
       });
       sendJSON(res, 200, { success: true, data: result });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 404 });
     }
     return true;
@@ -309,7 +311,7 @@ export async function handleCloudSyncRoutes(
         body.ttlSeconds
       );
       sendJSON(res, result.acquired ? 200 : 423, result);
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
@@ -328,7 +330,7 @@ export async function handleCloudSyncRoutes(
       const body = parsed.data;
       const result = await renewProfileLockAsync(user.userId, body.cloudProfileId, body.deviceId, body.ttlSeconds);
       sendJSON(res, 200, result);
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
@@ -347,7 +349,7 @@ export async function handleCloudSyncRoutes(
       const body = parsed.data;
       const result = await releaseProfileLockAsync(user.userId, body.cloudProfileId, body.deviceId);
       sendJSON(res, 200, result);
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
@@ -391,7 +393,7 @@ export async function handleCloudSyncRoutes(
       if (!parsed.ok) return true;
       const ws = createTeamWorkspace(user.userId, parsed.data);
       sendJSON(res, 201, { success: true, workspace: ws });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
@@ -409,7 +411,7 @@ export async function handleCloudSyncRoutes(
       if (!parsed.ok) return true;
       const result = acceptWorkspaceInvitation(user.userId, parsed.data.token);
       sendJSON(res, 200, result);
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
@@ -443,7 +445,7 @@ export async function handleCloudSyncRoutes(
       if (!parsed.ok) return true;
       const updated = updateTeamWorkspace(user.userId, wsDetailMatch[1], parsed.data);
       sendJSON(res, 200, { success: true, workspace: updated });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 403 });
     }
     return true;
@@ -458,7 +460,7 @@ export async function handleCloudSyncRoutes(
     try {
       deleteTeamWorkspace(user.userId, wsDetailMatch[1]);
       sendJSON(res, 200, { success: true });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 403 });
     }
     return true;
@@ -477,7 +479,7 @@ export async function handleCloudSyncRoutes(
       if (!parsed.ok) return true;
       transferWorkspaceOwnership(user.userId, wsTransferMatch[1], parsed.data.newOwnerUserId);
       sendJSON(res, 200, { success: true });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 403 });
     }
     return true;
@@ -493,7 +495,7 @@ export async function handleCloudSyncRoutes(
     try {
       const members = getWorkspaceMembers(user.userId, wsMembersMatch[1]);
       sendJSON(res, 200, { success: true, members });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 403 });
     }
     return true;
@@ -510,9 +512,9 @@ export async function handleCloudSyncRoutes(
       const rawBody = await parseBody(req);
       const parsed = validateStrictBody(InviteWorkspaceMemberSchema, rawBody, res);
       if (!parsed.ok) return true;
-      const result = await inviteWorkspaceMember(user.userId, wsInviteMatch[1], parsed.data.email, parsed.data.role as any);
+      const result = await inviteWorkspaceMember(user.userId, wsInviteMatch[1], parsed.data.email, parsed.data.role as TeamRole);
       sendJSON(res, 201, { success: true, invitation: result });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
@@ -529,9 +531,9 @@ export async function handleCloudSyncRoutes(
       const rawBody = await parseBody(req);
       const parsed = validateStrictBody(UpdateWorkspaceMemberRoleSchema, rawBody, res);
       if (!parsed.ok) return true;
-      updateMemberRole(user.userId, wsRoleMatch[1], wsRoleMatch[2], parsed.data.role as any);
+      updateMemberRole(user.userId, wsRoleMatch[1], wsRoleMatch[2], parsed.data.role as TeamRole);
       sendJSON(res, 200, { success: true });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 403 });
     }
     return true;
@@ -547,7 +549,7 @@ export async function handleCloudSyncRoutes(
     try {
       removeWorkspaceMember(user.userId, wsRemoveMemberMatch[1], wsRemoveMemberMatch[2]);
       sendJSON(res, 200, { success: true });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 403 });
     }
     return true;
@@ -563,7 +565,7 @@ export async function handleCloudSyncRoutes(
     try {
       const invitations = listWorkspaceInvitations(user.userId, wsListInvitesMatch[1]);
       sendJSON(res, 200, { success: true, invitations });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 403 });
     }
     return true;
@@ -579,7 +581,7 @@ export async function handleCloudSyncRoutes(
     try {
       revokeWorkspaceInvitation(user.userId, wsRevokeInviteMatch[1], wsRevokeInviteMatch[2]);
       sendJSON(res, 200, { success: true });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
@@ -595,7 +597,7 @@ export async function handleCloudSyncRoutes(
     try {
       const profiles = listWorkspaceProfiles(user.userId, wsProfilesMatch[1]);
       sendJSON(res, 200, { success: true, profiles });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 403 });
     }
     return true;
@@ -614,7 +616,7 @@ export async function handleCloudSyncRoutes(
       if (!parsed.ok) return true;
       const share = shareProfileToWorkspace(user.userId, wsShareMatch[1], parsed.data);
       sendJSON(res, 200, { success: true, share });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
@@ -630,7 +632,7 @@ export async function handleCloudSyncRoutes(
     try {
       revokeProfileShare(user.userId, wsRevokeShareMatch[1], wsRevokeShareMatch[2]);
       sendJSON(res, 200, { success: true });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;
@@ -647,7 +649,7 @@ export async function handleCloudSyncRoutes(
       const limit = parseInt(parsedUrl.searchParams.get('limit') || '50', 10);
       const logs = getWorkspaceAuditLogs(user.userId, wsAuditMatch[1], limit);
       sendJSON(res, 200, { success: true, logs });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 403 });
     }
     return true;
@@ -677,7 +679,7 @@ export async function handleCloudSyncRoutes(
       if (!parsed.ok) return true;
       setWorkspaceKeyEnvelope(user.userId, wsKeyMatch[1], parsed.data.targetUserId, parsed.data.encryptedKey);
       sendJSON(res, 200, { success: true });
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendSafeError(res, err, { fallbackStatus: 400 });
     }
     return true;

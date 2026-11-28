@@ -1,10 +1,10 @@
 import net from 'node:net';
 import tls from 'node:tls';
-import { CreateProxyDTO, ProxyTestResult } from '../../10_CONFIG/shared/types/proxy.js';
+import type { CreateProxyDTO, ProxyTestResult } from '../../10_CONFIG/shared/types/proxy.js';
 import { openSocks5TunnelSocket, Socks5Error } from '../socks-tunnel.js';
 import {
   ProxySecurityError,
-  ProxyDnsLookupFn,
+  type ProxyDnsLookupFn,
   isBlockedIpAddress,
   assertSafeProxyTargetSyntax,
   assertSafeProxyTargetRuntime,
@@ -19,8 +19,43 @@ export {
   assertSafeProxyTargetRuntime,
 };
 
+interface GlobalWithDebugLog {
+  __mahiDebugLog?: (msg: string) => void;
+}
+
+interface FreeIpApiResponse {
+  countryCode?: string;
+  ipAddress?: string;
+  countryName?: string;
+  regionName?: string;
+  cityName?: string;
+  timeZone?: string;
+}
+
+interface IpApiCoResponse {
+  country_code?: string;
+  ip?: string;
+  country_name?: string;
+  region?: string;
+  city?: string;
+  timezone?: string;
+  org?: string;
+  asn?: string;
+}
+
+interface IpWhoIsResponse {
+  success?: boolean;
+  country_code?: string;
+  ip?: string;
+  country?: string;
+  region?: string;
+  city?: string;
+  timezone?: { id?: string };
+  connection?: { isp?: string; asn?: number | string; org?: string };
+}
+
 function debugLog(msg: string) {
-  const fn = (globalThis as any).__mahiDebugLog;
+  const fn = (globalThis as GlobalWithDebugLog).__mahiDebugLog;
   if (fn) fn(msg);
   else log.info(msg);
 }
@@ -67,8 +102,8 @@ export async function resolveGeoLocation(target: string): Promise<GeoLocationDet
       signal: AbortSignal.timeout(3000),
     });
     if (res.ok) {
-      const data = (await res.json()) as any;
-      if (data && data.countryCode) {
+      const data = (await res.json()) as FreeIpApiResponse;
+      if (data?.countryCode) {
         return {
           ip: data.ipAddress || cleanTarget,
           country: data.countryName || 'United States',
@@ -91,8 +126,8 @@ export async function resolveGeoLocation(target: string): Promise<GeoLocationDet
       signal: AbortSignal.timeout(3000),
     });
     if (res.ok) {
-      const data = (await res.json()) as any;
-      if (data && data.country_code) {
+      const data = (await res.json()) as IpApiCoResponse;
+      if (data?.country_code) {
         return {
           ip: data.ip || cleanTarget,
           country: data.country_name || 'United States',
@@ -117,7 +152,7 @@ export async function resolveGeoLocation(target: string): Promise<GeoLocationDet
       signal: AbortSignal.timeout(3000),
     });
     if (res.ok) {
-      const data = (await res.json()) as any;
+      const data = (await res.json()) as IpWhoIsResponse;
       if (data && data.success !== false && data.country_code) {
         return {
           ip: data.ip || cleanTarget,
@@ -264,7 +299,7 @@ function testHttpsConnectThroughProxy(
                 finish({ success: true, latencyMs: latency });
               });
 
-              tlsSocket.on('error', (tlsErr) => {
+              tlsSocket.on('error', () => {
                 // If TLS failed but CONNECT succeeded, proxy is still alive
                 finish({ success: true, latencyMs: Date.now() - startTime });
               });
@@ -299,7 +334,7 @@ function testHttpsConnectThroughProxy(
       rawSocket = net.connect(port, targetAddress, onConnectEstablished);
     }
 
-    rawSocket.on('error', (err: any) => {
+    rawSocket.on('error', (err: NodeJS.ErrnoException) => {
       let code = 'CONNECTION_FAILED';
       let msg = err.message || 'Connection failed';
       if (err.code === 'ECONNREFUSED') {
@@ -434,7 +469,7 @@ async function testSocks5ThroughProxy(
         done({ success: true, latencyMs: Date.now() - startTime });
       });
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (err instanceof Socks5Error) {
       return {
         success: false,
@@ -447,7 +482,7 @@ async function testSocks5ThroughProxy(
       success: false,
       latencyMs: Date.now() - startTime,
       errorCode: 'CONNECTION_FAILED',
-      error: err?.message || 'SOCKS5 connection failed',
+      error: err instanceof Error ? err.message : 'SOCKS5 connection failed',
     };
   }
 }
@@ -469,7 +504,7 @@ export async function testProxy(
   if (!host) {
     return { success: false, latencyMs: 0, errorCode: 'INVALID_CONFIG', errorMessage: 'Proxy host is required' };
   }
-  if (!port || isNaN(port) || port < 1 || port > 65535) {
+  if (!port || Number.isNaN(port) || port < 1 || port > 65535) {
     return { success: false, latencyMs: 0, errorCode: 'INVALID_CONFIG', errorMessage: 'Valid port (1-65535) is required' };
   }
 
@@ -477,13 +512,13 @@ export async function testProxy(
   try {
     const resolvedTarget = await assertSafeProxyTargetRuntime(host, options);
     connectHost = resolvedTarget.resolvedIp;
-  } catch (err: any) {
+  } catch (err: unknown) {
     const errorCode = err instanceof ProxySecurityError ? err.errorCode : 'SSRF_BLOCKED';
     return {
       success: false,
       latencyMs: 0,
       errorCode,
-      errorMessage: err?.message || 'Blocked unsafe proxy target',
+      errorMessage: err instanceof Error ? err.message : 'Blocked unsafe proxy target',
     };
   }
 

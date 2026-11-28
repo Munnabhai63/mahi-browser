@@ -1,8 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
-  GraduationCap,
-  ShieldCheck,
-  Clock,
   Layers,
   Play,
   Square,
@@ -12,9 +10,6 @@ import {
   Activity,
   Laptop,
   CheckCircle2,
-  AlertTriangle,
-  FolderPlus,
-  RefreshCw,
   Loader2,
 } from 'lucide-react';
 import { useAccountStore } from '../stores/useAccountStore.js';
@@ -23,8 +18,8 @@ import { useProfileStore } from '../stores/useProfileStore.js';
 import { useProxyStore } from '../stores/useProxyStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { CountryFlag } from './CountryFlag.js';
-import { FleetResourceSummary } from '../../10_CONFIG/shared/types/resources.js';
-import { NavigationPage } from './Sidebar.js';
+import type { FleetResourceSummary } from '../../10_CONFIG/shared/types/resources.js';
+import type { NavigationPage } from './Sidebar.js';
 
 interface StudentWorkspaceDashboardProps {
   onNavigate: (page: NavigationPage) => void;
@@ -33,7 +28,7 @@ interface StudentWorkspaceDashboardProps {
 export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps> = ({ onNavigate }) => {
   const { currentUser, planLimits, fetchPlanLimits } = useAccountStore();
   const { currentLicenseStatus, fetchCurrentStatus } = useLicenseStore();
-  const { profiles, startProfile, stopProfile, setSelectedProfileId } = useProfileStore();
+  const { profiles, startProfile, stopProfile } = useProfileStore();
   const { proxies } = useProxyStore();
   const { showToast } = useToastStore();
 
@@ -216,7 +211,7 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
             </div>
           </div>
 
-          <button
+          <button type="button"
             onClick={handleOptimizeMemory}
             disabled={isOptimizing}
             className="px-3.5 py-2 bg-teal-600/10 hover:bg-teal-600/20 text-teal-500 dark:text-teal-400 border border-teal-500/30 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition active:scale-95"
@@ -234,7 +229,7 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
               Launch isolated anti-detect browser fingerprint.
             </p>
           </div>
-          <button
+          <button type="button"
             onClick={() => onNavigate('create-profile')}
             className="mt-3 w-full py-2 bg-white text-slate-950 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 hover:bg-teal-50 transition shadow-xs"
           >
@@ -255,7 +250,7 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
               Quick launch and manage your personal browser instances
             </p>
           </div>
-          <button
+          <button type="button"
             onClick={() => onNavigate('profiles')}
             className="text-xs font-bold text-teal-500 hover:text-teal-400 flex items-center gap-1 transition"
           >
@@ -271,7 +266,7 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
               <p className="font-bold text-xs text-slate-700 dark:text-slate-200">No browser profiles yet</p>
               <p className="text-[11px] text-slate-400">Click below to create your first isolated browser.</p>
             </div>
-            <button
+            <button type="button"
               onClick={() => onNavigate('create-profile')}
               className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-xl text-xs inline-flex items-center gap-1.5 shadow-sm"
             >
@@ -325,7 +320,7 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
 
                   <div className="flex items-center space-x-2">
                     {isRunning ? (
-                      <button
+                      <button type="button"
                         onClick={() => stopProfile(profile.id)}
                         className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm transition"
                       >
@@ -333,7 +328,7 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
                         <span>Stop</span>
                       </button>
                     ) : (
-                      <button
+                      <button type="button"
                         onClick={() => startProfile(profile.id)}
                         disabled={isStarting}
                         className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition active:scale-95 ${

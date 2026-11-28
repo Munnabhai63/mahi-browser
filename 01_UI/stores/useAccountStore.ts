@@ -1,11 +1,30 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import {
+import type {
+  AccountActiveSessionRecord,
+  AccountCheckoutPayload,
+  AccountCheckoutSession,
+  AccountPaymentInfo,
+  AccountPaymentRecord,
+  AccountPricingCatalog,
+  AccountSession,
+  AccountTrialStatus,
   CommercialUser,
   CommercialEntitlements,
   CommercialDevice,
+  FeatureCapability,
 } from '../../10_CONFIG/shared/types/commercial.js';
+import type { CreateProfileDTO, Profile } from '../../10_CONFIG/shared/types/profile.js';
 import { useProfileStore } from './useProfileStore.js';
+
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (err && typeof err === 'object' && 'message' in err) {
+    const msg = (err as { message?: unknown }).message;
+    if (typeof msg === 'string' && msg) return msg;
+  }
+  return fallback;
+}
 
 export interface UserAccount {
   email: string;
@@ -41,16 +60,16 @@ interface AccountState {
   rememberMe: boolean;
 
   // GoLogin-Style Account & Subscription System (v1.1.0+)
-  accountSession: any | null;
+  accountSession: AccountSession | null;
   planLimits: { isPro: boolean; plan: string; tier?: 'FREE' | 'PRO' | 'BUSINESS'; maxProfiles: number; expiresAt: string | null } | null;
-  paymentInfo: any | null;
-  pricingCatalog: any | null;
-  paymentHistory: any[];
-  pendingProfileDto: any | null;
+  paymentInfo: AccountPaymentInfo | null;
+  pricingCatalog: AccountPricingCatalog | null;
+  paymentHistory: AccountPaymentRecord[];
+  pendingProfileDto: CreateProfileDTO | null;
   selectedPlanTier?: string | null;
 
   setDashboardRole: (role: 'ADMIN' | 'STUDENT') => void;
-  openAccountModal: (pendingDto?: any) => void;
+  openAccountModal: (pendingDto?: CreateProfileDTO | string | null) => void;
   closeAccountModal: () => void;
   clearPendingProfileDto: () => void;
   switchAccount: (email: string) => void;
@@ -61,9 +80,9 @@ interface AccountState {
 
   fetchPlanLimits: (dto?: { force?: boolean }) => Promise<void>;
   fetchPaymentInfo: () => Promise<void>;
-  fetchPricingCatalog: () => Promise<any>;
-  createCheckoutSession: (payload: any) => Promise<any>;
-  fetchPaymentHistory: () => Promise<any>;
+  fetchPricingCatalog: () => Promise<AccountPricingCatalog | null>;
+  createCheckoutSession: (payload: AccountCheckoutPayload) => Promise<{ success: boolean; session?: AccountCheckoutSession; error?: string }>;
+  fetchPaymentHistory: () => Promise<AccountPaymentRecord[]>;
   submitManualUpiPayment: (payload: { plan_id: string; utr: string; proof_asset?: string; billing_cycle?: string; amount_paise?: number; extra_members?: number; extra_proxy_gb?: number }) => Promise<{ success: boolean; payment_id?: string; status?: string; message?: string; error?: string }>;
   submitManualCryptoPayment: (payload: { plan_id: string; tx_hash: string; network?: string; proof_asset?: string; billing_cycle?: string; extra_members?: number; extra_proxy_gb?: number }) => Promise<{ success: boolean; payment_id?: string; status?: string; tx_hash?: string; message?: string; error?: string }>;
   accountSignup: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -72,13 +91,13 @@ interface AccountState {
   accountLogout: () => Promise<void>;
   accountSwitchDevice: () => Promise<{ success: boolean; error?: string }>;
 
-  activeSessions: any[];
-  trialStatus: { isTrialActive?: boolean; daysRemaining?: number; isEligibleForTrial?: boolean } | null;
-  unassignedGuestProfiles: any[];
+  activeSessions: AccountActiveSessionRecord[];
+  trialStatus: AccountTrialStatus | null;
+  unassignedGuestProfiles: Profile[];
 
   activateTrial: (planId?: string) => Promise<{ success: boolean; error?: string; message?: string }>;
-  fetchTrialStatus: () => Promise<any>;
-  checkUnassignedGuestProfiles: () => Promise<any[]>;
+  fetchTrialStatus: () => Promise<AccountTrialStatus | null>;
+  checkUnassignedGuestProfiles: () => Promise<Profile[]>;
   claimGuestProfiles: (profileIds?: string[]) => Promise<{ success: boolean; claimedCount: number; error?: string }>;
   dismissGuestProfilesBanner: () => void;
   verifyEmail: (token: string) => Promise<{ success: boolean; error?: string }>;
@@ -151,7 +170,7 @@ export const useAccountStore = create<AccountState>()(
       unassignedGuestProfiles: [],
 
       setDashboardRole: (role) => set({ dashboardRole: role }),
-      openAccountModal: (param?: any) => {
+      openAccountModal: (param?: CreateProfileDTO | string | null) => {
         if (typeof param === 'string') {
           set({ isAccountModalOpen: true, selectedPlanTier: param, pendingProfileDto: null });
         } else {
@@ -218,14 +237,14 @@ export const useAccountStore = create<AccountState>()(
         }
       },
 
-      createCheckoutSession: async (payload: any) => {
+      createCheckoutSession: async (payload: AccountCheckoutPayload) => {
         if (!window.mahiAPI?.accountCreateCheckoutSession) {
           return { success: false, error: 'Checkout API unavailable' };
         }
         try {
           return await window.mahiAPI.accountCreateCheckoutSession(payload);
-        } catch (err: any) {
-          return { success: false, error: err.message || 'Checkout session creation failed' };
+        } catch (err: unknown) {
+          return { success: false, error: getErrorMessage(err, 'Checkout session creation failed') };
         }
       },
 
@@ -250,8 +269,8 @@ export const useAccountStore = create<AccountState>()(
         try {
           const res = await window.mahiAPI.accountSubmitManualUpiPayment(payload);
           return res;
-        } catch (err: any) {
-          return { success: false, error: err.message || 'Payment submission failed' };
+        } catch (err: unknown) {
+          return { success: false, error: getErrorMessage(err, 'Payment submission failed') };
         }
       },
 
@@ -262,8 +281,8 @@ export const useAccountStore = create<AccountState>()(
         try {
           const res = await window.mahiAPI.accountSubmitManualCryptoPayment(payload);
           return res;
-        } catch (err: any) {
-          return { success: false, error: err.message || 'Crypto payment submission failed' };
+        } catch (err: unknown) {
+          return { success: false, error: getErrorMessage(err, 'Crypto payment submission failed') };
         }
       },
 
@@ -276,8 +295,8 @@ export const useAccountStore = create<AccountState>()(
             return { success: true };
           }
           return { success: false, error: res.error || 'Signup failed' };
-        } catch (err: any) {
-          return { success: false, error: err.message || 'Signup failed' };
+        } catch (err: unknown) {
+          return { success: false, error: getErrorMessage(err, 'Signup failed') };
         }
       },
 
@@ -292,9 +311,14 @@ export const useAccountStore = create<AccountState>()(
             useProfileStore.getState().fetchProfiles().catch((err) => { console.debug('[useAccountStore] post-login profile refresh failed', err); });
             return { success: true };
           }
-          return { success: false, error: res.error || 'Login failed', deviceMismatch: (res as any).device_limit };
-        } catch (err: any) {
-          return { success: false, error: err.message || 'Login failed', deviceMismatch: err.device_limit };
+          return { success: false, error: res.error || 'Login failed', deviceMismatch: res.device_limit };
+        } catch (err: unknown) {
+          const deviceMismatch = Boolean(
+            err && typeof err === 'object' && 'device_limit' in err
+              ? (err as { device_limit?: unknown }).device_limit
+              : undefined
+          );
+          return { success: false, error: getErrorMessage(err, 'Login failed'), deviceMismatch };
         }
       },
 
@@ -310,8 +334,8 @@ export const useAccountStore = create<AccountState>()(
             return { success: true };
           }
           return { success: false, error: res.error || 'Token login failed' };
-        } catch (err: any) {
-          return { success: false, error: err.message || 'Token login failed' };
+        } catch (err: unknown) {
+          return { success: false, error: getErrorMessage(err, 'Token login failed') };
         }
       },
 
@@ -324,8 +348,8 @@ export const useAccountStore = create<AccountState>()(
           console.debug('[useAccountStore] accountLogout IPC failed', err);
         }
         try {
-          if (window.mahiAPI && (window.mahiAPI as any).commercialLogout) {
-            await (window.mahiAPI as any).commercialLogout();
+          if (window.mahiAPI?.commercialLogout) {
+            await window.mahiAPI.commercialLogout();
           }
         } catch (err) {
           console.debug('[useAccountStore] commercialLogout IPC failed', err);
@@ -354,9 +378,9 @@ export const useAccountStore = create<AccountState>()(
             await get().fetchPlanLimits({ force: true });
             return { success: true };
           }
-          return { success: false, error: (res as any).message || 'Device switch failed' };
-        } catch (err: any) {
-          return { success: false, error: err.message || 'Device switch failed' };
+          return { success: false, error: res.message || 'Device switch failed' };
+        } catch (err: unknown) {
+          return { success: false, error: getErrorMessage(err, 'Device switch failed') };
         }
       },
 
@@ -437,8 +461,8 @@ export const useAccountStore = create<AccountState>()(
             return { success: true, message: res.message || '7-Day Free Trial activated successfully!' };
           }
           return { success: false, error: res?.error || 'Trial activation failed' };
-        } catch (err: any) {
-          return { success: false, error: err?.message || 'Trial activation failed' };
+        } catch (err: unknown) {
+          return { success: false, error: getErrorMessage(err, 'Trial activation failed') };
         }
       },
 
@@ -459,7 +483,7 @@ export const useAccountStore = create<AccountState>()(
           return { success: false, claimedCount: 0, error: 'Profile claim API unavailable' };
         }
         try {
-          const ids = profileIds || get().unassignedGuestProfiles.map((p: any) => p.id);
+          const ids = profileIds || get().unassignedGuestProfiles.map((p) => p.id);
           if (!ids || ids.length === 0) {
             return { success: true, claimedCount: 0 };
           }
@@ -474,8 +498,8 @@ export const useAccountStore = create<AccountState>()(
             return { success: true, claimedCount: res.claimedCount };
           }
           return { success: false, claimedCount: res?.claimedCount || 0, error: res?.error || 'Failed to claim profiles' };
-        } catch (err: any) {
-          return { success: false, claimedCount: 0, error: err?.message || 'Failed to claim profiles' };
+        } catch (err: unknown) {
+          return { success: false, claimedCount: 0, error: getErrorMessage(err, 'Failed to claim profiles') };
         }
       },
 
@@ -521,9 +545,10 @@ export const useAccountStore = create<AccountState>()(
             set({ isCommercialLoading: false, commercialError: res.error || 'Invalid credentials' });
             return { success: false, error: res.error || 'Invalid credentials' };
           }
-        } catch (err: any) {
-          set({ isCommercialLoading: false, commercialError: err.message || 'Login failed' });
-          return { success: false, error: err.message || 'Login failed' };
+        } catch (err: unknown) {
+          const message = getErrorMessage(err, 'Login failed');
+          set({ isCommercialLoading: false, commercialError: message });
+          return { success: false, error: message };
         }
       },
 
@@ -563,9 +588,10 @@ export const useAccountStore = create<AccountState>()(
             set({ isCommercialLoading: false, commercialError: res.error || 'Registration failed' });
             return { success: false, error: res.error || 'Registration failed' };
           }
-        } catch (err: any) {
-          set({ isCommercialLoading: false, commercialError: err.message || 'Registration failed' });
-          return { success: false, error: err.message || 'Registration failed' };
+        } catch (err: unknown) {
+          const message = getErrorMessage(err, 'Registration failed');
+          set({ isCommercialLoading: false, commercialError: message });
+          return { success: false, error: message };
         }
       },
 
@@ -577,13 +603,14 @@ export const useAccountStore = create<AccountState>()(
             ? await window.mahiAPI.commercialGetEntitlements(commercialUser.id)
             : (window.mahiAPI.getEntitlements ? await window.mahiAPI.getEntitlements() : null);
           if (entitlements) {
+            const existingUser = get().currentUser;
             set({
               entitlements,
-              currentUser: get().currentUser ? {
-                ...get().currentUser!,
-                planName: entitlements.plan?.name || get().currentUser!.planName,
-                maxProfiles: entitlements.limits?.maxProfiles || get().currentUser!.maxProfiles,
-              } : get().currentUser,
+              currentUser: existingUser ? {
+                ...existingUser,
+                planName: entitlements.plan?.name || existingUser.planName,
+                maxProfiles: entitlements.limits?.maxProfiles || existingUser.maxProfiles,
+              } : existingUser,
             });
           }
         } catch (err) {
@@ -594,8 +621,9 @@ export const useAccountStore = create<AccountState>()(
       hasCapability: (cap: string) => {
         const { entitlements, planLimits, currentUser } = get();
         // 1. If explicit server-authoritative capabilities exist in entitlements, evaluate them
-        if (entitlements?.capabilities && typeof (entitlements.capabilities as any)[cap] === 'boolean') {
-          return (entitlements.capabilities as any)[cap];
+        const capValue = entitlements?.capabilities?.[cap as FeatureCapability];
+        if (typeof capValue === 'boolean') {
+          return capValue;
         }
 
         // 2. Basic capabilities available to everyone (FREE and up)
@@ -661,8 +689,8 @@ export const useAccountStore = create<AccountState>()(
             await get().fetchUserDevices();
           }
           return res;
-        } catch (err: any) {
-          return { success: false, message: err?.message || 'Activation failed.' };
+        } catch (err: unknown) {
+          return { success: false, message: getErrorMessage(err, 'Activation failed.') };
         }
       },
 

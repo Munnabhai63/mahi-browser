@@ -1,16 +1,18 @@
 import crypto from 'node:crypto';
 import { getDatabase } from '../../../06_DATABASE/connection.js';
-import { BillingCycleType } from '../../../10_CONFIG/shared/types/commercial.js';
+import type { BillingCycleType, CommercialRole } from '../../../10_CONFIG/shared/types/commercial.js';
 import { calculateAuthoritativeOrderTotal, normalizeBillingCycle } from '../canonical-plan-catalog.js';
 import { logCommercialAudit } from '../commercial-audit-service.js';
 import { getEmailProvider } from '../../../05_AUTH/email-service.js';
-import { CONTACT_CONFIG, getRuntimeContactConfig } from '../../../10_CONFIG/contact-config.js';
+import { getRuntimeContactConfig } from '../../../10_CONFIG/contact-config.js';
 import { getUserById } from '../commercial-auth-service.js';
 import { getCentralUserByIdAsync } from '../../../05_AUTH/central-auth-service.js';
 import { assertNotEmergencyFrozen } from '../../services/kill-switch-service.js';
 import {
-  PaymentInvoiceRecord,
-  UserSubscriptionSummary,
+  type CommercialPaymentRow,
+  type PaymentInvoiceRecord,
+  type PaymentProviderType,
+  type UserSubscriptionSummary,
   isPgUniqueViolation,
   resolveCommercialPlan,
   resolvePgBillingClient,
@@ -18,7 +20,29 @@ import {
 } from './payment-types.js';
 import { activateSubscriptionFromPaymentImpl } from './payment-activation.js';
 import { createLogger } from '../../utils/logger.js';
+
 const log = createLogger('manual-payment-handlers');
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+interface SqliteIdRow {
+  id: string;
+}
+
+function parsePaymentMetadata(metadataJson: string | null, paymentId: string, context: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(metadataJson || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  } catch (parseErr) {
+    log.warn(`Failed parsing payment metadata_json before ${context}`, {
+      paymentId,
+      err: errMsg(parseErr),
+    });
+    return {};
+  }
+}
 
 export async function submitManualUpiPaymentImpl(params: {
   userId: string;
@@ -38,13 +62,13 @@ export async function submitManualUpiPaymentImpl(params: {
   }
 
   const plan = resolveCommercialPlan(params.planId);
-  if (!plan || !plan.isActive) {
+  if (!plan?.isActive) {
     throw new Error(`Selected plan "${params.planId}" is not available for purchase.`);
   }
 
   const cycle = normalizeBillingCycle(params.billingCycle, plan.id);
   const orderTotal = calculateAuthoritativeOrderTotal({
-    planId: params.planId as any,
+    planId: params.planId,
     billingCycle: cycle,
     currency: 'INR',
     extraMembers: params.extraMembers,
@@ -59,6 +83,9 @@ export async function submitManualUpiPaymentImpl(params: {
   const pgClient = resolvePgBillingClient(['commercial_payments']);
   if (pgClient) {
     await withPgTransaction(pgClient, async (tx) => {
+      if (!tx.commercial_payments) {
+        throw new Error('PG commercial_payments delegate unavailable');
+      }
       const existing = await tx.commercial_payments.findFirst({
         where: {
           OR: [{ external_payment_id: cleanUtr }, { id: cleanUtr }],
@@ -95,7 +122,7 @@ export async function submitManualUpiPaymentImpl(params: {
             updated_at: now,
           },
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (isPgUniqueViolation(err)) {
           throw new Error('UTR_ALREADY_EXISTS: This UTR has already been submitted.');
         }
@@ -122,7 +149,7 @@ export async function submitManualUpiPaymentImpl(params: {
         } catch (auditErr) {
           log.debug('Skipped PostgreSQL audit log write for manual UPI submission', {
             paymentId,
-            err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+            err: errMsg(auditErr),
           });
         }
       }
@@ -130,7 +157,9 @@ export async function submitManualUpiPaymentImpl(params: {
   } else {
     const db = getDatabase();
     const insertUpiSqlite = () => {
-      const existing = db.prepare('SELECT id FROM commercial_payments WHERE external_payment_id = ?').get(cleanUtr) as any;
+      const existing = db
+        .prepare('SELECT id FROM commercial_payments WHERE external_payment_id = ?')
+        .get(cleanUtr) as unknown as SqliteIdRow | undefined;
       if (existing) {
         throw new Error('UTR_ALREADY_EXISTS: This UTR has already been submitted.');
       }
@@ -163,8 +192,8 @@ export async function submitManualUpiPaymentImpl(params: {
       );
     };
 
-    if (typeof (db as any).transaction === 'function') {
-      (db as any).transaction(insertUpiSqlite)();
+    if (typeof db.transaction === 'function') {
+      db.transaction(insertUpiSqlite)();
     } else {
       insertUpiSqlite();
     }
@@ -182,7 +211,7 @@ export async function submitManualUpiPaymentImpl(params: {
     } catch (auditErr) {
       log.debug('Skipped SQLite audit log write for manual UPI submission', {
         paymentId,
-        err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        err: errMsg(auditErr),
       });
     }
   }
@@ -203,8 +232,8 @@ export async function submitManualUpiPaymentImpl(params: {
         instruction: 'Please review and approve from the admin panel.',
       }
     );
-  } catch (err: any) {
-    log.warn(`[PaymentService] admin UTR notification failed: ${err.message}`);
+  } catch (err: unknown) {
+    log.warn(`[PaymentService] admin UTR notification failed: ${errMsg(err)}`);
   }
 
   return {
@@ -242,13 +271,13 @@ export async function submitManualCryptoPaymentImpl(params: {
   }
 
   const plan = resolveCommercialPlan(params.planId);
-  if (!plan || !plan.isActive || plan.tier === 'FREE') {
+  if (!plan?.isActive || plan.tier === 'FREE') {
     throw new Error(`Selected plan "${params.planId}" is not available for purchase.`);
   }
 
   const cycle = normalizeBillingCycle(params.billingCycle, plan.id);
   const orderTotal = calculateAuthoritativeOrderTotal({
-    planId: params.planId as any,
+    planId: params.planId,
     billingCycle: cycle,
     currency: 'USD',
     extraMembers: params.extraMembers,
@@ -276,6 +305,9 @@ export async function submitManualCryptoPaymentImpl(params: {
   const pgClient = resolvePgBillingClient(['commercial_payments']);
   if (pgClient) {
     await withPgTransaction(pgClient, async (tx) => {
+      if (!tx.commercial_payments) {
+        throw new Error('PG commercial_payments delegate unavailable');
+      }
       const existing = await tx.commercial_payments.findFirst({
         where: {
           OR: [{ external_payment_id: cleanHash }, { id: cleanHash }],
@@ -305,7 +337,7 @@ export async function submitManualCryptoPaymentImpl(params: {
             updated_at: now,
           },
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (isPgUniqueViolation(err)) {
           throw new Error('TX_HASH_ALREADY_EXISTS: This transaction hash has already been submitted.');
         }
@@ -330,9 +362,9 @@ export async function submitManualCryptoPaymentImpl(params: {
             },
           });
         } catch (auditErr) {
-          log.debug('Skipped PostgreSQL audit log write for manual UPI submission', {
+          log.debug('Skipped PostgreSQL audit log write for manual USDT submission', {
             paymentId,
-            err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+            err: errMsg(auditErr),
           });
         }
       }
@@ -340,7 +372,9 @@ export async function submitManualCryptoPaymentImpl(params: {
   } else {
     const db = getDatabase();
     const insertUsdtSqlite = () => {
-      const existing = db.prepare('SELECT id FROM commercial_payments WHERE external_payment_id = ?').get(cleanHash) as any;
+      const existing = db
+        .prepare('SELECT id FROM commercial_payments WHERE external_payment_id = ?')
+        .get(cleanHash) as unknown as SqliteIdRow | undefined;
       if (existing) {
         throw new Error('TX_HASH_ALREADY_EXISTS: This transaction hash has already been submitted.');
       }
@@ -366,8 +400,8 @@ export async function submitManualCryptoPaymentImpl(params: {
       );
     };
 
-    if (typeof (db as any).transaction === 'function') {
-      (db as any).transaction(insertUsdtSqlite)();
+    if (typeof db.transaction === 'function') {
+      db.transaction(insertUsdtSqlite)();
     } else {
       insertUsdtSqlite();
     }
@@ -383,9 +417,9 @@ export async function submitManualCryptoPaymentImpl(params: {
         details: `USDT ($${(amountCents / 100).toFixed(2)} ${network}) pending — TX ${cleanHash} — plan ${plan.id}`,
       });
     } catch (auditErr) {
-      log.debug('Skipped SQLite audit log write for manual USDT submission', {
+      log.debug('Skipped SQLite audit log write for manual crypto submission', {
         paymentId,
-        err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        err: errMsg(auditErr),
       });
     }
   }
@@ -393,7 +427,7 @@ export async function submitManualCryptoPaymentImpl(params: {
   try {
     const emailProvider = getEmailProvider();
     const adminEmail = process.env.ADMIN_PAYMENT_EMAIL || getRuntimeContactConfig().supportEmail;
-    const amountUsd = `$${(amountCents / 100).toFixed(2)} USDT`;
+    const amountUsd = `$${(amountCents / 100).toFixed(2)} USD`;
     await emailProvider.sendBillingAlert(
       adminEmail,
       paymentId,
@@ -403,11 +437,11 @@ export async function submitManualCryptoPaymentImpl(params: {
         planName: plan.name || plan.id,
         userId: params.userId,
         submittedAt: now,
-        instruction: 'Verify TRC-20 transaction on Tronscan and approve in admin panel.',
+        instruction: 'Please verify on TronScan and approve from the admin panel.',
       }
     );
-  } catch (err: any) {
-    log.warn(`[PaymentService] admin crypto notification failed: ${err.message}`);
+  } catch (err: unknown) {
+    log.warn(`[PaymentService] admin crypto notification failed: ${errMsg(err)}`);
   }
 
   return {
@@ -424,9 +458,8 @@ export async function submitManualCryptoPaymentImpl(params: {
 
 export async function approveManualPaymentImpl(
   paymentId: string,
-  adminActor: { id: string; name: string; role?: string }
+  adminActor: { id: string; name: string; role?: CommercialRole | string }
 ): Promise<{ success: boolean; paymentId: string; status: string; userId: string }> {
-  await assertNotEmergencyFrozen('manual_payment_approval');
   const pgClient = resolvePgBillingClient([
     'commercial_payments',
     'commercial_subscriptions',
@@ -435,7 +468,7 @@ export async function approveManualPaymentImpl(
     'auth_users',
   ]);
 
-  let payment: any = null;
+  let payment: CommercialPaymentRow;
   let actResult: {
     subscription: UserSubscriptionSummary;
     invoice: PaymentInvoiceRecord;
@@ -445,13 +478,16 @@ export async function approveManualPaymentImpl(
 
   if (pgClient) {
     const txOutcome = await withPgTransaction(pgClient, async (tx) => {
-      let lockedPayment: any = null;
+      if (!tx.commercial_payments) {
+        throw new Error('PG commercial_payments delegate unavailable');
+      }
+      let lockedPayment: CommercialPaymentRow | null = null;
       if (typeof tx.$queryRaw === 'function') {
         const rows = (await tx.$queryRaw`
           SELECT * FROM commercial_payments
           WHERE id = ${paymentId} OR external_payment_id = ${paymentId}
           LIMIT 1 FOR UPDATE
-        `) as any[];
+        `) as CommercialPaymentRow[];
         lockedPayment = rows?.[0] || null;
       } else {
         lockedPayment = await tx.commercial_payments.findFirst({
@@ -474,7 +510,7 @@ export async function approveManualPaymentImpl(
           where: { id: lockedPayment.id, status: 'PENDING_VERIFICATION' },
           data: { status: 'SUCCEEDED', updated_at: claimNow },
         });
-        if (!claimed || claimed.count !== 1) {
+        if (claimed?.count !== 1) {
           throw new Error('Payment is not pending verification (already processed).');
         }
       } else {
@@ -484,15 +520,7 @@ export async function approveManualPaymentImpl(
         });
       }
 
-      let meta: any = {};
-      try {
-        meta = JSON.parse(lockedPayment.metadata_json || '{}');
-      } catch (parseErr) {
-        log.warn('Failed parsing payment metadata_json before PG approval', {
-          paymentId: lockedPayment.id,
-          err: parseErr instanceof Error ? parseErr.message : String(parseErr),
-        });
-      }
+      const meta = parsePaymentMetadata(lockedPayment.metadata_json, lockedPayment.id, 'PG approval');
 
       const activated = await activateSubscriptionFromPaymentImpl({
         userId: lockedPayment.user_id,
@@ -500,10 +528,10 @@ export async function approveManualPaymentImpl(
         billingCycle: lockedPayment.billing_cycle,
         amountCents: lockedPayment.amount_cents,
         currency: lockedPayment.currency,
-        provider: lockedPayment.provider,
+        provider: lockedPayment.provider as PaymentProviderType,
         externalPaymentId: lockedPayment.external_payment_id || lockedPayment.id,
-        externalOrderId: lockedPayment.external_order_id,
-        receiptUrl: lockedPayment.receipt_url,
+        externalOrderId: lockedPayment.external_order_id || undefined,
+        receiptUrl: lockedPayment.receipt_url || undefined,
         metadata: meta,
         tx,
         targetPaymentId: lockedPayment.id,
@@ -520,7 +548,7 @@ export async function approveManualPaymentImpl(
             id: crypto.randomUUID(),
             actor_id: adminActor.id,
             actor_name: adminActor.name,
-            actor_role: (adminActor.role as any) || 'ADMIN',
+            actor_role: adminActor.role || 'ADMIN',
             action: 'APPROVE_MANUAL_PAYMENT',
             target_type: 'PAYMENT',
             target_id: lockedPayment.id,
@@ -539,10 +567,10 @@ export async function approveManualPaymentImpl(
     actResult = txOutcome.activated;
   } else {
     const db = getDatabase();
-    const claimSqlite = () => {
-      const row = db.prepare(
-        'SELECT * FROM commercial_payments WHERE id = ? OR external_payment_id = ?'
-      ).get(paymentId, paymentId) as any;
+    const claimSqlite = (): CommercialPaymentRow => {
+      const row = db
+        .prepare('SELECT * FROM commercial_payments WHERE id = ? OR external_payment_id = ?')
+        .get(paymentId, paymentId) as unknown as CommercialPaymentRow | undefined;
 
       if (!row) {
         throw new Error(`Payment record "${paymentId}" not found.`);
@@ -552,28 +580,18 @@ export async function approveManualPaymentImpl(
       }
 
       const claimNow = new Date().toISOString();
-      const upd = db.prepare(
-        "UPDATE commercial_payments SET status = 'SUCCEEDED', updated_at = ? WHERE id = ? AND status = 'PENDING_VERIFICATION'"
-      ).run(claimNow, row.id);
+      const upd = db
+        .prepare("UPDATE commercial_payments SET status = 'SUCCEEDED', updated_at = ? WHERE id = ? AND status = 'PENDING_VERIFICATION'")
+        .run(claimNow, row.id);
       if (upd.changes !== 1) {
         throw new Error('Payment is not pending verification (already processed).');
       }
       return row;
     };
 
-    payment = typeof (db as any).transaction === 'function'
-      ? (db as any).transaction(claimSqlite)()
-      : claimSqlite();
+    payment = typeof db.transaction === 'function' ? db.transaction(claimSqlite)() : claimSqlite();
 
-    let meta: any = {};
-    try {
-      meta = JSON.parse(payment.metadata_json || '{}');
-    } catch (parseErr) {
-      log.warn('Failed parsing payment metadata_json before SQLite approval', {
-        paymentId: payment.id,
-        err: parseErr instanceof Error ? parseErr.message : String(parseErr),
-      });
-    }
+    const meta = parsePaymentMetadata(payment.metadata_json, payment.id, 'SQLite approval');
 
     actResult = await activateSubscriptionFromPaymentImpl({
       userId: payment.user_id,
@@ -581,10 +599,10 @@ export async function approveManualPaymentImpl(
       billingCycle: payment.billing_cycle,
       amountCents: payment.amount_cents,
       currency: payment.currency,
-      provider: payment.provider,
+      provider: payment.provider as PaymentProviderType,
       externalPaymentId: payment.external_payment_id || payment.id,
-      externalOrderId: payment.external_order_id,
-      receiptUrl: payment.receipt_url,
+      externalOrderId: payment.external_order_id || undefined,
+      receiptUrl: payment.receipt_url || undefined,
       metadata: meta,
       targetPaymentId: payment.id,
       alreadyClaimedPaymentId: payment.id,
@@ -597,7 +615,7 @@ export async function approveManualPaymentImpl(
       logCommercialAudit({
         actorId: adminActor.id,
         actorName: adminActor.name,
-        actorRole: (adminActor.role as any) || 'ADMIN',
+        actorRole: (adminActor.role as CommercialRole) || 'ADMIN',
         action: 'APPROVE_MANUAL_PAYMENT',
         targetType: 'PAYMENT',
         targetId: payment.id,
@@ -606,7 +624,7 @@ export async function approveManualPaymentImpl(
     } catch (auditErr) {
       log.debug('Skipped SQLite audit log write for manual payment approval', {
         paymentId: payment.id,
-        err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        err: errMsg(auditErr),
       });
     }
   }
@@ -641,8 +659,8 @@ export async function approveManualPaymentImpl(
         validUntil: actResult.subscription.expiresAt,
       });
     }
-  } catch (err: any) {
-    log.warn(`[PaymentService] payment approval notification failed: ${err.message}`);
+  } catch (err: unknown) {
+    log.warn(`[PaymentService] payment approval notification failed: ${errMsg(err)}`);
   }
 
   return {
@@ -655,21 +673,24 @@ export async function approveManualPaymentImpl(
 
 export async function rejectManualPaymentImpl(
   paymentId: string,
-  adminActor: { id: string; name: string; role?: string },
+  adminActor: { id: string; name: string; role?: CommercialRole | string },
   reason: string
 ): Promise<{ success: boolean; paymentId: string; status: string; reason: string }> {
   const pgClient = resolvePgBillingClient(['commercial_payments']);
-  let payment: any = null;
+  let payment: CommercialPaymentRow;
 
   if (pgClient) {
     payment = await withPgTransaction(pgClient, async (tx) => {
-      let lockedPayment: any = null;
+      if (!tx.commercial_payments) {
+        throw new Error('PG commercial_payments delegate unavailable');
+      }
+      let lockedPayment: CommercialPaymentRow | null = null;
       if (typeof tx.$queryRaw === 'function') {
         const rows = (await tx.$queryRaw`
           SELECT * FROM commercial_payments
           WHERE id = ${paymentId} OR external_payment_id = ${paymentId}
           LIMIT 1 FOR UPDATE
-        `) as any[];
+        `) as CommercialPaymentRow[];
         lockedPayment = rows?.[0] || null;
       } else {
         lockedPayment = await tx.commercial_payments.findFirst({
@@ -687,15 +708,7 @@ export async function rejectManualPaymentImpl(
       }
 
       const now = new Date().toISOString();
-      let meta: any = {};
-      try {
-        meta = JSON.parse(lockedPayment.metadata_json || '{}');
-      } catch (parseErr) {
-        log.warn('Failed parsing payment metadata_json before PG approval', {
-          paymentId: lockedPayment.id,
-          err: parseErr instanceof Error ? parseErr.message : String(parseErr),
-        });
-      }
+      const meta = parsePaymentMetadata(lockedPayment.metadata_json, lockedPayment.id, 'PG rejection');
       meta.rejectionReason = reason;
       meta.rejectedBy = adminActor.name;
       meta.rejectedAt = now;
@@ -709,7 +722,7 @@ export async function rejectManualPaymentImpl(
             updated_at: now,
           },
         });
-        if (!updated || updated.count !== 1) {
+        if (updated?.count !== 1) {
           throw new Error('Payment is not pending verification (already processed).');
         }
       } else {
@@ -729,7 +742,7 @@ export async function rejectManualPaymentImpl(
             id: crypto.randomUUID(),
             actor_id: adminActor.id,
             actor_name: adminActor.name,
-            actor_role: (adminActor.role as any) || 'ADMIN',
+            actor_role: adminActor.role || 'ADMIN',
             action: 'REJECT_MANUAL_PAYMENT',
             target_type: 'PAYMENT',
             target_id: lockedPayment.id,
@@ -744,10 +757,10 @@ export async function rejectManualPaymentImpl(
     });
   } else {
     const db = getDatabase();
-    const rejectSqlite = () => {
-      const row = db.prepare(
-        'SELECT * FROM commercial_payments WHERE id = ? OR external_payment_id = ?'
-      ).get(paymentId, paymentId) as any;
+    const rejectSqlite = (): CommercialPaymentRow => {
+      const row = db
+        .prepare('SELECT * FROM commercial_payments WHERE id = ? OR external_payment_id = ?')
+        .get(paymentId, paymentId) as unknown as CommercialPaymentRow | undefined;
 
       if (!row) {
         throw new Error(`Payment record "${paymentId}" not found.`);
@@ -757,39 +770,31 @@ export async function rejectManualPaymentImpl(
       }
 
       const now = new Date().toISOString();
-      let meta: any = {};
-      try {
-        meta = JSON.parse(row.metadata_json || '{}');
-      } catch (parseErr) {
-        log.warn('Failed parsing payment metadata_json before SQLite rejection', {
-          paymentId: row.id,
-          err: parseErr instanceof Error ? parseErr.message : String(parseErr),
-        });
-      }
+      const meta = parsePaymentMetadata(row.metadata_json, row.id, 'SQLite rejection');
       meta.rejectionReason = reason;
       meta.rejectedBy = adminActor.name;
       meta.rejectedAt = now;
 
-      const res = db.prepare(`
+      const res = db
+        .prepare(`
         UPDATE commercial_payments
         SET status = 'REJECTED', metadata_json = ?, updated_at = ?
         WHERE id = ? AND status = 'PENDING_VERIFICATION'
-      `).run(JSON.stringify(meta), now, row.id);
+      `)
+        .run(JSON.stringify(meta), now, row.id);
       if (res.changes !== 1) {
         throw new Error('Payment is not pending verification (already processed).');
       }
       return row;
     };
 
-    payment = typeof (db as any).transaction === 'function'
-      ? (db as any).transaction(rejectSqlite)()
-      : rejectSqlite();
+    payment = typeof db.transaction === 'function' ? db.transaction(rejectSqlite)() : rejectSqlite();
 
     try {
       logCommercialAudit({
         actorId: adminActor.id,
         actorName: adminActor.name,
-        actorRole: (adminActor.role as any) || 'ADMIN',
+        actorRole: (adminActor.role as CommercialRole) || 'ADMIN',
         action: 'REJECT_MANUAL_PAYMENT',
         targetType: 'PAYMENT',
         targetId: payment.id,
@@ -798,7 +803,7 @@ export async function rejectManualPaymentImpl(
     } catch (auditErr) {
       log.debug('Skipped SQLite audit log write for manual payment rejection', {
         paymentId: payment.id,
-        err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        err: errMsg(auditErr),
       });
     }
   }
@@ -825,8 +830,8 @@ export async function rejectManualPaymentImpl(
         supportEmail: getRuntimeContactConfig().supportEmail,
       });
     }
-  } catch (err: any) {
-    log.warn(`[PaymentService] payment rejection notification failed: ${err.message}`);
+  } catch (err: unknown) {
+    log.warn(`[PaymentService] payment rejection notification failed: ${errMsg(err)}`);
   }
 
   return {

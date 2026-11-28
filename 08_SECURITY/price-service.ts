@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
 import https from 'node:https';
-import { app } from './electron-bridge.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 import { getContentJsonUrl } from '../10_CONFIG/shared/site-config.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
@@ -100,7 +99,7 @@ export async function fetchDynamicPrice(): Promise<number> {
               const data = JSON.parse(body);
               const rawVal = data?.price_inr ?? data?.pricing?.price_inr;
               const numPrice = Number(rawVal);
-              if (!isNaN(numPrice) && numPrice > 0) {
+              if (!Number.isNaN(numPrice) && numPrice > 0) {
                 cachedPriceInr = numPrice;
                 try {
                   const cacheFile = getPriceCacheFilePath();

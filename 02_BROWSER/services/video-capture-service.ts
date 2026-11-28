@@ -21,7 +21,7 @@ export interface VideoCaptureArgs {
  * Used for facial KYC verification testing, synthetic video streams, and automated media tests.
  */
 export function buildVideoCaptureFlags(config?: FakeVideoCaptureConfig): VideoCaptureArgs {
-  if (!config || !config.enable || !config.filePath) {
+  if (!config?.enable || !config.filePath) {
     return {
       flags: [],
       isValid: false,

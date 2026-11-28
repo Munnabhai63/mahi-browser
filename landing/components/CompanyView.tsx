@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { BRAND } from '../lib/brand';
 
@@ -52,7 +53,7 @@ function StatCounter({
       if (!startTime) startTime = timestamp;
       const progress = Math.min((timestamp - startTime) / duration, 1);
       // Ease-out cubic curve
-      const easeProgress = 1 - Math.pow(1 - progress, 3);
+      const easeProgress = 1 - (1 - progress) ** 3;
       setCount(Math.floor(easeProgress * target));
 
       if (progress < 1) {
@@ -173,10 +174,11 @@ export default function CompanyView() {
         
         {/* Background Photo with Subtle Dark Gradient Overlay */}
         <div className="absolute inset-0 z-0">
-          <img
+          <Image
             src="/assets/company/hero_walking.jpg"
             alt="MAHI Browser Engineering Team & Vision"
-            className="w-full h-full object-cover object-center opacity-40 filter contrast-125"
+            fill
+            className="object-cover object-center opacity-40 filter contrast-125"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[#030303] via-[#030303]/40 to-[#030303]/80" />
         </div>
@@ -253,7 +255,7 @@ export default function CompanyView() {
             <div className="grid grid-cols-1 sm:grid-cols-3 max-w-[1328px]">
               {STATS.map((stat, idx) => (
                 <StatCounter
-                  key={idx}
+                  key={stat.label}
                   target={stat.target}
                   suffix={stat.suffix}
                   label={stat.label}
@@ -294,14 +296,16 @@ export default function CompanyView() {
 
             {/* 3 Tall Luxury Investor Cards with Exact SVG Logos */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-[1380px]">
-              {INVESTORS.map((inv, idx) => (
+              {INVESTORS.map((inv) => (
                 <div
-                  key={idx}
+                  key={inv.name}
                   className="rounded-[6px] bg-[#131517] h-[260px] sm:h-[320px] lg:h-[388px] flex items-center justify-center p-8 hover:bg-[#181a1d] transition-colors duration-300"
                 >
-                  <img
+                  <Image
                     src={inv.svg}
                     alt={inv.name}
+                    width={inv.width}
+                    height={inv.height}
                     className="max-w-[70%] max-h-[45%] object-contain opacity-90 hover:opacity-100 transition-opacity"
                   />
                 </div>
@@ -340,13 +344,14 @@ export default function CompanyView() {
 
             {/* 4 Portrait Cards: 2 Men on Left (Mahipal Choudhary, John Carver), 2 Ladies on Right (Sophie Green, Jo West) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-[1380px]">
-              {LEADERSHIP.map((leader, idx) => (
-                <div key={idx} className="group flex flex-col">
-                  <div className="w-full aspect-square rounded-[6px] overflow-hidden bg-[#131517] mb-3">
-                    <img
+              {LEADERSHIP.map((leader) => (
+                <div key={leader.name} className="group flex flex-col">
+                  <div className="relative w-full aspect-square rounded-[6px] overflow-hidden bg-[#131517] mb-3">
+                    <Image
                       src={leader.image}
                       alt={leader.name}
-                      className="w-full h-full object-cover object-center group-hover:scale-[1.03] transition-transform duration-500 ease-out"
+                      fill
+                      className="object-cover object-center group-hover:scale-[1.03] transition-transform duration-500 ease-out"
                     />
                   </div>
                   <div className="text-[14px] font-normal text-white tracking-[-0.01em]">
@@ -390,11 +395,12 @@ export default function CompanyView() {
             </div>
 
             {/* Wide Cinematic Conference Keynote Banner (Exact 16:9 Lateral Banner) */}
-            <div className="w-full max-w-[1380px] aspect-[16/9] rounded-[6px] overflow-hidden bg-black shadow-2xl">
-              <img
+            <div className="relative w-full max-w-[1380px] aspect-[16/9] rounded-[6px] overflow-hidden bg-black shadow-2xl">
+              <Image
                 src="/assets/company/mahi_conference_banner.jpg"
                 alt="MAHI BROWSER Keynote Conference - Manage Multiple Identities Without Detection"
-                className="w-full h-full object-cover object-center"
+                fill
+                className="object-cover object-center"
               />
             </div>
 
@@ -417,9 +423,9 @@ export default function CompanyView() {
 
               {/* Roles Table (Exact Lateral Flex Columns + Black Pill Buttons) */}
               <div className="border-t border-[#e6e3e3]">
-                {OPEN_ROLES.map((role, idx) => (
+                {OPEN_ROLES.map((role) => (
                   <div
-                    key={idx}
+                    key={role.title}
                     className="flex flex-col sm:flex-row sm:items-center justify-between py-6 border-b border-[#e6e3e3] hover:bg-black/[0.015] px-2 -mx-2 transition-colors duration-150 gap-4 sm:gap-0"
                   >
                     {/* Job Title */}
@@ -463,10 +469,11 @@ export default function CompanyView() {
             {/* Employee Quote Card (Placed Below Vacancies in Obsidian Dark #131517) */}
             <div className="rounded-[6px] bg-[#131517] overflow-hidden p-3 grid grid-cols-1 lg:grid-cols-2 max-w-[1380px] gap-6 lg:gap-12 items-center">
               <div className="relative aspect-[4/3] w-full rounded-[4px] overflow-hidden">
-                <img
+                <Image
                   src="/assets/company/quote_team.jpg"
                   alt="James Hunter at MAHI Browser"
-                  className="w-full h-full object-cover object-center"
+                  fill
+                  className="object-cover object-center"
                 />
               </div>
               <div className="py-8 sm:py-12 lg:py-14 px-4 sm:px-8 lg:px-6 flex flex-col justify-between h-full">

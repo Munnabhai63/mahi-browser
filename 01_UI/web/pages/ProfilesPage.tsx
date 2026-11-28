@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import {
   Globe2,
   Search,
@@ -78,8 +79,8 @@ export const ProfilesPage: React.FC<ProfilesPageProps> = ({
   const filteredProfiles = profiles.filter((p) => {
     const matchesSearch =
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.folder && p.folder.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (p.tags && p.tags.some((t) => t.toLowerCase().includes(searchTerm.toLowerCase())));
+      p.folder?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.tags?.some((t) => t.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesStatus =
       statusFilter === 'ALL' ||

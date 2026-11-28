@@ -1,6 +1,7 @@
-import React, { useState, memo } from 'react';
+import type React from 'react';
+import { useState, memo } from 'react';
 import { Play, Layers } from 'lucide-react';
-import { ProxyItem } from '../../../10_CONFIG/shared/types/proxy.js';
+import type { ProxyItem } from '../../../10_CONFIG/shared/types/proxy.js';
 
 export interface QuickCreateModalProps {
   defaultName: string;
@@ -52,14 +53,14 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = memo(({
               <p className="text-[11px] text-slate-400">Ready in 1 second</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold">
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold">
             ✕
           </button>
         </div>
 
         <form onSubmit={(e) => submitForm(e, false)} className="p-6 space-y-4 text-xs">
           <div>
-            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Profile Name *</label>
+            <label htmlFor="field-001" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Profile Name *</label>
             <input
               type="text"
               required
@@ -72,7 +73,7 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = memo(({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Folder / Workspace</label>
+              <label htmlFor="field-002" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Folder / Workspace</label>
               <input
                 type="text"
                 value={quickFolder}
@@ -83,7 +84,7 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = memo(({
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Proxy Configuration</label>
+              <label htmlFor="field-003" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Proxy Configuration</label>
               <select
                 value={quickProxyId}
                 onChange={(e) => setQuickProxyId(e.target.value)}
@@ -100,7 +101,7 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = memo(({
           </div>
 
           <div>
-            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Notes / Account Info</label>
+            <label htmlFor="field-004" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Notes / Account Info</label>
             <input
               type="text"
               value={quickNotes}
@@ -189,14 +190,14 @@ export const BulkCreateModal: React.FC<BulkCreateModalProps> = memo(({
               <p className="text-[11px] text-slate-400">Create multiple profiles with 1 click</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold">
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm font-bold">
             ✕
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
           <div>
-            <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+            <label htmlFor="field-005" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
               How Many Profiles? ({bulkCount})
             </label>
             <div className="flex items-center space-x-2">
@@ -219,9 +220,8 @@ export const BulkCreateModal: React.FC<BulkCreateModalProps> = memo(({
             </div>
             <div className="flex space-x-1.5 pt-2">
               {[5, 10, 20, 50].map((num) => (
-                <button
-                  key={num}
-                  type="button"
+                <button type="button"
+                  key={num}
                   onClick={() => setBulkCount(num)}
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
                     bulkCount === num
@@ -237,7 +237,7 @@ export const BulkCreateModal: React.FC<BulkCreateModalProps> = memo(({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Name Prefix</label>
+              <label htmlFor="field-006" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Name Prefix</label>
               <input
                 type="text"
                 value={bulkPrefix}
@@ -248,7 +248,7 @@ export const BulkCreateModal: React.FC<BulkCreateModalProps> = memo(({
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Folder</label>
+              <label htmlFor="field-007" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Folder</label>
               <input
                 type="text"
                 value={bulkFolder}
@@ -261,10 +261,10 @@ export const BulkCreateModal: React.FC<BulkCreateModalProps> = memo(({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">OS Personas</label>
+              <label htmlFor="field-008" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">OS Personas</label>
               <select
                 value={bulkOs}
-                onChange={(e) => setBulkOs(e.target.value as any)}
+                onChange={(e) => setBulkOs(e.target.value as 'random' | 'windows' | 'mac')}
                 className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-medium focus:border-indigo-500 focus:outline-none"
               >
                 <option value="random">Random Authentic (Mixed)</option>
@@ -274,7 +274,7 @@ export const BulkCreateModal: React.FC<BulkCreateModalProps> = memo(({
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Proxy (Optional)</label>
+              <label htmlFor="field-009" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Proxy (Optional)</label>
               <select
                 value={bulkProxyId}
                 onChange={(e) => setBulkProxyId(e.target.value)}

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 
 export interface MobileProfileItem {
   id: string;
@@ -78,6 +79,7 @@ export const MobileProfilesTab: React.FC<MobileProfilesTabProps> = ({
           }}
         />
         <button
+          type="button"
           onClick={() => setShowCreateModal(true)}
           style={{
             padding: '10px 16px',
@@ -101,6 +103,7 @@ export const MobileProfilesTab: React.FC<MobileProfilesTabProps> = ({
       <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
         {['all', 'windows', 'macos', 'linux', 'android'].map((os) => (
           <button
+            type="button"
             key={os}
             onClick={() => setFilterOS(os)}
             style={{
@@ -211,6 +214,7 @@ export const MobileProfilesTab: React.FC<MobileProfilesTabProps> = ({
                 </span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
+                    type="button"
                     onClick={() => onDeleteProfile(profile.id)}
                     style={{
                       padding: '6px 10px',
@@ -225,6 +229,7 @@ export const MobileProfilesTab: React.FC<MobileProfilesTabProps> = ({
                     Delete
                   </button>
                   <button
+                    type="button"
                     onClick={() => onLaunchCloudProfile(profile.id)}
                     disabled={isOffline || profile.isLocked}
                     style={{
@@ -279,10 +284,11 @@ export const MobileProfilesTab: React.FC<MobileProfilesTabProps> = ({
           >
             <h3 style={{ margin: 0, fontSize: 16, color: '#F8FAFC' }}>Create Mobile Profile</h3>
             <div>
-              <label style={{ fontSize: 12, color: '#94A3B8', display: 'block', marginBottom: 4 }}>
+              <label htmlFor="mobile-prof-name" style={{ fontSize: 12, color: '#94A3B8', display: 'block', marginBottom: 4 }}>
                 Profile Name
               </label>
               <input
+                id="mobile-prof-name"
                 type="text"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
@@ -301,12 +307,13 @@ export const MobileProfilesTab: React.FC<MobileProfilesTabProps> = ({
             </div>
 
             <div>
-              <label style={{ fontSize: 12, color: '#94A3B8', display: 'block', marginBottom: 4 }}>
+              <label htmlFor="mobile-prof-os" style={{ fontSize: 12, color: '#94A3B8', display: 'block', marginBottom: 4 }}>
                 Operating System
               </label>
               <select
+                id="mobile-prof-os"
                 value={newOS}
-                onChange={(e) => setNewOS(e.target.value as any)}
+                onChange={(e) => setNewOS(e.target.value as 'windows' | 'macos' | 'linux' | 'android')}
                 style={{
                   width: '100%',
                   padding: '8px 12px',
@@ -327,6 +334,7 @@ export const MobileProfilesTab: React.FC<MobileProfilesTabProps> = ({
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
               <button
+                type="button"
                 onClick={() => setShowCreateModal(false)}
                 style={{
                   padding: '8px 14px',
@@ -341,6 +349,7 @@ export const MobileProfilesTab: React.FC<MobileProfilesTabProps> = ({
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={() => {
                   if (newName.trim()) {
                     onCreateProfile(newName.trim(), newOS);

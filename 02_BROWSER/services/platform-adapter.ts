@@ -20,7 +20,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
-import { BrowserEngine, Profile } from '../../10_CONFIG/shared/types/profile.js';
+import type { BrowserEngine, Profile } from '../../10_CONFIG/shared/types/profile.js';
 import { createLogger } from '../../07_BACKEND/utils/logger.js';
 
 const log = createLogger('platform-adapter');
@@ -146,7 +146,7 @@ export class PlatformAdapter {
 
     if (plat === 'win32') {
       const localAppData = process.env.LOCALAPPDATA || '';
-      const programFiles = process.env['ProgramFiles'] || 'C:\\Program Files';
+      const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
       const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
 
       candidates.push(
@@ -342,8 +342,8 @@ export class PlatformAdapter {
           { stdio: 'ignore' }
         );
         return { success: true, shortcutPath };
-      } catch (err: any) {
-        return { success: false, shortcutPath: '', error: err.message };
+      } catch (err: unknown) {
+        return { success: false, shortcutPath: '', error: err instanceof Error ? err.message : String(err) };
       }
     }
 
@@ -352,7 +352,7 @@ export class PlatformAdapter {
       try {
         const safeExec = appExecutablePath.replace(/[\r\n"]/g, '');
         const safeIcon = (iconPath || 'mahi-browser').replace(/[\r\n]/g, '');
-        const content = [
+        const content = `${[
           '[Desktop Entry]',
           'Type=Application',
           `Name=MAHI — ${safeName}`,
@@ -361,12 +361,12 @@ export class PlatformAdapter {
           `Icon=${safeIcon}`,
           'Terminal=false',
           'Categories=Network;WebBrowser;',
-        ].join('\n') + '\n';
+        ].join('\n')}\n`;
 
         fs.writeFileSync(shortcutPath, content, { encoding: 'utf8', mode: 0o755 });
         return { success: true, shortcutPath };
-      } catch (err: any) {
-        return { success: false, shortcutPath: '', error: err.message };
+      } catch (err: unknown) {
+        return { success: false, shortcutPath: '', error: err instanceof Error ? err.message : String(err) };
       }
     }
 
@@ -377,8 +377,8 @@ export class PlatformAdapter {
       const scriptContent = `#!/bin/bash\n'${safeExecShell}' --profile-id=${safeProfileId} &\nexit 0\n`;
       fs.writeFileSync(shortcutPath, scriptContent, { encoding: 'utf8', mode: 0o755 });
       return { success: true, shortcutPath };
-    } catch (err: any) {
-      return { success: false, shortcutPath: '', error: err.message };
+    } catch (err: unknown) {
+      return { success: false, shortcutPath: '', error: err instanceof Error ? err.message : String(err) };
     }
   }
 
@@ -406,7 +406,7 @@ export class PlatformAdapter {
         const parsed = JSON.parse(raw);
         const items = Array.isArray(parsed) ? parsed : [parsed];
         for (const item of items) {
-          if (item && item.Id) {
+          if (item?.Id) {
             const pidNum = Number(item.Id);
             const totalCpuSec = typeof item.CPU === 'number' && Number.isFinite(item.CPU) ? item.CPU : 0;
             let cpuPercent = 0;
@@ -439,10 +439,10 @@ export class PlatformAdapter {
           const pid = parseInt(parts[0], 10);
           const rssKB = parseInt(parts[1], 10);
           const cpu = parseFloat(parts[2]);
-          if (!isNaN(pid)) {
+          if (!Number.isNaN(pid)) {
             result[pid] = {
               memoryMB: Math.round(rssKB / 1024),
-              cpuPercent: !isNaN(cpu) ? cpu : 0,
+              cpuPercent: !Number.isNaN(cpu) ? cpu : 0,
             };
           }
         }

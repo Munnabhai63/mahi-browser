@@ -1,21 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import type React from 'react';
+import { useEffect, useState } from 'react';
 import {
   Trash2,
   RotateCcw,
   Search,
-  AlertTriangle,
   Clock,
   Shield,
   Layers,
   ArrowLeft,
   Calendar,
-  CheckCircle2,
   Folder,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
-import { Profile } from '../../10_CONFIG/shared/types/profile.js';
+import type { Profile } from '../../10_CONFIG/shared/types/profile.js';
 
 interface TrashBinProps {
   onNavigate: (page: NavigationPage) => void;
@@ -88,7 +87,7 @@ export const TrashBin: React.FC<TrashBinProps> = ({ onNavigate }) => {
       {/* Top Header */}
       <div className="h-16 px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center space-x-3.5">
-          <button
+          <button type="button"
             onClick={() => onNavigate('profiles')}
             className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
             title="Back to Profiles"
@@ -115,7 +114,7 @@ export const TrashBin: React.FC<TrashBinProps> = ({ onNavigate }) => {
 
         <div className="flex items-center space-x-3">
           {trashProfiles.length > 0 && (
-            <button
+            <button type="button"
               onClick={() => setIsEmptyTrashModalOpen(true)}
               disabled={isProcessing}
               className="px-3.5 py-1.5 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-600 dark:text-rose-400 border border-rose-500/20 font-bold text-xs rounded-xl shadow-xs flex items-center space-x-1.5 active:scale-95 transition-all"
@@ -161,7 +160,7 @@ export const TrashBin: React.FC<TrashBinProps> = ({ onNavigate }) => {
               <p className="text-xs text-slate-400 mt-1 max-w-sm">
                 No deleted profiles found. All your browser profiles are active and secure.
               </p>
-              <button
+              <button type="button"
                 onClick={() => onNavigate('profiles')}
                 className="mt-4 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95"
               >
@@ -264,7 +263,7 @@ export const TrashBin: React.FC<TrashBinProps> = ({ onNavigate }) => {
                       {/* Actions */}
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end space-x-2">
-                          <button
+                          <button type="button"
                             onClick={() => handleRestore(p.id)}
                             disabled={isProcessing}
                             className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-xl flex items-center space-x-1 shadow-sm active:scale-95 transition-all"
@@ -273,7 +272,7 @@ export const TrashBin: React.FC<TrashBinProps> = ({ onNavigate }) => {
                             <RotateCcw className="w-3.5 h-3.5" />
                             <span>Restore</span>
                           </button>
-                          <button
+                          <button type="button"
                             onClick={() => setPermanentDeleteTarget(p)}
                             disabled={isProcessing}
                             className="px-2.5 py-1.5 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-600 dark:text-rose-400 rounded-xl transition-all font-semibold"

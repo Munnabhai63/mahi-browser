@@ -7,6 +7,10 @@ export const DEFAULT_LOCAL_DAEMON_PORT = 32123;
 export const DEFAULT_CLOUD_GATEWAY_PORT = 8989;
 export const PRODUCTION_COMMERCIAL_API_URL = 'https://api.mahibrowser.com';
 
+interface ImportMetaWithEnv {
+  env?: Record<string, string | boolean | undefined>;
+}
+
 /**
  * Universal environment variable accessor that never throws in browser or Node runtimes.
  */
@@ -18,8 +22,9 @@ export function getEnv(key: string, fallback = ''): string {
   } catch { /* Non-fatal: browser runtimes without Node process polyfill */ }
 
   try {
-    if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key] !== undefined) {
-      return String((import.meta as any).env[key]);
+    const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as ImportMetaWithEnv).env : undefined;
+    if (metaEnv && metaEnv[key] !== undefined) {
+      return String(metaEnv[key]);
     }
   } catch { /* Non-fatal: CJS/Node runtimes without Vite import.meta.env */ }
 
@@ -55,7 +60,7 @@ export function getCloudGatewayUrl(): string {
   const isProd =
     isBrowserCloudDomain ||
     getEnv('NODE_ENV') === 'production' ||
-    (typeof import.meta !== 'undefined' && Boolean((import.meta as any).env?.PROD));
+    (typeof import.meta !== 'undefined' && Boolean((import.meta as ImportMetaWithEnv).env?.PROD));
 
   if (isProd) {
     return PRODUCTION_COMMERCIAL_API_URL;

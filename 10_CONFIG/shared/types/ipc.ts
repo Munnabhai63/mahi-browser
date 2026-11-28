@@ -1,17 +1,24 @@
-import {
+import type {
   Profile,
+  ProfileSettings,
+  StatisticalProfileOptions,
+  StarterProfileTemplateSummary,
+  CreateProfileFromStarterOptions,
+  ParsedAccountImportItem,
+  AccountBulkImportOptions,
+  AccountBulkImportResult,
   CreateProfileDTO,
   UpdateProfileDTO,
   CloneProfileDTO,
   ProfileFilterOptions,
 } from './profile.js';
-import {
+import type {
   ProxyItem,
   CreateProxyDTO,
   UpdateProxyDTO,
   ProxyTestResult,
 } from './proxy.js';
-import {
+import type {
   ProxyProviderInfo,
   ProxyCatalogQuery,
   ProxyCatalogResult,
@@ -21,50 +28,100 @@ import {
   ProxyUsageReport,
   ProxyRotationResult,
 } from './proxy-provider.js';
-import {
+import type {
   CookieItem,
   CookieFilterOptions,
   CookieExportOptions,
   CookieImportResult,
 } from './cookie.js';
-import { HistoryItem, HistoryFilterOptions } from './history.js';
+import type { HistoryItem, HistoryFilterOptions } from './history.js';
 
-import { ExtensionItem, InstallExtensionDTO } from './extension.js';
-import {
+import type {
+  ExtensionItem,
+  StoreExtension,
+  InstallExtensionDTO,
+  BatchInstallExtensionDTO,
+} from './extension.js';
+import type {
   ProfileFolder,
   ProfileLock,
   FeatureFlagDefinition,
+  PlanTierId,
+  DistributionInfo,
   DeviceRecord,
   FleetTelemetry,
   ApiKeyRecord,
 } from './platform.js';
-
-
-import {
+import type {
   AutomationWorkflow,
   WorkflowExecutionLog,
   RunWorkflowDTO,
   RunWorkflowBatchDTO,
   RpaTemplate,
+  CookieWarmProfileOptions,
+  CookieWarmProfileResult,
+  CookieWarmBulkProfilesResult,
+  SynchronizerConfigState,
+  SynchronizerStatusState,
 } from './automation.js';
+import type {
+  MobileRotatorAdbDevice,
+  MobileRotatorAdbStatus,
+  MobileRotatorInstallResult,
+  MobileRotatorIpInfo,
+  MobileRotatorConfig,
+  MobileRotatorRotationResult,
+  MobileRotatorHistoryEntry,
+} from './mobile.js';
+import type {
+  CloudProfileMetadata,
+  CloudSyncUsage,
+  CloudSyncConfig,
+  CloudSyncProgressEvent,
+  CloudSyncUploadOptions,
+  CloudSyncUploadResult,
+  CloudSyncRestoreOptions,
+  CloudSyncConflictResolution,
+  RestoredCloudProfileSummary,
+} from './sync.js';
+import type {
+  CommercialUser,
+  CommercialDevice,
+  CommercialPlan,
+  CommercialEntitlements,
+  RegisterUserDTO,
+  CommercialLoginIPCRequest,
+  CommercialLoginIPCResponse,
+  CommercialActivateKeyResponse,
+  AccountSession,
+  AccountAuthActionResponse,
+  AccountStatusSummary,
+  AccountPaymentInfo,
+  AccountPricingCatalog,
+  AccountCheckoutPayload,
+  AccountCheckoutSession,
+  AccountPaymentRecord,
+  AccountActiveSessionRecord,
+  AccountTrialStatus,
+} from './commercial.js';
 
-import { AppSettings } from './settings.js';
-import { ActivityLogItem, ActivityLogFilter } from './logs.js';
-import { ProfileAuditReport } from './diagnostics.js';
-import {
+import type { AppSettings } from './settings.js';
+import type { ActivityLogItem, ActivityLogFilter } from './logs.js';
+import type { ProfileAuditReport } from './diagnostics.js';
+import type {
   CaptchaConfig,
   CaptchaBalanceResult,
   CaptchaSolveRequest,
   CaptchaSolveResult,
   CaptchaProvider,
 } from './captcha.js';
-import { UpdateStatusEvent, UpdateConfig, UpdateInstallOptions, UpdateInstallResult } from './updater.js';
-import {
+import type { UpdateStatusEvent, UpdateConfig, UpdateInstallOptions, UpdateInstallResult } from './updater.js';
+import type {
   FleetResourceSummary,
   MasterVaultExportOptions,
   MasterVaultImportResult,
 } from './resources.js';
-import {
+import type {
   Workspace,
   TeamMember,
   MemberRole,
@@ -75,28 +132,26 @@ import {
   TeamWorkspaceMember,
   TeamRole,
   TeamWorkspaceInvitation,
+  TeamWorkspaceInviteResult,
   TeamProfileShare,
   TeamWorkspaceAuditLog,
 } from './workspace.js';
-import {
-
-
+import type {
   ExportProfileOptions,
   BulkExportOptions,
-
   ImportProfileOptions,
   ImportProfilePreview,
   CrossPlatformImportDTO,
   CrossPlatformImportResult,
 } from './archive.js';
-
-import {
+import type {
   LicenseRecord,
   LicenseStatus,
   CreateLicenseDTO,
   CreateLicenseResponse,
   ActivateLicenseDTO,
   LicenseValidationResult,
+  OnlineLicenseStatus,
   ExtendLicenseDTO,
   ActivatedDevice,
 } from './license.js';
@@ -180,8 +235,8 @@ export interface MahiBrowserAPI {
   applyProfileCacheCleanup: () => Promise<ProfileCacheCleanupResult>;
 
   getProfileStats: (id: string) => Promise<{ totalSessions: number; totalUptimeSeconds: number; lastSessionStartedAt: string | null; lastSessionStoppedAt: string | null } | null>;
-  warmProfile: (id: string, options?: any) => Promise<any>;
-  warmBulkProfiles: (ids: string[], options?: any) => Promise<any>;
+  warmProfile: (id: string, options?: CookieWarmProfileOptions) => Promise<CookieWarmProfileResult>;
+  warmBulkProfiles: (ids: string[], options?: CookieWarmProfileOptions) => Promise<CookieWarmBulkProfilesResult>;
 
 
   // Dashboard
@@ -221,10 +276,10 @@ export interface MahiBrowserAPI {
 
   // Extensions
   getExtensions: (profileId: string) => Promise<ExtensionItem[]>;
-  getStoreExtensions?: () => Promise<any[]>;
+  getStoreExtensions?: () => Promise<StoreExtension[]>;
   installExtension: (dto: InstallExtensionDTO) => Promise<ExtensionItem>;
   installExtensionFromStore?: (profileId: string, storeExtensionId: string) => Promise<ExtensionItem>;
-  installExtensionBatch?: (dto: any) => Promise<{ installedCount: number; extensions: ExtensionItem[] }>;
+  installExtensionBatch?: (dto: BatchInstallExtensionDTO) => Promise<{ installedCount: number; extensions: ExtensionItem[] }>;
   installFromWebStoreUrl: (profileId: string, webStoreUrl: string) => Promise<ExtensionItem>;
   toggleExtension: (profileId: string, extensionId: string, enabled: boolean) => Promise<boolean>;
   removeExtension: (profileId: string, extensionId: string) => Promise<boolean>;
@@ -284,31 +339,31 @@ export interface MahiBrowserAPI {
   getSystemBrowsers: () => Promise<{ name: string; path: string; engine: string }[]>;
 
   // Mobile IP Rotator
-  mobileRotatorCheckIp: () => Promise<any>;
-  mobileRotatorGetDevices: () => Promise<any[]>;
-  mobileRotatorRotate: (config?: any) => Promise<any>;
-  mobileRotatorGetConfig: () => Promise<any>;
-  mobileRotatorSaveConfig: (config: any) => Promise<any>;
-  mobileRotatorGetAdbStatus: () => Promise<any>;
-  mobileRotatorInstallAdb: () => Promise<any>;
-  mobileRotatorGetHistory: () => Promise<any[]>;
+  mobileRotatorCheckIp: () => Promise<MobileRotatorIpInfo>;
+  mobileRotatorGetDevices: () => Promise<MobileRotatorAdbDevice[]>;
+  mobileRotatorRotate: (config?: Partial<MobileRotatorConfig>) => Promise<MobileRotatorRotationResult>;
+  mobileRotatorGetConfig: () => Promise<MobileRotatorConfig>;
+  mobileRotatorSaveConfig: (config: Partial<MobileRotatorConfig>) => Promise<MobileRotatorConfig>;
+  mobileRotatorGetAdbStatus: () => Promise<MobileRotatorAdbStatus>;
+  mobileRotatorInstallAdb: () => Promise<MobileRotatorInstallResult>;
+  mobileRotatorGetHistory: () => Promise<MobileRotatorHistoryEntry[]>;
   mobileRotatorClearHistory: () => Promise<boolean>;
 
   // Universal Bulk Importer
-  importerParsePreview: (rawText: string) => Promise<any[]>;
-  importerExecuteBulkImport: (accounts: any[], options?: any) => Promise<any>;
-  importerParseNetscape: (rawText: string) => Promise<any[]>;
+  importerParsePreview: (rawText: string) => Promise<ParsedAccountImportItem[]>;
+  importerExecuteBulkImport: (accounts: ParsedAccountImportItem[], options?: AccountBulkImportOptions) => Promise<AccountBulkImportResult>;
+  importerParseNetscape: (rawText: string) => Promise<CookieItem[]>;
 
   // Multi-Window Synchronizer
-  synchronizerStart: (masterProfileId?: string, activeProfiles?: string[], config?: any) => Promise<any>;
-  synchronizerStop: () => Promise<any>;
-  synchronizerGetStatus: () => Promise<any>;
-  synchronizerUpdateConfig: (config: any) => Promise<any>;
+  synchronizerStart: (masterProfileId?: string, activeProfiles?: string[], config?: Partial<SynchronizerConfigState>) => Promise<SynchronizerStatusState>;
+  synchronizerStop: () => Promise<SynchronizerStatusState>;
+  synchronizerGetStatus: () => Promise<SynchronizerStatusState>;
+  synchronizerUpdateConfig: (config: Partial<SynchronizerConfigState>) => Promise<SynchronizerConfigState>;
 
   // Fingerprint Diagnostics & Stealth Auditor
   diagnosticsAudit: (profileId: string) => Promise<ProfileAuditReport>;
   diagnosticsAutoFix: (profileId: string) => Promise<ProfileAuditReport>;
-  generateStatisticalFingerprint?: (options?: any) => Promise<any>;
+  generateStatisticalFingerprint?: (options?: StatisticalProfileOptions) => Promise<ProfileSettings>;
 
   // Captcha Solver Engine
   captchaGetConfig: () => Promise<CaptchaConfig>;
@@ -340,7 +395,7 @@ export interface MahiBrowserAPI {
   teamWorkspaceDelete: (workspaceId: string) => Promise<boolean>;
   teamWorkspaceTransferOwnership: (workspaceId: string, newOwnerId: string) => Promise<boolean>;
   teamWorkspaceGetMembers: (workspaceId: string) => Promise<TeamWorkspaceMember[]>;
-  teamWorkspaceInviteMember: (workspaceId: string, email: string, role: TeamRole) => Promise<any>;
+  teamWorkspaceInviteMember: (workspaceId: string, email: string, role: TeamRole) => Promise<TeamWorkspaceInviteResult>;
   teamWorkspaceUpdateMemberRole: (workspaceId: string, memberUserId: string, role: TeamRole) => Promise<boolean>;
   teamWorkspaceRemoveMember: (workspaceId: string, memberUserId: string) => Promise<boolean>;
   teamWorkspaceListInvitations: (workspaceId: string) => Promise<TeamWorkspaceInvitation[]>;
@@ -382,7 +437,7 @@ export interface MahiBrowserAPI {
   // V2 Platform: Feature Flags & Fleet
   getFeatureFlags: () => Promise<FeatureFlagDefinition[]>;
   updateFeatureFlag: (key: string, updates: Partial<FeatureFlagDefinition>) => Promise<FeatureFlagDefinition | null>;
-  checkFeatureFlag: (key: string, userTier?: any, userId?: string, orgId?: string) => Promise<boolean>;
+  checkFeatureFlag: (key: string, userTier?: PlanTierId | string, userId?: string, orgId?: string) => Promise<boolean>;
   getFleetDevices: () => Promise<DeviceRecord[]>;
   getFleetTelemetry: () => Promise<FleetTelemetry>;
   revokeDevice: (deviceId: string) => Promise<boolean>;
@@ -393,29 +448,29 @@ export interface MahiBrowserAPI {
   revokeApiKey: (keyId: string) => Promise<boolean>;
 
   // Distribution & Shortcuts Management
-  getDistributionInfo: () => Promise<any>;
+  getDistributionInfo: () => Promise<DistributionInfo>;
   openDistributionFolder: () => Promise<boolean>;
   fixDesktopShortcuts: () => Promise<{ success: boolean; message: string; shortcuts: string[] }>;
   createProfileShortcut: (profileId: string, profileName: string) => Promise<{ success: boolean; path: string }>;
 
   // Commercial Architecture APIs
-  commercialRegister: (dto: any) => Promise<any>;
-  commercialLogin: (dto: any) => Promise<any>;
+  commercialRegister: (dto: RegisterUserDTO) => Promise<{ success: boolean; user?: CommercialUser; token?: string; error?: string }>;
+  commercialLogin: (dto: CommercialLoginIPCRequest) => Promise<CommercialLoginIPCResponse>;
   commercialLogout: () => Promise<{ success: boolean }>;
-  commercialGetEntitlements: (userId: string, deviceId?: string) => Promise<any>;
-  commercialGetDevices: (userId: string) => Promise<any>;
+  commercialGetEntitlements: (userId: string, deviceId?: string) => Promise<CommercialEntitlements | null>;
+  commercialGetDevices: (userId: string) => Promise<CommercialDevice[]>;
   commercialRevokeDevice: (deviceId: string, userId: string) => Promise<boolean>;
-  commercialGetPlans: () => Promise<any>;
-  commercialActivateKey: (userId: string, rawKey: string) => Promise<any>;
+  commercialGetPlans: () => Promise<CommercialPlan[]>;
+  commercialActivateKey: (userId: string, rawKey: string) => Promise<CommercialActivateKeyResponse>;
 
   // Starter / Demo Profiles (New User Clean Onboarding)
-  getStarterTemplates: () => Promise<any[]>;
-  getStarterTemplateById: (id: string) => Promise<any | null>;
+  getStarterTemplates: () => Promise<StarterProfileTemplateSummary[]>;
+  getStarterTemplateById: (id: string) => Promise<StarterProfileTemplateSummary | null>;
   isUserNew: (ownerId?: string) => Promise<boolean>;
-  createProfileFromStarter: (templateId: string, options?: any) => Promise<Profile>;
+  createProfileFromStarter: (templateId: string, options?: CreateProfileFromStarterOptions) => Promise<Profile>;
 
   // Central Entitlements & Capabilities
-  getEntitlements: (userId?: string, deviceId?: string) => Promise<any>;
+  getEntitlements: (userId?: string, deviceId?: string) => Promise<CommercialEntitlements | null>;
   checkCapability: (capability: string, userId?: string) => Promise<{ entitled: boolean; reason?: string }>;
 
   // Managed Browser Engine
@@ -425,35 +480,35 @@ export interface MahiBrowserAPI {
 
   // Cloud Profile Sync (GoLogin-style)
   getCloudSyncAllowed: () => Promise<{ allowed: boolean; reason?: string }>;
-  getCloudSyncUsage: () => Promise<any>;
-  getCloudSyncList: () => Promise<any[]>;
-  uploadProfileToCloud: (profileId: string, options?: { force?: boolean; baseVersion?: number; mode?: 'full' | 'cookies_only' }) => Promise<{ success: boolean; skipped?: boolean; reason?: 'unchanged'; mode?: 'full' | 'cookies_only'; cloudProfile?: any; conflict?: boolean }>;
-  downloadAndRestoreProfile: (cloudProfileId: string, options?: any) => Promise<any>;
+  getCloudSyncUsage: () => Promise<CloudSyncUsage>;
+  getCloudSyncList: () => Promise<CloudProfileMetadata[]>;
+  uploadProfileToCloud: (profileId: string, options?: CloudSyncUploadOptions) => Promise<CloudSyncUploadResult>;
+  downloadAndRestoreProfile: (cloudProfileId: string, options?: CloudSyncRestoreOptions) => Promise<RestoredCloudProfileSummary>;
   deleteCloudProfile: (cloudProfileId: string) => Promise<boolean>;
-  getCloudSyncConfig: () => Promise<any>;
-  setCloudSyncConfig: (config: any) => Promise<any>;
+  getCloudSyncConfig: () => Promise<CloudSyncConfig>;
+  setCloudSyncConfig: (config: Partial<CloudSyncConfig>) => Promise<CloudSyncConfig>;
   syncAllProfiles: () => Promise<void>;
   getAllProfilesSyncStatus: () => Promise<Record<string, string>>;
-  resolveSyncConflict: (profileId: string, resolution: 'DOWNLOAD_LATEST' | 'KEEP_LOCAL_AS_NEW' | 'OVERWRITE_FORCE') => Promise<any>;
+  resolveSyncConflict: (profileId: string, resolution: CloudSyncConflictResolution) => Promise<RestoredCloudProfileSummary | CloudSyncUploadResult | { success: boolean }>;
   acquireCloudLock: (cloudProfileId: string, ttlSeconds?: number) => Promise<{ acquired: boolean; heldBy?: string; expiresAt?: string }>;
   releaseCloudLock: (cloudProfileId: string) => Promise<boolean>;
   getCloudLockStatus: (cloudProfileId: string) => Promise<{ isLocked: boolean; heldBy?: string; expiresAt?: string }>;
-  onSyncProgress: (callback: (event: any) => void) => () => void;
+  onSyncProgress: (callback: (event: CloudSyncProgressEvent) => void) => () => void;
 
   // Account & Subscription System (v1.1.0+)
-  accountSignup: (dto: { email: string; password: string }) => Promise<{ success: boolean; token?: string; user?: any; error?: string }>;
-  accountLogin: (dto: { email: string; password: string }) => Promise<{ success: boolean; token?: string; user?: any; error?: string }>;
-  accountLoginWithToken: (dto: { token: string } | string) => Promise<{ success: boolean; token?: string; user?: any; error?: string }>;
+  accountSignup: (dto: { email: string; password: string }) => Promise<AccountAuthActionResponse>;
+  accountLogin: (dto: { email: string; password: string }) => Promise<AccountAuthActionResponse>;
+  accountLoginWithToken: (dto: { token: string } | string) => Promise<AccountAuthActionResponse>;
   accountLogout: () => Promise<{ success: boolean }>;
-  accountGetStatus: () => Promise<any>;
+  accountGetStatus: () => Promise<AccountStatusSummary>;
   accountSwitchDevice: () => Promise<{ success: boolean; message: string }>;
-  accountGetPaymentInfo: () => Promise<any>;
-  accountGetPricingCatalog?: () => Promise<{ success: boolean; catalog?: any; error?: string }>;
-  accountCreateCheckoutSession?: (payload: any) => Promise<{ success: boolean; session?: any; error?: string }>;
+  accountGetPaymentInfo: () => Promise<AccountPaymentInfo>;
+  accountGetPricingCatalog?: () => Promise<{ success: boolean; catalog?: AccountPricingCatalog; error?: string }>;
+  accountCreateCheckoutSession?: (payload: AccountCheckoutPayload) => Promise<{ success: boolean; session?: AccountCheckoutSession; error?: string }>;
   accountSubmitManualUpiPayment: (payload: { plan_id: string; utr: string; proof_asset?: string; billing_cycle?: string; amount_paise?: number; extra_members?: number; extra_proxy_gb?: number }) => Promise<{ success: boolean; payment_id?: string; status?: string; message?: string; error?: string }>;
   accountSubmitManualCryptoPayment?: (payload: { plan_id: string; tx_hash: string; network?: string; proof_asset?: string; billing_cycle?: string; extra_members?: number; extra_proxy_gb?: number }) => Promise<{ success: boolean; payment_id?: string; status?: string; tx_hash?: string; message?: string; error?: string }>;
-  accountGetPaymentStatus?: () => Promise<{ success: boolean; payments?: any[]; error?: string }>;
-  accountGetSession: () => Promise<any>;
+  accountGetPaymentStatus?: () => Promise<{ success: boolean; payments?: AccountPaymentRecord[]; error?: string }>;
+  accountGetSession: () => Promise<AccountSession | null>;
   accountGetPlanLimits: (dto?: { force?: boolean }) => Promise<{ isPro: boolean; plan: string; maxProfiles: number; expiresAt: string | null }>;
   accountRefreshPlanLimits: () => Promise<{ isPro: boolean; plan: string; maxProfiles: number; expiresAt: string | null }>;
 
@@ -461,15 +516,15 @@ export interface MahiBrowserAPI {
   accountResendVerification: (dto: { email: string }) => Promise<{ success: boolean; error?: string }>;
   accountForgotPassword: (dto: { email: string }) => Promise<{ success: boolean; message?: string; error?: string }>;
   accountResetPassword: (dto: { token: string; newPassword: string }) => Promise<{ success: boolean; error?: string }>;
-  accountListSessions: () => Promise<{ success: boolean; sessions?: any[]; error?: string }>;
+  accountListSessions: () => Promise<{ success: boolean; sessions?: AccountActiveSessionRecord[]; error?: string }>;
   accountRevokeSession: (dto: { sessionId: string }) => Promise<{ success: boolean; error?: string }>;
   accountRevokeAllSessions: (dto?: { keepCurrent?: boolean }) => Promise<{ success: boolean; error?: string }>;
   accountRefreshToken: () => Promise<{ success: boolean; token?: string; error?: string }>;
   accountStartDesktopOAuth?: (planId?: string) => Promise<{ success: boolean; ticket: string; authUrl: string; error?: string }>;
-  accountExchangeDesktopCode?: (dto: { ticket: string; code: string } | string, code?: string) => Promise<{ success: boolean; token?: string; user?: any; error?: string }>;
-  accountActivateTrial?: (planId?: string) => Promise<{ success: boolean; error?: string; trialStatus?: any; entitlements?: any; message?: string }>;
+  accountExchangeDesktopCode?: (dto: { ticket: string; code: string } | string, code?: string) => Promise<AccountAuthActionResponse>;
+  accountActivateTrial?: (planId?: string) => Promise<{ success: boolean; error?: string; trialStatus?: AccountTrialStatus; entitlements?: CommercialEntitlements; message?: string }>;
   accountGetTrialStatus?: () => Promise<{ success: boolean; isTrialActive?: boolean; daysRemaining?: number; isEligibleForTrial?: boolean; error?: string }>;
-  onAccountStatusChanged?: (callback: (data: any) => void) => () => void;
+  onAccountStatusChanged?: (callback: (data: AccountSession | AccountStatusSummary | null) => void) => () => void;
 
   // Event Listeners
   onProfileStatusChanged: (callback: (data: { profileId: string; status: string; pid?: number; error?: string }) => void) => () => void;
@@ -478,7 +533,7 @@ export interface MahiBrowserAPI {
   onFleetResourceUsage: (callback: (summary: FleetResourceSummary) => void) => () => void;
   onEngineDownloadProgress: (callback: (status: ManagedEngineStatus) => void) => () => void;
   onCamoufoxDownloadProgress: (callback: (status: CamoufoxProgressEvent) => void) => () => void;
-  onLicenseStatusChanged: (callback: (status: any) => void) => () => void;
+  onLicenseStatusChanged: (callback: (status: OnlineLicenseStatus) => void) => () => void;
   onLicenseStatusToast: (callback: (toast: { title: string; message: string; type: string }) => void) => () => void;
   onToastShow: (callback: (toast: { type: 'info' | 'warning' | 'error' | 'success'; title: string; message: string }) => void) => () => void;
   onProfileTimezoneMismatch?: (callback: (data: { profileId: string; profileName: string; profileTimezone: string; proxyTimezone: string; suggestedLanguage?: string; suggestedLanguagesList?: string[] }) => void) => () => void;

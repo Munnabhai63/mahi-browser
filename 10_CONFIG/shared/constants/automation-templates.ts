@@ -1,4 +1,4 @@
-import { RpaTemplate } from '../types/automation.js';
+import type { RpaTemplate } from '../types/automation.js';
 
 export const RPA_TEMPLATES: RpaTemplate[] = [
   {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -45,6 +45,7 @@ export default function Navbar() {
                 className={`w-full h-full ${isLight ? 'text-black' : 'text-white'}`}
                 viewBox="0 0 24 24"
                 fill="none"
+                aria-hidden="true"
               >
                 <rect x="3" y="3" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="2" fill="none" />
                 <rect
@@ -190,7 +191,7 @@ export default function Navbar() {
             }`}
             aria-label="Toggle navigation"
           >
-            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               {mobileMenuOpen ? (
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               ) : (

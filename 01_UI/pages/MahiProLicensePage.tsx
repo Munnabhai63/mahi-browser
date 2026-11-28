@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
   ShieldCheck,
   Key,
@@ -7,52 +8,37 @@ import {
   AlertTriangle,
   XCircle,
   RefreshCw,
-  Plus,
-  Lock,
-  Calendar,
-  User,
   Copy,
   Check,
   Clock,
-  Trash2,
-  ArrowRight,
   Sparkles,
   ClipboardPaste,
-  Layers,
-  Monitor,
-  Share2,
 } from 'lucide-react';
 import { useLicenseStore } from '../stores/useLicenseStore.js';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
-import {
+import type {
   LicenseRecord,
   LicenseDurationType,
   CreateLicenseDTO,
 } from '../../10_CONFIG/shared/types/license.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 
 interface MahiProLicensePageProps {
   onNavigate: (page: NavigationPage) => void;
 }
 
-export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNavigate }) => {
+export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNavigate: _onNavigate }) => {
   const {
     currentLicenseStatus,
     isLoading,
     fetchCurrentStatus,
     activate,
-    isAdminAuthenticated,
     adminLogin,
-    adminLicenses,
-    adminFetchLicenses,
     adminCreate,
     adminRevoke,
     adminExtend,
-    selectedLicenseDevices,
-    adminFetchDevices,
-    adminDeactivateDev,
     adminChangePin,
   } = useLicenseStore();
 
@@ -60,46 +46,46 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
   const { showToast } = useToastStore();
   const { currentUser, accountSession, planLimits, openAccountModal } = useAccountStore();
 
-  const [activeTab, setActiveTab] = useState<'user' | 'admin'>('user');
+  const [_activeTab, _setActiveTab] = useState<'user' | 'admin'>('user');
 
   // User activation form
   const [inputKey, setInputKey] = useState('');
-  const [inputAccountId, setInputAccountId] = useState('');
+  const [inputAccountId, _setInputAccountId] = useState('');
   const [hwid, setHwid] = useState<string>('');
   const [copiedHwid, setCopiedHwid] = useState(false);
 
   // Admin login form
-  const [adminSecretInput, setAdminSecretInput] = useState('');
+  const [adminSecretInput, _setAdminSecretInput] = useState('');
 
   // Admin Create modal
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [createdRawKey, setCreatedRawKey] = useState<string | null>(null);
-  const [copiedKey, setCopiedKey] = useState(false);
+  const [_isCreateModalOpen, _setIsCreateModalOpen] = useState(false);
+  const [_createdRawKey, setCreatedRawKey] = useState<string | null>(null);
+  const [_copiedKey, setCopiedKey] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<{ id: string; name: string } | null>(null);
 
   const [newCustomer, setNewCustomer] = useState('');
   const [newAccountId, setNewAccountId] = useState('');
-  const [newDuration, setNewDuration] = useState<LicenseDurationType>('30_DAYS');
-  const [newCustomExpiry, setNewCustomExpiry] = useState('');
-  const [newMaxDevices, setNewMaxDevices] = useState(1);
+  const [newDuration, _setNewDuration] = useState<LicenseDurationType>('30_DAYS');
+  const [newCustomExpiry, _setNewCustomExpiry] = useState('');
+  const [newMaxDevices, _setNewMaxDevices] = useState(1);
   const [newNotes, setNewNotes] = useState('');
 
   // Admin Extend modal
   const [extendTarget, setExtendTarget] = useState<LicenseRecord | null>(null);
-  const [extendDays, setExtendDays] = useState(30);
+  const [extendDays, _setExtendDays] = useState(30);
 
   // Admin Devices modal
-  const [devicesTarget, setDevicesTarget] = useState<LicenseRecord | null>(null);
+  const [_devicesTarget, _setDevicesTarget] = useState<LicenseRecord | null>(null);
 
   // Admin Change PIN modal
-  const [isChangePinModalOpen, setIsChangePinModalOpen] = useState(false);
+  const [_isChangePinModalOpen, setIsChangePinModalOpen] = useState(false);
   const [newPinInput, setNewPinInput] = useState('');
 
   // Filter
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [_searchQuery, _setSearchQuery] = useState('');
+  const [_statusFilter, _setStatusFilter] = useState('');
   const [onlineStatus, setOnlineStatus] = useState<{ verified: boolean; revoked: boolean; graceExpired: boolean; offlineDaysLeft: number; statusText: string } | null>(null);
-  const [priceInr, setPriceInr] = useState<number>(599);
+  const [_priceInr, setPriceInr] = useState<number>(599);
 
   useEffect(() => {
     fetchCurrentStatus();
@@ -114,18 +100,22 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
     if (window.mahiAPI?.getOnlineLicenseStatus) {
       window.mahiAPI.getOnlineLicenseStatus().then(st => setOnlineStatus(st)).catch((err) => { console.debug('[MahiProLicensePage] getOnlineLicenseStatus failed', err); });
     }
-    const unsubChanged = window.mahiAPI?.onLicenseStatusChanged?.((st: any) => {
+    const unsubChanged = window.mahiAPI?.onLicenseStatusChanged?.((st) => {
       setOnlineStatus(st);
       fetchCurrentStatus();
     });
-    const unsubToast = window.mahiAPI?.onLicenseStatusToast?.((toastData: any) => {
-      showToast(toastData);
+    const unsubToast = window.mahiAPI?.onLicenseStatusToast?.((toastData) => {
+      const normalizedType =
+        toastData.type === 'success' || toastData.type === 'error' || toastData.type === 'warning'
+          ? toastData.type
+          : 'info';
+      showToast({ ...toastData, type: normalizedType });
     });
     return () => {
       unsubChanged?.();
       unsubToast?.();
     };
-  }, []);
+  }, [showToast, fetchCurrentStatus]);
 
   const handleActivate = async () => {
     if (!inputKey.trim()) return;
@@ -146,7 +136,7 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
     }
   };
 
-  const handleAdminLogin = async () => {
+  const _handleAdminLogin = async () => {
     if (!adminSecretInput.trim()) return;
     const ok = await adminLogin(adminSecretInput.trim());
     if (ok) {
@@ -164,7 +154,7 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
     }
   };
 
-  const handleCreateLicense = async () => {
+  const _handleCreateLicense = async () => {
     if (!newCustomer.trim()) {
       showToast({ type: 'error', title: 'Validation', message: 'Customer name is required' });
       return;
@@ -192,20 +182,20 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
           message: `Generated license for ${dto.customerName}`,
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         type: 'error',
         title: 'Create Failed',
-        message: err?.message || 'Error creating license',
+        message: err instanceof Error ? err.message : 'Error creating license',
       });
     }
   };
 
-  const handleRevoke = (id: string, name: string) => {
+  const _handleRevoke = (id: string, name: string) => {
     setRevokeTarget({ id, name });
   };
 
-  const handleExtend = async () => {
+  const _handleExtend = async () => {
     if (!extendTarget) return;
     const ok = await adminExtend({
       licenseId: extendTarget.id,
@@ -221,7 +211,7 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
     }
   };
 
-  const handleSaveNewPin = async () => {
+  const _handleSaveNewPin = async () => {
     if (!newPinInput.trim()) {
       showToast({ type: 'error', title: 'Validation', message: 'PIN / Password cannot be empty' });
       return;
@@ -244,7 +234,7 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
     }
   };
 
-  const copyToClipboard = (text: string) => {
+  const _copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(true);
     showToast({ type: 'info', title: 'Copied', message: 'License key copied to clipboard!' });
@@ -254,7 +244,7 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
   const handlePasteKey = async () => {
     try {
       const text = await navigator.clipboard.readText();
-      if (text && text.trim()) {
+      if (text?.trim()) {
         setInputKey(text.trim());
         showToast({ type: 'info', title: 'Key Pasted', message: 'License key pasted from clipboard!' });
       }
@@ -263,7 +253,7 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
     }
   };
 
-  const copyClientReceipt = (key: string, name: string, duration: string) => {
+  const _copyClientReceipt = (key: string, name: string, duration: string) => {
     const receipt = `👑 MAHI BROWSER PRO LICENSE RECEIPT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 👤 Customer: ${name}
@@ -337,7 +327,7 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
                   : 'Upgrade your cloud account to PRO for 100 profiles, cloud sync, and priority proxies.'}
               </p>
             </div>
-            <button
+            <button type="button"
               onClick={() => openAccountModal('PRO')}
               className="px-5 py-2.5 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-600/25 flex items-center justify-center space-x-2 transition shrink-0"
             >
@@ -366,7 +356,7 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
                 <Clock className="w-5 h-5 text-amber-400 shrink-0" />
                 <div>
                   <span className="font-bold text-white block">License Expiry Notice ({daysRemaining} Day{daysRemaining > 1 ? 's' : ''} Remaining)</span>
-                  <span>Your license will expire in {daysRemaining} day{daysRemaining > 1 ? 's' : ''} on {new Date(currentLicenseStatus!.license!.expiresAt!).toLocaleDateString()}.</span>
+                  <span>Your license will expire in {daysRemaining} day{daysRemaining > 1 ? 's' : ''} on {currentLicenseStatus?.license?.expiresAt ? new Date(currentLicenseStatus.license.expiresAt).toLocaleDateString() : 'Unknown'}.</span>
                 </div>
               </div>
             </div>
@@ -452,7 +442,7 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
               </div>
 
               <div>
-                <button
+                <button type="button"
                   onClick={() => fetchCurrentStatus()}
                   disabled={isLoading}
                   className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all"
@@ -518,7 +508,7 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
               </div>
 
               <div>
-                <button
+                <button type="button"
                   onClick={handleActivate}
                   disabled={!inputKey.trim() || isLoading}
                   className="w-full h-full py-2.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-40 text-white font-semibold text-xs rounded-xl shadow-sm flex items-center justify-center space-x-1.5 transition-all active:scale-95"

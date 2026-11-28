@@ -1,6 +1,3 @@
-const fs = require('fs');
-const path = require('path');
-
 function formatHunk(oldStart, newStart, entries) {
   let oldCount = 0;
   let newCount = 0;
@@ -15,13 +12,13 @@ function formatHunk(oldStart, newStart, entries) {
     if (op === ' ') {
       oldCount++;
       newCount++;
-      lines.push(' ' + text);
+      lines.push(` ${text}`);
     } else if (op === '-') {
       oldCount++;
-      lines.push('-' + text);
+      lines.push(`-${text}`);
     } else if (op === '+') {
       newCount++;
-      lines.push('+' + text);
+      lines.push(`+${text}`);
     } else {
       throw new Error(`Invalid diff operator: '${op}' in '${entry}'`);
     }

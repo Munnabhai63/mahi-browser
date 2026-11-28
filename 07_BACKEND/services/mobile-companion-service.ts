@@ -11,7 +11,7 @@
 
 import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
-import {
+import type {
   MobileDeviceTokenRecord,
   RegisterMobileDeviceDTO,
   MobileNotificationPreferences,
@@ -21,6 +21,42 @@ import {
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('mobile-companion-service');
+
+interface SqliteMobileDeviceTokenRow {
+  id: string;
+  user_id: string;
+  device_id: string;
+  push_token: string;
+  platform: MobileDeviceTokenRecord['platform'];
+  device_model: string | null;
+  os_version: string | null;
+  app_version: string | null;
+  status: MobileDeviceTokenRecord['status'];
+  last_seen_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface SqliteMobileNotifPrefsRow {
+  user_id: string;
+  security_alerts: number;
+  cloud_sessions: number;
+  automation_alerts: number;
+  workspace_alerts: number;
+  proxy_alerts: number;
+  updated_at: string;
+}
+
+interface SqliteMobileNotifRow {
+  id: string;
+  userId: string;
+  category: string;
+  title: string;
+  body: string;
+  dataJson: string | null;
+  read: number;
+  createdAt: string;
+}
 
 const SENSITIVE_KEYWORDS = [
   'token',
@@ -129,7 +165,7 @@ export class MobileCompanionService {
 
     const existing = db.prepare(`
       SELECT * FROM mobile_device_tokens WHERE user_id = ? AND device_id = ?
-    `).get(userId, dto.deviceId) as any;
+    `).get<SqliteMobileDeviceTokenRow>(userId, dto.deviceId);
 
     if (existing) {
       db.prepare(`
@@ -153,10 +189,17 @@ export class MobileCompanionService {
       );
 
       return {
-        ...existing,
+        id: existing.id,
+        userId: existing.user_id,
+        deviceId: existing.device_id,
         pushToken: dto.pushToken,
+        platform: existing.platform,
+        deviceModel: dto.deviceModel ?? existing.device_model ?? undefined,
+        osVersion: dto.osVersion ?? existing.os_version ?? undefined,
+        appVersion: dto.appVersion ?? existing.app_version ?? undefined,
         status: 'ACTIVE',
         lastSeenAt: now,
+        createdAt: existing.created_at,
         updatedAt: now,
       };
     }
@@ -215,7 +258,7 @@ export class MobileCompanionService {
     const db = getDatabase();
     const rows = db.prepare(`
       SELECT * FROM mobile_device_tokens WHERE user_id = ? AND status = 'ACTIVE'
-    `).all(userId) as any[];
+    `).all<SqliteMobileDeviceTokenRow>(userId);
 
     return rows.map((r) => ({
       id: r.id,
@@ -223,9 +266,9 @@ export class MobileCompanionService {
       deviceId: r.device_id,
       pushToken: r.push_token,
       platform: r.platform,
-      deviceModel: r.device_model,
-      osVersion: r.os_version,
-      appVersion: r.app_version,
+      deviceModel: r.device_model ?? undefined,
+      osVersion: r.os_version ?? undefined,
+      appVersion: r.app_version ?? undefined,
       status: r.status,
       lastSeenAt: r.last_seen_at,
       createdAt: r.created_at,
@@ -241,7 +284,7 @@ export class MobileCompanionService {
     const db = getDatabase();
     const row = db.prepare(`
       SELECT * FROM mobile_notification_preferences WHERE user_id = ?
-    `).get(userId) as any;
+    `).get<SqliteMobileNotifPrefsRow>(userId);
 
     if (!row) {
       return {
@@ -378,7 +421,7 @@ export class MobileCompanionService {
 
     query += ' ORDER BY created_at DESC LIMIT ?';
 
-    const rows = db.prepare(query).all(userId, Math.min(limit, 100)) as any[];
+    const rows = db.prepare(query).all<SqliteMobileNotifRow>(userId, Math.min(limit, 100));
 
     return rows.map((r) => ({
       id: r.id,

@@ -1,4 +1,3 @@
-import React from 'react';
 import type { Metadata } from 'next';
 import BlogView from '../../components/BlogView';
 

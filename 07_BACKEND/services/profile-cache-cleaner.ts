@@ -248,14 +248,16 @@ export async function cleanProfileCaches(options: CleanCacheOptions = {}): Promi
       try {
         fs.rmSync(folder, { recursive: true, force: true });
         result.deletedFolders++;
-      } catch (err: any) {
-        if (err.code === 'EBUSY' || err.code === 'EPERM') {
+      } catch (err: unknown) {
+        const errno = err as NodeJS.ErrnoException | null;
+        const msg = err instanceof Error ? err.message : String(err);
+        if (errno?.code === 'EBUSY' || errno?.code === 'EPERM') {
           result.skippedLockedFolders++;
           if (!silent) {
             log.warn(`[clean-cache] Skipped locked profile folder (running browser): ${folder}`);
           }
         } else {
-          result.errors.push(`${folder}: ${err.message}`);
+          result.errors.push(`${folder}: ${msg}`);
         }
       }
     }

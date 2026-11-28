@@ -42,8 +42,8 @@ async function main() {
   try {
     const storage = getStorageProvider();
     console.log(`[Gateway] Session Storage: ${storage.name} (${storage.isProductionReady() ? 'Production Ready' : 'Development'})`);
-  } catch (err: any) {
-    console.log(`[Gateway] Session Storage: Error (${err.message})`);
+  } catch (err: unknown) {
+    console.log(`[Gateway] Session Storage: Error (${err instanceof Error ? err.message : String(err)})`);
   }
 
   const port = parseInt(process.env.PORT || String(DEFAULT_CLOUD_GATEWAY_PORT), 10);

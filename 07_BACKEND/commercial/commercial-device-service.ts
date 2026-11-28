@@ -1,21 +1,37 @@
 import crypto from 'node:crypto';
 import os from 'node:os';
-import { getDatabase } from '../../06_DATABASE/connection.js';
-import { CommercialDevice, CommercialDeviceStatus, CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
+import { getDatabase, type SqliteWrapper } from '../../06_DATABASE/connection.js';
+import type { CommercialDevice, CommercialDeviceStatus, CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
 import {
   getDeviceId,
   getLegacyDeviceId,
   getDeviceName,
   collectHardwareSignals,
   isSameDevice,
-  HardwareSignals,
+  type HardwareSignals,
 } from '../../03_HARDWARE/device-id.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('commercial-device-service');
 
-function ensureDeviceColumns(db: any): void {
+interface SqliteCommercialDeviceRow {
+  id: string;
+  user_id: string;
+  license_id: string | null;
+  device_id: string;
+  device_name: string;
+  os_info: string;
+  client_version: string;
+  ip_address: string | null;
+  activated_at: string;
+  last_seen_at: string;
+  status: string;
+  legacy_device_id?: string | null;
+  hardware_signals_json?: string | null;
+}
+
+function ensureDeviceColumns(db: SqliteWrapper): void {
   try {
     const cols = db.prepare('PRAGMA table_info(commercial_devices)').all() as { name: string }[];
     const colNames = new Set(cols.map((c) => c.name));
@@ -59,9 +75,9 @@ export function registerOrUpdateDevice(params: {
   // Check if device already exists for this user (exact ID, legacy v1.2.2 ID, or 2-of-3 fuzzy hardware match)
   const userRows = db.prepare(
     'SELECT * FROM commercial_devices WHERE user_id = ?'
-  ).all(params.userId) as any[];
+  ).all<SqliteCommercialDeviceRow>(params.userId);
 
-  let existing: any = userRows.find((r) => r.device_id === deviceId);
+  let existing: SqliteCommercialDeviceRow | undefined = userRows.find((r) => r.device_id === deviceId);
   if (!existing) {
     existing = userRows.find((r) => {
       let parsedSignals: Partial<HardwareSignals> | undefined;
@@ -111,9 +127,13 @@ export function registerOrUpdateDevice(params: {
       existing.id
     );
 
+    const updatedDevice = getDeviceRecordById(existing.id);
+    if (!updatedDevice) {
+      throw new Error(`Device ${existing.id} could not be retrieved`);
+    }
     return {
       success: true,
-      device: getDeviceRecordById(existing.id)!,
+      device: updatedDevice,
       message: 'Device active.',
     };
   }
@@ -121,7 +141,7 @@ export function registerOrUpdateDevice(params: {
   // Count current active devices for this user
   const activeCount = (db.prepare(
     "SELECT COUNT(*) as count FROM commercial_devices WHERE user_id = ? AND status = 'ACTIVE'"
-  ).get(params.userId) as any)?.count || 0;
+  ).get(params.userId) as { count?: number } | undefined)?.count || 0;
 
   if (activeCount >= maxAllowed) {
     logCommercialAudit({
@@ -175,23 +195,27 @@ export function registerOrUpdateDevice(params: {
     result: 'SUCCESS',
   });
 
+  const createdDevice = getDeviceRecordById(id);
+  if (!createdDevice) {
+    throw new Error(`Activated device ${id} could not be retrieved`);
+  }
   return {
     success: true,
-    device: getDeviceRecordById(id)!,
+    device: createdDevice,
     message: 'Device registered successfully.',
   };
 }
 
 export function getUserDevices(userId: string): CommercialDevice[] {
   const db = getDatabase();
-  const rows = db.prepare('SELECT * FROM commercial_devices WHERE user_id = ? ORDER BY activated_at DESC').all(userId) as any[];
+  const rows = db.prepare('SELECT * FROM commercial_devices WHERE user_id = ? ORDER BY activated_at DESC').all<SqliteCommercialDeviceRow>(userId);
   return rows.map(mapRowToDevice);
 }
 
 export function getAllCommercialDevices(filter?: { status?: string; searchQuery?: string }): CommercialDevice[] {
   const db = getDatabase();
   let query = 'SELECT * FROM commercial_devices WHERE 1=1';
-  const params: any[] = [];
+  const params: string[] = [];
 
   if (filter?.status) {
     query += ' AND status = ?';
@@ -205,13 +229,13 @@ export function getAllCommercialDevices(filter?: { status?: string; searchQuery?
   }
 
   query += ' ORDER BY last_seen_at DESC';
-  const rows = db.prepare(query).all(...params) as any[];
+  const rows = db.prepare(query).all<SqliteCommercialDeviceRow>(...params);
   return rows.map(mapRowToDevice);
 }
 
 export function getDeviceRecordById(id: string): CommercialDevice | null {
   const db = getDatabase();
-  const row = db.prepare('SELECT * FROM commercial_devices WHERE id = ?').get(id) as any;
+  const row = db.prepare('SELECT * FROM commercial_devices WHERE id = ?').get(id) as SqliteCommercialDeviceRow | undefined;
   if (!row) return null;
   return mapRowToDevice(row);
 }
@@ -222,7 +246,7 @@ export function revokeCommercialDevice(
   userId?: string
 ): boolean {
   const db = getDatabase();
-  let res;
+  let res: { changes: number };
   if (userId) {
     res = db.prepare("UPDATE commercial_devices SET status = 'REVOKED' WHERE device_id = ? AND user_id = ?").run(deviceId, userId);
   } else {
@@ -260,7 +284,7 @@ export function resetAllUserDevices(
   actor?: { id: string; name: string; role: CommercialRole }
 ): { success: boolean; unbindCount: number } {
   const db = getDatabase();
-  const countRow = db.prepare('SELECT COUNT(*) as count FROM commercial_devices WHERE user_id = ?').get(userId) as any;
+  const countRow = db.prepare('SELECT COUNT(*) as count FROM commercial_devices WHERE user_id = ?').get(userId) as { count?: number } | undefined;
   const unbindCount = typeof countRow?.count === 'number' ? countRow.count : 0;
   db.prepare('DELETE FROM commercial_devices WHERE user_id = ?').run(userId);
 
@@ -280,7 +304,7 @@ export function resetAllUserDevices(
   return { success: true, unbindCount };
 }
 
-function mapRowToDevice(r: any): CommercialDevice {
+function mapRowToDevice(r: SqliteCommercialDeviceRow): CommercialDevice {
   return {
     id: r.id,
     userId: r.user_id,

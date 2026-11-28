@@ -1,11 +1,11 @@
-import { spawn, ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
 import path from 'node:path';
 import fs from 'node:fs';
-import { chromium } from 'rebrowser-playwright-core';
+import { chromium, type Browser, type Page } from 'rebrowser-playwright-core';
 import { getDatabase } from '../06_DATABASE/connection.js';
 import { BrowserWindow } from '../08_SECURITY/electron-bridge.js';
-import { Profile } from '../10_CONFIG/shared/types/profile.js';
+import type { Profile, ProfileSettings } from '../10_CONFIG/shared/types/profile.js';
 import { deriveLocaleFromGeo } from '../10_CONFIG/shared/constants/defaults.js';
 import {
   getDeterministicGreaseTriplet,
@@ -16,20 +16,18 @@ import { resolveExecutablePath } from './detector.js';
 import {
   isManagedEngineInstalled,
   getManagedEngineExecutablePath,
-  ensureManagedEngineInstalled,
   isProductionChromiumInstalled,
   getProductionChromiumExecutablePath,
   getBundledEngineExecutablePath,
   hasNativeStealthEngine,
 } from './managed-engine.js';
 import {
-  MANAGED_ENGINE_VERSION,
   CURRENT_ENGINE_DISTRIBUTION,
   CHROMIUM_PRODUCTION_VERSION,
 } from '../10_CONFIG/engine-config.js';
 import { getProxyById, getDecryptedProxyCredentials, testAndSaveProxyStatus } from './services/proxy-service.js';
 import { getExtensions } from './services/extension-service.js';
-import { createProxyTunnel, ProxyTunnelHandle } from './proxy-tunnel.js';
+import { createProxyTunnel, type ProxyTunnelHandle } from './proxy-tunnel.js';
 import { getApiAuthToken } from '../08_SECURITY/install-secrets.js';
 import { injectNativeStealthPreferences } from './stealth-native-preferences.js';
 import { resolveMultiCoreExecutablePath } from './services/multi-core-resolver.js';
@@ -39,8 +37,21 @@ import { createLogger } from '../07_BACKEND/utils/logger.js';
 const log = createLogger('launcher');
 
 
+type LauncherFingerprintSettings = Partial<ProfileSettings['fingerprint']> & {
+  fingerprintSeed?: string | number;
+  noiseSeed?: string | number;
+  seed?: string | number;
+};
+
+type LauncherProfileSettings = Partial<ProfileSettings> & {
+  showProfileBadge?: boolean;
+  browser?: Partial<ProfileSettings['browser']> & { showProfileBadge?: boolean };
+  locale?: Partial<ProfileSettings['locale']> & { languages?: string | string[] };
+  fingerprint?: LauncherFingerprintSettings;
+};
+
 function debugLog(msg: string) {
-  const fn = (globalThis as any).__mahiDebugLog;
+  const fn = (globalThis as typeof globalThis & { __mahiDebugLog?: (message: string) => void }).__mahiDebugLog;
   if (fn) fn(msg);
   else log.info(msg);
 }
@@ -73,7 +84,10 @@ export function createMulberry32(seed: number): () => number {
 /**
  * Derives a deterministic 32-bit seed from profileId + optional stored salt.
  */
-export function deriveProfileStealthSeed(profileId: string, fingerprintSettings?: any): number {
+export function deriveProfileStealthSeed(
+  profileId: string,
+  fingerprintSettings?: LauncherFingerprintSettings | null
+): number {
   const storedSalt = fingerprintSettings?.fingerprintSeed ?? fingerprintSettings?.noiseSeed ?? fingerprintSettings?.seed ?? '';
   const rawSeedInput = storedSalt
     ? `${String(profileId || 'default')}:${String(storedSalt)}`
@@ -93,9 +107,9 @@ function pushUniqueFlag(args: string[], flag: string): void {
  * - Legacy 'default', 'noise', undefined, null, or active proxy all enforce 'disable_non_proxied_udp'.
  */
 export function resolveEffectiveWebrtcPolicy(
-  settings: any
+  settings?: LauncherProfileSettings | null
 ): 'disable_non_proxied_udp' | 'default_public_interface_only' | 'allow_all' {
-  const rawNetwork = settings?.network?.webrtc;
+  const rawNetwork = settings?.network?.webrtc as string | undefined;
   const hasActiveProxy = Boolean(
     settings?.network &&
       settings.network.directConnection === false &&
@@ -271,7 +285,7 @@ export function ensureProfileStealthExtension(
   storageDir: string,
   profileId: string,
   profileName: string,
-  settings?: any,
+  settings?: LauncherProfileSettings | null,
   options?: { nativeStealthActive?: boolean; debugPort?: number } | boolean
 ): string {
   const isNativeStealth = typeof options === 'boolean' ? options : Boolean(options?.nativeStealthActive);
@@ -285,12 +299,10 @@ export function ensureProfileStealthExtension(
   const safeProfileName = profileName || profileId || 'Profile 1';
   const numMatch = safeProfileName.match(/\d+/);
   const badgeNumber = numMatch ? numMatch[0] : '1';
-  const instanceLabel = numMatch ? `M${numMatch[0]}` : safeProfileName;
-  const brandedLabel = `${instanceLabel} — MAHI SKILLS`;
 
   // Detect platform and device metadata from settings, fingerprint and User-Agent
   const ua = settings?.browser?.userAgent || '';
-  const fp = settings?.fingerprint || {};
+  const fp: LauncherFingerprintSettings = settings?.fingerprint || {};
   const isMobile = Boolean(
     ua.includes('Android') ||
     ua.includes('Mobile') ||
@@ -420,11 +432,11 @@ export function ensureProfileStealthExtension(
     fp.clientHints?.brands &&
       Array.isArray(fp.clientHints.brands) &&
       fp.clientHints.brands.length > 0 &&
-      !fp.clientHints.brands.some((b: any) => b?.brand === 'Not/A)Brand' && String(b?.version) === '8')
+      !fp.clientHints.brands.some((b) => b?.brand === 'Not/A)Brand' && String(b?.version) === '8')
   );
 
-  const effectiveBrands = hasCustomNonLegacyGrease
-    ? fp.clientHints.brands.map((b: any) => ({
+  const effectiveBrands = hasCustomNonLegacyGrease && fp.clientHints?.brands
+    ? fp.clientHints.brands.map((b) => ({
         brand: String(b.brand),
         version: (b.brand === 'Chromium' || b.brand === 'Google Chrome' || b.brand === 'Microsoft Edge')
           ? chromeMajorVer
@@ -440,7 +452,7 @@ export function ensureProfileStealthExtension(
     hasCustomNonLegacyGrease &&
     Array.isArray(fp.clientHints?.fullVersionList) &&
     fp.clientHints.fullVersionList.length > 0
-      ? fp.clientHints.fullVersionList.map((b: any) => ({
+      ? fp.clientHints.fullVersionList.map((b) => ({
           brand: String(b.brand),
           version: (b.brand === 'Chromium' || b.brand === 'Google Chrome' || b.brand === 'Microsoft Edge')
             ? chromeFullVer
@@ -3587,7 +3599,7 @@ export function ensureProfileStealthExtension(
   }
 
   // In clean production mode, suppress the in-page badge and title prefix unless explicitly enabled in settings.
-  var enableInPageBadge = ${JSON.stringify((settings?.browser as any)?.showProfileBadge === true || (settings as any)?.showProfileBadge === true)};
+  var enableInPageBadge = ${JSON.stringify(settings?.browser?.showProfileBadge === true || settings?.showProfileBadge === true)};
   if (enableInPageBadge) {
     try {
       updateTitle();
@@ -4006,10 +4018,22 @@ export function prepareCleanProfilePreferences(
 
     // 2. Prepare Local State (browser-wide preferences)
     const localStatePath = path.join(storageDir, 'Local State');
-    let localState: Record<string, any> = {};
+    interface ChromiumLocalStateDoc {
+      browser?: {
+        has_seen_welcome_page?: boolean;
+        enabled_labs_experiments?: unknown[];
+        [key: string]: unknown;
+      };
+      metrics?: {
+        reporting_enabled?: boolean;
+        [key: string]: unknown;
+      };
+      [key: string]: unknown;
+    }
+    let localState: ChromiumLocalStateDoc = {};
     if (fs.existsSync(localStatePath)) {
       try {
-        localState = JSON.parse(fs.readFileSync(localStatePath, 'utf8'));
+        localState = JSON.parse(fs.readFileSync(localStatePath, 'utf8')) as ChromiumLocalStateDoc;
       } catch {
         localState = {};
       }
@@ -4038,10 +4062,31 @@ export function prepareCleanProfilePreferences(
     }
 
     const prefsPath = path.join(defaultDir, 'Preferences');
-    let prefs: Record<string, any> = {};
+    interface ChromiumBaselinePrefsDoc {
+      browser?: {
+        has_seen_welcome_page?: boolean;
+        check_default_browser?: boolean;
+        default_browser_infobar_last_declined?: number;
+        show_update_promotion_info_bar?: boolean;
+        clear_data?: { time_period?: number; [key: string]: unknown };
+        [key: string]: unknown;
+      };
+      distribution?: Record<string, unknown>;
+      signin?: { allowed?: boolean; [key: string]: unknown };
+      sync_promo?: { show_on_first_run_allowed?: boolean; user_skipped?: boolean; [key: string]: unknown };
+      privacy_sandbox?: {
+        m1?: Record<string, unknown>;
+        page_learn_more_clicked?: boolean;
+        [key: string]: unknown;
+      };
+      session?: { restore_on_startup?: number; startup_urls?: string[]; [key: string]: unknown };
+      profile?: { exit_type?: string; exited_cleanly?: boolean; name?: string; [key: string]: unknown };
+      [key: string]: unknown;
+    }
+    let prefs: ChromiumBaselinePrefsDoc = {};
     if (fs.existsSync(prefsPath)) {
       try {
-        prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf8'));
+        prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf8')) as ChromiumBaselinePrefsDoc;
       } catch {
         prefs = {};
       }
@@ -4131,7 +4176,7 @@ export function prepareSessionPersistence(storageDir: string, profileName?: stri
 /**
  * Marks profile as exited cleanly when browser stops.
  */
-export function markCleanExit(storageDir: string, profileName?: string): void {
+export function markCleanExit(storageDir: string, _profileName?: string): void {
   try {
     const prefsPath = path.join(storageDir, 'Default', 'Preferences');
     if (fs.existsSync(prefsPath)) {
@@ -4163,7 +4208,7 @@ export interface SanitizedLaunchArgsOptions {
   storageDir: string;
   debugPort?: number;
   loadExtensionsArg?: string;
-  settings?: any;
+  settings?: LauncherProfileSettings | null;
   mode?: 'normal' | 'automation';
   isNativeStealth?: boolean;
   allowCdpDebugPort?: boolean;
@@ -4307,7 +4352,7 @@ export function buildSanitizedLaunchArgs(options: SanitizedLaunchArgsOptions): s
  */
 export async function launchCamoufoxProfile(
   profile: Profile,
-  launchOptions?: { mode?: 'normal' | 'automation' }
+  _launchOptions?: { mode?: 'normal' | 'automation' }
 ): Promise<LaunchedProcessInfo> {
   debugLog(`=======================================================`);
   debugLog(`[Camoufox Launcher] Starting launch sequence for profile: "${profile.name}" (ID: ${profile.id})`);
@@ -4336,10 +4381,10 @@ export async function launchCamoufoxProfile(
       cleanupStaleLocks(storageDir);
     }
 
-    const settings = profile.settings || ({} as any);
-    const fp = settings.fingerprint || {};
-    const disp = settings.display || {};
-    const loc = settings.locale || {};
+    const settings: LauncherProfileSettings = profile.settings || {};
+    const fp: LauncherFingerprintSettings = settings.fingerprint || {};
+    const disp: Partial<NonNullable<LauncherProfileSettings['display']>> = settings.display || {};
+    const loc: Partial<NonNullable<LauncherProfileSettings['locale']>> = settings.locale || {};
 
     // Build clean Firefox CLI arguments
     const args: string[] = [
@@ -4351,7 +4396,7 @@ export async function launchCamoufoxProfile(
 
     // Proxy and WebRTC configuration
     let resolvedPublicIp: string | undefined;
-    const firefoxPrefs: Record<string, any> = {};
+    const firefoxPrefs: Record<string, string | number | boolean> = {};
 
     if (!settings?.network?.directConnection && settings?.network?.proxyId) {
       const proxy = getProxyById(settings.network.proxyId);
@@ -4362,8 +4407,8 @@ export async function launchCamoufoxProfile(
           if (healthResult?.ip && !healthResult.ip.startsWith('127.') && healthResult.ip !== '0.0.0.0') {
             resolvedPublicIp = healthResult.ip;
           }
-        } catch (healthErr: any) {
-          debugLog(`[Camoufox Launcher] Proxy health check note: ${healthErr.message}`);
+        } catch (healthErr: unknown) {
+          debugLog(`[Camoufox Launcher] Proxy health check note: ${healthErr instanceof Error ? healthErr.message : String(healthErr)}`);
         }
 
         const credentials = getDecryptedProxyCredentials(proxy.id);
@@ -4464,7 +4509,7 @@ export async function launchCamoufoxProfile(
     const langParts = rawLang.split(/[-_]/);
     const baseLang = langParts[0].toLowerCase() || 'en';
     let regionCode = langParts.length > 1 ? langParts[1].toUpperCase() : '';
-    if (!regionCode || regionCode.length !== 2) {
+    if (regionCode?.length !== 2) {
       const tzToRegion: Record<string, string> = {
         'America/New_York': 'US',
         'America/Chicago': 'US',
@@ -4488,7 +4533,7 @@ export async function launchCamoufoxProfile(
     }
 
     // Build Camoufox JSON configuration (exact keys validated against camoufox@0.5.9)
-    const camouConfigObj: Record<string, any> = {
+    const camouConfigObj: Record<string, string | number> = {
       'navigator.userAgent': settings?.browser?.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0',
       'navigator.platform': fp.platform || 'Win32',
       'navigator.hardwareConcurrency': fp.hardwareConcurrency || 8,
@@ -4588,7 +4633,7 @@ export async function launchCamoufoxProfile(
 async function applyCdpOverrides(debugPort: number, tz: string, locale: string): Promise<boolean> {
   if (!tz && !locale) return false;
   const endpoint = `http://127.0.0.1:${debugPort}`;
-  let browser: any = null;
+  let browser: Browser | null = null;
   try {
     // poll /json/version until CDP answers (browser is still booting)
     for (let i = 0; i < 25; i++) {
@@ -4610,7 +4655,7 @@ async function applyCdpOverrides(debugPort: number, tz: string, locale: string):
     if (!ctx) return false;
 
     // apply to every current page
-    const applyTo = async (page: any) => {
+    const applyTo = async (page: Page) => {
       const cdp = await ctx.newCDPSession(page);
       if (tz) await cdp.send('Emulation.setTimezoneOverride', { timezoneId: tz });
       if (locale) await cdp.send('Emulation.setLocaleOverride', { locale });
@@ -4630,7 +4675,7 @@ async function applyCdpOverrides(debugPort: number, tz: string, locale: string):
     }
 
     // apply to pages created later (user opens new tab)
-    ctx.on('page', (p: any) => {
+    ctx.on('page', (p: Page) => {
       applyTo(p).catch((pageErr: unknown) => {
         log.debug('Failed applying CDP emulation override to new page', {
           debugPort,
@@ -4688,7 +4733,7 @@ export async function launchBrowser(
     let executablePath: string = multiCore.executablePath;
 
     // Safeguard: Never spawn 3rd-party proprietary GoLogin Orbita binary which aborts with exit code 403
-    if (executablePath && executablePath.toLowerCase().includes('.gologin')) {
+    if (executablePath?.toLowerCase().includes('.gologin')) {
       debugLog(`[Launcher Step 1/7 WARNING] Blocked proprietary GoLogin binary "${executablePath}". Switching to authoritative MAHI engine.`);
       executablePath = getBundledEngineExecutablePath() || getProductionChromiumExecutablePath();
     }
@@ -4745,10 +4790,10 @@ export async function launchBrowser(
     // Step 4: Resolve Runtime Geo-Synced Locale (No Stored Mutation) & Build Args
     // -------------------------------------------------------------
     const effectiveSettings = JSON.parse(JSON.stringify(profile.settings || {}));
-    let cachedProxy = (!effectiveSettings?.network?.directConnection && effectiveSettings?.network?.proxyId)
+    const cachedProxy = (!effectiveSettings?.network?.directConnection && effectiveSettings?.network?.proxyId)
       ? getProxyById(effectiveSettings.network.proxyId)
       : null;
-    let cachedCredentials = cachedProxy ? getDecryptedProxyCredentials(cachedProxy.id) : null;
+    const cachedCredentials = cachedProxy ? getDecryptedProxyCredentials(cachedProxy.id) : null;
     let cachedHealthResult: { success: boolean; ip?: string; countryCode?: string; timezone?: string; latencyMs?: number; errorMessage?: string } | null = null;
     let timezoneMismatchWarning: TimezoneMismatchWarning | undefined;
 
@@ -4756,8 +4801,8 @@ export async function launchBrowser(
       try {
         debugLog(`[Launcher Step 4/7] Running proxy geo lookup for ${cachedProxy.host}:${cachedProxy.port}...`);
         cachedHealthResult = await testAndSaveProxyStatus(cachedProxy.id);
-      } catch (geoErr: any) {
-        debugLog(`[Launcher Step 4/7 WARNING] Proxy geo lookup failed: ${geoErr?.message || geoErr}`);
+      } catch (geoErr: unknown) {
+        debugLog(`[Launcher Step 4/7 WARNING] Proxy geo lookup failed: ${geoErr instanceof Error ? geoErr.message : String(geoErr)}`);
       }
 
       const geoCountry = cachedHealthResult?.countryCode || cachedProxy.countryRegion;
@@ -4833,8 +4878,8 @@ export async function launchBrowser(
         .filter((e) => e.enabled && e.sourcePath && fs.existsSync(e.sourcePath))
         .map((e) => e.sourcePath);
       debugLog(`[Launcher Step 4/7] Found ${profileExtensionPaths.length} enabled extensions for profile "${profile.name}".`);
-    } catch (extErr: any) {
-      debugLog(`[Launcher Step 4/7 WARNING] Failed to load profile extensions: ${extErr.message}`);
+    } catch (extErr: unknown) {
+      debugLog(`[Launcher Step 4/7 WARNING] Failed to load profile extensions: ${extErr instanceof Error ? extErr.message : String(extErr)}`);
     }
 
     const allExtensionPaths = [titleExtDir, ...profileExtensionPaths];

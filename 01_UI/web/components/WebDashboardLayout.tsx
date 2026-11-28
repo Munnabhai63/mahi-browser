@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import {
   Globe2,
   Layers,
@@ -12,15 +13,11 @@ import {
   X,
   ChevronDown,
   Plus,
-  RefreshCw,
-  AlertCircle,
-  CheckCircle2,
   LayoutDashboard,
-  ExternalLink,
   Bot,
 } from 'lucide-react';
 import { useWebAuthStore } from '../state/useWebAuthStore.js';
-import { TeamWorkspace } from '../../../10_CONFIG/shared/types/workspace.js';
+import type { TeamWorkspace } from '../../../10_CONFIG/shared/types/workspace.js';
 import { BrandLogo } from '../../components/BrandLogo.js';
 
 export type WebTab =
@@ -178,6 +175,7 @@ export const WebDashboardLayout: React.FC<WebDashboardLayoutProps> = ({
               const isActive = activeTab === item.id;
               return (
                 <button
+                  type="button"
                   key={item.id}
                   onClick={() => handleTabClick(item.id)}
                   className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
@@ -295,8 +293,10 @@ export const WebDashboardLayout: React.FC<WebDashboardLayoutProps> = ({
       ========================================================================= */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-50 lg:hidden flex">
-          <div
-            className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm"
+          <button
+            type="button"
+            aria-label="Close navigation menu"
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm cursor-default"
             onClick={() => setIsMobileMenuOpen(false)}
           />
 
@@ -308,6 +308,7 @@ export const WebDashboardLayout: React.FC<WebDashboardLayoutProps> = ({
                   <span className="font-bold text-sm text-white">MAHI CLOUD</span>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="p-1.5 text-slate-400 hover:text-white rounded-lg"
                 >
@@ -330,6 +331,7 @@ export const WebDashboardLayout: React.FC<WebDashboardLayoutProps> = ({
                   const isActive = activeTab === item.id;
                   return (
                     <button
+                      type="button"
                       key={item.id}
                       onClick={() => handleTabClick(item.id)}
                       className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-xs font-semibold ${

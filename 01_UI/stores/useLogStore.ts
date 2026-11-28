@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ActivityLogItem, ActivityLogFilter } from '../../10_CONFIG/shared/types/logs.js';
+import type { ActivityLogItem, ActivityLogFilter } from '../../10_CONFIG/shared/types/logs.js';
 
 interface LogState {
   logs: ActivityLogItem[];

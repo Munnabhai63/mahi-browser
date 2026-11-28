@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import { Layers, Mail, ShieldCheck, X, UserPlus } from 'lucide-react';
-import { TeamRole } from '../../../10_CONFIG/shared/types/workspace.js';
+import type { TeamRole } from '../../../10_CONFIG/shared/types/workspace.js';
 
 interface CreateWorkspaceModalProps {
   isOpen: boolean;
@@ -33,8 +34,8 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
       setName('');
       setDescription('');
       onClose();
-    } catch (err: any) {
-      setError(err.message || 'Failed to create workspace');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create workspace');
     } finally {
       setIsSubmitting(false);
     }
@@ -54,6 +55,7 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg"
           >
@@ -69,8 +71,9 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">Workspace Name *</label>
+            <label htmlFor="ws-modal-name" className="text-xs font-semibold text-slate-300">Workspace Name *</label>
             <input
+              id="ws-modal-name"
               type="text"
               required
               value={name}
@@ -81,8 +84,9 @@ export const CreateWorkspaceModal: React.FC<CreateWorkspaceModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">Description</label>
+            <label htmlFor="ws-modal-desc" className="text-xs font-semibold text-slate-300">Description</label>
             <textarea
+              id="ws-modal-desc"
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -150,8 +154,8 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
       setEmail('');
       setRole('MEMBER');
       onClose();
-    } catch (err: any) {
-      setError(err.message || 'Failed to send invitation');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to send invitation');
     } finally {
       setIsSubmitting(false);
     }
@@ -170,7 +174,7 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
               <p className="text-xs text-slate-400">to workspace: {workspaceName}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg">
+          <button type="button" onClick={onClose} className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -183,11 +187,12 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
+            <label htmlFor="ws-invite-email" className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
               <Mail className="w-3.5 h-3.5 text-slate-400" />
               <span>User Email Address *</span>
             </label>
             <input
+              id="ws-invite-email"
               type="email"
               required
               value={email}
@@ -198,11 +203,12 @@ export const InviteMemberModal: React.FC<InviteMemberModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
+            <label htmlFor="ws-invite-role" className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
               <span>Assigned RBAC Role</span>
             </label>
             <select
+              id="ws-invite-role"
               value={role}
               onChange={(e) => setRole(e.target.value as TeamRole)}
               className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-teal-500/50"

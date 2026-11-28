@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 
 export interface MobileWorkflowRunItem {
   id: string;
@@ -48,6 +49,7 @@ export const MobileAutomationTab: React.FC<MobileAutomationTabProps> = ({
       {/* Sub tabs: Workflows vs Cookie Warmer */}
       <div style={{ display: 'flex', background: '#1E293B', borderRadius: 10, padding: 4 }}>
         <button
+          type="button"
           onClick={() => setActiveSubTab('workflows')}
           style={{
             flex: 1,
@@ -64,6 +66,7 @@ export const MobileAutomationTab: React.FC<MobileAutomationTabProps> = ({
           Automations (Phase 8)
         </button>
         <button
+          type="button"
           onClick={() => setActiveSubTab('cookieWarmer')}
           style={{
             flex: 1,
@@ -88,6 +91,7 @@ export const MobileAutomationTab: React.FC<MobileAutomationTabProps> = ({
               Recent Execution Runs ({runs.length})
             </h4>
             <button
+              type="button"
               onClick={() => onStartWorkflow('wf_daily_login_check', 'prof_us_ecommerce_01')}
               disabled={isOffline}
               style={{
@@ -148,6 +152,7 @@ export const MobileAutomationTab: React.FC<MobileAutomationTabProps> = ({
                   </span>
                   {r.status === 'RUNNING' && (
                     <button
+                      type="button"
                       onClick={() => onStopWorkflow(r.id)}
                       style={{
                         padding: '4px 10px',
@@ -190,10 +195,11 @@ export const MobileAutomationTab: React.FC<MobileAutomationTabProps> = ({
           </div>
 
           <div>
-            <label style={{ fontSize: 12, color: '#94A3B8', display: 'block', marginBottom: 6 }}>
+            <label htmlFor="mobile-warm-template" style={{ fontSize: 12, color: '#94A3B8', display: 'block', marginBottom: 6 }}>
               Warming Profile Template
             </label>
             <select
+              id="mobile-warm-template"
               value={selectedWarmTemplate}
               onChange={(e) => setSelectedWarmTemplate(e.target.value)}
               style={{
@@ -226,6 +232,7 @@ export const MobileAutomationTab: React.FC<MobileAutomationTabProps> = ({
           </div>
 
           <button
+            type="button"
             onClick={() => onStartCookieWarmer('prof_us_ecommerce_01', selectedWarmTemplate)}
             disabled={isOffline}
             style={{

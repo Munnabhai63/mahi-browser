@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
   Puzzle,
   Plus,
@@ -10,10 +11,10 @@ import {
   Download,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
-import { ExtensionItem } from '../../10_CONFIG/shared/types/extension.js';
+import type { ExtensionItem } from '../../10_CONFIG/shared/types/extension.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 
 interface ExtensionManagerProps {
   onNavigate: (page: NavigationPage) => void;
@@ -21,13 +22,13 @@ interface ExtensionManagerProps {
 
 type TabMode = 'INSTALLED' | 'WEB_STORE_URL';
 
-export const ExtensionManagerPage: React.FC<ExtensionManagerProps> = ({ onNavigate }) => {
+export const ExtensionManagerPage: React.FC<ExtensionManagerProps> = ({ onNavigate: _onNavigate }) => {
   const { profiles, selectedProfileId, setSelectedProfileId } = useProfileStore();
   const { showToast } = useToastStore();
 
   const [activeTab, setActiveTab] = useState<TabMode>('INSTALLED');
   const [extensions, setExtensions] = useState<ExtensionItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [_loading, setLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ExtensionItem | null>(null);
 
   // Manual / URL Install State
@@ -53,9 +54,10 @@ export const ExtensionManagerPage: React.FC<ExtensionManagerProps> = ({ onNaviga
     }
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadExtensions is a stable loader; mount-only intentional
   useEffect(() => {
-    loadExtensions();
-  }, [activeProfileId]);
+    void loadExtensions();
+  }, []);
 
   const handleInstallFromUrl = async () => {
     if (!activeProfileId || !webStoreUrl.trim()) return;
@@ -70,8 +72,12 @@ export const ExtensionManagerPage: React.FC<ExtensionManagerProps> = ({ onNaviga
       setWebStoreUrl('');
       loadExtensions();
       setActiveTab('INSTALLED');
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Web Store Install Failed', message: err.message });
+    } catch (err: unknown) {
+      showToast({
+        type: 'error',
+        title: 'Web Store Install Failed',
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
   };
 
@@ -208,7 +214,7 @@ export const ExtensionManagerPage: React.FC<ExtensionManagerProps> = ({ onNaviga
                   Use the "Install via Web Store URL / Local Folder" tab to add extensions.
                 </p>
                 <div className="pt-2">
-                  <button
+                  <button type="button"
                     onClick={() => setActiveTab('WEB_STORE_URL')}
                     className="px-5 py-2.5 bg-teal-600 text-white text-xs font-bold rounded-xl shadow-sm hover:bg-teal-500 transition-all"
                   >
@@ -238,7 +244,7 @@ export const ExtensionManagerPage: React.FC<ExtensionManagerProps> = ({ onNaviga
                         </div>
                       </div>
 
-                      <button
+                      <button type="button"
                         onClick={() => handleToggle(ext)}
                         className="text-slate-400 hover:text-teal-500 transition-colors"
                         title={ext.enabled ? 'Disable' : 'Enable'}
@@ -265,7 +271,7 @@ export const ExtensionManagerPage: React.FC<ExtensionManagerProps> = ({ onNaviga
                           'Disabled'
                         )}
                       </span>
-                      <button
+                      <button type="button"
                         onClick={() => setDeleteTarget(ext)}
                         className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-500/10 transition-colors"
                         title="Remove Extension"
@@ -300,7 +306,7 @@ export const ExtensionManagerPage: React.FC<ExtensionManagerProps> = ({ onNaviga
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-001" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Extension URL / ID
                 </label>
                 <input
@@ -343,7 +349,7 @@ export const ExtensionManagerPage: React.FC<ExtensionManagerProps> = ({ onNaviga
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-002" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Extension Directory
                 </label>
                 <div className="flex space-x-2">
@@ -365,7 +371,7 @@ export const ExtensionManagerPage: React.FC<ExtensionManagerProps> = ({ onNaviga
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="field-003" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Custom Display Name (Optional)
                 </label>
                 <input

@@ -1,4 +1,4 @@
-import React from 'react';
+import type React from 'react';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
 
 interface ConfirmModalProps {
@@ -51,6 +51,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={onCancel}
             disabled={isPending}
             className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors"
@@ -65,6 +66,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
         <div className="flex items-center justify-end space-x-3 pt-2">
           <button
+            type="button"
             onClick={onCancel}
             disabled={isPending}
             className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition-colors disabled:opacity-50"
@@ -72,6 +74,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             Cancel
           </button>
           <button
+            type="button"
             onClick={onConfirm}
             disabled={isPending}
             className={`px-4 py-2 text-xs font-bold rounded-xl shadow-lg transition-all flex items-center space-x-2 disabled:opacity-50 ${buttonStyle}`}

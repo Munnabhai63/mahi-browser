@@ -1,5 +1,5 @@
-import http from 'node:http';
-import { verifyAccessToken, getCentralUserById, JWTPayload, AuthUser } from './central-auth-service.js';
+import type http from 'node:http';
+import { verifyAccessToken, getCentralUserById, type JWTPayload, type AuthUser } from './central-auth-service.js';
 import { verifySqliteUserAndSession } from '../07_BACKEND/commercial/routes/router-shared.js';
 
 export interface AuthenticatedRequest extends http.IncomingMessage {
@@ -8,7 +8,7 @@ export interface AuthenticatedRequest extends http.IncomingMessage {
 }
 
 export function extractBearerToken(req: http.IncomingMessage): string | null {
-  const authHeader = req.headers['authorization'];
+  const authHeader = req.headers.authorization;
   if (!authHeader || typeof authHeader !== 'string') return null;
   if (!authHeader.startsWith('Bearer ')) return null;
   return authHeader.substring(7).trim();

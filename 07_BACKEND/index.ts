@@ -31,7 +31,6 @@ const __dirname = path.dirname(__filename);
 // -------------------------------------------------------------
 const projectDir = process.cwd();
 const localAppDataDir = getWritableUserDataDir();
-const desktopDir = process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'Desktop') : projectDir;
 const isTestEnv = Boolean(process.env.VITEST || process.env.VITEST_WORKER_ID || process.env.NODE_ENV === 'test');
 
 if (!fs.existsSync(localAppDataDir)) {
@@ -74,7 +73,7 @@ export function writeCrashLog(type: string, message: string, stack?: string): vo
 
   for (const logPath of crashLogPaths) {
     try {
-      fs.appendFileSync(logPath, entry + '\n', 'utf8');
+      fs.appendFileSync(logPath, `${entry}\n`, 'utf8');
     } catch (err) {
       log.error(`Failed to write crash log to ${logPath}:`, err);
     }
@@ -85,7 +84,7 @@ export function logCheckpoint(stepName: string, detail?: string): void {
   const timestamp = new Date().toISOString();
   const safeStep = redactSensitiveTokens(stepName);
   const safeDetail = detail ? redactSensitiveTokens(detail) : undefined;
-  const line = `[${timestamp}] [CHECKPOINT] ${safeStep}${safeDetail ? ' - ' + safeDetail : ''}\n`;
+  const line = `[${timestamp}] [CHECKPOINT] ${safeStep}${safeDetail ? ` - ${safeDetail}` : ''}\n`;
   log.info(line.trim());
   for (const logPath of crashLogPaths) {
     try {
@@ -100,7 +99,8 @@ export function logCheckpoint(stepName: string, detail?: string): void {
 }
 
 // Global debug logger reference
-(globalThis as any).__mahiDebugLog = (msg: string) => logCheckpoint(msg);
+(globalThis as typeof globalThis & { __mahiDebugLog?: (msg: string) => void }).__mahiDebugLog = (msg: string) =>
+  logCheckpoint(msg);
 
 // -------------------------------------------------------------
 // 2. Global Fatal Error Listeners
@@ -651,8 +651,8 @@ export async function handleDeepLinkUrl(urlStr: string): Promise<boolean> {
       return true;
     }
     return false;
-  } catch (err: any) {
-    logCheckpoint('DeepLink: Failed to process deep link URL', err?.message || String(err));
+  } catch (err: unknown) {
+    logCheckpoint('DeepLink: Failed to process deep link URL', err instanceof Error ? err.message : String(err));
     return false;
   }
 }

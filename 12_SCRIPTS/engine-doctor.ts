@@ -10,7 +10,6 @@ import {
   getProductionChromiumExecutablePath,
   resolveEngineManifest,
   hasNativeStealthEngine,
-  getEnginesBaseDir,
 } from '../02_BROWSER/managed-engine.js';
 import { getCamoufoxExecutablePath, isCamoufoxInstalled } from '../02_BROWSER/detector.js';
 
@@ -62,7 +61,7 @@ export function runEngineDoctor(): {
   };
 }
 
-if (process.argv[1] && process.argv[1].endsWith('engine-doctor.ts')) {
+if (process.argv[1]?.endsWith('engine-doctor.ts')) {
   runEngineDoctor();
   process.exit(0);
 }

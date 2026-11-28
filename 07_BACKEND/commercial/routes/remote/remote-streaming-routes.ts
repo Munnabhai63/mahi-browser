@@ -7,7 +7,9 @@ import {
   resourceLimiter,
 } from '../../../cloud-browser/index.js';
 import { mobileCompanionService } from '../../../services/mobile-companion-service.js';
-import { parseBody, sendRemoteJSON, RemoteRouteContext } from './remote-shared.js';
+import { parseBody, sendRemoteJSON, type RemoteRouteContext } from './remote-shared.js';
+import type { CloudClientAction, CloudResourceClass } from '../../../../10_CONFIG/shared/types/cloud-browser.js';
+import type { MobileNotificationPreferences } from '../../../../10_CONFIG/shared/types/mobile.js';
 import { createLogger } from '../../../utils/logger.js';
 
 const log = createLogger('remote-streaming-routes');
@@ -34,7 +36,15 @@ export async function handleRemoteStreamingAndMobileRoutes(ctx: RemoteRouteConte
     if (!requireAccess('profiles:run')) return true;
     if (!requireFeature('cloud.browser')) return true;
 
-    const body = await parseBody(req);
+    const body = await parseBody<{
+      profileId: string;
+      workspaceId?: string;
+      regionId?: string;
+      resourceClass?: CloudResourceClass;
+      maxDurationSeconds?: number;
+      idleTimeoutSeconds?: number;
+      startupUrl?: string;
+    }>(req);
     if (!body.profileId) {
       sendRemoteJSON(req, res, 400, {
         success: false,
@@ -55,14 +65,15 @@ export async function handleRemoteStreamingAndMobileRoutes(ctx: RemoteRouteConte
       });
 
       sendRemoteJSON(req, res, 201, { success: true, data: sessionResult }, requestId, rateLimit);
-    } catch (err: any) {
-      const isQuota = err.message.includes('QUOTA_EXCEEDED');
-      const isLocked = err.message.includes('PROFILE_LOCKED');
-      const isAccess = err.message.includes('ACCESS_DENIED');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isQuota = msg.includes('QUOTA_EXCEEDED');
+      const isLocked = msg.includes('PROFILE_LOCKED');
+      const isAccess = msg.includes('ACCESS_DENIED');
       const statusCode = isQuota ? 403 : isLocked ? 409 : isAccess ? 403 : 500;
       sendRemoteJSON(req, res, statusCode, {
         success: false,
-        error: { code: isLocked ? 'PROFILE_LOCKED' : isQuota ? 'QUOTA_EXCEEDED' : 'LAUNCH_FAILED', message: err.message },
+        error: { code: isLocked ? 'PROFILE_LOCKED' : isQuota ? 'QUOTA_EXCEEDED' : 'LAUNCH_FAILED', message: msg },
       }, requestId, rateLimit);
     }
     return true;
@@ -110,13 +121,13 @@ export async function handleRemoteStreamingAndMobileRoutes(ctx: RemoteRouteConte
     if (!requireAccess('profiles:run')) return true;
 
     try {
-      const body = await parseBody(req).catch(() => ({}));
+      const body = await parseBody<{ reason?: string }>(req).catch(() => ({ reason: undefined }));
       const stopResult = await cloudBrowserControlPlane.stopSession(cbStopMatch[1], auth.userId, body.reason || 'USER_REQUESTED');
       sendRemoteJSON(req, res, 200, { success: true, data: stopResult }, requestId, rateLimit);
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendRemoteJSON(req, res, 400, {
         success: false,
-        error: { code: 'STOP_FAILED', message: err.message },
+        error: { code: 'STOP_FAILED', message: err instanceof Error ? err.message : String(err) },
       }, requestId, rateLimit);
     }
     return true;
@@ -136,10 +147,10 @@ export async function handleRemoteStreamingAndMobileRoutes(ctx: RemoteRouteConte
           streamGatewayUrl: `/api/v1/remote/cloud-browser/sessions/${cbReconnectMatch[1]}/stream`,
         },
       }, requestId, rateLimit);
-    } catch (err: any) {
+    } catch (err: unknown) {
       sendRemoteJSON(req, res, 400, {
         success: false,
-        error: { code: 'RECONNECT_FAILED', message: err.message },
+        error: { code: 'RECONNECT_FAILED', message: err instanceof Error ? err.message : String(err) },
       }, requestId, rateLimit);
     }
     return true;
@@ -202,8 +213,8 @@ export async function handleRemoteStreamingAndMobileRoutes(ctx: RemoteRouteConte
           }
         },
       });
-    } catch (subErr: any) {
-      res.write(`event: error\ndata: ${JSON.stringify({ message: subErr.message })}\n\n`);
+    } catch (subErr: unknown) {
+      res.write(`event: error\ndata: ${JSON.stringify({ message: subErr instanceof Error ? subErr.message : String(subErr) })}\n\n`);
       res.end();
       return true;
     }
@@ -232,8 +243,8 @@ export async function handleRemoteStreamingAndMobileRoutes(ctx: RemoteRouteConte
       return true;
     }
 
-    const body = await parseBody(req);
-    if (!body.action || !body.action.type) {
+    const body = await parseBody<{ action?: CloudClientAction }>(req);
+    if (!body.action?.type) {
       sendRemoteJSON(req, res, 400, {
         success: false,
         error: { code: 'INVALID_ACTION', message: 'Action object with type is required.' },
@@ -252,7 +263,13 @@ export async function handleRemoteStreamingAndMobileRoutes(ctx: RemoteRouteConte
   // MOBILE COMPANION ENDPOINTS
   // ========================================================================
   if (route === 'mobile/device-token' && method === 'POST') {
-    const body = await parseBody(req);
+    const body = await parseBody<{
+      deviceId: string;
+      pushToken: string;
+      deviceModel?: string;
+      osVersion?: string;
+      appVersion?: string;
+    }>(req);
     if (!body.deviceId || !body.pushToken) {
       sendRemoteJSON(req, res, 400, {
         success: false,
@@ -301,7 +318,7 @@ export async function handleRemoteStreamingAndMobileRoutes(ctx: RemoteRouteConte
   }
 
   if (route === 'mobile/notifications/preferences' && method === 'PUT') {
-    const body = await parseBody(req);
+    const body = await parseBody<Partial<MobileNotificationPreferences>>(req);
     const updated = mobileCompanionService.updateNotificationPreferences(auth.userId, body);
     sendRemoteJSON(req, res, 200, { success: true, data: updated }, requestId, rateLimit);
     return true;

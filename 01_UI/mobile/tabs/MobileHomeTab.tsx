@@ -1,5 +1,5 @@
-import React from 'react';
-import { MobileTab } from '../../../10_CONFIG/shared/types/mobile';
+import type React from 'react';
+import type { MobileTab } from '../../../10_CONFIG/shared/types/mobile';
 
 interface MobileHomeTabProps {
   onNavigateTab: (tab: MobileTab) => void;
@@ -51,6 +51,7 @@ export const MobileHomeTab: React.FC<MobileHomeTabProps> = ({
 
         <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
           <button
+            type="button"
             onClick={() => onNavigateTab('cloud')}
             disabled={isOffline}
             style={{
@@ -73,6 +74,7 @@ export const MobileHomeTab: React.FC<MobileHomeTabProps> = ({
             <span>☁️</span> Run in Cloud
           </button>
           <button
+            type="button"
             onClick={() => onNavigateTab('profiles')}
             style={{
               flex: 1,
@@ -93,7 +95,8 @@ export const MobileHomeTab: React.FC<MobileHomeTabProps> = ({
 
       {/* Real Metric Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-        <div
+        <button
+          type="button"
           onClick={() => onNavigateTab('profiles')}
           style={{
             background: '#1E293B',
@@ -101,14 +104,16 @@ export const MobileHomeTab: React.FC<MobileHomeTabProps> = ({
             borderRadius: 12,
             padding: 14,
             cursor: 'pointer',
+            textAlign: 'left',
           }}
         >
           <div style={{ fontSize: 12, color: '#94A3B8' }}>Total Profiles</div>
           <div style={{ fontSize: 22, fontWeight: 700, color: '#F8FAFC', marginTop: 4 }}>24</div>
           <div style={{ fontSize: 11, color: '#34D399', marginTop: 4 }}>✓ 24 Synced to Cloud</div>
-        </div>
+        </button>
 
-        <div
+        <button
+          type="button"
           onClick={() => onNavigateTab('cloud')}
           style={{
             background: '#1E293B',
@@ -116,14 +121,16 @@ export const MobileHomeTab: React.FC<MobileHomeTabProps> = ({
             borderRadius: 12,
             padding: 14,
             cursor: 'pointer',
+            textAlign: 'left',
           }}
         >
           <div style={{ fontSize: 12, color: '#94A3B8' }}>Active Cloud Workers</div>
           <div style={{ fontSize: 22, fontWeight: 700, color: '#38BDF8', marginTop: 4 }}>1 / 5</div>
           <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>Worker us-east-1</div>
-        </div>
+        </button>
 
-        <div
+        <button
+          type="button"
           onClick={() => onNavigateTab('proxies')}
           style={{
             background: '#1E293B',
@@ -131,14 +138,16 @@ export const MobileHomeTab: React.FC<MobileHomeTabProps> = ({
             borderRadius: 12,
             padding: 14,
             cursor: 'pointer',
+            textAlign: 'left',
           }}
         >
           <div style={{ fontSize: 12, color: '#94A3B8' }}>Active Proxies</div>
           <div style={{ fontSize: 22, fontWeight: 700, color: '#F8FAFC', marginTop: 4 }}>12</div>
           <div style={{ fontSize: 11, color: '#34D399', marginTop: 4 }}>100% Healthy</div>
-        </div>
+        </button>
 
-        <div
+        <button
+          type="button"
           onClick={() => onNavigateTab('automation')}
           style={{
             background: '#1E293B',
@@ -146,12 +155,13 @@ export const MobileHomeTab: React.FC<MobileHomeTabProps> = ({
             borderRadius: 12,
             padding: 14,
             cursor: 'pointer',
+            textAlign: 'left',
           }}
         >
           <div style={{ fontSize: 12, color: '#94A3B8' }}>Automation Runs</div>
           <div style={{ fontSize: 22, fontWeight: 700, color: '#F8FAFC', marginTop: 4 }}>8</div>
           <div style={{ fontSize: 11, color: '#34D399', marginTop: 4 }}>7 Succeeded, 1 Running</div>
-        </div>
+        </button>
       </div>
 
       {/* Fast Profile Launchers */}
@@ -165,12 +175,13 @@ export const MobileHomeTab: React.FC<MobileHomeTabProps> = ({
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: '#F8FAFC' }}>Recent Profiles</span>
-          <span
+          <button
+            type="button"
             onClick={() => onNavigateTab('profiles')}
-            style={{ fontSize: 12, color: '#6366F1', cursor: 'pointer', fontWeight: 500 }}
+            style={{ background: 'transparent', border: 'none', padding: 0, fontSize: 12, color: '#6366F1', cursor: 'pointer', fontWeight: 500 }}
           >
             View all →
-          </span>
+          </button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -198,6 +209,7 @@ export const MobileHomeTab: React.FC<MobileHomeTabProps> = ({
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => onLaunchCloudProfile(item.id)}
                 disabled={isOffline}
                 style={{

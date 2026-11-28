@@ -1,7 +1,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { Socket } from 'node:net';
+import type { Socket } from 'node:net';
 import { getProfileDebugPort } from '../02_BROWSER/launcher.js';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
@@ -21,6 +21,22 @@ export interface SlaveSyncStatus {
   status: 'CONNECTED' | 'DISCONNECTED' | 'ERROR';
   lastError?: string;
   lastMirroredAt?: string;
+}
+
+interface CdpMasterAction {
+  type?: 'CLICK' | 'TYPE' | 'KEY' | 'SCROLL' | string;
+  payload?: {
+    xRatio?: number;
+    yRatio?: number;
+    button?: number;
+    value?: string;
+    key?: string;
+    scrollYRatio?: number;
+  };
+}
+
+function getCdpSyncErrMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -483,10 +499,10 @@ export class CdpSynchronizer extends EventEmitter {
 
     try {
       const tabs = await this.getTabsForProfile(this.masterProfileId);
-      if (!tabs || tabs.length === 0 || !tabs[0].webSocketDebuggerUrl) return;
+      const masterWsUrl = tabs?.[0]?.webSocketDebuggerUrl;
+      if (!masterWsUrl) return;
 
-      const masterTab = tabs[0];
-      const ws = await CdpWsClient.connect(masterTab.webSocketDebuggerUrl!);
+      const ws = await CdpWsClient.connect(masterWsUrl);
       this.masterWs = ws;
 
       // Enable required CDP domains
@@ -610,13 +626,13 @@ export class CdpSynchronizer extends EventEmitter {
    * Handles an action captured from the master browser and dispatches
    * it to all slave browsers via CDP.
    */
-  private handleMasterAction(action: any): void {
+  private handleMasterAction(action: CdpMasterAction): void {
     if (!this.active) return;
 
     if (action.type === 'CLICK' && action.payload) {
       this.dispatchCdpClick(
-        action.payload.xRatio,
-        action.payload.yRatio,
+        action.payload.xRatio ?? 0,
+        action.payload.yRatio ?? 0,
         action.payload.button || 0
       );
     } else if (action.type === 'TYPE' && action.payload) {
@@ -781,11 +797,11 @@ export class CdpSynchronizer extends EventEmitter {
             lastError: 'WebSocket socket closed or unavailable',
           });
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         this.slaveStatuses.set(slaveId, {
           slaveId,
           status: 'ERROR',
-          lastError: err?.message || String(err),
+          lastError: getCdpSyncErrMsg(err),
         });
         this.slaveWsCache.delete(slaveId);
       }
@@ -812,7 +828,7 @@ export class CdpSynchronizer extends EventEmitter {
       if (slaveId === this.masterProfileId) continue;
       try {
         const ws = await this.getSlaveWs(slaveId);
-        if (!ws || ws.readyState !== 1) {
+        if (ws?.readyState !== 1) {
           this.slaveStatuses.set(slaveId, {
             slaveId,
             status: 'DISCONNECTED',
@@ -847,11 +863,11 @@ export class CdpSynchronizer extends EventEmitter {
           lastMirroredAt: new Date().toISOString(),
         });
         didMirror = true;
-      } catch (err: any) {
+      } catch (err: unknown) {
         this.slaveStatuses.set(slaveId, {
           slaveId,
           status: 'ERROR',
-          lastError: err?.message || String(err),
+          lastError: getCdpSyncErrMsg(err),
         });
         this.slaveWsCache.delete(slaveId);
       }
@@ -875,7 +891,7 @@ export class CdpSynchronizer extends EventEmitter {
       if (slaveId === this.masterProfileId) continue;
       try {
         const ws = await this.getSlaveWs(slaveId);
-        if (!ws || ws.readyState !== 1) {
+        if (ws?.readyState !== 1) {
           this.slaveStatuses.set(slaveId, {
             slaveId,
             status: 'DISCONNECTED',
@@ -940,11 +956,11 @@ export class CdpSynchronizer extends EventEmitter {
           lastMirroredAt: new Date().toISOString(),
         });
         didMirror = true;
-      } catch (err: any) {
+      } catch (err: unknown) {
         this.slaveStatuses.set(slaveId, {
           slaveId,
           status: 'ERROR',
-          lastError: err?.message || String(err),
+          lastError: getCdpSyncErrMsg(err),
         });
         this.slaveWsCache.delete(slaveId);
       }
@@ -977,7 +993,7 @@ export class CdpSynchronizer extends EventEmitter {
       if (slaveId === this.masterProfileId) continue;
       try {
         const ws = await this.getSlaveWs(slaveId);
-        if (!ws || ws.readyState !== 1) {
+        if (ws?.readyState !== 1) {
           this.slaveStatuses.set(slaveId, {
             slaveId,
             status: 'DISCONNECTED',
@@ -1019,11 +1035,11 @@ export class CdpSynchronizer extends EventEmitter {
           lastMirroredAt: new Date().toISOString(),
         });
         didMirror = true;
-      } catch (err: any) {
+      } catch (err: unknown) {
         this.slaveStatuses.set(slaveId, {
           slaveId,
           status: 'ERROR',
-          lastError: err?.message || String(err),
+          lastError: getCdpSyncErrMsg(err),
         });
         this.slaveWsCache.delete(slaveId);
       }
@@ -1044,7 +1060,7 @@ export class CdpSynchronizer extends EventEmitter {
       if (slaveId === this.masterProfileId) continue;
       try {
         const ws = await this.getSlaveWs(slaveId);
-        if (!ws || ws.readyState !== 1) {
+        if (ws?.readyState !== 1) {
           this.slaveStatuses.set(slaveId, {
             slaveId,
             status: 'DISCONNECTED',
@@ -1069,11 +1085,11 @@ export class CdpSynchronizer extends EventEmitter {
           lastMirroredAt: new Date().toISOString(),
         });
         didMirror = true;
-      } catch (err: any) {
+      } catch (err: unknown) {
         this.slaveStatuses.set(slaveId, {
           slaveId,
           status: 'ERROR',
-          lastError: err?.message || String(err),
+          lastError: getCdpSyncErrMsg(err),
         });
         this.slaveWsCache.delete(slaveId);
       }

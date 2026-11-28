@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import os from 'node:os';
 import https from 'node:https';
 import http from 'node:http';
 import { exec } from 'node:child_process';
@@ -61,8 +60,24 @@ let currentProgress: ManagedEngineProgress = {
 
 let inFlightDownloadPromise: Promise<string> | null = null;
 
+interface CftDownloadEntry {
+  platform: string;
+  url: string;
+}
+
+interface CftManifestVersionEntry {
+  version: string;
+  downloads?: {
+    chrome?: CftDownloadEntry[];
+  };
+}
+
+interface CftManifestResponse {
+  versions?: CftManifestVersionEntry[];
+}
+
 function debugLog(msg: string) {
-  const fn = (globalThis as any).__mahiDebugLog;
+  const fn = (globalThis as typeof globalThis & { __mahiDebugLog?: (message: string) => void }).__mahiDebugLog;
   if (fn) fn(msg);
   else log.info(msg);
 }
@@ -167,7 +182,7 @@ export function getBundledEngineExecutablePath(
 
   // 1. process.resourcesPath (canonical Electron packaged resources folder: <install-dir>\resources)
   try {
-    const resourcesPath = (process as any).resourcesPath;
+    const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
     if (resourcesPath && typeof resourcesPath === 'string') {
       candidates.push(path.join(resourcesPath, 'engines', version, archiveSubdir, executableName));
     }
@@ -377,14 +392,14 @@ export async function verifyManifestDownloadUrl(version: string = MANAGED_ENGINE
   if (!res.ok) {
     throw new Error(`Failed to fetch Google Chrome for Testing manifest (HTTP ${res.status}).`);
   }
-  const data: any = await res.json();
-  const entry = data?.versions?.find((v: any) => v.version === version);
+  const data = (await res.json()) as CftManifestResponse;
+  const entry = data?.versions?.find((v) => v.version === version);
   if (!entry) {
     throw new Error(`Version ${version} was not found in Google Chrome for Testing official manifest.`);
   }
 
-  const win64Download = entry.downloads?.chrome?.find((d: any) => d.platform === 'win64');
-  if (!win64Download || !win64Download.url) {
+  const win64Download = entry.downloads?.chrome?.find((d) => d.platform === 'win64');
+  if (!win64Download?.url) {
     throw new Error(`Official win64 download URL for version ${version} not found in manifest.`);
   }
 
@@ -645,7 +660,7 @@ export function cleanOldEngineVersions(keepVersion: string = MANAGED_ENGINE_VERS
  * Ensures the production unbranded Chromium engine is fully installed and verified.
  * Fails closed on wrong SHA-256, wrong arch, wrong version, or corrupted archive.
  */
-export async function ensureProductionChromiumInstalled(options?: {
+export async function ensureProductionChromiumInstalled(_options?: {
   onProgress?: (progress: ManagedEngineProgress) => void;
 }): Promise<string> {
   const version = CHROMIUM_PRODUCTION_VERSION;
@@ -696,8 +711,8 @@ export async function ensureProductionChromiumInstalled(options?: {
     let computedSha256 = '';
     try {
       computedSha256 = await downloadFileWithProgress(downloadUrl, tempZipPath, progressCallback);
-    } catch (primaryErr: any) {
-      debugLog(`[ManagedEngine] Primary download failed: ${primaryErr?.message}. Falling back to mirror: ${CHROMIUM_PRODUCTION_CONFIG.fallbackUrl}`);
+    } catch (primaryErr: unknown) {
+      debugLog(`[ManagedEngine] Primary download failed: ${primaryErr instanceof Error ? primaryErr.message : String(primaryErr)}. Falling back to mirror: ${CHROMIUM_PRODUCTION_CONFIG.fallbackUrl}`);
       if (fs.existsSync(tempZipPath)) {
         try {
           fs.unlinkSync(tempZipPath);
@@ -756,7 +771,7 @@ export async function ensureProductionChromiumInstalled(options?: {
     broadcastProgress({ stage: 'READY', percent: 100 });
     debugLog(`[ManagedEngine] Production Chromium ${version} installed at: ${finalExe}`);
     return finalExe;
-  } catch (err: any) {
+  } catch (err: unknown) {
     try {
       if (fs.existsSync(tempWorkingDir)) {
         fs.rmSync(tempWorkingDir, { recursive: true, force: true });
@@ -838,8 +853,8 @@ export async function ensureManagedEngineInstalled(options?: {
       if (!options?.skipManifestCheck) {
         try {
           downloadUrl = await verifyManifestDownloadUrl(version);
-        } catch (manifestErr: any) {
-          debugLog(`[ManagedEngine] Manifest check failed or offline: ${manifestErr?.message}. Using pinned Google CDN URL.`);
+        } catch (manifestErr: unknown) {
+          debugLog(`[ManagedEngine] Manifest check failed or offline: ${manifestErr instanceof Error ? manifestErr.message : String(manifestErr)}. Using pinned Google CDN URL.`);
         }
       }
 
@@ -864,8 +879,8 @@ export async function ensureManagedEngineInstalled(options?: {
           tempZipPath,
           progressCallback
         );
-      } catch (primaryErr: any) {
-        debugLog(`[ManagedEngine] Primary download failed: ${primaryErr?.message}. Falling back to mirror: ${MANAGED_ENGINE_FALLBACK_URL}`);
+      } catch (primaryErr: unknown) {
+        debugLog(`[ManagedEngine] Primary download failed: ${primaryErr instanceof Error ? primaryErr.message : String(primaryErr)}. Falling back to mirror: ${MANAGED_ENGINE_FALLBACK_URL}`);
         if (fs.existsSync(tempZipPath)) {
           try {
             fs.unlinkSync(tempZipPath);
@@ -951,7 +966,7 @@ export async function ensureManagedEngineInstalled(options?: {
       broadcastProgress({ stage: 'READY', percent: 100 });
       debugLog(`[ManagedEngine] Managed browser engine ${version} successfully installed at: ${finalExe}`);
       return finalExe;
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Clean up interrupted temp directory
       try {
         if (fs.existsSync(tempWorkingDir)) {
@@ -1059,7 +1074,7 @@ export async function repairManagedEngine(): Promise<{
     // 4. Re-provision engine from authoritative CDN / mirror
     const finalPath = await ensureProductionChromiumInstalled();
     return { success: true, path: finalPath };
-  } catch (err: any) {
+  } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     return { success: false, error: errorMsg };
   }
@@ -1119,7 +1134,7 @@ export function resolveEngineManifest(executablePath: string): MahiEngineManifes
         try {
           const raw = fs.readFileSync(manifestPath, 'utf8');
           const data = JSON.parse(raw);
-          if (!data || data.nativeStealth !== true) continue;
+          if (data?.nativeStealth !== true) continue;
 
           // If manifest declares an explicit executablePath, enforce strict match to this binary
           if (typeof data.executablePath === 'string' && data.executablePath.trim()) {

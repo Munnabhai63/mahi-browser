@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { BRAND } from '../../lib/brand';
 import { sanitizeSafeRedirect } from '../../lib/redirect';
@@ -94,10 +96,11 @@ export default function LoginPage() {
       
       {/* Subtle Atmospheric Background Overlay */}
       <div className="absolute inset-0 z-0 pointer-events-none">
-        <img
+        <Image
           src="/assets/company/hero_walking.jpg"
           alt=""
-          className="w-full h-full object-cover object-center opacity-15 filter contrast-125"
+          fill
+          className="object-cover object-center opacity-15 filter contrast-125"
         />
         <div className="absolute inset-0 bg-gradient-to-b from-[#030303]/80 via-[#030303]/95 to-[#030303]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_800px_500px_at_50%_20%,rgba(255,255,255,0.04),transparent)]" />
@@ -113,7 +116,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <Link href="/" className="inline-block group mb-4">
             <div className="w-11 h-11 rounded-lg bg-zinc-900 border border-zinc-700/60 p-2 shadow-sm flex items-center justify-center group-hover:border-zinc-500 transition-colors">
-              <svg className="w-full h-full text-white" viewBox="0 0 24 24" fill="none">
+              <svg className="w-full h-full text-white" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <rect x="3" y="3" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="2" fill="none" />
                 <rect x="9" y="9" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="2" fill="#18181b" />
               </svg>
@@ -149,10 +152,11 @@ export default function LoginPage() {
         {/* Sign In Form */}
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
+            <label htmlFor="login-email" className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290] mb-1.5">
               Email Address
             </label>
             <input
+              id="login-email"
               type="email"
               required
               value={email}
@@ -164,7 +168,7 @@ export default function LoginPage() {
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290]">
+              <label htmlFor="login-password" className="block text-[11px] font-mono uppercase tracking-[0.05em] text-[#969290]">
                 Password
               </label>
               <Link href="/book-demo" className="text-[12px] text-zinc-400 hover:text-white transition-colors">
@@ -172,6 +176,7 @@ export default function LoginPage() {
               </Link>
             </div>
             <input
+              id="login-password"
               type="password"
               required
               value={password}
@@ -190,7 +195,7 @@ export default function LoginPage() {
             >
               {isLoading ? (
                 <>
-                  <svg className="animate-spin h-4 w-4 text-black" viewBox="0 0 24 24" fill="none">
+                  <svg className="animate-spin h-4 w-4 text-black" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                   </svg>
@@ -219,7 +224,7 @@ export default function LoginPage() {
           type="button"
           className="w-full flex items-center justify-center gap-2.5 rounded-full border border-white/15 bg-white/[0.04] hover:bg-white/[0.08] hover:border-white/25 py-2.5 text-[13px] font-medium text-white transition-all shadow-sm"
         >
-          <svg className="h-4 w-4" viewBox="0 0 24 24">
+          <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
             <path
               fill="#4285F4"
               d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"

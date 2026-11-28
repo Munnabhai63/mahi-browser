@@ -175,7 +175,11 @@ export function toSafeErrorResponse(
     };
   }
 
-  const errObj = err as any;
+  const errObj = (err && typeof err === 'object' ? err : null) as {
+    message?: unknown;
+    name?: unknown;
+    statusCode?: unknown;
+  } | null;
   const rawMessage = typeof errObj?.message === 'string' ? errObj.message.trim() : '';
 
   if (errObj?.name === 'PaymentGatewayNotConfiguredError') {

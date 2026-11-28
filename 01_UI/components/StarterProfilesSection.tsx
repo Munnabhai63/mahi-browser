@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import type React from 'react';
+import { useEffect, useState } from 'react';
 import {
   Sparkles,
   Layers,
@@ -7,7 +8,6 @@ import {
   Globe2,
   Copy,
   Info,
-  Check,
   Shield,
   Laptop,
   Share2,
@@ -20,30 +20,15 @@ import {
   Loader2,
   CheckCheck,
   Terminal,
-  AlertTriangle,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
-import { NavigationPage } from './Sidebar.js';
+import type { NavigationPage } from './Sidebar.js';
 import { UpgradeModal } from './UpgradeModal.js';
+import type { StarterProfileTemplateSummary } from '../../10_CONFIG/shared/types/profile.js';
 
-export interface StarterTemplate {
-  id: string;
-  name: string;
-  category: 'PERSONAL' | 'SOCIAL' | 'E-COMMERCE' | 'WORK' | 'AUTOMATION' | 'SANDBOX';
-  badge: 'STARTER' | 'DEMO' | 'EXAMPLE';
-  description: string;
-  os?: 'windows' | 'mac' | 'linux';
-  browser?: string;
-  fingerprintPreview?: {
-    screenResolution?: string;
-    userAgentSnippet?: string;
-    webGlVendor?: string;
-    canvasNoise?: boolean;
-    audioNoise?: boolean;
-  };
-}
+export type StarterTemplate = StarterProfileTemplateSummary;
 
 const FALLBACK_TEMPLATES: StarterTemplate[] = [
   {
@@ -171,7 +156,7 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
 
   const isDesktopApp = (): boolean => {
     if (typeof window === 'undefined') return false;
-    if ((window.mahiAPI as any)?.isDesktop === true) return true;
+    if ((window.mahiAPI as (Window['mahiAPI'] & { isDesktop?: boolean }) | undefined)?.isDesktop === true) return true;
     if (typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron')) return true;
     return false;
   };
@@ -210,7 +195,7 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
           name: chosenName,
         });
 
-        if (!created || !created.id) {
+        if (!created?.id) {
           throw new Error('Backend failed to return a persistent profile record.');
         }
 
@@ -232,8 +217,8 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
       } else {
         throw new Error('Desktop IPC bridge "createProfileFromStarter" is not available.');
       }
-    } catch (err: any) {
-      const msg = err?.message || '';
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
       if (msg.includes('PROFILE_LIMIT_REACHED') || msg.includes('limit reached')) {
         setQuotaExceededModalOpen(true);
       } else if (msg.includes('DESKTOP_REQUIRED')) {
@@ -298,7 +283,7 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button
+            <button type="button"
               onClick={() => onNavigate('create-profile')}
               className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-teal-500/25 flex items-center space-x-2 active:scale-95 transition-all"
             >
@@ -306,7 +291,7 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
               <span>+ Create My Profile</span>
             </button>
             {onOpenUniversalImport && (
-              <button
+              <button type="button"
                 onClick={onOpenUniversalImport}
                 className="px-4 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-200 font-semibold text-xs border border-slate-700/60 flex items-center space-x-2 transition-colors"
               >
@@ -398,7 +383,7 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
 
               {/* Action Buttons */}
               <div className="flex items-center space-x-2">
-                <button
+                <button type="button"
                   onClick={() => handleCreateProfile(tpl)}
                   disabled={creatingTemplateId !== null}
                   className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center space-x-1.5 transition-all active:scale-95 shadow-sm ${
@@ -419,7 +404,7 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
                     </>
                   )}
                 </button>
-                <button
+                <button type="button"
                   onClick={() => handleOpenCloneModal(tpl)}
                   disabled={creatingTemplateId !== null}
                   title="Customize profile name before creating"
@@ -449,7 +434,7 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
                   </span>
                 </div>
               </div>
-              <button
+              <button type="button"
                 onClick={() => setSelectedTemplate(null)}
                 disabled={creatingTemplateId !== null}
                 className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 disabled:opacity-40"
@@ -460,7 +445,7 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
 
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                <label htmlFor="field-001" className="block text-xs font-bold text-slate-300 mb-1.5">
                   Profile Name
                 </label>
                 <input
@@ -470,7 +455,6 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
                   placeholder="Enter profile name..."
                   disabled={creatingTemplateId !== null}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-teal-500 disabled:opacity-50"
-                  autoFocus
                 />
               </div>
 
@@ -486,14 +470,14 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
             </div>
 
             <div className="p-5 bg-slate-950/80 border-t border-slate-800 flex items-center justify-end space-x-3">
-              <button
+              <button type="button"
                 onClick={() => setSelectedTemplate(null)}
                 disabled={creatingTemplateId !== null}
                 className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white disabled:opacity-40"
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 onClick={handleConfirmCreate}
                 disabled={creatingTemplateId !== null}
                 className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-lg shadow-teal-600/25 flex items-center space-x-2 disabled:opacity-50"
@@ -528,7 +512,7 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
                   </span>
                 </div>
               </div>
-              <button
+              <button type="button"
                 onClick={() => setDesktopRequiredModalOpen(false)}
                 className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
               >
@@ -574,7 +558,7 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
                 Or launch from Applications / Start Menu / Desktop shortcut
               </span>
               <div className="flex items-center space-x-2">
-                <button
+                <button type="button"
                   onClick={() => {
                     const launchTarget =
                       typeof navigator !== 'undefined' && /mac/i.test(navigator.userAgent)
@@ -602,7 +586,7 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
                     </>
                   )}
                 </button>
-                <button
+                <button type="button"
                   onClick={() => setDesktopRequiredModalOpen(false)}
                   className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-md"
                 >

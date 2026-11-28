@@ -20,8 +20,10 @@ import {
   listWorkspaceProfiles,
 } from '../../../services/team-workspace-service.js';
 import { canCreateProfile } from '../../commercial-entitlement-service.js';
-import { CreateRemoteApiKeyDTO } from '../../../../10_CONFIG/shared/types/remote-api.js';
-import { parseBody, sendRemoteJSON, RemoteRouteContext } from './remote-shared.js';
+import type { CreateRemoteApiKeyDTO } from '../../../../10_CONFIG/shared/types/remote-api.js';
+import type { ProfileFilterOptions } from '../../../../10_CONFIG/shared/types/profile.js';
+import type { TeamRole } from '../../../../10_CONFIG/shared/types/workspace.js';
+import { parseBody, sendRemoteJSON, type RemoteRouteContext } from './remote-shared.js';
 
 /** Handles remote API key, browser profile, and team workspace management routes. */
 export async function handleRemoteProfileAndWorkspaceRoutes(ctx: RemoteRouteContext): Promise<boolean> {
@@ -49,8 +51,8 @@ export async function handleRemoteProfileAndWorkspaceRoutes(ctx: RemoteRouteCont
     if (isPostgresConfigured()) {
       const repo = getCentralRepository();
       const rawKeys = await repo.listRemoteApiKeys(auth.userId);
-      const filtered = workspaceId ? rawKeys.filter((k: any) => k.workspace_id === workspaceId) : rawKeys;
-      const keys = filtered.map((k: any) => ({
+      const filtered = workspaceId ? rawKeys.filter((k) => k.workspace_id === workspaceId) : rawKeys;
+      const keys = filtered.map((k) => ({
         id: k.id,
         userId: k.user_id,
         workspaceId: k.workspace_id || null,
@@ -73,10 +75,9 @@ export async function handleRemoteProfileAndWorkspaceRoutes(ctx: RemoteRouteCont
   }
 
   if (route === 'api-keys' && method === 'POST') {
-    const body = await parseBody(req);
+    const dto = await parseBody<CreateRemoteApiKeyDTO>(req);
     if (isPostgresConfigured()) {
       const repo = getCentralRepository();
-      const dto = body as CreateRemoteApiKeyDTO;
       const trimmedName = (dto.name || '').trim();
       if (!trimmedName) throw new Error('API key name is required');
       const entropy = crypto.randomBytes(24).toString('hex');
@@ -133,7 +134,7 @@ export async function handleRemoteProfileAndWorkspaceRoutes(ctx: RemoteRouteCont
       sendRemoteJSON(req, res, 201, responsePayload, requestId, rateLimit);
       return true;
     }
-    const created = remoteService.createApiKey(auth.userId, body as CreateRemoteApiKeyDTO);
+    const created = remoteService.createApiKey(auth.userId, dto);
     const responsePayload = {
       success: true,
       data: {
@@ -214,7 +215,7 @@ export async function handleRemoteProfileAndWorkspaceRoutes(ctx: RemoteRouteCont
     const allProfiles = getProfiles({
       ownerId: auth.userId,
       folder,
-      status: status as any,
+      status: status as ProfileFilterOptions['status'],
     });
 
     const total = allProfiles.length;
@@ -265,7 +266,13 @@ export async function handleRemoteProfileAndWorkspaceRoutes(ctx: RemoteRouteCont
       return true;
     }
 
-    const body = await parseBody(req);
+    const body = await parseBody<{
+      name?: string;
+      description?: string;
+      folder?: string;
+      notes?: string;
+      tags?: string[];
+    }>(req);
     if (!body.name || typeof body.name !== 'string') {
       sendRemoteJSON(
         req,
@@ -355,7 +362,7 @@ export async function handleRemoteProfileAndWorkspaceRoutes(ctx: RemoteRouteCont
       return true;
     }
 
-    const body = await parseBody(req);
+    const body = await parseBody<{ name?: string; notes?: string; folder?: string }>(req);
     const updated = updateProfile(profile.id, {
       name: body.name,
       notes: body.notes,
@@ -465,7 +472,7 @@ export async function handleRemoteProfileAndWorkspaceRoutes(ctx: RemoteRouteCont
     if (!requireAccess('workspace:manage')) return true;
     if (!requireFeature('workspace.team')) return true;
 
-    const body = await parseBody(req);
+    const body = await parseBody<{ name: string; description?: string }>(req);
     if (!body.name) {
       sendRemoteJSON(req, res, 400, { success: false, error: { code: 'VALIDATION_ERROR', message: 'Workspace name is required' } }, requestId, rateLimit);
       return true;
@@ -495,7 +502,7 @@ export async function handleRemoteProfileAndWorkspaceRoutes(ctx: RemoteRouteCont
     const wsId = wsInviteMatch[1];
     if (!requireAccess('workspace:manage', 'MEMBER_INVITE', wsId)) return true;
 
-    const body = await parseBody(req);
+    const body = await parseBody<{ email: string; role?: TeamRole }>(req);
     if (!body.email) {
       sendRemoteJSON(req, res, 400, { success: false, error: { code: 'VALIDATION_ERROR', message: 'Invitee email is required' } }, requestId, rateLimit);
       return true;
@@ -523,7 +530,7 @@ export async function handleRemoteProfileAndWorkspaceRoutes(ctx: RemoteRouteCont
     const targetUserId = wsMemberRoleMatch[2];
     if (!requireAccess('workspace:manage', 'MEMBER_ROLE_CHANGE', wsId)) return true;
 
-    const body = await parseBody(req);
+    const body = await parseBody<{ role: TeamRole }>(req);
     const updated = updateMemberRole(auth.userId, wsId, targetUserId, body.role);
     sendRemoteJSON(req, res, 200, { success: true, data: updated }, requestId, rateLimit);
     return true;
@@ -559,9 +566,14 @@ export async function handleRemoteProfileAndWorkspaceRoutes(ctx: RemoteRouteCont
     const wsId = wsShareMatch[1];
     if (!requireAccess('workspace:manage', 'PROFILE_SHARE', wsId)) return true;
 
-    const body = await parseBody(req);
+    const body = await parseBody<{
+      profileId?: string;
+      cloudProfileId?: string;
+      permissionLevel?: 'VIEW' | 'RUN' | 'EDIT' | 'ADMIN';
+      encryptedKeyEnvelope: string;
+    }>(req);
     const shareRecord = shareProfileToWorkspace(auth.userId, wsId, {
-      cloudProfileId: body.profileId || body.cloudProfileId,
+      cloudProfileId: body.profileId || body.cloudProfileId || '',
       permissionLevel: body.permissionLevel || 'RUN',
       encryptedKeyEnvelope: body.encryptedKeyEnvelope,
     });

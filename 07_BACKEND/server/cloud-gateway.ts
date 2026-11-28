@@ -5,7 +5,7 @@
  * centralized CORS/CSP security headers, and global AppError safe error mapping.
  */
 
-import fastify, { FastifyInstance, FastifyPluginAsync } from 'fastify';
+import fastify, { type FastifyInstance, type FastifyPluginAsync, type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import { isPostgresConfigured, checkPostgresHealth, disconnectPrisma } from '../../06_DATABASE/prisma-client.js';
 import { isRedisConfigured, checkRedisHealth, disconnectRedis } from '../../08_SECURITY/redis-lock-service.js';
@@ -18,6 +18,7 @@ import { createLogger } from '../utils/logger.js';
 const log = createLogger('cloud-gateway');
 import {
   dispatchThroughFastifyReply,
+  type RawBridgeRequest,
   registerPrefixBridgePlugin,
   wrapCommercialHandlers,
 } from './fastify-route-adapter.js';
@@ -96,7 +97,7 @@ const healthRoutesPlugin: FastifyPluginAsync = async (app) => {
 };
 
 const portalAndDownloadPlugin: FastifyPluginAsync = async (app) => {
-  const dispatchPortal = async (request: any, reply: any) => {
+  const dispatchPortal = async (request: FastifyRequest, reply: FastifyReply) => {
     const handled = await dispatchThroughFastifyReply(request, reply, async (req, res, parsedUrl) => {
       const pathname = parsedUrl.pathname;
       const cleanPath = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
@@ -108,7 +109,7 @@ const portalAndDownloadPlugin: FastifyPluginAsync = async (app) => {
     return reply;
   };
 
-  const dispatchDownload = async (request: any, reply: any) => {
+  const dispatchDownload = async (request: FastifyRequest, reply: FastifyReply) => {
     const handled = await dispatchThroughFastifyReply(request, reply, async (req, res, parsedUrl) => {
       const pathname = parsedUrl.pathname;
       const cleanPath = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
@@ -219,7 +220,7 @@ export async function createFastifyCloudGateway(
   // 3. Preserve exact wire bytes (`rawBuffer`) for webhook signatures alongside empty-JSON toleration
   app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
     const rawBuf = Buffer.isBuffer(body) ? body : Buffer.from(String(body || ''), 'utf8');
-    (req.raw as any).rawBuffer = rawBuf;
+    (req.raw as RawBridgeRequest).rawBuffer = rawBuf;
     const text = rawBuf.toString('utf8').trim();
     if (!text) {
       return done(null, {});
@@ -238,7 +239,7 @@ export async function createFastifyCloudGateway(
     { parseAs: 'buffer' },
     (req, body, done) => {
       if (Buffer.isBuffer(body)) {
-        (req.raw as any).rawBuffer = body;
+        (req.raw as RawBridgeRequest).rawBuffer = body;
       }
       done(null, body);
     }
@@ -250,21 +251,21 @@ export async function createFastifyCloudGateway(
     (req, body, done) => {
       try {
         const rawStr = typeof body === 'string' ? body : String(body || '');
-        (req.raw as any).rawBuffer = Buffer.from(rawStr, 'utf8');
+        (req.raw as RawBridgeRequest).rawBuffer = Buffer.from(rawStr, 'utf8');
         const params = new URLSearchParams(rawStr);
-        const result: Record<string, any> = {};
+        const result: Record<string, string> = {};
         for (const [k, v] of params.entries()) {
           result[k] = v;
         }
         done(null, result);
-      } catch (err: any) {
-        done(err, undefined);
+      } catch (err: unknown) {
+        done(err instanceof Error ? err : new Error(String(err)), undefined);
       }
     }
   );
 
   // 5. Global Safe Error Handler (never leak raw err.message / stack / DB errors)
-  app.setErrorHandler((err: any, _request, reply) => {
+  app.setErrorHandler((err: Error & { code?: string; statusCode?: number }, _request, reply) => {
     if (err?.code === 'FST_ERR_CTP_BODY_TOO_LARGE' || err?.statusCode === 413) {
       return reply.code(413).send({
         success: false,

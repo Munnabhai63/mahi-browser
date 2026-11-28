@@ -30,6 +30,7 @@ export interface BrowserConfig {
   additionalArgs: string[];
   enableExtensions: boolean;
   hardwareAcceleration: boolean;
+  restoreSessionOnStartup?: boolean;
 }
 
 export interface DisplayConfig {
@@ -143,6 +144,12 @@ export interface Profile {
 }
 
 
+export type PartialProfileSettings = {
+  [K in keyof ProfileSettings]?: ProfileSettings[K] extends object
+    ? Partial<ProfileSettings[K]>
+    : ProfileSettings[K];
+};
+
 export interface CreateProfileDTO {
   name: string;
   description?: string;
@@ -151,7 +158,7 @@ export interface CreateProfileDTO {
   notes?: string;
   pinned?: boolean;
   ownerId?: string;
-  settings?: Partial<ProfileSettings>;
+  settings?: PartialProfileSettings;
 }
 
 export interface UpdateProfileDTO {
@@ -161,7 +168,7 @@ export interface UpdateProfileDTO {
   tags?: string[];
   notes?: string;
   pinned?: boolean;
-  settings?: Partial<ProfileSettings>;
+  settings?: PartialProfileSettings;
 }
 
 export interface CloneProfileDTO {
@@ -184,4 +191,90 @@ export interface ProfileFilterOptions {
   sortDirection?: 'asc' | 'desc';
   /** Security: if provided, only return profiles belonging to this commercial user ID */
   ownerId?: string;
+}
+
+export type StarterProfileCategory = 'PERSONAL' | 'SOCIAL' | 'E-COMMERCE' | 'WORK' | 'AUTOMATION' | 'SANDBOX';
+
+export interface StarterProfileTemplateSummary {
+  id: string;
+  name: string;
+  category: StarterProfileCategory;
+  badge: 'STARTER' | 'DEMO' | 'TEMPLATE' | 'EXAMPLE';
+  description: string;
+  folder?: string;
+  icon?: string;
+  color?: string;
+  features?: string[];
+  recommendedUse?: string;
+  os?: string;
+  browser?: string;
+  fingerprintPreview?: {
+    screenResolution?: string;
+    userAgentSnippet?: string;
+    webGlVendor?: string;
+    canvasNoise?: boolean;
+    audioNoise?: boolean;
+  };
+  defaultSettings?: Partial<ProfileSettings>;
+}
+
+export interface CreateProfileFromStarterOptions {
+  name?: string;
+  customName?: string;
+  folder?: string;
+  ownerId?: string;
+}
+
+export interface ParsedAccountProxyInfo {
+  protocol: 'http' | 'https' | 'socks4' | 'socks5';
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+}
+
+export interface ParsedAccountImportItem {
+  name: string;
+  usernameOrEmail?: string;
+  password?: string;
+  proxy?: ParsedAccountProxyInfo;
+  cookies?: Array<{
+    id: string;
+    profileId: string;
+    domain: string;
+    name: string;
+    value: string;
+    path: string;
+    expires?: number;
+    httpOnly: boolean;
+    secure: boolean;
+    sameSite?: 'Strict' | 'Lax' | 'None';
+  }>;
+  userAgent?: string;
+  timezone?: string;
+  language?: string;
+  screenWidth?: number;
+  screenHeight?: number;
+  sourceFormat?: 'gologin' | 'adspower' | 'dolphin' | 'generic';
+  notes?: string;
+  tags?: string[];
+  rawLine?: string;
+}
+
+export interface AccountBulkImportOptions {
+  folder?: string;
+  os?: 'windows' | 'macos' | 'linux';
+  browserEngine?: BrowserEngine;
+  tags?: string[];
+  autoGenerateFingerprints?: boolean;
+}
+
+export interface AccountBulkImportResult {
+  success: boolean;
+  totalImported: number;
+  failedCount: number;
+  createdProfileIds: string[];
+  createdProfiles: Array<{ id: string; name: string; proxyBound: boolean; cookiesCount: number }>;
+  errors: string[];
+  durationMs: number;
 }

@@ -1,5 +1,5 @@
-import React from 'react';
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import DownloadButtons from '../../components/DownloadButtons';
 
 export const metadata: Metadata = {
@@ -13,10 +13,11 @@ export default function DownloadPage() {
     <div className="relative min-h-screen bg-[#030303] text-white selection:bg-white selection:text-black pt-24 sm:pt-32 pb-24 overflow-hidden">
       {/* Background Ambience */}
       <div className="absolute inset-0 z-0 pointer-events-none">
-        <img
+        <Image
           src="/assets/company/hero_walking.jpg"
           alt=""
-          className="w-full h-full object-cover object-center opacity-10 filter contrast-125"
+          fill
+          className="object-cover object-center opacity-10 filter contrast-125"
         />
         <div className="absolute inset-0 bg-gradient-to-b from-[#030303]/90 via-[#030303]/95 to-[#030303]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_900px_600px_at_50%_20%,rgba(255,255,255,0.03),transparent)]" />

@@ -8,7 +8,7 @@
 
 import { create } from 'zustand';
 import { api } from '../api/api-client.js';
-import { TeamWorkspace } from '../../../10_CONFIG/shared/types/workspace.js';
+import type { TeamWorkspace } from '../../../10_CONFIG/shared/types/workspace.js';
 
 export interface WebUser {
   id: string;
@@ -81,7 +81,38 @@ function stripLegacyUrlTokenParams(): void {
   }
 }
 
-function mapToWebUser(rawUser: any): WebUser {
+interface RawWebUser {
+  id?: string;
+  email?: string;
+  name?: string;
+  role?: string;
+  planId?: string;
+  status?: string;
+  profileQuota?: number;
+}
+
+interface AuthResponsePayload {
+  user?: RawWebUser;
+  token?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  tokens?: {
+    accessToken?: string;
+    refreshToken?: string;
+  };
+  data?: AuthResponsePayload;
+}
+
+function unwrapAuthPayload(res: unknown): AuthResponsePayload {
+  if (!res || typeof res !== 'object') return {};
+  const rec = res as AuthResponsePayload;
+  if (rec.data && typeof rec.data === 'object') {
+    return rec.data;
+  }
+  return rec;
+}
+
+function mapToWebUser(rawUser: RawWebUser | undefined): WebUser {
   const email = rawUser?.email || '';
   const planId = rawUser?.planId || 'plan_free';
   return {
@@ -128,7 +159,7 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
 
     try {
       const meRes = await api.getMe();
-      const payload: any = (meRes as any)?.data?.user ? meRes.data : meRes;
+      const payload = unwrapAuthPayload(meRes);
       if (meRes.success && payload?.user) {
         set({
           user: mapToWebUser(payload.user),
@@ -142,7 +173,7 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
       const refreshRes = await api.refreshToken();
       if (refreshRes.success) {
         const refreshedMe = await api.getMe();
-        const refreshedPayload: any = (refreshedMe as any)?.data?.user ? refreshedMe.data : refreshedMe;
+        const refreshedPayload = unwrapAuthPayload(refreshedMe);
         if (refreshedMe.success && refreshedPayload?.user) {
           set({
             user: mapToWebUser(refreshedPayload.user),
@@ -164,7 +195,7 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const res = await api.login(email, password);
-      const payload: any = res.data || res;
+      const payload = unwrapAuthPayload(res);
       if (res.success && payload?.user) {
         const accessToken = payload.token || payload.tokens?.accessToken || null;
         const refreshToken = payload.tokens?.refreshToken || null;
@@ -189,10 +220,10 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
             : res.error?.message || 'Login failed. Please check credentials.',
       });
       return false;
-    } catch (err: any) {
+    } catch (err: unknown) {
       set({
         isLoading: false,
-        error: err.message || 'An unexpected login error occurred',
+        error: err instanceof Error ? err.message : 'An unexpected login error occurred',
       });
       return false;
     }
@@ -211,10 +242,10 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
         error: typeof res.error === 'string' ? res.error : res.error?.message || 'Registration failed',
       });
       return false;
-    } catch (err: any) {
+    } catch (err: unknown) {
       set({
         isLoading: false,
-        error: err.message || 'Registration error',
+        error: err instanceof Error ? err.message : 'Registration error',
       });
       return false;
     }
@@ -224,7 +255,7 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
     const { refreshToken } = get();
     try {
       const res = await api.refreshToken(refreshToken || undefined);
-      const payload: any = res.data || res;
+      const payload = unwrapAuthPayload(res);
       if (res.success) {
         const newAccessToken = payload?.accessToken || payload?.tokens?.accessToken || get().accessToken;
         const newRefreshToken = payload?.refreshToken || payload?.tokens?.refreshToken || refreshToken;

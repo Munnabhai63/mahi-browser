@@ -1,6 +1,6 @@
 import net from 'node:net';
 import http from 'node:http';
-import stream from 'node:stream';
+import type stream from 'node:stream';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
 
 const logger = createLogger('socks-tunnel');
@@ -426,14 +426,15 @@ export async function bridgeConnectOverSocks5(params: {
 
     clientSocket.pipe(upstreamSocket);
     upstreamSocket.pipe(clientSocket);
-  } catch (err: any) {
-    if (log) log(`[ProxyTunnel SOCKS5 CONNECT ERROR] ${err?.message || err}`);
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (log) log(`[ProxyTunnel SOCKS5 CONNECT ERROR] ${errMsg}`);
     try {
-      clientSocket.write(`HTTP/1.1 502 Bad Gateway\r\n\r\nSOCKS5 Tunnel Error: ${err?.message || 'failed'}`);
+      clientSocket.write(`HTTP/1.1 502 Bad Gateway\r\n\r\nSOCKS5 Tunnel Error: ${errMsg || 'failed'}`);
     } catch (writeErr) {
       logger.debug('socks-tunnel 502 response write failed', { err: writeErr });
     }
-    cleanup(err?.message);
+    cleanup(errMsg);
   }
 }
 
@@ -479,8 +480,8 @@ export async function forwardHttpRequestOverSocks5(params: {
     headers.host = parsedUrl.host;
 
     const agent = new http.Agent({ keepAlive: false });
-    (agent as any).createConnection = (_opts: any, cb: (err: Error | null, s?: net.Socket) => void) => {
-      cb(null, socket);
+    agent.createConnection = (_opts, cb) => {
+      cb?.(null, socket);
       return socket;
     };
 
@@ -523,11 +524,12 @@ export async function forwardHttpRequestOverSocks5(params: {
     });
 
     clientReq.pipe(proxyReq);
-  } catch (err: any) {
-    if (log) log(`[ProxyTunnel SOCKS5 HTTP ERROR] ${err?.message || err}`);
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (log) log(`[ProxyTunnel SOCKS5 HTTP ERROR] ${errMsg}`);
     if (!clientRes.headersSent) {
       clientRes.writeHead(502, { 'Content-Type': 'text/plain' });
-      clientRes.end('SOCKS5 Proxy Tunnel Error: ' + (err?.message || 'failed'));
+      clientRes.end(`SOCKS5 Proxy Tunnel Error: ${errMsg || 'failed'}`);
     }
   }
 }

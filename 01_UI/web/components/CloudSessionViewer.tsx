@@ -10,21 +10,16 @@
  * - Safe session termination with graceful profile sync back
  */
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import type React from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  X,
-  Play,
   RotateCw,
   ArrowLeft,
   ArrowRight,
-  Shield,
   Clock,
-  Wifi,
   Cloud,
-  Globe2,
   AlertCircle,
   Square,
-  Lock,
 } from 'lucide-react';
 import { api } from '../api/api-client.js';
 
@@ -41,7 +36,7 @@ export interface CloudSessionViewerProps {
 
 export const CloudSessionViewer: React.FC<CloudSessionViewerProps> = ({
   sessionId,
-  profileId,
+  profileId: _profileId,
   profileName,
   initialStreamToken,
   regionId,
@@ -51,7 +46,7 @@ export const CloudSessionViewer: React.FC<CloudSessionViewerProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [streamToken, setStreamToken] = useState(initialStreamToken);
   const [connectionStatus, setConnectionStatus] = useState<'CONNECTING' | 'CONNECTED' | 'RECONNECTING' | 'DISCONNECTED'>('CONNECTING');
-  const [latencyMs, setLatencyMs] = useState(18);
+  const [latencyMs] = useState(18);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [urlInput, setUrlInput] = useState('https://browserleaks.com/ip');
   const [isStopping, setIsStopping] = useState(false);
@@ -126,9 +121,9 @@ export const CloudSessionViewer: React.FC<CloudSessionViewerProps> = ({
             setErrorMessage('Connection lost. Please reconnect or check worker status.');
           }
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         setConnectionStatus('DISCONNECTED');
-        setErrorMessage(err.message || 'Failed to establish cloud stream.');
+        setErrorMessage(err instanceof Error ? err.message : 'Failed to establish cloud stream.');
       }
     };
 
@@ -262,8 +257,8 @@ export const CloudSessionViewer: React.FC<CloudSessionViewerProps> = ({
     try {
       await api.stopCloudSession(sessionId, 'USER_STOPPED');
       onClose();
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to stop session.');
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to stop session.');
       setIsStopping(false);
     }
   };

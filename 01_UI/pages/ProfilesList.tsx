@@ -1,18 +1,19 @@
-import React, { useEffect, useState, useMemo, useCallback, Suspense, lazy } from 'react';
+import type React from 'react';
+import { useEffect, useState, useMemo, useCallback, Suspense, lazy } from 'react';
 import { useProfileStore } from '../stores/useProfileStore.js';
 import { useProxyStore } from '../stores/useProxyStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { reduceSyncProgressMap } from '../utils/phase1-ui-helpers.js';
-import { Profile } from '../../10_CONFIG/shared/types/profile.js';
-import { ProxyItem } from '../../10_CONFIG/shared/types/proxy.js';
+import type { Profile } from '../../10_CONFIG/shared/types/profile.js';
+import type { ProxyItem } from '../../10_CONFIG/shared/types/proxy.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 import { getFlagEmoji, getCountryNameFromCode } from '../components/CountryFlag.js';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { PageLoadingFallback } from '../components/PageFallback.js';
 import { parseProxyString } from '../components/profiles/profile-proxy-utils.js';
-import { ProfileToolbar, MobileRotatorSummary } from '../components/profiles/ProfileToolbar.js';
+import { ProfileToolbar, type MobileRotatorSummary } from '../components/profiles/ProfileToolbar.js';
 import { ProfileTable } from '../components/profiles/ProfileTable.js';
 import { QuickCreateModal, BulkCreateModal } from '../components/profiles/ProfileCreationModals.js';
 import { StaggerLaunchModal, BulkProxyModal, BulkEditModal } from '../components/profiles/ProfileBulkModals.js';
@@ -22,7 +23,7 @@ import {
   SingleWarmerModal,
   BulkWarmerModal,
   CookieWarmerIndicator,
-  WarmerDepth,
+  type WarmerDepth,
 } from '../components/profiles/ProfileToolsModals.js';
 
 const ProxyConfigModal = lazy(() =>
@@ -137,7 +138,7 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
     if (accountSession?.token) {
       checkUnassignedGuestProfiles().catch((err) => { console.debug('[ProfilesList] guest profile probe failed', err); });
     }
-  }, [accountSession?.token]);
+  }, [accountSession?.token, checkUnassignedGuestProfiles]);
 
   useEffect(() => {
     if (window.mahiAPI?.getAllProfilesSyncStatus) {
@@ -145,10 +146,10 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
         console.debug('[ProfilesList] Non-critical sync status fetch notice:', err);
       });
     }
-  }, [profiles]);
+  }, []);
 
   useEffect(() => {
-    const unsub = window.mahiAPI?.onSyncProgress?.((ev: any) => {
+    const unsub = window.mahiAPI?.onSyncProgress?.((ev) => {
       if (ev?.profileId) {
         setSyncProgressMap((prev) => reduceSyncProgressMap(prev, ev));
       }
@@ -201,7 +202,7 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
         setMobileModeEnabled(Boolean(cfg.mobileModeEnabled));
       }
       const deviceList = Array.isArray(devices) ? devices : [];
-      const authorizedCount = deviceList.filter((d: any) => d?.status === 'device').length;
+      const authorizedCount = deviceList.filter((d) => d?.status === 'device').length;
       setMobileRotatorSummary({
         installed: Boolean(adbStatus?.installed),
         authorizedCount,
@@ -231,11 +232,11 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
     checkSync();
     const syncInterval = setInterval(checkSync, 2000);
     return () => clearInterval(syncInterval);
-  }, []);
+  }, [refreshMobileModeStatus, fetchProxies, fetchProfiles]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filter.searchQuery, activeFolderTab]);
+  }, []);
 
   const proxyMap = useMemo(() => {
     const map = new Map<string, ProxyItem>();
@@ -439,8 +440,8 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
           });
           setUniversalProxyModalProfile(null);
         }
-      } catch (err: any) {
-        showToast({ type: 'error', title: 'Assignment Failed', message: err.message || 'Failed to assign proxy' });
+      } catch (err: unknown) {
+        showToast({ type: 'error', title: 'Assignment Failed', message: err instanceof Error ? err.message : 'Failed to assign proxy' });
       }
     },
     [parseAndCreateProxy, updateProfile, showToast]
@@ -467,11 +468,11 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
       } else {
         showToast({ type: 'info', title: 'Mobile Mode OFF', message: 'Switched back to multi-profile desktop mode.' });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         type: 'error',
         title: 'Mobile Mode Toggle Failed',
-        message: err?.message || 'Could not update Mobile Mode configuration',
+        message: err instanceof Error ? err.message : 'Could not update Mobile Mode configuration',
       });
     } finally {
       setIsTogglingMobileMode(false);
@@ -523,8 +524,8 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
       try {
         await bulkStartProfiles(selectedIds, delayMs);
         setIsStaggerLaunchModalOpen(false);
-      } catch (err: any) {
-        showToast({ type: 'error', title: 'Batch Launch Error', message: err.message || 'Failed during batch launch' });
+      } catch (err: unknown) {
+        showToast({ type: 'error', title: 'Batch Launch Error', message: err instanceof Error ? err.message : 'Failed during batch launch' });
       } finally {
         unsub();
         setIsStaggerLaunching(false);
@@ -562,8 +563,8 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
           distributionMode: data.mode,
         });
         setIsBulkProxyModalOpen(false);
-      } catch (err: any) {
-        showToast({ type: 'error', title: 'Proxy Assignment Failed', message: err.message || 'Failed to assign proxies' });
+      } catch (err: unknown) {
+        showToast({ type: 'error', title: 'Proxy Assignment Failed', message: err instanceof Error ? err.message : 'Failed to assign proxies' });
       } finally {
         setIsBulkProxySaving(false);
       }
@@ -585,8 +586,8 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
           removeTags: removeTags.length > 0 ? removeTags : undefined,
         });
         setIsBulkEditModalOpen(false);
-      } catch (err: any) {
-        showToast({ type: 'error', title: 'Batch Edit Failed', message: err.message || 'Failed to update profiles' });
+      } catch (err: unknown) {
+        showToast({ type: 'error', title: 'Batch Edit Failed', message: err instanceof Error ? err.message : 'Failed to update profiles' });
       } finally {
         setIsBulkEditSaving(false);
       }
@@ -603,8 +604,8 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
       setSelectedIds([]);
       setIsBulkDeleteModalOpen(false);
       showToast({ type: 'info', title: 'Profiles Deleted', message: `Successfully deleted ${count} profiles.` });
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Bulk Delete Error', message: err.message || 'Failed to delete some profiles' });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Bulk Delete Error', message: err instanceof Error ? err.message : 'Failed to delete some profiles' });
     } finally {
       setIsBulkDeleting(false);
     }
@@ -627,8 +628,8 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
         title: '🍪 Profile Warmed Successfully!',
         message: `Farmed ${res.farmedCookiesCount} cookies across ${res.visitedSitesCount} top domains.`,
       });
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Warmup Error', message: err.message || 'Failed to warm profile' });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Warmup Error', message: err instanceof Error ? err.message : 'Failed to warm profile' });
     } finally {
       setIsWarming(false);
     }
@@ -651,8 +652,8 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
         title: '🍪 Bulk Warmup Complete!',
         message: `Successfully warmed ${res.successCount} of ${count} profiles.`,
       });
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Bulk Warmup Error', message: err.message || 'Failed to warm profiles' });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Bulk Warmup Error', message: err instanceof Error ? err.message : 'Failed to warm profiles' });
     } finally {
       setIsWarming(false);
     }
@@ -670,8 +671,8 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
         });
         showToast({ type: 'info', title: 'Launching Stealth Test', message: `Opening ${url} with "${targetP.name}"...` });
         await handleLaunchWithMobileMode(targetP);
-      } catch (err: any) {
-        showToast({ type: 'error', title: 'Launch Failed', message: err.message || 'Could not launch browser' });
+      } catch (err: unknown) {
+        showToast({ type: 'error', title: 'Launch Failed', message: err instanceof Error ? err.message : 'Could not launch browser' });
       }
     },
     [stealthTestProfile, updateProfile, showToast, handleLaunchWithMobileMode]
@@ -702,7 +703,7 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
         try {
           const { updateProfile: upd } = useProfileStore.getState();
           const defaults = getDefaultProfileSettings();
-          await upd(profileId, { settings: { network: { ...defaults.network, directConnection: true, proxyId: undefined } } } as any);
+          await upd(profileId, { settings: { network: { ...defaults.network, directConnection: true, proxyId: undefined } } });
           await fetchProfiles();
           showToast({ type: 'info', title: 'Direct Connection', message: 'Proxy removed.' });
         } catch (err) {
@@ -727,7 +728,7 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
         const testRes = await window.mahiAPI.testProxy({
           host: parsed.host,
           port: parsed.port,
-          protocol: parsed.protocol as any,
+          protocol: parsed.protocol,
           username: parsed.username,
           password: parsed.password,
         });
@@ -738,7 +739,7 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
         const { createProxy } = useProxyStore.getState();
         const newProxy = await createProxy({
           name: `${parsed.host}:${parsed.port}`,
-          protocol: parsed.protocol as any,
+          protocol: parsed.protocol,
           host: parsed.host,
           port: parsed.port,
           username: parsed.username || '',
@@ -752,7 +753,7 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
           const defaults = getDefaultProfileSettings();
           await upd(profileId, {
             settings: { network: { ...defaults.network, directConnection: false, proxyId: newProxy.id } },
-          } as any);
+          });
           await fetchProxies();
           await fetchProfiles();
           showToast({
@@ -775,7 +776,7 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
       if (savingProxy) return;
       try {
         const text = await navigator.clipboard.readText();
-        if (!text || !text.trim()) {
+        if (!text?.trim()) {
           showToast({ type: 'error', title: 'Clipboard Empty', message: 'Copy a proxy string first, then click paste.' });
           return;
         }
@@ -796,8 +797,8 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
         if (window.mahiAPI?.getAllProfilesSyncStatus) {
           setSyncStatuses(await window.mahiAPI.getAllProfilesSyncStatus());
         }
-      } catch (err: any) {
-        showToast({ type: 'error', title: 'Sync Failed', message: err.message });
+      } catch (err: unknown) {
+        showToast({ type: 'error', title: 'Sync Failed', message: err instanceof Error ? err.message : String(err) });
       }
     },
     [showToast]

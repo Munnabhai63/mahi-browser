@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 const { formatHunk, formatFileDiff, formatPatch, validatePatch } = require('./generate-chromium-patches.cjs');
 
 const outDir = path.resolve('14_ENGINE_PATCHES/chromium-138');
@@ -1368,7 +1368,7 @@ for (const p of allPatches) {
 }
 
 // Write series file
-const seriesContent = allPatches.map(p => p.name).join('\n') + '\n';
+const seriesContent = `${allPatches.map(p => p.name).join('\n')}\n`;
 fs.writeFileSync(path.join(outDir, 'series'), seriesContent, 'utf8');
 console.log(`[PASS] Series file updated with ${allPatches.length} patches.`);
 

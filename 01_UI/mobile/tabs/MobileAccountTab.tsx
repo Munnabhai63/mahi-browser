@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { MobileNotificationPreferences } from '../../../10_CONFIG/shared/types/mobile';
+import type React from 'react';
+import { useState } from 'react';
+import type { MobileNotificationPreferences } from '../../../10_CONFIG/shared/types/mobile';
 
 export interface MobileDeviceSessionItem {
   id: string;
@@ -223,6 +224,7 @@ export const MobileAccountTab: React.FC<MobileAccountTabProps> = ({
 
             {!dev.isCurrent && (
               <button
+                type="button"
                 onClick={() => onRevokeDevice(dev.id)}
                 disabled={isOffline}
                 style={{
@@ -244,6 +246,7 @@ export const MobileAccountTab: React.FC<MobileAccountTabProps> = ({
 
       {/* Logout Action */}
       <button
+        type="button"
         onClick={onLogout}
         style={{
           padding: '12px',

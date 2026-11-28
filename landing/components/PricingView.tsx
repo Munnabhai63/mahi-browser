@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { BRAND } from '../lib/brand';
 import { getRuntimePaymentMetadata } from '../../10_CONFIG/contact-config';
@@ -250,7 +252,7 @@ export default function PricingView() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutNotice, setCheckoutNotice] = useState<string | null>(null);
 
-  const openManualUpiModal = (plan: PlanTier) => {
+  const openManualUpiModal = useCallback((plan: PlanTier) => {
     setSelectedUpiPlan({
       id: plan.id,
       name: plan.name,
@@ -263,9 +265,9 @@ export default function PricingView() {
     setUtrInput('');
     setUtrError(null);
     setSubmittedPaymentId(null);
-  };
+  }, []);
 
-  const openCryptoModal = (plan: PlanTier) => {
+  const openCryptoModal = useCallback((plan: PlanTier) => {
     setSelectedCryptoPlan({
       id: plan.id,
       name: plan.name,
@@ -278,7 +280,7 @@ export default function PricingView() {
     setTxHashInput('');
     setTxError(null);
     setSubmittedCryptoPaymentId(null);
-  };
+  }, []);
 
   // Hydrate URL query state (currency, status) and probe session + payment gateways on mount
   useEffect(() => {
@@ -355,24 +357,38 @@ export default function PricingView() {
       try {
         const resp = await fetch(`${BRAND.apiUrl}/api/v1/billing/gateways`);
         if (resp.ok) {
-          const data = await resp.json();
+          const data = (await resp.json()) as {
+            gateways?: Array<{
+              id?: string;
+              enabled?: boolean;
+              walletAddress?: string;
+              network?: string;
+              qrAsset?: string;
+              upiId?: string;
+              accountHolder?: string;
+            }>;
+            support?: {
+              whatsappRawNumber?: string;
+              sellerName?: string;
+            };
+          };
           if (mounted && Array.isArray(data?.gateways)) {
-            const youpi = data.gateways.find((g: any) => g.id === 'youpi_pg');
+            const youpi = data.gateways.find((g) => g.id === 'youpi_pg');
             if (youpi?.enabled) {
               setIsYoupiEnabled(true);
             }
-            const stripe = data.gateways.find((g: any) => g.id === 'stripe');
+            const stripe = data.gateways.find((g) => g.id === 'stripe');
             if (stripe?.enabled) {
               setIsStripeEnabled(true);
             }
-            const usdt = data.gateways.find((g: any) => g.id === 'usdt_trc20');
+            const usdt = data.gateways.find((g) => g.id === 'usdt_trc20');
             if (usdt) {
               setIsUsdtEnabled(Boolean(usdt.enabled));
               if (usdt.walletAddress) setUsdtAddress(usdt.walletAddress);
               if (usdt.network) setUsdtNetwork(usdt.network);
               if (usdt.qrAsset) setUsdtQrAsset(usdt.qrAsset);
             }
-            const upiManual = data.gateways.find((g: any) => g.id === 'upi_manual');
+            const upiManual = data.gateways.find((g) => g.id === 'upi_manual');
             if (upiManual) {
               if (upiManual.upiId) setUpiId(upiManual.upiId);
               if (upiManual.accountHolder) setUpiAccountHolder(upiManual.accountHolder);
@@ -397,10 +413,10 @@ export default function PricingView() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [openCryptoModal, openManualUpiModal]);
 
   // Telemetry event tracking (active in production to avoid dev-mode 404 toast)
-  const trackFunnel = (eventName: string, metadata?: Record<string, any>) => {
+  const trackFunnel = (eventName: string, metadata?: Record<string, unknown>) => {
     try {
       if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production' && navigator.sendBeacon) {
         const payload = JSON.stringify({ eventName, source: 'pricing_page', ...metadata });
@@ -412,7 +428,7 @@ export default function PricingView() {
     }
   };
 
-  const startOnlineCheckout = async (
+  const startOnlineCheckout = useCallback(async (
     plan: PlanTier,
     targetCurrency: 'INR' | 'USD',
     provider: 'youpi_pg' | 'stripe'
@@ -478,7 +494,7 @@ export default function PricingView() {
     } finally {
       setActiveCheckoutPlanId(null);
     }
-  };
+  }, [authChecked, hasAuthToken]);
 
   // Auto-resume checkout after returning from /login or /signup
   useEffect(() => {
@@ -520,7 +536,18 @@ export default function PricingView() {
     } else {
       openManualUpiModal(matchedPlan);
     }
-  }, [gatewaysLoaded, authChecked, hasAuthToken, isYoupiEnabled, isStripeEnabled, isUsdtEnabled, usdtAddress]);
+  }, [
+    gatewaysLoaded,
+    authChecked,
+    hasAuthToken,
+    isYoupiEnabled,
+    isStripeEnabled,
+    isUsdtEnabled,
+    usdtAddress,
+    openCryptoModal,
+    openManualUpiModal,
+    startOnlineCheckout,
+  ]);
 
   // Plan CTA Click Handler
   const handlePlanClick = async (plan: PlanTier) => {
@@ -846,9 +873,9 @@ export default function PricingView() {
                         {plan.group1Title}
                       </div>
                       <div className="space-y-3">
-                        {plan.group1Features.map((feat, idx) => (
-                          <div key={idx} className="flex items-start gap-3 text-[14px] text-zinc-200">
-                            <svg className="w-4 h-4 text-zinc-400 mt-1 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                        {plan.group1Features.map((feat) => (
+                          <div key={feat} className="flex items-start gap-3 text-[14px] text-zinc-200">
+                            <svg className="w-4 h-4 text-zinc-400 mt-1 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                               <path fillRule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.739a.75.75 0 0 1 1.04-.208Z" clipRule="evenodd" />
                             </svg>
                             <span className="leading-snug">{feat}</span>
@@ -863,9 +890,9 @@ export default function PricingView() {
                         {plan.group2Title}
                       </div>
                       <div className="space-y-3">
-                        {plan.group2Features.map((feat, idx) => (
-                          <div key={idx} className="flex items-start gap-3 text-[14px] text-zinc-200">
-                            <svg className="w-4 h-4 text-zinc-400 mt-1 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                        {plan.group2Features.map((feat) => (
+                          <div key={feat} className="flex items-start gap-3 text-[14px] text-zinc-200">
+                            <svg className="w-4 h-4 text-zinc-400 mt-1 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                               <path fillRule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.739a.75.75 0 0 1 1.04-.208Z" clipRule="evenodd" />
                             </svg>
                             <span className="leading-snug">{feat}</span>
@@ -936,11 +963,13 @@ export default function PricingView() {
           {/* ========================================================================= */}
           <div className="w-full mt-16 sm:mt-24 pt-8 border-t border-white/10">
             <div className="flex items-center justify-between gap-6 sm:gap-8 md:gap-10 overflow-x-auto no-scrollbar py-2">
-              {PLATFORM_LOGOS.map((logo, idx) => (
-                <div key={idx} className="flex-shrink-0 flex items-center justify-center group" title={logo.name}>
-                  <img
+              {PLATFORM_LOGOS.map((logo) => (
+                <div key={logo.name} className="flex-shrink-0 flex items-center justify-center group" title={logo.name}>
+                  <Image
                     src={logo.src}
                     alt={logo.name}
+                    width={120}
+                    height={24}
                     className={`${logo.h} w-auto max-w-[120px] object-contain invert brightness-0 opacity-50 group-hover:opacity-100 transition-opacity duration-200`}
                   />
                 </div>
@@ -1013,14 +1042,14 @@ export default function PricingView() {
               </div>
 
               {/* Categorized Rows */}
-              {COMPARISON_CATEGORIES.map((cat, catIdx) => (
-                <div key={catIdx} className="pt-8">
+              {COMPARISON_CATEGORIES.map((cat) => (
+                <div key={cat.name} className="pt-8">
                   <div className="text-xs font-mono uppercase tracking-[0.18em] text-[#888888] font-semibold mb-4">
                     {cat.name}
                   </div>
                   <div className="divide-y divide-[#eceae7]">
-                    {cat.features.map((feat, fIdx) => (
-                      <div key={fIdx} className="grid grid-cols-4 py-3.5 items-center text-sm">
+                    {cat.features.map((feat) => (
+                      <div key={feat.name} className="grid grid-cols-4 py-3.5 items-center text-sm">
                         <div className="text-[#333333] font-normal pr-4">
                           {feat.name}
                         </div>
@@ -1029,7 +1058,7 @@ export default function PricingView() {
                         <div className="text-center text-[#555555]">
                           {typeof feat.starter === 'boolean' ? (
                             feat.starter ? (
-                              <svg className="w-4 h-4 mx-auto text-[#080808]" viewBox="0 0 16 16" fill="currentColor">
+                              <svg className="w-4 h-4 mx-auto text-[#080808]" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                                 <path fillRule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.739a.75.75 0 0 1 1.04-.208Z" clipRule="evenodd" />
                               </svg>
                             ) : (
@@ -1044,7 +1073,7 @@ export default function PricingView() {
                         <div className="text-center text-[#555555]">
                           {typeof feat.growth === 'boolean' ? (
                             feat.growth ? (
-                              <svg className="w-4 h-4 mx-auto text-[#080808]" viewBox="0 0 16 16" fill="currentColor">
+                              <svg className="w-4 h-4 mx-auto text-[#080808]" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                                 <path fillRule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.739a.75.75 0 0 1 1.04-.208Z" clipRule="evenodd" />
                               </svg>
                             ) : (
@@ -1059,7 +1088,7 @@ export default function PricingView() {
                         <div className="text-center text-[#555555]">
                           {typeof feat.ultimate === 'boolean' ? (
                             feat.ultimate ? (
-                              <svg className="w-4 h-4 mx-auto text-[#080808]" viewBox="0 0 16 16" fill="currentColor">
+                              <svg className="w-4 h-4 mx-auto text-[#080808]" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                                 <path fillRule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.739a.75.75 0 0 1 1.04-.208Z" clipRule="evenodd" />
                               </svg>
                             ) : (
@@ -1091,10 +1120,11 @@ export default function PricingView() {
             
             {/* Left Photo Column */}
             <div className="lg:w-[45%] relative min-h-[300px] sm:min-h-[380px] lg:min-h-full overflow-hidden bg-zinc-200">
-              <img
+              <Image
                 src="/assets/customers/lattice_case.jpg"
                 alt="Executive Customer Case Study"
-                className="w-full h-full object-cover object-center block"
+                fill
+                className="object-cover object-center block"
               />
             </div>
 
@@ -1179,7 +1209,7 @@ export default function PricingView() {
                   onClick={() => trackFunnel('download_started', { source: 'pricing_faq' })}
                   className="inline-flex items-center justify-center gap-2 rounded-full bg-[#080808] text-white px-6 py-2.5 text-xs sm:text-[13px] font-medium hover:bg-zinc-800 transition-colors shadow-sm"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
                   Download Free (15 Profiles)
@@ -1192,7 +1222,7 @@ export default function PricingView() {
               {getPricingFaqs(upiId).map((faq, idx) => {
                 const isOpen = openFaq === idx;
                 return (
-                  <div key={idx} className="py-4">
+                  <div key={faq.question} className="py-4">
                     <button
                       type="button"
                       onClick={() => setOpenFaq(isOpen ? null : idx)}
@@ -1250,7 +1280,7 @@ export default function PricingView() {
                   onClick={() => trackFunnel('download_started', { source: 'pricing_prefooter' })}
                   className="inline-flex items-center justify-center gap-2 rounded-full bg-white text-black px-7 py-3 text-xs sm:text-[13px] font-medium transition-all duration-200 hover:bg-zinc-200 active:scale-[0.98] shadow-lg shadow-white/5"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
                   Download Free (15 Profiles)
@@ -1308,9 +1338,11 @@ export default function PricingView() {
 
             {/* UPI QR Code Container */}
             <div className="rounded-2xl bg-white p-4 flex flex-col items-center justify-center space-y-2">
-              <img
+              <Image
                 src={upiQrAsset}
                 alt="MAHI Browser UPI QR Code"
+                width={192}
+                height={192}
                 className="w-48 h-48 object-contain rounded-lg"
               />
               <div className="text-[11px] font-mono text-zinc-600 text-center font-medium">
@@ -1438,7 +1470,7 @@ export default function PricingView() {
               className="absolute top-4 right-4 text-zinc-400 hover:text-white p-1.5 rounded-lg transition-colors"
               aria-label="Close modal"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -1459,9 +1491,11 @@ export default function PricingView() {
             </div>
 
             <div className="rounded-2xl bg-white p-4 flex flex-col items-center justify-center space-y-2">
-              <img
+              <Image
                 src={usdtQrAsset}
                 alt="MAHI Browser USDT TRC-20 QR Code"
+                width={192}
+                height={192}
                 className="w-48 h-48 object-contain rounded-lg"
               />
               <div className="text-[11px] font-mono text-zinc-600 text-center font-medium">

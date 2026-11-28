@@ -1,5 +1,6 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { Sidebar, NavigationPage } from './components/Sidebar.js';
+import type React from 'react';
+import { useState, useEffect, Suspense, lazy } from 'react';
+import { Sidebar, type NavigationPage } from './components/Sidebar.js';
 import { Header } from './components/Header.js';
 import { ToastContainer } from './components/ToastContainer.js';
 import { AppLockModal } from './components/AppLockModal.js';
@@ -184,13 +185,15 @@ export const App: React.FC = () => {
         window.removeEventListener('focus', handleWindowFocus);
       };
     }
-  }, []);
+  }, [addLog, fetchLogs, fetchProfiles, fetchSettings, handleStatusChange]);
 
 
   // When user auth state changes, refresh profiles
   useEffect(() => {
-    fetchProfiles();
-  }, [currentUser, commercialUser]);
+    if (currentUser !== undefined || commercialUser !== undefined) {
+      fetchProfiles();
+    }
+  }, [currentUser, commercialUser, fetchProfiles]);
 
   const [isSynchronizerOpen, setIsSynchronizerOpen] = useState(false);
 
@@ -225,7 +228,7 @@ export const App: React.FC = () => {
     let isSpaceDown = false;
 
     const triggerQuickSwitch = async (profileNum: number) => {
-      if (isNaN(profileNum) || profileNum <= 0) return;
+      if (Number.isNaN(profileNum) || profileNum <= 0) return;
       try {
         const res = await window.mahiAPI.quickSwitchProfile(profileNum);
         if (!res.success) {
@@ -247,11 +250,11 @@ export const App: React.FC = () => {
             message: `Launched "${res.profile?.name || `Profile ${profileNum}`}"`,
           });
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         useToastStore.getState().showToast({
           type: 'error',
           title: 'Launch Error',
-          message: err?.message || 'Failed to switch profile',
+          message: err instanceof Error ? err.message : 'Failed to switch profile',
         });
       }
     };

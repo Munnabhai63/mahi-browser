@@ -12,8 +12,14 @@ import {
 import { automationScheduler } from '../../../../09_AUTOMATION/automation-scheduler.js';
 import { WARMING_TEMPLATES } from '../../../../09_AUTOMATION/cookie-warmer-service.js';
 import { getDatabase } from '../../../../06_DATABASE/connection.js';
-import { CreateWebhookEndpointDTO } from '../../../../10_CONFIG/shared/types/remote-api.js';
-import { parseBody, sendRemoteJSON, RemoteRouteContext } from './remote-shared.js';
+import type {
+  AutomationStep,
+  WorkflowExecutionPolicy,
+  WorkflowVariable,
+} from '../../../../10_CONFIG/shared/types/automation.js';
+import type { ProxyNetworkType, ProxySessionType } from '../../../../10_CONFIG/shared/types/proxy-provider.js';
+import type { CreateWebhookEndpointDTO } from '../../../../10_CONFIG/shared/types/remote-api.js';
+import { parseBody, sendRemoteJSON, type RemoteRouteContext } from './remote-shared.js';
 
 /** Handles remote proxy, automation RPA/scheduling, and outbound webhook routes. */
 export async function handleRemoteAutomationAndProxyRoutes(ctx: RemoteRouteContext): Promise<boolean> {
@@ -39,8 +45,8 @@ export async function handleRemoteAutomationAndProxyRoutes(ctx: RemoteRouteConte
     if (!requireAccess('proxy:read')) return true;
 
     const proxyService = ProxyProviderService.getInstance();
-    const catalog = proxyService.getCatalog({
-      networkType: (parsedUrl.searchParams.get('networkType') as any) || undefined,
+    const catalog = await proxyService.getCatalog({
+      networkType: (parsedUrl.searchParams.get('networkType') as ProxyNetworkType | null) || undefined,
       country: parsedUrl.searchParams.get('country') || undefined,
     });
 
@@ -51,7 +57,17 @@ export async function handleRemoteAutomationAndProxyRoutes(ctx: RemoteRouteConte
   if (route === 'proxies/generate' && method === 'POST') {
     if (!requireAccess('proxy:create')) return true;
 
-    const body = await parseBody(req);
+    const body = await parseBody<{
+      providerId?: string;
+      networkType: ProxyNetworkType;
+      country: string;
+      region?: string;
+      city?: string;
+      sessionType?: ProxySessionType;
+      ttlMinutes?: number;
+      workspaceId?: string;
+      profileId?: string;
+    }>(req);
     const proxyService = ProxyProviderService.getInstance();
     const planTier = auth.userRole === 'SUPER_ADMIN' || auth.userRole === 'ADMIN' ? 'ENTERPRISE' : 'PRO';
     const sessionResult = await proxyService.generateSession(
@@ -127,7 +143,16 @@ export async function handleRemoteAutomationAndProxyRoutes(ctx: RemoteRouteConte
     if (!requireAccess('automation:write')) return true;
     if (!requireFeature('automation.rpa')) return true;
 
-    const body = await parseBody(req);
+    const body = await parseBody<{
+      id?: string;
+      name: string;
+      description?: string;
+      workspaceId?: string;
+      steps: AutomationStep[];
+      variables?: WorkflowVariable[];
+      executionPolicy?: WorkflowExecutionPolicy;
+      tags?: string[];
+    }>(req);
     if (!body.name || !Array.isArray(body.steps)) {
       sendRemoteJSON(req, res, 400, { success: false, error: { code: 'INVALID_WORKFLOW', message: 'Workflow name and steps array are required' } }, requestId, rateLimit);
       return true;
@@ -180,7 +205,7 @@ export async function handleRemoteAutomationAndProxyRoutes(ctx: RemoteRouteConte
       return true;
     }
 
-    const body = await parseBody(req);
+    const body = await parseBody<{ profileId?: string }>(req);
     const runId = `run_${crypto.randomUUID()}`;
     webhookService.dispatchEvent('automation.started', { runId, workflowId }, { userId: auth.userId });
 
@@ -210,14 +235,25 @@ export async function handleRemoteAutomationAndProxyRoutes(ctx: RemoteRouteConte
     const db = getDatabase();
     const workflowIdFilter = parsedUrl.searchParams.get('workflowId');
     let runsQuery = 'SELECT * FROM automation_runs WHERE 1=1';
-    const params: any[] = [];
+    const params: string[] = [];
     if (workflowIdFilter) {
       runsQuery += ' AND workflow_id = ?';
       params.push(workflowIdFilter);
     }
     runsQuery += ' ORDER BY started_at DESC LIMIT 50';
 
-    const rows = db.prepare(runsQuery).all(...params) as any[];
+    interface AutomationRunRow {
+      id: string;
+      workflow_id: string;
+      profile_id: string;
+      status: string;
+      started_at: string;
+      completed_at: string | null;
+      duration_ms: number | null;
+      summary: string | null;
+    }
+
+    const rows = db.prepare(runsQuery).all<AutomationRunRow>(...params);
     const runs = rows.map((r) => ({
       id: r.id,
       workflowId: r.workflow_id,
@@ -266,7 +302,7 @@ export async function handleRemoteAutomationAndProxyRoutes(ctx: RemoteRouteConte
     if (!requireAccess('automation:write')) return true;
     if (!requireFeature('automation.scheduler')) return true;
 
-    const body = await parseBody(req);
+    const body = await parseBody<Parameters<typeof automationScheduler.createSchedule>[0]>(req);
     if (!body.workflowId || !body.scheduleType || !body.nextRunAt) {
       sendRemoteJSON(req, res, 400, { success: false, error: { code: 'INVALID_SCHEDULE', message: 'workflowId, scheduleType, and nextRunAt are required' } }, requestId, rateLimit);
       return true;
@@ -329,11 +365,11 @@ export async function handleRemoteAutomationAndProxyRoutes(ctx: RemoteRouteConte
   if (route === 'webhooks' && method === 'POST') {
     if (!requireAccess('webhooks:manage')) return true;
 
-    const body = await parseBody(req);
+    const body = await parseBody<CreateWebhookEndpointDTO & { allowHttp?: boolean }>(req);
     const allowHttp = Boolean(body.allowHttp);
     const { endpoint, secret } = webhookService.createEndpoint(
       auth.userId,
-      body as CreateWebhookEndpointDTO,
+      body,
       { allowHttp }
     );
 
@@ -429,7 +465,7 @@ export async function handleRemoteAutomationAndProxyRoutes(ctx: RemoteRouteConte
   if (whTestMatch && method === 'POST') {
     if (!requireAccess('webhooks:manage')) return true;
 
-    const body = await parseBody(req).catch(() => ({}));
+    const body = await parseBody<{ allowHttp?: boolean }>(req).catch(() => ({ allowHttp: false }));
     const allowHttp = Boolean(body.allowHttp);
     const delivery = await webhookService.sendTestWebhook(whTestMatch[1], auth.userId, allowHttp);
 

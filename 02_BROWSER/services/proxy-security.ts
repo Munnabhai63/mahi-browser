@@ -200,7 +200,17 @@ export function assertSafeProxyTargetSyntax(
     throw new ProxySecurityError('INVALID_CONFIG', 'Proxy host is required');
   }
   const trimmed = rawHost.trim();
-  if (!trimmed || /[\s\x00-\x1f\x7f@/\\?#]/.test(trimmed)) {
+  let hasInvalidChars = !trimmed || /[\s@/\\?#]/.test(trimmed);
+  if (!hasInvalidChars) {
+    for (let i = 0; i < trimmed.length; i++) {
+      const code = trimmed.charCodeAt(i);
+      if (code <= 0x1f || code === 0x7f) {
+        hasInvalidChars = true;
+        break;
+      }
+    }
+  }
+  if (hasInvalidChars) {
     throw new ProxySecurityError('INVALID_CONFIG', 'Proxy host contains invalid characters');
   }
 
@@ -286,10 +296,11 @@ export async function assertSafeProxyTargetRuntime(
   try {
     const resolved = await lookupFn(cleanHost, { all: true, verbatim: true });
     records = Array.isArray(resolved) ? resolved : [resolved];
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errno = err as NodeJS.ErrnoException | null;
     throw new ProxySecurityError(
       'DNS_RESOLUTION_FAILED',
-      `Failed to resolve proxy hostname: ${err?.code || 'ENOTFOUND'}`
+      `Failed to resolve proxy hostname: ${errno?.code || 'ENOTFOUND'}`
     );
   }
 

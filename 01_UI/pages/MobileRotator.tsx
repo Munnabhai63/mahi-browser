@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import type React from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Smartphone,
   RefreshCw,
@@ -19,49 +20,12 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useToastStore } from '../stores/useToastStore.js';
-
-interface PublicIpInfo {
-  ip: string;
-  country?: string;
-  countryCode?: string;
-  city?: string;
-  isp?: string;
-  error?: string;
-}
-
-interface AdbDeviceItem {
-  id: string;
-  model: string;
-  product?: string;
-  status: 'device' | 'offline' | 'unauthorized';
-}
-
-interface AdbEnvironmentStatus {
-  installed: boolean;
-  adbPath: string | null;
-  source: 'env' | 'custom' | 'bundled' | 'managed' | 'sdk' | 'path' | 'missing';
-  managedInstallDir: string;
-  platform: string;
-  downloadUrl: string;
-  version?: string;
-  error?: string;
-}
-
-interface MobileRotationHistoryEntry {
-  id: string;
-  timestamp: string;
-  method: 'adb' | 'webhook';
-  oldIp: string;
-  newIp: string;
-  ipChanged: boolean;
-  durationMs: number;
-  status: 'SUCCESS' | 'NO_CHANGE' | 'COOLDOWN_SKIPPED' | 'FAILED';
-  triggerSource: 'manual' | 'profile-start';
-  profileId?: string;
-  deviceId?: string;
-  strategy?: string;
-  message?: string;
-}
+import type {
+  MobileRotatorAdbDevice as AdbDeviceItem,
+  MobileRotatorAdbStatus as AdbEnvironmentStatus,
+  MobileRotatorHistoryEntry as MobileRotationHistoryEntry,
+  MobileRotatorIpInfo as PublicIpInfo,
+} from '../../10_CONFIG/shared/types/mobile.js';
 
 export const MobileRotator: React.FC = () => {
   const { showToast } = useToastStore();
@@ -636,7 +600,7 @@ export const MobileRotator: React.FC = () => {
           {/* Auto-rotate Toggle, Cooldown & Save */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2 border-t border-slate-100">
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-              <label className="flex items-center gap-2.5 text-sm font-medium text-slate-700 cursor-pointer">
+              <label htmlFor="field-001" className="flex items-center gap-2.5 text-sm font-medium text-slate-700 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={autoRotateOnStart}

@@ -1,6 +1,6 @@
 import { getProfileById, updateProfile } from '../02_BROWSER/services/profile-service.js';
-import { getProxyById } from '../02_BROWSER/services/proxy-service.js';
-import { DiagnosticCheck, ProfileAuditReport, StealthGrade } from '../10_CONFIG/shared/types/diagnostics.js';
+import type { DiagnosticCheck, ProfileAuditReport, StealthGrade } from '../10_CONFIG/shared/types/diagnostics.js';
+import type { PartialProfileSettings } from '../10_CONFIG/shared/types/profile.js';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import {
   validateAndNormalizeFingerprintCoherence,
@@ -16,11 +16,10 @@ export function auditProfileFingerprint(profileId: string): ProfileAuditReport {
     throw new Error(`Profile ${profileId} not found`);
   }
 
-  const s = profile.settings || ({} as any);
+  const s: PartialProfileSettings = profile.settings || {};
   const fp = s.fingerprint || {};
   const net = s.network || {};
   const loc = s.locale || {};
-  const br = s.browser || {};
   const disp = s.display || {};
 
   const checks: DiagnosticCheck[] = [];
@@ -64,8 +63,8 @@ export function auditProfileFingerprint(profileId: string): ProfileAuditReport {
 
   // 2. Canvas Fingerprint Noise
   const canvasMode = fp.canvas || 'noise';
-  let canvasStatus: DiagnosticCheck['status'] = canvasMode === 'noise' ? 'PASS' : canvasMode === 'block' ? 'WARN' : 'FAIL';
-  let canvasScore = canvasMode === 'noise' ? 100 : canvasMode === 'block' ? 70 : 40;
+  const canvasStatus: DiagnosticCheck['status'] = canvasMode === 'noise' ? 'PASS' : canvasMode === 'block' ? 'WARN' : 'FAIL';
+  const canvasScore = canvasMode === 'noise' ? 100 : canvasMode === 'block' ? 70 : 40;
   checks.push({
     id: 'check-canvas',
     category: 'CANVAS',
@@ -84,8 +83,8 @@ export function auditProfileFingerprint(profileId: string): ProfileAuditReport {
   const renderer = fp.webglRenderer || 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Direct3D11 vs_5_0 ps_5_0, D3D11)';
   const isRealGpu = !renderer.toLowerCase().includes('swiftshader') && !renderer.toLowerCase().includes('llvmpipe');
   
-  let webglStatus: DiagnosticCheck['status'] = (webglMode === 'noise' && isRealGpu) ? 'PASS' : 'WARN';
-  let webglScore = webglStatus === 'PASS' ? 100 : 65;
+  const webglStatus: DiagnosticCheck['status'] = (webglMode === 'noise' && isRealGpu) ? 'PASS' : 'WARN';
+  const webglScore = webglStatus === 'PASS' ? 100 : 65;
 
   checks.push({
     id: 'check-webgl',
@@ -229,13 +228,13 @@ export function autoFixProfileFingerprint(profileId: string): ProfileAuditReport
     throw new Error(`Profile ${profileId} not found`);
   }
 
-  const s = profile.settings || ({} as any);
+  const s: PartialProfileSettings = profile.settings || {};
   const fp = s.fingerprint || {};
   const isCamoufox = s.browser?.engine === 'camoufox';
-  const isMac = s.browser?.userAgent && s.browser.userAgent.includes('Macintosh');
+  const isMac = Boolean(s.browser?.userAgent?.includes('Macintosh'));
 
   let fixedUa = s.browser?.userAgent;
-  if (isCamoufox && (!fixedUa || !fixedUa.includes('Firefox'))) {
+  if (isCamoufox && !fixedUa?.includes('Firefox')) {
     fixedUa = isMac
       ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0'
       : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0';
@@ -263,7 +262,7 @@ export function autoFixProfileFingerprint(profileId: string): ProfileAuditReport
     },
     network: {
       ...(s.network || {}),
-      webrtc: 'noise' as any,
+      webrtc: 'noise' as const,
     },
     display: {
       ...(s.display || {}),

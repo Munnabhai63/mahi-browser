@@ -1,25 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import type React from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Layers,
-  Play,
-  Square,
-  Shield,
-  PlaySquare,
-  Plus,
-  ArrowRight,
-  Activity,
-  FolderPlus,
-  CheckCircle2,
-  Clock,
-  ExternalLink,
-  Settings as SettingsIcon,
   Database,
   Download,
   Upload,
   Lock,
-  Zap,
   X,
-  AlertCircle,
   RefreshCw,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
@@ -29,8 +15,7 @@ import { useLogStore } from '../stores/useLogStore.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { useAccountStore } from '../stores/useAccountStore.js';
 import { StudentWorkspaceDashboard } from '../components/StudentWorkspaceDashboard.js';
-import { FleetResourceSummary } from '../../10_CONFIG/shared/types/resources.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 
 interface DashboardProps {
   onNavigate: (page: NavigationPage) => void;
@@ -40,7 +25,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const { profiles, fetchProfiles } = useProfileStore();
   const { proxies, fetchProxies } = useProxyStore();
   const { workflows, fetchWorkflows } = useAutomationStore();
-  const { logs, fetchLogs } = useLogStore();
+  const { logs: _logs, fetchLogs } = useLogStore();
   const { showToast } = useToastStore();
   const { currentUser, planLimits, trialStatus } = useAccountStore();
   const isPro = Boolean(planLimits?.isPro || (planLimits?.plan && planLimits.plan !== 'free'));
@@ -88,7 +73,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     fetchProxies();
     fetchWorkflows();
     fetchLogs();
-  }, []);
+  }, [fetchWorkflows, fetchProxies, fetchProfiles, fetchLogs]);
 
   const handleExportVaultAction = async () => {
     setIsProcessingVault(true);
@@ -185,7 +170,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
         {/* Action Controls */}
         <div className="flex items-center space-x-2.5">
-          <button
+          <button type="button"
             onClick={() => {
               setVaultMode('export');
               setIsVaultModalOpen(true);
@@ -219,7 +204,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                   </p>
                 </div>
               </div>
-              <button
+              <button type="button"
                 onClick={() => setIsVaultModalOpen(false)}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white transition"
               >
@@ -238,7 +223,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
+                    <label htmlFor="field-001" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
                       <Lock size={14} className="text-emerald-500" />
                       Encryption Password (Optional):
                     </label>
@@ -256,11 +241,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 <div className="space-y-4">
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <label htmlFor="field-002" className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                         <Upload size={14} className="text-emerald-500" />
                         Select or Paste .mahi-vault Backup:
                       </label>
-                      <label className="cursor-pointer text-xs font-medium text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1 rounded-lg border border-emerald-500/20 transition-all flex items-center gap-1">
+                      <label htmlFor="field-003" className="cursor-pointer text-xs font-medium text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1 rounded-lg border border-emerald-500/20 transition-all flex items-center gap-1">
                         <span>Browse File...</span>
                         <input
                           type="file"
@@ -290,7 +275,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
+                    <label htmlFor="field-004" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
                       <Lock size={14} className="text-emerald-500" />
                       Decryption Password (If encrypted):
                     </label>

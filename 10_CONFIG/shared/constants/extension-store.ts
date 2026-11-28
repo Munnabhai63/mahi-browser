@@ -1,4 +1,4 @@
-import { StoreExtension } from '../types/extension.js';
+import type { StoreExtension } from '../types/extension.js';
 
 export const CURATED_STORE_EXTENSIONS: StoreExtension[] = [
   {

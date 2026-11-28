@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import {
   Shield,
   Globe,
@@ -9,7 +10,7 @@ import {
 } from 'lucide-react';
 import { ProxySessionModal } from '../components/ProxySessionModal.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
-import { ProxyUsageReport } from '../../../10_CONFIG/shared/types/proxy-provider.js';
+import type { ProxyUsageReport } from '../../../10_CONFIG/shared/types/proxy-provider.js';
 
 export interface WebProxySession {
   sessionId: string;
@@ -137,6 +138,7 @@ export const ProxiesPage: React.FC<ProxiesPageProps> = ({
         {/* Sub Navigation */}
         <div className="p-4 border-b border-slate-800 flex items-center space-x-2">
           <button
+            type="button"
             onClick={() => setActiveTab('SESSIONS')}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
               activeTab === 'SESSIONS'
@@ -147,6 +149,7 @@ export const ProxiesPage: React.FC<ProxiesPageProps> = ({
             Active Sessions ({sessions.length})
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('CATALOG')}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
               activeTab === 'CATALOG'

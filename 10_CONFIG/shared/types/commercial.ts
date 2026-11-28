@@ -187,6 +187,9 @@ export interface AdminPricingPreview {
     newMonthlyPaise: number;
     oldAnnualPaise: number;
     newAnnualPaise: number;
+    monthlyChanged?: boolean;
+    annualChanged?: boolean;
+    monthlyPercentChange?: number;
   }>;
   priceDiffs?: Array<{
     planId: CanonicalPlanId;
@@ -195,6 +198,9 @@ export interface AdminPricingPreview {
     newMonthlyPaise: number;
     oldAnnualPaise: number;
     newAnnualPaise: number;
+    monthlyChanged?: boolean;
+    annualChanged?: boolean;
+    monthlyPercentChange?: number;
   }>;
   annualDiscountChange: { old: number; new: number } | null;
   annualDiscountPercent?: number;
@@ -237,6 +243,13 @@ export interface CommercialUser {
   signupIntent?: string;
   pendingPlanId?: string;
   pendingBillingCycle?: string;
+  is_trial?: boolean;
+  trial_started_at?: string;
+  trial_expires_at?: string;
+  trial_used?: boolean;
+  signup_intent?: string;
+  pending_plan_id?: string;
+  pending_billing_cycle?: string;
   googleSub?: string;
   avatarUrl?: string;
   authProvider?: string;
@@ -442,4 +455,191 @@ export interface AdminDashboardStats {
   recentAuditLogs: CommercialAuditLog[];
   openTickets?: number;
   escalatedTickets?: number;
+}
+
+export interface AccountSession {
+  token: string;
+  refreshToken?: string;
+  account_id: string;
+  email: string;
+  name?: string;
+  role?: string;
+  status?: string;
+  plan?: string;
+  profile_quota?: number;
+  sync_key: string | null;
+  saved_at: string;
+  auth_provider?: string;
+  google_sub?: string;
+}
+
+export interface AccountUserSummary {
+  id: string;
+  email: string;
+  name?: string;
+  role?: string;
+  status?: string;
+  plan?: string;
+  planId?: string;
+  profileQuota?: number;
+  sync_key?: string | null;
+  [key: string]: unknown;
+}
+
+export interface AccountAuthActionResponse {
+  success: boolean;
+  token?: string;
+  user?: AccountUserSummary;
+  error?: string;
+  code?: string;
+  message?: string;
+  deviceMismatch?: boolean;
+  device_limit?: boolean;
+}
+
+export interface AccountStatusSummary {
+  plan?: string;
+  profile_limit?: number;
+  sync_allowed?: boolean;
+  expires_at?: string | null;
+  account_id?: string;
+  [key: string]: unknown;
+}
+
+export interface AccountPaymentInfo {
+  success?: boolean;
+  upi_id: string;
+  upi_account_holder?: string;
+  upi_qr_asset?: string;
+  price_inr: number;
+  price_usd?: number;
+  price_usdt: number;
+  usdt_address: string;
+  usdt_network: string;
+  usdt_qr_asset?: string;
+  usdt_enabled?: boolean;
+  whatsapp_number: string;
+}
+
+export interface AccountPricingCatalogItem {
+  planId: string;
+  displayName: string;
+  category?: PlanCategory;
+  monthlyPriceDisplay?: string;
+  annualPriceDisplay?: string;
+  monthlyPricePaise: number;
+  annualPricePaise: number;
+  currency?: string;
+  profileLimit: number;
+  seatLimit?: number;
+  cloudMinutesMonthly?: number;
+  proxyDataGbMonthly?: number;
+  features: string[];
+  capabilities?: Record<FeatureCapability, boolean>;
+  status?: PlanStatus;
+  displayOrder?: number;
+  isPopular?: boolean;
+  catalogVersion?: number;
+}
+
+export interface AccountPricingCatalog {
+  catalogVersion?: number;
+  annualDiscountPercent?: number;
+  currency?: string;
+  personal: AccountPricingCatalogItem[];
+  business: AccountPricingCatalogItem[];
+  free?: AccountPricingCatalogItem;
+}
+
+export interface AccountCheckoutPayload {
+  planId?: string;
+  plan_id?: string;
+  billingCycle?: string;
+  billing_cycle?: string;
+  currency?: string;
+  provider?: string;
+  extraMembers?: number;
+  extraProxyGb?: number;
+  successUrl?: string;
+  cancelUrl?: string;
+}
+
+export interface AccountCheckoutSession {
+  checkoutUrl?: string;
+  url?: string;
+  sessionId?: string;
+  [key: string]: unknown;
+}
+
+export interface AccountPaymentRecord {
+  id?: string;
+  planId?: string;
+  plan_id?: string;
+  amountPaise?: number;
+  amount_paise?: number;
+  currency?: string;
+  status?: string;
+  provider?: string;
+  externalPaymentId?: string;
+  external_payment_id?: string;
+  rejection_reason?: string;
+  metadata?: {
+    rejectionReason?: string;
+    [key: string]: unknown;
+  };
+  createdAt?: string;
+  created_at?: string;
+}
+
+export interface AccountActiveSessionRecord {
+  id: string;
+  deviceId?: string;
+  deviceName?: string;
+  device_name?: string;
+  platform?: string;
+  ipAddress?: string;
+  isCurrent?: boolean;
+  is_current?: boolean;
+  createdAt?: string;
+  lastSeenAt?: string;
+  last_used_at?: string;
+  [key: string]: unknown;
+}
+
+export interface AccountTrialStatus {
+  success?: boolean;
+  isTrialActive?: boolean;
+  daysRemaining?: number;
+  isEligibleForTrial?: boolean;
+  error?: string;
+}
+
+export interface CommercialLoginIPCRequest {
+  email?: string;
+  password?: string;
+  mode?: 'CHECK_LICENSE' | 'ACTIVATE_LICENSE' | string;
+  licenseKey?: string;
+  deviceId?: string;
+  deviceName?: string;
+}
+
+export interface CommercialLoginIPCResponse {
+  success?: boolean;
+  needsLicense?: boolean;
+  licenseKey?: string;
+  token?: string;
+  user?: CommercialUser;
+  entitlements?: CommercialEntitlements;
+  error?: string;
+  message?: string;
+}
+
+export interface CommercialActivateKeyResponse {
+  success: boolean;
+  license?: {
+    id: string;
+    keyMasked: string;
+    expiresAt: string | null;
+  };
+  message: string;
 }

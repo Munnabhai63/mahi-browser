@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import https from 'node:https';
 import http from 'node:http';
-import { app, BrowserWindow, safeStorage } from './electron-bridge.js';
+import { BrowserWindow, safeStorage } from './electron-bridge.js';
 import { getHWID } from './license-service.js';
 import { getInstallSecrets } from './install-secrets.js';
 import { ADMIN_API_BASE_URL } from './license-status-service.js';
@@ -73,6 +73,121 @@ export interface PaymentInfo {
   whatsapp_number: string;
 }
 
+export interface AccountUserPayload {
+  id: string;
+  email: string;
+  name?: string;
+  role?: string;
+  status?: string;
+  plan?: string;
+  planId?: string;
+  profileQuota?: number;
+  sync_key?: string | null;
+  [key: string]: unknown;
+}
+
+export interface AccountTrialStatus {
+  isTrialActive?: boolean;
+  daysRemaining?: number;
+  isEligibleForTrial?: boolean;
+  [key: string]: unknown;
+}
+
+export interface AccountEntitlementsPayload {
+  maxProfiles?: number;
+  plan?: string;
+  [key: string]: unknown;
+}
+
+export interface AccountCheckoutPayload {
+  planId?: string;
+  plan_id?: string;
+  billingCycle?: string;
+  billing_cycle?: string;
+  currency?: string;
+  provider?: string;
+  extraMembers?: number;
+  extraProxyGb?: number;
+  successUrl?: string;
+  cancelUrl?: string;
+}
+
+export interface AccountCheckoutSession {
+  checkoutUrl?: string;
+  url?: string;
+  sessionId?: string;
+  [key: string]: unknown;
+}
+
+interface AccountApiResponseBody {
+  error?: string | { message?: string };
+  message?: string;
+  token?: string;
+  refreshToken?: string;
+  tokens?: { accessToken?: string; refreshToken?: string };
+  user?: AccountUserPayload;
+  trialStatus?: AccountTrialStatus;
+  entitlements?: AccountEntitlementsPayload;
+  data?: unknown;
+  catalog?: Record<string, unknown>;
+  session?: AccountCheckoutSession;
+  payments?: Array<Record<string, unknown>>;
+  checkoutUrl?: string;
+  success?: boolean;
+  device_ok?: boolean;
+  payment_id?: string;
+  status?: string;
+  utr?: string;
+  amount_paise?: number;
+  tx_hash?: string;
+  amount_cents?: number;
+  upi_id?: string;
+  upi_account_holder?: string;
+  upi_qr_asset?: string;
+  whatsapp_number?: string;
+  price_inr?: number;
+  price_usd?: number;
+  price_usdt?: number;
+  usdt_address?: string;
+  usdt_network?: string;
+  usdt_qr_asset?: string;
+  usdt_enabled?: boolean;
+  account_id?: string;
+  plan?: CachedAccountStatus['plan'];
+  profile_limit?: number;
+  sync_allowed?: boolean;
+  expires_at?: string | null;
+  server_time?: number;
+  sig?: string;
+  sync_key?: string | null;
+  isTrialActive?: boolean;
+  daysRemaining?: number;
+  isEligibleForTrial?: boolean;
+  [key: string]: unknown;
+}
+
+interface AccountHttpResponse {
+  statusCode: number;
+  headers: http.IncomingHttpHeaders;
+  body: AccountApiResponseBody;
+}
+
+type LoginHttpError = Error & { status?: number; device_limit?: boolean };
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function extractApiError(body: AccountApiResponseBody | undefined, fallback: string): string {
+  if (!body) return fallback;
+  if (typeof body.error === 'string' && body.error) return body.error;
+  if (body.error && typeof body.error === 'object' && typeof body.error.message === 'string' && body.error.message) {
+    return body.error.message;
+  }
+  if (typeof body.message === 'string' && body.message) return body.message;
+  return fallback;
+}
+
 // In-memory runtime state
 let currentSession: AccountSession | null = null;
 let statusCheckTimer: NodeJS.Timeout | null = null;
@@ -107,12 +222,12 @@ function getStatusCacheFilePath(): string {
 // ============================================================================
 function encryptPayload(plainText: string): Buffer {
   try {
-    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+    if (safeStorage?.isEncryptionAvailable()) {
       const encrypted = safeStorage.encryptString(plainText);
-      return Buffer.from('SAFE_STORAGE_V1:' + encrypted.toString('base64'), 'utf8');
+      return Buffer.from(`SAFE_STORAGE_V1:${encrypted.toString('base64')}`, 'utf8');
     }
-  } catch (err: any) {
-    log.warn('[AccountService] safeStorage failed, using machine AES fallback:', err?.message);
+  } catch (err: unknown) {
+    log.warn('[AccountService] safeStorage failed, using machine AES fallback:', errMsg(err));
   }
 
   // Fallback: AES-256-GCM keyed with CSPRNG install secrets or hardware ID (never plaintext on disk)
@@ -120,9 +235,9 @@ function encryptPayload(plainText: string): Buffer {
   try {
     secretKey = getInstallSecrets().jwtSecret;
   } catch {
-    secretKey = getHWID() + 'mahi-account-enc-2026';
+    secretKey = `${getHWID()}mahi-account-enc-2026`;
   }
-  const key = crypto.createHash('sha256').update(secretKey || (getHWID() + 'mahi-account-enc-2026')).digest();
+  const key = crypto.createHash('sha256').update(secretKey || `${getHWID()}mahi-account-enc-2026`).digest();
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const ciphertext = Buffer.concat([cipher.update(plainText, 'utf8'), cipher.final()]);
@@ -135,20 +250,20 @@ function decryptPayload(rawBuffer: Buffer): string | null {
 
   // Try SAFE_STORAGE_V1: envelope
   if (str.startsWith('SAFE_STORAGE_V1:')) {
-    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+    if (safeStorage?.isEncryptionAvailable()) {
       try {
         const b64 = str.slice('SAFE_STORAGE_V1:'.length);
         return safeStorage.decryptString(Buffer.from(b64, 'base64'));
       } catch (err) {
         log.debug('SAFE_STORAGE_V1 session decryption attempt skipped', {
-          err: err instanceof Error ? err.message : String(err),
+          err: errMsg(err),
         });
       }
     }
   }
 
   // Try legacy raw safeStorage
-  if (safeStorage && safeStorage.isEncryptionAvailable() && !rawBuffer.subarray(0, 7).equals(Buffer.from('AESGCM:'))) {
+  if (safeStorage?.isEncryptionAvailable() && !rawBuffer.subarray(0, 7).equals(Buffer.from('AESGCM:'))) {
     try {
       return safeStorage.decryptString(rawBuffer);
     } catch (err) {
@@ -179,7 +294,7 @@ function decryptPayload(rawBuffer: Buffer): string | null {
 
     // Try with HWID fallback key
     try {
-      const key = crypto.createHash('sha256').update(getHWID() + 'mahi-account-enc-2026').digest();
+      const key = crypto.createHash('sha256').update(`${getHWID()}mahi-account-enc-2026`).digest();
       const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
       decipher.setAuthTag(tag);
       return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
@@ -222,8 +337,8 @@ export async function saveEncryptedSessionAsync(session: AccountSession): Promis
   try {
     const encrypted = encryptPayload(jsonStr);
     await fs.promises.writeFile(filePath, encrypted);
-  } catch (err: any) {
-    log.error('[AccountService] Failed to persist encrypted session asynchronously:', err?.message);
+  } catch (err: unknown) {
+    log.error('[AccountService] Failed to persist encrypted session asynchronously:', errMsg(err));
   }
 }
 
@@ -237,11 +352,11 @@ export async function loadEncryptedSessionAsync(): Promise<AccountSession | null
     const rawBuffer = await fs.promises.readFile(filePath);
     const decryptedStr = decryptPayload(rawBuffer);
     if (decryptedStr) {
-      currentSession = JSON.parse(decryptedStr);
+      currentSession = JSON.parse(decryptedStr) as AccountSession;
       return currentSession;
     }
-  } catch (err: any) {
-    log.error('[AccountService] Failed to decrypt session file asynchronously:', err?.message);
+  } catch (err: unknown) {
+    log.error('[AccountService] Failed to decrypt session file asynchronously:', errMsg(err));
   }
 
   return null;
@@ -295,8 +410,8 @@ export function saveEncryptedSession(session: AccountSession): void {
   try {
     const encrypted = encryptPayload(jsonStr);
     fs.writeFileSync(filePath, encrypted);
-  } catch (err: any) {
-    log.error('[AccountService] Failed to persist encrypted session:', err?.message);
+  } catch (err: unknown) {
+    log.error('[AccountService] Failed to persist encrypted session:', errMsg(err));
   }
 }
 
@@ -310,11 +425,11 @@ export function loadEncryptedSession(): AccountSession | null {
     const rawBuffer = fs.readFileSync(filePath);
     const decryptedStr = decryptPayload(rawBuffer);
     if (decryptedStr) {
-      currentSession = JSON.parse(decryptedStr);
+      currentSession = JSON.parse(decryptedStr) as AccountSession;
       return currentSession;
     }
-  } catch (err: any) {
-    log.error('[AccountService] Failed to decrypt session file:', err?.message);
+  } catch (err: unknown) {
+    log.error('[AccountService] Failed to decrypt session file:', errMsg(err));
   }
 
   return null;
@@ -411,8 +526,8 @@ export async function writeCachedStatusAsync(status: CachedAccountStatus): Promi
     const jsonStr = JSON.stringify(status);
     const encrypted = encryptPayload(jsonStr);
     await fs.promises.writeFile(p, encrypted);
-  } catch (err: any) {
-    log.error('[AccountService] Failed to write encrypted status cache asynchronously:', err?.message);
+  } catch (err: unknown) {
+    log.error('[AccountService] Failed to write encrypted status cache asynchronously:', errMsg(err));
   }
 }
 
@@ -483,8 +598,8 @@ export function writeCachedStatus(status: CachedAccountStatus): void {
     const jsonStr = JSON.stringify(status);
     const encrypted = encryptPayload(jsonStr);
     fs.writeFileSync(p, encrypted);
-  } catch (err: any) {
-    log.error('[AccountService] Failed to write encrypted status cache:', err?.message);
+  } catch (err: unknown) {
+    log.error('[AccountService] Failed to write encrypted status cache:', errMsg(err));
   }
 }
 
@@ -529,7 +644,7 @@ export function verifyAccountStatusSignature(
 // ============================================================================
 // HTTP NETWORK HELPER
 // ============================================================================
-function makeRequest(urlStr: string, options: https.RequestOptions, bodyData?: any): Promise<{ statusCode: number; headers: http.IncomingHttpHeaders; body: any }> {
+function makeRequest(urlStr: string, options: https.RequestOptions, bodyData?: unknown): Promise<AccountHttpResponse> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(urlStr);
     const client = parsed.protocol === 'http:' ? http : https;
@@ -537,18 +652,23 @@ function makeRequest(urlStr: string, options: https.RequestOptions, bodyData?: a
       let data = '';
       res.on('data', (c) => data += c);
       res.on('end', () => {
-        let parsedBody = data;
+        let parsedBody: AccountApiResponseBody = {};
         try {
-          parsedBody = JSON.parse(data);
+          const decoded: unknown = JSON.parse(data);
+          if (decoded && typeof decoded === 'object' && !Array.isArray(decoded)) {
+            parsedBody = decoded as AccountApiResponseBody;
+          } else {
+            parsedBody = { data: decoded };
+          }
         } catch (err) {
           log.debug('Account API response body preserved as raw text', {
-            err: err instanceof Error ? err.message : String(err),
+            err: errMsg(err),
           });
         }
         resolve({
           statusCode: res.statusCode || 0,
           headers: res.headers,
-          body: parsedBody
+          body: parsedBody,
         });
       });
     });
@@ -571,32 +691,35 @@ function makeRequest(urlStr: string, options: https.RequestOptions, bodyData?: a
 // ============================================================================
 // ACCOUNT CLIENT APIS
 // ============================================================================
-export async function signup(email: string, password: string, name?: string): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
+export async function signup(
+  email: string,
+  password: string,
+  name?: string
+): Promise<{ success: boolean; token?: string; user?: AccountUserPayload; error?: string }> {
   const hwid = getHWID();
-  let res: any;
+  let res: AccountHttpResponse;
   try {
     // Try primary Central Auth endpoint
     res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/register`, {
-      method: 'POST'
+      method: 'POST',
     }, { email, password, name, deviceId: hwid });
     if (res?.statusCode === 404) {
       res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/signup`, {
-        method: 'POST'
+        method: 'POST',
       }, { email, password, hwid });
     }
   } catch {
     // Fallback to legacy endpoint if admin URL routes differently
     res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/signup`, {
-      method: 'POST'
+      method: 'POST',
     }, { email, password, hwid });
   }
 
   if (res.statusCode !== 201 && res.statusCode !== 200) {
-    const errMsg = res.body?.error || `Signup failed (HTTP ${res.statusCode})`;
-    throw new Error(errMsg);
+    throw new Error(extractApiError(res.body, `Signup failed (HTTP ${res.statusCode})`));
   }
 
-  const token = res.body.token || res.body.tokens?.accessToken;
+  const token = res.body.token || res.body.tokens?.accessToken || '';
   const refreshToken = res.body.tokens?.refreshToken || res.body.refreshToken;
   const user = res.body.user;
   if (!token) throw new Error('Missing session token in signup response');
@@ -626,33 +749,35 @@ export async function signup(email: string, password: string, name?: string): Pr
   return { success: true, token, user };
 }
 
-export async function login(email: string, password: string): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
+export async function login(
+  email: string,
+  password: string
+): Promise<{ success: boolean; token?: string; user?: AccountUserPayload; error?: string }> {
   const hwid = getHWID();
-  let res: any;
+  let res: AccountHttpResponse;
   try {
     res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/login`, {
-      method: 'POST'
+      method: 'POST',
     }, { email, password, deviceId: hwid, deviceName: 'Windows Desktop', platform: process.platform || 'windows' });
     if (res?.statusCode === 404) {
       res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/login`, {
-        method: 'POST'
+        method: 'POST',
       }, { email, password, hwid });
     }
   } catch {
     res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/login`, {
-      method: 'POST'
+      method: 'POST',
     }, { email, password, hwid });
   }
 
   if (res.statusCode !== 200) {
-    const errMsg = res.body?.error || `Login failed (HTTP ${res.statusCode})`;
-    const err: any = new Error(errMsg);
+    const err: LoginHttpError = new Error(extractApiError(res.body, `Login failed (HTTP ${res.statusCode})`));
     err.status = res.statusCode;
     err.device_limit = res.body?.device_ok === false;
     throw err;
   }
 
-  const token = res.body.token || res.body.tokens?.accessToken;
+  const token = res.body.token || res.body.tokens?.accessToken || '';
   const refreshToken = res.body.tokens?.refreshToken || res.body.refreshToken;
   const user = res.body.user;
 
@@ -667,39 +792,41 @@ export async function login(email: string, password: string): Promise<{ success:
     plan: user?.planId || 'free',
     profile_quota: user?.profileQuota || 10,
     sync_key: null,
-    saved_at: new Date().toISOString()
+    saved_at: new Date().toISOString(),
   });
 
   try {
     await fetchAndCacheStatus();
   } catch (err) {
     log.debug('Post-signup status cache warm-up failed cleanly', {
-      err: err instanceof Error ? err.message : String(err),
+      err: errMsg(err),
     });
   }
 
   return { success: true, token, user };
 }
 
-export async function loginWithToken(rawToken: string, refreshToken?: string): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
+export async function loginWithToken(
+  rawToken: string,
+  refreshToken?: string
+): Promise<{ success: boolean; token?: string; user?: AccountUserPayload; error?: string }> {
   const token = (rawToken || '').trim();
   if (!token) throw new Error('Token is required');
 
-  let res: any;
+  let res: AccountHttpResponse;
   try {
     res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/me`, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${token}`
-      }
+        Authorization: `Bearer ${token}`,
+      },
     });
-  } catch (err: any) {
-    throw new Error(err?.message || 'Failed to connect to central authentication server.');
+  } catch (err: unknown) {
+    throw new Error(errMsg(err) || 'Failed to connect to central authentication server.');
   }
 
   if (res.statusCode !== 200 || !res.body?.user) {
-    const errMsg = res.body?.error || `Invalid or expired session token (HTTP ${res.statusCode})`;
-    throw new Error(errMsg);
+    throw new Error(extractApiError(res.body, `Invalid or expired session token (HTTP ${res.statusCode})`));
   }
 
   const user = res.body.user;
@@ -777,7 +904,7 @@ export async function refreshAccountToken(): Promise<{ success: boolean; token?:
       method: 'POST'
     }, { refreshToken: session.refreshToken });
 
-    if (res.statusCode === 200 && res.body?.tokens) {
+    if (res.statusCode === 200 && res.body?.tokens?.accessToken) {
       session.token = res.body.tokens.accessToken;
       if (res.body.tokens.refreshToken) {
         session.refreshToken = res.body.tokens.refreshToken;
@@ -786,9 +913,9 @@ export async function refreshAccountToken(): Promise<{ success: boolean; token?:
       await saveEncryptedSessionAsync(session);
       return { success: true, token: session.token };
     }
-    return { success: false, error: res.body?.error || 'Token refresh failed' };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Network error during token refresh' };
+    return { success: false, error: extractApiError(res.body, 'Token refresh failed') };
+  } catch (err: unknown) {
+    return { success: false, error: errMsg(err) || 'Network error during token refresh' };
   }
 }
 
@@ -799,12 +926,12 @@ export async function logout(): Promise<{ success: boolean }> {
       await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/logout`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.token}`
-        }
+          Authorization: `Bearer ${session.token}`,
+        },
       }, { token: session.token });
     } catch (err) {
       log.debug('Server-side logout notification failed; clearing local session anyway', {
-        err: err instanceof Error ? err.message : String(err),
+        err: errMsg(err),
       });
     }
   }
@@ -816,60 +943,64 @@ export async function logout(): Promise<{ success: boolean }> {
 export async function verifyEmail(token: string): Promise<{ success: boolean; error?: string }> {
   try {
     const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/verify-email`, {
-      method: 'POST'
+      method: 'POST',
     }, { token });
     if (res.statusCode === 200) {
       return { success: true };
     }
-    return { success: false, error: res.body?.error || 'Email verification failed' };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Network error during verification' };
+    return { success: false, error: extractApiError(res.body, 'Email verification failed') };
+  } catch (err: unknown) {
+    return { success: false, error: errMsg(err) || 'Network error during verification' };
   }
 }
 
 export async function resendVerificationEmail(email: string): Promise<{ success: boolean; error?: string }> {
   try {
     const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/resend-verification`, {
-      method: 'POST'
+      method: 'POST',
     }, { email });
     if (res.statusCode === 200) {
       return { success: true };
     }
-    return { success: false, error: res.body?.error || 'Failed to resend verification' };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Network error during resend' };
+    return { success: false, error: extractApiError(res.body, 'Failed to resend verification') };
+  } catch (err: unknown) {
+    return { success: false, error: errMsg(err) || 'Network error during resend' };
   }
 }
 
 export async function forgotPassword(email: string): Promise<{ success: boolean; message?: string; error?: string }> {
   try {
     const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/forgot-password`, {
-      method: 'POST'
+      method: 'POST',
     }, { email });
     if (res.statusCode === 200) {
       return { success: true, message: res.body?.message || 'Reset instructions sent.' };
     }
-    return { success: false, error: res.body?.error || 'Failed to request password reset' };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Network error during password reset request' };
+    return { success: false, error: extractApiError(res.body, 'Failed to request password reset') };
+  } catch (err: unknown) {
+    return { success: false, error: errMsg(err) || 'Network error during password reset request' };
   }
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
   try {
     const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/reset-password`, {
-      method: 'POST'
+      method: 'POST',
     }, { token, newPassword });
     if (res.statusCode === 200) {
       return { success: true };
     }
-    return { success: false, error: res.body?.error || 'Password reset failed' };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Network error during password reset' };
+    return { success: false, error: extractApiError(res.body, 'Password reset failed') };
+  } catch (err: unknown) {
+    return { success: false, error: errMsg(err) || 'Network error during password reset' };
   }
 }
 
-export async function listActiveSessions(): Promise<{ success: boolean; sessions?: any[]; error?: string }> {
+export async function listActiveSessions(): Promise<{
+  success: boolean;
+  sessions?: Array<Record<string, unknown>>;
+  error?: string;
+}> {
   const session = await loadEncryptedSessionAsync();
   if (!session?.token) {
     return { success: false, error: 'No active session' };
@@ -878,15 +1009,16 @@ export async function listActiveSessions(): Promise<{ success: boolean; sessions
     const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/sessions`, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${session.token}`
-      }
+        Authorization: `Bearer ${session.token}`,
+      },
     });
     if (res.statusCode === 200) {
-      return { success: true, sessions: res.body?.data || [] };
+      const sessions = Array.isArray(res.body?.data) ? (res.body.data as Array<Record<string, unknown>>) : [];
+      return { success: true, sessions };
     }
-    return { success: false, error: res.body?.error || 'Failed to list sessions' };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Network error' };
+    return { success: false, error: extractApiError(res.body, 'Failed to list sessions') };
+  } catch (err: unknown) {
+    return { success: false, error: errMsg(err) || 'Network error' };
   }
 }
 
@@ -899,15 +1031,15 @@ export async function revokeSession(sessionId: string): Promise<{ success: boole
     const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/sessions/revoke`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${session.token}`
-      }
+        Authorization: `Bearer ${session.token}`,
+      },
     }, { sessionId });
     if (res.statusCode === 200) {
       return { success: true };
     }
-    return { success: false, error: res.body?.error || 'Failed to revoke session' };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Network error' };
+    return { success: false, error: extractApiError(res.body, 'Failed to revoke session') };
+  } catch (err: unknown) {
+    return { success: false, error: errMsg(err) || 'Network error' };
   }
 }
 
@@ -920,15 +1052,15 @@ export async function revokeAllSessions(keepCurrent: boolean = true): Promise<{ 
     const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/sessions/revoke-all`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${session.token}`
-      }
+        Authorization: `Bearer ${session.token}`,
+      },
     }, { keepCurrent });
     if (res.statusCode === 200) {
       return { success: true };
     }
-    return { success: false, error: res.body?.error || 'Failed to revoke sessions' };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Network error' };
+    return { success: false, error: extractApiError(res.body, 'Failed to revoke sessions') };
+  } catch (err: unknown) {
+    return { success: false, error: errMsg(err) || 'Network error' };
   }
 }
 
@@ -942,7 +1074,7 @@ export async function switchDevice(): Promise<{ success: boolean; message: strin
   }, { token: session.token, hwid });
 
   if (res.statusCode !== 200) {
-    throw new Error(res.body?.error || `Failed to switch device (HTTP ${res.statusCode})`);
+    throw new Error(extractApiError(res.body, `Failed to switch device (HTTP ${res.statusCode})`));
   }
 
   await fetchAndCacheStatus();
@@ -954,15 +1086,16 @@ export async function getPaymentInfo(): Promise<PaymentInfo> {
     const res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/payment-info`, { method: 'GET' });
     if (res.statusCode === 200 && res.body) {
       return {
-        ...res.body,
         upi_id: res.body.upi_id || CONTACT_CONFIG.UPI_ID,
         upi_account_holder: res.body.upi_account_holder || CONTACT_CONFIG.UPI_ACCOUNT_HOLDER,
         upi_qr_asset: res.body.upi_qr_asset || CONTACT_CONFIG.UPI_QR_ASSET,
         whatsapp_number: res.body.whatsapp_number || CONTACT_CONFIG.WHATSAPP_NUMBER,
+        price_inr: typeof res.body.price_inr === 'number' ? res.body.price_inr : CONTACT_CONFIG.DEFAULT_PRICE_INR || 599,
         price_usd: res.body.price_usd ?? CONTACT_CONFIG.DEFAULT_PRICE_USDT,
         price_usdt: res.body.price_usdt ?? CONTACT_CONFIG.DEFAULT_PRICE_USDT,
         usdt_address: res.body.usdt_address || CONTACT_CONFIG.USDT_ADDRESS,
         usdt_network: res.body.usdt_network || CONTACT_CONFIG.USDT_NETWORK,
+        usdt_qr_asset: res.body.usdt_qr_asset || CONTACT_CONFIG.USDT_QR_ASSET,
         usdt_enabled: res.body.usdt_enabled ?? CONTACT_CONFIG.USDT_ENABLED,
       };
     }
@@ -1031,12 +1164,12 @@ export async function submitManualUpiPayment(payload: {
 
     return {
       success: false,
-      error: res.body?.error || `Submission failed (HTTP ${res.statusCode})`
+      error: extractApiError(res.body, `Submission failed (HTTP ${res.statusCode})`),
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       success: false,
-      error: err?.message || 'Network error while submitting payment'
+      error: errMsg(err) || 'Network error while submitting payment',
     };
   }
 }
@@ -1088,38 +1221,47 @@ export async function submitManualCryptoPayment(payload: {
 
     return {
       success: false,
-      error: res.body?.error || `Submission failed (HTTP ${res.statusCode})`
+      error: extractApiError(res.body, `Submission failed (HTTP ${res.statusCode})`),
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       success: false,
-      error: err?.message || 'Network error while submitting crypto payment'
+      error: errMsg(err) || 'Network error while submitting crypto payment',
     };
   }
 }
 
-export async function fetchPricingCatalogFromServer(): Promise<{ success: boolean; catalog?: any; error?: string }> {
+export async function fetchPricingCatalogFromServer(): Promise<{
+  success: boolean;
+  catalog?: Record<string, unknown>;
+  error?: string;
+}> {
   try {
     const res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/pricing/catalog`, { method: 'GET' });
     if (res.statusCode >= 200 && res.statusCode < 300) {
-      return { success: true, catalog: res.body?.catalog || res.body?.data || res.body };
+      const catalog = (res.body?.catalog || res.body?.data || res.body) as Record<string, unknown>;
+      return { success: true, catalog };
     }
   } catch (err) {
     log.warn('Failed fetching pricing catalog from server', {
-      err: err instanceof Error ? err.message : String(err),
+      err: errMsg(err),
     });
   }
   return { success: false, error: 'Failed to fetch catalog from server' };
 }
 
-export async function createCheckoutSessionFromServer(payload: any): Promise<{ success: boolean; session?: any; error?: string }> {
+export async function createCheckoutSessionFromServer(payload: AccountCheckoutPayload): Promise<{
+  success: boolean;
+  session?: AccountCheckoutSession;
+  error?: string;
+}> {
   const session = await loadEncryptedSessionAsync();
   const token = session?.token || '';
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    headers.Authorization = `Bearer ${token}`;
     headers['x-mahi-token'] = token;
   }
   try {
@@ -1139,13 +1281,17 @@ export async function createCheckoutSessionFromServer(payload: any): Promise<{ s
     if (res.statusCode >= 200 && res.statusCode < 300 && (res.body?.session || res.body?.checkoutUrl || res.body?.success)) {
       return { success: true, session: res.body?.session || res.body };
     }
-    return { success: false, error: res.body?.error || `Checkout failed (HTTP ${res.statusCode})` };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+    return { success: false, error: extractApiError(res.body, `Checkout failed (HTTP ${res.statusCode})`) };
+  } catch (err: unknown) {
+    return { success: false, error: errMsg(err) };
   }
 }
 
-export async function fetchPaymentStatusFromServer(): Promise<{ success: boolean; payments?: any[]; error?: string }> {
+export async function fetchPaymentStatusFromServer(): Promise<{
+  success: boolean;
+  payments?: Array<Record<string, unknown>>;
+  error?: string;
+}> {
   const session = await loadEncryptedSessionAsync();
   const token = session?.token || '';
   if (!token) {
@@ -1155,16 +1301,21 @@ export async function fetchPaymentStatusFromServer(): Promise<{ success: boolean
     const res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/payments/status`, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
         'x-mahi-token': token,
       },
     });
     if (res.statusCode >= 200 && res.statusCode < 300) {
-      return { success: true, payments: res.body?.payments || res.body?.data || [] };
+      const payments = Array.isArray(res.body?.payments)
+        ? res.body.payments
+        : Array.isArray(res.body?.data)
+          ? (res.body.data as Array<Record<string, unknown>>)
+          : [];
+      return { success: true, payments };
     }
-    return { success: false, error: res.body?.error || `Status check failed (HTTP ${res.statusCode})` };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+    return { success: false, error: extractApiError(res.body, `Status check failed (HTTP ${res.statusCode})`) };
+  } catch (err: unknown) {
+    return { success: false, error: errMsg(err) };
   }
 }
 
@@ -1176,17 +1327,17 @@ export async function fetchAndCacheStatus(): Promise<CachedAccountStatus | null>
   if (!session?.token) return null;
 
   const hwid = getHWID();
-  let res: any;
+  let res: AccountHttpResponse;
   try {
     res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/status?hwid=${encodeURIComponent(hwid)}`, {
       method: 'GET',
       headers: {
-        'x-mahi-token': session.token
-      }
+        'x-mahi-token': session.token,
+      },
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Transient network error / timeout - return cached status, do NOT clear session!
-    log.warn('[AccountService] Status check network error:', err?.message);
+    log.warn('[AccountService] Status check network error:', errMsg(err));
     return readCachedStatusAsync();
   }
 
@@ -1200,11 +1351,11 @@ export async function fetchAndCacheStatus(): Promise<CachedAccountStatus | null>
           res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/status?hwid=${encodeURIComponent(hwid)}`, {
             method: 'GET',
             headers: {
-              'x-mahi-token': newSession.token
-            }
+              'x-mahi-token': newSession.token,
+            },
           });
-        } catch (err: any) {
-          log.warn('[AccountService] Post-refresh status check network error:', err?.message);
+        } catch (err: unknown) {
+          log.warn('[AccountService] Post-refresh status check network error:', errMsg(err));
           return readCachedStatusAsync();
         }
       }
@@ -1229,15 +1380,21 @@ export async function fetchAndCacheStatus(): Promise<CachedAccountStatus | null>
   }
 
   const data = res.body;
+  const accountId = typeof data.account_id === 'string' ? data.account_id : '';
+  const plan = data.plan || 'free';
+  const profileLimit = typeof data.profile_limit === 'number' ? data.profile_limit : 0;
+  const serverTime = typeof data.server_time === 'number' ? data.server_time : 0;
+  const sig = typeof data.sig === 'string' ? data.sig : '';
+
   const isSigValid = verifyAccountStatusSignature({
-    account_id: data.account_id,
+    account_id: accountId,
     hwid,
-    plan: data.plan,
-    profile_limit: data.profile_limit,
-    sync_allowed: data.sync_allowed,
-    expires_at: data.expires_at,
-    server_time: data.server_time
-  }, data.sig);
+    plan,
+    profile_limit: profileLimit,
+    sync_allowed: Boolean(data.sync_allowed),
+    expires_at: data.expires_at ?? null,
+    server_time: serverTime,
+  }, sig);
 
   if (!isSigValid) {
     log.error('[AccountService] Tampered or invalid RSA signature on account status response');
@@ -1251,15 +1408,15 @@ export async function fetchAndCacheStatus(): Promise<CachedAccountStatus | null>
   }
 
   const cached: CachedAccountStatus = {
-    account_id: data.account_id,
+    account_id: accountId,
     hwid,
-    plan: data.plan,
-    profile_limit: data.profile_limit,
+    plan,
+    profile_limit: profileLimit,
     sync_allowed: !!data.sync_allowed,
     expires_at: data.expires_at || null,
-    server_time: data.server_time,
+    server_time: serverTime,
     verified_at: Date.now(),
-    sig: data.sig
+    sig,
   };
 
   await writeCachedStatusAsync(cached);
@@ -1417,8 +1574,8 @@ export async function refreshAccountPlanLimits(force = false): Promise<{ isPro: 
   if (session?.token && (force || isStale)) {
     try {
       await fetchAndCacheStatus();
-    } catch (err: any) {
-      log.warn('[AccountService] Revalidation offline, falling back to cache:', err?.message);
+    } catch (err: unknown) {
+      log.warn('[AccountService] Revalidation offline, falling back to cache:', errMsg(err));
     }
   }
 
@@ -1427,7 +1584,7 @@ export async function refreshAccountPlanLimits(force = false): Promise<{ isPro: 
 
 
 function broadcastAccountChanged(): void {
-  if (typeof BrowserWindow !== 'undefined' && BrowserWindow && BrowserWindow.getAllWindows) {
+  if (BrowserWindow?.getAllWindows) {
     try {
       BrowserWindow.getAllWindows().forEach(win => {
         if (!win.isDestroyed()) {
@@ -1452,8 +1609,8 @@ export function startAccountStatusScheduler(): void {
   setTimeout(async () => {
     try {
       await fetchAndCacheStatus();
-    } catch (err: any) {
-      log.warn('[AccountService] Startup status check offline:', err?.message);
+    } catch (err: unknown) {
+      log.warn('[AccountService] Startup status check offline:', errMsg(err));
     }
   }, STARTUP_DELAY_MS);
 
@@ -1461,8 +1618,8 @@ export function startAccountStatusScheduler(): void {
   statusCheckTimer = setInterval(async () => {
     try {
       await fetchAndCacheStatus();
-    } catch (err: any) {
-      log.warn('[AccountService] Periodic status check offline:', err?.message);
+    } catch (err: unknown) {
+      log.warn('[AccountService] Periodic status check offline:', errMsg(err));
     }
   }, CHECK_INTERVAL_MS);
 }
@@ -1498,7 +1655,7 @@ export function createDesktopOAuthRequest(planId?: string): { success: boolean; 
     }
   }
 
-  const ticket = 'dsk_' + crypto.randomBytes(16).toString('hex');
+  const ticket = `dsk_${crypto.randomBytes(16).toString('hex')}`;
   const code_verifier = crypto.randomBytes(32).toString('hex');
   const codeChallenge = crypto.createHash('sha256').update(code_verifier).digest('hex');
 
@@ -1519,7 +1676,10 @@ export function createDesktopOAuthRequest(planId?: string): { success: boolean; 
  * Validates that the handoff ticket was generated by this exact desktop instance
  * and presents the secret code_verifier to the server via direct TLS POST.
  */
-export async function exchangeDesktopAuthCode(ticket: string, code: string): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
+export async function exchangeDesktopAuthCode(
+  ticket: string,
+  code: string
+): Promise<{ success: boolean; token?: string; user?: AccountUserPayload; error?: string }> {
   if (!ticket || !code) {
     return { success: false, error: 'Handoff ticket and authorization code are required' };
   }
@@ -1532,25 +1692,25 @@ export async function exchangeDesktopAuthCode(ticket: string, code: string): Pro
   // Consume immediately from memory to prevent replay or multiple exchange attempts
   pendingDesktopHandoffs.delete(ticket);
 
-  let res: any;
+  let res: AccountHttpResponse;
   try {
     res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/desktop-exchange`, {
-      method: 'POST'
+      method: 'POST',
     }, {
       ticket,
       code,
       code_verifier: pending.code_verifier,
     });
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to exchange authorization code with server' };
+  } catch (err: unknown) {
+    return { success: false, error: errMsg(err) || 'Failed to exchange authorization code with server' };
   }
 
   if (res.statusCode !== 200 || !res.body?.token) {
-    return { success: false, error: res.body?.error || `Exchange failed with status ${res.statusCode}` };
+    return { success: false, error: extractApiError(res.body, `Exchange failed with status ${res.statusCode}`) };
   }
 
   // Session token received over secure TLS. Ingest into DPAPI-encrypted storage.
-  const token = res.body.token || res.body.tokens?.accessToken;
+  const token = res.body.token || res.body.tokens?.accessToken || '';
   const refreshToken = res.body.refreshToken || res.body.tokens?.refreshToken;
   return loginWithToken(token, refreshToken);
 }
@@ -1559,24 +1719,26 @@ export async function exchangeDesktopAuthCode(ticket: string, code: string): Pro
  * Exchanges a single-use web handoff code for an authenticated session token.
  * Calls POST /api/v1/auth/web-handoff/exchange directly over secure HTTP/TLS.
  */
-export async function exchangeWebHandoffCode(handoffCode: string): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
+export async function exchangeWebHandoffCode(
+  handoffCode: string
+): Promise<{ success: boolean; token?: string; user?: AccountUserPayload; error?: string }> {
   if (!handoffCode || typeof handoffCode !== 'string') {
     return { success: false, error: 'Handoff code is required' };
   }
 
-  let res: any;
+  let res: AccountHttpResponse;
   try {
     res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/web-handoff/exchange`, {
-      method: 'POST'
+      method: 'POST',
     }, {
       handoffCode: handoffCode.trim(),
     });
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to exchange web handoff code with server' };
+  } catch (err: unknown) {
+    return { success: false, error: errMsg(err) || 'Failed to exchange web handoff code with server' };
   }
 
   if (res.statusCode !== 200 || !res.body?.token) {
-    return { success: false, error: res.body?.error || `Exchange failed with status ${res.statusCode}` };
+    return { success: false, error: extractApiError(res.body, `Exchange failed with status ${res.statusCode}`) };
   }
 
   const token = res.body.token;
@@ -1587,7 +1749,7 @@ export async function exchangeWebHandoffCode(handoffCode: string): Promise<{ suc
       setActiveUserId(loginResult.user.id);
     } catch (err) {
       log.debug('Skipped binding active session user context on web handoff', {
-        err: err instanceof Error ? err.message : String(err),
+        err: errMsg(err),
       });
     }
   }
@@ -1597,28 +1759,36 @@ export async function exchangeWebHandoffCode(handoffCode: string): Promise<{ suc
 /**
  * Activates 7-day trial from central server for current session
  */
-export async function activateTrialFromServer(planId: string = 'professional_50'): Promise<{ success: boolean; error?: string; trialStatus?: any; entitlements?: any; message?: string }> {
+export async function activateTrialFromServer(
+  planId: string = 'professional_50'
+): Promise<{
+  success: boolean;
+  error?: string;
+  trialStatus?: AccountTrialStatus;
+  entitlements?: AccountEntitlementsPayload;
+  message?: string;
+}> {
   const session = await loadEncryptedSessionAsync();
   if (!session?.token) {
     return { success: false, error: 'No authenticated session found' };
   }
 
-  let res: any;
+  let res: AccountHttpResponse;
   try {
     res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/trial/activate`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${session.token}`
-      }
+        Authorization: `Bearer ${session.token}`,
+      },
     }, {
-      planId
+      planId,
     });
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to connect to authentication server' };
+  } catch (err: unknown) {
+    return { success: false, error: errMsg(err) || 'Failed to connect to authentication server' };
   }
 
   if (res.statusCode !== 200 || !res.body?.success) {
-    return { success: false, error: res.body?.error?.message || res.body?.error || res.body?.message || 'Trial activation failed' };
+    return { success: false, error: extractApiError(res.body, 'Trial activation failed') };
   }
 
   // Refresh and cache status
@@ -1626,7 +1796,7 @@ export async function activateTrialFromServer(planId: string = 'professional_50'
     await fetchAndCacheStatus();
   } catch (err) {
     log.debug('Post-trial status cache warm-up failed cleanly', {
-      err: err instanceof Error ? err.message : String(err),
+      err: errMsg(err),
     });
   }
 
@@ -1636,7 +1806,7 @@ export async function activateTrialFromServer(planId: string = 'professional_50'
       ...session,
       plan: 'trial',
       profile_quota: res.body.entitlements?.maxProfiles || 50,
-      saved_at: new Date().toISOString()
+      saved_at: new Date().toISOString(),
     });
     broadcastAccountChanged();
   }
@@ -1645,40 +1815,46 @@ export async function activateTrialFromServer(planId: string = 'professional_50'
     success: true,
     trialStatus: res.body.trialStatus,
     entitlements: res.body.entitlements,
-    message: res.body.message
+    message: res.body.message,
   };
 }
 
 /**
  * Gets trial status from central server for current session
  */
-export async function getTrialStatusFromServer(): Promise<{ success: boolean; isTrialActive?: boolean; daysRemaining?: number; isEligibleForTrial?: boolean; error?: string }> {
+export async function getTrialStatusFromServer(): Promise<{
+  success: boolean;
+  isTrialActive?: boolean;
+  daysRemaining?: number;
+  isEligibleForTrial?: boolean;
+  error?: string;
+}> {
   const session = await loadEncryptedSessionAsync();
   if (!session?.token) {
     return { success: false, error: 'No authenticated session found' };
   }
 
-  let res: any;
+  let res: AccountHttpResponse;
   try {
     res = await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/trial/status`, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${session.token}`
-      }
+        Authorization: `Bearer ${session.token}`,
+      },
     });
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to fetch trial status' };
+  } catch (err: unknown) {
+    return { success: false, error: errMsg(err) || 'Failed to fetch trial status' };
   }
 
   if (res.statusCode !== 200) {
-    return { success: false, error: res.body?.error || 'Failed to fetch trial status' };
+    return { success: false, error: extractApiError(res.body, 'Failed to fetch trial status') };
   }
 
   return {
     success: true,
     isTrialActive: Boolean(res.body.isTrialActive),
     daysRemaining: res.body.daysRemaining ?? 0,
-    isEligibleForTrial: Boolean(res.body.isEligibleForTrial)
+    isEligibleForTrial: Boolean(res.body.isEligibleForTrial),
   };
 }
 

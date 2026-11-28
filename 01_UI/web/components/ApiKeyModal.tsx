@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Key, Copy, Check, AlertTriangle, Shield, X, Eye } from 'lucide-react';
-import { CreateRemoteApiKeyDTO } from '../../../10_CONFIG/shared/types/remote-api.js';
-import { TeamWorkspace } from '../../../10_CONFIG/shared/types/workspace.js';
+import type React from 'react';
+import { useState } from 'react';
+import { Key, Copy, Check, AlertTriangle, X } from 'lucide-react';
+import type { CreateRemoteApiKeyDTO, RemoteApiScope } from '../../../10_CONFIG/shared/types/remote-api.js';
+import type { TeamWorkspace } from '../../../10_CONFIG/shared/types/workspace.js';
 
 interface CreateApiKeyModalProps {
   isOpen: boolean;
@@ -10,7 +11,7 @@ interface CreateApiKeyModalProps {
   onSubmit: (dto: CreateRemoteApiKeyDTO) => Promise<{ secretKey: string; note: string }>;
 }
 
-const AVAILABLE_SCOPES = [
+const AVAILABLE_SCOPES: ReadonlyArray<{ id: RemoteApiScope; label: string; desc: string }> = [
   { id: 'profiles:read', label: 'profiles:read', desc: 'List and inspect cloud profiles' },
   { id: 'profiles:write', label: 'profiles:write', desc: 'Create, edit, and delete profiles' },
   { id: 'profiles:run', label: 'profiles:run', desc: 'Trigger profile execution on registered devices' },
@@ -32,7 +33,7 @@ export const CreateApiKeyModal: React.FC<CreateApiKeyModalProps> = ({
 }) => {
   const [name, setName] = useState('');
   const [workspaceId, setWorkspaceId] = useState<string>('');
-  const [selectedScopes, setSelectedScopes] = useState<string[]>([
+  const [selectedScopes, setSelectedScopes] = useState<RemoteApiScope[]>([
     'profiles:read',
     'profiles:write',
     'profiles:run',
@@ -46,7 +47,7 @@ export const CreateApiKeyModal: React.FC<CreateApiKeyModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleToggleScope = (scopeId: string) => {
+  const handleToggleScope = (scopeId: RemoteApiScope) => {
     if (selectedScopes.includes(scopeId)) {
       setSelectedScopes(selectedScopes.filter((s) => s !== scopeId));
     } else {
@@ -70,12 +71,12 @@ export const CreateApiKeyModal: React.FC<CreateApiKeyModalProps> = ({
     try {
       const result = await onSubmit({
         name: name.trim(),
-        scopes: selectedScopes as any,
+        scopes: selectedScopes,
         workspaceId: workspaceId || undefined,
       });
       setRevealedKey(result.secretKey);
-    } catch (err: any) {
-      setError(err.message || 'Failed to create API key');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create API key');
     } finally {
       setIsSubmitting(false);
     }
@@ -124,9 +125,10 @@ export const CreateApiKeyModal: React.FC<CreateApiKeyModalProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Secret API Key</label>
+              <label htmlFor="apikey-revealed-secret" className="text-xs font-semibold text-slate-300">Secret API Key</label>
               <div className="flex items-center space-x-2">
                 <input
+                  id="apikey-revealed-secret"
                   type="text"
                   readOnly
                   value={revealedKey}
@@ -166,7 +168,7 @@ export const CreateApiKeyModal: React.FC<CreateApiKeyModalProps> = ({
                   <p className="text-xs text-slate-400">Generate programmatic credentials for cloud automation</p>
                 </div>
               </div>
-              <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg">
+              <button type="button" onClick={onClose} className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -179,8 +181,9 @@ export const CreateApiKeyModal: React.FC<CreateApiKeyModalProps> = ({
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-300">Key Name / Description *</label>
+                <label htmlFor="apikey-name-input" className="text-xs font-semibold text-slate-300">Key Name / Description *</label>
                 <input
+                  id="apikey-name-input"
                   type="text"
                   required
                   value={name}
@@ -191,8 +194,9 @@ export const CreateApiKeyModal: React.FC<CreateApiKeyModalProps> = ({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-300">Workspace Context (Optional)</label>
+                <label htmlFor="apikey-workspace-select" className="text-xs font-semibold text-slate-300">Workspace Context (Optional)</label>
                 <select
+                  id="apikey-workspace-select"
                   value={workspaceId}
                   onChange={(e) => setWorkspaceId(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-teal-500/50"
@@ -208,10 +212,10 @@ export const CreateApiKeyModal: React.FC<CreateApiKeyModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                <div className="text-xs font-semibold text-slate-300 flex items-center justify-between">
                   <span>Permission Scopes</span>
                   <span className="text-[11px] text-teal-400">{selectedScopes.length} selected</span>
-                </label>
+                </div>
                 <div className="max-h-48 overflow-y-auto p-2 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5 custom-scrollbar">
                   {AVAILABLE_SCOPES.map((scope) => {
                     const isChecked = selectedScopes.includes(scope.id);

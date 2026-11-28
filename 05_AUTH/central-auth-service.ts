@@ -3,6 +3,10 @@ import { getDatabase } from '../06_DATABASE/connection.js';
 import { getJwtSecret } from '../08_SECURITY/install-secrets.js';
 import { getEmailProvider } from './email-service.js';
 import { isPostgresConfigured, getCentralRepository } from '../06_DATABASE/central-repository.js';
+import type {
+  AuthUserRecord,
+  AuthSessionRecord as RepoAuthSessionRecord,
+} from '../06_DATABASE/central-repository-types.js';
 import {
   checkAttemptLockoutAsync,
   recordFailedAttemptAsync,
@@ -12,7 +16,29 @@ import { websiteUrl } from '../10_CONFIG/shared/site-config.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
 const log = createLogger('central-auth-service');
 
-function mapRowToAuthUser(row: any): AuthUser {
+type AuthUserRowLike = AuthUserRecord & {
+  normalizedEmail?: string;
+  emailVerified?: boolean | number;
+  emailVerifiedAt?: string | null;
+  googleSub?: string | null;
+  avatarUrl?: string | null;
+  authProvider?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  lastLoginAt?: string | null;
+};
+
+type AuthSessionRowLike = RepoAuthSessionRecord & {
+  userId?: string;
+  deviceId?: string;
+  deviceName?: string;
+  ipAddress?: string | null;
+  createdAt?: string;
+  lastUsedAt?: string;
+  expiresAt?: string;
+};
+
+function mapRowToAuthUser(row: AuthUserRowLike): AuthUser {
   return {
     id: row.id,
     email: row.email,
@@ -85,9 +111,6 @@ export interface AuthTokens {
   expiresIn: number;
   tokenType: 'Bearer';
 }
-
-// In-memory rate limiting map for brute-force protection
-const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
 
 // ============================================================================
 // CRYPTOGRAPHY & HASHING HELPERS
@@ -201,38 +224,9 @@ export function logSecurityEvent(userId: string | null, action: string, details:
       INSERT INTO auth_security_logs (id, user_id, action, ip_address, details, result, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(id, userId, action, ipAddress || '127.0.0.1', details, result, now);
-  } catch (err: any) {
-    log.error('[CentralAuth] Security log error:', err?.message);
+  } catch (err: unknown) {
+    log.error('[CentralAuth] Security log error:', err instanceof Error ? err.message : String(err));
   }
-}
-
-// ============================================================================
-// RATE LIMITING
-// ============================================================================
-function checkLoginRateLimit(key: string): { allowed: boolean; remainingMs?: number } {
-  const record = loginAttempts.get(key);
-  if (!record) return { allowed: true };
-
-  const now = Date.now();
-  if (record.lockedUntil > now) {
-    return { allowed: false, remainingMs: record.lockedUntil - now };
-  }
-
-  if (now > record.lockedUntil && record.lockedUntil > 0) {
-    loginAttempts.delete(key);
-  }
-
-  return { allowed: true };
-}
-
-function recordLoginFailure(key: string): void {
-  const now = Date.now();
-  const record = loginAttempts.get(key) || { count: 0, lockedUntil: 0 };
-  record.count += 1;
-  if (record.count >= MAX_LOGIN_ATTEMPTS) {
-    record.lockedUntil = now + LOGIN_LOCKOUT_MS;
-  }
-  loginAttempts.set(key, record);
 }
 
 export async function checkLoginRateLimitAsync(
@@ -260,23 +254,8 @@ export async function recordLoginFailureAsync(key: string): Promise<void> {
 }
 
 export async function clearLoginAttemptsAsync(key: string): Promise<void> {
-  loginAttempts.delete(key);
   await clearAttemptsAsync({ namespace: 'login_lock', key });
 }
-
-function clearLoginAttempts(key: string): void {
-  loginAttempts.delete(key);
-}
-
-// Periodic cleanup of stale rate limits
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of loginAttempts.entries()) {
-    if (v.lockedUntil > 0 && v.lockedUntil < now) {
-      loginAttempts.delete(k);
-    }
-  }
-}, 60 * 1000).unref();
 
 // ============================================================================
 // USER REGISTRATION & EMAIL VERIFICATION
@@ -373,8 +352,8 @@ export async function registerCentralUser(params: {
     const verifyUrl = websiteUrl(`/verify-email?token=${rawVerifyToken}`, { productionFallback: true });
     try {
       await getEmailProvider().sendVerificationEmail(rawEmail, rawVerifyToken, verifyUrl);
-    } catch (err: any) {
-      log.warn('[CentralAuth] Failed to send verification email:', err?.message);
+    } catch (err: unknown) {
+      log.warn('[CentralAuth] Failed to send verification email:', err instanceof Error ? err.message : String(err));
     }
 
     logSecurityEvent(userId, 'REGISTER', `New user registered: ${normalizedEmail}`, 'SUCCESS', params.ipAddress);
@@ -408,6 +387,9 @@ export async function registerCentralUser(params: {
     });
 
     const userRow = await repo.findAuthUserById(userId);
+    if (!userRow) {
+      return { success: false, error: 'Failed to load registered user record.' };
+    }
     return {
       success: true,
       user: mapRowToAuthUser(userRow),
@@ -471,8 +453,8 @@ export async function registerCentralUser(params: {
   const verifyUrl = websiteUrl(`/verify-email?token=${rawVerifyToken}`, { productionFallback: true });
   try {
     await getEmailProvider().sendVerificationEmail(rawEmail, rawVerifyToken, verifyUrl);
-  } catch (err: any) {
-    log.warn('[CentralAuth] Failed to send verification email:', err?.message);
+  } catch (err: unknown) {
+    log.warn('[CentralAuth] Failed to send verification email:', err instanceof Error ? err.message : String(err));
   }
 
   logSecurityEvent(userId, 'REGISTER', `New user registered: ${normalizedEmail}`, 'SUCCESS', params.ipAddress);
@@ -498,7 +480,10 @@ export async function registerCentralUser(params: {
     sessionId,
   });
 
-  const user = getCentralUserById(userId)!;
+  const user = getCentralUserById(userId);
+  if (!user) {
+    throw new Error('Failed to load newly registered user');
+  }
 
   return {
     success: true,
@@ -546,7 +531,7 @@ export async function verifyEmailToken(rawToken: string, ipAddress?: string): Pr
   const row = db.prepare(`
     SELECT * FROM auth_verification_tokens 
     WHERE token_hash = ? AND type = 'EMAIL_VERIFICATION'
-  `).get(tokenHash) as any;
+  `).get(tokenHash) as { id: string; user_id: string; email: string; used_at: string | null; expires_at: string } | undefined;
 
   if (!row) {
     return { success: false, error: 'Invalid or expired verification token.' };
@@ -606,7 +591,12 @@ export async function resendEmailVerification(email: string, ipAddress?: string)
   }
 
   const db = getDatabase();
-  const user = db.prepare('SELECT id, email, email_verified, status FROM auth_users WHERE normalized_email = ?').get(normalizedEmail) as any;
+  const user = db.prepare('SELECT id, email, email_verified, status FROM auth_users WHERE normalized_email = ?').get(normalizedEmail) as {
+    id: string;
+    email: string;
+    email_verified: number;
+    status: string;
+  } | undefined;
 
   if (!user) {
     // Return generic success to prevent email enumeration
@@ -735,7 +725,7 @@ export async function loginCentralUser(params: {
       userId: row.id,
       email: row.email,
       role: row.role as AuthUserRole,
-      planId: row.plan_id || row.planId,
+      planId: row.plan_id || row.planId || 'plan_free',
       profileQuota: row.profile_quota ?? row.profileQuota ?? 10,
       sessionId,
     });
@@ -761,7 +751,7 @@ export async function loginCentralUser(params: {
   }
 
   const db = getDatabase();
-  const row = db.prepare('SELECT * FROM auth_users WHERE normalized_email = ?').get(normalizedEmail) as any;
+  const row = db.prepare('SELECT * FROM auth_users WHERE normalized_email = ?').get(normalizedEmail) as AuthUserRowLike | undefined;
   if (!row) {
     await recordLoginFailureAsync(rateLimitKey);
     logSecurityEvent(null, 'LOGIN_FAILED', `Non-existent user attempted: ${normalizedEmail}`, 'FAILURE', params.ipAddress);
@@ -825,7 +815,10 @@ export async function loginCentralUser(params: {
 
   logSecurityEvent(row.id, 'LOGIN_SUCCESS', `User logged in from ${deviceName} (${platform})`, 'SUCCESS', params.ipAddress);
 
-  const user = getCentralUserById(row.id)!;
+  const user = getCentralUserById(row.id);
+  if (!user) {
+    throw new Error('Failed to load authenticated user');
+  }
 
   return {
     success: true,
@@ -912,7 +905,7 @@ export async function refreshAccessToken(rawRefreshToken: string, ipAddress?: st
   }
 
   const db = getDatabase();
-  const session = db.prepare('SELECT * FROM auth_sessions WHERE refresh_token_hash = ?').get(refreshHash) as any;
+  const session = db.prepare('SELECT * FROM auth_sessions WHERE refresh_token_hash = ?').get(refreshHash) as AuthSessionRowLike | undefined;
 
   if (!session) {
     return { success: false, error: 'Invalid or revoked refresh session.' };
@@ -973,7 +966,7 @@ export const refreshCentralSession = refreshAccessToken;
 export function logoutSession(sessionId: string, ipAddress?: string): boolean {
   if (!sessionId) return false;
   const db = getDatabase();
-  const session = db.prepare('SELECT user_id FROM auth_sessions WHERE id = ?').get(sessionId) as any;
+  const session = db.prepare('SELECT user_id FROM auth_sessions WHERE id = ?').get(sessionId) as { user_id: string } | undefined;
   if (!session) return false;
 
   db.prepare('UPDATE auth_sessions SET is_revoked = 1 WHERE id = ?').run(sessionId);
@@ -987,7 +980,7 @@ export function listUserSessions(userId: string, currentSessionId?: string): Aut
     SELECT * FROM auth_sessions 
     WHERE user_id = ? AND is_revoked = 0 
     ORDER BY last_used_at DESC
-  `).all(userId) as any[];
+  `).all<AuthSessionRowLike>(userId);
 
   return rows.map((r) => ({
     id: r.id,
@@ -998,7 +991,7 @@ export function listUserSessions(userId: string, currentSessionId?: string): Aut
     deviceName: r.device_name,
     device_name: r.device_name,
     platform: r.platform,
-    ipAddress: r.ip_address,
+    ipAddress: r.ip_address || undefined,
     ip_address: r.ip_address,
     isRevoked: r.is_revoked === 1,
     is_revoked: r.is_revoked === 1,
@@ -1035,7 +1028,7 @@ export function revokeUserSession(
 export function revokeAllUserSessions(userId: string, exceptSessionId?: string, ipAddress?: string): number {
   const db = getDatabase();
   let query = 'UPDATE auth_sessions SET is_revoked = 1 WHERE user_id = ? AND is_revoked = 0';
-  const params: any[] = [userId];
+  const params: string[] = [userId];
 
   if (exceptSessionId) {
     query += ' AND id != ?';
@@ -1080,8 +1073,8 @@ export async function requestPasswordReset(email: string, ipAddress?: string): P
     const resetUrl = websiteUrl(`/reset-password?token=${rawResetToken}`, { productionFallback: true });
     try {
       await getEmailProvider().sendPasswordResetEmail(user.email, rawResetToken, resetUrl);
-    } catch (err: any) {
-      log.warn('[CentralAuth] Failed to send password reset email:', err?.message);
+    } catch (err: unknown) {
+      log.warn('[CentralAuth] Failed to send password reset email:', err instanceof Error ? err.message : String(err));
     }
 
     logSecurityEvent(user.id, 'PASSWORD_RESET_REQUESTED', `Reset token issued for ${normalizedEmail}`, 'SUCCESS', ipAddress);
@@ -1089,7 +1082,11 @@ export async function requestPasswordReset(email: string, ipAddress?: string): P
   }
 
   const db = getDatabase();
-  const user = db.prepare('SELECT id, email, status FROM auth_users WHERE normalized_email = ?').get(normalizedEmail) as any;
+  const user = db.prepare('SELECT id, email, status FROM auth_users WHERE normalized_email = ?').get(normalizedEmail) as {
+    id: string;
+    email: string;
+    status: string;
+  } | undefined;
 
   if (!user || user.status === 'DISABLED') {
     return { success: true, message: safeMessage };
@@ -1115,8 +1112,8 @@ export async function requestPasswordReset(email: string, ipAddress?: string): P
   const resetUrl = websiteUrl(`/reset-password?token=${rawResetToken}`, { productionFallback: true });
   try {
     await getEmailProvider().sendPasswordResetEmail(user.email, rawResetToken, resetUrl);
-  } catch (err: any) {
-    log.warn('[CentralAuth] Failed to send password reset email:', err?.message);
+  } catch (err: unknown) {
+    log.warn('[CentralAuth] Failed to send password reset email:', err instanceof Error ? err.message : String(err));
   }
 
   logSecurityEvent(user.id, 'PASSWORD_RESET_REQUESTED', `Reset token issued for ${normalizedEmail}`, 'SUCCESS', ipAddress);
@@ -1194,7 +1191,7 @@ export async function resetPasswordWithToken(
   const row = db.prepare(`
     SELECT * FROM auth_verification_tokens 
     WHERE token_hash = ? AND type = 'PASSWORD_RESET'
-  `).get(tokenHash) as any;
+  `).get(tokenHash) as { id: string; user_id: string; used_at: string | null; expires_at: string } | undefined;
 
   if (!row) {
     return { success: false, error: 'Invalid or expired password reset link.' };
@@ -1248,13 +1245,13 @@ export async function resetPasswordWithToken(
 // ============================================================================
 export function getCentralUserById(userId: string): AuthUser | null {
   const db = getDatabase();
-  const row = db.prepare('SELECT * FROM auth_users WHERE id = ?').get(userId) as any;
+  const row = db.prepare('SELECT * FROM auth_users WHERE id = ?').get(userId) as AuthUserRowLike | undefined;
   if (!row) return null;
 
   return {
     id: row.id,
     email: row.email,
-    normalizedEmail: row.normalized_email,
+    normalizedEmail: row.normalized_email || row.email.toLowerCase(),
     name: row.name,
     role: row.role as AuthUserRole,
     status: row.status as AuthUserStatus,
@@ -1271,13 +1268,13 @@ export function getCentralUserById(userId: string): AuthUser | null {
 export function getCentralUserByEmail(email: string): AuthUser | null {
   const db = getDatabase();
   const normalized = (email || '').trim().toLowerCase();
-  const row = db.prepare('SELECT * FROM auth_users WHERE normalized_email = ?').get(normalized) as any;
+  const row = db.prepare('SELECT * FROM auth_users WHERE normalized_email = ?').get(normalized) as AuthUserRowLike | undefined;
   if (!row) return null;
 
   return {
     id: row.id,
     email: row.email,
-    normalizedEmail: row.normalized_email,
+    normalizedEmail: row.normalized_email || row.email.toLowerCase(),
     name: row.name,
     role: row.role as AuthUserRole,
     status: row.status as AuthUserStatus,
@@ -1334,7 +1331,7 @@ export async function logoutByRefreshTokenAsync(rawRefreshToken: string, ipAddre
   const db = getDatabase();
   const row = db
     .prepare('SELECT id, user_id FROM auth_sessions WHERE refresh_token_hash = ?')
-    .get(refreshHash) as any;
+    .get(refreshHash) as { id: string; user_id: string } | undefined;
   if (!row?.id) return false;
   return logoutSession(row.id, ipAddress);
 }
@@ -1342,19 +1339,19 @@ export async function logoutByRefreshTokenAsync(rawRefreshToken: string, ipAddre
 export async function listUserSessionsAsync(userId: string, currentSessionId?: string): Promise<AuthSessionRecord[]> {
   if (isPostgresConfigured()) {
     const repo = getCentralRepository();
-    const rows = await repo.listUserAuthSessions(userId);
-    return rows.map((r: any) => ({
+    const rows = (await repo.listUserAuthSessions(userId)) as AuthSessionRowLike[];
+    return rows.map((r) => ({
       id: r.id,
-      userId: r.user_id || r.userId,
-      deviceId: r.device_id || r.deviceId,
-      deviceName: r.device_name || r.deviceName,
+      userId: r.user_id || r.userId || '',
+      deviceId: r.device_id || r.deviceId || '',
+      deviceName: r.device_name || r.deviceName || '',
       platform: r.platform,
-      ipAddress: r.ip_address || r.ipAddress,
+      ipAddress: r.ip_address || r.ipAddress || undefined,
       isRevoked: r.is_revoked === 1 || r.is_revoked === true,
       isCurrent: currentSessionId ? r.id === currentSessionId : false,
-      createdAt: r.created_at || r.createdAt,
-      lastUsedAt: r.last_used_at || r.lastUsedAt,
-      expiresAt: r.expires_at || r.expiresAt,
+      createdAt: r.created_at || r.createdAt || '',
+      lastUsedAt: r.last_used_at || r.lastUsedAt || '',
+      expiresAt: r.expires_at || r.expiresAt || '',
     }));
   }
   return listUserSessions(userId, currentSessionId);

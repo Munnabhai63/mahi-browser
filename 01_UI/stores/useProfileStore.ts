@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import {
+import type {
   Profile,
   CreateProfileDTO,
   UpdateProfileDTO,
@@ -8,6 +8,8 @@ import {
   ProfileStatus,
 } from '../../10_CONFIG/shared/types/profile.js';
 import { useToastStore } from './useToastStore.js';
+
+type BridgeApi = NonNullable<Window['mahiAPI']>;
 
 interface ProfileState {
   profiles: Profile[];
@@ -51,8 +53,14 @@ interface ProfileState {
   bulkUpdateProfiles: (dto: { profileIds: string[]; folder?: string; addTags?: string[]; removeTags?: string[]; notes?: string }) => Promise<boolean>;
   bulkDeleteProfiles: (ids: string[]) => Promise<boolean>;
   bulkAssignProxies: (dto: { profileIds: string[]; proxyIds: string[]; distributionMode: 'single' | 'round-robin' | 'clear' }) => Promise<boolean>;
-  warmProfile: (id: string, options?: any) => Promise<any>;
-  warmBulkProfiles: (ids: string[], options?: any) => Promise<any>;
+  warmProfile: (
+    id: string,
+    options?: Parameters<BridgeApi['warmProfile']>[1]
+  ) => ReturnType<BridgeApi['warmProfile']>;
+  warmBulkProfiles: (
+    ids: string[],
+    options?: Parameters<BridgeApi['warmBulkProfiles']>[1]
+  ) => ReturnType<BridgeApi['warmBulkProfiles']>;
   handleStatusChange: (data: { profileId: string; status: string; pid?: number; error?: string }) => void;
 }
 

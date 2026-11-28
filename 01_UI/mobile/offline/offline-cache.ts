@@ -7,12 +7,12 @@
  * - Queues idempotent mutation actions for background flush upon reconnection
  */
 
-import { OfflineQueueItem } from '../../../10_CONFIG/shared/types/mobile.js';
+import type { OfflineQueueItem } from '../../../10_CONFIG/shared/types/mobile.js';
 
 export class OfflineCacheManager {
   private static instance: OfflineCacheManager;
   private isOnlineState = true;
-  private cache = new Map<string, any>();
+  private cache = new Map<string, { data: unknown; cachedAt: number }>();
   private offlineQueue: OfflineQueueItem[] = [];
 
   private constructor() {}
@@ -73,12 +73,12 @@ export class OfflineCacheManager {
 
 export const offlineCacheManager = OfflineCacheManager.getInstance();
 
-export class MobileOfflineCache {
-  public static setCachedProfiles(profiles: any[]): void {
+export const MobileOfflineCache = {
+  setCachedProfiles(profiles: Array<Record<string, unknown>>): void {
     OfflineCacheManager.getInstance().setCached('cached_profiles', profiles);
-  }
+  },
 
-  public static getCachedProfiles(): any[] | null {
-    return OfflineCacheManager.getInstance().getCached<any[]>('cached_profiles');
-  }
-}
+  getCachedProfiles(): Array<Record<string, unknown>> | null {
+    return OfflineCacheManager.getInstance().getCached<Array<Record<string, unknown>>>('cached_profiles');
+  },
+};

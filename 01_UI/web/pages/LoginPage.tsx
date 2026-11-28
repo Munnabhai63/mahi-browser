@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import { Lock, Mail, User, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useWebAuthStore } from '../state/useWebAuthStore.js';
 import { BrandLogo } from '../../components/BrandLogo.js';
@@ -48,10 +49,11 @@ export const LoginPage: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           {isRegisterMode && (
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Full Name</label>
+              <label htmlFor="login-name" className="text-xs font-semibold text-slate-300">Full Name</label>
               <div className="relative">
                 <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
                 <input
+                  id="login-name"
                   type="text"
                   required
                   value={name}
@@ -64,10 +66,11 @@ export const LoginPage: React.FC = () => {
           )}
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">Email Address</label>
+            <label htmlFor="login-email" className="text-xs font-semibold text-slate-300">Email Address</label>
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
               <input
+                id="login-email"
                 type="email"
                 required
                 value={email}
@@ -80,11 +83,12 @@ export const LoginPage: React.FC = () => {
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-300">Master Password</label>
+              <label htmlFor="login-password" className="text-xs font-semibold text-slate-300">Master Password</label>
             </div>
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
               <input
+                id="login-password"
                 type="password"
                 required
                 value={password}

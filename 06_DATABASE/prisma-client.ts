@@ -12,9 +12,14 @@ const log = createLogger('prisma-client');
 
 const nodeRequire = createRequire(import.meta.url);
 
+interface TestPrismaClientLike extends Partial<PrismaClientType> {
+  $queryRaw?: PrismaClientType['$queryRaw'];
+  [key: string]: unknown;
+}
+
 let prismaInstance: PrismaClientType | null = null;
 let pgPoolInstance: { end?: () => Promise<void> } | null = null;
-let testPrismaInstance: any = null;
+let testPrismaInstance: TestPrismaClientLike | null = null;
 
 function getNormalizedPostgresUrl(): string {
   const rawUrl = process.env.DATABASE_URL;
@@ -75,8 +80,9 @@ export function getPrismaClient(): PrismaClientType | null {
         adapter,
         log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
       });
-    } catch (err: any) {
-      console.error('[PrismaClient] Failed to load @prisma/client:', err?.message || err);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[PrismaClient] Failed to load @prisma/client:', msg);
       return null;
     }
   }
@@ -99,8 +105,8 @@ export async function checkPostgresHealth(): Promise<{
         await testPrismaInstance.$queryRaw`SELECT 1`;
       }
       return { connected: true, latencyMs: Date.now() - start };
-    } catch (err: any) {
-      return { connected: false, error: err?.message || 'Prisma test query failed' };
+    } catch (err: unknown) {
+      return { connected: false, error: err instanceof Error ? err.message : 'Prisma test query failed' };
     }
   }
 
@@ -120,11 +126,11 @@ export async function checkPostgresHealth(): Promise<{
       connected: true,
       latencyMs: Date.now() - start,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       connected: false,
       latencyMs: Date.now() - start,
-      error: err?.message || 'Database connection error',
+      error: err instanceof Error ? err.message : 'Database connection error',
     };
   }
 }
@@ -158,7 +164,7 @@ export async function disconnectPrisma(): Promise<void> {
 /**
  * Sets an explicit PrismaClient or mock for automated tests.
  */
-export function setPrismaClientForTest(client: any): void {
+export function setPrismaClientForTest(client: TestPrismaClientLike | null): void {
   testPrismaInstance = client;
 }
 

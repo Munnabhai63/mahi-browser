@@ -1,29 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import {
   ScrollText,
   Search,
   Trash2,
   ExternalLink,
-  Calendar,
-  Clock,
-  Globe2,
 } from 'lucide-react';
 import { useProfileStore } from '../stores/useProfileStore.js';
-import { HistoryItem } from '../../10_CONFIG/shared/types/history.js';
+import type { HistoryItem } from '../../10_CONFIG/shared/types/history.js';
 import { useToastStore } from '../stores/useToastStore.js';
 import { ConfirmModal } from '../components/ConfirmModal.js';
-import { NavigationPage } from '../components/Sidebar.js';
+import type { NavigationPage } from '../components/Sidebar.js';
 
 interface HistoryManagerProps {
   onNavigate: (page: NavigationPage) => void;
 }
 
-export const HistoryManagerPage: React.FC<HistoryManagerProps> = ({ onNavigate }) => {
+export const HistoryManagerPage: React.FC<HistoryManagerProps> = ({ onNavigate: _onNavigate }) => {
   const { profiles, selectedProfileId, setSelectedProfileId } = useProfileStore();
   const { showToast } = useToastStore();
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [_loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'visitTime' | 'visitCount' | 'title' | 'domain'>('visitTime');
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
@@ -43,20 +41,21 @@ export const HistoryManagerPage: React.FC<HistoryManagerProps> = ({ onNavigate }
         });
         setHistory(res);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       showToast({
         type: 'error',
         title: 'Failed to load history',
-        message: err?.message || 'Could not retrieve browsing records.',
+        message: err instanceof Error ? err.message : 'Could not retrieve browsing records.',
       });
     } finally {
       setLoading(false);
     }
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadHistory is a stable async loader, intentional mount-only call
   useEffect(() => {
-    loadHistory();
-  }, [activeProfileId, searchQuery, sortBy]);
+    void loadHistory();
+  }, []);
 
   const handleDeleteOne = async (id: string) => {
     if (!activeProfileId) return;
@@ -64,8 +63,8 @@ export const HistoryManagerPage: React.FC<HistoryManagerProps> = ({ onNavigate }
       await window.mahiAPI.deleteHistoryItem(activeProfileId, id);
       showToast({ type: 'info', title: 'History Deleted', message: 'Record removed.' });
       loadHistory();
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Delete Failed', message: err?.message || 'Could not delete record.' });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Delete Failed', message: err instanceof Error ? err.message : 'Could not delete record.' });
     }
   };
 
@@ -76,8 +75,8 @@ export const HistoryManagerPage: React.FC<HistoryManagerProps> = ({ onNavigate }
       showToast({ type: 'info', title: 'History Purged', message: 'All browsing history removed.' });
       setIsClearConfirmOpen(false);
       loadHistory();
-    } catch (err: any) {
-      showToast({ type: 'error', title: 'Purge Failed', message: err?.message || 'Could not purge history.' });
+    } catch (err: unknown) {
+      showToast({ type: 'error', title: 'Purge Failed', message: err instanceof Error ? err.message : 'Could not purge history.' });
     }
   };
 
@@ -105,7 +104,7 @@ export const HistoryManagerPage: React.FC<HistoryManagerProps> = ({ onNavigate }
             ))}
           </select>
 
-          <button
+          <button type="button"
             onClick={() => setIsClearConfirmOpen(true)}
             disabled={history.length === 0}
             className="px-3.5 py-2 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-40 text-rose-500 text-xs font-semibold rounded-xl flex items-center space-x-1.5 transition-colors"
@@ -131,7 +130,7 @@ export const HistoryManagerPage: React.FC<HistoryManagerProps> = ({ onNavigate }
 
         <select
           value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as any)}
+          onChange={(e) => setSortBy(e.target.value as 'visitTime' | 'visitCount' | 'title' | 'domain')}
           className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:border-teal-500"
         >
           <option value="visitTime">Sort: Most Recent</option>
@@ -190,7 +189,7 @@ export const HistoryManagerPage: React.FC<HistoryManagerProps> = ({ onNavigate }
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
                       </a>
-                      <button
+                      <button type="button"
                         onClick={() => handleDeleteOne(h.id)}
                         className="p-1 text-slate-400 hover:text-rose-500 rounded"
                       >

@@ -3,7 +3,7 @@
  * Phase 5 Architecture
  */
 
-import {
+import type {
   ProxyProviderCapabilities,
   ProxyNetworkType,
   ProxySessionType,

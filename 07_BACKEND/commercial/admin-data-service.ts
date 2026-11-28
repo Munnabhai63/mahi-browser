@@ -4,22 +4,59 @@
  * query abstraction for Web Admin, Super Admin, and Platform telemetry.
  */
 
+import type { Prisma } from '@prisma/client';
 import { getPrismaClient, isPostgresConfigured } from '../../06_DATABASE/prisma-client.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getAllUsers } from './commercial-auth-service.js';
 import { getLicenses, evaluateServerStatus } from '../../04_LICENSING/license-engine.js';
-import type { LicenseStatus } from '../../10_CONFIG/shared/types/license.js';
+import type { LicenseRecord, LicenseStatus } from '../../10_CONFIG/shared/types/license.js';
+import type {
+  CommercialAuditLog,
+  CommercialDevice,
+  CommercialPlan,
+  CommercialPlanLimits,
+  CommercialUser,
+  SoftwareVersionRecord,
+} from '../../10_CONFIG/shared/types/commercial.js';
 import { getAllCommercialDevices } from './commercial-device-service.js';
-import { getCommercialPlans, DEFAULT_COMMERCIAL_PLANS } from './commercial-plan-service.js';
+import { getCommercialPlans } from './commercial-plan-service.js';
 import { getCommercialAuditLogs } from './commercial-audit-service.js';
 import { getSoftwareVersions } from './commercial-version-service.js';
 import { paymentService } from './payment-service.js';
-import { getFunnelMetrics } from './funnel-service.js';
-import { getSupportTickets, getSupportTicketMetrics } from './support-ticket-service.js';
-import { getDemoRequests } from './demo-service.js';
-import type { DemoRequestStatus } from './demo-service.js';
+import { getFunnelMetrics, type FunnelMetricsSummary } from './funnel-service.js';
+import { getSupportTickets, getSupportTicketMetrics, type SupportTicket } from './support-ticket-service.js';
+import { getDemoRequests, type DemoRequest, type DemoRequestStatus } from './demo-service.js';
 import { createLogger } from '../utils/logger.js';
+
 const log = createLogger('admin-data-service');
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+export interface AdminAuditLogItem {
+  id: string;
+  actorId: string;
+  actorName: string;
+  actorRole: string;
+  action: string;
+  targetType: string;
+  targetId?: string | null;
+  details: string;
+  ipAddress?: string | null;
+  result: string;
+  createdAt: string;
+}
+
+export interface AdminRecentSignupItem {
+  id: string;
+  email: string;
+  name: string;
+  planId: string;
+  status: string;
+  createdAt: string;
+  mirrorMissing?: boolean;
+}
 
 export interface DashboardSummaryResponse {
   totalUsers: number;
@@ -36,16 +73,8 @@ export interface DashboardSummaryResponse {
   totalPlans: number;
   activePlans: number;
   revenueEstMonthly: number;
-  recentAuditLogs: any[];
-  recentSignups: {
-    id: string;
-    email: string;
-    name: string;
-    planId: string;
-    status: string;
-    createdAt: string;
-    mirrorMissing?: boolean;
-  }[];
+  recentAuditLogs: Array<AdminAuditLogItem | CommercialAuditLog>;
+  recentSignups: AdminRecentSignupItem[];
   openTickets: number;
   escalatedTickets: number;
   source: 'postgres' | 'sqlite';
@@ -59,21 +88,186 @@ export interface UserListFilter {
   offset?: number;
 }
 
+export interface AdminUserItem {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  status: string;
+  planId: string;
+  bonusProfiles?: number;
+  bonusProxyBytes?: number;
+  featureOverrides?: Record<string, boolean>;
+  trialStartedAt?: string | null;
+  trialExpiresAt?: string | null;
+  trialUsed?: number | boolean | null;
+  signupIntent?: string | null;
+  pendingPlanId?: string | null;
+  pendingBillingCycle?: string | null;
+  googleSub?: string | null;
+  avatarUrl?: string | null;
+  authProvider?: string | null;
+  acceptedTerms?: boolean | null;
+  termsVersion?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt?: string | null;
+  mirrorMissing?: boolean;
+}
+
 export interface UserListResponse {
-  users: any[];
+  users: AdminUserItem[];
   total: number;
   source: 'postgres' | 'sqlite';
 }
 
 export interface UserDetailResponse {
-  user: any;
-  plan: any;
-  subscription: any;
-  license: any;
-  devices: any[];
-  payments: any[];
+  user: AdminUserItem | Record<string, unknown>;
+  plan: Record<string, unknown> | null;
+  subscription: Record<string, unknown> | null;
+  license: Record<string, unknown> | null;
+  devices: Array<Record<string, unknown>>;
+  payments: Array<Record<string, unknown>>;
   sessions: number;
   missingMirror?: boolean;
+}
+
+export interface AdminLicenseItem {
+  id: string;
+  keyMasked: string;
+  customerName: string;
+  accountId?: string;
+  status: string;
+  durationType: string;
+  maxDevices: number;
+  activeDevicesCount: number;
+  startsAt: string;
+  expiresAt: string | null;
+  createdAt: string;
+  createdBy: string;
+  revokedAt?: string | null;
+  notes?: string | null;
+}
+
+export interface AdminDeviceItem {
+  id: string;
+  userId: string;
+  licenseId?: string;
+  deviceId: string;
+  deviceName: string;
+  platform?: string;
+  osInfo: string;
+  clientVersion: string;
+  ipAddress?: string;
+  activatedAt: string;
+  lastSeenAt: string;
+  status: string;
+}
+
+export interface AdminPaymentItem {
+  id: string;
+  userId: string;
+  planId: string;
+  billingCycle: string;
+  amountCents: number;
+  currency: string;
+  provider: string;
+  status: string;
+  externalPaymentId?: string | null;
+  externalOrderId?: string | null;
+  receiptUrl?: string | null;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminVersionItem {
+  id: string;
+  version: string;
+  releaseNotes: string;
+  minSupportedVersion: string;
+  downloadUrlSetup?: string | null;
+  downloadUrlPortable?: string | null;
+  isMandatory: boolean;
+  releasedAt: string;
+}
+
+export interface AdminSupportTicketItem {
+  id: string;
+  ticketNumber: string;
+  category: string;
+  userEmail?: string;
+  userName?: string;
+  message: string;
+  reply?: string;
+  source: string;
+  status: string;
+  isEscalated: boolean;
+  escalationReason?: string;
+  emailSent: boolean;
+  adminNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminPlanItem {
+  id: string;
+  name: string;
+  tier: string;
+  priceMonthly: number;
+  priceAnnual: number;
+  limits: CommercialPlanLimits | Record<string, unknown>;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface AdminTermsComplianceResponse {
+  totalUsers: number;
+  accepted: number;
+  missing: number;
+  byVersion: Record<string, number>;
+}
+
+interface SqliteAuthUserBasicRow {
+  id: string;
+  email: string;
+  name: string;
+  status: string | null;
+  created_at: string;
+}
+
+interface SqliteAuthUserFullRow extends SqliteAuthUserBasicRow {
+  role: string | null;
+  signup_intent: string | null;
+  google_sub: string | null;
+  avatar_url: string | null;
+  auth_provider: string | null;
+  accepted_terms: number | null;
+  terms_version: string | null;
+  updated_at: string;
+  last_login_at: string | null;
+}
+
+interface SqlitePlanRow {
+  id: string;
+  price_monthly: number | string | null;
+  is_active: number | boolean;
+}
+
+interface SqliteSubRow {
+  plan_id: string | null;
+  license_id?: string | null;
+}
+
+interface SqliteCountRow {
+  c?: number;
+}
+
+interface SqliteTermsRow {
+  id: string;
+  accepted_terms: number | null;
+  terms_version: string | null;
 }
 
 const warnedMissingPlans = new Set<string>();
@@ -112,15 +306,7 @@ export async function adminGetDashboardSummary(): Promise<DashboardSummaryRespon
       ]);
 
       const commEmails = new Set(commUsers.map((u) => u.email.toLowerCase().trim()));
-      const missingMirrorList: {
-        id: string;
-        email: string;
-        name: string;
-        planId: string;
-        status: string;
-        createdAt: string;
-        mirrorMissing: boolean;
-      }[] = [];
+      const missingMirrorList: AdminRecentSignupItem[] = [];
 
       for (const au of authUsers) {
         if (!commEmails.has(au.email.toLowerCase().trim())) {
@@ -158,7 +344,7 @@ export async function adminGetDashboardSummary(): Promise<DashboardSummaryRespon
         else if (evaluated === 'EXPIRED') expiredLicenses++;
       }
 
-      const recentAuditLogs = recentLogs.map((l) => ({
+      const recentAuditLogs: AdminAuditLogItem[] = recentLogs.map((l) => ({
         id: l.id,
         actorId: l.actor_id,
         actorName: l.actor_name,
@@ -172,7 +358,7 @@ export async function adminGetDashboardSummary(): Promise<DashboardSummaryRespon
         createdAt: l.created_at,
       }));
 
-      const allSignups = [
+      const allSignups: AdminRecentSignupItem[] = [
         ...commUsers.map((u) => ({
           id: u.id,
           email: u.email,
@@ -224,28 +410,29 @@ export async function adminGetDashboardSummary(): Promise<DashboardSummaryRespon
         escalatedTickets: escalatedTicketsCount,
         source: 'postgres',
       };
-    } catch (err: any) {
-      log.error('[AdminDataService] Postgres adminGetDashboardSummary failed, falling back to SQLite:', err?.message || err);
+    } catch (err: unknown) {
+      log.error('[AdminDataService] Postgres adminGetDashboardSummary failed, falling back to SQLite:', errMsg(err));
     }
   }
 
-  // SQLite Fallback
   return sqliteGetDashboardSummary();
 }
 
 function sqliteGetDashboardSummary(): DashboardSummaryResponse {
   const db = getDatabase();
   const { users } = getAllUsers({ limit: 1000 });
-  const commEmails = new Set(users.map((u: any) => u.email.toLowerCase().trim()));
+  const commEmails = new Set(users.map((u: CommercialUser) => u.email.toLowerCase().trim()));
 
-  let authUsers: any[] = [];
+  let authUsers: SqliteAuthUserBasicRow[] = [];
   try {
-    authUsers = db.prepare('SELECT id, email, name, status, created_at FROM auth_users').all() as any[];
+    authUsers = db
+      .prepare('SELECT id, email, name, status, created_at FROM auth_users')
+      .all() as unknown as SqliteAuthUserBasicRow[];
   } catch {
     authUsers = [];
   }
 
-  const missingMirrorList: any[] = [];
+  const missingMirrorList: AdminRecentSignupItem[] = [];
   for (const au of authUsers) {
     if (!commEmails.has(au.email.toLowerCase().trim())) {
       missingMirrorList.push({
@@ -265,14 +452,14 @@ function sqliteGetDashboardSummary(): DashboardSummaryResponse {
   const totalUsers = users.length + missingMirrorUsers;
 
   const activeUsers =
-    users.filter((u: any) => u.status === 'ACTIVE').length +
-    missingMirrorList.filter((u: any) => u.status === 'ACTIVE').length;
+    users.filter((u: CommercialUser) => u.status === 'ACTIVE').length +
+    missingMirrorList.filter((u) => u.status === 'ACTIVE').length;
   const suspendedUsers =
-    users.filter((u: any) => u.status === 'SUSPENDED').length +
-    missingMirrorList.filter((u: any) => u.status === 'SUSPENDED').length;
+    users.filter((u: CommercialUser) => u.status === 'SUSPENDED').length +
+    missingMirrorList.filter((u) => u.status === 'SUSPENDED').length;
   const bannedUsers =
-    users.filter((u: any) => u.status === 'BANNED').length +
-    missingMirrorList.filter((u: any) => u.status === 'BANNED').length;
+    users.filter((u: CommercialUser) => u.status === 'BANNED').length +
+    missingMirrorList.filter((u) => u.status === 'BANNED').length;
 
   const licenses = getLicenses();
   const activeLicenses = licenses.filter((l) => l.status === 'ACTIVE').length;
@@ -281,16 +468,18 @@ function sqliteGetDashboardSummary(): DashboardSummaryResponse {
   const devices = getAllCommercialDevices();
   const activeDevices = devices.filter((d) => d.status === 'ACTIVE').length;
 
-  let activeSubs: any[] = [];
+  let activeSubs: SqliteSubRow[] = [];
   try {
-    activeSubs = db.prepare("SELECT * FROM commercial_subscriptions WHERE status = 'ACTIVE'").all() as any[];
+    activeSubs = db
+      .prepare("SELECT * FROM commercial_subscriptions WHERE status = 'ACTIVE'")
+      .all() as unknown as SqliteSubRow[];
   } catch {
     activeSubs = [];
   }
 
-  let allPlans: any[] = [];
+  let allPlans: SqlitePlanRow[] = [];
   try {
-    allPlans = db.prepare('SELECT * FROM commercial_plans').all() as any[];
+    allPlans = db.prepare('SELECT * FROM commercial_plans').all() as unknown as SqlitePlanRow[];
   } catch {
     allPlans = [];
   }
@@ -298,8 +487,8 @@ function sqliteGetDashboardSummary(): DashboardSummaryResponse {
   const { logs: recentAuditLogs } = getCommercialAuditLogs({ limit: 10 });
   const ticketMetrics = getSupportTicketMetrics();
 
-  const allSignups = [
-    ...users.map((u: any) => ({
+  const allSignups: AdminRecentSignupItem[] = [
+    ...users.map((u: CommercialUser) => ({
       id: u.id,
       email: u.email,
       name: u.name,
@@ -313,9 +502,9 @@ function sqliteGetDashboardSummary(): DashboardSummaryResponse {
   allSignups.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const recentSignups = allSignups.slice(0, 10);
 
-  const planMap = new Map(allPlans.map((p: any) => [p.id, p]));
-  const rawRevenue = activeSubs.reduce((acc: number, sub: any) => {
-    const plan = planMap.get(sub.plan_id);
+  const planMap = new Map(allPlans.map((p) => [p.id, p]));
+  const rawRevenue = activeSubs.reduce((acc: number, sub: SqliteSubRow) => {
+    const plan = sub.plan_id ? planMap.get(sub.plan_id) : undefined;
     if (!plan) {
       const planId = sub.plan_id || 'unknown';
       if (!warnedMissingPlans.has(planId)) {
@@ -342,7 +531,7 @@ function sqliteGetDashboardSummary(): DashboardSummaryResponse {
     authorizedDevices: activeDevices,
     activeSubscriptions: activeSubs.length,
     totalPlans: allPlans.length,
-    activePlans: allPlans.filter((p: any) => p.is_active === 1 || p.is_active === true).length,
+    activePlans: allPlans.filter((p) => p.is_active === 1 || p.is_active === true).length,
     revenueEstMonthly,
     recentAuditLogs,
     recentSignups,
@@ -366,28 +555,29 @@ export async function adminListUsers(filter?: UserListFilter): Promise<UserListR
       ]);
 
       const existingEmails = new Set<string>();
-      const authMap = new Map<string, typeof authUsers[0]>();
+      const authMap = new Map<string, (typeof authUsers)[0]>();
       for (const au of authUsers) {
         authMap.set(au.email.toLowerCase().trim(), au);
       }
 
-      const commRows = commUsers.map((u) => {
+      const commRows: AdminUserItem[] = commUsers.map((u) => {
         existingEmails.add(u.email.toLowerCase().trim());
         let featureOverrides: Record<string, boolean> = {};
         if (u.feature_overrides) {
           try {
-            featureOverrides = typeof u.feature_overrides === 'string'
-              ? JSON.parse(u.feature_overrides)
-              : (u.feature_overrides || {});
+            featureOverrides =
+              typeof u.feature_overrides === 'string'
+                ? (JSON.parse(u.feature_overrides) as Record<string, boolean>)
+                : ((u.feature_overrides as unknown as Record<string, boolean>) || {});
           } catch (parseErr) {
             log.warn('Failed parsing user feature_overrides JSON in admin list', {
               userId: u.id,
-              err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+              err: errMsg(parseErr),
             });
           }
         }
 
-        const authMatch = authMap.get(u.email.toLowerCase().trim()) as any;
+        const authMatch = authMap.get(u.email.toLowerCase().trim());
         const acceptedTerms =
           authMatch?.accepted_terms !== null && authMatch?.accepted_terms !== undefined
             ? authMatch.accepted_terms === 1
@@ -422,7 +612,7 @@ export async function adminListUsers(filter?: UserListFilter): Promise<UserListR
         };
       });
 
-      const mirrorMissingRows: any[] = [];
+      const mirrorMissingRows: AdminUserItem[] = [];
       for (const au of authUsers) {
         const lower = au.email.toLowerCase().trim();
         if (!existingEmails.has(lower)) {
@@ -445,8 +635,8 @@ export async function adminListUsers(filter?: UserListFilter): Promise<UserListR
             googleSub: au.google_sub || null,
             avatarUrl: au.avatar_url || null,
             authProvider: au.auth_provider || 'LOCAL',
-            acceptedTerms: (au as any).accepted_terms === 1,
-            termsVersion: (au as any).terms_version || undefined,
+            acceptedTerms: au.accepted_terms === 1,
+            termsVersion: au.terms_version || undefined,
             createdAt: au.created_at,
             updatedAt: au.updated_at,
             lastLoginAt: au.last_login_at || undefined,
@@ -455,7 +645,7 @@ export async function adminListUsers(filter?: UserListFilter): Promise<UserListR
         }
       }
 
-      let allRows = [...commRows, ...mirrorMissingRows];
+      let allRows: AdminUserItem[] = [...commRows, ...mirrorMissingRows];
 
       if (filter?.status) {
         allRows = allRows.filter((u) => u.status === filter.status);
@@ -482,12 +672,11 @@ export async function adminListUsers(filter?: UserListFilter): Promise<UserListR
         total,
         source: 'postgres',
       };
-    } catch (err: any) {
-      log.error('[AdminDataService] Postgres adminListUsers failed, falling back to SQLite:', err?.message || err);
+    } catch (err: unknown) {
+      log.error('[AdminDataService] Postgres adminListUsers failed, falling back to SQLite:', errMsg(err));
     }
   }
 
-  // SQLite Fallback
   return sqliteListUsers(filter);
 }
 
@@ -501,15 +690,15 @@ function sqliteListUsers(filter?: UserListFilter): UserListResponse {
     offset: 0,
   });
 
-  const commEmails = new Set(users.map((u: any) => u.email.toLowerCase().trim()));
-  let authUsers: any[] = [];
+  const commEmails = new Set(users.map((u: CommercialUser) => u.email.toLowerCase().trim()));
+  let authUsers: SqliteAuthUserFullRow[] = [];
   try {
-    authUsers = db.prepare('SELECT * FROM auth_users').all() as any[];
+    authUsers = db.prepare('SELECT * FROM auth_users').all() as unknown as SqliteAuthUserFullRow[];
   } catch {
     authUsers = [];
   }
 
-  const missingMirrorRows: any[] = [];
+  const missingMirrorRows: AdminUserItem[] = [];
   for (const au of authUsers) {
     const lower = au.email.toLowerCase().trim();
     if (!commEmails.has(lower)) {
@@ -542,11 +731,11 @@ function sqliteListUsers(filter?: UserListFilter): UserListResponse {
     }
   }
 
-  let allRows = [
-    ...users.map((row: any) => ({
+  let allRows: AdminUserItem[] = [
+    ...users.map((row: CommercialUser) => ({
       ...row,
-      acceptedTerms: row.acceptedTerms ?? (row.accepted_terms !== undefined ? row.accepted_terms === 1 : null),
-      termsVersion: row.termsVersion ?? (row.terms_version !== undefined ? row.terms_version : null),
+      acceptedTerms: row.acceptedTerms ?? null,
+      termsVersion: row.termsVersion ?? null,
       mirrorMissing: false,
     })),
     ...missingMirrorRows,
@@ -605,8 +794,8 @@ export async function adminGetUserDetail(id: string): Promise<UserDetailResponse
             bonusProfiles: 0,
             bonusProxyBytes: 0,
             featureOverrides: {},
-            acceptedTerms: (authUser as any).accepted_terms === 1,
-            termsVersion: (authUser as any).terms_version,
+            acceptedTerms: authUser.accepted_terms === 1,
+            termsVersion: authUser.terms_version,
             createdAt: authUser.created_at,
             updatedAt: authUser.updated_at,
             lastLoginAt: authUser.last_login_at,
@@ -638,27 +827,29 @@ export async function adminGetUserDetail(id: string): Promise<UserDetailResponse
         prisma.auth_sessions.count({ where: { user_id: id } }),
       ]);
 
-      let license = null;
+      let license: Record<string, unknown> | null = null;
       if (sub?.license_id) {
-        license = await prisma.licenses.findUnique({ where: { id: sub.license_id } });
+        license = (await prisma.licenses.findUnique({ where: { id: sub.license_id } })) as unknown as Record<
+          string,
+          unknown
+        > | null;
       }
 
       return {
-        user: commUser,
-        plan: plan || { id: commUser.plan_id, name: 'Default Plan', tier: 'FREE' },
-        subscription: sub,
+        user: commUser as unknown as Record<string, unknown>,
+        plan: (plan as unknown as Record<string, unknown>) || { id: commUser.plan_id, name: 'Default Plan', tier: 'FREE' },
+        subscription: sub as unknown as Record<string, unknown> | null,
         license,
-        devices,
-        payments,
+        devices: devices as unknown as Array<Record<string, unknown>>,
+        payments: payments as unknown as Array<Record<string, unknown>>,
         sessions: sessionsCount,
         missingMirror: false,
       };
-    } catch (err: any) {
-      log.error('[AdminDataService] Postgres adminGetUserDetail failed, falling back to SQLite:', err?.message || err);
+    } catch (err: unknown) {
+      log.error('[AdminDataService] Postgres adminGetUserDetail failed, falling back to SQLite:', errMsg(err));
     }
   }
 
-  // SQLite Fallback
   return sqliteGetUserDetail(id);
 }
 
@@ -667,24 +858,29 @@ function sqliteGetUserDetail(id: string): UserDetailResponse | null {
 
   if (id.startsWith('central:')) {
     const centralId = id.slice(8);
-    let authUser: any = null;
+    let authUser: SqliteAuthUserFullRow | undefined;
     try {
-      authUser = db.prepare('SELECT * FROM auth_users WHERE id = ?').get(centralId);
+      authUser = db.prepare('SELECT * FROM auth_users WHERE id = ?').get(centralId) as unknown as
+        | SqliteAuthUserFullRow
+        | undefined;
     } catch (err) {
       log.warn('Failed reading SQLite auth_users for central user detail', {
         centralId,
-        err: err instanceof Error ? err.message : String(err),
+        err: errMsg(err),
       });
     }
     if (!authUser) return null;
 
     let sessionsCount = 0;
     try {
-      sessionsCount = (db.prepare('SELECT COUNT(*) as c FROM auth_sessions WHERE user_id = ?').get(centralId) as any)?.c || 0;
+      const row = db.prepare('SELECT COUNT(*) as c FROM auth_sessions WHERE user_id = ?').get(centralId) as unknown as
+        | SqliteCountRow
+        | undefined;
+      sessionsCount = row?.c || 0;
     } catch (err) {
       log.debug('Skipped SQLite auth_sessions count for central user detail', {
         centralId,
-        err: err instanceof Error ? err.message : String(err),
+        err: errMsg(err),
       });
     }
 
@@ -715,76 +911,91 @@ function sqliteGetUserDetail(id: string): UserDetailResponse | null {
     };
   }
 
-  let commUser: any = null;
+  let commUser: (Record<string, unknown> & { plan_id?: string }) | undefined;
   try {
-    commUser = db.prepare('SELECT * FROM commercial_users WHERE id = ?').get(id);
+    commUser = db.prepare('SELECT * FROM commercial_users WHERE id = ?').get(id) as
+      | (Record<string, unknown> & { plan_id?: string })
+      | undefined;
   } catch (err) {
     log.warn('Failed querying commercial_users in sqliteGetUserDetail', {
       userId: id,
-      err: err instanceof Error ? err.message : String(err),
+      err: errMsg(err),
     });
   }
   if (!commUser) return null;
 
-  let plan: any = null;
+  let plan: Record<string, unknown> | null = null;
   try {
-    plan = db.prepare('SELECT * FROM commercial_plans WHERE id = ?').get(commUser.plan_id);
+    plan = (db.prepare('SELECT * FROM commercial_plans WHERE id = ?').get(commUser.plan_id) as Record<
+      string,
+      unknown
+    > | undefined) ?? null;
   } catch (err) {
     log.debug('Skipped commercial_plans lookup in sqliteGetUserDetail', {
       planId: commUser.plan_id,
-      err: err instanceof Error ? err.message : String(err),
+      err: errMsg(err),
     });
   }
 
-  let sub: any = null;
+  let sub: (Record<string, unknown> & SqliteSubRow) | null = null;
   try {
-    sub = db.prepare('SELECT * FROM commercial_subscriptions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1').get(id);
+    sub =
+      (db
+        .prepare('SELECT * FROM commercial_subscriptions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1')
+        .get(id) as (Record<string, unknown> & SqliteSubRow) | undefined) ?? null;
   } catch (err) {
     log.debug('Skipped commercial_subscriptions lookup in sqliteGetUserDetail', {
       userId: id,
-      err: err instanceof Error ? err.message : String(err),
+      err: errMsg(err),
     });
   }
 
-  let license: any = null;
+  let license: Record<string, unknown> | null = null;
   if (sub?.license_id) {
     try {
-      license = db.prepare('SELECT * FROM licenses WHERE id = ?').get(sub.license_id);
+      license =
+        (db.prepare('SELECT * FROM licenses WHERE id = ?').get(sub.license_id) as Record<
+          string,
+          unknown
+        > | undefined) ?? null;
     } catch (err) {
       log.debug('Skipped licenses lookup in sqliteGetUserDetail', {
         licenseId: sub.license_id,
-        err: err instanceof Error ? err.message : String(err),
+        err: errMsg(err),
       });
     }
   }
 
-  let devices: any[] = [];
+  let devices: Array<Record<string, unknown>> = [];
   try {
-    devices = db.prepare('SELECT * FROM commercial_devices WHERE user_id = ?').all(id) as any[];
+    devices = db.prepare('SELECT * FROM commercial_devices WHERE user_id = ?').all(id);
   } catch (err) {
     log.debug('Skipped commercial_devices lookup in sqliteGetUserDetail', {
       userId: id,
-      err: err instanceof Error ? err.message : String(err),
+      err: errMsg(err),
     });
   }
 
-  let payments: any[] = [];
+  let payments: Array<Record<string, unknown>> = [];
   try {
-    payments = db.prepare('SELECT * FROM commercial_payments WHERE user_id = ? ORDER BY created_at DESC').all(id) as any[];
+    payments = db.prepare('SELECT * FROM commercial_payments WHERE user_id = ? ORDER BY created_at DESC').all(id);
   } catch (err) {
     log.debug('Skipped commercial_payments lookup in sqliteGetUserDetail', {
       userId: id,
-      err: err instanceof Error ? err.message : String(err),
+      err: errMsg(err),
     });
   }
 
   let sessionsCount = 0;
   try {
-    sessionsCount = (db.prepare('SELECT COUNT(*) as c FROM auth_sessions WHERE user_id = ?').get(id) as any)?.c || 0;
+    const row = db.prepare('SELECT COUNT(*) as c FROM auth_sessions WHERE user_id = ?').get(id) as unknown as
+      | SqliteCountRow
+      | undefined;
+    sessionsCount = row?.c || 0;
   } catch (err) {
     log.debug('Skipped auth_sessions count in sqliteGetUserDetail', {
       userId: id,
-      err: err instanceof Error ? err.message : String(err),
+      err: errMsg(err),
     });
   }
 
@@ -804,7 +1015,7 @@ function sqliteGetUserDetail(id: string): UserDetailResponse | null {
  * 4. Licenses List
  */
 export async function adminListLicenses(filter?: { status?: string; searchQuery?: string }): Promise<{
-  items: any[];
+  items: Array<AdminLicenseItem | LicenseRecord>;
   total: number;
   source: string;
 }> {
@@ -821,7 +1032,7 @@ export async function adminListLicenses(filter?: { status?: string; searchQuery?
         orderBy: { created_at: 'desc' },
       });
 
-      let items = allLicenses.map((l: any) => {
+      let items: AdminLicenseItem[] = allLicenses.map((l) => {
         const evaluatedStatus = evaluateServerStatus(l.status as LicenseStatus, l.expires_at, l.revoked_at);
         return {
           id: l.id,
@@ -850,13 +1061,13 @@ export async function adminListLicenses(filter?: { status?: string; searchQuery?
           (l) =>
             l.customerName.toLowerCase().includes(q) ||
             l.keyMasked.toLowerCase().includes(q) ||
-            (l.notes && l.notes.toLowerCase().includes(q))
+            (Boolean(l.notes) && (l.notes as string).toLowerCase().includes(q))
         );
       }
 
       return { items, total: items.length, source: 'postgres' };
-    } catch (err: any) {
-      log.error('[AdminDataService] Postgres adminListLicenses failed, falling back to SQLite:', err?.message || err);
+    } catch (err: unknown) {
+      log.error('[AdminDataService] Postgres adminListLicenses failed, falling back to SQLite:', errMsg(err));
     }
   }
 
@@ -868,7 +1079,7 @@ export async function adminListLicenses(filter?: { status?: string; searchQuery?
  * 5. Devices Fleet List
  */
 export async function adminListDevices(filter?: { status?: string; searchQuery?: string }): Promise<{
-  items: any[];
+  items: Array<AdminDeviceItem | CommercialDevice>;
   total: number;
   source: string;
 }> {
@@ -880,7 +1091,7 @@ export async function adminListDevices(filter?: { status?: string; searchQuery?:
         orderBy: { last_seen_at: 'desc' },
       });
 
-      let items = devices.map((d) => ({
+      let items: AdminDeviceItem[] = devices.map((d) => ({
         id: d.id,
         userId: d.user_id,
         licenseId: d.license_id || undefined,
@@ -909,8 +1120,8 @@ export async function adminListDevices(filter?: { status?: string; searchQuery?:
       }
 
       return { items, total: items.length, source: 'postgres' };
-    } catch (err: any) {
-      log.error('[AdminDataService] Postgres adminListDevices failed, falling back to SQLite:', err?.message || err);
+    } catch (err: unknown) {
+      log.error('[AdminDataService] Postgres adminListDevices failed, falling back to SQLite:', errMsg(err));
     }
   }
 
@@ -922,7 +1133,7 @@ export async function adminListDevices(filter?: { status?: string; searchQuery?:
  * 6. Commercial Payments List
  */
 export async function adminListPayments(filter?: { status?: string }): Promise<{
-  items: any[];
+  items: AdminPaymentItem[];
   total: number;
   source: string;
 }> {
@@ -936,14 +1147,14 @@ export async function adminListPayments(filter?: { status?: string }): Promise<{
         orderBy: { created_at: 'desc' },
       });
 
-      const items = rows.map((r) => {
-        let metadata: any = {};
+      const items: AdminPaymentItem[] = rows.map((r) => {
+        let metadata: Record<string, unknown> = {};
         try {
-          metadata = JSON.parse(r.metadata_json || '{}');
+          metadata = JSON.parse(r.metadata_json || '{}') as Record<string, unknown>;
         } catch (parseErr) {
           log.warn('Failed parsing payment metadata_json in admin payments list', {
             paymentId: r.id,
-            err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+            err: errMsg(parseErr),
           });
         }
         return {
@@ -965,12 +1176,12 @@ export async function adminListPayments(filter?: { status?: string }): Promise<{
       });
 
       return { items, total: items.length, source: 'postgres' };
-    } catch (err: any) {
-      log.error('[AdminDataService] Postgres adminListPayments failed, falling back to SQLite:', err?.message || err);
+    } catch (err: unknown) {
+      log.error('[AdminDataService] Postgres adminListPayments failed, falling back to SQLite:', errMsg(err));
     }
   }
 
-  const items = paymentService.listAdminPayments(filter?.status);
+  const items = paymentService.listAdminPayments(filter?.status) as AdminPaymentItem[];
   return { items, total: items.length, source: 'sqlite' };
 }
 
@@ -984,12 +1195,12 @@ export async function adminListAuditLogs(filter?: {
   searchQuery?: string;
   limit?: number;
   offset?: number;
-}): Promise<{ items: any[]; total: number; source: string }> {
+}): Promise<{ items: Array<AdminAuditLogItem | CommercialAuditLog>; total: number; source: string }> {
   const prisma = isPostgresConfigured() ? getPrismaClient() : null;
 
   if (prisma) {
     try {
-      const where: any = {};
+      const where: Prisma.commercial_audit_logsWhereInput = {};
       if (filter?.action) where.action = filter.action;
       if (filter?.actorRole) where.actor_role = filter.actorRole;
       if (filter?.result) where.result = filter.result;
@@ -1007,7 +1218,7 @@ export async function adminListAuditLogs(filter?: {
         }),
       ]);
 
-      const items = rows.map((r) => ({
+      const items: AdminAuditLogItem[] = rows.map((r) => ({
         id: r.id,
         actorId: r.actor_id,
         actorName: r.actor_name,
@@ -1022,8 +1233,8 @@ export async function adminListAuditLogs(filter?: {
       }));
 
       return { items, total, source: 'postgres' };
-    } catch (err: any) {
-      log.error('[AdminDataService] Postgres adminListAuditLogs failed, falling back to SQLite:', err?.message || err);
+    } catch (err: unknown) {
+      log.error('[AdminDataService] Postgres adminListAuditLogs failed, falling back to SQLite:', errMsg(err));
     }
   }
 
@@ -1034,7 +1245,10 @@ export async function adminListAuditLogs(filter?: {
 /**
  * 8. Software Versions List
  */
-export async function adminListVersions(): Promise<{ items: any[]; source: string }> {
+export async function adminListVersions(): Promise<{
+  items: Array<AdminVersionItem | SoftwareVersionRecord>;
+  source: string;
+}> {
   const prisma = isPostgresConfigured() ? getPrismaClient() : null;
 
   if (prisma) {
@@ -1044,7 +1258,7 @@ export async function adminListVersions(): Promise<{ items: any[]; source: strin
       });
 
       if (rows.length > 0) {
-        const items = rows.map((r) => ({
+        const items: AdminVersionItem[] = rows.map((r) => ({
           id: r.id,
           version: r.version,
           releaseNotes: r.release_notes,
@@ -1056,8 +1270,8 @@ export async function adminListVersions(): Promise<{ items: any[]; source: strin
         }));
         return { items, source: 'postgres' };
       }
-    } catch (err: any) {
-      log.error('[AdminDataService] Postgres adminListVersions failed, falling back to SQLite:', err?.message || err);
+    } catch (err: unknown) {
+      log.error('[AdminDataService] Postgres adminListVersions failed, falling back to SQLite:', errMsg(err));
     }
   }
 
@@ -1068,7 +1282,7 @@ export async function adminListVersions(): Promise<{ items: any[]; source: strin
 /**
  * 9. Conversion Funnel Metrics
  */
-export async function adminFunnelMetrics(days?: number): Promise<any> {
+export async function adminFunnelMetrics(_days?: number): Promise<FunnelMetricsSummary> {
   const prisma = isPostgresConfigured() ? getPrismaClient() : null;
 
   if (prisma) {
@@ -1079,23 +1293,21 @@ export async function adminFunnelMetrics(days?: number): Promise<any> {
         countMap[e.event_name] = (countMap[e.event_name] || 0) + 1;
       }
 
-      const trialCtaClicks = countMap['trial_cta_clicked'] || 0;
-      const signupStarts = countMap['signup_started'] || 0;
-      const signupCompletions = countMap['signup_completed'] || 0;
-      const emailVerifications = countMap['email_verified'] || 0;
-      const trialActivations = countMap['trial_activated'] || 0;
-      const checkoutStarts = countMap['checkout_started'] || 0;
-      const paymentCompletions = countMap['payment_completed'] || 0;
-      const downloads = countMap['download_started'] || 0;
-      const desktopLogins = countMap['desktop_first_login'] || 0;
+      const trialCtaClicks = countMap.trial_cta_clicked || 0;
+      const signupStarts = countMap.signup_started || 0;
+      const signupCompletions = countMap.signup_completed || 0;
+      const emailVerifications = countMap.email_verified || 0;
+      const trialActivations = countMap.trial_activated || 0;
+      const checkoutStarts = countMap.checkout_started || 0;
+      const paymentCompletions = countMap.payment_completed || 0;
+      const downloads = countMap.download_started || 0;
+      const desktopLogins = countMap.desktop_first_login || 0;
 
-      const conversionRateSignupToTrial = signupCompletions > 0
-        ? Math.round((trialActivations / signupCompletions) * 100)
-        : 0;
+      const conversionRateSignupToTrial =
+        signupCompletions > 0 ? Math.round((trialActivations / signupCompletions) * 100) : 0;
 
-      const conversionRateTrialToDownload = trialActivations > 0
-        ? Math.round((downloads / trialActivations) * 100)
-        : 0;
+      const conversionRateTrialToDownload =
+        trialActivations > 0 ? Math.round((downloads / trialActivations) * 100) : 0;
 
       return {
         trialCtaClicks,
@@ -1116,8 +1328,8 @@ export async function adminFunnelMetrics(days?: number): Promise<any> {
         downloadRate: conversionRateTrialToDownload,
         overallConversionRate: conversionRateTrialToDownload,
       };
-    } catch (err: any) {
-      log.error('[AdminDataService] Postgres adminFunnelMetrics failed, falling back to SQLite:', err?.message || err);
+    } catch (err: unknown) {
+      log.error('[AdminDataService] Postgres adminFunnelMetrics failed, falling back to SQLite:', errMsg(err));
     }
   }
 
@@ -1131,12 +1343,12 @@ export async function adminListSupportTickets(filter?: {
   status?: string;
   category?: string;
   escalatedOnly?: boolean;
-}): Promise<{ items: any[]; total: number; source: string }> {
+}): Promise<{ items: Array<AdminSupportTicketItem | SupportTicket>; total: number; source: string }> {
   const prisma = isPostgresConfigured() ? getPrismaClient() : null;
 
   if (prisma) {
     try {
-      const where: any = {};
+      const where: Prisma.support_ticketsWhereInput = {};
       if (filter?.status) where.status = filter.status;
       if (filter?.category) where.category = filter.category;
       if (filter?.escalatedOnly) where.is_escalated = 1;
@@ -1147,7 +1359,7 @@ export async function adminListSupportTickets(filter?: {
         take: 100,
       });
 
-      const items = rows.map((r) => ({
+      const items: AdminSupportTicketItem[] = rows.map((r) => ({
         id: r.id,
         ticketNumber: r.ticket_number,
         category: r.category,
@@ -1166,8 +1378,8 @@ export async function adminListSupportTickets(filter?: {
       }));
 
       return { items, total: items.length, source: 'postgres' };
-    } catch (err: any) {
-      log.error('[AdminDataService] Postgres adminListSupportTickets failed, falling back to SQLite:', err?.message || err);
+    } catch (err: unknown) {
+      log.error('[AdminDataService] Postgres adminListSupportTickets failed, falling back to SQLite:', errMsg(err));
     }
   }
 
@@ -1180,7 +1392,7 @@ export async function adminListSupportTickets(filter?: {
  */
 export async function adminListDemoRequests(filter?: {
   status?: DemoRequestStatus;
-}): Promise<{ items: any[]; total: number; source: string }> {
+}): Promise<{ items: DemoRequest[]; total: number; source: string }> {
   const prisma = isPostgresConfigured() ? getPrismaClient() : null;
 
   if (prisma) {
@@ -1191,7 +1403,7 @@ export async function adminListDemoRequests(filter?: {
         orderBy: { created_at: 'desc' },
       });
 
-      const items = rows.map((r) => ({
+      const items: DemoRequest[] = rows.map((r) => ({
         id: r.id,
         fullName: r.full_name,
         email: r.email,
@@ -1208,8 +1420,8 @@ export async function adminListDemoRequests(filter?: {
       }));
 
       return { items, total: items.length, source: 'postgres' };
-    } catch (err: any) {
-      log.error('[AdminDataService] Postgres adminListDemoRequests failed, falling back to SQLite:', err?.message || err);
+    } catch (err: unknown) {
+      log.error('[AdminDataService] Postgres adminListDemoRequests failed, falling back to SQLite:', errMsg(err));
     }
   }
 
@@ -1217,63 +1429,7 @@ export async function adminListDemoRequests(filter?: {
   return { items, total: items.length, source: 'sqlite' };
 }
 
-/**
- * 12. Legal Terms Compliance Overview
- */
-export async function adminTermsCompliance(): Promise<any> {
-  const prisma = isPostgresConfigured() ? getPrismaClient() : null;
-
-  if (prisma) {
-    try {
-      const rows = (await prisma.auth_users.findMany()) as any[];
-
-      const totalUsers = rows.length;
-      let accepted = 0;
-      let missing = 0;
-      const byVersion: Record<string, number> = {};
-
-      for (const r of rows) {
-        if (r.accepted_terms === 1) {
-          accepted++;
-          if (r.terms_version !== null && r.terms_version !== undefined && String(r.terms_version).trim() !== '') {
-            const v = String(r.terms_version).trim();
-            byVersion[v] = (byVersion[v] || 0) + 1;
-          } else {
-            byVersion['unversioned'] = (byVersion['unversioned'] || 0) + 1;
-          }
-        } else {
-          missing++;
-        }
-      }
-
-      return { totalUsers, accepted, missing, byVersion };
-    } catch (err: any) {
-      log.error('[AdminDataService] Postgres adminTermsCompliance failed, falling back to SQLite:', err?.message || err);
-    }
-  }
-
-  // SQLite Fallback
-  const db = getDatabase();
-  let rows: any[] = [];
-  try {
-    rows = db.prepare('SELECT id, accepted_terms, terms_version FROM commercial_users').all() as any[];
-  } catch {
-    rows = [];
-  }
-  try {
-    const authRows = db.prepare('SELECT id, accepted_terms, terms_version FROM auth_users').all() as any[];
-    const existingIds = new Set(rows.map((r: any) => r.id));
-    for (const ar of authRows) {
-      if (!existingIds.has(ar.id)) {
-        rows.push(ar);
-      }
-    }
-  } catch (err) {
-    log.debug('Skipped SQLite auth_users merge during terms acceptance summary', {
-      err: err instanceof Error ? err.message : String(err),
-    });
-  }
-
+function summarizeTermsRows(rows: SqliteTermsRow[]): AdminTermsComplianceResponse {
   const totalUsers = rows.length;
   let accepted = 0;
   let missing = 0;
@@ -1286,7 +1442,7 @@ export async function adminTermsCompliance(): Promise<any> {
         const v = String(r.terms_version).trim();
         byVersion[v] = (byVersion[v] || 0) + 1;
       } else {
-        byVersion['unversioned'] = (byVersion['unversioned'] || 0) + 1;
+        byVersion.unversioned = (byVersion.unversioned || 0) + 1;
       }
     } else {
       missing++;
@@ -1297,10 +1453,53 @@ export async function adminTermsCompliance(): Promise<any> {
 }
 
 /**
+ * 12. Legal Terms Compliance Overview
+ */
+export async function adminTermsCompliance(): Promise<AdminTermsComplianceResponse> {
+  const prisma = isPostgresConfigured() ? getPrismaClient() : null;
+
+  if (prisma) {
+    try {
+      const rows = await prisma.auth_users.findMany({
+        select: { id: true, accepted_terms: true, terms_version: true },
+      });
+      return summarizeTermsRows(rows);
+    } catch (err: unknown) {
+      log.error('[AdminDataService] Postgres adminTermsCompliance failed, falling back to SQLite:', errMsg(err));
+    }
+  }
+
+  const db = getDatabase();
+  let rows: SqliteTermsRow[] = [];
+  try {
+    rows = db.prepare('SELECT id, accepted_terms, terms_version FROM commercial_users').all() as unknown as SqliteTermsRow[];
+  } catch {
+    rows = [];
+  }
+  try {
+    const authRows = db
+      .prepare('SELECT id, accepted_terms, terms_version FROM auth_users')
+      .all() as unknown as SqliteTermsRow[];
+    const existingIds = new Set(rows.map((r) => r.id));
+    for (const ar of authRows) {
+      if (!existingIds.has(ar.id)) {
+        rows.push(ar);
+      }
+    }
+  } catch (err) {
+    log.debug('Skipped SQLite auth_users merge during terms acceptance summary', {
+      err: errMsg(err),
+    });
+  }
+
+  return summarizeTermsRows(rows);
+}
+
+/**
  * 13. Commercial Plans List (Forward Compatible)
  */
 export async function adminListPlans(includeInactive = true): Promise<{
-  items: any[];
+  items: Array<AdminPlanItem | CommercialPlan>;
   total: number;
   source: string;
 }> {
@@ -1313,14 +1512,14 @@ export async function adminListPlans(includeInactive = true): Promise<{
       });
 
       if (rows.length > 0) {
-        let items = rows.map((p) => {
-          let limits: any = {};
+        let items: AdminPlanItem[] = rows.map((p) => {
+          let limits: Record<string, unknown> = {};
           try {
-            limits = JSON.parse(p.limits_json || '{}');
+            limits = JSON.parse(p.limits_json || '{}') as Record<string, unknown>;
           } catch (parseErr) {
             log.warn('Failed parsing plan limits_json in adminListPlans', {
               planId: p.id,
-              err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+              err: errMsg(parseErr),
             });
           }
           return {
@@ -1342,8 +1541,8 @@ export async function adminListPlans(includeInactive = true): Promise<{
 
         return { items, total: items.length, source: 'postgres' };
       }
-    } catch (err: any) {
-      log.error('[AdminDataService] Postgres adminListPlans failed, falling back to SQLite:', err?.message || err);
+    } catch (err: unknown) {
+      log.error('[AdminDataService] Postgres adminListPlans failed, falling back to SQLite:', errMsg(err));
     }
   }
 

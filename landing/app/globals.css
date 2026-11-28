@@ -24,10 +24,8 @@ body {
 img.brand-logo-img,
 img[alt*="MAHI"] {
   -webkit-user-drag: none;
-  -khtml-user-drag: none;
   -moz-user-drag: none;
   -o-user-drag: none;
-  user-drag: none;
   user-select: none;
   pointer-events: auto;
 }
@@ -75,14 +73,14 @@ img[alt*="MAHI"] {
 
 @media (prefers-reduced-motion: reduce) {
   html {
-    scroll-behavior: auto !important;
+    scroll-behavior: auto;
   }
 
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
   }
 }

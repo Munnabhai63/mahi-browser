@@ -90,8 +90,17 @@ else
 end
 `;
 
+interface TestRedisClientLike {
+  ping(): Promise<string>;
+  get?: (...args: unknown[]) => Promise<string | null>;
+  set?: (...args: unknown[]) => Promise<unknown>;
+  eval?: (...args: unknown[]) => Promise<unknown>;
+  del?: (...args: unknown[]) => Promise<number>;
+  quit?: () => Promise<unknown>;
+}
+
 let redisClientInstance: Redis | null = null;
-let testRedisInstance: any = null;
+let testRedisInstance: TestRedisClientLike | null = null;
 
 export function isRedisConfigured(): boolean {
   if (testRedisInstance) return true;
@@ -104,11 +113,11 @@ export function isRedisConfigured(): boolean {
 }
 
 export function getRedisClient(): Redis | null {
-  if (testRedisInstance) return testRedisInstance;
+  if (testRedisInstance) return testRedisInstance as Redis;
   if (!isRedisConfigured()) return null;
 
   if (!redisClientInstance) {
-    const rawUrl = process.env.REDIS_URL!;
+    const rawUrl = process.env.REDIS_URL ?? '';
     const url = rawUrl.trim().replace(/^["']|["']$/g, '');
     redisClientInstance = new Redis(url, {
       lazyConnect: true,
@@ -123,7 +132,7 @@ export function getRedisClient(): Redis | null {
   return redisClientInstance;
 }
 
-export function setRedisClientForTest(client: any): void {
+export function setRedisClientForTest(client: TestRedisClientLike | null): void {
   testRedisInstance = client;
 }
 
@@ -150,8 +159,8 @@ export async function checkRedisHealth(): Promise<{
       const start = Date.now();
       const pong = await testRedisInstance.ping();
       return { connected: pong === 'PONG', latencyMs: Date.now() - start };
-    } catch (err: any) {
-      return { connected: false, error: err?.message || 'Redis ping failed' };
+    } catch (err: unknown) {
+      return { connected: false, error: err instanceof Error ? err.message : 'Redis ping failed' };
     }
   }
 
@@ -171,11 +180,11 @@ export async function checkRedisHealth(): Promise<{
       connected: res === 'PONG',
       latencyMs: Date.now() - start,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       connected: false,
       latencyMs: Date.now() - start,
-      error: err?.message || 'Redis connection error',
+      error: err instanceof Error ? err.message : 'Redis connection error',
     };
   }
 }

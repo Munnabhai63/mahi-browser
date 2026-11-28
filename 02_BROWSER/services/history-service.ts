@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { getProfileStoragePath } from './profile-service.js';
-import { HistoryItem, HistoryFilterOptions } from '../../10_CONFIG/shared/types/history.js';
+import type { HistoryItem, HistoryFilterOptions } from '../../10_CONFIG/shared/types/history.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
 import { createLogger } from '../../07_BACKEND/utils/logger.js';
 import crypto from 'node:crypto';
@@ -45,19 +45,31 @@ function saveMahiCustomHistory(profileId: string, history: HistoryItem[]): void 
  * Reads browsing history from Chromium's actual SQLite History database for a profile.
  * Copies the DB file into memory to avoid locking issues when Chrome is running.
  */
+interface SqlJsDatabaseInstance {
+  exec(sql: string): Array<{ values: unknown[][] }>;
+  close(): void;
+}
+
+interface SqlJsModuleShape {
+  Database?: new (data: Uint8Array) => SqlJsDatabaseInstance;
+  default?: {
+    Database?: new (data: Uint8Array) => SqlJsDatabaseInstance;
+  };
+}
+
 function loadChromiumHistory(profileId: string): HistoryItem[] {
   const dbPath = getChromiumHistoryDbPath(profileId);
   if (!dbPath) return [];
 
   try {
     const fileBuffer = fs.readFileSync(dbPath);
-    let SQL: any;
+    let SQL: SqlJsModuleShape;
     try {
-      SQL = esmRequire('sql.js');
+      SQL = esmRequire('sql.js') as SqlJsModuleShape;
     } catch {
       return [];
     }
-    let db: any;
+    let db: SqlJsDatabaseInstance;
     try {
       const sqlJs = SQL.default || SQL;
       if (sqlJs.Database) {
@@ -135,7 +147,7 @@ export function getHistory(options: HistoryFilterOptions): HistoryItem[] {
   }
 
   // Filter
-  let filtered = merged.filter((item) => {
+  const filtered = merged.filter((item) => {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       if (!item.url.toLowerCase().includes(q) && !item.title.toLowerCase().includes(q)) return false;

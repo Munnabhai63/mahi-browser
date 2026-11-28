@@ -21,7 +21,7 @@ const landingPkgPath = path.join(rootDir, 'landing', 'package.json');
 if (fs.existsSync(landingPkgPath)) {
   const lPkg = JSON.parse(fs.readFileSync(landingPkgPath, 'utf8'));
   lPkg.version = version;
-  fs.writeFileSync(landingPkgPath, JSON.stringify(lPkg, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(landingPkgPath, `${JSON.stringify(lPkg, null, 2)}\n`, 'utf8');
   console.log(`✓ Updated ${landingPkgPath} (version: ${version})`);
 }
 
@@ -31,7 +31,7 @@ if (fs.existsSync(contentJsonPath)) {
   const content = JSON.parse(fs.readFileSync(contentJsonPath, 'utf8'));
   content.version = version;
   content.app_version = version;
-  fs.writeFileSync(contentJsonPath, JSON.stringify(content, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(contentJsonPath, `${JSON.stringify(content, null, 2)}\n`, 'utf8');
   console.log(`✓ Updated ${contentJsonPath} (version: ${version})`);
 }
 
@@ -40,7 +40,7 @@ const brandAssetsPath = path.join(rootDir, 'brand-assets.json');
 if (fs.existsSync(brandAssetsPath)) {
   const brandAssets = JSON.parse(fs.readFileSync(brandAssetsPath, 'utf8'));
   brandAssets.app_version = version;
-  fs.writeFileSync(brandAssetsPath, JSON.stringify(brandAssets, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(brandAssetsPath, `${JSON.stringify(brandAssets, null, 2)}\n`, 'utf8');
   console.log(`✓ Updated ${brandAssetsPath} (app_version: ${version})`);
 }
 

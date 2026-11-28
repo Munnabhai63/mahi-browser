@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { RefreshCw, Sparkles, AlertTriangle, DownloadCloud, X } from 'lucide-react';
-import { UpdateStatusEvent } from '../../10_CONFIG/shared/types/updater.js';
+import type React from 'react';
+import { useState, useEffect } from 'react';
+import { RefreshCw, AlertTriangle, DownloadCloud, } from 'lucide-react';
+import type { UpdateStatusEvent } from '../../10_CONFIG/shared/types/updater.js';
 import { BrandLogo } from './BrandLogo.js';
 
 let sessionDismissed = false;

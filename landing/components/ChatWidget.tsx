@@ -1,9 +1,12 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import type React from 'react';
+import { useState, useRef, useEffect } from 'react';
+import Image from 'next/image';
 import { BRAND } from '../lib/brand';
 
 interface Message {
+  id: string;
   sender: 'user' | 'assistant' | 'system';
   text: string;
   time: string;
@@ -15,6 +18,7 @@ export default function ChatWidget() {
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
+      id: 'welcome-0',
       sender: 'assistant',
       text: 'Hello! Welcome to MAHI Browser. How can I help you today? Ask me about stealth fingerprints, proxy setup, dual engine, or enterprise pricing.',
       time: 'Just now',
@@ -23,10 +27,10 @@ export default function ChatWidget() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && messages.length > 0) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, isOpen]);
+  }, [messages.length, isOpen]);
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -34,6 +38,7 @@ export default function ChatWidget() {
     if (!query || loading) return;
 
     const userMsg: Message = {
+      id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       sender: 'user',
       text: query,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -56,6 +61,7 @@ export default function ChatWidget() {
         setMessages((prev) => [
           ...prev,
           {
+            id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             sender: 'assistant',
             text: replyText,
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -69,6 +75,7 @@ export default function ChatWidget() {
       setMessages((prev) => [
         ...prev,
         {
+          id: `fallback-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           sender: 'assistant',
           text: `For instant priority assistance, you can reach out via WhatsApp support or email ${BRAND.officialEmail}.`,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -83,11 +90,12 @@ export default function ChatWidget() {
     <div className="fixed bottom-5 right-5 z-50">
       {!isOpen && (
         <button
+          type="button"
           onClick={() => setIsOpen(true)}
           className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-red-600 to-rose-700 text-white shadow-xl shadow-red-900/40 transition hover:scale-105 active:scale-95 focus:outline-none focus:ring-4 focus:ring-red-500/40"
           aria-label="Open support chat"
         >
-          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
         </button>
@@ -99,7 +107,7 @@ export default function ChatWidget() {
           <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950 px-4 py-3 text-white">
             <div className="flex items-center gap-2.5">
               <div className="relative">
-                <img
+                <Image
                   src={BRAND.assets.logo}
                   alt="MAHI"
                   width={24}
@@ -116,11 +124,12 @@ export default function ChatWidget() {
               </div>
             </div>
             <button
+              type="button"
               onClick={() => setIsOpen(false)}
               className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
               aria-label="Close support chat"
             >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -128,9 +137,9 @@ export default function ChatWidget() {
 
           {/* Messages Feed */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
-            {messages.map((m, i) => (
+            {messages.map((m) => (
               <div
-                key={i}
+                key={m.id}
                 className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}
               >
                 <div
@@ -170,7 +179,7 @@ export default function ChatWidget() {
               className="rounded-xl bg-red-600 p-2 text-white hover:bg-red-500 disabled:opacity-40 transition"
               aria-label="Send message"
             >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
             </button>

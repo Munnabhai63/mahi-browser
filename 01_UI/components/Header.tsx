@@ -1,7 +1,7 @@
-import React from 'react';
+import type React from 'react';
 import { Search, Plus, FolderPlus } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore.js';
-import { NavigationPage } from './Sidebar.js';
+import type { NavigationPage } from './Sidebar.js';
 
 interface HeaderProps {
   currentPage: NavigationPage;
@@ -47,7 +47,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenS
 
   const currentInfo = titles[currentPage] || { title: 'MAHI BROWSER', subtitle: '' };
 
-  const cycleTheme = () => {
+  const _cycleTheme = () => {
     if (theme === 'light') setTheme('dark');
     else if (theme === 'dark') setTheme('system');
     else setTheme('light');
@@ -68,7 +68,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenS
       {/* Action Bar */}
       <div className="flex items-center space-x-3">
         {/* Global Search Trigger */}
-        <button
+        <button type="button"
           onClick={onOpenSearch}
           className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 text-xs font-medium border border-slate-200 dark:border-slate-700 transition-colors"
         >
@@ -80,7 +80,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenS
         </button>
 
         {/* Import Action */}
-        <button
+        <button type="button"
           onClick={() => onNavigate('import')}
           className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors flex items-center space-x-1.5"
         >
@@ -89,7 +89,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenS
         </button>
 
         {/* New Profile Primary Button */}
-        <button
+        <button type="button"
           onClick={() => onNavigate('create-profile')}
           className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-teal-600 hover:bg-teal-500 text-white shadow-sm shadow-teal-600/20 transition-all flex items-center space-x-1.5 active:scale-95"
         >
