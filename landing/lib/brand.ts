@@ -24,7 +24,7 @@ export const BRAND = {
   get usdt() {
     return getRuntimePaymentMetadata().usdt;
   },
-  version: '1.4.0',
+  version: '1.5.0',
   get website(): string {
     return getSiteConfig({ productionFallback: true }).websiteUrl;
   },

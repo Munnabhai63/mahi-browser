@@ -1,7 +1,7 @@
 # MAHI Browser — Production Launch Readiness Checklist
 
 **Document Status:** Live Operational Checklist  
-**Version Target:** v1.4.0  
+**Version Target:** v1.5.0  
 **Last Updated:** November 28, 2026  
 **Audience:** Owner (Mahipal Choudhary), Lead Engineers, DevOps  
 
@@ -16,8 +16,8 @@ The following components are fully tested, integrated, and verified working in c
   - **Components Covered:** Pricing calculation, YouPI adapter, manual UPI UTR flow, webhook HMAC verification, anti-detect launcher, delta cloud sync, mobile IP rotator, strict Electron CSP (`script-src 'self'`), Prisma 7 adapter wiring, Zod 4 schemas, structured logger & SSRF guards, and commercial auth.
 - [x] **Typecheck, Audit & Modern Stack Build Pass Cleanly**
   - **Evidence:** Root `npm run typecheck`, `npm run build:gateway`, `MAHI_SKIP_ADB_STAGE=1 npm run build` (`vite@^7.3.8` + `electron@^45.5.0` + `react@^19.3.1` + `@tailwindcss/vite@^4.3.5`), `npm --prefix landing run typecheck`, `npm --prefix landing run build` (`next@16.4.6` + `react@^19.3.1` + `@tailwindcss/postcss@^4.3.5`, `42` static routes), `npm run lint`, `npm --prefix landing run lint` (`0` warnings/errors), and `npm audit --omit=dev --audit-level=high` (`0` critical / `0` high vulnerabilities) exit cleanly with code `0`.
-- [x] **GitHub Release v1.4.0 Published & Verified Live**
-  - **Evidence:** Public release tag `v1.4.0` on `Munnabhai63/mahi-browser` hosting all 8 Windows release assets:
+- [x] **GitHub Release Pipeline Ready (v1.5.0 Target; Prior v1.4.0 Verified Live)**
+  - **Evidence:** Release tag `v1.5.0` prepared (`package.json`, `landing/package.json`, `brand-assets.json`, `generate-release-manifest.cjs` with `mandatory: false`); prior public release tag `v1.4.0` on `Munnabhai63/mahi-browser` verified all 8 Windows release assets:
     - `MAHI-Browser-Setup-1.4.0.exe` & `MAHI-Browser-Setup-latest.exe` (`347,095,590` bytes)
     - `MAHI-Browser-Portable-1.4.0.exe` & `MAHI-Browser-Portable-latest.exe` (`298,567,767` bytes)
     - `MAHI-Browser-Setup-1.4.0.exe.blockmap`, `latest.yml`, `latest.json` (`mandatory: false`), and `SHA256SUMS.txt`

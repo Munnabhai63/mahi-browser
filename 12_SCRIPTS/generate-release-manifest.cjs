@@ -19,9 +19,9 @@ function generateReleaseManifest(options = {}) {
   const pkgPath = path.join(__dirname, '..', 'package.json');
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 
-  const version = options.version || pkg.version || '1.4.0';
+  const version = options.version || pkg.version || '1.5.0';
   const channel = options.channel || (version.includes('beta') ? 'BETA' : 'STABLE');
-  const releaseNotes = options.releaseNotes || 'MAHI Browser v1.4.0: Delta cloud sync, Mobile 4G/5G IP Rotator, local CDP automation bridge, anti-detect engine hardening & P0/P1/P2 security updates.';
+  const releaseNotes = options.releaseNotes || 'MAHI Browser v1.5.0: Enterprise upgrade featuring Electron 45.5, React 19, Tailwind CSS v4, faster startup & code-splitting, stricter security (HttpOnly web auth & strict CSP), and stability fixes.';
 
   if (!fs.existsSync(releaseDir)) {
     fs.mkdirSync(releaseDir, { recursive: true });
