@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import os from 'node:os';
+import path from 'node:path';
 import child_process from 'node:child_process';
 import fs from 'node:fs';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
@@ -123,4 +124,97 @@ export function verifyLicense(licenseKey: string): { valid: boolean; error?: str
   } catch {
     return { valid: false, error: 'Invalid license key' };
   }
+}
+
+/**
+ * Resolves a stored offline RSA license key from `offline-license.key` or `claimed-licenses.json`.
+ * Keeps offline RSA cryptographic discovery inside `08_SECURITY/license-service.ts`.
+ */
+export function resolveOfflineLicenseKey(
+  userDataDir: string,
+  options: { requireValidOfflineKey?: boolean } = {}
+): string | null {
+  const requireValidOfflineKey = options.requireValidOfflineKey ?? true;
+  try {
+    const licenseFile = path.join(userDataDir, 'offline-license.key');
+    if (fs.existsSync(licenseFile)) {
+      const rawKey = fs.readFileSync(licenseFile, 'utf8').trim();
+      if (rawKey && (!requireValidOfflineKey || verifyLicense(rawKey).valid)) {
+        return rawKey;
+      }
+    }
+
+    const claimedFile = path.join(userDataDir, 'claimed-licenses.json');
+    if (fs.existsSync(claimedFile)) {
+      const claimed = JSON.parse(fs.readFileSync(claimedFile, 'utf8')) as Record<string, unknown>;
+      for (const candidate of Object.values(claimed)) {
+        if (typeof candidate === 'string') {
+          const trimmed = candidate.trim();
+          if (trimmed && verifyLicense(trimmed).valid) {
+            return trimmed;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    log.debug('Offline/claimed license lookup skipped', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return null;
+}
+
+/** Asynchronous equivalent of `resolveOfflineLicenseKey` using `fs.promises`. */
+export async function resolveOfflineLicenseKeyAsync(
+  userDataDir: string,
+  options: { requireValidOfflineKey?: boolean } = {}
+): Promise<string | null> {
+  const requireValidOfflineKey = options.requireValidOfflineKey ?? true;
+  try {
+    const licenseFile = path.join(userDataDir, 'offline-license.key');
+    try {
+      const rawKey = (await fs.promises.readFile(licenseFile, 'utf8')).trim();
+      if (rawKey && (!requireValidOfflineKey || verifyLicense(rawKey).valid)) {
+        return rawKey;
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        log.debug('Async offline-license.key read skipped', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    const claimedFile = path.join(userDataDir, 'claimed-licenses.json');
+    try {
+      const claimed = JSON.parse(await fs.promises.readFile(claimedFile, 'utf8')) as Record<string, unknown>;
+      for (const candidate of Object.values(claimed)) {
+        if (typeof candidate === 'string') {
+          const trimmed = candidate.trim();
+          if (trimmed && verifyLicense(trimmed).valid) {
+            return trimmed;
+          }
+        }
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        log.debug('Async claimed-licenses.json read skipped', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  } catch (err) {
+    log.debug('Async offline/claimed license lookup skipped', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return null;
+}
+
+export function hasValidOfflineLicenseKey(userDataDir: string): boolean {
+  return resolveOfflineLicenseKey(userDataDir, { requireValidOfflineKey: true }) !== null;
+}
+
+export async function hasValidOfflineLicenseKeyAsync(userDataDir: string): Promise<boolean> {
+  return (await resolveOfflineLicenseKeyAsync(userDataDir, { requireValidOfflineKey: true })) !== null;
 }

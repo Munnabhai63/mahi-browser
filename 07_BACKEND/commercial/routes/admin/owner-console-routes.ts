@@ -28,6 +28,7 @@ import {
 import { getDatabase } from '../../../../06_DATABASE/connection.js';
 import { isPostgresConfigured } from '../../../../06_DATABASE/central-repository.js';
 import { getPrismaClient } from '../../../../06_DATABASE/prisma-client.js';
+import { ensurePgCommercialMirror, syncCommercialMirrorFromAuthSqlite } from '../../../../05_AUTH/user-model-unifier.js';
 import { resolveCommercialPlan } from '../../payment-service.js';
 import {
   type AdminResolvedUser,
@@ -58,35 +59,18 @@ interface SqliteLicenseIdRow {
 
 async function syncCommercialUserPlanPg(
   prisma: Partial<PrismaClient>,
-  targetUser: AdminResolvedUser,
+  _targetUser: AdminResolvedUser,
   userId: string,
   planId: string,
   now: string,
   label: string
 ): Promise<void> {
   try {
-    if (typeof prisma.commercial_users?.findFirst !== 'function') return;
-    const commUser = await prisma.commercial_users.findFirst({ where: { id: userId } });
-    if (commUser) {
+    const commUser = await ensurePgCommercialMirror(prisma, userId);
+    if (commUser && typeof prisma.commercial_users?.update === 'function') {
       await prisma.commercial_users.update({
         where: { id: userId },
         data: { plan_id: planId, updated_at: now },
-      });
-    } else {
-      await prisma.commercial_users.create({
-        data: {
-          id: userId,
-          email: targetUser.email,
-          password_hash: targetUser.passwordHash || targetUser.password_hash || 'OAUTH_MIRROR',
-          salt: targetUser.salt || 'OAUTH_MIRROR',
-          name: targetUser.name || targetUser.email.split('@')[0],
-          role: targetUser.role || 'USER',
-          status: targetUser.status || 'ACTIVE',
-          plan_id: planId,
-          created_at: now,
-          updated_at: now,
-          last_login_at: now,
-        },
       });
     }
   } catch (err: unknown) {
@@ -345,7 +329,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           if (db.prepare('SELECT id FROM auth_users WHERE id = ?').get(userId)) {
             db.prepare('UPDATE auth_users SET plan_id = ?, updated_at = ? WHERE id = ?').run(targetPlan.id, now, userId);
           }
-          db.prepare('UPDATE commercial_users SET plan_id = ?, updated_at = ? WHERE id = ?').run(targetPlan.id, now, userId);
+          syncCommercialMirrorFromAuthSqlite(db, userId);
         } catch (e: unknown) {
           log.error('[OwnerService][CRITICAL] SQLite plan sync error', errMsg(e));
           planSyncFailed = true;
@@ -455,7 +439,9 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
       }
     } else {
       try {
-        getDatabase().prepare('UPDATE auth_users SET plan_id = ?, updated_at = ? WHERE id = ?').run('plan_free', now, userId);
+        const db = getDatabase();
+        db.prepare('UPDATE auth_users SET plan_id = ?, updated_at = ? WHERE id = ?').run('plan_free', now, userId);
+        syncCommercialMirrorFromAuthSqlite(db, userId);
       } catch {
         planSyncFailed = true;
       }
@@ -542,8 +528,8 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
       try {
         const db = getDatabase();
         db.prepare('UPDATE auth_users SET plan_id = ?, updated_at = ? WHERE id = ?').run(targetPlan.id, now, userId);
+        syncCommercialMirrorFromAuthSqlite(db, userId);
         try {
-          db.prepare('UPDATE commercial_users SET plan_id = ?, updated_at = ? WHERE id = ?').run(targetPlan.id, now, userId);
           if (isPaidPlan) {
             const expDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
             db.prepare(`
@@ -618,15 +604,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
       try {
         const db = getDatabase();
         db.prepare('UPDATE auth_users SET status = ?, updated_at = ? WHERE id = ?').run(newStatus, now, userId);
-        try {
-          db.prepare('UPDATE commercial_users SET status = ?, updated_at = ? WHERE id = ?').run(newStatus, now, userId);
-        } catch (syncErr) {
-          log.warn('Failed updating companion commercial_users status on suspend/resume', {
-            userId,
-            newStatus,
-            err: errMsg(syncErr),
-          });
-        }
+        syncCommercialMirrorFromAuthSqlite(db, userId);
         if (isSuspend) {
           try {
             db.prepare(`
@@ -705,14 +683,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
       try {
         const db = getDatabase();
         db.prepare('UPDATE auth_users SET status = ?, updated_at = ? WHERE id = ?').run('BANNED', now, userId);
-        try {
-          db.prepare('UPDATE commercial_users SET status = ?, updated_at = ? WHERE id = ?').run('BANNED', now, userId);
-        } catch (syncErr) {
-          log.warn('Failed updating companion commercial_users status on ban', {
-            userId,
-            err: errMsg(syncErr),
-          });
-        }
+        syncCommercialMirrorFromAuthSqlite(db, userId);
         const userLicenses = db
           .prepare("SELECT id FROM licenses WHERE account_id = ? AND status IN ('ACTIVE', 'NOT_ACTIVATED', 'EXPIRED')")
           .all(userId) as unknown as SqliteLicenseIdRow[];
@@ -779,14 +750,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
       try {
         const db = getDatabase();
         db.prepare('UPDATE auth_users SET status = ?, updated_at = ? WHERE id = ?').run('ACTIVE', now, userId);
-        try {
-          db.prepare('UPDATE commercial_users SET status = ?, updated_at = ? WHERE id = ?').run('ACTIVE', now, userId);
-        } catch (syncErr) {
-          log.warn('Failed updating companion commercial_users status on unban', {
-            userId,
-            err: errMsg(syncErr),
-          });
-        }
+        syncCommercialMirrorFromAuthSqlite(db, userId);
       } catch (err: unknown) {
         log.error('[OwnerService][CRITICAL] SQLite unban failed:', errMsg(err));
         sendJSON(res, 500, { success: false, error: 'Failed to unban user' });

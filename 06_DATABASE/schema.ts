@@ -4,6 +4,7 @@ import {
   initSqlEngine,
   type SqliteWrapper,
 } from './connection.js';
+import { migrateLegacyCommercialUsersToAuthUsers } from '../05_AUTH/user-model-unifier.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
 
 const log = createLogger('db-schema');
@@ -1465,6 +1466,16 @@ export async function initializeDatabase(): Promise<void> {
     addColumnIfNotExists(db, 'commercial_users', 'bonus_proxy_bytes', 'INTEGER NOT NULL DEFAULT 0');
     addColumnIfNotExists(db, 'commercial_users', 'feature_overrides', "TEXT NOT NULL DEFAULT '{}'");
   });
+
+  // Ensure authoritative auth_users owns all commercial/trial/quota columns
+  addColumnIfNotExists(db, 'auth_users', 'bonus_profiles', 'INTEGER NOT NULL DEFAULT 0');
+  addColumnIfNotExists(db, 'auth_users', 'bonus_proxy_bytes', 'INTEGER NOT NULL DEFAULT 0');
+  addColumnIfNotExists(db, 'auth_users', 'feature_overrides', "TEXT NOT NULL DEFAULT '{}'");
+  addColumnIfNotExists(db, 'auth_users', 'pending_plan_id', 'TEXT');
+  addColumnIfNotExists(db, 'auth_users', 'pending_billing_cycle', 'TEXT');
+
+  // Consolidate any pre-existing legacy commercial_users rows into authoritative auth_users on init
+  migrateLegacyCommercialUsersToAuthUsers(db);
 
   // Migration v24: Task 3 - Commercial Devices Status, Audit Logs Table & Indexes
   runMigration(db, 24, 'commercial devices status and audit logs', () => {

@@ -9,4 +9,4 @@ This folder contains development shortcuts, batch launchers, installer builders,
 - Fix-Desktop-Shortcuts.bat: 1-click Windows desktop icon repair
 - Build-Installers.bat: Builds Setup & Portable .exe packages
 - create-desktop-shortcut.ps1: PowerShell shortcut & icon cache script
-- fix-preload.cjs: Post-build script copying CommonJS preload
+- fix-preload.cjs: Post-build script validating compiled CommonJS preload, staging sql-wasm.wasm, and sanitizing dist-electron outputs

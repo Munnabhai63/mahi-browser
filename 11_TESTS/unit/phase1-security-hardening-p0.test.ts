@@ -43,6 +43,9 @@ import {
   COOP_HEADER,
 } from '../../07_BACKEND/utils/security-headers.js';
 import { startFastifyCloudGateway } from '../../07_BACKEND/server/cloud-gateway.js';
+import { getWebAdminHtml, getOwnerAdminHtml } from '../../07_BACKEND/server/web-admin-html.js';
+import { getSuperAdminHtml } from '../../07_BACKEND/server/super-admin-html.js';
+import { getDownloadPortalHtml } from '../../07_BACKEND/server/download-portal-html.js';
 
 const TEST_TOTP_SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
 
@@ -734,28 +737,60 @@ describe('Phase 1 P0 Security Hardening — Step 5 (CloudEnv Fail-Fast & Strict 
       expect(apiRes.headers.get('content-security-policy')).toBe(API_SECURITY_CSP);
       expect(apiRes.headers.get('cache-control')).toContain('no-store');
 
-      // 3. HTML Admin Portal (/admin) uses tightened ADMIN_HTML_CSP (no unsafe-inline in default-src)
+      // 3. HTML Admin Portal (/admin) uses tightened ADMIN_HTML_CSP (zero unsafe-inline in script-src or style-src)
       const adminHtmlRes = await fetch(`${gwBase}/admin`);
       expect(adminHtmlRes.status).toBe(200);
       const adminCsp = adminHtmlRes.headers.get('content-security-policy') || '';
       expect(adminCsp).toBe(ADMIN_HTML_CSP);
-      expect(adminCsp).not.toContain("default-src 'self' 'unsafe-inline'");
+      expect(adminCsp).not.toContain("'unsafe-inline'");
+      expect(adminCsp).toContain("script-src 'self'");
+      expect(adminCsp).toContain("style-src 'self'");
       expect(adminCsp).toContain("object-src 'none'");
       expect(adminCsp).toContain("frame-ancestors 'none'");
       expect(adminHtmlRes.headers.get('permissions-policy')).toBe(PERMISSIONS_POLICY_HEADER);
       expect(adminHtmlRes.headers.get('cross-origin-opener-policy')).toBe(COOP_HEADER);
 
-      // 4. Download portal HTML (/download) allows Tailwind CDN explicitly in PORTAL_HTML_CSP
+      // 3b. Externalized admin CSS/JS assets are served directly under /admin-assets/*
+      const adminCssAssetRes = await fetch(`${gwBase}/admin-assets/admin.css`);
+      expect(adminCssAssetRes.status).toBe(200);
+      expect(adminCssAssetRes.headers.get('content-type')).toContain('text/css');
+      const webAdminJsAssetRes = await fetch(`${gwBase}/admin-assets/web-admin.js`);
+      expect(webAdminJsAssetRes.status).toBe(200);
+      expect(webAdminJsAssetRes.headers.get('content-type')).toContain('application/javascript');
+      const traversalRes = await fetch(`${gwBase}/admin-assets/..%2F..%2Fpackage.json`);
+      expect(traversalRes.status).toBe(404);
+
+      // 3c. Rendered Admin & Portal HTML templates have zero inline <script> or on*= event attributes
+      for (const html of [
+        getWebAdminHtml(),
+        getOwnerAdminHtml(),
+        getSuperAdminHtml(),
+        getDownloadPortalHtml({ version: '1.4.0' }),
+      ]) {
+        expect(html).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>/i);
+        expect(html).not.toMatch(/\son[a-z]+\s*=/i);
+        expect(html).not.toMatch(/<style[\s>]/i);
+        expect(html).not.toMatch(/\sstyle\s*=/i);
+      }
+
+      // 4. Download portal HTML (/download) allows Tailwind CDN script cleanly with zero script 'unsafe-inline'
       const dlHtmlRes = await fetch(`${gwBase}/download`);
       expect(dlHtmlRes.status).toBe(200);
-      expect(dlHtmlRes.headers.get('content-security-policy')).toBe(PORTAL_HTML_CSP);
+      const portalCsp = dlHtmlRes.headers.get('content-security-policy') || '';
+      expect(portalCsp).toBe(PORTAL_HTML_CSP);
+      const portalScriptSrc = portalCsp
+        .split(';')
+        .find((d) => d.trim().startsWith('script-src'));
+      expect(portalScriptSrc).toContain("script-src 'self' https://cdn.tailwindcss.com");
+      expect(portalScriptSrc).not.toContain("'unsafe-inline'");
 
-      // 5. nginx-production.conf contains strict CSP, Permissions-Policy, and COOP directives
+      // 5. nginx-production.conf contains strict CSP (admin block without 'unsafe-inline'), Permissions-Policy, and COOP directives
       const nginxConf = fs.readFileSync(
         path.join(process.cwd(), '10_CONFIG', 'infrastructure', 'nginx-production.conf'),
         'utf-8'
       );
       expect(nginxConf).toContain('Content-Security-Policy');
+      expect(nginxConf).toContain("style-src 'self'; script-src 'self';");
       expect(nginxConf).toContain('Permissions-Policy');
       expect(nginxConf).toContain('Cross-Origin-Opener-Policy');
     } finally {

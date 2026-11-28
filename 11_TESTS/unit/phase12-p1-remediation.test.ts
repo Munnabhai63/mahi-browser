@@ -80,17 +80,22 @@ describe('P1 Blocker Remediation Suite (P1-1 to P1-5)', () => {
   });
 
   describe('4. P1-4: Standalone Acceptable Use Policy (AUP)', () => {
-    it('verifies landing/aup.html exists and defines comprehensive abuse prohibitions and contact points', () => {
-      const aupPath = path.join(process.cwd(), 'landing', 'aup.html');
+    it('verifies landing/app/aup/page.tsx exists and defines comprehensive abuse prohibitions and dynamic contact points', () => {
+      const aupPath = path.join(process.cwd(), 'landing', 'app', 'aup', 'page.tsx');
       expect(fs.existsSync(aupPath)).toBe(true);
 
-      const aupHtml = fs.readFileSync(aupPath, 'utf8');
-      expect(aupHtml).toContain('Acceptable Use Policy');
-      expect(aupHtml).toContain('Carding');
-      expect(aupHtml).toContain('Credential Stuffing');
-      expect(aupHtml).toContain('Malware');
-      expect(aupHtml).toContain('mahiverse.official@gmail.com');
-      expect(aupHtml).toContain('mahiverse.hub@gmail.com');
+      const aupSource = fs.readFileSync(aupPath, 'utf8');
+      expect(aupSource).toContain('Acceptable Use Policy');
+      expect(aupSource).toContain('Carding');
+      expect(aupSource).toMatch(/Credential stuffing/i);
+      expect(aupSource).toMatch(/Malware/i);
+      expect(aupSource).toContain('BRAND.officialEmail');
+
+      const outAupPath = path.join(process.cwd(), 'landing', 'out', 'aup.html');
+      if (fs.existsSync(outAupPath)) {
+        const outAupHtml = fs.readFileSync(outAupPath, 'utf8');
+        expect(outAupHtml).toContain('mahiverse.official@gmail.com');
+      }
     });
   });
 

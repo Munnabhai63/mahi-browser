@@ -289,16 +289,6 @@ export function verifySqliteUserAndSession(
       err: err instanceof Error ? err.message : String(err),
     });
   }
-  if (!userRow) {
-    try {
-      userRow = db.prepare('SELECT id, email, role, status FROM commercial_users WHERE id = ?').get(userId) as SqliteAuthUserLookupRow | undefined;
-    } catch (err) {
-      log.debug('SQLite commercial_users lookup skipped in verifySqliteUserAndSession', {
-        userId,
-        err: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
 
   if (userRow) {
     if (isBlockedStatus(userRow.status)) {
@@ -306,7 +296,7 @@ export function verifySqliteUserAndSession(
     }
   } else {
     if (!isTestMode() || sessionId) {
-      // Central JWTs (with sessionId) require an active DB user record in auth_users/commercial_users.
+      // Central JWTs (with sessionId) require an active DB user record in authoritative auth_users.
       return { active: false, foundInDb: false };
     }
     return { active: true, foundInDb: false };

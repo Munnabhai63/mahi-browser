@@ -258,7 +258,7 @@ export async function handleClientEntitlementRoutes(
       const subRow = db.prepare('SELECT plan_id FROM commercial_subscriptions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1').get(auth.userId) as PlanIdRow | undefined;
       if (subRow?.plan_id) planId = subRow.plan_id;
       else {
-        const u = db.prepare('SELECT plan_id FROM commercial_users WHERE id = ?').get(auth.userId) as PlanIdRow | undefined;
+        const u = db.prepare('SELECT plan_id FROM auth_users WHERE id = ?').get(auth.userId) as PlanIdRow | undefined;
         if (u?.plan_id) planId = u.plan_id;
       }
     }

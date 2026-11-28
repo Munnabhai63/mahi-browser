@@ -9,7 +9,9 @@
 
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import http from 'node:http';
+import path from 'node:path';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import {
@@ -644,10 +646,16 @@ describe('STEP 2 COMMERCIAL MISSION — Unified Pricing, Checkout & UPI Lifecycl
 
     it('escapes XSS payloads in admin payments table and enforces safe proof URL protocols', () => {
       const html = getWebAdminHtml();
-      expect(html).toContain('function escapeHtml(str)');
-      expect(html).toContain('escapeHtml(safeProofAsset)');
-      expect(html).toContain('escapeHtml(p.id)');
-      expect(html).toContain("p.metadata.proofAsset.startsWith('https://') || p.metadata.proofAsset.startsWith('/')");
+      expect(html).toContain('<script src="/admin-assets/web-admin.js" defer></script>');
+      expect(html).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>/i);
+      const scriptSource = fs.readFileSync(
+        path.join(process.cwd(), '07_BACKEND', 'server', 'assets', 'web-admin.js'),
+        'utf-8'
+      );
+      expect(scriptSource).toContain('function escapeHtml(str)');
+      expect(scriptSource).toContain('escapeHtml(safeProofAsset)');
+      expect(scriptSource).toContain('escapeHtml(p.id)');
+      expect(scriptSource).toContain("p.metadata.proofAsset.startsWith('https://') || p.metadata.proofAsset.startsWith('/')");
     });
   });
 

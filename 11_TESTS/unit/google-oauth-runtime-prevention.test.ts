@@ -55,25 +55,27 @@ describe('Google OAuth SSO Runtime & "https is not defined" Regression Preventio
     }
   });
 
-  it('guarantees frontend signup.html and login.html route through backend /api/v1/auth/google/start without Node https in browser', () => {
-    const signupPath = path.resolve('landing/signup.html');
+  it('guarantees Next.js signup and login pages route through backend /api/v1/auth/google/start without Node https in browser', () => {
+    const signupPath = path.resolve('landing/app/signup/page.tsx');
     const signupContent = fs.readFileSync(signupPath, 'utf8');
     expect(signupContent).not.toMatch(/https\.request\(/);
     expect(signupContent).not.toMatch(/require\(['"]https['"]\)/);
     expect(signupContent).toContain('/api/v1/auth/google/start');
 
-    const loginPath = path.resolve('landing/login.html');
+    const loginPath = path.resolve('landing/app/login/page.tsx');
     const loginContent = fs.readFileSync(loginPath, 'utf8');
     expect(loginContent).not.toMatch(/https\.request\(/);
     expect(loginContent).not.toMatch(/require\(['"]https['"]\)/);
     expect(loginContent).toContain('/api/v1/auth/google/start');
   });
 
-  it('guarantees download.html reads auth tokens from URL, cookies, and localStorage without reference errors', () => {
-    const downloadPath = path.resolve('landing/download.html');
-    const downloadContent = fs.readFileSync(downloadPath, 'utf8');
-    expect(downloadContent).toContain('mahi_token');
+  it('guarantees DownloadButtons checks HttpOnly auth state and cleans legacy localStorage token keys safely', () => {
+    const downloadComponentPath = path.resolve('landing/components/DownloadButtons.tsx');
+    const downloadContent = fs.readFileSync(downloadComponentPath, 'utf8');
+    expect(downloadContent).toContain('/api/v1/auth/me');
+    expect(downloadContent).toContain("credentials: 'include'");
     expect(downloadContent).toContain('mahi_auth_token');
+    expect(downloadContent).toContain('mahi_access_token');
   });
 
   it('generates OAuth authorization URL with prompt=select_account for Google Account Chooser', () => {

@@ -7,50 +7,62 @@ import type {
   RegisterUserDTO,
   LoginUserDTO,
 } from '../../10_CONFIG/shared/types/commercial.js';
+import {
+  findAuthoritativeUserSqlite,
+  stripCentralUserPrefix,
+  syncCommercialMirrorFromAuthSqlite,
+  type AuthUserUnifiedRow,
+} from '../../05_AUTH/user-model-unifier.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 import { getJwtSecret } from '../../08_SECURITY/install-secrets.js';
 import { createLogger } from '../utils/logger.js';
 const log = createLogger('commercial-auth-service');
 
-interface SqliteCommercialUserRow {
-  id: string;
-  email: string;
-  password_hash: string;
-  salt: string;
-  name: string;
-  role: string;
-  status: string;
-  plan_id: string | null;
-  bonus_profiles: number | null;
-  bonus_proxy_bytes: number | null;
-  feature_overrides: string | null;
-  trial_started_at: string | null;
-  trial_expires_at: string | null;
-  trial_used: number | null;
-  signup_intent: string | null;
-  pending_plan_id: string | null;
-  pending_billing_cycle: string | null;
-  google_sub: string | null;
-  avatar_url: string | null;
-  auth_provider: string | null;
-  accepted_terms: number | null;
-  terms_version: string | null;
-  created_at: string;
-  updated_at: string;
-  last_login_at: string | null;
-}
+function mapUnifiedAuthRowToCommercialUser(row: AuthUserUnifiedRow): CommercialUser {
+  let featureOverrides: Record<string, boolean> = {};
+  if (row.feature_overrides) {
+    try {
+      featureOverrides = JSON.parse(row.feature_overrides) as Record<string, boolean>;
+    } catch (parseErr) {
+      log.warn('Failed parsing user feature_overrides JSON', {
+        userId: row.id,
+        err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+      });
+    }
+  }
 
-interface SqliteFallbackAuthUserRow {
-  id: string;
-  email: string;
-  name: string | null;
-  role: string;
-  status: string;
-  plan_id: string | null;
-  plan_tier?: string | null;
-  created_at: string;
-  updated_at: string;
-  last_login_at: string | null;
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    role: row.role as CommercialRole,
+    status: row.status as CommercialUserStatus,
+    planId: row.plan_id || 'plan_free',
+    bonusProfiles: row.bonus_profiles || 0,
+    bonusProxyBytes: row.bonus_proxy_bytes || 0,
+    featureOverrides,
+    trialStartedAt: row.trial_started_at || undefined,
+    trialExpiresAt: row.trial_expires_at || undefined,
+    trialUsed: Boolean(row.trial_used),
+    signupIntent: row.signup_intent || undefined,
+    pendingPlanId: row.pending_plan_id || undefined,
+    pendingBillingCycle: row.pending_billing_cycle || undefined,
+    is_trial: Boolean(row.trial_expires_at && new Date(row.trial_expires_at) > new Date()),
+    trial_started_at: row.trial_started_at || undefined,
+    trial_expires_at: row.trial_expires_at || undefined,
+    trial_used: Boolean(row.trial_used),
+    signup_intent: row.signup_intent || undefined,
+    pending_plan_id: row.pending_plan_id || undefined,
+    pending_billing_cycle: row.pending_billing_cycle || undefined,
+    googleSub: row.google_sub || undefined,
+    avatarUrl: row.avatar_url || undefined,
+    authProvider: row.auth_provider || 'LOCAL',
+    acceptedTerms: row.accepted_terms === 1 ? true : row.accepted_terms === 0 ? false : undefined,
+    termsVersion: row.terms_version || undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    lastLoginAt: row.last_login_at || undefined,
+  };
 }
 
 const JWT_EXPIRATION_HOURS = 24 * 7; // 7 days
@@ -112,7 +124,9 @@ export function registerUser(dto: RegisterUserDTO, ipAddress?: string, explicitI
     return { success: false, error: 'Password must be at least 8 characters long.' };
   }
 
-  const existing = db.prepare('SELECT id FROM commercial_users WHERE email = ?').get(email) as { id: string } | undefined;
+  const existing = db.prepare('SELECT id FROM auth_users WHERE normalized_email = ? OR email = ?').get(email, email) as
+    | { id: string }
+    | undefined;
   if (existing) {
     if (!explicitId || existing.id !== explicitId) {
       return { success: false, error: 'An account with this email address already exists.' };
@@ -130,6 +144,7 @@ export function registerUser(dto: RegisterUserDTO, ipAddress?: string, explicitI
   const intent = dto.intent || 'free';
   const isTrial = intent === 'trial';
   const targetPlan = intent === 'paid' ? 'plan_free' : (dto.planId || (isTrial ? 'professional_50' : 'plan_free'));
+  const profileQuota = targetPlan === 'plan_free' || targetPlan === 'free' ? 15 : 50;
   const trialUsed = isTrial ? 1 : 0;
   const trialStartedAt = isTrial ? now : null;
   const trialExpiresAt = isTrial ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
@@ -140,8 +155,8 @@ export function registerUser(dto: RegisterUserDTO, ipAddress?: string, explicitI
 
   if (existing && existing.id === explicitId) {
     db.prepare(`
-      UPDATE commercial_users SET
-        password_hash = ?, salt = ?, name = ?, plan_id = ?,
+      UPDATE auth_users SET
+        password_hash = ?, salt = ?, name = ?, plan_id = ?, profile_quota = ?,
         trial_started_at = ?, trial_expires_at = ?, trial_used = ?, signup_intent = ?,
         pending_plan_id = ?, pending_billing_cycle = ?,
         accepted_terms = COALESCE(?, accepted_terms),
@@ -149,7 +164,7 @@ export function registerUser(dto: RegisterUserDTO, ipAddress?: string, explicitI
         updated_at = ?
       WHERE id = ?
     `).run(
-      passwordHash, salt, name, targetPlan,
+      passwordHash, salt, name, targetPlan, profileQuota,
       trialStartedAt, trialExpiresAt, trialUsed, intent,
       pendingPlanId, pendingBillingCycle,
       acceptedTerms, termsVersion,
@@ -157,21 +172,25 @@ export function registerUser(dto: RegisterUserDTO, ipAddress?: string, explicitI
     );
   } else {
     db.prepare(`
-      INSERT INTO commercial_users (
-        id, email, password_hash, salt, name, role, status, plan_id,
+      INSERT INTO auth_users (
+        id, email, normalized_email, password_hash, salt, name, role, status,
+        email_verified, email_verified_at, plan_id, profile_quota,
         trial_started_at, trial_expires_at, trial_used, signup_intent,
         pending_plan_id, pending_billing_cycle,
         accepted_terms, terms_version,
         created_at, updated_at, last_login_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      id, email, passwordHash, salt, name, role, status, targetPlan,
+      id, email, email, passwordHash, salt, name, role, status,
+      now, targetPlan, profileQuota,
       trialStartedAt, trialExpiresAt, trialUsed, intent,
       pendingPlanId, pendingBillingCycle,
       acceptedTerms, termsVersion,
       now, now, now
     );
   }
+
+  syncCommercialMirrorFromAuthSqlite(db, id);
 
   // If trial intent, initialize a real 7-day trial subscription
   if (isTrial) {
@@ -207,28 +226,31 @@ export function registerUser(dto: RegisterUserDTO, ipAddress?: string, explicitI
 export function syncSupabaseUser(user: { id: string; email: string; name?: string }): { success: boolean } {
   const db = getDatabase();
   try {
-    const existing = db.prepare('SELECT id FROM commercial_users WHERE id = ?').get(user.id);
+    const cleanEmail = user.email.trim().toLowerCase();
+    const existing = db.prepare('SELECT id FROM auth_users WHERE id = ? OR normalized_email = ?').get(user.id, cleanEmail);
+    const now = new Date().toISOString();
     if (!existing) {
-      const now = new Date().toISOString();
       db.prepare(`
-        INSERT INTO commercial_users (id, email, password_hash, salt, name, role, status, plan_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO auth_users (id, email, normalized_email, password_hash, salt, name, role, status, email_verified, plan_id, profile_quota, created_at, updated_at, last_login_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 15, ?, ?, ?)
       `).run(
         user.id,
-        user.email,
+        cleanEmail,
+        cleanEmail,
         'SUPABASE_AUTH',
         'SUPABASE_AUTH',
-        user.name || user.email.split('@')[0],
+        user.name || cleanEmail.split('@')[0],
         'USER',
         'ACTIVE',
         'plan_free',
         now,
+        now,
         now
       );
     } else {
-      // Just update last_login
-      db.prepare('UPDATE commercial_users SET last_login_at = ? WHERE id = ?').run(new Date().toISOString(), user.id);
+      db.prepare('UPDATE auth_users SET last_login_at = ?, updated_at = ? WHERE id = ?').run(now, now, user.id);
     }
+    syncCommercialMirrorFromAuthSqlite(db, user.id);
     return { success: true };
   } catch (err: unknown) {
     log.error('syncSupabaseUser error:', err);
@@ -243,7 +265,7 @@ export function loginUser(dto: LoginUserDTO, ipAddress?: string): { success: boo
     return { success: false, error: 'Email and password are required.' };
   }
 
-  const row = db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(email) as SqliteCommercialUserRow | undefined;
+  const row = findAuthoritativeUserSqlite(db, email);
   if (!row) {
     logCommercialAudit({
       actorId: 'anonymous',
@@ -313,7 +335,8 @@ export function loginUser(dto: LoginUserDTO, ipAddress?: string): { success: boo
   }
 
   const now = new Date().toISOString();
-  db.prepare('UPDATE commercial_users SET last_login_at = ? WHERE id = ?').run(now, row.id);
+  db.prepare('UPDATE auth_users SET last_login_at = ?, updated_at = ? WHERE id = ?').run(now, now, row.id);
+  syncCommercialMirrorFromAuthSqlite(db, row.id);
 
   logCommercialAudit({
     actorId: row.id,
@@ -338,98 +361,20 @@ export function loginUser(dto: LoginUserDTO, ipAddress?: string): { success: boo
 
 export function getUserById(userId: string): CommercialUser | null {
   const db = getDatabase();
-  const row = db.prepare('SELECT * FROM commercial_users WHERE id = ? OR email = ?').get(userId, userId) as SqliteCommercialUserRow | undefined;
-  if (row) {
-    let featureOverrides: Record<string, boolean> = {};
-    if (row.feature_overrides) {
-      try {
-        featureOverrides = JSON.parse(row.feature_overrides) as Record<string, boolean>;
-      } catch (parseErr) {
-        log.warn('Failed parsing user feature_overrides JSON in getUserById', {
-          userId: row.id,
-          err: parseErr instanceof Error ? parseErr.message : String(parseErr),
-        });
-      }
-    }
-
-    return {
-      id: row.id,
-      email: row.email,
-      name: row.name,
-      role: row.role as CommercialRole,
-      status: row.status as CommercialUserStatus,
-      planId: row.plan_id || 'plan_free',
-      bonusProfiles: row.bonus_profiles || 0,
-      bonusProxyBytes: row.bonus_proxy_bytes || 0,
-      featureOverrides,
-      trialStartedAt: row.trial_started_at || undefined,
-      trialExpiresAt: row.trial_expires_at || undefined,
-      trialUsed: Boolean(row.trial_used),
-      signupIntent: row.signup_intent || undefined,
-      pendingPlanId: row.pending_plan_id || undefined,
-      pendingBillingCycle: row.pending_billing_cycle || undefined,
-      is_trial: Boolean(row.trial_expires_at && new Date(row.trial_expires_at) > new Date()),
-      trial_started_at: row.trial_started_at || undefined,
-      trial_expires_at: row.trial_expires_at || undefined,
-      trial_used: Boolean(row.trial_used),
-      signup_intent: row.signup_intent || undefined,
-      pending_plan_id: row.pending_plan_id || undefined,
-      pending_billing_cycle: row.pending_billing_cycle || undefined,
-      googleSub: row.google_sub || undefined,
-      avatarUrl: row.avatar_url || undefined,
-      authProvider: row.auth_provider || 'LOCAL',
-      acceptedTerms: row.accepted_terms === 1 ? true : row.accepted_terms === 0 ? false : undefined,
-      termsVersion: row.terms_version || undefined,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      lastLoginAt: row.last_login_at || undefined,
-    };
-  }
-
-  // Fallback to central auth_users table
-  const authRow = db.prepare('SELECT * FROM auth_users WHERE id = ? OR email = ?').get(userId, userId) as SqliteFallbackAuthUserRow | undefined;
-  if (authRow) {
-    const role: CommercialRole = (authRow.role === 'ADMIN' || authRow.role === 'SUPER_ADMIN') ? authRow.role : 'USER';
-    const status: CommercialUserStatus = authRow.status === 'BANNED' ? 'BANNED' : authRow.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE';
-    return {
-      id: authRow.id,
-      email: authRow.email,
-      name: authRow.name || authRow.email.split('@')[0],
-      role,
-      status,
-      planId: authRow.plan_id || ((authRow.plan_tier === 'pro' || authRow.plan_tier === 'PRO') ? 'plan_pro' : 'plan_free'),
-      createdAt: authRow.created_at,
-      updatedAt: authRow.updated_at,
-      lastLoginAt: authRow.last_login_at || undefined,
-    };
-  }
-
-  return null;
+  const row = findAuthoritativeUserSqlite(db, userId);
+  return row ? mapUnifiedAuthRowToCommercialUser(row) : null;
 }
 
 export function getUserByEmail(email: string): CommercialUser | null {
   const db = getDatabase();
-  const row = db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(email.trim().toLowerCase()) as SqliteCommercialUserRow | undefined;
-  if (!row) return null;
-  return {
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    role: row.role as CommercialRole,
-    status: row.status as CommercialUserStatus,
-    planId: row.plan_id || 'plan_free',
-    acceptedTerms: row.accepted_terms === 1 ? true : row.accepted_terms === 0 ? false : undefined,
-    termsVersion: row.terms_version || undefined,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    lastLoginAt: row.last_login_at || undefined,
-  };
+  const row = findAuthoritativeUserSqlite(db, (email || '').trim().toLowerCase());
+  return row ? mapUnifiedAuthRowToCommercialUser(row) : null;
 }
 
 export function getAllUsers(filter?: { status?: string; role?: string; searchQuery?: string; limit?: number; offset?: number }): { users: CommercialUser[]; total: number } {
   const db = getDatabase();
-  let query = 'SELECT * FROM commercial_users WHERE 1=1';
-  let countQuery = 'SELECT COUNT(*) as count FROM commercial_users WHERE 1=1';
+  let query = 'SELECT * FROM auth_users WHERE 1=1';
+  let countQuery = 'SELECT COUNT(*) as count FROM auth_users WHERE 1=1';
   const params: Array<string | number> = [];
   const countParams: Array<string | number> = [];
 
@@ -462,37 +407,9 @@ export function getAllUsers(filter?: { status?: string; role?: string; searchQue
   params.push(limit, offset);
 
   const total = db.prepare(countQuery).get<{ count?: number }>(...countParams)?.count || 0;
-  const rows = db.prepare(query).all<SqliteCommercialUserRow>(...params);
+  const rows = db.prepare(query).all<AuthUserUnifiedRow>(...params);
 
-  const users = rows.map((r) => {
-    let featureOverrides: Record<string, boolean> = {};
-    if (r.feature_overrides) {
-      try {
-        featureOverrides = JSON.parse(r.feature_overrides);
-      } catch (parseErr) {
-        log.warn('Failed parsing user feature_overrides JSON in getAllUsers', {
-          userId: r.id,
-          err: parseErr instanceof Error ? parseErr.message : String(parseErr),
-        });
-      }
-    }
-    return {
-      id: r.id,
-      email: r.email,
-      name: r.name,
-      role: r.role as CommercialRole,
-      status: r.status as CommercialUserStatus,
-      planId: r.plan_id || 'plan_free',
-      bonusProfiles: r.bonus_profiles || 0,
-      bonusProxyBytes: r.bonus_proxy_bytes || 0,
-      featureOverrides,
-      acceptedTerms: r.accepted_terms === 1 ? true : r.accepted_terms === 0 ? false : undefined,
-      termsVersion: r.terms_version || undefined,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-      lastLoginAt: r.last_login_at || undefined,
-    };
-  });
+  const users = rows.map(mapUnifiedAuthRowToCommercialUser);
 
   return { users, total };
 }
@@ -504,20 +421,22 @@ export function updateUserStatus(
   reason?: string
 ): boolean {
   const db = getDatabase();
-  const current = getUserById(userId);
+  const cleanId = stripCentralUserPrefix(userId);
+  const current = getUserById(cleanId);
   if (!current) return false;
 
   const now = new Date().toISOString();
-  const res = db.prepare('UPDATE commercial_users SET status = ?, updated_at = ? WHERE id = ?').run(status, now, userId);
+  const res = db.prepare('UPDATE auth_users SET status = ?, updated_at = ? WHERE id = ?').run(status, now, current.id);
 
   if (res.changes > 0) {
+    syncCommercialMirrorFromAuthSqlite(db, current.id);
     logCommercialAudit({
       actorId: actor.id,
       actorName: actor.name,
       actorRole: actor.role,
       action: `USER_${status}`,
       targetType: 'USER',
-      targetId: userId,
+      targetId: current.id,
       details: `Changed user status for ${current.email} from ${current.status} to ${status}.${reason ? ` Reason: ${reason}` : ''}`,
       result: 'WARNING',
     });
@@ -532,20 +451,22 @@ export function updateUserPlan(
   actor: { id: string; name: string; role: CommercialRole }
 ): boolean {
   const db = getDatabase();
-  const current = getUserById(userId);
+  const cleanId = stripCentralUserPrefix(userId);
+  const current = getUserById(cleanId);
   if (!current) return false;
 
   const now = new Date().toISOString();
-  const res = db.prepare('UPDATE commercial_users SET plan_id = ?, updated_at = ? WHERE id = ?').run(planId, now, userId);
+  const res = db.prepare('UPDATE auth_users SET plan_id = ?, updated_at = ? WHERE id = ?').run(planId, now, current.id);
 
   if (res.changes > 0) {
+    syncCommercialMirrorFromAuthSqlite(db, current.id);
     logCommercialAudit({
       actorId: actor.id,
       actorName: actor.name,
       actorRole: actor.role,
       action: 'USER_PLAN_CHANGE',
       targetType: 'USER',
-      targetId: userId,
+      targetId: current.id,
       details: `Changed plan for ${current.email} to ${planId}`,
       result: 'SUCCESS',
     });
@@ -565,7 +486,8 @@ export function boostUserQuota(
   actor: { id: string; name: string; role: CommercialRole }
 ): { success: boolean; bonusProfiles?: number; bonusProxyBytes?: number; error?: string } {
   const db = getDatabase();
-  const current = getUserById(userId);
+  const cleanId = stripCentralUserPrefix(userId);
+  const current = getUserById(cleanId);
   if (!current) {
     return { success: false, error: 'User not found.' };
   }
@@ -575,10 +497,11 @@ export function boostUserQuota(
   if (type === 'PROFILES') {
     const increment = Math.max(1, Math.floor(amount));
     db.prepare(`
-      UPDATE commercial_users 
+      UPDATE auth_users 
       SET bonus_profiles = COALESCE(bonus_profiles, 0) + ?, updated_at = ? 
       WHERE id = ?
     `).run(increment, now, current.id);
+    syncCommercialMirrorFromAuthSqlite(db, current.id);
 
     const updated = getUserById(current.id);
     logCommercialAudit({
@@ -603,10 +526,11 @@ export function boostUserQuota(
     const incrementGb = Math.max(1, Math.floor(amount));
     const incrementBytes = incrementGb * 1024 * 1024 * 1024;
     db.prepare(`
-      UPDATE commercial_users 
+      UPDATE auth_users 
       SET bonus_proxy_bytes = COALESCE(bonus_proxy_bytes, 0) + ?, updated_at = ? 
       WHERE id = ?
     `).run(incrementBytes, now, current.id);
+    syncCommercialMirrorFromAuthSqlite(db, current.id);
 
     const updated = getUserById(current.id);
     logCommercialAudit({
@@ -641,7 +565,8 @@ export function setUserFeatureOverrides(
   actor: { id: string; name: string; role: CommercialRole }
 ): { success: boolean; overrides?: Record<string, boolean>; error?: string } {
   const db = getDatabase();
-  const current = getUserById(userId);
+  const cleanId = stripCentralUserPrefix(userId);
+  const current = getUserById(cleanId);
   if (!current) {
     return { success: false, error: 'User not found.' };
   }
@@ -652,10 +577,11 @@ export function setUserFeatureOverrides(
   const now = new Date().toISOString();
 
   db.prepare(`
-    UPDATE commercial_users 
+    UPDATE auth_users 
     SET feature_overrides = ?, updated_at = ? 
     WHERE id = ?
   `).run(json, now, current.id);
+  syncCommercialMirrorFromAuthSqlite(db, current.id);
 
   logCommercialAudit({
     actorId: actor.id,

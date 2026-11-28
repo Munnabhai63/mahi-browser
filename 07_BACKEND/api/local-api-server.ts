@@ -65,6 +65,8 @@ import { synchronizerHub, type SyncAction } from '../../09_AUTOMATION/sync-hub.j
 import { getWebAdminHtml } from '../server/web-admin-html.js';
 import { getSuperAdminHtml } from '../server/super-admin-html.js';
 import { getDownloadPortalHtml } from '../server/download-portal-html.js';
+import { loadAdminAssetAsync } from '../server/admin-assets-loader.js';
+import { buildHtmlSecurityHeaders } from '../utils/security-headers.js';
 import { getDistributionInfo } from '../../03_HARDWARE/distribution-service.js';
 import {
   checkPublicIp,
@@ -469,7 +471,7 @@ function sendHTML(res: http.ServerResponse, statusCode: number, html: string) {
   const corsHeaders = req ? getCorsHeaders(req) : {};
   res.writeHead(statusCode, {
     'Content-Type': 'text/html; charset=utf-8',
-    'Content-Security-Policy': "default-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';",
+    ...buildHtmlSecurityHeaders(html),
     ...corsHeaders,
   });
   res.end(html);
@@ -672,6 +674,23 @@ export async function handleLocalApiRequest(
         sendJSON(res, 401, { success: false, error: 'Invalid master secret' });
       }
       return;
+    }
+
+    // 0. Externalized Admin & Download Portal static CSS/JS assets (strict script-src 'self')
+    if (cleanPath.startsWith('/admin-assets/') && method === 'GET') {
+      const assetName = cleanPath.substring('/admin-assets/'.length);
+      const asset = await loadAdminAssetAsync(assetName);
+      if (asset) {
+        res.writeHead(200, {
+          'Content-Type': asset.contentType,
+          'Content-Length': asset.content.byteLength,
+          'X-Content-Type-Options': 'nosniff',
+          'Cache-Control': 'public, max-age=300',
+          ...getCorsHeaders(req),
+        });
+        res.end(asset.content);
+        return;
+      }
     }
 
     // 0. Secret Super Admin & Web Admin HTML Portals (Open directly in any browser)

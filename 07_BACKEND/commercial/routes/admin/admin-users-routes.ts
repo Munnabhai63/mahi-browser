@@ -46,7 +46,7 @@ import {
   setUserFeatureOverrides,
 } from '../../commercial-auth-service.js';
 import { revokeCommercialDevice, resetAllUserDevices } from '../../commercial-device-service.js';
-import { type AdminRouteContext, requireAdminAccess, sendMirrorMissingResponse } from './admin-shared.js';
+import { type AdminRouteContext, requireAdminAccess } from './admin-shared.js';
 
 /** Handles commercial leads/support, dashboard, user, device, audit, and version routes. */
 export async function handleAdminUserManagementRoutes(ctx: AdminRouteContext): Promise<boolean> {
@@ -192,7 +192,6 @@ export async function handleAdminUserManagementRoutes(ctx: AdminRouteContext): P
     const nextStatus = body.status as CommercialUserStatus;
     if (isPostgresConfigured()) {
       const r = await adminSetUserStatus(userId, nextStatus, actor, body.reason);
-      if (r.centralGone) return sendMirrorMissingResponse(res, r.message);
       sendJSON(res, r.ok ? 200 : 404, { success: r.ok });
       return true;
     }
@@ -213,7 +212,6 @@ export async function handleAdminUserManagementRoutes(ctx: AdminRouteContext): P
     const body = parsed.data;
     if (isPostgresConfigured()) {
       const r = await adminSetUserPlan(userId, body.planId, actor);
-      if (r.centralGone) return sendMirrorMissingResponse(res, r.message);
       sendJSON(res, r.ok ? 200 : 404, { success: r.ok });
       return true;
     }
@@ -235,7 +233,6 @@ export async function handleAdminUserManagementRoutes(ctx: AdminRouteContext): P
     const boostType = body.type as 'PROFILES' | 'PROXY_GB';
     if (isPostgresConfigured()) {
       const r = await adminBoostQuota(userId, boostType, body.amount, actor);
-      if (r.centralGone) return sendMirrorMissingResponse(res, r.message);
       sendJSON(res, r.success ? 200 : 400, r);
       return true;
     }
@@ -259,7 +256,6 @@ export async function handleAdminUserManagementRoutes(ctx: AdminRouteContext): P
     );
     if (isPostgresConfigured()) {
       const r = await adminSetFeatureOverrides(userId, normalizedOverrides, actor);
-      if (r.centralGone) return sendMirrorMissingResponse(res, r.message);
       sendJSON(res, r.success ? 200 : 400, r);
       return true;
     }
@@ -276,7 +272,6 @@ export async function handleAdminUserManagementRoutes(ctx: AdminRouteContext): P
     const userId = userResetDevicesMatch[1];
     if (isPostgresConfigured()) {
       const r = await adminResetUserDevices(userId, actor);
-      if (r.centralGone) return sendMirrorMissingResponse(res, r.message);
       sendJSON(res, 200, { success: true, unbindCount: r.unbindCount });
       return true;
     }

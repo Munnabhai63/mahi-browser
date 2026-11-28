@@ -3,6 +3,10 @@ import https from 'node:https';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { isPostgresConfigured, getCentralRepository } from '../../06_DATABASE/central-repository.js';
 import { signToken, getUserById } from './commercial-auth-service.js';
+import {
+  syncCommercialMirrorFromAuthSqlite,
+  type AuthUserUnifiedRow,
+} from '../../05_AUTH/user-model-unifier.js';
 import { CANONICAL_PLAN_CATALOG } from './canonical-plan-catalog.js';
 import { recordFunnelEvent } from './funnel-service.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
@@ -47,25 +51,6 @@ interface SqliteOAuthStateRow {
   created_at: string;
   accepted_terms: number | null;
   terms_version: string | null;
-}
-
-interface SqliteCommercialOAuthUserRow {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  status: string;
-  plan_id: string;
-  password_hash?: string | null;
-  salt?: string | null;
-  trial_started_at?: string | null;
-  trial_expires_at?: string | null;
-  trial_used?: number | boolean | null;
-  signup_intent?: string | null;
-  google_sub?: string | null;
-  avatar_url?: string | null;
-  auth_provider?: string | null;
-  created_at?: string;
 }
 
 interface JwtTokenHeader {
@@ -750,10 +735,12 @@ export async function authenticateWithGoogleClaimsAsync(
     }
   }
 
-  // Step 2: Check local SQLite commercial_users
-  let existingUser = db.prepare('SELECT * FROM commercial_users WHERE google_sub = ?').get(claims.sub) as SqliteCommercialOAuthUserRow | undefined;
+  // Step 2: Check authoritative local SQLite auth_users
+  let existingUser = db.prepare('SELECT * FROM auth_users WHERE google_sub = ?').get(claims.sub) as AuthUserUnifiedRow | undefined;
   if (!existingUser) {
-    existingUser = db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(cleanEmail) as SqliteCommercialOAuthUserRow | undefined;
+    existingUser = db
+      .prepare('SELECT * FROM auth_users WHERE normalized_email = ? OR email = ?')
+      .get(cleanEmail, cleanEmail) as AuthUserUnifiedRow | undefined;
   }
 
   // Prevent overwriting an account already bound to a different Google subject ID
@@ -831,29 +818,17 @@ export async function authenticateWithGoogleClaimsAsync(
       };
     }
 
-    // Ensure SQLite commercial_users and auth_users match the exact same userId
+    // Ensure SQLite auth_users and FK mirror match the exact same userId
     if (existingUser) {
       if (existingUser.id !== userId) {
         db.exec('PRAGMA foreign_keys = OFF;');
         db.exec('BEGIN TRANSACTION;');
         try {
           db.prepare(`
-            UPDATE commercial_users
-            SET id = ?, google_sub = ?, avatar_url = COALESCE(avatar_url, ?), last_login_at = ?, updated_at = ?
-            WHERE id = ?
-          `).run(userId, claims.sub, claims.picture || null, now, now, existingUser.id);
-
-          try {
-            db.prepare(`
-              UPDATE auth_users
-              SET id = ?, google_sub = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1, last_login_at = ?, updated_at = ?
-              WHERE id = ? OR email = ? OR normalized_email = ?
-            `).run(userId, claims.sub, claims.picture || null, now, now, existingUser.id, cleanEmail, cleanEmail);
-          } catch (authErr) {
-            log.warn('Failed aligning auth_users ID during Google OAuth migration', {
-              err: authErr instanceof Error ? authErr.message : String(authErr),
-            });
-          }
+            UPDATE auth_users
+            SET id = ?, google_sub = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1, last_login_at = ?, updated_at = ?
+            WHERE id = ? OR email = ? OR normalized_email = ?
+          `).run(userId, claims.sub, claims.picture || null, now, now, existingUser.id, cleanEmail, cleanEmail);
 
           try {
             db.prepare('UPDATE commercial_subscriptions SET user_id = ? WHERE user_id = ?').run(userId, existingUser.id);
@@ -877,6 +852,7 @@ export async function authenticateWithGoogleClaimsAsync(
             });
           }
 
+          syncCommercialMirrorFromAuthSqlite(db, userId);
           db.exec('COMMIT;');
         } catch (txErr: unknown) {
           db.exec('ROLLBACK;');
@@ -893,60 +869,34 @@ export async function authenticateWithGoogleClaimsAsync(
         }
       } else {
         db.prepare(`
-          UPDATE commercial_users
-          SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?), last_login_at = ?, updated_at = ?
+          UPDATE auth_users
+          SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1, last_login_at = ?, updated_at = ?
           WHERE id = ?
         `).run(claims.sub, claims.picture || null, now, now, userId);
-        try {
-          db.prepare(`
-            UPDATE auth_users
-            SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1, last_login_at = ?, updated_at = ?
-            WHERE id = ?
-          `).run(claims.sub, claims.picture || null, now, now, userId);
-        } catch (authErr) {
-          log.warn('Failed syncing auth_users profile fields after Google OAuth login', {
-            err: authErr instanceof Error ? authErr.message : String(authErr),
-          });
-        }
+        syncCommercialMirrorFromAuthSqlite(db, userId);
       }
     } else {
-      // Create user in SQLite commercial_users + auth_users with matching pgUser.id
+      // Create authoritative user in SQLite auth_users (+ FK mirror) with matching pgUser.id
       const displayName = (claims.name || pgUser.name || cleanEmail.split('@')[0] || 'Google User').trim();
       const avatarUrl = claims.picture || pgUser.avatar_url || null;
       const acceptedTermsInt = stateRecord?.acceptedTerms === true ? 1 : (stateRecord?.acceptedTerms === false ? 0 : null);
       const termsVersion = stateRecord?.termsVersion || null;
+
       db.prepare(`
-        INSERT INTO commercial_users (
-          id, email, password_hash, salt, name, role, status, plan_id,
+        INSERT INTO auth_users (
+          id, email, normalized_email, password_hash, salt, name, role, status,
+          email_verified, email_verified_at, plan_id, profile_quota,
           trial_started_at, trial_expires_at, trial_used, signup_intent,
           google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at,
           accepted_terms, terms_version
-        ) VALUES (?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
       `).run(
-        userId, cleanEmail, displayName, pgUser.status || 'ACTIVE', pgUser.plan_id || planId,
+        userId, cleanEmail, cleanEmail, displayName, pgUser.status || 'ACTIVE', now, pgUser.plan_id || planId, pgUser.profile_quota || profileQuota,
         pgUser.trial_started_at || null, pgUser.trial_expires_at || null, pgUser.trial_used ? 1 : 0, intent,
         claims.sub, avatarUrl, pgUser.created_at || now, now, now,
         acceptedTermsInt, termsVersion
       );
-
-      try {
-        db.prepare(`
-          INSERT INTO auth_users (
-            id, email, normalized_email, password_hash, salt, name, role, status,
-            email_verified, email_verified_at, plan_id, profile_quota,
-            trial_started_at, trial_expires_at, trial_used, signup_intent,
-            google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at,
-            accepted_terms, terms_version
-          ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
-        `).run(
-          userId, cleanEmail, cleanEmail, displayName, pgUser.status || 'ACTIVE', now, pgUser.plan_id || planId, pgUser.profile_quota || profileQuota,
-          pgUser.trial_started_at || null, pgUser.trial_expires_at || null, pgUser.trial_used ? 1 : 0, intent,
-          claims.sub, avatarUrl, pgUser.created_at || now, now, now,
-          acceptedTermsInt, termsVersion
-        );
-      } catch (err) {
-        log.error('[GoogleOAuth] SQLite auth_users terms write error', err);
-      }
+      syncCommercialMirrorFromAuthSqlite(db, userId);
 
       if (isPostgresConfigured() && repo && acceptedTermsInt !== null) {
         try {
@@ -974,24 +924,13 @@ export async function authenticateWithGoogleClaimsAsync(
     userId = existingUser.id;
     isLinked = !existingUser.google_sub || existingUser.auth_provider !== 'GOOGLE';
 
-    // Update SQLite commercial_users and auth_users
+    // Update authoritative SQLite auth_users and FK mirror
     db.prepare(`
-      UPDATE commercial_users
-      SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?), last_login_at = ?, updated_at = ?
+      UPDATE auth_users
+      SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1, last_login_at = ?, updated_at = ?
       WHERE id = ?
     `).run(claims.sub, claims.picture || null, now, now, userId);
-
-    try {
-      db.prepare(`
-        UPDATE auth_users
-        SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1, last_login_at = ?, updated_at = ?
-        WHERE id = ?
-      `).run(claims.sub, claims.picture || null, now, now, userId);
-    } catch (authErr) {
-      log.warn('Failed updating SQLite auth_users during PostgreSQL heal-create', {
-        err: authErr instanceof Error ? authErr.message : String(authErr),
-      });
-    }
+    syncCommercialMirrorFromAuthSqlite(db, userId);
 
     // Heal-create in PostgreSQL auth_users
     if (repo) {
@@ -1066,42 +1005,23 @@ export async function authenticateWithGoogleClaimsAsync(
     const acceptedTermsInt = stateRecord?.acceptedTerms === true ? 1 : (stateRecord?.acceptedTerms === false ? 0 : null);
     const termsVersion = stateRecord?.termsVersion || null;
 
-    // Insert into SQLite commercial_users
+    // Insert authoritative SQLite auth_users record + FK mirror
     db.prepare(`
-      INSERT INTO commercial_users (
-        id, email, password_hash, salt, name, role, status, plan_id,
+      INSERT INTO auth_users (
+        id, email, normalized_email, password_hash, salt, name, role, status,
+        email_verified, email_verified_at, plan_id, profile_quota,
         trial_started_at, trial_expires_at, trial_used, signup_intent,
-        pending_plan_id, pending_billing_cycle, google_sub, avatar_url, auth_provider,
-        created_at, updated_at, last_login_at,
+        pending_plan_id, pending_billing_cycle,
+        google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at,
         accepted_terms, terms_version
-      ) VALUES (?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
     `).run(
-      userId, cleanEmail, displayName, initialPlanId,
+      userId, cleanEmail, cleanEmail, displayName, now, initialPlanId, initialProfileQuota,
       trialStartedAt, trialExpiresAt, trialUsed, intent,
-      pendingPlanId, pendingBillingCycle, claims.sub, avatarUrl,
-      now, now, now,
+      pendingPlanId, pendingBillingCycle, claims.sub, avatarUrl, now, now, now,
       acceptedTermsInt, termsVersion
     );
-
-    // Insert into SQLite auth_users
-    try {
-      db.prepare(`
-        INSERT INTO auth_users (
-          id, email, normalized_email, password_hash, salt, name, role, status,
-          email_verified, email_verified_at, plan_id, profile_quota,
-          trial_started_at, trial_expires_at, trial_used, signup_intent,
-          google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at,
-          accepted_terms, terms_version
-        ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
-      `).run(
-        userId, cleanEmail, cleanEmail, displayName, now, initialPlanId, initialProfileQuota,
-        trialStartedAt, trialExpiresAt, trialUsed, intent,
-        claims.sub, avatarUrl, now, now, now,
-        acceptedTermsInt, termsVersion
-      );
-    } catch (err) {
-      log.error('[GoogleOAuth] SQLite auth_users insert error', err);
-    }
+    syncCommercialMirrorFromAuthSqlite(db, userId);
 
     // Insert into Supabase PostgreSQL auth_users via repo
     if (repo) {
@@ -1268,14 +1188,16 @@ export function authenticateWithGoogleClaims(
     returnUrl: stateRecord?.returnUrl,
   });
 
-  // Check 1: Find existing user by google_sub
-  let existingUser = db.prepare('SELECT * FROM commercial_users WHERE google_sub = ?').get(claims.sub) as SqliteCommercialOAuthUserRow | undefined;
+  // Check 1: Find existing user by google_sub in authoritative auth_users
+  let existingUser = db.prepare('SELECT * FROM auth_users WHERE google_sub = ?').get(claims.sub) as AuthUserUnifiedRow | undefined;
   let isLinked = false;
   let isNewAccount = false;
 
   // Check 2: Find existing user by email (Account Linking)
   if (!existingUser) {
-    const userByEmail = db.prepare('SELECT * FROM commercial_users WHERE email = ?').get(cleanEmail) as SqliteCommercialOAuthUserRow | undefined;
+    const userByEmail = db
+      .prepare('SELECT * FROM auth_users WHERE normalized_email = ? OR email = ?')
+      .get(cleanEmail, cleanEmail) as AuthUserUnifiedRow | undefined;
     if (userByEmail) {
       existingUser = userByEmail;
       isLinked = true;
@@ -1296,27 +1218,14 @@ export function authenticateWithGoogleClaims(
 
   if (existingUser && isLinked) {
     db.prepare(`
-      UPDATE commercial_users
+      UPDATE auth_users
       SET google_sub = ?,
           avatar_url = COALESCE(avatar_url, ?),
+          email_verified = 1,
           updated_at = ?
       WHERE id = ?
     `).run(claims.sub, claims.picture || null, now, existingUser.id);
-
-    try {
-      db.prepare(`
-        UPDATE auth_users
-        SET google_sub = ?,
-            avatar_url = COALESCE(avatar_url, ?),
-            email_verified = 1,
-            updated_at = ?
-        WHERE id = ?
-      `).run(claims.sub, claims.picture || null, now, existingUser.id);
-    } catch (authErr) {
-      log.warn('Failed updating auth_users during synchronous Google account link', {
-        err: authErr instanceof Error ? authErr.message : String(authErr),
-      });
-    }
+    syncCommercialMirrorFromAuthSqlite(db, existingUser.id);
 
     logCommercialAudit({
       actorId: existingUser.id,
@@ -1349,41 +1258,21 @@ export function authenticateWithGoogleClaims(
     const termsVersion = stateRecord?.termsVersion || null;
 
     db.prepare(`
-      INSERT INTO commercial_users (
-        id, email, password_hash, salt, name, role, status, plan_id,
+      INSERT INTO auth_users (
+        id, email, normalized_email, password_hash, salt, name, role, status,
+        email_verified, email_verified_at, plan_id, profile_quota,
         trial_started_at, trial_expires_at, trial_used, signup_intent,
-        pending_plan_id, pending_billing_cycle, google_sub, avatar_url, auth_provider,
-        created_at, updated_at, last_login_at,
+        pending_plan_id, pending_billing_cycle,
+        google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at,
         accepted_terms, terms_version
-      ) VALUES (?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
     `).run(
-      userId, cleanEmail, displayName, planId,
+      userId, cleanEmail, cleanEmail, displayName, now, planId, profileQuota,
       trialStartedAt, trialExpiresAt, trialUsed, intent,
-      pendingPlanId, pendingBillingCycle, claims.sub, avatarUrl,
-      now, now, now,
+      pendingPlanId, pendingBillingCycle, claims.sub, avatarUrl, now, now, now,
       acceptedTermsInt, termsVersion
     );
-
-    try {
-      db.prepare(`
-        INSERT INTO auth_users (
-          id, email, normalized_email, password_hash, salt, name, role, status,
-          email_verified, email_verified_at, plan_id, profile_quota,
-          trial_started_at, trial_expires_at, trial_used, signup_intent,
-          google_sub, avatar_url, auth_provider, created_at, updated_at, last_login_at,
-          accepted_terms, terms_version
-        ) VALUES (?, ?, ?, 'OAUTH_GOOGLE', 'OAUTH_GOOGLE', ?, 'USER', 'ACTIVE', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'GOOGLE', ?, ?, ?, ?, ?)
-      `).run(
-        userId, cleanEmail, cleanEmail, displayName, now, planId, profileQuota,
-        trialStartedAt, trialExpiresAt, trialUsed, intent,
-        claims.sub, avatarUrl, now, now, now,
-        acceptedTermsInt, termsVersion
-      );
-    } catch (authErr) {
-      log.warn('Failed inserting mirror auth_users row during synchronous Google signup', {
-        err: authErr instanceof Error ? authErr.message : String(authErr),
-      });
-    }
+    syncCommercialMirrorFromAuthSqlite(db, userId);
 
     if (isTrial) {
       const subId = `sub_${crypto.randomUUID()}`;
@@ -1429,12 +1318,13 @@ export function authenticateWithGoogleClaims(
     }
 
   } else {
-    // Existing User Login: Update last login and avatar
+    // Existing User Login: Update last login and avatar on authoritative auth_users
     userId = existingUser.id;
     if (claims.picture && !existingUser.avatar_url) {
-      db.prepare('UPDATE commercial_users SET avatar_url = ? WHERE id = ?').run(claims.picture, userId);
+      db.prepare('UPDATE auth_users SET avatar_url = ? WHERE id = ?').run(claims.picture, userId);
     }
-    db.prepare('UPDATE commercial_users SET last_login_at = ?, updated_at = ? WHERE id = ?').run(now, now, userId);
+    db.prepare('UPDATE auth_users SET last_login_at = ?, updated_at = ? WHERE id = ?').run(now, now, userId);
+    syncCommercialMirrorFromAuthSqlite(db, userId);
 
     logCommercialAudit({
       actorId: userId,

@@ -11,6 +11,7 @@
 
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { isPostgresConfigured, getCentralRepository } from '../../06_DATABASE/central-repository.js';
+import { syncCommercialMirrorFromAuthSqlite } from '../../05_AUTH/user-model-unifier.js';
 import { CANONICAL_PLAN_CATALOG, legacyPlanIdToCanonical } from './canonical-plan-catalog.js';
 import { getCommercialPlanById } from './commercial-plan-service.js';
 import { createLogger } from '../utils/logger.js';
@@ -158,8 +159,7 @@ export async function reconcileUserPlanOnLogin(
       try {
         db.prepare('UPDATE auth_users SET plan_id = ?, profile_quota = ?, updated_at = ? WHERE id = ?')
           .run(targetPlan, targetProfiles, now, userId);
-        db.prepare('UPDATE commercial_users SET plan_id = ?, updated_at = ? WHERE id = ?')
-          .run(targetPlan, now, userId);
+        syncCommercialMirrorFromAuthSqlite(db, userId);
       } catch (err) {
         log.warn('Failed persisting reconciled plan upgrade to SQLite', {
           userId,
@@ -200,8 +200,7 @@ export async function reconcileUserPlanOnLogin(
       try {
         db.prepare('UPDATE auth_users SET plan_id = ?, profile_quota = ?, updated_at = ? WHERE id = ?')
           .run('plan_free', freeQuota, now, userId);
-        db.prepare('UPDATE commercial_users SET plan_id = ?, updated_at = ? WHERE id = ?')
-          .run('plan_free', now, userId);
+        syncCommercialMirrorFromAuthSqlite(db, userId);
         db.prepare("UPDATE commercial_subscriptions SET status = 'EXPIRED' WHERE id = ?")
           .run(expiredSub.id);
       } catch (err) {

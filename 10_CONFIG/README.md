@@ -4,8 +4,7 @@ This folder contains Electron Preload bridge scripts, cross-process TypeScript t
 
 ## Directory Structure
 - preload/
-  - index.ts: TypeScript Preload definition exposing window.mahiAPI
-  - preload.cjs: CommonJS compiled Preload script for Electron
+  - index.ts: Single authoritative TypeScript Preload definition exposing window.mahiAPI (compiled to `dist-electron/preload/index.cjs` by Vite)
 - shared/
   - constants/: Default user agents, RPA templates, extension store
   - types/: All 18 TypeScript type definition files

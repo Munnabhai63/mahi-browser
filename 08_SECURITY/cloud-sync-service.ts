@@ -5,7 +5,7 @@ import zlib from 'node:zlib';
 import https from 'node:https';
 import http from 'node:http';
 import { BrowserWindow } from './electron-bridge.js';
-import { getHWID, verifyLicense } from './license-service.js';
+import { getHWID, resolveOfflineLicenseKey, resolveOfflineLicenseKeyAsync } from './license-service.js';
 import { ADMIN_API_BASE_URL, isOnlineRevoked, isGraceExpired } from './license-status-service.js';
 import { hasValidLicense, assertCanCreateProfile } from './freemium-guard.js';
 import { hasValidAccountSubscription, getAccountSyncKey, loadEncryptedSession, loadEncryptedSessionAsync, readCachedStatus, readCachedStatusAsync } from './account-service.js';
@@ -591,29 +591,7 @@ export function isLegacyWeakPassphraseActive(config: CloudSyncConfig = getSyncCo
 }
 
 export function getActiveLicenseKey(): string | null {
-  const userDataDir = getUserDataPath();
-  const licenseFile = path.join(userDataDir, 'offline-license.key');
-  if (fs.existsSync(licenseFile)) {
-    const key = fs.readFileSync(licenseFile, 'utf8').trim();
-    if (key) return key;
-  }
-
-  const claimedFile = path.join(userDataDir, 'claimed-licenses.json');
-  if (fs.existsSync(claimedFile)) {
-    try {
-      const claimed: Record<string, string> = JSON.parse(fs.readFileSync(claimedFile, 'utf8'));
-      for (const key of Object.values(claimed)) {
-        if (key && typeof key === 'string' && verifyLicense(key).valid) {
-          return key;
-        }
-      }
-    } catch (err) {
-      log.warn('Failed reading claimed-licenses.json while resolving sync license key', {
-        err: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-  return null;
+  return resolveOfflineLicenseKey(getUserDataPath(), { requireValidOfflineKey: false });
 }
 
 export function getSyncAuthHeaders(): Record<string, string> {
@@ -745,29 +723,7 @@ export async function setSyncConfigAsync(config: Partial<CloudSyncConfig>): Prom
 }
 
 export async function getActiveLicenseKeyAsync(): Promise<string | null> {
-  const userDataDir = getUserDataPath();
-  const licenseFile = path.join(userDataDir, 'offline-license.key');
-  if (await pathExists(licenseFile)) {
-    const key = (await fs.promises.readFile(licenseFile, 'utf8')).trim();
-    if (key) return key;
-  }
-
-  const claimedFile = path.join(userDataDir, 'claimed-licenses.json');
-  if (await pathExists(claimedFile)) {
-    try {
-      const claimed: Record<string, string> = JSON.parse(await fs.promises.readFile(claimedFile, 'utf8'));
-      for (const key of Object.values(claimed)) {
-        if (key && typeof key === 'string' && verifyLicense(key).valid) {
-          return key;
-        }
-      }
-    } catch (err) {
-      log.warn('Failed reading claimed-licenses.json asynchronously while resolving sync license key', {
-        err: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-  return null;
+  return resolveOfflineLicenseKeyAsync(getUserDataPath(), { requireValidOfflineKey: false });
 }
 
 export async function getSyncAuthHeadersAsync(): Promise<Record<string, string>> {

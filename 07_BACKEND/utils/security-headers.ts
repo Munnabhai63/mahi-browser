@@ -5,10 +5,10 @@ export const API_SECURITY_CSP =
   "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
 export const ADMIN_HTML_CSP =
-  "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; upgrade-insecure-requests;";
+  "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: https:; font-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; upgrade-insecure-requests;";
 
 export const PORTAL_HTML_CSP =
-  "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; connect-src 'self'; upgrade-insecure-requests;";
+  "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' https://cdn.tailwindcss.com; connect-src 'self'; upgrade-insecure-requests;";
 
 export const PERMISSIONS_POLICY_HEADER =
   'camera=(), microphone=(), geolocation=(), payment=(), usb=()';
@@ -50,6 +50,7 @@ export function applyFastifySecurityHeaders(reply: FastifyReply, urlPath: string
   }
 
   const isCacheableStatic =
+    urlPath.startsWith('/admin-assets/') ||
     urlPath.startsWith('/download') ||
     urlPath.startsWith('/releases') ||
     contentType.startsWith('image/');

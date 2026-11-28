@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { app, BrowserWindow, Notification } from './electron-bridge.js';
-import { getHWID, verifyLicense } from './license-service.js';
+import { getHWID, hasValidOfflineLicenseKey, hasValidOfflineLicenseKeyAsync } from './license-service.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 import { getSiteConfig } from '../10_CONFIG/shared/site-config.js';
 import { createLogger } from '../07_BACKEND/utils/logger.js';
@@ -91,33 +91,7 @@ async function writeStatusCacheAsync(cache: StatusCache): Promise<void> {
 }
 
 async function hasOfflineLicenseKeyAsync(): Promise<boolean> {
-  try {
-    const userDataDir = getUserDataPath();
-    const licenseFile = path.join(userDataDir, 'offline-license.key');
-    if (await pathExists(licenseFile)) {
-      const rawKey = (await fs.promises.readFile(licenseFile, 'utf8')).trim();
-      if (rawKey) {
-        const check = verifyLicense(rawKey);
-        if (check.valid) return true;
-      }
-    }
-
-    const claimedFile = path.join(userDataDir, 'claimed-licenses.json');
-    if (await pathExists(claimedFile)) {
-      const claimed = JSON.parse(await fs.promises.readFile(claimedFile, 'utf8'));
-      for (const k of Object.values(claimed)) {
-        if (k && typeof k === 'string') {
-          const check = verifyLicense(k.trim());
-          if (check.valid) return true;
-        }
-      }
-    }
-  } catch (err) {
-    log.debug('Async offline/claimed license presence check failed', {
-      err: err instanceof Error ? err.message : String(err),
-    });
-  }
-  return false;
+  return hasValidOfflineLicenseKeyAsync(getUserDataPath());
 }
 
 async function getEarliestOfflineLicenseMtimeAsync(): Promise<number | null> {
@@ -184,33 +158,7 @@ export function readStatusCache(): StatusCache | null {
  * Returns true if the device currently possesses an offline RSA license.
  */
 export function hasOfflineLicenseKey(): boolean {
-  try {
-    const userDataDir = getUserDataPath();
-    const licenseFile = path.join(userDataDir, 'offline-license.key');
-    if (fs.existsSync(licenseFile)) {
-      const rawKey = fs.readFileSync(licenseFile, 'utf8').trim();
-      if (rawKey) {
-        const check = verifyLicense(rawKey);
-        if (check.valid) return true;
-      }
-    }
-
-    const claimedFile = path.join(userDataDir, 'claimed-licenses.json');
-    if (fs.existsSync(claimedFile)) {
-      const claimed = JSON.parse(fs.readFileSync(claimedFile, 'utf8'));
-      for (const k of Object.values(claimed)) {
-        if (k && typeof k === 'string') {
-          const check = verifyLicense(k.trim());
-          if (check.valid) return true;
-        }
-      }
-    }
-  } catch (err) {
-    log.debug('Offline/claimed license presence check failed', {
-      err: err instanceof Error ? err.message : String(err),
-    });
-  }
-  return false;
+  return hasValidOfflineLicenseKey(getUserDataPath());
 }
 
 /**

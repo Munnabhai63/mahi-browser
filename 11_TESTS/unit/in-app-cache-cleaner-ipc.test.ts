@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import vm from 'node:vm';
+import * as esbuild from 'esbuild';
 import * as cleanerService from '../../07_BACKEND/services/profile-cache-cleaner.js';
 import {
   handlePreviewCacheCleanup,
@@ -48,18 +49,14 @@ describe('Layer 1 Step 2 — In-App Profile Cache Cleaner IPC & Preload Contract
     }
   });
 
-  it('1. verifies exact IPC channel parity across register-handlers.ts, preload.cjs, preload/index.ts, and api-fallback.ts', () => {
+  it('1. verifies exact IPC channel parity across register-handlers.ts, preload/index.ts, and api-fallback.ts', () => {
     const handlersSrc = fs.readFileSync(path.join(rootDir, '07_BACKEND/ipc/register-handlers.ts'), 'utf8');
-    const preloadCjsSrc = fs.readFileSync(path.join(rootDir, '10_CONFIG/preload/preload.cjs'), 'utf8');
     const preloadTsSrc = fs.readFileSync(path.join(rootDir, '10_CONFIG/preload/index.ts'), 'utf8');
     const ipcTypesSrc = fs.readFileSync(path.join(rootDir, '10_CONFIG/shared/types/ipc.ts'), 'utf8');
     const fallbackSrc = fs.readFileSync(path.join(rootDir, '01_UI/api-fallback.ts'), 'utf8');
 
     expect(handlersSrc).toContain("ipcMain.handle('profiles:previewCacheCleanup'");
     expect(handlersSrc).toContain("ipcMain.handle('profiles:applyCacheCleanup'");
-
-    expect(preloadCjsSrc).toContain("previewProfileCacheCleanup: () => ipcRenderer.invoke('profiles:previewCacheCleanup')");
-    expect(preloadCjsSrc).toContain("applyProfileCacheCleanup: () => ipcRenderer.invoke('profiles:applyCacheCleanup')");
 
     expect(preloadTsSrc).toContain("previewProfileCacheCleanup: () => ipcRenderer.invoke('profiles:previewCacheCleanup')");
     expect(preloadTsSrc).toContain("applyProfileCacheCleanup: () => ipcRenderer.invoke('profiles:applyCacheCleanup')");
@@ -71,8 +68,13 @@ describe('Layer 1 Step 2 — In-App Profile Cache Cleaner IPC & Preload Contract
     expect(fallbackSrc).toContain('applyProfileCacheCleanup:');
   });
 
-  it('2. executes preload.cjs in mocked Electron runtime and forwards preview/apply IPC invocations', async () => {
-    const preloadCode = fs.readFileSync(path.join(rootDir, '10_CONFIG/preload/preload.cjs'), 'utf8');
+  it('2. compiles preload/index.ts to CommonJS and forwards preview/apply IPC invocations in mocked Electron runtime', async () => {
+    const preloadTs = fs.readFileSync(path.join(rootDir, '10_CONFIG/preload/index.ts'), 'utf8');
+    const { code: preloadCode } = esbuild.transformSync(preloadTs, {
+      loader: 'ts',
+      format: 'cjs',
+      target: 'node20',
+    });
     let exposedApi: any = null;
 
     const mockIpcRenderer = {
@@ -88,6 +90,8 @@ describe('Layer 1 Step 2 — In-App Profile Cache Cleaner IPC & Preload Contract
     };
 
     vm.runInNewContext(preloadCode, {
+      exports: {},
+      module: { exports: {} },
       require: (mod: string) => {
         if (mod === 'electron') {
           return { contextBridge: mockContextBridge, ipcRenderer: mockIpcRenderer };

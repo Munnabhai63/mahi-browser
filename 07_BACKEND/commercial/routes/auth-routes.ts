@@ -245,16 +245,9 @@ export async function handleAuthRoutes(
     if (result.user?.id) {
       try {
         const db = getDatabase();
-        const info = db.prepare('UPDATE commercial_users SET accepted_terms = ?, terms_version = ? WHERE id = ?').run(acceptedTermsVal, termsVersionVal, result.user.id);
-        if (info.changes > 0) termsSaved = true;
-      } catch (err) {
-        log.error('[Registration] SQLite commercial_users terms write error', err);
-      }
-
-      try {
-        const db = getDatabase();
         const info = db.prepare('UPDATE auth_users SET accepted_terms = ?, terms_version = ? WHERE id = ?').run(acceptedTermsVal, termsVersionVal, result.user.id);
         if (info.changes > 0) termsSaved = true;
+        db.prepare('UPDATE commercial_users SET accepted_terms = ?, terms_version = ? WHERE id = ?').run(acceptedTermsVal, termsVersionVal, result.user.id);
       } catch (err) {
         log.error('[Registration] SQLite auth_users terms write error', err);
       }

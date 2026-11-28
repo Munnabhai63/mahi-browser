@@ -1,7 +1,6 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { FREE_PROFILE_LIMIT, PRO_PROFILE_LIMIT } from '../10_CONFIG/freemium-limits.js';
-import { verifyLicense } from './license-service.js';
+import { hasValidOfflineLicenseKey } from './license-service.js';
+import { findAuthoritativeUserSqlite } from '../05_AUTH/user-model-unifier.js';
 import { isOnlineRevoked, isGraceExpired } from './license-status-service.js';
 import { getDynamicPrice } from './price-service.js';
 import { getDatabase } from '../06_DATABASE/connection.js';
@@ -26,47 +25,7 @@ export function hasValidLicense(): boolean {
   if (isOnlineRevoked() || isGraceExpired()) {
     return false;
   }
-  // 1. Check RSA offline-license.key
-  try {
-    const userDataDir = getUserDataPath();
-    const licenseFile = path.join(userDataDir, 'offline-license.key');
-    if (fs.existsSync(licenseFile)) {
-      const rawKey = fs.readFileSync(licenseFile, 'utf8').trim();
-      if (rawKey) {
-        const check = verifyLicense(rawKey);
-        if (check.valid) {
-          return true;
-        }
-      }
-    }
-  } catch (err) {
-    log.debug('Offline license validation probe skipped', {
-      err: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  // 2. Check claimed-licenses.json
-  try {
-    const userDataDir = getUserDataPath();
-    const claimedFile = path.join(userDataDir, 'claimed-licenses.json');
-    if (fs.existsSync(claimedFile)) {
-      const claimed: Record<string, string> = JSON.parse(fs.readFileSync(claimedFile, 'utf8'));
-      for (const key of Object.values(claimed)) {
-        if (key && typeof key === 'string') {
-          const check = verifyLicense(key.trim());
-          if (check.valid) {
-            return true;
-          }
-        }
-      }
-    }
-  } catch (err) {
-    log.debug('Claimed licenses probe skipped', {
-      err: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  return false;
+  return hasValidOfflineLicenseKey(getUserDataPath());
 }
 
 /**
@@ -221,9 +180,7 @@ export function getProxyLimitsInfo(ownerId?: string): {
   if (resolvedOwner && resolvedOwner !== 'SYSTEM_OWNER') {
     try {
       const db = getDatabase();
-      const userRow = db
-        .prepare('SELECT plan_id, trial_expires_at, status FROM commercial_users WHERE id = ?')
-        .get(resolvedOwner) as { plan_id?: string; trial_expires_at?: string | null; status?: string } | undefined;
+      const userRow = findAuthoritativeUserSqlite(db, resolvedOwner);
 
       if (userRow) {
         const subRow = db

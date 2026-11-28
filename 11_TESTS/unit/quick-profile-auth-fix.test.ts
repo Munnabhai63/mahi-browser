@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import * as esbuild from 'esbuild';
 import { CreateProfileDTOSchema } from '../../10_CONFIG/shared/validation/schemas.js';
 import { assertCanCreateProfile, getNonDeletedProfileCount } from '../../08_SECURITY/freemium-guard.js';
 import { initializeDatabase } from '../../06_DATABASE/schema.js';
@@ -13,30 +14,38 @@ describe('P1 Production Bug Fix: Preload Integrity, Quick Profile Creation & Ses
   beforeAll(async () => {
     const distPreload = path.resolve('dist-electron', 'preload', 'index.cjs');
     if (!fs.existsSync(distPreload)) {
-      const src = path.resolve('10_CONFIG', 'preload', 'preload.cjs');
+      const src = path.resolve('10_CONFIG', 'preload', 'index.ts');
       const dir = path.dirname(distPreload);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       if (fs.existsSync(src)) {
-        fs.copyFileSync(src, distPreload);
-        fs.copyFileSync(src, path.join(dir, 'index.js'));
+        const compiled = esbuild.transformSync(fs.readFileSync(src, 'utf8'), {
+          loader: 'ts',
+          format: 'cjs',
+          target: 'node20',
+        });
+        fs.writeFileSync(distPreload, compiled.code, 'utf8');
       }
     }
     await initializeDatabase();
   });
 
   describe('1. Preload Script Syntax & Compilation Integrity', () => {
-    it('verifies 10_CONFIG/preload/preload.cjs has zero syntax errors and compiles cleanly', () => {
-      const preloadPath = path.resolve('10_CONFIG', 'preload', 'preload.cjs');
+    it('verifies 10_CONFIG/preload/index.ts compiles cleanly to CommonJS with zero syntax errors', () => {
+      const preloadPath = path.resolve('10_CONFIG', 'preload', 'index.ts');
       expect(fs.existsSync(preloadPath)).toBe(true);
 
-      const code = fs.readFileSync(preloadPath, 'utf8');
+      const compiled = esbuild.transformSync(fs.readFileSync(preloadPath, 'utf8'), {
+        loader: 'ts',
+        format: 'cjs',
+        target: 'node20',
+      });
       expect(() => {
         // Compile inside vm context to verify syntax and absence of syntax errors
-        new vm.Script(code, { filename: 'preload.cjs' });
+        new vm.Script(compiled.code, { filename: 'preload.cjs' });
       }).not.toThrow();
     });
 
-    it('verifies dist-electron/preload/index.cjs has zero syntax errors and matches source', () => {
+    it('verifies dist-electron/preload/index.cjs has zero syntax errors and exposes mahiAPI', () => {
       const distPreload = path.resolve('dist-electron', 'preload', 'index.cjs');
       expect(fs.existsSync(distPreload)).toBe(true);
 
@@ -46,16 +55,16 @@ describe('P1 Production Bug Fix: Preload Integrity, Quick Profile Creation & Ses
       }).not.toThrow();
     });
 
-    it('verifies preload exposes createProfile, bulkCreateProfiles, and account auth IPC methods', () => {
-      const preloadPath = path.resolve('10_CONFIG', 'preload', 'preload.cjs');
+    it('verifies preload source exposes createProfile, bulkCreateProfiles, and account auth IPC methods', () => {
+      const preloadPath = path.resolve('10_CONFIG', 'preload', 'index.ts');
       const code = fs.readFileSync(preloadPath, 'utf8');
 
-      expect(code).toContain('createProfile: (dto) => ipcRenderer.invoke(\'profiles:create\', dto)');
-      expect(code).toContain('accountSignup: (dto) => ipcRenderer.invoke(\'account:signup\', dto)');
-      expect(code).toContain('accountLogin: (dto) => ipcRenderer.invoke(\'account:login\', dto)');
-      expect(code).toContain('accountGetSession: () => ipcRenderer.invoke(\'account:getSession\')');
-      expect(code).toContain('accountGetPlanLimits: (dto) => ipcRenderer.invoke(\'account:getPlanLimits\', dto)');
-      expect(code).toContain('contextBridge.exposeInMainWorld(\'mahiAPI\', api)');
+      expect(code).toContain("createProfile: (dto) => ipcRenderer.invoke('profiles:create', dto)");
+      expect(code).toContain("accountSignup: (dto) => ipcRenderer.invoke('account:signup', dto)");
+      expect(code).toContain("accountLogin: (dto) => ipcRenderer.invoke('account:login', dto)");
+      expect(code).toContain("accountGetSession: () => ipcRenderer.invoke('account:getSession')");
+      expect(code).toContain("accountGetPlanLimits: (dto) => ipcRenderer.invoke('account:getPlanLimits', dto)");
+      expect(code).toContain("contextBridge.exposeInMainWorld('mahiAPI', api)");
     });
   });
 

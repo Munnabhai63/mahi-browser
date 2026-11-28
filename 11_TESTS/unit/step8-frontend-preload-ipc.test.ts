@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import * as esbuild from 'esbuild';
 import { useAccountStore } from '../../01_UI/stores/useAccountStore.js';
 import { useAutomationStore } from '../../01_UI/stores/useAutomationStore.js';
 import { useSettingsStore } from '../../01_UI/stores/useSettingsStore.js';
@@ -20,37 +21,26 @@ vi.mock('../../02_BROWSER/services/proxy-service.js', () => ({
 describe('Step 8: Frontend, Preload, IPC Contract & Build-Rewrite Remediation', () => {
   const rootDir = path.resolve(__dirname, '../../');
 
-  it('preload.cjs forwards dto in accountGetPlanLimits and exposes onToastShow & exportNetscapeCookies', () => {
-    const preloadCjsPath = path.join(rootDir, '10_CONFIG/preload/preload.cjs');
-    const content = fs.readFileSync(preloadCjsPath, 'utf8');
+  it('single preload/index.ts source forwards dto in accountGetPlanLimits, exposes onToastShow & exportNetscapeCookies, and legacy preload.cjs is removed', () => {
+    const preloadTsPath = path.join(rootDir, '10_CONFIG/preload/index.ts');
+    expect(fs.existsSync(path.join(rootDir, '10_CONFIG/preload/preload.cjs'))).toBe(false);
+    const content = fs.readFileSync(preloadTsPath, 'utf8');
 
-    // Check accountGetPlanLimits forwards dto
     expect(content).toMatch(/accountGetPlanLimits:\s*\(dto\)\s*=>\s*ipcRenderer\.invoke\(['"]account:getPlanLimits['"],\s*dto\)/);
-
-    // Check exportNetscapeCookies accepts targetFilePath
-    expect(content).toMatch(/exportNetscapeCookies:\s*\(profileId,\s*targetFilePath\)\s*=>\s*ipcRenderer\.invoke\(['"]archive:exportNetscape['"],\s*profileId,\s*targetFilePath\)/);
-
-    // Check onToastShow is wired
-    expect(content).toContain('onToastShow:');
-    expect(content).toContain("'toast:show'");
-
-    // commercialSyncUser removed to close arbitrary userId override hole
-    expect(content).not.toContain('commercialSyncUser');
-  });
-
-  it('preload/index.ts has exact parity with preload.cjs for Step 8 additions', () => {
-    const preloadIndexPath = path.join(rootDir, '10_CONFIG/preload/index.ts');
-    const content = fs.readFileSync(preloadIndexPath, 'utf8');
-
     expect(content).toContain("exportNetscapeCookies: (profileId: string, targetFilePath?: string) => ipcRenderer.invoke('archive:exportNetscape', profileId, targetFilePath)");
     expect(content).toContain('onToastShow:');
     expect(content).toContain("'toast:show'");
     expect(content).not.toContain('commercialSyncUser');
   });
 
-  it('executes preload.cjs in mocked Electron runtime: proves accountGetPlanLimits({ force: true }) and onToastShow forward arguments and callbacks', async () => {
-    const preloadCjsPath = path.join(rootDir, '10_CONFIG/preload/preload.cjs');
-    const preloadCode = fs.readFileSync(preloadCjsPath, 'utf8');
+  it('compiles preload/index.ts to CJS and executes in mocked Electron runtime: proves accountGetPlanLimits({ force: true }) and onToastShow forward arguments and callbacks', async () => {
+    const preloadTsPath = path.join(rootDir, '10_CONFIG/preload/index.ts');
+    const preloadTs = fs.readFileSync(preloadTsPath, 'utf8');
+    const { code: preloadCode } = esbuild.transformSync(preloadTs, {
+      loader: 'ts',
+      format: 'cjs',
+      target: 'node20',
+    });
 
     let exposedApi: any = null;
     const eventListeners = new Map<string, Function>();
@@ -78,6 +68,8 @@ describe('Step 8: Frontend, Preload, IPC Contract & Build-Rewrite Remediation', 
     };
 
     const sandbox = {
+      exports: {},
+      module: { exports: {} },
       require: (mod: string) => {
         if (mod === 'electron') {
           return {

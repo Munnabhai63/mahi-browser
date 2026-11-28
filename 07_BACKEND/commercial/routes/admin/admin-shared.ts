@@ -39,9 +39,6 @@ export interface AdminResolvedUser {
   salt?: string;
 }
 
-export const MIRROR_MISSING_COMMERCIAL_MSG =
-  'This account exists only in the central auth registry (mirror-missing). A commercial record is required before plan/quota/override/device changes. Ask the user to sign in once to create it, then retry.';
-
 /** Verifies admin privileges and writes uniform 403/404 responses on failure. */
 export async function requireAdminAccess(
   req: http.IncomingMessage,
@@ -62,16 +59,6 @@ export async function requireAdminAccess(
     error: options?.forbiddenMessage || 'Forbidden. Admin privileges required.',
   });
   return { ok: false };
-}
-
-/** Sends standardized 409 error when a central user lacks a commercial record. */
-export function sendMirrorMissingResponse(res: http.ServerResponse, message?: string): boolean {
-  sendJSON(res, 409, {
-    success: false,
-    error: 'mirror_missing_commercial_record',
-    message: message || MIRROR_MISSING_COMMERCIAL_MSG,
-  });
-  return true;
 }
 
 /** Extracts the URL-decoded `owner_session` cookie token from request headers. */

@@ -1,38 +1,33 @@
-// Post-build: rename preload to .cjs and copy CJS content
-// Node.js treats .js files as ESM when package.json has "type": "module"
-// Electron preload MUST be CommonJS, so we use .cjs extension
+// Post-build: validate Vite-compiled CommonJS preload (.cjs), stage sql-wasm.wasm, and sanitize dist-electron outputs.
+// Node.js treats .js files as ESM when package.json has "type": "module"; Electron preload MUST be CommonJS (.cjs).
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
-const src = path.join(__dirname, '..', '10_CONFIG', 'preload', 'preload.cjs');
 const destDir = path.join(__dirname, '..', 'dist-electron', 'preload');
 const destCjs = path.join(destDir, 'index.cjs');
-const destJs = path.join(destDir, 'index.js');
+const legacyJs = path.join(destDir, 'index.js');
 
-if (!fs.existsSync(destDir)) {
-  fs.mkdirSync(destDir, { recursive: true });
+if (!fs.existsSync(destCjs) && fs.existsSync(legacyJs)) {
+  fs.renameSync(legacyJs, destCjs);
 }
 
-console.log('fix-preload: src =', src, 'exists =', fs.existsSync(src));
+console.log('fix-preload: compiled preload =', destCjs, 'exists =', fs.existsSync(destCjs));
 
-if (fs.existsSync(src)) {
-  // Validate syntax before copying to prevent shipping broken preload
-  const { execFileSync } = require('node:child_process');
+if (fs.existsSync(destCjs)) {
+  // Validate syntax of Vite-compiled CommonJS preload output before packaging
   try {
-    execFileSync(process.execPath, ['-c', src], { stdio: 'pipe' });
-    console.log('✓ Preload syntax validated successfully.');
+    execFileSync(process.execPath, ['-c', destCjs], { stdio: 'pipe' });
+    console.log('✓ Compiled preload index.cjs syntax validated successfully.');
   } catch (syntaxErr) {
-    console.error('FATAL ERROR: preload.cjs failed syntax validation:', syntaxErr.stderr ? syntaxErr.stderr.toString() : syntaxErr.message);
+    console.error(
+      'FATAL ERROR: compiled dist-electron/preload/index.cjs failed syntax validation:',
+      syntaxErr.stderr ? syntaxErr.stderr.toString() : syntaxErr.message
+    );
     process.exit(1);
   }
-
-  // Copy CJS preload as .cjs
-  fs.copyFileSync(src, destCjs);
-  // Also keep the .js version in case anything references it
-  fs.copyFileSync(src, destJs);
-  console.log('Preload CJS copied to', destCjs);
 } else {
-  console.error('ERROR: preload.cjs not found at', src);
+  console.error('ERROR: compiled preload not found at', destCjs);
   process.exit(1);
 }
 
@@ -50,6 +45,17 @@ if (fs.existsSync(wasmSrc)) {
     fs.copyFileSync(wasmSrc, t);
   }
   console.log('sql-wasm.wasm bundled to dist targets.');
+}
+
+// Copy externalized Admin & Download Portal static assets into dist-electron/admin-assets
+const adminAssetsSrc = path.join(__dirname, '..', '07_BACKEND', 'server', 'assets');
+const adminAssetsDest = path.join(__dirname, '..', 'dist-electron', 'admin-assets');
+if (fs.existsSync(adminAssetsSrc)) {
+  fs.mkdirSync(adminAssetsDest, { recursive: true });
+  for (const file of fs.readdirSync(adminAssetsSrc)) {
+    fs.copyFileSync(path.join(adminAssetsSrc, file), path.join(adminAssetsDest, file));
+  }
+  console.log('Admin static assets bundled to dist-electron/admin-assets.');
 }
 
 // Ensure zero occurrences of proprietary licensing vendor identifiers in Electron outputs only.

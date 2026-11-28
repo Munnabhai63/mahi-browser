@@ -184,7 +184,12 @@ describe('Phase 19: Google OAuth SSO, Central Auth & Intent Continuity Suite', (
       const existingEmail = 'sara.designer@mahibrowser.com';
       const existingUserId = 'usr_sara_pre_existing';
 
-      // Pre-create user via email/password
+      // Pre-create user via email/password in authoritative auth_users (+ FK mirror)
+      db.prepare(`
+        INSERT INTO auth_users (
+          id, email, normalized_email, password_hash, salt, name, role, status, email_verified, plan_id, profile_quota, created_at, updated_at
+        ) VALUES (?, ?, ?, 'hash', 'salt', 'Sara Designer', 'USER', 'ACTIVE', 1, 'plan_free', 15, datetime('now'), datetime('now'))
+      `).run(existingUserId, existingEmail, existingEmail);
       db.prepare(`
         INSERT INTO commercial_users (
           id, email, password_hash, salt, name, role, status, plan_id, created_at, updated_at

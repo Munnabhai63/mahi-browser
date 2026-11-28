@@ -224,6 +224,11 @@ describe('Step 7: Trial & Subscription Entitlement Hardening', () => {
     const futureTime = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
 
     db.prepare(`
+      INSERT INTO auth_users (id, email, normalized_email, name, password_hash, salt, role, status, email_verified, plan_id, profile_quota, trial_expires_at, signup_intent, created_at, updated_at)
+      VALUES (?, 'trialuser@mahibrowser.com', 'trialuser@mahibrowser.com', 'Trial User', 'hash', 'salt123', 'USER', 'ACTIVE', 1, 'plan_pro', 50, ?, 'trial', datetime('now'), datetime('now'))
+    `).run(userId, futureTime);
+
+    db.prepare(`
       INSERT INTO commercial_users (id, email, name, password_hash, salt, role, status, plan_id, trial_expires_at, signup_intent, created_at, updated_at)
       VALUES (?, 'trialuser@mahibrowser.com', 'Trial User', 'hash', 'salt123', 'USER', 'ACTIVE', 'plan_pro', ?, 'trial', datetime('now'), datetime('now'))
     `).run(userId, futureTime);
@@ -244,6 +249,11 @@ describe('Step 7: Trial & Subscription Entitlement Hardening', () => {
     const userId = `usr_exp_${Date.now()}`;
     const pastTime = new Date(Date.now() - 3600 * 1000).toISOString();
     const subId = `sub_exp_${Date.now()}`;
+
+    db.prepare(`
+      INSERT INTO auth_users (id, email, normalized_email, name, password_hash, salt, role, status, email_verified, plan_id, profile_quota, created_at, updated_at)
+      VALUES (?, 'expuser@mahibrowser.com', 'expuser@mahibrowser.com', 'Expired User', 'hash', 'salt123', 'USER', 'ACTIVE', 1, 'plan_pro', 50, datetime('now'), datetime('now'))
+    `).run(userId);
 
     db.prepare(`
       INSERT INTO commercial_users (id, email, name, password_hash, salt, role, status, plan_id, created_at, updated_at)
@@ -275,6 +285,11 @@ describe('Step 7: Trial & Subscription Entitlement Hardening', () => {
     const subId = `sub_cap_exp_${Date.now()}`;
 
     db.prepare(`
+      INSERT INTO auth_users (id, email, normalized_email, name, password_hash, salt, role, status, email_verified, plan_id, profile_quota, created_at, updated_at)
+      VALUES (?, 'capexp@mahibrowser.com', 'capexp@mahibrowser.com', 'Cap Exp User', 'hash', 'salt123', 'USER', 'ACTIVE', 1, 'plan_pro', 50, datetime('now'), datetime('now'))
+    `).run(userId);
+
+    db.prepare(`
       INSERT INTO commercial_users (id, email, name, password_hash, salt, role, status, plan_id, created_at, updated_at)
       VALUES (?, 'capexp@mahibrowser.com', 'Cap Exp User', 'hash', 'salt123', 'USER', 'ACTIVE', 'plan_pro', datetime('now'), datetime('now'))
     `).run(userId);
@@ -291,6 +306,11 @@ describe('Step 7: Trial & Subscription Entitlement Hardening', () => {
 
     // Also check for an expired trial without subscription row
     const trialUserId = `usr_trial_exp_${Date.now()}`;
+    db.prepare(`
+      INSERT INTO auth_users (id, email, normalized_email, name, password_hash, salt, role, status, email_verified, plan_id, profile_quota, trial_expires_at, signup_intent, created_at, updated_at)
+      VALUES (?, 'trialexp@mahibrowser.com', 'trialexp@mahibrowser.com', 'Trial Exp', 'hash', 'salt123', 'USER', 'ACTIVE', 1, 'plan_pro', 50, ?, 'trial', datetime('now'), datetime('now'))
+    `).run(trialUserId, pastTime);
+
     db.prepare(`
       INSERT INTO commercial_users (id, email, name, password_hash, salt, role, status, plan_id, trial_expires_at, signup_intent, created_at, updated_at)
       VALUES (?, 'trialexp@mahibrowser.com', 'Trial Exp', 'hash', 'salt123', 'USER', 'ACTIVE', 'plan_pro', ?, 'trial', datetime('now'), datetime('now'))

@@ -37,14 +37,16 @@ describe('Phase 5: Next.js 14 Landing, Docs & Blog Portal + Web Cloud Console Pr
       expect(stat.size).toBe(735223);
     });
 
-    it('should preserve legacy landing static files without deletion', () => {
+    it('should preserve Next.js static styles/scripts while retiring stale root legacy HTML and content.json copies', () => {
       const hasCss = fs.existsSync(path.join(landingDir, 'public', 'assets', 'css', 'styles.css')) || fs.existsSync(path.join(landingDir, 'assets', 'css', 'styles.css'));
       const hasJs = fs.existsSync(path.join(landingDir, 'public', 'assets', 'js', 'main.js')) || fs.existsSync(path.join(landingDir, 'assets', 'js', 'main.js'));
       expect(hasCss).toBe(true);
       expect(hasJs).toBe(true);
-      expect(fs.existsSync(path.join(landingDir, 'content.json'))).toBe(true);
-      expect(fs.existsSync(path.join(landingDir, 'index.html'))).toBe(true);
-      expect(fs.existsSync(path.join(landingDir, 'download.html'))).toBe(true);
+      expect(fs.existsSync(path.join(landingDir, 'content.json'))).toBe(false);
+      expect(fs.existsSync(path.join(landingDir, 'index.html'))).toBe(false);
+      expect(fs.existsSync(path.join(landingDir, 'download.html'))).toBe(false);
+      expect(fs.existsSync(path.join(landingDir, 'robots.txt'))).toBe(false);
+      expect(fs.existsSync(path.join(landingDir, 'sitemap.xml'))).toBe(false);
     });
   });
 

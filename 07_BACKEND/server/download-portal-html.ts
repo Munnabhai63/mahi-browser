@@ -30,78 +30,8 @@ export function getDownloadPortalHtml(info?: {
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', '"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
-            mono: ['"JetBrains Mono"', 'monospace'],
-          },
-          colors: {
-            emerald: {
-              400: '#34d399',
-              500: '#10b981',
-              600: '#059669',
-            },
-            teal: {
-              400: '#2dd4bf',
-              500: '#14b8a6',
-            }
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    * {
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      text-rendering: optimizeLegibility;
-    }
-
-    body { 
-      font-family: 'Inter', "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-      letter-spacing: -0.015em;
-    }
-    
-    .mono { 
-      font-family: 'JetBrains Mono', monospace; 
-      letter-spacing: -0.02em;
-    }
-    
-    .heading-hero {
-      letter-spacing: -0.035em;
-      line-height: 1.12;
-    }
-
-    .aurora-bg {
-      background-image: 
-        radial-gradient(at 0% 0%, rgba(16, 185, 129, 0.14) 0px, transparent 50%),
-        radial-gradient(at 100% 0%, rgba(20, 184, 166, 0.12) 0px, transparent 50%),
-        radial-gradient(at 50% 40%, rgba(5, 150, 105, 0.08) 0px, transparent 60%);
-    }
-
-    .grid-pattern {
-      background-size: 32px 32px;
-      background-image: 
-        linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-    }
-
-    .glass-card {
-      background: rgba(11, 17, 30, 0.78);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border: 1px solid rgba(16, 185, 129, 0.18);
-    }
-
-    .glass-card:hover {
-      border-color: rgba(16, 185, 129, 0.40);
-      box-shadow: 0 0 35px rgba(16, 185, 129, 0.14);
-    }
-  </style>
+  <script src="/admin-assets/download-portal-tailwind.js"></script>
+  <link rel="stylesheet" href="/admin-assets/download-portal.css">
 </head>
 <body class="bg-[#050811] text-slate-100 min-h-screen flex flex-col antialiased selection:bg-emerald-500 selection:text-black aurora-bg grid-pattern overflow-x-hidden">
 
@@ -257,17 +187,17 @@ export function getDownloadPortalHtml(info?: {
       
       <!-- Top OS Selector Tabs -->
       <div class="flex items-center justify-center p-1.5 bg-slate-950/80 rounded-2xl border border-slate-800 max-w-md mx-auto">
-        <button onclick="setOsTab('windows')" id="tab-windows" class="flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 bg-emerald-500 text-slate-950 shadow-md">
+        <button type="button" data-os-tab="windows" id="tab-windows" class="flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 bg-emerald-500 text-slate-950 shadow-md">
           <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 88 88"><path d="M0 12.402l35.687-4.86.016 34.423-35.67.203zm35.67 33.529l.028 34.453L0 75.58v-32.06zm4.326-39.027L87.914 0v41.525l-47.918.278zm47.918 38.647L87.914 88l-47.918-6.737V45.551z"></path></svg>
           <span>Windows</span>
         </button>
 
-        <button onclick="setOsTab('mac')" id="tab-mac" class="flex-1 py-2 px-3 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition flex items-center justify-center space-x-2">
+        <button type="button" data-os-tab="mac" id="tab-mac" class="flex-1 py-2 px-3 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition flex items-center justify-center space-x-2">
           <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 170 170"><path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.74 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.7-3.07-7.6-7.85-11.7-14.35-6.08-9.7-10.74-20.2-13.98-31.48-3.24-11.28-4.86-22.18-4.86-32.69 0-14.35 3.59-26.4 10.77-36.14 7.18-9.74 16.32-14.73 27.42-14.97 4.58 0 9.8 1.25 15.66 3.76 5.86 2.5 9.74 3.81 11.64 3.92 1.52 0 5.6-1.41 12.24-4.23 6.64-2.82 12.38-4.08 17.23-3.79 13.06.77 23.36 5.37 30.89 13.79-11.65 7.07-17.38 16.74-17.2 29.02.18 9.9 3.99 18.23 11.43 24.99 7.44 6.75 16.33 10.66 26.67 11.73-2.18 6.42-4.84 12.69-7.98 18.82zM119.22 31.84c0-7.39 2.68-14.35 8.04-20.89 5.36-6.53 11.96-10.51 19.8-11.95.22 1.3.33 2.47.33 3.53 0 7.39-2.82 14.52-8.47 21.39-5.65 6.87-12.38 10.84-20.19 11.91-.22-1.3-.33-2.63-.33-3.99z"></path></svg>
           <span>macOS</span>
         </button>
 
-        <button onclick="setOsTab('linux')" id="tab-linux" class="flex-1 py-2 px-3 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition flex items-center justify-center space-x-2">
+        <button type="button" data-os-tab="linux" id="tab-linux" class="flex-1 py-2 px-3 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition flex items-center justify-center space-x-2">
           <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 0-4 4v3.54C6.82 10.3 6 11.83 6 13.5c0 1.94 1.13 3.61 2.8 4.41L8 20a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2l-.8-2.09A4.97 4.97 0 0 0 18 13.5c0-1.67-.82-3.2-2-3.96V6a4 4 0 0 0-4-4zm0 2c1.1 0 2 .9 2 2v2H10V6c0-1.1.9-2 2-2zm0 7c1.66 0 3 1.34 3 3 0 1.3-.84 2.4-2 2.82V19h-2v-2.18c-1.16-.42-2-1.52-2-2.82 0-1.66 1.34-3 3-3z"></path></svg>
           <span>Linux</span>
         </button>
@@ -283,7 +213,6 @@ export function getDownloadPortalHtml(info?: {
         <a
           id="main-download-btn"
           href="/download/setup"
-          onclick="handleDownloadTrigger(event)"
           class="w-full py-4 px-8 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-sm sm:text-base flex items-center justify-center space-x-3 shadow-2xl shadow-emerald-500/35 transition transform hover:-translate-y-1 active:translate-y-0 cursor-pointer"
         >
           <svg class="w-6 h-6 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -385,7 +314,7 @@ export function getDownloadPortalHtml(info?: {
   <!-- DOWNLOAD MODAL POPUP -->
   <div id="download-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 hidden animate-in fade-in duration-200">
     <div class="bg-[#090E1A] border border-emerald-500/30 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center space-y-5 shadow-2xl relative">
-      <button onclick="closeDownloadModal()" class="absolute top-4 right-4 p-1 text-slate-400 hover:text-white rounded-lg">
+      <button type="button" id="close-download-modal-btn" class="absolute top-4 right-4 p-1 text-slate-400 hover:text-white rounded-lg">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
       </button>
 
@@ -425,48 +354,7 @@ export function getDownloadPortalHtml(info?: {
     <p class="text-[11px] text-slate-500">Enterprise Anti-Detect Platform • Windows 11/10 • macOS • Linux</p>
   </footer>
 
-  <script>
-    function setOsTab(os) {
-      const btnWindows = document.getElementById('tab-windows');
-      const btnMac = document.getElementById('tab-mac');
-      const btnLinux = document.getElementById('tab-linux');
-      const title = document.getElementById('download-title');
-      const subtitle = document.getElementById('download-subtitle');
-      const btnText = document.getElementById('download-btn-text');
-
-      const activeClass = 'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 bg-emerald-500 text-slate-950 shadow-md';
-      const inactiveClass = 'flex-1 py-2 px-3 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition flex items-center justify-center space-x-2';
-
-      btnWindows.className = inactiveClass;
-      btnMac.className = inactiveClass;
-      btnLinux.className = inactiveClass;
-
-      if (os === 'windows') {
-        btnWindows.className = activeClass;
-        title.innerText = 'MAHI Browser for Windows (64-bit)';
-        subtitle.innerText = 'Production installer with automatic desktop launcher and stealth sandbox';
-        btnText.innerText = 'Download MAHI Installer (64-bit)';
-      } else if (os === 'mac') {
-        btnMac.className = activeClass;
-        title.innerText = 'MAHI Browser for macOS (Universal)';
-        subtitle.innerText = 'Apple Silicon (M1/M2/M3/M4) & Intel DMG Package';
-        btnText.innerText = 'Download macOS Package (.dmg)';
-      } else if (os === 'linux') {
-        btnLinux.className = activeClass;
-        title.innerText = 'MAHI Browser for Linux (x64)';
-        subtitle.innerText = 'Debian / Ubuntu (.deb) and Standalone AppImage';
-        btnText.innerText = 'Download Linux AppImage';
-      }
-    }
-
-    function handleDownloadTrigger(e) {
-      document.getElementById('download-modal').classList.remove('hidden');
-    }
-
-    function closeDownloadModal() {
-      document.getElementById('download-modal').classList.add('hidden');
-    }
-  </script>
+  <script src="/admin-assets/download-portal.js" defer></script>
 </body>
 </html>`;
 }

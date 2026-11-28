@@ -91,33 +91,24 @@ describe('Official Brand Asset Lock & Non-Draggable Verification Suite', () => {
       expect(css).toContain('user-select: none');
     });
 
-    it('verifies landing index.html sets draggable="false" on all brand logos', () => {
-      const indexPath = path.resolve(root, 'landing/index.html');
-      const html = fs.readFileSync(indexPath, 'utf8');
+    it('verifies Next.js hero and chat components set draggable={false} on protected brand/product imagery', () => {
+      const heroPath = path.resolve(root, 'landing/components/HeroSection.tsx');
+      const heroSource = fs.readFileSync(heroPath, 'utf8');
+      expect(heroSource).toContain('draggable={false}');
 
-      // The production homepage is a Framer export served by app/route.ts and does not
-      // contain the legacy hand-written logo markup. Enforce the invariant only when
-      // the markup is actually present; pricing.html below still asserts it strictly.
-      const logoTags = html.match(/<img[^>]*assets\/img\/logo\.png[^>]*>/g) || [];
-      if (logoTags.length === 0) {
-        expect(html.length).toBeGreaterThan(1000);
-        return;
-      }
-      for (const tag of logoTags) {
-        expect(tag).toContain('draggable="false"');
-        expect(tag).toContain('object-fit: contain');
-      }
+      const chatPath = path.resolve(root, 'landing/components/ChatWidget.tsx');
+      const chatSource = fs.readFileSync(chatPath, 'utf8');
+      expect(chatSource).toContain('draggable={false}');
     });
 
-    it('verifies landing pricing.html sets draggable="false" on brand logos', () => {
-      const pricingPath = path.resolve(root, 'landing/pricing.html');
-      const html = fs.readFileSync(pricingPath, 'utf8');
+    it('verifies Framer homepage theme.html exists alongside Next.js static export routes', () => {
+      const themePath = path.resolve(root, 'landing/public/theme.html');
+      const themeHtml = fs.readFileSync(themePath, 'utf8');
+      expect(themeHtml.length).toBeGreaterThan(1000);
 
-      const logoTags = html.match(/<img[^>]*assets\/img\/logo\.png[^>]*>/g) || [];
-      expect(logoTags.length).toBeGreaterThan(0);
-      for (const tag of logoTags) {
-        expect(tag).toContain('draggable="false"');
-      }
+      const manifestPath = path.resolve(root, 'landing/app/manifest.ts');
+      const manifestSource = fs.readFileSync(manifestPath, 'utf8');
+      expect(manifestSource).toContain('/assets/img/logo.png');
     });
 
     it('verifies landing main.js attaches dragstart preventDefault listeners to brand logos', () => {

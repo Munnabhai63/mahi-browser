@@ -26,6 +26,7 @@ import { isPostgresConfigured } from '../../06_DATABASE/central-repository.js';
 import { getWebAdminHtml, getOwnerAdminHtml } from './web-admin-html.js';
 import { getSuperAdminHtml } from './super-admin-html.js';
 import { getDownloadPortalHtml } from './download-portal-html.js';
+import { loadAdminAssetAsync } from './admin-assets-loader.js';
 import { getDistributionInfo, fixDesktopShortcuts } from '../../03_HARDWARE/distribution-service.js';
 import { handleCommercialApiRoutes } from '../commercial/commercial-api-router.js';
 import { assertCanCreateProfile } from '../../08_SECURITY/freemium-guard.js';
@@ -233,6 +234,23 @@ export async function handlePortalAndStaticRoutes(
 ): Promise<boolean> {
   const landingBase = getLandingBaseDir();
 
+  // Externalized Admin & Download Portal static CSS/JS assets (strict script-src 'self')
+  if (cleanPath.startsWith('/admin-assets/') && method === 'GET') {
+    const assetName = cleanPath.substring('/admin-assets/'.length);
+    const asset = await loadAdminAssetAsync(assetName);
+    if (asset) {
+      res.writeHead(200, {
+        'Content-Type': asset.contentType,
+        'Content-Length': asset.content.byteLength,
+        'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': 'public, max-age=300',
+        ...getCorsHeaders(req),
+      });
+      res.end(asset.content);
+      return true;
+    }
+  }
+
   // Static assets from landing/out/assets, landing/public/assets or landing/assets
   if (cleanPath.startsWith('/assets/') && method === 'GET') {
     const relPath = cleanPath.substring(8);
@@ -316,21 +334,21 @@ export async function handlePortalAndStaticRoutes(
     }
   }
 
-  // Mapped static HTML pages (Next.js export + legacy root fallbacks)
+  // Mapped static HTML pages (Next.js out/*.html static export)
   if (method === 'GET') {
     const htmlRouteMap: Record<string, string[]> = {
-      '/privacy': [path.join(landingBase, 'out', 'privacy.html'), path.join(landingBase, 'privacy.html')],
-      '/terms': [path.join(landingBase, 'out', 'terms.html'), path.join(landingBase, 'terms.html')],
-      '/aup': [path.join(landingBase, 'out', 'aup.html'), path.join(landingBase, 'aup.html')],
-      '/pricing': [path.join(landingBase, 'out', 'pricing.html'), path.join(landingBase, 'pricing.html')],
+      '/privacy': [path.join(landingBase, 'out', 'privacy.html')],
+      '/terms': [path.join(landingBase, 'out', 'terms.html')],
+      '/aup': [path.join(landingBase, 'out', 'aup.html')],
+      '/pricing': [path.join(landingBase, 'out', 'pricing.html')],
       '/compare/gologin-alternative': [path.join(landingBase, 'out', 'compare', 'gologin-alternative.html')],
       '/docs': [path.join(landingBase, 'out', 'docs.html')],
       '/blog': [path.join(landingBase, 'out', 'blog.html')],
-      '/signup': [path.join(landingBase, 'signup.html')],
-      '/login': [path.join(landingBase, 'login.html')],
-      '/book-demo': [path.join(landingBase, 'book-demo.html')],
-      '': [path.join(landingBase, 'index.html')],
-      '/': [path.join(landingBase, 'index.html')],
+      '/signup': [path.join(landingBase, 'out', 'signup.html')],
+      '/login': [path.join(landingBase, 'out', 'login.html')],
+      '/book-demo': [path.join(landingBase, 'out', 'book-demo.html')],
+      '': [path.join(landingBase, 'out', 'index.html')],
+      '/': [path.join(landingBase, 'out', 'index.html')],
     };
 
     if (htmlRouteMap[cleanPath]) {
@@ -393,9 +411,6 @@ export async function handlePortalAndStaticRoutes(
       cleanPath === '/app') &&
     method === 'GET'
   ) {
-    if (await sendHtmlCandidatesIfExistsAsync(res, [path.join(landingBase, 'download.html')])) {
-      return true;
-    }
     const info = getDistributionInfo();
     sendHTML(res, 200, getDownloadPortalHtml(info));
     return true;

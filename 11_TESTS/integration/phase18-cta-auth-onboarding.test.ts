@@ -69,13 +69,13 @@ describe('Phase 18: Complete CTA → Auth → Trial/Plan → Download Onboarding
     });
     expect(forgedDlRes.status).toBe(401);
 
-    // 2. Signup page is accessible with 200 OK
+    // 2. Signup page is accessible with 200 OK (served from Next.js out/signup.html)
     const signupPageRes = await fetch(`${baseUrl}/signup?intent=trial`);
     expect(signupPageRes.status).toBe(200);
     const signupHtml = await signupPageRes.text();
-    expect(signupHtml).toContain('Create your MAHI Browser account');
-    expect(signupHtml).toContain('logo.png?v=2.5.0');
-    expect(signupHtml).toContain('Continue with Google');
+    expect(signupHtml).toContain('Create Your Account');
+    expect(signupHtml).toContain('7-day Pro trial');
+    expect(signupHtml).toMatch(/Google Workspace OAuth/i);
 
     // 3. User registers with trial intent
     const testEmail = `trial_tester_${Date.now()}@example.com`;
@@ -219,12 +219,12 @@ describe('Phase 18: Complete CTA → Auth → Trial/Plan → Download Onboarding
   // TEST 4: Book Demo → Form Submission → Admin Lead Queue → No Installer
   // =========================================================================
   it('TEST 4: Book Demo captures enterprise lead, notifies admin queue, and never downloads installer', async () => {
-    // 1. GET /book-demo returns lead capture page
+    // 1. GET /book-demo returns lead capture page (served from Next.js out/book-demo.html)
     const demoPageRes = await fetch(`${baseUrl}/book-demo`);
     expect(demoPageRes.status).toBe(200);
     const demoHtml = await demoPageRes.text();
-    expect(demoHtml).toContain('Schedule a Personalized Demo');
-    expect(demoHtml).toContain('logo.png?v=2.5.0');
+    expect(demoHtml).toContain('Deploy Undetectable Browser Fleets');
+    expect(demoHtml).toContain('Schedule a 1-on-1 architecture review');
 
     // 2. Submit lead request
     const leadEmail = `enterprise_lead_${Date.now()}@acmecorp.com`;
@@ -284,12 +284,12 @@ describe('Phase 18: Complete CTA → Auth → Trial/Plan → Download Onboarding
   // TEST 5: Anonymous Download → Auth Gate
   // =========================================================================
   it('TEST 5: Anonymous visitor navigating to download endpoints is gated to registration', async () => {
-    // Navigating to /download returns download HTML with authentication gate
+    // Navigating to /download returns CSP-hardened download portal linking to gated binary setup endpoint
     const downloadPageRes = await fetch(`${baseUrl}/download`);
     expect(downloadPageRes.status).toBe(200);
     const dlHtml = await downloadPageRes.text();
-    expect(dlHtml).toContain('Account Required to Download');
-    expect(dlHtml).toContain('Start Free 7-Day Trial');
+    expect(dlHtml).toContain('Download MAHI Browser for Windows');
+    expect(dlHtml).toContain('/download/setup');
 
     // Direct browser file download request without token redirects to signup
     const directSetupRes = await fetch(`${baseUrl}/download/setup`, {
@@ -383,6 +383,7 @@ describe('Phase 18: Complete CTA → Auth → Trial/Plan → Download Onboarding
     // Manually backdate trial_expires_at in database to test expiration behavior
     const db = getDatabase();
     const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    db.prepare('UPDATE auth_users SET trial_expires_at = ? WHERE id = ?').run(pastDate, userId);
     db.prepare('UPDATE commercial_users SET trial_expires_at = ? WHERE id = ?').run(pastDate, userId);
 
     // Evaluate entitlements after expiry

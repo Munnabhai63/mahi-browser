@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { getPrismaClient, isPostgresConfigured } from '../../06_DATABASE/prisma-client.js';
 import type { CommercialUserStatus, CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
+import { ensurePgCommercialMirror, stripCentralUserPrefix } from '../../05_AUTH/user-model-unifier.js';
 import {
   updateUserStatus,
   updateUserPlan,
@@ -10,9 +11,6 @@ import {
 import { resetAllUserDevices } from './commercial-device-service.js';
 import { createLogger } from '../utils/logger.js';
 const log = createLogger('admin-actions');
-
-export const MIRROR_MISSING_ERROR_MESSAGE =
-  'This account exists only in the central auth registry (mirror-missing). A commercial record is required before plan/quota/override/device changes. Ask the user to sign in once to create it, then retry.';
 
 function isPrismaNotFoundError(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && (err as { code?: unknown }).code === 'P2025';
@@ -48,14 +46,15 @@ async function insertPostgresAuditLog(
 
 /**
  * Admin action: update user status (ACTIVE, SUSPENDED, BANNED).
- * When Postgres is configured, updates auth_users (if central:) or commercial_users.
+ * Updates authoritative `auth_users` and syncs companion FK mirror if present.
  */
 export async function adminSetUserStatus(
-  userId: string,
+  rawUserId: string,
   status: CommercialUserStatus,
   actor: { id: string; name: string; role: CommercialRole },
   reason?: string
-): Promise<{ ok: boolean; centralGone?: boolean; error?: string; message?: string }> {
+): Promise<{ ok: boolean; error?: string; message?: string }> {
+  const userId = stripCentralUserPrefix(rawUserId);
   const prisma = isPostgresConfigured() ? getPrismaClient() : null;
   if (!prisma) {
     const ok = updateUserStatus(userId, status, actor, reason);
@@ -63,52 +62,36 @@ export async function adminSetUserStatus(
   }
 
   const now = new Date().toISOString();
+  const current = await prisma.auth_users.findUnique({ where: { id: userId } });
+  const mirror = current ? null : await prisma.commercial_users.findUnique({ where: { id: userId } });
+  const targetEmail = current?.email || mirror?.email;
+  const previousStatus = current?.status || mirror?.status;
+  if (!targetEmail) return { ok: false };
 
-  if (userId.startsWith('central:')) {
-    const targetId = userId.slice(8);
-    const current = await prisma.auth_users.findUnique({ where: { id: targetId } });
-    if (!current) return { ok: false };
-
+  if (current) {
     try {
       await prisma.auth_users.update({
-        where: { id: targetId },
+        where: { id: userId },
         data: { status, updated_at: now },
       });
     } catch (err: unknown) {
       if (isPrismaNotFoundError(err)) return { ok: false };
       throw err;
     }
-
-    await insertPostgresAuditLog(prisma, {
-      actor,
-      action: `USER_${status}`,
-      targetId,
-      details: `Changed user status for ${current.email} from ${current.status} to ${status}.${reason ? ` Reason: ${reason}` : ''}`,
-      result: 'WARNING',
-      createdAt: now,
-    });
-
-    return { ok: true };
   }
 
-  const current = await prisma.commercial_users.findUnique({ where: { id: userId } });
-  if (!current) return { ok: false };
-
-  try {
-    await prisma.commercial_users.update({
+  if (typeof prisma.commercial_users?.updateMany === 'function') {
+    await prisma.commercial_users.updateMany({
       where: { id: userId },
       data: { status, updated_at: now },
     });
-  } catch (err: unknown) {
-    if (isPrismaNotFoundError(err)) return { ok: false };
-    throw err;
   }
 
   await insertPostgresAuditLog(prisma, {
     actor,
     action: `USER_${status}`,
     targetId: userId,
-    details: `Changed user status for ${current.email} from ${current.status} to ${status}.${reason ? ` Reason: ${reason}` : ''}`,
+    details: `Changed user status for ${targetEmail} from ${previousStatus} to ${status}.${reason ? ` Reason: ${reason}` : ''}`,
     result: 'WARNING',
     createdAt: now,
   });
@@ -117,48 +100,48 @@ export async function adminSetUserStatus(
 }
 
 /**
- * Admin action: update commercial user plan.
- * Central-only accounts return centralGone: true (mirror missing).
+ * Admin action: update user plan on authoritative `auth_users` + commercial mirror.
  */
 export async function adminSetUserPlan(
-  userId: string,
+  rawUserId: string,
   planId: string,
   actor: { id: string; name: string; role: CommercialRole }
-): Promise<{ ok: boolean; centralGone?: boolean; error?: string; message?: string }> {
+): Promise<{ ok: boolean; error?: string; message?: string }> {
+  const userId = stripCentralUserPrefix(rawUserId);
   const prisma = isPostgresConfigured() ? getPrismaClient() : null;
   if (!prisma) {
     const ok = updateUserPlan(userId, planId, actor);
     return { ok };
   }
 
-  if (userId.startsWith('central:')) {
-    return {
-      ok: false,
-      centralGone: true,
-      error: 'mirror_missing_commercial_record',
-      message: MIRROR_MISSING_ERROR_MESSAGE,
-    };
-  }
-
-  const current = await prisma.commercial_users.findUnique({ where: { id: userId } });
-  if (!current) return { ok: false };
+  const mirror = await ensurePgCommercialMirror(prisma, userId);
+  const authUser = await prisma.auth_users.findUnique({ where: { id: userId } });
+  if (!mirror && !authUser) return { ok: false };
 
   const now = new Date().toISOString();
-  try {
-    await prisma.commercial_users.update({
+  if (authUser) {
+    await prisma.auth_users.update({
       where: { id: userId },
       data: { plan_id: planId, updated_at: now },
     });
-  } catch (err: unknown) {
-    if (isPrismaNotFoundError(err)) return { ok: false };
-    throw err;
+  }
+
+  if (mirror) {
+    try {
+      await prisma.commercial_users.update({
+        where: { id: userId },
+        data: { plan_id: planId, updated_at: now },
+      });
+    } catch (err: unknown) {
+      if (!isPrismaNotFoundError(err)) throw err;
+    }
   }
 
   await insertPostgresAuditLog(prisma, {
     actor,
     action: 'USER_PLAN_CHANGE',
     targetId: userId,
-    details: `Changed plan for ${current.email} to ${planId}`,
+    details: `Changed plan for ${authUser?.email || mirror?.email || userId} to ${planId}`,
     result: 'SUCCESS',
     createdAt: now,
   });
@@ -168,10 +151,9 @@ export async function adminSetUserPlan(
 
 /**
  * Admin action: instant quota booster (PROFILES or PROXY_GB).
- * Central-only accounts return centralGone: true (mirror missing).
  */
 export async function adminBoostQuota(
-  userId: string,
+  rawUserId: string,
   type: 'PROFILES' | 'PROXY_GB',
   amount: number,
   actor: { id: string; name: string; role: CommercialRole }
@@ -180,28 +162,19 @@ export async function adminBoostQuota(
   bonusProfiles?: number;
   bonusProxyBytes?: number;
   error?: string;
-  centralGone?: boolean;
   message?: string;
 }> {
+  const userId = stripCentralUserPrefix(rawUserId);
   const prisma = isPostgresConfigured() ? getPrismaClient() : null;
   if (!prisma) {
     return boostUserQuota(userId, type, amount, actor);
-  }
-
-  if (userId.startsWith('central:')) {
-    return {
-      success: false,
-      centralGone: true,
-      error: 'mirror_missing_commercial_record',
-      message: MIRROR_MISSING_ERROR_MESSAGE,
-    };
   }
 
   if (type !== 'PROFILES' && type !== 'PROXY_GB') {
     return { success: false, error: 'Invalid boost type. Expected PROFILES or PROXY_GB.' };
   }
 
-  const current = await prisma.commercial_users.findUnique({ where: { id: userId } });
+  const current = await ensurePgCommercialMirror(prisma, userId);
   if (!current) {
     return { success: false, error: 'User not found.' };
   }
@@ -274,34 +247,24 @@ export async function adminBoostQuota(
 
 /**
  * Admin action: enterprise feature overrides.
- * Central-only accounts return centralGone: true (mirror missing).
  */
 export async function adminSetFeatureOverrides(
-  userId: string,
+  rawUserId: string,
   overrides: Record<string, boolean>,
   actor: { id: string; name: string; role: CommercialRole }
 ): Promise<{
   success: boolean;
   overrides?: Record<string, boolean>;
   error?: string;
-  centralGone?: boolean;
   message?: string;
 }> {
+  const userId = stripCentralUserPrefix(rawUserId);
   const prisma = isPostgresConfigured() ? getPrismaClient() : null;
   if (!prisma) {
     return setUserFeatureOverrides(userId, overrides, actor);
   }
 
-  if (userId.startsWith('central:')) {
-    return {
-      success: false,
-      centralGone: true,
-      error: 'mirror_missing_commercial_record',
-      message: MIRROR_MISSING_ERROR_MESSAGE,
-    };
-  }
-
-  const current = await prisma.commercial_users.findUnique({ where: { id: userId } });
+  const current = await ensurePgCommercialMirror(prisma, userId);
   if (!current) {
     return { success: false, error: 'User not found.' };
   }
@@ -343,31 +306,20 @@ export async function adminSetFeatureOverrides(
 /**
  * Admin action: 1-Click HWID & Machine Unbind.
  * Clears all commercial device bindings for the user.
- * Central-only accounts return centralGone: true (mirror missing).
  */
 export async function adminResetUserDevices(
-  userId: string,
+  rawUserId: string,
   actor?: { id: string; name: string; role: CommercialRole }
 ): Promise<{
   success: boolean;
   unbindCount: number;
-  centralGone?: boolean;
   error?: string;
   message?: string;
 }> {
+  const userId = stripCentralUserPrefix(rawUserId);
   const prisma = isPostgresConfigured() ? getPrismaClient() : null;
   if (!prisma) {
     return resetAllUserDevices(userId, actor);
-  }
-
-  if (userId.startsWith('central:')) {
-    return {
-      success: false,
-      unbindCount: 0,
-      centralGone: true,
-      error: 'mirror_missing_commercial_record',
-      message: MIRROR_MISSING_ERROR_MESSAGE,
-    };
   }
 
   const deleteRes = await prisma.commercial_devices.deleteMany({

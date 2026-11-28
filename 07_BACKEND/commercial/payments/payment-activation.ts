@@ -12,6 +12,7 @@ import {
 } from '../canonical-plan-catalog.js';
 import { getUserById } from '../commercial-auth-service.js';
 import { getCentralUserByIdAsync } from '../../../05_AUTH/central-auth-service.js';
+import { ensurePgCommercialMirror, syncCommercialMirrorFromAuthSqlite } from '../../../05_AUTH/user-model-unifier.js';
 import { createLicense } from '../../../04_LICENSING/license-engine.js';
 import { assertNotEmergencyFrozen } from '../../services/kill-switch-service.js';
 import { websiteUrl } from '../../../10_CONFIG/shared/site-config.js';
@@ -76,13 +77,10 @@ export async function createCheckoutSessionImpl(
   if (pgClient) {
     userCheck =
       (await pgClient.auth_users?.findFirst({ where: { id: req.userId }, select: { id: true } })) ||
-      (typeof pgClient.commercial_users?.findFirst === 'function'
-        ? await pgClient.commercial_users.findFirst({ where: { id: req.userId }, select: { id: true } })
-        : null);
+      null;
   } else if (db) {
     userCheck =
       (db.prepare('SELECT id FROM auth_users WHERE id = ?').get(req.userId) as unknown as SqliteIdRow | undefined) ||
-      (db.prepare('SELECT id FROM commercial_users WHERE id = ?').get(req.userId) as unknown as SqliteIdRow | undefined) ||
       null;
   }
   if (!userCheck) {
@@ -551,24 +549,15 @@ export async function activateSubscriptionFromPaymentImpl(params: {
       }
 
       try {
-        if (typeof tx.commercial_users?.findFirst === 'function') {
-          const commUser = await tx.commercial_users.findFirst({
+        await ensurePgCommercialMirror(tx, params.userId);
+        if (typeof tx.commercial_users?.updateMany === 'function') {
+          await tx.commercial_users.updateMany({
             where: { id: params.userId },
+            data: { plan_id: targetPlan.id, updated_at: now },
           });
-          if (commUser) {
-            await tx.commercial_users.update({
-              where: { id: params.userId },
-              data: {
-                plan_id: targetPlan.id,
-                updated_at: now,
-              },
-            });
-          } else {
-            log.warn(`[PaymentService] Mirror-missing user ${params.userId} in commercial_users; skipping commercial_users update.`);
-          }
         }
       } catch (err: unknown) {
-        log.warn(`[PaymentService] Failed to update commercial_users plan_id for ${params.userId}:`, errMsg(err));
+        log.warn(`[PaymentService] Failed syncing commercial_users FK mirror plan_id for ${params.userId}:`, errMsg(err));
       }
 
       const existingLicense = await tx.licenses.findFirst({
@@ -787,15 +776,7 @@ export async function activateSubscriptionFromPaymentImpl(params: {
         log.error('[PaymentService] SQLite auth_users plan update error:', errMsg(err));
       }
 
-      try {
-        db.prepare(`
-          UPDATE commercial_users
-          SET plan_id = ?
-          WHERE id = ?
-        `).run(targetPlan.id, params.userId);
-      } catch (err: unknown) {
-        log.error('[PaymentService] SQLite commercial_users plan update error:', errMsg(err));
-      }
+      syncCommercialMirrorFromAuthSqlite(db, params.userId);
 
       try {
         const existingLicence = db

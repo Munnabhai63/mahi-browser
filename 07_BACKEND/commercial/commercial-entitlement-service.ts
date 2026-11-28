@@ -1,4 +1,5 @@
 import { getDatabase } from '../../06_DATABASE/connection.js';
+import { syncCommercialMirrorFromAuthSqlite } from '../../05_AUTH/user-model-unifier.js';
 import type {
   CommercialEntitlements,
   CommercialPlan,
@@ -253,8 +254,8 @@ export function evaluateUserEntitlements(
     if (isExpired) {
       try {
         db.prepare("UPDATE commercial_subscriptions SET status = 'EXPIRED' WHERE id = ?").run(subRow.id);
-        db.prepare("UPDATE commercial_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
         db.prepare("UPDATE auth_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
+        syncCommercialMirrorFromAuthSqlite(db, user.id);
       } catch (downgradeErr) {
         log.warn('Failed persisting expired subscription downgrade to plan_free', {
           userId: user.id,
@@ -318,8 +319,8 @@ export function evaluateUserEntitlements(
     }
   } else if (!subRow && !activeLicRow && user.trialExpiresAt && new Date(user.trialExpiresAt).getTime() <= Date.now() && user.planId !== 'plan_free') {
     try {
-      db.prepare("UPDATE commercial_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
       db.prepare("UPDATE auth_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
+      syncCommercialMirrorFromAuthSqlite(db, user.id);
       user.planId = 'plan_free';
     } catch (downgradeErr) {
       log.warn('Failed downgrading expired trial user to plan_free', {
@@ -483,8 +484,8 @@ export function checkCapability(
       } else {
         try {
           db.prepare("UPDATE commercial_subscriptions SET status = 'EXPIRED' WHERE id = ?").run(subRow.id);
-          db.prepare("UPDATE commercial_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
           db.prepare("UPDATE auth_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
+          syncCommercialMirrorFromAuthSqlite(db, user.id);
         } catch (err) {
           log.warn('Failed expiring trial subscription and reverting user to plan_free', {
             userId: user.id,
@@ -497,8 +498,8 @@ export function checkCapability(
       }
     } else if (user.trialExpiresAt && new Date(user.trialExpiresAt).getTime() <= Date.now() && user.planId !== 'plan_free') {
       try {
-        db.prepare("UPDATE commercial_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
         db.prepare("UPDATE auth_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
+        syncCommercialMirrorFromAuthSqlite(db, user.id);
       } catch (err) {
         log.warn('Failed reverting expired trial user without subscription to plan_free', {
           userId: user.id,
@@ -644,7 +645,8 @@ export function activateCommercialLicenseForUser(
 
   // Check if a plan matches the license notes or upgrade to PRO
   const proPlan = getCommercialPlanById('plan_pro') || DEFAULT_COMMERCIAL_PLANS[1];
-  db.prepare('UPDATE commercial_users SET plan_id = ? WHERE id = ?').run(proPlan.id, user.id);
+  db.prepare('UPDATE auth_users SET plan_id = ? WHERE id = ?').run(proPlan.id, user.id);
+  syncCommercialMirrorFromAuthSqlite(db, user.id);
 
   const now = new Date().toISOString();
   const subExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
@@ -677,8 +679,7 @@ export function activateUserTrial(
   }
 
   const runActivation = () => {
-    // Check user and trial status directly inside transaction
-    const userRow = db.prepare('SELECT trial_used, trial_expires_at FROM commercial_users WHERE id = ?').get(userId) as TrialUserRow | undefined;
+    const userRow = db.prepare('SELECT trial_used, trial_expires_at FROM auth_users WHERE id = ?').get(userId) as TrialUserRow | undefined;
     const existingSub = db.prepare("SELECT id FROM commercial_subscriptions WHERE user_id = ? AND billing_cycle = 'TRIAL' LIMIT 1").get(userId) as { id: string } | undefined;
 
     if (userRow?.trial_used || existingSub) {
@@ -694,26 +695,13 @@ export function activateUserTrial(
     const nowStr = now.toISOString();
     const expStr = expiresAt.toISOString();
 
-    // Atomically update commercial_users
     db.prepare(`
-      UPDATE commercial_users
+      UPDATE auth_users
       SET plan_id = ?, trial_started_at = ?, trial_expires_at = ?, trial_used = 1, updated_at = ?
       WHERE id = ?
     `).run(targetPlanId, nowStr, expStr, nowStr, userId);
 
-    // Update auth_users if present
-    try {
-      db.prepare(`
-        UPDATE auth_users
-        SET plan_id = ?, trial_started_at = ?, trial_expires_at = ?, trial_used = 1, updated_at = ?
-        WHERE id = ?
-      `).run(targetPlanId, nowStr, expStr, nowStr, userId);
-    } catch (syncErr) {
-      log.debug('Skipped syncing auth_users trial fields during local trial grant', {
-        userId,
-        err: syncErr instanceof Error ? syncErr.message : String(syncErr),
-      });
-    }
+    syncCommercialMirrorFromAuthSqlite(db, userId);
 
     // Create active trial subscription record
     const subId = `sub_trial_${Date.now()}`;

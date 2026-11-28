@@ -161,6 +161,7 @@ const portalAndDownloadPlugin: FastifyPluginAsync = async (app) => {
     '/login',
     '/book-demo',
     '/assets/*',
+    '/admin-assets/*',
     '/_next/*',
     '/sitemap.xml',
     '/robots.txt',

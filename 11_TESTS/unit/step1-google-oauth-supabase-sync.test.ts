@@ -367,15 +367,15 @@ describe('Step 1: Google OAuth -> Supabase PostgreSQL Sync & Error Redirect', ()
     const pgUserAfter = authUsersMap.get(pgSuspendedId);
     expect(pgUserAfter.status).toBe('SUSPENDED');
 
-    // 2. SQLite suspended user
+    // 2. SQLite suspended user (authoritative auth_users)
     const sqliteSuspendedId = `usr_sqlite_suspended_${Date.now()}`;
     const sqliteSuspendedEmail = `suspended-sqlite-${Date.now()}@example.com`;
     db.prepare(`
-      INSERT INTO commercial_users (
-        id, email, password_hash, salt, name, role, status, plan_id,
-        trial_used, auth_provider, created_at, updated_at
-      ) VALUES (?, ?, 'hash', 'salt', 'Suspended SQLite User', 'USER', 'SUSPENDED', 'free', 0, 'LOCAL', datetime('now'), datetime('now'))
-    `).run(sqliteSuspendedId, sqliteSuspendedEmail);
+      INSERT INTO auth_users (
+        id, email, normalized_email, password_hash, salt, name, role, status,
+        email_verified, plan_id, profile_quota, trial_used, auth_provider, created_at, updated_at
+      ) VALUES (?, ?, ?, 'hash', 'salt', 'Suspended SQLite User', 'USER', 'SUSPENDED', 1, 'free', 1, 0, 'LOCAL', datetime('now'), datetime('now'))
+    `).run(sqliteSuspendedId, sqliteSuspendedEmail, sqliteSuspendedEmail);
 
     const resSqlite = await authenticateWithGoogleClaimsAsync({
       sub: `google_sub_suspended_sqlite_${Date.now()}`,
@@ -387,7 +387,7 @@ describe('Step 1: Google OAuth -> Supabase PostgreSQL Sync & Error Redirect', ()
     expect(resSqlite.success).toBe(false);
     expect(resSqlite.error).toContain('ACCOUNT_SUSPENDED');
 
-    const sqliteRow = db.prepare('SELECT status FROM commercial_users WHERE id = ?').get(sqliteSuspendedId) as any;
+    const sqliteRow = db.prepare('SELECT status FROM auth_users WHERE id = ?').get(sqliteSuspendedId) as any;
     expect(sqliteRow.status).toBe('SUSPENDED');
   });
 
@@ -495,10 +495,16 @@ describe('Step 1: Google OAuth -> Supabase PostgreSQL Sync & Error Redirect', ()
 
     // 8. Verify a user with local active paid subscription is NOT suppressed to free quota even if centralUser.plan_id === 'free'
     const paidUserId = `usr_local_paid_${Date.now()}`;
+    const paidEmail = `paid-${Date.now()}@example.com`;
+    db.prepare(`
+      INSERT INTO auth_users (
+        id, email, normalized_email, password_hash, salt, name, role, status, email_verified, plan_id, profile_quota, created_at, updated_at
+      ) VALUES (?, ?, ?, 'hash', 'salt', 'Paid User', 'USER', 'ACTIVE', 1, 'professional_50', 50, datetime('now'), datetime('now'))
+    `).run(paidUserId, paidEmail, paidEmail);
     db.prepare(`
       INSERT INTO commercial_users (id, email, password_hash, salt, name, role, status, plan_id, created_at, updated_at)
       VALUES (?, ?, 'hash', 'salt', 'Paid User', 'USER', 'ACTIVE', 'professional_50', datetime('now'), datetime('now'))
-    `).run(paidUserId, `paid-${Date.now()}@example.com`);
+    `).run(paidUserId, paidEmail);
     db.prepare(`
       INSERT INTO commercial_subscriptions (
         id, user_id, plan_id, status, billing_cycle, starts_at, expires_at, payment_provider, created_at

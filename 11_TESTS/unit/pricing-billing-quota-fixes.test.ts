@@ -40,6 +40,12 @@ function createPaidSubscriptionForUser(params: {
       id, email, normalized_email, password_hash, salt, name, plan_id, profile_quota, created_at, updated_at
     ) VALUES (?, ?, ?, 'hash', 'salt', 'Test User', ?, 100, ?, ?)
   `).run(params.userId, params.email, params.email.toLowerCase(), params.planId, nowIso, nowIso);
+  db.prepare(`UPDATE auth_users SET plan_id = ? WHERE id = ?`).run(params.planId, params.userId);
+  db.prepare(`
+    INSERT OR IGNORE INTO commercial_users (
+      id, email, password_hash, salt, name, role, status, plan_id, created_at, updated_at
+    ) VALUES (?, ?, 'hash', 'salt', 'Test User', 'USER', 'ACTIVE', ?, ?, ?)
+  `).run(params.userId, params.email.toLowerCase(), params.planId, nowIso, nowIso);
   db.prepare(`UPDATE commercial_users SET plan_id = ? WHERE id = ?`).run(params.planId, params.userId);
   db.prepare(`
     INSERT INTO commercial_subscriptions (

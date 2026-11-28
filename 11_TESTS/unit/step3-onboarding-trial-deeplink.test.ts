@@ -256,6 +256,7 @@ describe('STEP 3 MISSION — Onboarding, 7-Day Trial, Secure Handoff & Guest Cla
       activateUserTrial(userAId, 'professional_50');
       const db = getDatabase();
       const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      db.prepare('UPDATE auth_users SET trial_expires_at = ? WHERE id = ?').run(pastDate, userAId);
       db.prepare('UPDATE commercial_users SET trial_expires_at = ? WHERE id = ?').run(pastDate, userAId);
       db.prepare('UPDATE commercial_subscriptions SET expires_at = ? WHERE user_id = ?').run(pastDate, userAId);
 
@@ -371,36 +372,39 @@ describe('STEP 3 MISSION — Onboarding, 7-Day Trial, Secure Handoff & Guest Cla
   });
 
   // =========================================================================
-  // SUB-SUITE 4: LANDING HTML & TOKEN KEY CONSISTENCY
+  // SUB-SUITE 4: NEXT.JS LANDING AUTH & DEEPLINK CONSISTENCY
   // =========================================================================
-  describe('4. Landing HTML & Token Key Consistency', () => {
-    const signupHtml = fs.readFileSync(path.join(process.cwd(), 'landing', 'signup.html'), 'utf8');
-    const loginHtml = fs.readFileSync(path.join(process.cwd(), 'landing', 'login.html'), 'utf8');
-    const downloadHtml = fs.readFileSync(path.join(process.cwd(), 'landing', 'download.html'), 'utf8');
+  describe('4. Next.js Landing Auth & Deeplink Consistency', () => {
+    const signupSource = fs.readFileSync(path.join(process.cwd(), 'landing', 'app', 'signup', 'page.tsx'), 'utf8');
+    const loginSource = fs.readFileSync(path.join(process.cwd(), 'landing', 'app', 'login', 'page.tsx'), 'utf8');
+    const downloadComponent = fs.readFileSync(
+      path.join(process.cwd(), 'landing', 'components', 'DownloadButtons.tsx'),
+      'utf8'
+    );
 
-    it('signup.html persists both mahi_auth_token and mahi_access_token', () => {
-      expect(signupHtml).toContain("localStorage.setItem('mahi_auth_token'");
-      expect(signupHtml).toContain("localStorage.setItem('mahi_access_token'");
+    it('signup route uses HttpOnly cookie credentials and clears legacy localStorage token keys', () => {
+      expect(signupSource).toContain("credentials: 'include'");
+      expect(signupSource).toContain("localStorage.removeItem('mahi_auth_token')");
+      expect(signupSource).toContain("localStorage.removeItem('mahi_access_token')");
     });
 
-    it('login.html persists both mahi_auth_token and mahi_access_token', () => {
-      expect(loginHtml).toContain("localStorage.setItem('mahi_auth_token'");
-      expect(loginHtml).toContain("localStorage.setItem('mahi_access_token'");
+    it('login route uses HttpOnly cookie credentials and clears legacy localStorage token keys', () => {
+      expect(loginSource).toContain("credentials: 'include'");
+      expect(loginSource).toContain("localStorage.removeItem('mahi_auth_token')");
+      expect(loginSource).toContain("localStorage.removeItem('mahi_access_token')");
     });
 
-    it('download.html reads both tokens and removes both on logout', () => {
-      expect(downloadHtml).toContain("localStorage.getItem('mahi_auth_token') || localStorage.getItem('mahi_access_token')");
-      expect(downloadHtml).toContain("localStorage.removeItem('mahi_auth_token')");
-      expect(downloadHtml).toContain("localStorage.removeItem('mahi_access_token')");
+    it('DownloadButtons verifies session via /api/v1/auth/me and clears legacy localStorage token keys', () => {
+      expect(downloadComponent).toContain('/api/v1/auth/me');
+      expect(downloadComponent).toContain("credentials: 'include'");
+      expect(downloadComponent).toContain("localStorage.removeItem('mahi_auth_token')");
+      expect(downloadComponent).toContain("localStorage.removeItem('mahi_access_token')");
     });
 
-    it('download.html deep-link button uses /api/v1/auth/web-handoff instead of embedding raw JWT in static href', () => {
-      // Must NOT set static href containing raw JWT
-      expect(downloadHtml).not.toContain("deepLinkBtn.href = `mahi://auth?token=");
-      expect(downloadHtml).not.toContain('deepLinkBtn.href = "mahi://auth?token=');
-      // Must request web handoff endpoint
-      expect(downloadHtml).toContain('/api/v1/auth/web-handoff');
-      expect(downloadHtml).toContain('mahi://auth?handoff=');
+    it('DownloadButtons deep-link button uses /api/v1/auth/web-handoff instead of embedding raw JWT in static href', () => {
+      expect(downloadComponent).not.toContain('mahi://auth?token=');
+      expect(downloadComponent).toContain('/api/v1/auth/web-handoff');
+      expect(downloadComponent).toContain('mahi://auth?handoff=');
     });
   });
 });

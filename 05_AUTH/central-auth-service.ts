@@ -3,6 +3,8 @@ import { getDatabase } from '../06_DATABASE/connection.js';
 import { getJwtSecret } from '../08_SECURITY/install-secrets.js';
 import { getEmailProvider } from './email-service.js';
 import { isPostgresConfigured, getCentralRepository } from '../06_DATABASE/central-repository.js';
+import { getPrismaClient } from '../06_DATABASE/prisma-client.js';
+import { syncCommercialMirrorFromAuthSqlite, ensurePgCommercialMirror } from './user-model-unifier.js';
 import type {
   AuthUserRecord,
   AuthSessionRecord as RepoAuthSessionRecord,
@@ -314,21 +316,12 @@ export async function registerCentralUser(params: {
     });
 
     try {
-      await repo.createCommercialUser({
-        id: userId,
-        email: normalizedEmail,
-        password_hash: passwordHash,
-        salt,
-        name,
-        role,
-        status: 'ACTIVE',
-        plan_id: planId,
-        created_at: now,
-        updated_at: now,
-        last_login_at: now,
-      });
+      const prisma = getPrismaClient();
+      if (prisma) {
+        await ensurePgCommercialMirror(prisma, userId);
+      }
     } catch (syncErr) {
-      log.warn('Failed creating companion PG commercial_users record on register', {
+      log.warn('Failed ensuring PG commercial_users FK mirror on register', {
         userId,
         err: syncErr instanceof Error ? syncErr.message : String(syncErr),
       });
@@ -425,18 +418,7 @@ export async function registerCentralUser(params: {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, ?)
   `).run(userId, normalizedEmail, normalizedEmail, passwordHash, salt, name, role, status, planId, profileQuota, now, now, now);
 
-  try {
-    db.prepare(`
-      INSERT OR REPLACE INTO commercial_users (
-        id, email, password_hash, salt, name, role, status, plan_id, created_at, updated_at, last_login_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(userId, normalizedEmail, passwordHash, salt, name, role, 'ACTIVE', planId, now, now, now);
-  } catch (syncErr) {
-    log.warn('Failed creating companion SQLite commercial_users record on register', {
-      userId,
-      err: syncErr instanceof Error ? syncErr.message : String(syncErr),
-    });
-  }
+  syncCommercialMirrorFromAuthSqlite(db, userId);
 
   // Generate Email Verification Token
   const rawVerifyToken = crypto.randomBytes(32).toString('hex');
@@ -1170,13 +1152,15 @@ export async function resetPasswordWithToken(
       updated_at: now,
     });
     try {
-      await repo.updateCommercialUser(row.user_id, {
-        password_hash: newPasswordHash,
-        salt: newSalt,
-        updated_at: now,
-      });
+      const prisma = getPrismaClient();
+      if (prisma && typeof prisma.commercial_users?.updateMany === 'function') {
+        await prisma.commercial_users.updateMany({
+          where: { id: row.user_id },
+          data: { password_hash: newPasswordHash, salt: newSalt, updated_at: now },
+        });
+      }
     } catch (syncErr) {
-      log.warn('Failed updating PG commercial_users password on reset', {
+      log.warn('Failed updating PG commercial_users FK mirror password on reset', {
         userId: row.user_id,
         err: syncErr instanceof Error ? syncErr.message : String(syncErr),
       });
@@ -1216,18 +1200,7 @@ export async function resetPasswordWithToken(
     WHERE id = ?
   `).run(newPasswordHash, newSalt, now, row.user_id);
 
-  try {
-    db.prepare(`
-      UPDATE commercial_users 
-      SET password_hash = ?, salt = ?, updated_at = ? 
-      WHERE id = ?
-    `).run(newPasswordHash, newSalt, now, row.user_id);
-  } catch (syncErr) {
-    log.warn('Failed updating SQLite commercial_users password on reset', {
-      userId: row.user_id,
-      err: syncErr instanceof Error ? syncErr.message : String(syncErr),
-    });
-  }
+  syncCommercialMirrorFromAuthSqlite(db, row.user_id);
 
   // Mark token used
   db.prepare('UPDATE auth_verification_tokens SET used_at = ? WHERE id = ?').run(now, row.id);

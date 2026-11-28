@@ -19,6 +19,8 @@ import type {
   SoftwareVersionRecord,
 } from '../../10_CONFIG/shared/types/commercial.js';
 import { getAllCommercialDevices } from './commercial-device-service.js';
+import { getUserById } from './commercial-auth-service.js';
+import { stripCentralUserPrefix } from '../../05_AUTH/user-model-unifier.js';
 import { getCommercialPlans } from './commercial-plan-service.js';
 import { getCommercialAuditLogs } from './commercial-audit-service.js';
 import { getSoftwareVersions } from './commercial-version-service.js';
@@ -229,26 +231,6 @@ export interface AdminTermsComplianceResponse {
   byVersion: Record<string, number>;
 }
 
-interface SqliteAuthUserBasicRow {
-  id: string;
-  email: string;
-  name: string;
-  status: string | null;
-  created_at: string;
-}
-
-interface SqliteAuthUserFullRow extends SqliteAuthUserBasicRow {
-  role: string | null;
-  signup_intent: string | null;
-  google_sub: string | null;
-  avatar_url: string | null;
-  auth_provider: string | null;
-  accepted_terms: number | null;
-  terms_version: string | null;
-  updated_at: string;
-  last_login_at: string | null;
-}
-
 interface SqlitePlanRow {
   id: string;
   price_monthly: number | string | null;
@@ -305,36 +287,27 @@ export async function adminGetDashboardSummary(): Promise<DashboardSummaryRespon
         prisma.support_tickets.count({ where: { is_escalated: 1 } }),
       ]);
 
-      const commEmails = new Set(commUsers.map((u) => u.email.toLowerCase().trim()));
-      const missingMirrorList: AdminRecentSignupItem[] = [];
-
-      for (const au of authUsers) {
-        if (!commEmails.has(au.email.toLowerCase().trim())) {
-          missingMirrorList.push({
-            id: `central:${au.id}`,
-            email: au.email,
-            name: au.name,
-            planId: 'plan_free',
-            status: au.status || 'ACTIVE',
-            createdAt: au.created_at,
-            mirrorMissing: true,
-          });
-        }
-      }
+      const commByEmail = new Map(commUsers.map((u) => [u.email.toLowerCase().trim(), u]));
+      const unifiedUsers = authUsers.map((au) => {
+        const comm = commByEmail.get(au.email.toLowerCase().trim());
+        return {
+          id: au.id,
+          email: au.email,
+          name: au.name,
+          planId: au.plan_id || comm?.plan_id || 'plan_free',
+          status: au.status || comm?.status || 'ACTIVE',
+          createdAt: au.created_at,
+          mirrorMissing: false,
+        };
+      });
 
       const centralUsers = authUsers.length;
-      const missingMirrorUsers = missingMirrorList.length;
-      const totalUsers = commUsers.length + missingMirrorUsers;
+      const missingMirrorUsers = 0;
+      const totalUsers = unifiedUsers.length;
 
-      const activeUsers =
-        commUsers.filter((u) => u.status === 'ACTIVE').length +
-        missingMirrorList.filter((u) => u.status === 'ACTIVE').length;
-      const suspendedUsers =
-        commUsers.filter((u) => u.status === 'SUSPENDED').length +
-        missingMirrorList.filter((u) => u.status === 'SUSPENDED').length;
-      const bannedUsers =
-        commUsers.filter((u) => u.status === 'BANNED').length +
-        missingMirrorList.filter((u) => u.status === 'BANNED').length;
+      const activeUsers = unifiedUsers.filter((u) => u.status === 'ACTIVE').length;
+      const suspendedUsers = unifiedUsers.filter((u) => u.status === 'SUSPENDED').length;
+      const bannedUsers = unifiedUsers.filter((u) => u.status === 'BANNED').length;
 
       let activeLicenses = 0;
       let expiredLicenses = 0;
@@ -358,18 +331,7 @@ export async function adminGetDashboardSummary(): Promise<DashboardSummaryRespon
         createdAt: l.created_at,
       }));
 
-      const allSignups: AdminRecentSignupItem[] = [
-        ...commUsers.map((u) => ({
-          id: u.id,
-          email: u.email,
-          name: u.name,
-          planId: u.plan_id,
-          status: u.status,
-          createdAt: u.created_at,
-          mirrorMissing: false,
-        })),
-        ...missingMirrorList,
-      ];
+      const allSignups: AdminRecentSignupItem[] = [...unifiedUsers];
       allSignups.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       const recentSignups = allSignups.slice(0, 10);
 
@@ -421,45 +383,14 @@ export async function adminGetDashboardSummary(): Promise<DashboardSummaryRespon
 function sqliteGetDashboardSummary(): DashboardSummaryResponse {
   const db = getDatabase();
   const { users } = getAllUsers({ limit: 1000 });
-  const commEmails = new Set(users.map((u: CommercialUser) => u.email.toLowerCase().trim()));
 
-  let authUsers: SqliteAuthUserBasicRow[] = [];
-  try {
-    authUsers = db
-      .prepare('SELECT id, email, name, status, created_at FROM auth_users')
-      .all() as unknown as SqliteAuthUserBasicRow[];
-  } catch {
-    authUsers = [];
-  }
+  const centralUsers = users.length;
+  const missingMirrorUsers = 0;
+  const totalUsers = users.length;
 
-  const missingMirrorList: AdminRecentSignupItem[] = [];
-  for (const au of authUsers) {
-    if (!commEmails.has(au.email.toLowerCase().trim())) {
-      missingMirrorList.push({
-        id: `central:${au.id}`,
-        email: au.email,
-        name: au.name,
-        planId: 'plan_free',
-        status: au.status || 'ACTIVE',
-        createdAt: au.created_at,
-        mirrorMissing: true,
-      });
-    }
-  }
-
-  const centralUsers = authUsers.length;
-  const missingMirrorUsers = missingMirrorList.length;
-  const totalUsers = users.length + missingMirrorUsers;
-
-  const activeUsers =
-    users.filter((u: CommercialUser) => u.status === 'ACTIVE').length +
-    missingMirrorList.filter((u) => u.status === 'ACTIVE').length;
-  const suspendedUsers =
-    users.filter((u: CommercialUser) => u.status === 'SUSPENDED').length +
-    missingMirrorList.filter((u) => u.status === 'SUSPENDED').length;
-  const bannedUsers =
-    users.filter((u: CommercialUser) => u.status === 'BANNED').length +
-    missingMirrorList.filter((u) => u.status === 'BANNED').length;
+  const activeUsers = users.filter((u: CommercialUser) => u.status === 'ACTIVE').length;
+  const suspendedUsers = users.filter((u: CommercialUser) => u.status === 'SUSPENDED').length;
+  const bannedUsers = users.filter((u: CommercialUser) => u.status === 'BANNED').length;
 
   const licenses = getLicenses();
   const activeLicenses = licenses.filter((l) => l.status === 'ACTIVE').length;
@@ -487,18 +418,15 @@ function sqliteGetDashboardSummary(): DashboardSummaryResponse {
   const { logs: recentAuditLogs } = getCommercialAuditLogs({ limit: 10 });
   const ticketMetrics = getSupportTicketMetrics();
 
-  const allSignups: AdminRecentSignupItem[] = [
-    ...users.map((u: CommercialUser) => ({
-      id: u.id,
-      email: u.email,
-      name: u.name,
-      planId: u.planId,
-      status: u.status,
-      createdAt: u.createdAt,
-      mirrorMissing: false,
-    })),
-    ...missingMirrorList,
-  ];
+  const allSignups: AdminRecentSignupItem[] = users.map((u: CommercialUser) => ({
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    planId: u.planId,
+    status: u.status,
+    createdAt: u.createdAt,
+    mirrorMissing: false,
+  }));
   allSignups.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const recentSignups = allSignups.slice(0, 10);
 
@@ -542,7 +470,7 @@ function sqliteGetDashboardSummary(): DashboardSummaryResponse {
 }
 
 /**
- * 2. Admin Users List with Central Auth Mirror Missing Merge
+ * 2. Admin Users List (Unified Authoritative `auth_users` Model)
  */
 export async function adminListUsers(filter?: UserListFilter): Promise<UserListResponse> {
   const prisma = isPostgresConfigured() ? getPrismaClient() : null;
@@ -554,98 +482,58 @@ export async function adminListUsers(filter?: UserListFilter): Promise<UserListR
         prisma.auth_users.findMany({ orderBy: { created_at: 'desc' } }),
       ]);
 
-      const existingEmails = new Set<string>();
-      const authMap = new Map<string, (typeof authUsers)[0]>();
-      for (const au of authUsers) {
-        authMap.set(au.email.toLowerCase().trim(), au);
+      const commMap = new Map<string, (typeof commUsers)[0]>();
+      for (const cu of commUsers) {
+        commMap.set(cu.email.toLowerCase().trim(), cu);
       }
 
-      const commRows: AdminUserItem[] = commUsers.map((u) => {
-        existingEmails.add(u.email.toLowerCase().trim());
+      let allRows: AdminUserItem[] = authUsers.map((au) => {
+        const comm = commMap.get(au.email.toLowerCase().trim());
         let featureOverrides: Record<string, boolean> = {};
-        if (u.feature_overrides) {
+        if (comm?.feature_overrides) {
           try {
             featureOverrides =
-              typeof u.feature_overrides === 'string'
-                ? (JSON.parse(u.feature_overrides) as Record<string, boolean>)
-                : ((u.feature_overrides as unknown as Record<string, boolean>) || {});
+              typeof comm.feature_overrides === 'string'
+                ? (JSON.parse(comm.feature_overrides) as Record<string, boolean>)
+                : ((comm.feature_overrides as unknown as Record<string, boolean>) || {});
           } catch (parseErr) {
             log.warn('Failed parsing user feature_overrides JSON in admin list', {
-              userId: u.id,
+              userId: au.id,
               err: errMsg(parseErr),
             });
           }
         }
 
-        const authMatch = authMap.get(u.email.toLowerCase().trim());
         const acceptedTerms =
-          authMatch?.accepted_terms !== null && authMatch?.accepted_terms !== undefined
-            ? authMatch.accepted_terms === 1
-            : true;
-        const termsVersion = authMatch?.terms_version || undefined;
+          au.accepted_terms !== null && au.accepted_terms !== undefined ? au.accepted_terms === 1 : true;
 
         return {
-          id: u.id,
-          email: u.email,
-          name: u.name,
-          role: u.role,
-          status: u.status,
-          planId: u.plan_id,
-          bonusProfiles: u.bonus_profiles || 0,
-          bonusProxyBytes: Number(u.bonus_proxy_bytes || 0),
+          id: au.id,
+          email: au.email,
+          name: au.name,
+          role: au.role || comm?.role || 'USER',
+          status: au.status || comm?.status || 'ACTIVE',
+          planId: au.plan_id || comm?.plan_id || 'plan_free',
+          bonusProfiles: comm?.bonus_profiles || 0,
+          bonusProxyBytes: Number(comm?.bonus_proxy_bytes || 0),
           featureOverrides,
-          trialStartedAt: u.trial_started_at,
-          trialExpiresAt: u.trial_expires_at,
-          trialUsed: u.trial_used,
-          signupIntent: u.signup_intent,
-          pendingPlanId: u.pending_plan_id,
-          pendingBillingCycle: u.pending_billing_cycle,
-          googleSub: u.google_sub,
-          avatarUrl: u.avatar_url,
-          authProvider: u.auth_provider,
+          trialStartedAt: au.trial_started_at ?? comm?.trial_started_at ?? null,
+          trialExpiresAt: au.trial_expires_at ?? comm?.trial_expires_at ?? null,
+          trialUsed: au.trial_used ?? comm?.trial_used ?? 0,
+          signupIntent: au.signup_intent ?? comm?.signup_intent ?? null,
+          pendingPlanId: comm?.pending_plan_id ?? null,
+          pendingBillingCycle: comm?.pending_billing_cycle ?? null,
+          googleSub: au.google_sub ?? comm?.google_sub ?? null,
+          avatarUrl: au.avatar_url ?? comm?.avatar_url ?? null,
+          authProvider: au.auth_provider ?? comm?.auth_provider ?? 'LOCAL',
           acceptedTerms,
-          termsVersion,
-          createdAt: u.created_at,
-          updatedAt: u.updated_at,
-          lastLoginAt: u.last_login_at || undefined,
+          termsVersion: au.terms_version || undefined,
+          createdAt: au.created_at,
+          updatedAt: au.updated_at,
+          lastLoginAt: au.last_login_at || comm?.last_login_at || undefined,
           mirrorMissing: false,
         };
       });
-
-      const mirrorMissingRows: AdminUserItem[] = [];
-      for (const au of authUsers) {
-        const lower = au.email.toLowerCase().trim();
-        if (!existingEmails.has(lower)) {
-          mirrorMissingRows.push({
-            id: `central:${au.id}`,
-            email: au.email,
-            name: au.name,
-            role: au.role || 'USER',
-            status: au.status || 'ACTIVE',
-            planId: 'plan_free',
-            bonusProfiles: 0,
-            bonusProxyBytes: 0,
-            featureOverrides: {},
-            trialStartedAt: null,
-            trialExpiresAt: null,
-            trialUsed: 0,
-            signupIntent: au.signup_intent || null,
-            pendingPlanId: null,
-            pendingBillingCycle: null,
-            googleSub: au.google_sub || null,
-            avatarUrl: au.avatar_url || null,
-            authProvider: au.auth_provider || 'LOCAL',
-            acceptedTerms: au.accepted_terms === 1,
-            termsVersion: au.terms_version || undefined,
-            createdAt: au.created_at,
-            updatedAt: au.updated_at,
-            lastLoginAt: au.last_login_at || undefined,
-            mirrorMissing: true,
-          });
-        }
-      }
-
-      let allRows: AdminUserItem[] = [...commRows, ...mirrorMissingRows];
 
       if (filter?.status) {
         allRows = allRows.filter((u) => u.status === filter.status);
@@ -681,7 +569,6 @@ export async function adminListUsers(filter?: UserListFilter): Promise<UserListR
 }
 
 function sqliteListUsers(filter?: UserListFilter): UserListResponse {
-  const db = getDatabase();
   const { users } = getAllUsers({
     status: filter?.status,
     role: filter?.role,
@@ -690,69 +577,12 @@ function sqliteListUsers(filter?: UserListFilter): UserListResponse {
     offset: 0,
   });
 
-  const commEmails = new Set(users.map((u: CommercialUser) => u.email.toLowerCase().trim()));
-  let authUsers: SqliteAuthUserFullRow[] = [];
-  try {
-    authUsers = db.prepare('SELECT * FROM auth_users').all() as unknown as SqliteAuthUserFullRow[];
-  } catch {
-    authUsers = [];
-  }
-
-  const missingMirrorRows: AdminUserItem[] = [];
-  for (const au of authUsers) {
-    const lower = au.email.toLowerCase().trim();
-    if (!commEmails.has(lower)) {
-      missingMirrorRows.push({
-        id: `central:${au.id}`,
-        email: au.email,
-        name: au.name,
-        role: au.role || 'USER',
-        status: au.status || 'ACTIVE',
-        planId: 'plan_free',
-        bonusProfiles: 0,
-        bonusProxyBytes: 0,
-        featureOverrides: {},
-        trialStartedAt: null,
-        trialExpiresAt: null,
-        trialUsed: 0,
-        signupIntent: au.signup_intent || null,
-        pendingPlanId: null,
-        pendingBillingCycle: null,
-        googleSub: au.google_sub || null,
-        avatarUrl: au.avatar_url || null,
-        authProvider: au.auth_provider || 'LOCAL',
-        acceptedTerms: au.accepted_terms === 1,
-        termsVersion: au.terms_version || undefined,
-        createdAt: au.created_at,
-        updatedAt: au.updated_at,
-        lastLoginAt: au.last_login_at || undefined,
-        mirrorMissing: true,
-      });
-    }
-  }
-
-  let allRows: AdminUserItem[] = [
-    ...users.map((row: CommercialUser) => ({
-      ...row,
-      acceptedTerms: row.acceptedTerms ?? null,
-      termsVersion: row.termsVersion ?? null,
-      mirrorMissing: false,
-    })),
-    ...missingMirrorRows,
-  ];
-
-  if (filter?.status) {
-    allRows = allRows.filter((u) => u.status === filter.status);
-  }
-  if (filter?.role) {
-    allRows = allRows.filter((u) => u.role === filter.role);
-  }
-  if (filter?.searchQuery) {
-    const term = filter.searchQuery.toLowerCase();
-    allRows = allRows.filter(
-      (u) => u.email.toLowerCase().includes(term) || u.name.toLowerCase().includes(term)
-    );
-  }
+  const allRows: AdminUserItem[] = users.map((row: CommercialUser) => ({
+    ...row,
+    acceptedTerms: row.acceptedTerms ?? null,
+    termsVersion: row.termsVersion ?? null,
+    mirrorMissing: false,
+  }));
 
   allRows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -769,52 +599,21 @@ function sqliteListUsers(filter?: UserListFilter): UserListResponse {
 }
 
 /**
- * 3. User Details Deep Lookup (Commercial or Central User)
+ * 3. User Details Deep Lookup (Unified Authoritative `auth_users`)
  */
-export async function adminGetUserDetail(id: string): Promise<UserDetailResponse | null> {
+export async function adminGetUserDetail(rawId: string): Promise<UserDetailResponse | null> {
+  const id = stripCentralUserPrefix(rawId);
   const prisma = isPostgresConfigured() ? getPrismaClient() : null;
 
   if (prisma) {
     try {
-      if (id.startsWith('central:')) {
-        const centralId = id.slice(8);
-        const authUser = await prisma.auth_users.findUnique({ where: { id: centralId } });
-        if (!authUser) return null;
-
-        const sessionsCount = await prisma.auth_sessions.count({ where: { user_id: centralId } });
-
-        return {
-          user: {
-            id,
-            email: authUser.email,
-            name: authUser.name,
-            role: authUser.role || 'USER',
-            status: authUser.status || 'ACTIVE',
-            planId: 'plan_free',
-            bonusProfiles: 0,
-            bonusProxyBytes: 0,
-            featureOverrides: {},
-            acceptedTerms: authUser.accepted_terms === 1,
-            termsVersion: authUser.terms_version,
-            createdAt: authUser.created_at,
-            updatedAt: authUser.updated_at,
-            lastLoginAt: authUser.last_login_at,
-          },
-          plan: { id: 'plan_free', name: 'Free Tier', tier: 'FREE' },
-          subscription: null,
-          license: null,
-          devices: [],
-          payments: [],
-          sessions: sessionsCount,
-          missingMirror: true,
-        };
-      }
-
+      const authUser = await prisma.auth_users.findUnique({ where: { id } });
       const commUser = await prisma.commercial_users.findUnique({ where: { id } });
-      if (!commUser) return null;
+      if (!authUser && !commUser) return null;
 
+      const planId = authUser?.plan_id || commUser?.plan_id || 'plan_free';
       const [plan, sub, devices, payments, sessionsCount] = await Promise.all([
-        prisma.commercial_plans.findUnique({ where: { id: commUser.plan_id } }),
+        prisma.commercial_plans.findUnique({ where: { id: planId } }),
         prisma.commercial_subscriptions.findFirst({
           where: { user_id: id },
           orderBy: { created_at: 'desc' },
@@ -835,9 +634,20 @@ export async function adminGetUserDetail(id: string): Promise<UserDetailResponse
         > | null;
       }
 
+      const unifiedUser = authUser
+        ? {
+            ...(commUser || {}),
+            ...authUser,
+            plan_id: planId,
+            bonus_profiles: commUser?.bonus_profiles ?? 0,
+            bonus_proxy_bytes: Number(commUser?.bonus_proxy_bytes ?? 0),
+            feature_overrides: commUser?.feature_overrides ?? '{}',
+          }
+        : commUser;
+
       return {
-        user: commUser as unknown as Record<string, unknown>,
-        plan: (plan as unknown as Record<string, unknown>) || { id: commUser.plan_id, name: 'Default Plan', tier: 'FREE' },
+        user: unifiedUser as unknown as Record<string, unknown>,
+        plan: (plan as unknown as Record<string, unknown>) || { id: planId, name: 'Default Plan', tier: 'FREE' },
         subscription: sub as unknown as Record<string, unknown> | null,
         license,
         devices: devices as unknown as Array<Record<string, unknown>>,
@@ -853,86 +663,21 @@ export async function adminGetUserDetail(id: string): Promise<UserDetailResponse
   return sqliteGetUserDetail(id);
 }
 
-function sqliteGetUserDetail(id: string): UserDetailResponse | null {
+function sqliteGetUserDetail(rawId: string): UserDetailResponse | null {
+  const id = stripCentralUserPrefix(rawId);
   const db = getDatabase();
-
-  if (id.startsWith('central:')) {
-    const centralId = id.slice(8);
-    let authUser: SqliteAuthUserFullRow | undefined;
-    try {
-      authUser = db.prepare('SELECT * FROM auth_users WHERE id = ?').get(centralId) as unknown as
-        | SqliteAuthUserFullRow
-        | undefined;
-    } catch (err) {
-      log.warn('Failed reading SQLite auth_users for central user detail', {
-        centralId,
-        err: errMsg(err),
-      });
-    }
-    if (!authUser) return null;
-
-    let sessionsCount = 0;
-    try {
-      const row = db.prepare('SELECT COUNT(*) as c FROM auth_sessions WHERE user_id = ?').get(centralId) as unknown as
-        | SqliteCountRow
-        | undefined;
-      sessionsCount = row?.c || 0;
-    } catch (err) {
-      log.debug('Skipped SQLite auth_sessions count for central user detail', {
-        centralId,
-        err: errMsg(err),
-      });
-    }
-
-    return {
-      user: {
-        id,
-        email: authUser.email,
-        name: authUser.name,
-        role: authUser.role || 'USER',
-        status: authUser.status || 'ACTIVE',
-        planId: 'plan_free',
-        bonusProfiles: 0,
-        bonusProxyBytes: 0,
-        featureOverrides: {},
-        acceptedTerms: authUser.accepted_terms === 1,
-        termsVersion: authUser.terms_version,
-        createdAt: authUser.created_at,
-        updatedAt: authUser.updated_at,
-        lastLoginAt: authUser.last_login_at,
-      },
-      plan: { id: 'plan_free', name: 'Free Tier', tier: 'FREE' },
-      subscription: null,
-      license: null,
-      devices: [],
-      payments: [],
-      sessions: sessionsCount,
-      missingMirror: true,
-    };
-  }
-
-  let commUser: (Record<string, unknown> & { plan_id?: string }) | undefined;
-  try {
-    commUser = db.prepare('SELECT * FROM commercial_users WHERE id = ?').get(id) as
-      | (Record<string, unknown> & { plan_id?: string })
-      | undefined;
-  } catch (err) {
-    log.warn('Failed querying commercial_users in sqliteGetUserDetail', {
-      userId: id,
-      err: errMsg(err),
-    });
-  }
-  if (!commUser) return null;
+  const user = getUserById(id);
+  if (!user) return null;
 
   let plan: Record<string, unknown> | null = null;
   try {
-    plan = (db.prepare('SELECT * FROM commercial_plans WHERE id = ?').get(commUser.plan_id) as Record<
+    plan = (db.prepare('SELECT * FROM commercial_plans WHERE id = ?').get(user.planId) as Record<
       string,
       unknown
     > | undefined) ?? null;
   } catch (err) {
     log.debug('Skipped commercial_plans lookup in sqliteGetUserDetail', {
-      planId: commUser.plan_id,
+      planId: user.planId,
       err: errMsg(err),
     });
   }
@@ -1000,8 +745,8 @@ function sqliteGetUserDetail(id: string): UserDetailResponse | null {
   }
 
   return {
-    user: commUser,
-    plan: plan || { id: commUser.plan_id, name: 'Default Plan', tier: 'FREE' },
+    user: user as unknown as AdminUserItem,
+    plan: plan || { id: user.planId, name: 'Default Plan', tier: 'FREE' },
     subscription: sub,
     license,
     devices,
@@ -1472,24 +1217,12 @@ export async function adminTermsCompliance(): Promise<AdminTermsComplianceRespon
   const db = getDatabase();
   let rows: SqliteTermsRow[] = [];
   try {
-    rows = db.prepare('SELECT id, accepted_terms, terms_version FROM commercial_users').all() as unknown as SqliteTermsRow[];
-  } catch {
-    rows = [];
-  }
-  try {
-    const authRows = db
-      .prepare('SELECT id, accepted_terms, terms_version FROM auth_users')
-      .all() as unknown as SqliteTermsRow[];
-    const existingIds = new Set(rows.map((r) => r.id));
-    for (const ar of authRows) {
-      if (!existingIds.has(ar.id)) {
-        rows.push(ar);
-      }
-    }
+    rows = db.prepare('SELECT id, accepted_terms, terms_version FROM auth_users').all() as unknown as SqliteTermsRow[];
   } catch (err) {
-    log.debug('Skipped SQLite auth_users merge during terms acceptance summary', {
+    log.debug('Skipped SQLite auth_users query during terms acceptance summary', {
       err: errMsg(err),
     });
+    rows = [];
   }
 
   return summarizeTermsRows(rows);
