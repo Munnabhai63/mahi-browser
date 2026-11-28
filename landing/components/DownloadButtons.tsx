@@ -121,7 +121,9 @@ export default function DownloadButtons() {
       try {
         localStorage.removeItem('mahi_auth_token');
         localStorage.removeItem('mahi_access_token');
-      } catch {}
+      } catch (err) {
+        console.debug('[DownloadButtons] legacy localStorage token clear skipped', err);
+      }
 
       const autoDownload = urlParams.get('auto') === 'true';
 
@@ -176,7 +178,9 @@ export default function DownloadButtons() {
           timestamp: new Date().toISOString(),
         }),
       });
-    } catch {}
+    } catch (err) {
+      console.debug('[DownloadButtons] download telemetry failed', err);
+    }
   };
 
   const handleDeepLinkHandoff = async () => {

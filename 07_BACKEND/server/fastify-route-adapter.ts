@@ -8,10 +8,12 @@
  */
 
 import http from 'node:http';
+import crypto from 'node:crypto';
 import { Writable, PassThrough } from 'node:stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { resolveTrustedClientIp } from '../utils/http-security.js';
 import { toSafeErrorResponse } from '../utils/app-error.js';
+import { runWithLogContext } from '../utils/logger.js';
 
 export type CommercialDomainHandler = (
   req: http.IncomingMessage,
@@ -264,8 +266,13 @@ export async function dispatchThroughFastifyReply(
   const parsedUrl = normalizeBridgeRequest(request);
   const bridge = new FastifyResponseBridge(request, reply);
   const resAdapter = bridge as unknown as http.ServerResponse;
+  const rawReqId = request.headers['x-request-id'];
+  const requestId =
+    typeof rawReqId === 'string' && rawReqId.trim()
+      ? rawReqId.trim().slice(0, 64)
+      : request.id || `req_${crypto.randomBytes(6).toString('hex')}`;
 
-  void handler(request.raw, resAdapter, parsedUrl)
+  void runWithLogContext({ requestId }, () => handler(request.raw, resAdapter, parsedUrl))
     .then((handled) => {
       if (!handled && !bridge.headersSent && !bridge.writableEnded) {
         bridge.markUnhandled();

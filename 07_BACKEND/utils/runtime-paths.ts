@@ -3,6 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import * as electron from '../../08_SECURITY/electron-bridge.js';
+import { createLogger } from './logger.js';
+
+const log = createLogger('runtime-paths');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,7 +23,11 @@ function getElectronApp(): any {
     if (electronObj?.default && typeof electronObj.default.app === 'object' && electronObj.default.app !== null) {
       return electronObj.default.app;
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Electron app object probe skipped', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return null;
 }
 
@@ -53,7 +60,14 @@ export function getWritableUserDataDir(): string {
   if (process.env.MAHI_USER_DATA_DIR && typeof process.env.MAHI_USER_DATA_DIR === 'string') {
     const custom = path.resolve(process.env.MAHI_USER_DATA_DIR);
     if (!fs.existsSync(custom)) {
-      try { fs.mkdirSync(custom, { recursive: true }); } catch {}
+      try {
+        fs.mkdirSync(custom, { recursive: true });
+      } catch (mkdirErr) {
+        log.debug('Failed creating custom MAHI_USER_DATA_DIR', {
+          custom,
+          err: mkdirErr instanceof Error ? mkdirErr.message : String(mkdirErr),
+        });
+      }
     }
     return custom;
   }
@@ -65,18 +79,36 @@ export function getWritableUserDataDir(): string {
       const p = app.getPath('userData');
       if (p && typeof p === 'string') {
         if (!fs.existsSync(p)) {
-          try { fs.mkdirSync(p, { recursive: true }); } catch {}
+          try {
+            fs.mkdirSync(p, { recursive: true });
+          } catch (mkdirErr) {
+            log.debug('Failed creating Electron userData dir', {
+              p,
+              err: mkdirErr instanceof Error ? mkdirErr.message : String(mkdirErr),
+            });
+          }
         }
         return p;
       }
-    } catch {}
+    } catch (appErr) {
+      log.debug('Electron app.getPath(userData) unavailable', {
+        err: appErr instanceof Error ? appErr.message : String(appErr),
+      });
+    }
   }
 
   // 3. APPDATA override (supports cross-platform test isolation and Windows user data when APPDATA is set)
   if (process.env.APPDATA && typeof process.env.APPDATA === 'string') {
     const appDataCandidate = path.join(process.env.APPDATA, 'mahi-browser');
     if (!fs.existsSync(appDataCandidate)) {
-      try { fs.mkdirSync(appDataCandidate, { recursive: true }); } catch {}
+      try {
+        fs.mkdirSync(appDataCandidate, { recursive: true });
+      } catch (mkdirErr) {
+        log.debug('Failed creating APPDATA fallback userData dir', {
+          appDataCandidate,
+          err: mkdirErr instanceof Error ? mkdirErr.message : String(mkdirErr),
+        });
+      }
     }
     return appDataCandidate;
   }
@@ -108,7 +140,14 @@ export function getWritableUserDataDir(): string {
   }
 
   if (!fs.existsSync(resolvedDir)) {
-    try { fs.mkdirSync(resolvedDir, { recursive: true }); } catch {}
+    try {
+      fs.mkdirSync(resolvedDir, { recursive: true });
+    } catch (mkdirErr) {
+      log.debug('Failed creating OS fallback userData dir', {
+        resolvedDir,
+        err: mkdirErr instanceof Error ? mkdirErr.message : String(mkdirErr),
+      });
+    }
   }
   return resolvedDir;
 }
@@ -123,7 +162,12 @@ export function getWritableSubdir(subdirName: string): string {
   if (!fs.existsSync(fullPath)) {
     try {
       fs.mkdirSync(fullPath, { recursive: true });
-    } catch {}
+    } catch (mkdirErr) {
+      log.debug('Failed creating writable userData subdir', {
+        fullPath,
+        err: mkdirErr instanceof Error ? mkdirErr.message : String(mkdirErr),
+      });
+    }
   }
   return fullPath;
 }
@@ -143,7 +187,11 @@ export function getBundledResourcePath(...segments: string[]): string | undefine
       if (app && typeof app.getAppPath === 'function') {
         try {
           return path.join(app.getAppPath(), ...segments);
-        } catch {}
+        } catch (err) {
+          log.debug('Electron app.getAppPath skipped for resource lookup', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
       return null;
     })(),
@@ -177,7 +225,11 @@ export function getLandingBaseDir(): string {
       if (app && typeof app.getAppPath === 'function') {
         try {
           return path.join(app.getAppPath(), 'landing');
-        } catch {}
+        } catch (err) {
+          log.debug('Electron app.getAppPath skipped for landing lookup', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
       return null;
     })(),

@@ -9,6 +9,8 @@ import {
   clearAttemptsAsync,
 } from '../08_SECURITY/distributed-state-service.js';
 import { websiteUrl } from '../10_CONFIG/shared/site-config.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+const log = createLogger('central-auth-service');
 
 function mapRowToAuthUser(row: any): AuthUser {
   return {
@@ -184,7 +186,12 @@ export function logSecurityEvent(userId: string | null, action: string, details:
   try {
     if (isPostgresConfigured()) {
       const repo = getCentralRepository();
-      repo.logAuthSecurity(userId, action, details, ipAddress || '127.0.0.1', result).catch(() => {});
+      repo.logAuthSecurity(userId, action, details, ipAddress || '127.0.0.1', result).catch((err: unknown) => {
+        log.debug('Async PG security audit log write failed', {
+          action,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      });
       return;
     }
     const db = getDatabase();
@@ -195,7 +202,7 @@ export function logSecurityEvent(userId: string | null, action: string, details:
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(id, userId, action, ipAddress || '127.0.0.1', details, result, now);
   } catch (err: any) {
-    console.error('[CentralAuth] Security log error:', err?.message);
+    log.error('[CentralAuth] Security log error:', err?.message);
   }
 }
 
@@ -341,7 +348,12 @@ export async function registerCentralUser(params: {
         updated_at: now,
         last_login_at: now,
       });
-    } catch {}
+    } catch (syncErr) {
+      log.warn('Failed creating companion PG commercial_users record on register', {
+        userId,
+        err: syncErr instanceof Error ? syncErr.message : String(syncErr),
+      });
+    }
 
     const rawVerifyToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = hashToken(rawVerifyToken);
@@ -362,7 +374,7 @@ export async function registerCentralUser(params: {
     try {
       await getEmailProvider().sendVerificationEmail(rawEmail, rawVerifyToken, verifyUrl);
     } catch (err: any) {
-      console.warn('[CentralAuth] Failed to send verification email:', err?.message);
+      log.warn('[CentralAuth] Failed to send verification email:', err?.message);
     }
 
     logSecurityEvent(userId, 'REGISTER', `New user registered: ${normalizedEmail}`, 'SUCCESS', params.ipAddress);
@@ -437,7 +449,12 @@ export async function registerCentralUser(params: {
         id, email, password_hash, salt, name, role, status, plan_id, created_at, updated_at, last_login_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(userId, normalizedEmail, passwordHash, salt, name, role, 'ACTIVE', planId, now, now, now);
-  } catch {}
+  } catch (syncErr) {
+    log.warn('Failed creating companion SQLite commercial_users record on register', {
+      userId,
+      err: syncErr instanceof Error ? syncErr.message : String(syncErr),
+    });
+  }
 
   // Generate Email Verification Token
   const rawVerifyToken = crypto.randomBytes(32).toString('hex');
@@ -455,7 +472,7 @@ export async function registerCentralUser(params: {
   try {
     await getEmailProvider().sendVerificationEmail(rawEmail, rawVerifyToken, verifyUrl);
   } catch (err: any) {
-    console.warn('[CentralAuth] Failed to send verification email:', err?.message);
+    log.warn('[CentralAuth] Failed to send verification email:', err?.message);
   }
 
   logSecurityEvent(userId, 'REGISTER', `New user registered: ${normalizedEmail}`, 'SUCCESS', params.ipAddress);
@@ -1064,7 +1081,7 @@ export async function requestPasswordReset(email: string, ipAddress?: string): P
     try {
       await getEmailProvider().sendPasswordResetEmail(user.email, rawResetToken, resetUrl);
     } catch (err: any) {
-      console.warn('[CentralAuth] Failed to send password reset email:', err?.message);
+      log.warn('[CentralAuth] Failed to send password reset email:', err?.message);
     }
 
     logSecurityEvent(user.id, 'PASSWORD_RESET_REQUESTED', `Reset token issued for ${normalizedEmail}`, 'SUCCESS', ipAddress);
@@ -1099,7 +1116,7 @@ export async function requestPasswordReset(email: string, ipAddress?: string): P
   try {
     await getEmailProvider().sendPasswordResetEmail(user.email, rawResetToken, resetUrl);
   } catch (err: any) {
-    console.warn('[CentralAuth] Failed to send password reset email:', err?.message);
+    log.warn('[CentralAuth] Failed to send password reset email:', err?.message);
   }
 
   logSecurityEvent(user.id, 'PASSWORD_RESET_REQUESTED', `Reset token issued for ${normalizedEmail}`, 'SUCCESS', ipAddress);
@@ -1161,7 +1178,12 @@ export async function resetPasswordWithToken(
         salt: newSalt,
         updated_at: now,
       });
-    } catch {}
+    } catch (syncErr) {
+      log.warn('Failed updating PG commercial_users password on reset', {
+        userId: row.user_id,
+        err: syncErr instanceof Error ? syncErr.message : String(syncErr),
+      });
+    }
     await repo.consumeVerificationToken(tokenHash);
     await repo.revokeAllUserSessions(row.user_id);
     logSecurityEvent(row.user_id, 'PASSWORD_RESET', `Password successfully reset; all sessions revoked`, 'SUCCESS', ipAddress);
@@ -1203,7 +1225,12 @@ export async function resetPasswordWithToken(
       SET password_hash = ?, salt = ?, updated_at = ? 
       WHERE id = ?
     `).run(newPasswordHash, newSalt, now, row.user_id);
-  } catch {}
+  } catch (syncErr) {
+    log.warn('Failed updating SQLite commercial_users password on reset', {
+      userId: row.user_id,
+      err: syncErr instanceof Error ? syncErr.message : String(syncErr),
+    });
+  }
 
   // Mark token used
   db.prepare('UPDATE auth_verification_tokens SET used_at = ? WHERE id = ?').run(now, row.id);

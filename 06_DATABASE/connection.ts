@@ -7,6 +7,9 @@ import {
   getDbBackupsDir,
   getWritableUserDataDir,
 } from '../07_BACKEND/utils/runtime-paths.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('db-connection');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,7 +30,11 @@ function registerProcessExitFlush(): void {
   const onExit = () => {
     try {
       flushDatabaseToDisk();
-    } catch {}
+    } catch (err) {
+      log.warn('SQLite flush failed during process exit', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   };
 
   process.on('beforeExit', onExit);
@@ -100,7 +107,11 @@ export function setCustomDatabasePath(dbPath: string): void {
     try {
       flushDatabaseToDisk();
       dbInstance.close();
-    } catch {}
+    } catch (err) {
+      log.debug('Previous SQLite instance close skipped during path switch', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
     dbInstance = null;
   }
   currentDbPath = dbPath;
@@ -125,7 +136,12 @@ export async function initSqlEngine(): Promise<SqlJsStatic> {
           }
           const nmPath = path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', file);
           if (fs.existsSync(nmPath)) return nmPath;
-        } catch {}
+        } catch (err) {
+          log.debug('sql.js wasm locateFile probe skipped', {
+            file,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
         return file;
       }
     });
@@ -177,13 +193,28 @@ export function saveDatabaseToDisk(): void {
     if (renameErr) throw renameErr;
     tmpPath = null;
   } catch (err) {
-    console.error('[DATABASE ATOMIC SAVE ERROR] Failed to save SQLite database to disk:', err);
+    log.error('[DATABASE ATOMIC SAVE ERROR] Failed to save SQLite database to disk', {
+      err: err instanceof Error ? err.message : String(err),
+    });
   } finally {
     if (fd !== null) {
-      try { fs.closeSync(fd); } catch {}
+      try {
+        fs.closeSync(fd);
+      } catch (closeErr) {
+        log.debug('SQLite temp file descriptor close skipped', {
+          err: closeErr instanceof Error ? closeErr.message : String(closeErr),
+        });
+      }
     }
     if (tmpPath && fs.existsSync(tmpPath)) {
-      try { fs.unlinkSync(tmpPath); } catch {}
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch (unlinkErr) {
+        log.debug('SQLite temp file cleanup skipped', {
+          tmpPath,
+          err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+        });
+      }
     }
     isSaving = false;
     if (savePending) {
@@ -257,7 +288,11 @@ export function getDatabase(): SqliteWrapper {
     // Always enforce foreign key constraints
     try {
       dbInstance.exec('PRAGMA foreign_keys = ON;');
-    } catch {}
+    } catch (err) {
+      log.debug('Failed enforcing SQLite PRAGMA foreign_keys = ON', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   const rawDb = dbInstance;
@@ -280,7 +315,12 @@ export function getDatabase(): SqliteWrapper {
           try {
             rawDb.exec(`ROLLBACK TO ${spName};`);
             rawDb.exec(`RELEASE ${spName};`);
-          } catch {}
+          } catch (rbErr) {
+            log.warn('SQLite savepoint rollback failed', {
+              spName,
+              err: rbErr instanceof Error ? rbErr.message : String(rbErr),
+            });
+          }
           transactionDepth--;
           throw err;
         }
@@ -314,7 +354,11 @@ export function getDatabase(): SqliteWrapper {
                 else if (typeof val === 'bigint') lastInsertRowid = val;
                 else if (typeof val === 'string') lastInsertRowid = parseInt(val, 10) || 0;
               }
-            } catch {}
+            } catch (rowIdErr) {
+              log.debug('Failed reading SQLite last_insert_rowid()', {
+                err: rowIdErr instanceof Error ? rowIdErr.message : String(rowIdErr),
+              });
+            }
           }
           if (transactionDepth === 0) {
             requestDatabaseSave();
@@ -355,7 +399,11 @@ export function getDatabase(): SqliteWrapper {
       flushDatabaseToDisk();
       try {
         rawDb.close();
-      } catch {}
+      } catch (err) {
+        log.debug('SQLite db.close() threw during wrapper close', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
       dbInstance = null;
     },
     export: () => rawDb.export(),
@@ -368,7 +416,11 @@ export function closeDatabase(): void {
     flushDatabaseToDisk();
     try {
       dbInstance.close();
-    } catch {}
+    } catch (err) {
+      log.debug('SQLite closeDatabase() threw during close', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
     dbInstance = null;
   }
 }
@@ -393,8 +445,11 @@ function readPreMigrationVersionFromFile(dbPath: string): number {
       if (Number.isFinite(appVer) && appVer > 0) {
         return appVer;
       }
-    } catch {
+    } catch (err) {
       // app_schema_version does not exist yet
+      log.debug('app_schema_version probe skipped on pre-migration DB', {
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
     try {
       const migRes = probeDb.exec(
@@ -404,12 +459,20 @@ function readPreMigrationVersionFromFile(dbPath: string): number {
       if (Number.isFinite(migVer) && migVer > 0) {
         return migVer;
       }
-    } catch {
+    } catch (err) {
       // schema_migrations does not exist yet
+      log.debug('schema_migrations probe skipped on pre-migration DB', {
+        err: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       probeDb.close();
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Pre-migration SQLite version probe skipped', {
+      dbPath,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return 0;
 }
 
@@ -458,7 +521,12 @@ export function backupDatabaseBeforeMigration(options?: {
       if (fs.existsSync(srcSidecar)) {
         try {
           fs.copyFileSync(srcSidecar, `${backupPath}${sidecar}`);
-        } catch {}
+        } catch (err) {
+          log.debug('SQLite backup sidecar copy skipped', {
+            srcSidecar,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
     }
 
@@ -471,7 +539,12 @@ export function backupDatabaseBeforeMigration(options?: {
         let mtimeMs = 0;
         try {
           mtimeMs = fs.statSync(full).mtimeMs;
-        } catch {}
+        } catch (statErr) {
+          log.debug('Failed stating SQLite backup file during pruning', {
+            full,
+            err: statErr instanceof Error ? statErr.message : String(statErr),
+          });
+        }
         return { name: e.name, full, mtimeMs };
       })
       .sort((a, b) => {
@@ -484,18 +557,31 @@ export function backupDatabaseBeforeMigration(options?: {
       try {
         fs.unlinkSync(stale.full);
         removedCount++;
-      } catch {}
+      } catch (unlinkErr) {
+        log.debug('Failed pruning stale SQLite backup file', {
+          path: stale.full,
+          err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+        });
+      }
       for (const sidecar of ['-wal', '-shm']) {
         try {
           if (fs.existsSync(`${stale.full}${sidecar}`)) {
             fs.unlinkSync(`${stale.full}${sidecar}`);
           }
-        } catch {}
+        } catch (sidecarErr) {
+          log.debug('Failed pruning stale SQLite backup sidecar', {
+            path: `${stale.full}${sidecar}`,
+            err: sidecarErr instanceof Error ? sidecarErr.message : String(sidecarErr),
+          });
+        }
       }
     }
 
     return { backedUp: true, backupPath, removedCount };
-  } catch {
+  } catch (err) {
+    log.warn('Pre-migration SQLite backup failed softly so startup can proceed', {
+      err: err instanceof Error ? err.message : String(err),
+    });
     return { backedUp: false, removedCount: 0 };
   }
 }
@@ -547,7 +633,12 @@ export function snapshotSyncConfigFirstRun(options?: {
     if (existingSources.length === 0) {
       try {
         fs.writeFileSync(markerPath, new Date().toISOString(), 'utf8');
-      } catch {}
+      } catch (err) {
+        log.debug('Failed writing empty first-run config snapshot marker', {
+          markerPath,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
       return { snapshotted: false, filesCopied: [] };
     }
 
@@ -560,15 +651,28 @@ export function snapshotSyncConfigFirstRun(options?: {
       try {
         fs.copyFileSync(item.srcPath, path.join(snapshotDir, item.fileName));
         filesCopied.push(item.fileName);
-      } catch {}
+      } catch (copyErr) {
+        log.warn('Failed snapshotting first-run sync config file', {
+          srcPath: item.srcPath,
+          err: copyErr instanceof Error ? copyErr.message : String(copyErr),
+        });
+      }
     }
 
     try {
       fs.writeFileSync(markerPath, new Date().toISOString(), 'utf8');
-    } catch {}
+    } catch (markerErr) {
+      log.debug('Failed writing first-run config snapshot marker', {
+        markerPath,
+        err: markerErr instanceof Error ? markerErr.message : String(markerErr),
+      });
+    }
 
     return { snapshotted: filesCopied.length > 0, snapshotDir, filesCopied };
-  } catch {
+  } catch (err) {
+    log.warn('First-run sync config snapshot failed cleanly', {
+      err: err instanceof Error ? err.message : String(err),
+    });
     return { snapshotted: false, filesCopied: [] };
   }
 }
@@ -579,6 +683,11 @@ if (typeof process !== 'undefined') {
       if (currentDbPath && fs.existsSync(currentDbPath) && currentDbPath.includes('test-auto-isolated')) {
         fs.unlinkSync(currentDbPath);
       }
-    } catch {}
+    } catch (err) {
+      log.debug('Isolated test DB exit cleanup skipped', {
+        currentDbPath,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   });
 }

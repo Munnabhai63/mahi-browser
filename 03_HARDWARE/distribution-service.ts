@@ -3,6 +3,9 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { execFile } from 'node:child_process';
 import { app, shell } from '../08_SECURITY/electron-bridge.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('distribution-service');
 
 export interface DistributionInfo {
   localIps: string[];
@@ -83,7 +86,9 @@ export function getDistributionInfo(): DistributionInfo {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
       if (pkg.version) version = pkg.version;
     }
-  } catch {}
+  } catch (err) {
+    log.debug('distribution-service package.json version read failed', { err });
+  }
 
   let setupFileName = `MAHI-Browser-Setup-${version}.exe`;
   let portableFileName = `MAHI-Browser-Portable-${version}.exe`;
@@ -131,7 +136,9 @@ export function getDistributionInfo(): DistributionInfo {
     try {
       const stats = fs.statSync(setupPath);
       setupSizeMB = Math.round((stats.size / (1024 * 1024)) * 10) / 10;
-    } catch {}
+    } catch (err) {
+      log.debug('distribution-service setup installer stat failed', { setupPath, err });
+    }
   }
 
   const portableAvailable = fs.existsSync(portablePath);
@@ -139,7 +146,9 @@ export function getDistributionInfo(): DistributionInfo {
     try {
       const stats = fs.statSync(portablePath);
       portableSizeMB = Math.round((stats.size / (1024 * 1024)) * 10) / 10;
-    } catch {}
+    } catch (err) {
+      log.debug('distribution-service portable binary stat failed', { portablePath, err });
+    }
   }
 
   return {

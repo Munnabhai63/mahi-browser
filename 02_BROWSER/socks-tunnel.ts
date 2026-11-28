@@ -1,6 +1,9 @@
 import net from 'node:net';
 import http from 'node:http';
 import stream from 'node:stream';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const logger = createLogger('socks-tunnel');
 
 export interface Socks5ConnectOptions {
   proxyHost: string;
@@ -119,7 +122,7 @@ export function openSocks4TunnelSocket(
       settled = true;
       clearTimeout(timer);
       socket.removeListener('data', onData);
-      try { socket.destroy(); } catch {}
+      try { socket.destroy(); } catch (destroyErr) { logger.debug('socks-tunnel handshake socket destroy failed', { err: destroyErr }); }
       reject(err);
     };
 
@@ -221,7 +224,9 @@ export function openSocks5TunnelSocket(
       socket.removeListener('data', onData);
       try {
         socket.destroy();
-      } catch {}
+      } catch (destroyErr) {
+        logger.debug('socks-tunnel connect handshake socket destroy failed', { err: destroyErr });
+      }
       reject(err);
     };
 
@@ -382,9 +387,9 @@ export async function bridgeConnectOverSocks5(params: {
     if (reason && log) log(`[ProxyTunnel SOCKS${socksVersion} CONNECT] Cleanup (${reason})`);
     activeSockets.delete(clientSocket);
     if (upstreamSocket) activeSockets.delete(upstreamSocket);
-    try { clientSocket.destroy(); } catch {}
+    try { clientSocket.destroy(); } catch (destroyErr) { logger.debug('socks-tunnel client socket destroy failed', { err: destroyErr }); }
     if (upstreamSocket) {
-      try { upstreamSocket.destroy(); } catch {}
+      try { upstreamSocket.destroy(); } catch (destroyErr) { logger.debug('socks-tunnel upstream socket destroy failed', { err: destroyErr }); }
     }
   };
 
@@ -425,7 +430,9 @@ export async function bridgeConnectOverSocks5(params: {
     if (log) log(`[ProxyTunnel SOCKS5 CONNECT ERROR] ${err?.message || err}`);
     try {
       clientSocket.write(`HTTP/1.1 502 Bad Gateway\r\n\r\nSOCKS5 Tunnel Error: ${err?.message || 'failed'}`);
-    } catch {}
+    } catch (writeErr) {
+      logger.debug('socks-tunnel 502 response write failed', { err: writeErr });
+    }
     cleanup(err?.message);
   }
 }
@@ -495,10 +502,10 @@ export async function forwardHttpRequestOverSocks5(params: {
 
     const abortUpstream = () => {
       if (!proxyReq.destroyed) {
-        try { proxyReq.destroy(); } catch {}
+        try { proxyReq.destroy(); } catch (destroyErr) { logger.debug('socks-tunnel proxyReq destroy failed', { err: destroyErr }); }
       }
       if (!socket.destroyed) {
-        try { socket.destroy(); } catch {}
+        try { socket.destroy(); } catch (destroyErr) { logger.debug('socks-tunnel response socket destroy failed', { err: destroyErr }); }
       }
     };
     clientReq.on('aborted', abortUpstream);
@@ -508,7 +515,7 @@ export async function forwardHttpRequestOverSocks5(params: {
 
     proxyReq.on('error', (err) => {
       if (log) log(`[ProxyTunnel SOCKS${socksVersion} HTTP ERROR] ${err.message}`);
-      try { socket.destroy(); } catch {}
+      try { socket.destroy(); } catch (destroyErr) { logger.debug('socks-tunnel http error socket destroy failed', { err: destroyErr }); }
       if (!clientRes.headersSent) {
         clientRes.writeHead(502, { 'Content-Type': 'text/plain' });
         clientRes.end(`SOCKS${socksVersion} Proxy Tunnel Error: ${err.message}`);

@@ -2,6 +2,9 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import fs from 'node:fs';
 import child_process from 'node:child_process';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('device-id');
 
 export interface HardwareSignals {
   /** OS-level unique machine identifier (Windows MachineGuid / macOS IOPlatformUUID / Linux machine-id) */
@@ -58,7 +61,9 @@ function readMachineGuid(): string {
         if (val) return val;
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('device-id machine-guid probe failed', { err });
+  }
   return '';
 }
 
@@ -70,7 +75,9 @@ function readCpuSignature(): string {
     if (model || count > 0) {
       return `${os.platform()}|${os.arch()}|${model}|${count}`;
     }
-  } catch {}
+  } catch (err) {
+    log.debug('device-id cpu signature probe failed', { err });
+  }
   return `${os.platform()}|${os.arch()}|${os.totalmem ? os.totalmem() : 0}`;
 }
 
@@ -86,7 +93,9 @@ function readDiskSerial(): string {
         if (regMatch?.[1]?.trim()) {
           return regMatch[1].trim();
         }
-      } catch {}
+      } catch (err) {
+        log.debug('device-id windows disk enum probe failed, falling back to vol', { err });
+      }
 
       const volOut = child_process.execSync(
         'cmd /c vol %SystemDrive%',
@@ -111,7 +120,9 @@ function readDiskSerial(): string {
         if (entries.length > 0) return entries[0];
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('device-id disk serial probe failed', { err });
+  }
   return '';
 }
 
@@ -170,7 +181,9 @@ export function getLegacyDeviceId(): string {
   let username = 'user';
   try {
     username = os.userInfo()?.username || 'user';
-  } catch {}
+  } catch (err) {
+    log.debug('device-id os.userInfo fallback to default username', { err });
+  }
 
   const payload = [
     os.platform(),

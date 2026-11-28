@@ -3,6 +3,9 @@ import { EventEmitter } from 'node:events';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { isTrustedOrigin } from '../07_BACKEND/server/cloud-gateway.js';
 import { cdpSynchronizer } from './cdp-synchronizer.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('sync-hub');
 
 
 export interface SyncAction {
@@ -108,7 +111,9 @@ class SynchronizerHub extends EventEmitter {
         'SYNCHRONIZER_STARTED',
         `Synchronizer activated with Master Profile: "${masterProfileId || 'First Active'}" across ${this.state.activeProfiles.length} target windows.`
       );
-    } catch {}
+    } catch (err) {
+      log.debug('sync-hub startSync audit log skipped', { err });
+    }
 
     // Broadcast state update to all connected tabs
     this.broadcastSystemNotification({
@@ -136,7 +141,9 @@ class SynchronizerHub extends EventEmitter {
         'SYNCHRONIZER_STOPPED',
         `Synchronizer stopped after mirroring ${prevCount} actions.`
       );
-    } catch {}
+    } catch (err) {
+      log.debug('sync-hub stopSync audit log skipped', { err });
+    }
 
     this.broadcastSystemNotification({
       type: 'SYNC_STATE_CHANGED',

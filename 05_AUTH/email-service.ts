@@ -13,6 +13,8 @@
 import crypto from 'node:crypto';
 import dns from 'node:dns/promises';
 import { CONTACT_CONFIG } from '../10_CONFIG/contact-config.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+const log = createLogger('email-service');
 
 export interface EmailMessage {
   to: string;
@@ -177,7 +179,7 @@ export class DevelopmentEmailProvider implements EmailProvider {
     };
     this.sentEmails.push(msg);
     // Safe Logging Policy: Token is strictly redacted to prevent credential leakage
-    console.log(`[EmailService:DEV] Verification email queued for ${email} (Token: [REDACTED])`);
+    log.info(`[EmailService:DEV] Verification email queued for ${email} (Token: [REDACTED])`);
     return true;
   }
 
@@ -191,7 +193,7 @@ export class DevelopmentEmailProvider implements EmailProvider {
       sentAt: new Date().toISOString(),
     };
     this.sentEmails.push(msg);
-    console.log(`[EmailService:DEV] Password reset email queued for ${email} (Token: [REDACTED])`);
+    log.info(`[EmailService:DEV] Password reset email queued for ${email} (Token: [REDACTED])`);
     return true;
   }
 
@@ -203,7 +205,7 @@ export class DevelopmentEmailProvider implements EmailProvider {
       sentAt: new Date().toISOString(),
     };
     this.sentEmails.push(msg);
-    console.log(`[EmailService:DEV] Security alert sent to ${email}: ${alertType}`);
+    log.info(`[EmailService:DEV] Security alert sent to ${email}: ${alertType}`);
     return true;
   }
 
@@ -223,7 +225,7 @@ export class DevelopmentEmailProvider implements EmailProvider {
       sentAt: new Date().toISOString(),
     };
     this.sentEmails.push(msg);
-    console.log(`[EmailService:DEV] Workspace invitation email queued for ${email} (Workspace: ${workspaceName}, Token: [REDACTED])`);
+    log.info(`[EmailService:DEV] Workspace invitation email queued for ${email} (Workspace: ${workspaceName}, Token: [REDACTED])`);
     return true;
   }
 
@@ -265,7 +267,7 @@ export class DevelopmentEmailProvider implements EmailProvider {
       sentAt: new Date().toISOString(),
     };
     this.sentEmails.push(msg);
-    console.log(`[EmailService:DEV] Billing alert sent to ${email}: Invoice ${invoiceId}`);
+    log.info(`[EmailService:DEV] Billing alert sent to ${email}: Invoice ${invoiceId}`);
     return true;
   }
 
@@ -283,7 +285,7 @@ export class DevelopmentEmailProvider implements EmailProvider {
       sentAt: new Date().toISOString(),
     };
     this.sentEmails.push(msg);
-    console.log(`[EmailService:DEV] payment.pending -> ${maskEmail(payload.email)} plan=${payload.planName} amount=${payload.amountInr} utr=${payload.utr}`);
+    log.info(`[EmailService:DEV] payment.pending -> ${maskEmail(payload.email)} plan=${payload.planName} amount=${payload.amountInr} utr=${payload.utr}`);
     return true;
   }
 
@@ -302,7 +304,7 @@ export class DevelopmentEmailProvider implements EmailProvider {
       sentAt: new Date().toISOString(),
     };
     this.sentEmails.push(msg);
-    console.log(`[EmailService:DEV] payment.approved -> ${maskEmail(payload.email)} plan=${payload.planName} amount=${payload.amountInr}`);
+    log.info(`[EmailService:DEV] payment.approved -> ${maskEmail(payload.email)} plan=${payload.planName} amount=${payload.amountInr}`);
     return true;
   }
 
@@ -319,7 +321,7 @@ export class DevelopmentEmailProvider implements EmailProvider {
       sentAt: new Date().toISOString(),
     };
     this.sentEmails.push(msg);
-    console.log(`[EmailService:DEV] payment.rejected -> ${maskEmail(payload.email)} plan=${payload.planName} reason=${payload.reason}`);
+    log.info(`[EmailService:DEV] payment.rejected -> ${maskEmail(payload.email)} plan=${payload.planName} reason=${payload.reason}`);
     return true;
   }
 
@@ -354,7 +356,7 @@ export class DevelopmentEmailProvider implements EmailProvider {
       sentAt: new Date().toISOString(),
     };
     this.sentEmails.push(msg);
-    console.log(`[EmailService:DEV] Payment escalation email dispatched to ${supportEmail} for Ticket ${payload.ticketNumber}`);
+    log.info(`[EmailService:DEV] Payment escalation email dispatched to ${supportEmail} for Ticket ${payload.ticketNumber}`);
     return true;
   }
 
@@ -413,7 +415,7 @@ export class ProductionSmtpEmailProvider implements EmailProvider {
 
   private async deliver(to: string, subject: string, html: string): Promise<boolean> {
     // In production, transmits RFC 5321 transaction
-    console.log(`[EmailService:SMTP] Delivering message to ${to} via ${this.config.host}:${this.config.port}`);
+    log.info(`[EmailService:SMTP] Delivering message to ${to} via ${this.config.host}:${this.config.port}`);
     return true;
   }
 
@@ -568,7 +570,7 @@ export class ProductionApiEmailProvider implements EmailProvider {
   }
 
   private async deliver(to: string, subject: string, html: string): Promise<boolean> {
-    console.log(`[EmailService:API] Delivering message to ${to} via REST API (${this.endpoint})`);
+    log.info(`[EmailService:API] Delivering message to ${to} via REST API (${this.endpoint})`);
     try {
       const response = await fetch(this.endpoint, {
         method: 'POST',
@@ -590,7 +592,7 @@ export class ProductionApiEmailProvider implements EmailProvider {
       }
       return true;
     } catch (err: any) {
-      console.error(`[EmailService:API:ERROR] Failed to send email to ${to}: ${err.message}`);
+      log.error(`[EmailService:API:ERROR] Failed to send email to ${to}: ${err.message}`);
       throw err;
     }
   }
@@ -746,19 +748,34 @@ export class EmailDomainHealthChecker {
       const txtRecords = await dns.resolveTxt(domain);
       const flattened = txtRecords.map((r) => r.join(''));
       spfRecord = flattened.find((r) => r.startsWith('v=spf1'));
-    } catch {}
+    } catch (dnsErr) {
+      log.debug('DNS SPF TXT lookup failed cleanly', {
+        domain,
+        err: dnsErr instanceof Error ? dnsErr.message : String(dnsErr),
+      });
+    }
 
     try {
       const dmarcTxt = await dns.resolveTxt(`_dmarc.${domain}`);
       const flattened = dmarcTxt.map((r) => r.join(''));
       dmarcRecord = flattened.find((r) => r.startsWith('v=DMARC1'));
-    } catch {}
+    } catch (dnsErr) {
+      log.debug('DNS DMARC TXT lookup failed cleanly', {
+        domain,
+        err: dnsErr instanceof Error ? dnsErr.message : String(dnsErr),
+      });
+    }
 
     try {
       const dkimTxt = await dns.resolveTxt(`resend._domainkey.${domain}`);
       const flattened = dkimTxt.map((r) => r.join(''));
       dkimRecord = flattened.find((r) => r.startsWith('v=DKIM1') || r.includes('k=rsa'));
-    } catch {}
+    } catch (dnsErr) {
+      log.debug('DNS DKIM TXT lookup failed cleanly', {
+        domain,
+        err: dnsErr instanceof Error ? dnsErr.message : String(dnsErr),
+      });
+    }
 
     const spfConfigured = Boolean(spfRecord || process.env.EMAIL_SPF_VERIFIED === 'true');
     const dmarcConfigured = Boolean(dmarcRecord || process.env.EMAIL_DMARC_VERIFIED === 'true');

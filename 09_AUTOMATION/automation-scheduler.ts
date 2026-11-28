@@ -16,6 +16,9 @@ import { AutomationSchedule } from '../10_CONFIG/shared/types/automation.js';
 import { getWorkflowById, runWorkflow } from './automation-engine.js';
 import { getProfileById } from '../02_BROWSER/services/profile-service.js';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('automation-scheduler');
 
 export interface CreateScheduleDTO {
   workflowId: string;
@@ -331,7 +334,9 @@ class AutomationSchedulerService {
     if (row.profile_ids_json) {
       try {
         profileIds = JSON.parse(row.profile_ids_json);
-      } catch {}
+      } catch (err) {
+        log.warn('automation-scheduler profile_ids_json parse failed', { scheduleId: row.id, err });
+      }
     }
 
     return {

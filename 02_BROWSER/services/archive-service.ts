@@ -22,6 +22,8 @@ import { createProxy } from './proxy-service.js';
 import { getDefaultProfileSettings } from '../../10_CONFIG/shared/constants/defaults.js';
 import { encryptData, decryptData, deriveKeyFromPassword } from '../../08_SECURITY/encryption.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
+import { createLogger } from '../../07_BACKEND/utils/logger.js';
+const log = createLogger('archive-service');
 
 
 interface RawArchiveFileStructure {
@@ -40,7 +42,9 @@ function getDefaultExportDir(): string {
       const p = app.getPath('downloads');
       if (p && fs.existsSync(p)) return p;
     }
-  } catch {}
+  } catch (err) {
+    log.debug('archive-service downloads path resolution failed, using tmpdir', { err });
+  }
   return os.tmpdir();
 }
 
@@ -318,7 +322,7 @@ export async function packProfileSessionTarGz(
             if (pad > 0) chunks.push(Buffer.alloc(pad, 0));
             fileCount++;
           } catch (readErr) {
-            console.warn(`[ArchiveService] Skip unreadable file ${relPath}:`, readErr);
+            log.warn(`[ArchiveService] Skip unreadable file ${relPath}:`, readErr);
           }
         }
       }
@@ -327,7 +331,7 @@ export async function packProfileSessionTarGz(
     try {
       scanDir(baseDir);
     } catch (scanErr) {
-      console.warn(`[ArchiveService] Error scanning directory ${baseDir}:`, scanErr);
+      log.warn(`[ArchiveService] Error scanning directory ${baseDir}:`, scanErr);
     }
   }
 
@@ -469,7 +473,9 @@ export async function unpackProfileSessionTarGz(
       if (relPath === 'profile.json') {
         try {
           profileMetadata = JSON.parse(fileData.toString('utf8'));
-        } catch {}
+        } catch (err) {
+          log.debug('archive-service profile.json preview parse failed', { err });
+        }
       }
 
       // Advance past data and 512-byte padding
@@ -518,14 +524,18 @@ export function collectEssentialStorageFiles(profileId: string): Record<string, 
           const content = fs.readFileSync(fullPath);
           totalBytes += stat.size;
           filesMap[relPath] = content.toString('base64');
-        } catch {}
+        } catch (err) {
+          log.debug('archive-service skipped unreadable storage file during export', { relPath, err });
+        }
       }
     }
   }
 
   try {
     scan(baseDir);
-  } catch {}
+  } catch (err) {
+    log.warn('archive-service storage directory scan failed', { baseDir, err });
+  }
 
   return filesMap;
 }
@@ -535,12 +545,12 @@ export function restoreStorageFiles(profileId: string, filesMap: Record<string, 
   for (const [relPath, b64Data] of Object.entries(filesMap)) {
     try {
       if (!relPath || relPath.includes('\0') || path.isAbsolute(relPath) || /^[A-Za-z]:/.test(relPath)) {
-        console.warn(`[ArchiveService] Blocked unsafe restore path: ${relPath}`);
+        log.warn(`[ArchiveService] Blocked unsafe restore path: ${relPath}`);
         continue;
       }
       const targetPath = path.resolve(baseDir, relPath);
       if (targetPath !== baseDir && !targetPath.startsWith(baseDir + path.sep)) {
-        console.warn(`[ArchiveService] Blocked path traversal during restore: ${relPath}`);
+        log.warn(`[ArchiveService] Blocked path traversal during restore: ${relPath}`);
         continue;
       }
       if (targetPath === baseDir) {
@@ -552,7 +562,7 @@ export function restoreStorageFiles(profileId: string, filesMap: Record<string, 
       }
       fs.writeFileSync(targetPath, Buffer.from(b64Data, 'base64'));
     } catch (err) {
-      console.warn(`[ArchiveService] Failed to restore file ${relPath}:`, err);
+      log.warn(`[ArchiveService] Failed to restore file ${relPath}:`, err);
     }
   }
 }
@@ -795,8 +805,8 @@ export function importProfileFromArchive(options: ImportProfileOptions) {
           sourcePath: ext.sourcePath,
           name: ext.name,
         });
-      } catch {
-        // ignore
+      } catch (err) {
+        log.debug('archive-service optional extension restore skipped', { profileId: newProfile.id, extension: ext.name, err });
       }
     }
   }
@@ -958,7 +968,9 @@ export function importCrossPlatformProfiles(dto: CrossPlatformImportDTO): CrossP
             });
             settings.network.directConnection = false;
             settings.network.proxyId = createdProxy.id;
-          } catch {}
+          } catch (err) {
+            log.warn('archive-service imported proxy creation skipped', { host: pHost, port: pPort, err });
+          }
         }
       }
 
@@ -974,7 +986,9 @@ export function importCrossPlatformProfiles(dto: CrossPlatformImportDTO): CrossP
         const cookieStr = typeof cookies === 'string' ? cookies : JSON.stringify(cookies);
         try {
           importCookies(newProfile.id, cookieStr);
-        } catch {}
+        } catch (err) {
+          log.warn('archive-service imported cookie restoration skipped', { profileId: newProfile.id, err });
+        }
       }
 
       importedProfiles.push(newProfile);

@@ -26,11 +26,18 @@ import { getDatabase, flushDatabaseToDisk } from '../../06_DATABASE/connection.j
 import { getWritableUserDataDir } from '../utils/runtime-paths.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 import { getDefaultUpdateFeedUrl, getSiteConfig } from '../../10_CONFIG/shared/site-config.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('updater-service');
 
 function safeLogActivity(level: 'INFO' | 'WARNING' | 'ERROR', action: string, details: string) {
   try {
     logActivity('SYSTEM', level, action, details);
-  } catch {}
+  } catch (err) {
+    log.debug('Updater audit log skipped', {
+      action,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export const DEFAULT_UPDATE_FEED_URL = getDefaultUpdateFeedUrl();
@@ -48,8 +55,11 @@ function getAllowedUpdateFeedHosts(): string[] {
     if (parsedFeed.protocol === 'https:') {
       hosts.add(parsedFeed.hostname.toLowerCase());
     }
-  } catch {
+  } catch (err) {
     // Keep canonical hosts if env feed/website URL is malformed
+    log.debug('Allowed update feed URL parse fell back to defaults', {
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
   return Array.from(hosts);
 }
@@ -94,7 +104,11 @@ export function loadUpdateConfig(): UpdateConfig {
         lastCheckedAt: data.lastCheckedAt,
       };
     }
-  } catch {}
+  } catch (err) {
+    log.warn('Failed reading updater_config.json; using defaults', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   return {
     channel: 'STABLE',
@@ -114,7 +128,7 @@ export function saveUpdateConfig(config: UpdateConfig): void {
     }
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
   } catch (err) {
-    console.error('[UpdaterService] Failed to save config:', err);
+    log.error('[UpdaterService] Failed to save config:', err);
   }
 }
 
@@ -124,7 +138,11 @@ export function getSafeAppVersion(): string {
       const v = app.getVersion();
       if (v) return v;
     }
-  } catch {}
+  } catch (err) {
+    log.debug('app.getVersion unavailable outside packaged Electron', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return APP_VERSION;
 }
 
@@ -138,7 +156,7 @@ function getAutoUpdater(): any {
     autoUpdaterInstance = updaterMod.autoUpdater || updaterMod.default?.autoUpdater || updaterMod;
     return autoUpdaterInstance;
   } catch (err) {
-    console.warn('[UpdaterService] Failed to load autoUpdater:', err);
+    log.warn('[UpdaterService] Failed to load autoUpdater:', err);
     return null;
   }
 }
@@ -170,7 +188,11 @@ export function broadcastStatus(status: UpdateStatusEvent): void {
           win.webContents.send('updater:statusChanged', updateStatus);
         }
       });
-    } catch {}
+    } catch (ipcErr) {
+      log.debug('Skipped updater status IPC broadcast', {
+        err: ipcErr instanceof Error ? ipcErr.message : String(ipcErr),
+      });
+    }
   }
 }
 
@@ -273,7 +295,7 @@ export function initAutoUpdater(): void {
       isManualCheck = false;
     });
   } catch (initErr) {
-    console.warn('[UpdaterService] AutoUpdater initialization warning:', initErr);
+    log.warn('[UpdaterService] AutoUpdater initialization warning:', initErr);
   }
 
   // Periodic check if autoCheck is enabled
@@ -480,7 +502,14 @@ export async function startDownloadUpdate(): Promise<boolean> {
     if (expectedChecksum) {
       const integrity = await verifyFileIntegrity(destPath, expectedChecksum, algorithm, primaryFile.size);
       if (!integrity.verified) {
-        try { fs.unlinkSync(destPath); } catch {}
+        try {
+          fs.unlinkSync(destPath);
+        } catch (unlinkErr) {
+          log.warn('Failed deleting corrupted update artifact', {
+            destPath,
+            err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+          });
+        }
         logActivity('SYSTEM', 'ERROR', 'Auto-Updater', `Tampered or corrupted update artifact rejected: ${integrity.error}`);
         broadcastStatus({
           state: 'ERROR',
@@ -622,7 +651,11 @@ export function setUpdateConfig(partial: Partial<UpdateConfig>): UpdateConfig {
         });
       }
     }
-  } catch {}
+  } catch (err) {
+    log.warn('Failed updating live autoUpdater runtime configuration', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   broadcastStatus(updateStatus);
   return { ...activeConfig };

@@ -18,6 +18,8 @@ import { getEmailProvider } from '../../05_AUTH/email-service.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 import { websiteUrl } from '../../10_CONFIG/shared/site-config.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('support-ticket-service');
 
 export interface SupportTicket {
   id: string;
@@ -222,7 +224,7 @@ export async function handleSupportChatMessage(dto: SupportChatRequest): Promise
         now
       );
     } catch (err) {
-      console.error('[SupportService] Failed to insert support ticket:', err);
+      log.error('[SupportService] Failed to insert support ticket:', err);
     }
 
     // 2. Dispatch email notification to support team
@@ -243,7 +245,7 @@ export async function handleSupportChatMessage(dto: SupportChatRequest): Promise
         db.prepare('UPDATE support_tickets SET email_sent = 1, updated_at = ? WHERE id = ?').run(new Date().toISOString(), id);
       }
     } catch (err) {
-      console.error('[SupportService] Failed to dispatch escalation email:', err);
+      log.error('[SupportService] Failed to dispatch escalation email:', err);
     }
 
     // 3. Log audit event safely
@@ -263,7 +265,7 @@ export async function handleSupportChatMessage(dto: SupportChatRequest): Promise
         result: 'SUCCESS',
       });
     } catch (auditErr) {
-      console.warn('[SupportService] Audit logging warning:', auditErr);
+      log.warn('[SupportService] Audit logging warning:', auditErr);
     }
 
     return {
@@ -295,7 +297,12 @@ export async function handleSupportChatMessage(dto: SupportChatRequest): Promise
       now,
       now
     );
-  } catch {}
+  } catch (err) {
+    log.warn('Failed saving support ticket history row to SQLite', {
+      ticketNumber,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   return {
     success: true,
@@ -381,7 +388,7 @@ export function updateSupportTicketStatus(
       result: 'SUCCESS',
     });
   } catch (auditErr) {
-    console.warn('[SupportService] Audit logging warning:', auditErr);
+    log.warn('[SupportService] Audit logging warning:', auditErr);
   }
 
   const updated = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id) as any;
@@ -443,7 +450,7 @@ export function replySupportTicket(
       result: 'SUCCESS',
     });
   } catch (auditErr) {
-    console.warn('[SupportService] Audit logging warning:', auditErr);
+    log.warn('[SupportService] Audit logging warning:', auditErr);
   }
 
   const updated = db.prepare('SELECT * FROM support_tickets WHERE id = ?').get(id) as any;

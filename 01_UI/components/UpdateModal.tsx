@@ -52,8 +52,8 @@ export const UpdateModal: React.FC = () => {
         setIsUpdating(false);
         return;
       }
-    } catch {
-      // Handled silently
+    } catch (err) {
+      console.debug('[UpdateModal] installUpdate failed', err);
     } finally {
       setIsUpdating(false);
     }

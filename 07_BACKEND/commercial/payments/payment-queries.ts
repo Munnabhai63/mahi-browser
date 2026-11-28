@@ -11,6 +11,9 @@ import {
 } from './payment-types.js';
 import { YoupiPgPaymentAdapter } from './payment-adapters.js';
 import { activateSubscriptionFromPaymentImpl } from './payment-activation.js';
+import { createLogger } from '../../utils/logger.js';
+
+const log = createLogger('payment-queries');
 
 export function getUserInvoicesImpl(userId: string): PaymentInvoiceRecord[] {
   const db = getDatabase();
@@ -124,7 +127,12 @@ function mapPaymentRow(r: any) {
   let metadata: any = {};
   try {
     metadata = JSON.parse(r.metadata_json || '{}');
-  } catch {}
+  } catch (parseErr) {
+    log.warn('Failed parsing payment metadata_json in payment-queries', {
+      paymentId: r.id,
+      err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+    });
+  }
   return {
     id: r.id,
     userId: r.user_id,

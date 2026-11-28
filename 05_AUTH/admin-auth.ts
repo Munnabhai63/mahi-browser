@@ -2,6 +2,8 @@ import crypto from 'node:crypto';
 import { getDatabase } from '../06_DATABASE/connection.js';
 import { getAdminSalt, getMasterAdminSecret } from '../08_SECURITY/install-secrets.js';
 import { constantTimeEqualStrings } from '../07_BACKEND/utils/http-security.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+const log = createLogger('admin-auth');
 
 /**
  * Hashes a PIN or password using scrypt-v1 (N=16384, r=8, p=1, keylen=64).
@@ -96,7 +98,7 @@ export function verifyAdminAccess(providedSecretOrKey: string): boolean {
         return true;
       }
     } catch (err: any) {
-      console.error('[AdminAuth] Error verifying owner_pin:', err?.message);
+      log.error('[AdminAuth] Error verifying owner_pin:', err?.message);
     }
   }
 

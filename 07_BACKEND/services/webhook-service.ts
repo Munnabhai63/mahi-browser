@@ -27,6 +27,8 @@ import {
   WebhookDeliveryRecord,
   WebhookPayload,
 } from '../../10_CONFIG/shared/types/remote-api.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('webhook-service');
 
 // ============================================================================
 // SSRF PROTECTION VALIDATION
@@ -529,7 +531,7 @@ export class WebhookService {
 
       // Asynchronous delivery without blocking
       this.deliverPayloadAsync(epRow, payload, options.allowHttp).catch((err) => {
-        console.error(`[Webhook] Delivery worker error for endpoint ${epRow.id}:`, err);
+        log.error(`[Webhook] Delivery worker error for endpoint ${epRow.id}:`, err);
       });
 
       dispatchedCount++;

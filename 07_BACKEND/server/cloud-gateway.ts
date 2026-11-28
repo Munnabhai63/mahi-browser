@@ -13,6 +13,9 @@ import { getStorageProvider } from '../../08_SECURITY/storage-provider.js';
 import { applyFastifySecurityHeaders } from '../utils/security-headers.js';
 import { InvalidJsonError, isTrustedOrigin } from '../utils/http-security.js';
 import { toSafeErrorResponse } from '../utils/app-error.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('cloud-gateway');
 import {
   dispatchThroughFastifyReply,
   registerPrefixBridgePlugin,
@@ -371,7 +374,11 @@ export async function stopFastifyCloudGateway(): Promise<void> {
   if (activeGatewayInstance) {
     try {
       await activeGatewayInstance.close();
-    } catch {}
+    } catch (closeErr) {
+      log.debug('Fastify cloud gateway close error on shutdown', {
+        err: closeErr instanceof Error ? closeErr.message : String(closeErr),
+      });
+    }
     activeGatewayInstance = null;
   }
   await disconnectPrisma();

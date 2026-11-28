@@ -51,7 +51,7 @@ export default function PricingTable() {
           );
         }
       })
-      .catch(() => {});
+      .catch((err) => { console.debug('[PricingTable] pricing catalog fetch failed', err); });
 
     fetch(`${BRAND.apiUrl}/api/v1/billing/gateways`)
       .then((res) => (res.ok ? res.json() : null))
@@ -68,7 +68,7 @@ export default function PricingTable() {
           setWhatsappUrl(`https://wa.me/${data.support.whatsappRawNumber}`);
         }
       })
-      .catch(() => {});
+      .catch((err) => { console.debug('[PricingTable] gateways metadata fetch failed', err); });
   }, []);
 
   const filteredPlans = plans.filter((p) => p.category === category || p.id === 'free');

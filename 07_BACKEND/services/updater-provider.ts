@@ -6,6 +6,9 @@ import path from 'node:path';
 import { UpdateChannel, UpdateReleaseManifest, UpdateProgress } from '../../10_CONFIG/shared/types/updater.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 import { getDefaultUpdateFeedUrl } from '../../10_CONFIG/shared/site-config.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('updater-provider');
 
 function getUpdaterUserAgent(): string {
   return `MAHI-Browser-Updater/${APP_VERSION} (${os.platform()}; ${os.arch()})`;
@@ -136,7 +139,14 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
               if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
                 res.resume();
                 fileStream.close();
-                try { fs.unlinkSync(tempFile); } catch {}
+                try {
+                  fs.unlinkSync(tempFile);
+                } catch (unlinkErr) {
+                  log.debug('Temp update binary unlink skipped on redirect', {
+                    tempFile,
+                    err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+                  });
+                }
                 if (redirectsLeft <= 0) {
                   return reject(new Error('Too many redirects downloading update binary'));
                 }
@@ -145,7 +155,14 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
               }
               if (res.statusCode !== 200) {
                 fileStream.close();
-                try { fs.unlinkSync(tempFile); } catch {}
+                try {
+                  fs.unlinkSync(tempFile);
+                } catch (unlinkErr) {
+                  log.debug('Temp update binary unlink skipped on HTTP error', {
+                    tempFile,
+                    err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+                  });
+                }
                 reject(new Error(`Failed to download update binary. HTTP Status: ${res.statusCode}`));
                 return;
               }
@@ -185,7 +202,14 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
 
               res.on('error', (err) => {
                 fileStream.close();
-                try { fs.unlinkSync(tempFile); } catch {}
+                try {
+                  fs.unlinkSync(tempFile);
+                } catch (unlinkErr) {
+                  log.debug('Temp update binary unlink skipped on response error', {
+                    tempFile,
+                    err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+                  });
+                }
                 reject(err);
               });
             }
@@ -194,13 +218,27 @@ export class GenericHttpUpdateProvider implements UpdateProvider {
           req.on('timeout', () => {
             req.destroy(new Error('Update download request timed out'));
             fileStream.close();
-            try { fs.unlinkSync(tempFile); } catch {}
+            try {
+              fs.unlinkSync(tempFile);
+            } catch (unlinkErr) {
+              log.debug('Temp update binary unlink skipped on request timeout', {
+                tempFile,
+                err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+              });
+            }
             reject(new Error('Update download timed out'));
           });
 
           req.on('error', (err) => {
             fileStream.close();
-            try { fs.unlinkSync(tempFile); } catch {}
+            try {
+              fs.unlinkSync(tempFile);
+            } catch (unlinkErr) {
+              log.debug('Temp update binary unlink skipped on request error', {
+                tempFile,
+                err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+              });
+            }
             reject(err);
           });
         } catch (err) {

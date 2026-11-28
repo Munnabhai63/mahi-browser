@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { BrowserEngine } from '../10_CONFIG/shared/types/profile.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
 import {
   isManagedEngineInstalled,
   getManagedEngineExecutablePath,
@@ -13,6 +14,8 @@ import {
   hasNativeStealthEngine,
   type MahiEngineManifest,
 } from './managed-engine.js';
+
+const log = createLogger('browser-detector');
 
 export interface DetectedBrowser {
   name: string;
@@ -126,7 +129,12 @@ export function getMahiCustomCorePath(): string | null {
           return candidate;
         }
       }
-    } catch {}
+    } catch (err) {
+      log.debug('Failed scanning ~/.mahi/cores for custom Chromium binary', {
+        mahiCoresDir,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   // Optional env-configured custom core directories
@@ -172,7 +180,12 @@ export function getCamoufoxExecutablePath(): string | null {
           return marker.executablePath;
         }
       }
-    } catch {}
+    } catch (err) {
+      log.warn('Failed reading Camoufox marker manifest', {
+        markerPath,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   // 0b. Glob check inside engines/camoufox for any camoufox* binary
@@ -190,7 +203,12 @@ export function getCamoufoxExecutablePath(): string | null {
           }
         }
       }
-    } catch {}
+    } catch (err) {
+      log.debug('Failed scanning managed engines/camoufox directory', {
+        camoufoxEnginesDir,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   const exeName = platform === 'win32' ? 'camoufox.exe' : 'camoufox';
@@ -208,7 +226,12 @@ export function getCamoufoxExecutablePath(): string | null {
           if (fs.existsSync(binFallback)) return binFallback;
         }
       }
-    } catch {}
+    } catch (err) {
+      log.debug('Failed scanning ~/.mahi/cores for Camoufox binary', {
+        mahiCoresDir,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   // 2. Check ~/.cache/camoufox
@@ -222,7 +245,12 @@ export function getCamoufoxExecutablePath(): string | null {
         const subExe = path.join(cacheDir, sub, exeName);
         if (fs.existsSync(subExe)) return subExe;
       }
-    } catch {}
+    } catch (err) {
+      log.debug('Failed scanning ~/.cache/camoufox directory', {
+        cacheDir,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   // 3. Check OS standard locations

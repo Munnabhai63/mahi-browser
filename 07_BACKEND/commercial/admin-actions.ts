@@ -8,6 +8,8 @@ import {
   setUserFeatureOverrides,
 } from './commercial-auth-service.js';
 import { resetAllUserDevices } from './commercial-device-service.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('admin-actions');
 
 export const MIRROR_MISSING_ERROR_MESSAGE =
   'This account exists only in the central auth registry (mirror-missing). A commercial record is required before plan/quota/override/device changes. Ask the user to sign in once to create it, then retry.';
@@ -212,7 +214,7 @@ export async function adminBoostQuota(
     const bonusProfiles = updated?.bonus_profiles ?? 0;
     const rawProxyBytes = updated?.bonus_proxy_bytes ?? 0n;
     if (rawProxyBytes > BigInt(Number.MAX_SAFE_INTEGER)) {
-      console.warn(`[adminBoostQuota] bonus_proxy_bytes exceeds MAX_SAFE_INTEGER for user ${userId}: ${rawProxyBytes}`);
+      log.warn(`[adminBoostQuota] bonus_proxy_bytes exceeds MAX_SAFE_INTEGER for user ${userId}: ${rawProxyBytes}`);
     }
     const bonusProxyBytes = Number(rawProxyBytes);
 
@@ -243,7 +245,7 @@ export async function adminBoostQuota(
     const bonusProfiles = updated?.bonus_profiles ?? 0;
     const rawProxyBytes = updated?.bonus_proxy_bytes ?? 0n;
     if (rawProxyBytes > BigInt(Number.MAX_SAFE_INTEGER)) {
-      console.warn(`[adminBoostQuota] bonus_proxy_bytes exceeds MAX_SAFE_INTEGER for user ${userId}: ${rawProxyBytes}`);
+      log.warn(`[adminBoostQuota] bonus_proxy_bytes exceeds MAX_SAFE_INTEGER for user ${userId}: ${rawProxyBytes}`);
     }
     const bonusProxyBytes = Number(rawProxyBytes);
 
@@ -304,7 +306,7 @@ export async function adminSetFeatureOverrides(
   try {
     existingOverrides = JSON.parse(current.feature_overrides || '{}');
   } catch (err) {
-    console.warn(`[adminSetFeatureOverrides] Failed to parse feature_overrides JSON for user ${userId}, using {}:`, err);
+    log.warn(`[adminSetFeatureOverrides] Failed to parse feature_overrides JSON for user ${userId}, using {}:`, err);
     existingOverrides = {};
   }
 

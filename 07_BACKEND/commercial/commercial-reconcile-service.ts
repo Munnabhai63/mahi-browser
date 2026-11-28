@@ -13,6 +13,8 @@ import { getDatabase } from '../../06_DATABASE/connection.js';
 import { isPostgresConfigured, getCentralRepository } from '../../06_DATABASE/central-repository.js';
 import { CANONICAL_PLAN_CATALOG, legacyPlanIdToCanonical } from './canonical-plan-catalog.js';
 import { getCommercialPlanById } from './commercial-plan-service.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('commercial-reconcile-service');
 
 const inFlightReconciliations = new Set<string>();
 
@@ -71,7 +73,7 @@ export async function reconcileUserPlanOnLogin(
         ORDER BY created_at DESC
       `).all(userId) as any[];
     } catch (err: any) {
-      console.error('[Reconcile] Error fetching subscriptions for user', userId, err?.message);
+      log.error('[Reconcile] Error fetching subscriptions for user', userId, err?.message);
       return { reconciled: false };
     }
 
@@ -85,7 +87,7 @@ export async function reconcileUserPlanOnLogin(
           currentPlan = pgUser.plan_id;
         }
       } catch (err: any) {
-        console.error('[Reconcile] Error reading PG user plan for', userId, err?.message);
+        log.error('[Reconcile] Error reading PG user plan for', userId, err?.message);
       }
     } else {
       try {
@@ -93,7 +95,12 @@ export async function reconcileUserPlanOnLogin(
         if (row?.plan_id) {
           currentPlan = row.plan_id;
         }
-      } catch {}
+      } catch (err) {
+        log.debug('Skipped SQLite auth_users plan lookup in reconcile', {
+          userId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     // Identify active subscription
@@ -128,7 +135,7 @@ export async function reconcileUserPlanOnLogin(
             profile_quota: targetProfiles,
           });
         } catch (err: any) {
-          console.error('[Reconcile][CRITICAL] PG plan upgrade failed for user', userId, err?.message);
+          log.error('[Reconcile][CRITICAL] PG plan upgrade failed for user', userId, err?.message);
           return { reconciled: false, planId: currentPlan };
         }
       }
@@ -138,7 +145,13 @@ export async function reconcileUserPlanOnLogin(
           .run(targetPlan, targetProfiles, now, userId);
         db.prepare('UPDATE commercial_users SET plan_id = ?, updated_at = ? WHERE id = ?')
           .run(targetPlan, now, userId);
-      } catch {}
+      } catch (err) {
+        log.warn('Failed persisting reconciled plan upgrade to SQLite', {
+          userId,
+          targetPlan,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
 
       return { reconciled: true, planId: targetPlan };
     }
@@ -153,7 +166,7 @@ export async function reconcileUserPlanOnLogin(
     });
 
     if (expiredSub && currentPlan !== 'plan_free') {
-      console.warn('[Reconcile][EXPIRED] Active subscription expired for user', userId, 'resetting to plan_free');
+      log.warn('[Reconcile][EXPIRED] Active subscription expired for user', userId, 'resetting to plan_free');
       const freeQuota = getProfileQuotaForPlan('plan_free');
 
       if (isPostgresConfigured()) {
@@ -164,7 +177,7 @@ export async function reconcileUserPlanOnLogin(
             profile_quota: freeQuota,
           });
         } catch (err: any) {
-          console.error('[Reconcile][CRITICAL] PG plan reset failed for user', userId, err?.message);
+          log.error('[Reconcile][CRITICAL] PG plan reset failed for user', userId, err?.message);
           return { reconciled: false, planId: currentPlan };
         }
       }
@@ -176,7 +189,13 @@ export async function reconcileUserPlanOnLogin(
           .run('plan_free', now, userId);
         db.prepare("UPDATE commercial_subscriptions SET status = 'EXPIRED' WHERE id = ?")
           .run(expiredSub.id);
-      } catch {}
+      } catch (err) {
+        log.warn('Failed persisting reconciled expired-plan reset to SQLite', {
+          userId,
+          subId: expiredSub.id,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
 
       return { reconciled: true, planId: 'plan_free' };
     }

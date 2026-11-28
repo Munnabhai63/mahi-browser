@@ -35,12 +35,14 @@ import { injectNativeStealthPreferences } from './stealth-native-preferences.js'
 import { resolveMultiCoreExecutablePath } from './services/multi-core-resolver.js';
 import { buildVideoCaptureFlags } from './services/video-capture-service.js';
 import { ensureCamoufoxInstalled } from './services/engine-download-service.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+const log = createLogger('launcher');
 
 
 function debugLog(msg: string) {
   const fn = (globalThis as any).__mahiDebugLog;
   if (fn) fn(msg);
-  else console.log(msg);
+  else log.info(msg);
 }
 
 /**
@@ -204,8 +206,11 @@ export function hasExistingSession(storageDir: string): boolean {
     if (fs.existsSync(historyFile) && fs.statSync(historyFile).size > 0) {
       return true;
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    log.debug('Session presence probe failed cleanly', {
+      storageDir,
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
   return false;
 }
@@ -613,8 +618,8 @@ export function ensureProfileStealthExtension(
   function registerNative(fn, name) {
     if (typeof fn === 'function') {
       var n = name || fn.name || '';
-      try { Object.defineProperty(fn, 'name', { value: n, configurable: true }); } catch (e) {}
-      try { Object.defineProperty(fn, 'length', { value: fn.length, configurable: true }); } catch (e) {}
+      try { Object.defineProperty(fn, 'name', { value: n, configurable: true }); } catch (e) { void 0; /* page-context stealth isolation */ }
+      try { Object.defineProperty(fn, 'length', { value: fn.length, configurable: true }); } catch (e) { void 0; /* page-context stealth isolation */ }
       if (hookedProxies) {
         hookedProxies.set(fn, n);
       } else if (hookedProxiesList) {
@@ -651,7 +656,7 @@ export function ensureProfileStealthExtension(
     });
     Function.prototype.toString = proxyToString;
     registerNative(proxyToString, 'toString');
-  } catch(e) {}
+  } catch(e) { void 0; /* page-context stealth isolation */ }
 
   // Shared Deterministic Mulberry32 Perturbation Streams
   var canvasRng = createMulberry32(pSeed ^ 0x43414e56);
@@ -819,7 +824,7 @@ export function ensureProfileStealthExtension(
           apply: function(target, thisArg, args) {
             try {
               if (!isCssFontAllowed(args[0])) return false;
-            } catch(e) {}
+            } catch(e) { void 0; /* page-context stealth isolation */ }
             return target.apply(thisArg, args);
           }
         });
@@ -833,7 +838,7 @@ export function ensureProfileStealthExtension(
           apply: function(target, thisArg, args) {
             try {
               if (!isCssFontAllowed(args[0])) return false;
-            } catch(e) {}
+            } catch(e) { void 0; /* page-context stealth isolation */ }
             return target.apply(thisArg, args);
           }
         });
@@ -841,7 +846,7 @@ export function ensureProfileStealthExtension(
         registerNative(proxyDocCheck, 'check');
         registerNative(origDocCheck, 'check');
       }
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
 
     try {
       var ctx2dProto = targetWin.CanvasRenderingContext2D && targetWin.CanvasRenderingContext2D.prototype;
@@ -852,13 +857,13 @@ export function ensureProfileStealthExtension(
             if (thisArg && typeof thisArg.font === 'string') {
               var origFont = thisArg.font;
               var fallbackFamily = null;
-              try { fallbackFamily = resolveAllowedFallbackFont(origFont); } catch(e) {}
+              try { fallbackFamily = resolveAllowedFallbackFont(origFont); } catch(e) { void 0; /* page-context stealth isolation */ }
               if (fallbackFamily) {
                 try {
                   thisArg.font = replaceCssFontFamilies(origFont, fallbackFamily);
                   return target.apply(thisArg, args);
                 } finally {
-                  try { thisArg.font = origFont; } catch(e) {}
+                  try { thisArg.font = origFont; } catch(e) { void 0; /* page-context stealth isolation */ }
                 }
               }
             }
@@ -877,13 +882,13 @@ export function ensureProfileStealthExtension(
             if (thisArg && typeof thisArg.font === 'string') {
               var origFont = thisArg.font;
               var fallbackFamily = null;
-              try { fallbackFamily = resolveAllowedFallbackFont(origFont); } catch(e) {}
+              try { fallbackFamily = resolveAllowedFallbackFont(origFont); } catch(e) { void 0; /* page-context stealth isolation */ }
               if (fallbackFamily) {
                 try {
                   thisArg.font = replaceCssFontFamilies(origFont, fallbackFamily);
                   return target.apply(thisArg, args);
                 } finally {
-                  try { thisArg.font = origFont; } catch(e) {}
+                  try { thisArg.font = origFont; } catch(e) { void 0; /* page-context stealth isolation */ }
                 }
               }
             }
@@ -894,7 +899,7 @@ export function ensureProfileStealthExtension(
         registerNative(proxyOffMeasure, 'measureText');
         registerNative(origOffMeasure, 'measureText');
       }
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
   }
 
   function spoofScreen(targetWin, sWidth, sHeight, sDpr, availOffsetY, orientType, sColorDepth) {
@@ -910,7 +915,7 @@ export function ensureProfileStealthExtension(
         enumerable: true
       });
       registerNative(dprGetter, 'get devicePixelRatio');
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
 
     try {
       var scr = targetWin.screen;
@@ -922,13 +927,13 @@ export function ensureProfileStealthExtension(
           try {
             Object.defineProperty(scrProto, prop, { get: getter, configurable: true, enumerable: true });
             applied = true;
-          } catch(e) {}
+          } catch(e) { void 0; /* page-context stealth isolation */ }
         }
         if (scr) {
           try {
             Object.defineProperty(scr, prop, { get: getter, configurable: true, enumerable: true });
             applied = true;
-          } catch(e) {}
+          } catch(e) { void 0; /* page-context stealth isolation */ }
         }
         if (applied) registerNative(getter, 'get ' + prop);
       };
@@ -941,7 +946,7 @@ export function ensureProfileStealthExtension(
       defScreenProp('colorDepth', cDepth);
       defScreenProp('pixelDepth', cDepth);
       defScreenProp('orientation', orientationObj);
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
   }
 
   function makeGroupHex(seedVal, saltInt) {
@@ -1036,10 +1041,10 @@ export function ensureProfileStealthExtension(
         var getPdfEnabled = function() { return pdfEnabled; };
 
         if (targetWin.navigator) {
-          try { delete targetWin.navigator.plugins; } catch(e) {}
-          try { delete targetWin.navigator.mimeTypes; } catch(e) {}
-          try { delete targetWin.navigator.pdfViewerEnabled; } catch(e) {}
-          try { delete targetWin.navigator.getGamepads; } catch(e) {}
+          try { delete targetWin.navigator.plugins; } catch(e) { void 0; /* page-context stealth isolation */ }
+          try { delete targetWin.navigator.mimeTypes; } catch(e) { void 0; /* page-context stealth isolation */ }
+          try { delete targetWin.navigator.pdfViewerEnabled; } catch(e) { void 0; /* page-context stealth isolation */ }
+          try { delete targetWin.navigator.getGamepads; } catch(e) { void 0; /* page-context stealth isolation */ }
         }
         Object.defineProperty(tNavProto, 'plugins', { get: getPlugins, enumerable: true, configurable: true });
         Object.defineProperty(tNavProto, 'mimeTypes', { get: getMimes, enumerable: true, configurable: true });
@@ -1057,7 +1062,7 @@ export function ensureProfileStealthExtension(
         registerNative(proxyGetGamepads, 'getGamepads');
         if (origGetGamepads) registerNative(origGetGamepads, 'getGamepads');
       }
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
 
     // 3. mediaDevices.enumerateDevices
     try {
@@ -1097,7 +1102,7 @@ export function ensureProfileStealthExtension(
         registerNative(proxyInstEnum, 'enumerateDevices');
         registerNative(origInstEnum, 'enumerateDevices');
       }
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
 
     // 4. speechSynthesis.getVoices() per OS
     try {
@@ -1144,9 +1149,9 @@ export function ensureProfileStealthExtension(
       if (targetWin.speechSynthesis && typeof targetWin.speechSynthesis.dispatchEvent === 'function' && typeof targetWin.Event === 'function') {
         try {
           targetWin.speechSynthesis.dispatchEvent(new targetWin.Event('voiceschanged'));
-        } catch(e) {}
+        } catch(e) { void 0; /* page-context stealth isolation */ }
       }
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
 
     // 5. Device Sensors: Accelerometer / Gyroscope / AbsoluteOrientationSensor (mobile only)
     try {
@@ -1182,7 +1187,7 @@ export function ensureProfileStealthExtension(
             SensorCtor.prototype.addEventListener = fnAdd;
             SensorCtor.prototype.removeEventListener = fnRem;
             if (typeof Symbol !== 'undefined' && Symbol.toStringTag) {
-              try { Object.defineProperty(SensorCtor.prototype, Symbol.toStringTag, { value: clsName, configurable: true }); } catch(e) {}
+              try { Object.defineProperty(SensorCtor.prototype, Symbol.toStringTag, { value: clsName, configurable: true }); } catch(e) { void 0; /* page-context stealth isolation */ }
             }
             registerNative(SensorCtor, clsName);
             registerNative(fnStart, 'start');
@@ -1194,15 +1199,15 @@ export function ensureProfileStealthExtension(
         }
       } else {
         for (var dni = 0; dni < sensorNames.length; dni++) {
-          try { delete targetWin[sensorNames[dni]]; } catch(e) {}
+          try { delete targetWin[sensorNames[dni]]; } catch(e) { void 0; /* page-context stealth isolation */ }
           try {
             if (typeof targetWin[sensorNames[dni]] !== 'undefined') {
               Object.defineProperty(targetWin, sensorNames[dni], { value: undefined, configurable: true, writable: true });
             }
-          } catch(e) {}
+          } catch(e) { void 0; /* page-context stealth isolation */ }
         }
       }
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
   }
 
   // Synchronous Cross-Realm <iframe> Hooking & Comprehensive Stealth Propagation
@@ -1241,7 +1246,7 @@ export function ensureProfileStealthExtension(
           function spoofTargetNav(prop, val) {
             try {
               if (targetWin.navigator) {
-                try { delete targetWin.navigator[prop]; } catch(e) {}
+                try { delete targetWin.navigator[prop]; } catch(e) { void 0; /* page-context stealth isolation */ }
               }
               var desc = Object.getOwnPropertyDescriptor(tNavProto, prop);
               var dummy = { get [prop]() { return val; } };
@@ -1264,7 +1269,7 @@ export function ensureProfileStealthExtension(
                 configurable: desc ? desc.configurable : true
               });
               registerNative(proxy, 'get ' + prop);
-            } catch(e) {}
+            } catch(e) { void 0; /* page-context stealth isolation */ }
           }
           spoofTargetNav('webdriver', false);
           spoofTargetNav('hardwareConcurrency', ${hardwareConcurrency});
@@ -1335,7 +1340,7 @@ export function ensureProfileStealthExtension(
                   toJSON: { value: tToJSON, enumerable: true, configurable: true, writable: true },
                 });
                 if (typeof Symbol !== 'undefined' && Symbol.toStringTag) {
-                  try { Object.defineProperty(tUaProto, Symbol.toStringTag, { value: 'NavigatorUAData', configurable: true }); } catch(e) {}
+                  try { Object.defineProperty(tUaProto, Symbol.toStringTag, { value: 'NavigatorUAData', configurable: true }); } catch(e) { void 0; /* page-context stealth isolation */ }
                 }
                 tUaDataObj = Object.create(tUaProto);
               } else {
@@ -1348,7 +1353,7 @@ export function ensureProfileStealthExtension(
                   toJSON: { value: tToJSON, enumerable: true, configurable: true, writable: true },
                 });
                 if (typeof Symbol !== 'undefined' && Symbol.toStringTag) {
-                  try { Object.defineProperty(tUaDataObj, Symbol.toStringTag, { value: 'NavigatorUAData', configurable: true }); } catch(e) {}
+                  try { Object.defineProperty(tUaDataObj, Symbol.toStringTag, { value: 'NavigatorUAData', configurable: true }); } catch(e) { void 0; /* page-context stealth isolation */ }
                 }
               }
               registerNative(getTBrands, 'get brands');
@@ -1378,7 +1383,7 @@ export function ensureProfileStealthExtension(
               });
               registerNative(proxyNavUa, 'get userAgentData');
               if (tUaDesc && typeof tUaDesc.get === 'function') registerNative(tUaDesc.get, 'get userAgentData');
-            } catch(e) {}
+            } catch(e) { void 0; /* page-context stealth isolation */ }
           }
         }
 
@@ -1408,7 +1413,7 @@ export function ensureProfileStealthExtension(
                           return target.apply(clone, args);
                         }
                       }
-                    } catch(e) {}
+                    } catch(e) { void 0; /* page-context stealth isolation */ }
                     return target.apply(thisArg, args);
                   }
                 });
@@ -1434,7 +1439,7 @@ export function ensureProfileStealthExtension(
                           return target.apply(clone, args);
                         }
                       }
-                    } catch(e) {}
+                    } catch(e) { void 0; /* page-context stealth isolation */ }
                     return target.apply(thisArg, args);
                   }
                 });
@@ -1455,7 +1460,7 @@ export function ensureProfileStealthExtension(
                       var cw = (thisArg && thisArg.canvas) ? thisArg.canvas.width : imgData.width;
                       var ch = (thisArg && thisArg.canvas) ? thisArg.canvas.height : imgData.height;
                       applyNoiseToImageData(imgData, sx, sy, cw, ch);
-                    } catch(e) {}
+                    } catch(e) { void 0; /* page-context stealth isolation */ }
                     return imgData;
                   }
                 });
@@ -1464,7 +1469,7 @@ export function ensureProfileStealthExtension(
                 registerNative(tOrigGetID, 'getImageData');
               }
             }
-          } catch(e) {}
+          } catch(e) { void 0; /* page-context stealth isolation */ }
         }
 
         // 4. WebGL in targetWin
@@ -1496,7 +1501,7 @@ export function ensureProfileStealthExtension(
               }
               if (targetWin.WebGLRenderingContext) spoofTargetWebGL(targetWin.WebGLRenderingContext.prototype);
               if (targetWin.WebGL2RenderingContext) spoofTargetWebGL(targetWin.WebGL2RenderingContext.prototype);
-            } catch(e) {}
+            } catch(e) { void 0; /* page-context stealth isolation */ }
           }
 
           applyFontMasking(targetWin);
@@ -1525,7 +1530,7 @@ export function ensureProfileStealthExtension(
             });
             targetWin.Date.prototype.getTimezoneOffset = proxyDateTz;
             registerNative(proxyDateTz, 'getTimezoneOffset');
-          } catch(e) {}
+          } catch(e) { void 0; /* page-context stealth isolation */ }
         }
 
         // 5b. AudioBuffer & AudioWorklet jitter propagation in targetWin
@@ -1560,7 +1565,7 @@ export function ensureProfileStealthExtension(
               registerNative(tProxyGetChannelData, 'getChannelData');
               registerNative(tOrigGetChannelData, 'getChannelData');
             }
-          } catch(e) {}
+          } catch(e) { void 0; /* page-context stealth isolation */ }
         }
 
         // 5. frames in targetWin
@@ -1576,10 +1581,10 @@ export function ensureProfileStealthExtension(
                   try {
                     if (framesObj && framesObj.length) {
                       for (var fi = 0; fi < framesObj.length; fi++) {
-                        try { patchRealm(framesObj[fi], nextDepth); } catch(e) {}
+                        try { patchRealm(framesObj[fi], nextDepth); } catch(e) { void 0; /* page-context stealth isolation */ }
                       }
                     }
-                  } catch(e) {}
+                  } catch(e) { void 0; /* page-context stealth isolation */ }
                   return framesObj;
                 }
               });
@@ -1590,9 +1595,9 @@ export function ensureProfileStealthExtension(
               });
               registerNative(proxyGetTWinFrames, 'get frames');
             }
-          } catch(e) {}
+          } catch(e) { void 0; /* page-context stealth isolation */ }
         }
-      } catch(e) {}
+      } catch(e) { void 0; /* page-context stealth isolation */ }
     };
 
     if (typeof HTMLIFrameElement !== 'undefined' && HTMLIFrameElement.prototype) {
@@ -1644,10 +1649,10 @@ export function ensureProfileStealthExtension(
             try {
               if (framesObj && framesObj.length) {
                 for (var fi = 0; fi < framesObj.length; fi++) {
-                  try { patchRealm(framesObj[fi], 1); } catch(e) {}
+                  try { patchRealm(framesObj[fi], 1); } catch(e) { void 0; /* page-context stealth isolation */ }
                 }
               }
-            } catch(e) {}
+            } catch(e) { void 0; /* page-context stealth isolation */ }
             return framesObj;
           }
         });
@@ -1659,7 +1664,7 @@ export function ensureProfileStealthExtension(
         registerNative(proxyGetFrames, 'get frames');
       }
     }
-  } catch(e) {}
+  } catch(e) { void 0; /* page-context stealth isolation */ }
 
   // -------------------------------------------------------------
   // 1. Automation & WebDriver Masking
@@ -1701,9 +1706,9 @@ export function ensureProfileStealthExtension(
       }
     }
     if (typeof navigator !== 'undefined') {
-      try { delete navigator.webdriver; } catch(e) {}
+      try { delete navigator.webdriver; } catch(e) { void 0; /* page-context stealth isolation */ }
     }
-  } catch(e) {}
+  } catch(e) { void 0; /* page-context stealth isolation */ }
 
   // Remove Chromedriver / automation artifacts (pattern-based sweep)
   try {
@@ -1711,10 +1716,10 @@ export function ensureProfileStealthExtension(
     var autoRegex = /^(\\$?cdc_|__webdriver|__selenium|__fxdriver)/;
     for (var aIdx = 0; aIdx < windowPropNames.length; aIdx++) {
       if (autoRegex.test(windowPropNames[aIdx])) {
-        try { delete window[windowPropNames[aIdx]]; } catch(e) {}
+        try { delete window[windowPropNames[aIdx]]; } catch(e) { void 0; /* page-context stealth isolation */ }
       }
     }
-  } catch(e) {}
+  } catch(e) { void 0; /* page-context stealth isolation */ }
 
   // Chrome Runtime Mocking (for Chromium-family engines)
   if (!${isCamoufox}) {
@@ -1737,7 +1742,7 @@ export function ensureProfileStealthExtension(
           runningState: function() { return 'cannot_run'; }
         };
       }
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
   }
 
   // -------------------------------------------------------------
@@ -1746,7 +1751,7 @@ export function ensureProfileStealthExtension(
   try {
     function spoofNavigator(prop, value) {
       if (typeof navigator !== 'undefined') {
-        try { delete navigator[prop]; } catch(e) {}
+        try { delete navigator[prop]; } catch(e) { void 0; /* page-context stealth isolation */ }
       }
       var desc = Object.getOwnPropertyDescriptor(Navigator.prototype, prop);
       var dummy = { get [prop]() { return value; } };
@@ -1847,7 +1852,7 @@ export function ensureProfileStealthExtension(
         };
         try {
           Object.defineProperty(ProxyDTF, 'length', { value: 0, configurable: true });
-        } catch(e) {}
+        } catch(e) { void 0; /* page-context stealth isolation */ }
         ProxyDTF.prototype = origDTF.prototype;
         ProxyDTF.prototype.constructor = ProxyDTF;
         if (origDTF.supportedLocalesOf) {
@@ -1968,7 +1973,7 @@ export function ensureProfileStealthExtension(
         hookDateLocale('toLocaleString');
         hookDateLocale('toLocaleDateString');
         hookDateLocale('toLocaleTimeString');
-      } catch(e) {}
+      } catch(e) { void 0; /* page-context stealth isolation */ }
     }
 
     // -------------------------------------------------------------
@@ -2045,8 +2050,8 @@ export function ensureProfileStealthExtension(
         '    function wReg(fn, name) {',
         '      if (typeof fn === "function") {',
         '        var n = name || fn.name || "";',
-        '        try { Object.defineProperty(fn, "name", { value: n, configurable: true }); } catch(e) {}',
-        '        try { Object.defineProperty(fn, "length", { value: fn.length, configurable: true }); } catch(e) {}',
+        '        try { Object.defineProperty(fn, "name", { value: n, configurable: true }); } catch(e) { void 0; /* page-context stealth isolation */ }',
+        '        try { Object.defineProperty(fn, "length", { value: fn.length, configurable: true }); } catch(e) { void 0; /* page-context stealth isolation */ }',
         '        wHooked.push({ fn: fn, name: n });',
         '      }',
         '    }',
@@ -2064,7 +2069,7 @@ export function ensureProfileStealthExtension(
         '      Function.prototype.toString = wProxyToString;',
         '      wReg(wProxyToString, "toString");',
         '      wReg(wOrigToString, "toString");',
-        '    } catch(e) {}',
+        '    } catch(e) { void 0; /* page-context stealth isolation */ }',
         '    if (typeof WorkerNavigator !== "undefined" && WorkerNavigator.prototype) {',
         '      var wProto = WorkerNavigator.prototype;',
         '      function spoofWorkerNav(prop, val) {',
@@ -2083,7 +2088,7 @@ export function ensureProfileStealthExtension(
         '            configurable: desc ? desc.configurable : true',
         '          });',
         '          wReg(getter, "get " + prop);',
-        '        } catch(e) {}',
+        '        } catch(e) { void 0; /* page-context stealth isolation */ }',
         '      }',
         '      spoofWorkerNav("webdriver", false);',
         '      spoofWorkerNav("hardwareConcurrency", pHwc);',
@@ -2117,10 +2122,10 @@ export function ensureProfileStealthExtension(
         '            toJSON: function() { return { brands: wBrands, mobile: ' + (${isMobile ? 'true' : 'false'}) + ', platform: ' + JSON.stringify(${JSON.stringify(clientHintsPlatform)}) + ' }; }',
         '          };',
         '          if (typeof Symbol !== "undefined" && Symbol.toStringTag) {',
-        '            try { Object.defineProperty(wUaObj, Symbol.toStringTag, { value: "NavigatorUAData", configurable: true }); } catch(e) {}',
+        '            try { Object.defineProperty(wUaObj, Symbol.toStringTag, { value: "NavigatorUAData", configurable: true }); } catch(e) { void 0; /* page-context stealth isolation */ }',
         '          }',
         '          spoofWorkerNav("userAgentData", wUaObj);',
-        '        } catch(e) {}',
+        '        } catch(e) { void 0; /* page-context stealth isolation */ }',
         '      }',
         '    }',
         '    if (typeof OffscreenCanvas !== "undefined") {',
@@ -2136,7 +2141,7 @@ export function ensureProfileStealthExtension(
         '                var cw = (thisArg && thisArg.canvas) ? thisArg.canvas.width : imgData.width;',
         '                var ch = (thisArg && thisArg.canvas) ? thisArg.canvas.height : imgData.height;',
         '                wApplyCanvasNoise(imgData, sx, sy, cw, ch);',
-        '              } catch(e) {}',
+        '              } catch(e) { void 0; /* page-context stealth isolation */ }',
         '              return imgData;',
         '            }',
         '          });',
@@ -2152,7 +2157,7 @@ export function ensureProfileStealthExtension(
         '                var origFont = thisArg.font;',
         '                var fb = wResolveFallbackFont(origFont);',
         '                if (fb) {',
-        '                  try { thisArg.font = wReplaceFont(origFont, fb); return target.apply(thisArg, args); } finally { try { thisArg.font = origFont; } catch(e) {} }',
+        '                  try { thisArg.font = wReplaceFont(origFont, fb); return target.apply(thisArg, args); } finally { try { thisArg.font = origFont; } catch(e) { void 0; /* page-context stealth isolation */ } }',
         '                }',
         '              }',
         '              return target.apply(thisArg, args);',
@@ -2179,7 +2184,7 @@ export function ensureProfileStealthExtension(
         '                  return target.apply(clone, args);',
         '                }',
         '              }',
-        '            } catch(e) {}',
+        '            } catch(e) { void 0; /* page-context stealth isolation */ }',
         '            return target.apply(thisArg, args);',
         '          }',
         '        });',
@@ -2267,7 +2272,7 @@ export function ensureProfileStealthExtension(
         '          if (explicitTzMap && inst && typeof inst === "object") explicitTzMap.set(inst, !!hasExplicitTz);',
         '          return inst;',
         '        };',
-        '        try { Object.defineProperty(ProxyDTF, "length", { value: 0, configurable: true }); } catch(e) {}',
+        '        try { Object.defineProperty(ProxyDTF, "length", { value: 0, configurable: true }); } catch(e) { void 0; /* page-context stealth isolation */ }',
         '        ProxyDTF.prototype = origDTF.prototype;',
         '        ProxyDTF.prototype.constructor = ProxyDTF;',
         '        if (origDTF.supportedLocalesOf) ProxyDTF.supportedLocalesOf = origDTF.supportedLocalesOf;',
@@ -2369,7 +2374,7 @@ export function ensureProfileStealthExtension(
         '      hookLocale("toLocaleDateString");',
         '      hookLocale("toLocaleTimeString");',
         '    }',
-        '  } catch(e) {}',
+        '  } catch(e) { void 0; /* page-context stealth isolation */ }',
         '})();'
       ].join('\\n');
 
@@ -2404,7 +2409,7 @@ export function ensureProfileStealthExtension(
               return URL.createObjectURL(new Blob([combined], { type: 'application/javascript' }));
             }
           }
-        } catch(e) {}
+        } catch(e) { void 0; /* page-context stealth isolation */ }
         return url;
       }
 
@@ -2417,7 +2422,7 @@ export function ensureProfileStealthExtension(
             return Reflect.construct(target, newArgs, newTarget);
           }
         });
-        try { ProxyWorker.prototype = origWorker.prototype; } catch(e) {}
+        try { ProxyWorker.prototype = origWorker.prototype; } catch(e) { void 0; /* page-context stealth isolation */ }
         window.Worker = ProxyWorker;
         registerNative(ProxyWorker, 'Worker');
         registerNative(origWorker, 'Worker');
@@ -2432,7 +2437,7 @@ export function ensureProfileStealthExtension(
             return Reflect.construct(target, newArgs, newTarget);
           }
         });
-        try { ProxySharedWorker.prototype = origSharedWorker.prototype; } catch(e) {}
+        try { ProxySharedWorker.prototype = origSharedWorker.prototype; } catch(e) { void 0; /* page-context stealth isolation */ }
         window.SharedWorker = ProxySharedWorker;
         registerNative(ProxySharedWorker, 'SharedWorker');
         registerNative(origSharedWorker, 'SharedWorker');
@@ -2464,7 +2469,7 @@ export function ensureProfileStealthExtension(
                   }
                 }
               }
-            } catch (e) {}
+            } catch (e) { void 0; /* page-context stealth isolation */ }
             return target.apply(thisArg, args);
           }
         });
@@ -2472,7 +2477,7 @@ export function ensureProfileStealthExtension(
         registerNative(proxySWRegister, 'register');
         registerNative(origSWRegister, 'register');
       }
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
 
     // -------------------------------------------------------------
     // User-Agent Client Hints (navigator.userAgentData) Native Masking
@@ -2556,7 +2561,7 @@ export function ensureProfileStealthExtension(
             toJSON: { value: toJSON, enumerable: true, configurable: true, writable: true },
           });
           if (typeof Symbol !== 'undefined' && Symbol.toStringTag) {
-            try { Object.defineProperty(uaTargetProto, Symbol.toStringTag, { value: 'NavigatorUAData', configurable: true }); } catch(e) {}
+            try { Object.defineProperty(uaTargetProto, Symbol.toStringTag, { value: 'NavigatorUAData', configurable: true }); } catch(e) { void 0; /* page-context stealth isolation */ }
           }
           uaDataObj = Object.create(uaTargetProto);
         } else {
@@ -2570,7 +2575,7 @@ export function ensureProfileStealthExtension(
           });
         }
         if (typeof Symbol !== 'undefined' && Symbol.toStringTag) {
-          try { Object.defineProperty(uaDataObj, Symbol.toStringTag, { value: 'NavigatorUAData', configurable: true }); } catch(e) {}
+          try { Object.defineProperty(uaDataObj, Symbol.toStringTag, { value: 'NavigatorUAData', configurable: true }); } catch(e) { void 0; /* page-context stealth isolation */ }
         }
 
         registerNative(getBrands, 'get brands');
@@ -2609,7 +2614,7 @@ export function ensureProfileStealthExtension(
 
         registerNative(proxyUaData, 'get userAgentData');
         if (origUaDataDesc && origUaDataDesc.get) registerNative(origUaDataDesc.get, 'get userAgentData');
-      } catch(e) {}
+      } catch(e) { void 0; /* page-context stealth isolation */ }
     }
 
     try {
@@ -2624,7 +2629,7 @@ export function ensureProfileStealthExtension(
       );
       applyFontMasking(window);
       applyEnvironmentDeviceHooks(window);
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
 
     if (${isMobile}) {
       try {
@@ -2647,7 +2652,7 @@ export function ensureProfileStealthExtension(
               enumerable: true
             });
           }
-        } catch(e) {}
+        } catch(e) { void 0; /* page-context stealth isolation */ }
 
         try {
           var mobileBattLevel = Math.round((0.65 + profileRng() * 0.30) * 100) / 100;
@@ -2664,10 +2669,10 @@ export function ensureProfileStealthExtension(
             });
           };
           registerNative(navigator.getBattery, 'getBattery');
-        } catch(e) {}
-      } catch(e) {}
+        } catch(e) { void 0; /* page-context stealth isolation */ }
+      } catch(e) { void 0; /* page-context stealth isolation */ }
     }
-  } catch(e) {}
+  } catch(e) { void 0; /* page-context stealth isolation */ }
 
   // -------------------------------------------------------------
   // 3. Canvas Dynamic Hash Perturbation (Single-Pass Noise)
@@ -2695,7 +2700,7 @@ export function ensureProfileStealthExtension(
                 return target.apply(clone, argumentsList);
               }
             }
-          } catch(e) {}
+          } catch(e) { void 0; /* page-context stealth isolation */ }
           return target.apply(thisArg, argumentsList);
         }
       });
@@ -2720,7 +2725,7 @@ export function ensureProfileStealthExtension(
                   return target.apply(clone, argumentsList);
                 }
               }
-            } catch(e) {}
+            } catch(e) { void 0; /* page-context stealth isolation */ }
             return target.apply(thisArg, argumentsList);
           }
         });
@@ -2738,7 +2743,7 @@ export function ensureProfileStealthExtension(
             var cw = (thisArg && thisArg.canvas) ? thisArg.canvas.width : imgData.width;
             var ch = (thisArg && thisArg.canvas) ? thisArg.canvas.height : imgData.height;
             applyNoiseToImageData(imgData, sx, sy, cw, ch);
-          } catch(e) {}
+          } catch(e) { void 0; /* page-context stealth isolation */ }
           return imgData;
         }
       });
@@ -2760,7 +2765,7 @@ export function ensureProfileStealthExtension(
                 var cw = (thisArg && thisArg.canvas) ? thisArg.canvas.width : imgData.width;
                 var ch = (thisArg && thisArg.canvas) ? thisArg.canvas.height : imgData.height;
                 applyNoiseToImageData(imgData, sx, sy, cw, ch);
-              } catch(e) {}
+              } catch(e) { void 0; /* page-context stealth isolation */ }
               return imgData;
             }
           });
@@ -2787,7 +2792,7 @@ export function ensureProfileStealthExtension(
                     return target.apply(clone, argumentsList);
                   }
                 }
-              } catch(e) {}
+              } catch(e) { void 0; /* page-context stealth isolation */ }
               return target.apply(thisArg, argumentsList);
             }
           });
@@ -2796,7 +2801,7 @@ export function ensureProfileStealthExtension(
           registerNative(origConvertToBlob, 'convertToBlob');
         }
       }
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
   }
 
   // -------------------------------------------------------------
@@ -2900,7 +2905,7 @@ export function ensureProfileStealthExtension(
         registerNative(proxyRangeGetClientRects, 'getClientRects');
         registerNative(origRangeGetClientRects, 'getClientRects');
       }
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
   }
 
   // -------------------------------------------------------------
@@ -2955,7 +2960,7 @@ export function ensureProfileStealthExtension(
                 try {
                   if (ext.UNMASKED_VENDOR_WEBGL === undefined) ext.UNMASKED_VENDOR_WEBGL = 37445;
                   if (ext.UNMASKED_RENDERER_WEBGL === undefined) ext.UNMASKED_RENDERER_WEBGL = 37446;
-                } catch(e) {}
+                } catch(e) { void 0; /* page-context stealth isolation */ }
                 cachedExtMap.set(thisArg, ext);
                 return ext;
               }
@@ -3006,7 +3011,7 @@ export function ensureProfileStealthExtension(
 
       if (window.WebGLRenderingContext) hookWebGL(WebGLRenderingContext.prototype);
       if (window.WebGL2RenderingContext) hookWebGL(WebGL2RenderingContext.prototype);
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
   }
 
   // -------------------------------------------------------------
@@ -3101,7 +3106,7 @@ export function ensureProfileStealthExtension(
                   registerNative(origReqInfo, 'requestAdapterInfo');
                 }
               }
-            } catch(e) {}
+            } catch(e) { void 0; /* page-context stealth isolation */ }
             return adapter;
           });
         }
@@ -3110,7 +3115,7 @@ export function ensureProfileStealthExtension(
       registerNative(proxyRequestAdapter, 'requestAdapter');
       registerNative(origRequestAdapter, 'requestAdapter');
     }
-  } catch(e) {}
+  } catch(e) { void 0; /* page-context stealth isolation */ }
 
   // -------------------------------------------------------------
   // 5. AudioContext Acoustic Frequency Jitter (No In-Place Drift)
@@ -3201,7 +3206,7 @@ export function ensureProfileStealthExtension(
         registerNative(proxyGetFloatFrequencyData, 'getFloatFrequencyData');
         registerNative(origGetFloatFrequencyData, 'getFloatFrequencyData');
       }
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
   }
 
   // -------------------------------------------------------------
@@ -3266,7 +3271,7 @@ export function ensureProfileStealthExtension(
               enumerable: protoDesc ? protoDesc.enumerable : true,
               configurable: protoDesc ? protoDesc.configurable : true
             });
-          } catch(e) {}
+          } catch(e) { void 0; /* page-context stealth isolation */ }
         }
 
         var ProxyPC = function(config, constraints) {
@@ -3280,7 +3285,7 @@ export function ensureProfileStealthExtension(
             if (Object.prototype.hasOwnProperty.call(pc, 'onicecandidate')) {
               delete pc.onicecandidate;
             }
-          } catch(e) {}
+          } catch(e) { void 0; /* page-context stealth isolation */ }
 
           if (pc.addIceCandidate) {
             var origAddIce = pc.addIceCandidate;
@@ -3345,7 +3350,7 @@ export function ensureProfileStealthExtension(
               if (typeof RTCSessionDescription !== 'undefined') {
                 try {
                   return new RTCSessionDescription({ type: desc.type, sdp: newSdp });
-                } catch(e) {}
+                } catch(e) { void 0; /* page-context stealth isolation */ }
               }
               return { type: desc.type, sdp: newSdp };
             }
@@ -3382,7 +3387,7 @@ export function ensureProfileStealthExtension(
       if (window.RTCPeerConnection) hookPeerConnection(window.RTCPeerConnection, 'RTCPeerConnection');
       if (window.webkitRTCPeerConnection) hookPeerConnection(window.webkitRTCPeerConnection, 'webkitRTCPeerConnection');
     }
-  } catch(e) {}
+  } catch(e) { void 0; /* page-context stealth isolation */ }
 })();
 `;
 
@@ -3411,7 +3416,7 @@ export function ensureProfileStealthExtension(
               sourceProfileId: profileId,
               action: msg.action
             })
-          }).catch(function() {});
+          }).catch(function() { void 0; /* page-context stealth isolation */ });
         }
       });
 
@@ -3430,7 +3435,7 @@ export function ensureProfileStealthExtension(
           'Authorization': 'Bearer ' + AUTH_TOKEN
         },
         body: JSON.stringify({ number: msg.number })
-      }).catch(function() {});
+      }).catch(function() { void 0; /* page-context stealth isolation */ });
     }
   });
 
@@ -3473,13 +3478,13 @@ export function ensureProfileStealthExtension(
                       if (tabs) {
                         for (var j = 0; j < tabs.length; j++) {
                           if (tabs[j].id) {
-                            chrome.tabs.sendMessage(tabs[j].id, action).catch(function() {});
+                            chrome.tabs.sendMessage(tabs[j].id, action).catch(function() { void 0; /* page-context stealth isolation */ });
                           }
                         }
                       }
                     });
                   }
-                } catch(err) {}
+                } catch(err) { void 0; /* page-context stealth isolation */ }
               }
             }
             readChunk();
@@ -3504,7 +3509,7 @@ export function ensureProfileStealthExtension(
         if (d && d.success && Array.isArray(d.sites) && d.sites.length > 0) {
           startWarmerSequence(d.sites);
         }
-      }).catch(function() {});
+      }).catch(function() { void 0; /* page-context stealth isolation */ });
   }
 
   function startWarmerSequence(sites) {
@@ -3545,7 +3550,7 @@ export function ensureProfileStealthExtension(
       chrome.action.setBadgeBackgroundColor({ color: '#0284c7' });
       chrome.action.setTitle({ title: '#' + pNum + ' - ' + pName });
     }
-  } catch(e) {}
+  } catch(e) { void 0; /* page-context stealth isolation */ }
 })();
 `;
 
@@ -3578,7 +3583,7 @@ export function ensureProfileStealthExtension(
           .replace(/^M\\d+\\s+—\\s+MAHI SKILLS\\s*-\\s*/, '');
         document.title = prefix + cleanTitle;
       }
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
   }
 
   // In clean production mode, suppress the in-page badge and title prefix unless explicitly enabled in settings.
@@ -3592,7 +3597,7 @@ export function ensureProfileStealthExtension(
         characterData: true,
         childList: true
       });
-    } catch(e) {}
+    } catch(e) { void 0; /* page-context stealth isolation */ }
     window.addEventListener('load', injectTopBarPill);
     setTimeout(injectTopBarPill, 400);
     setTimeout(injectTopBarPill, 1200);
@@ -3626,7 +3631,7 @@ export function ensureProfileStealthExtension(
         var quickNum = parseInt(digitMatch[1], 10);
         if (quickNum > 0) {
           digitBuffer = '';
-          chrome.runtime.sendMessage({ type: 'QUICK_SWITCH', number: quickNum }).catch(function() {});
+          chrome.runtime.sendMessage({ type: 'QUICK_SWITCH', number: quickNum }).catch(function() { void 0; /* page-context stealth isolation */ });
           return;
         }
       }
@@ -3644,13 +3649,13 @@ export function ensureProfileStealthExtension(
         digitBuffer = '';
         clearTimeout(bufferTimer);
         if (!isNaN(num) && num > 0) {
-          chrome.runtime.sendMessage({ type: 'QUICK_SWITCH', number: num }).catch(function() {});
+          chrome.runtime.sendMessage({ type: 'QUICK_SWITCH', number: num }).catch(function() { void 0; /* page-context stealth isolation */ });
         }
         return;
       }
 
       digitBuffer = '';
-    } catch(err) {}
+    } catch(err) { void 0; /* page-context stealth isolation */ }
   }, true);
 
   window.addEventListener('keyup', function(e) {
@@ -3681,7 +3686,7 @@ export function ensureProfileStealthExtension(
         var el = document.elementFromPoint(cx, cy);
         if (el) {
           var target = el.closest('a, button, input, select, textarea, [role="button"], label') || el;
-          try { target.focus(); } catch(e) {}
+          try { target.focus(); } catch(e) { void 0; /* page-context stealth isolation */ }
 
           var pDown = new MouseEvent('pointerdown', { bubbles: true, cancelable: true, clientX: cx, clientY: cy, button: action.payload.button || 0, view: window });
           var mDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: cx, clientY: cy, button: action.payload.button || 0, view: window });
@@ -3689,14 +3694,14 @@ export function ensureProfileStealthExtension(
           var mUp = new MouseEvent('mouseup', { bubbles: true, cancelable: true, clientX: cx, clientY: cy, button: action.payload.button || 0, view: window });
           var clk = new MouseEvent('click', { bubbles: true, cancelable: true, clientX: cx, clientY: cy, button: action.payload.button || 0, view: window });
 
-          try { target.dispatchEvent(pDown); } catch(e) {}
-          try { target.dispatchEvent(mDown); } catch(e) {}
-          try { target.dispatchEvent(pUp); } catch(e) {}
-          try { target.dispatchEvent(mUp); } catch(e) {}
-          try { target.dispatchEvent(clk); } catch(e) {}
+          try { target.dispatchEvent(pDown); } catch(e) { void 0; /* page-context stealth isolation */ }
+          try { target.dispatchEvent(mDown); } catch(e) { void 0; /* page-context stealth isolation */ }
+          try { target.dispatchEvent(pUp); } catch(e) { void 0; /* page-context stealth isolation */ }
+          try { target.dispatchEvent(mUp); } catch(e) { void 0; /* page-context stealth isolation */ }
+          try { target.dispatchEvent(clk); } catch(e) { void 0; /* page-context stealth isolation */ }
 
           if (target.tagName === 'A' && target.href && !target.target) {
-            try { window.location.href = target.href; } catch(e) {}
+            try { window.location.href = target.href; } catch(e) { void 0; /* page-context stealth isolation */ }
           }
         }
       } else if (action.type === 'TYPE' && action.payload) {
@@ -3707,7 +3712,7 @@ export function ensureProfileStealthExtension(
           if (!targetEl) targetEl = document.querySelector('textarea, input[type="search"], input[type="text"], input:not([type="hidden"])');
         }
         if (targetEl && action.payload.value !== undefined) {
-          try { targetEl.focus(); } catch(e) {}
+          try { targetEl.focus(); } catch(e) { void 0; /* page-context stealth isolation */ }
           try {
             var isTxt = targetEl.tagName === 'TEXTAREA';
             var proto = isTxt ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
@@ -3730,7 +3735,7 @@ export function ensureProfileStealthExtension(
               data: action.payload.value,
               inputType: 'insertText'
             }));
-          } catch(e) {}
+          } catch(e) { void 0; /* page-context stealth isolation */ }
         }
       } else if (action.type === 'KEY' && action.payload) {
         var keyTarget = document.activeElement || document.querySelector('textarea, input:not([type="hidden"])');
@@ -3759,7 +3764,7 @@ export function ensureProfileStealthExtension(
             try {
               if (typeof keyTarget.form.requestSubmit === 'function') keyTarget.form.requestSubmit();
               else keyTarget.form.submit();
-            } catch(e) {}
+            } catch(e) { void 0; /* page-context stealth isolation */ }
           }
         }
       } else if (action.type === 'SCROLL' && action.payload) {
@@ -3776,7 +3781,7 @@ export function ensureProfileStealthExtension(
           window.location.href = warmData.sites[0];
         }
       }
-    } catch(err) {} finally {
+    } catch(err) { void 0; /* page-context stealth isolation */ } finally {
       setTimeout(function() { isHandlingRemoteAction = false; }, 80);
     }
   }
@@ -3804,7 +3809,7 @@ export function ensureProfileStealthExtension(
     chrome.runtime.onMessage.addListener(function(action) {
       handleReplicatedAction(action);
     });
-  } catch(e) {}
+  } catch(e) { void 0; /* page-context stealth isolation */ }
 
   // Broadcast user action via background service worker
   function sendSyncAction(type, payload) {
@@ -3827,9 +3832,9 @@ export function ensureProfileStealthExtension(
             payload: payload,
             timestamp: Date.now()
           }
-        }).catch(function() {});
+        }).catch(function() { void 0; /* page-context stealth isolation */ });
       }
-    } catch(err) {}
+    } catch(err) { void 0; /* page-context stealth isolation */ }
   }
 
 
@@ -3935,7 +3940,7 @@ export function ensureProfileStealthExtension(
     }
 
     setTimeout(checkAndRunWarmer, 800);
-  } catch(e) {}
+  } catch(e) { void 0; /* page-context stealth isolation */ }
 
 })();
 
@@ -3948,7 +3953,14 @@ export function ensureProfileStealthExtension(
   } else {
     const oldStealthCore = path.join(extDir, 'stealth-core.js');
     if (fs.existsSync(oldStealthCore)) {
-      try { fs.unlinkSync(oldStealthCore); } catch {}
+      try {
+        fs.unlinkSync(oldStealthCore);
+      } catch (err) {
+        log.debug('Failed removing legacy stealth-core extension script', {
+          oldStealthCore,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
   fs.writeFileSync(path.join(extDir, 'background.js'), backgroundJs, 'utf8');
@@ -3984,7 +3996,12 @@ export function prepareCleanProfilePreferences(
     if (!fs.existsSync(firstRunSentinel)) {
       try {
         fs.writeFileSync(firstRunSentinel, '', 'utf8');
-      } catch {}
+      } catch (err) {
+        log.warn('Failed writing Chromium First Run sentinel file', {
+          firstRunSentinel,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     // 2. Prepare Local State (browser-wide preferences)
@@ -4415,7 +4432,14 @@ export async function launchCamoufoxProfile(
     const userJsPath = path.join(storageDir, 'user.js');
     let existingUserJs = '';
     if (fs.existsSync(userJsPath)) {
-      try { existingUserJs = fs.readFileSync(userJsPath, 'utf8'); } catch {}
+      try {
+        existingUserJs = fs.readFileSync(userJsPath, 'utf8');
+      } catch (err) {
+        log.warn('Failed reading existing Camoufox user.js preferences', {
+          userJsPath,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
     const MAHI_BLOCK_START = '// --- MAHI CAMOUFOX NETWORK CONFIG START ---';
     const MAHI_BLOCK_END = '// --- MAHI CAMOUFOX NETWORK CONFIG END ---';
@@ -4518,7 +4542,12 @@ export async function launchCamoufoxProfile(
 
     try {
       child.unref();
-    } catch {}
+    } catch (unrefErr) {
+      log.debug('Non-fatal child.unref error for Camoufox process', {
+        pid: child.pid,
+        err: unrefErr instanceof Error ? unrefErr.message : String(unrefErr),
+      });
+    }
 
     debugLog(`[Camoufox Launcher] Spawned successfully with PID: ${child.pid}`);
     debugLog(`=======================================================`);
@@ -4534,7 +4563,14 @@ export async function launchCamoufoxProfile(
     };
   } catch (err: unknown) {
     if (proxyTunnel) {
-      try { proxyTunnel.close(); } catch {}
+      try {
+        proxyTunnel.close();
+      } catch (tunnelErr) {
+        log.debug('Error closing Camoufox proxy tunnel on launch failure', {
+          profileId: profile.id,
+          err: tunnelErr instanceof Error ? tunnelErr.message : String(tunnelErr),
+        });
+      }
     }
     const errorMsg = err instanceof Error ? err.message : String(err);
     debugLog(`[Camoufox Launcher CRITICAL ERROR] Failed to launch profile "${profile.name}": ${errorMsg}`);
@@ -4559,7 +4595,13 @@ async function applyCdpOverrides(debugPort: number, tz: string, locale: string):
       try {
         const r = await fetch(`${endpoint}/json/version`);
         if (r.ok) break;
-      } catch {}
+      } catch (pollErr) {
+        log.debug('CDP /json/version boot poll waiting', {
+          debugPort,
+          attempt: i + 1,
+          err: pollErr instanceof Error ? pollErr.message : String(pollErr),
+        });
+      }
       if (i === 24) return false;
       await new Promise((r) => setTimeout(r, 120));
     }
@@ -4572,7 +4614,12 @@ async function applyCdpOverrides(debugPort: number, tz: string, locale: string):
       const cdp = await ctx.newCDPSession(page);
       if (tz) await cdp.send('Emulation.setTimezoneOverride', { timezoneId: tz });
       if (locale) await cdp.send('Emulation.setLocaleOverride', { locale });
-      await cdp.detach().catch(() => {});
+      await cdp.detach().catch((detachErr: unknown) => {
+        log.debug('CDP session detach skipped', {
+          debugPort,
+          err: detachErr instanceof Error ? detachErr.message : String(detachErr),
+        });
+      });
     };
     const pages = ctx.pages();
     if (pages.length === 0) {
@@ -4584,17 +4631,31 @@ async function applyCdpOverrides(debugPort: number, tz: string, locale: string):
 
     // apply to pages created later (user opens new tab)
     ctx.on('page', (p: any) => {
-      applyTo(p).catch(() => {});
+      applyTo(p).catch((pageErr: unknown) => {
+        log.debug('Failed applying CDP emulation override to new page', {
+          debugPort,
+          err: pageErr instanceof Error ? pageErr.message : String(pageErr),
+        });
+      });
     });
 
     return true;
-  } catch {
+  } catch (err) {
+    log.debug('CDP timezone/locale override skipped', {
+      debugPort,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return false;
   } finally {
     // DISCONNECT only — never call browser.close() in a way that kills the browser
     try {
       await browser?.close({ reason: 'cdp-override-done' });
-    } catch {}
+    } catch (closeErr) {
+      log.debug('CDP Playwright handle close skipped', {
+        debugPort,
+        err: closeErr instanceof Error ? closeErr.message : String(closeErr),
+      });
+    }
   }
 }
 
@@ -4711,7 +4772,12 @@ export async function launchBrowser(
         debugLog(`[Launcher Step 4/7] Geo Locale Auto-Sync applied runtime timezone=${derivedLocale.timezone}, language=${derivedLocale.language} (stored JSON untouched).`);
         try {
           logActivity('PROFILE', 'INFO', 'Geo Locale Auto-Sync', `Runtime locale synced to ${derivedLocale.timezone} (${derivedLocale.language}) for "${profile.name}".`, profile.id);
-        } catch {}
+        } catch (auditErr) {
+          log.debug('Skipped Geo Locale Auto-Sync audit write', {
+            profileId: profile.id,
+            err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+          });
+        }
       } else if (
         derivedLocale?.timezone &&
         effectiveSettings?.locale?.timezone &&
@@ -4733,7 +4799,12 @@ export async function launchBrowser(
               win.webContents.send('profile:timezoneMismatch', timezoneMismatchWarning);
             }
           }
-        } catch {}
+        } catch (ipcErr) {
+          log.debug('Skipped timezoneMismatch IPC notification', {
+            profileId: profile.id,
+            err: ipcErr instanceof Error ? ipcErr.message : String(ipcErr),
+          });
+        }
       }
     }
 
@@ -4880,7 +4951,12 @@ export async function launchBrowser(
           }
           debugLog(`[Launcher Step 5/7] Warming sequence active — opening ${qData.sites.length} authoritative tabs`);
         }
-      } catch {}
+      } catch (qErr) {
+        log.warn('Failed parsing mahi_warmer_queue.json', {
+          qFile,
+          err: qErr instanceof Error ? qErr.message : String(qErr),
+        });
+      }
     } else {
       const startupUrl = settings?.browser?.startupUrl?.trim() || 'about:blank';
       args.push(startupUrl);
@@ -4959,7 +5035,14 @@ export async function launchBrowser(
     };
   } catch (err: unknown) {
     if (proxyTunnel) {
-      try { proxyTunnel.close(); } catch {}
+      try {
+        proxyTunnel.close();
+      } catch (tunnelErr) {
+        log.debug('Error closing proxy tunnel during launch failure cleanup', {
+          profileId: profile.id,
+          err: tunnelErr instanceof Error ? tunnelErr.message : String(tunnelErr),
+        });
+      }
     }
     const errorMsg = err instanceof Error ? err.message : String(err);
     debugLog(`[Launcher CRITICAL ERROR] Failed to launch profile "${profile.name}": ${errorMsg}`);

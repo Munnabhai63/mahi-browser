@@ -32,8 +32,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         set({ settings, theme, isLocked });
         get().setTheme(theme);
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.debug('[useSettingsStore] app settings fetch failed', err);
     } finally {
       set({ loading: false });
     }

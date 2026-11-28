@@ -19,6 +19,8 @@ import os from 'node:os';
 import tls from 'node:tls';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getStorageProvider } from '../../08_SECURITY/storage-provider.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('telemetry-monitor-service');
 
 export type AlertSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
 
@@ -260,7 +262,7 @@ export class TelemetryMonitorService {
     this.alerts.unshift(alert);
     if (this.alerts.length > 100) this.alerts.pop();
 
-    console.warn(`[TelemetryMonitor:${alert.severity}] [${alert.subsystem}] ${alert.title} — ${alert.details}`);
+    log.warn(`[TelemetryMonitor:${alert.severity}] [${alert.subsystem}] ${alert.title} — ${alert.details}`);
 
     if (this.alertWebhookUrl) {
       try {
@@ -270,7 +272,7 @@ export class TelemetryMonitorService {
           body: JSON.stringify(alert),
         });
       } catch (err: any) {
-        console.error(`[TelemetryMonitor:ERROR] Failed to dispatch webhook alert: ${err.message}`);
+        log.error(`[TelemetryMonitor:ERROR] Failed to dispatch webhook alert: ${err.message}`);
       }
     }
   }

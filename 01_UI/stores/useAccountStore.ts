@@ -180,8 +180,8 @@ export const useAccountStore = create<AccountState>()(
                 createdAt: sess.saved_at,
               }
             });
-            get().checkUnassignedGuestProfiles().catch(() => {});
-            get().fetchTrialStatus().catch(() => {});
+            get().checkUnassignedGuestProfiles().catch((err) => { console.debug('[useAccountStore] guest profiles probe failed', err); });
+            get().fetchTrialStatus().catch((err) => { console.debug('[useAccountStore] trial status fetch failed', err); });
           } else if (!get().commercialUser) {
             set({ currentUser: null, accountSession: null });
           }
@@ -189,7 +189,9 @@ export const useAccountStore = create<AccountState>()(
             const ent = await window.mahiAPI.getEntitlements();
             if (ent) set({ entitlements: ent });
           }
-        } catch {}
+        } catch (err) {
+          console.debug('[useAccountStore] fetchPlanLimits failed', err);
+        }
       },
 
       fetchPaymentInfo: async () => {
@@ -197,7 +199,9 @@ export const useAccountStore = create<AccountState>()(
         try {
           const info = await window.mahiAPI.accountGetPaymentInfo();
           set({ paymentInfo: info });
-        } catch {}
+        } catch (err) {
+          console.debug('[useAccountStore] fetchPaymentInfo failed', err);
+        }
       },
 
       fetchPricingCatalog: async () => {
@@ -283,9 +287,9 @@ export const useAccountStore = create<AccountState>()(
           const res = await window.mahiAPI.accountLogin({ email, password });
           if (res.success) {
             await get().fetchPlanLimits({ force: true });
-            get().checkUnassignedGuestProfiles().catch(() => {});
-            get().fetchTrialStatus().catch(() => {});
-            useProfileStore.getState().fetchProfiles().catch(() => {});
+            get().checkUnassignedGuestProfiles().catch((err) => { console.debug('[useAccountStore] post-login guest profile check failed', err); });
+            get().fetchTrialStatus().catch((err) => { console.debug('[useAccountStore] post-login trial status check failed', err); });
+            useProfileStore.getState().fetchProfiles().catch((err) => { console.debug('[useAccountStore] post-login profile refresh failed', err); });
             return { success: true };
           }
           return { success: false, error: res.error || 'Login failed', deviceMismatch: (res as any).device_limit };
@@ -300,9 +304,9 @@ export const useAccountStore = create<AccountState>()(
           const res = await window.mahiAPI.accountLoginWithToken(token);
           if (res.success) {
             await get().fetchPlanLimits({ force: true });
-            get().checkUnassignedGuestProfiles().catch(() => {});
-            get().fetchTrialStatus().catch(() => {});
-            useProfileStore.getState().fetchProfiles().catch(() => {});
+            get().checkUnassignedGuestProfiles().catch((err) => { console.debug('[useAccountStore] post-token guest profile check failed', err); });
+            get().fetchTrialStatus().catch((err) => { console.debug('[useAccountStore] post-token trial status check failed', err); });
+            useProfileStore.getState().fetchProfiles().catch((err) => { console.debug('[useAccountStore] post-token profile refresh failed', err); });
             return { success: true };
           }
           return { success: false, error: res.error || 'Token login failed' };
@@ -316,12 +320,16 @@ export const useAccountStore = create<AccountState>()(
           if (window.mahiAPI?.accountLogout) {
             await window.mahiAPI.accountLogout();
           }
-        } catch {}
+        } catch (err) {
+          console.debug('[useAccountStore] accountLogout IPC failed', err);
+        }
         try {
           if (window.mahiAPI && (window.mahiAPI as any).commercialLogout) {
             await (window.mahiAPI as any).commercialLogout();
           }
-        } catch {}
+        } catch (err) {
+          console.debug('[useAccountStore] commercialLogout IPC failed', err);
+        }
         set({
           accountSession: null,
           currentUser: null,
@@ -335,7 +343,7 @@ export const useAccountStore = create<AccountState>()(
           isAccountModalOpen: false,
           commercialError: null,
         });
-        useProfileStore.getState().fetchProfiles().catch(() => {});
+        useProfileStore.getState().fetchProfiles().catch((err) => { console.debug('[useAccountStore] post-logout profile refresh failed', err); });
       },
 
       accountSwitchDevice: async () => {
@@ -379,7 +387,9 @@ export const useAccountStore = create<AccountState>()(
           if (res.success && res.sessions) {
             set({ activeSessions: res.sessions });
           }
-        } catch {}
+        } catch (err) {
+          console.debug('[useAccountStore] fetchActiveSessions failed', err);
+        }
       },
 
       revokeSession: async (sessionId: string) => {
@@ -423,7 +433,7 @@ export const useAccountStore = create<AccountState>()(
           if (res?.success) {
             await get().fetchPlanLimits({ force: true });
             await get().fetchTrialStatus();
-            useProfileStore.getState().fetchProfiles().catch(() => {});
+            useProfileStore.getState().fetchProfiles().catch((err) => { console.debug('[useAccountStore] post-trial profile refresh failed', err); });
             return { success: true, message: res.message || '7-Day Free Trial activated successfully!' };
           }
           return { success: false, error: res?.error || 'Trial activation failed' };
@@ -460,7 +470,7 @@ export const useAccountStore = create<AccountState>()(
           if (res?.success) {
             set({ unassignedGuestProfiles: [] });
             await get().fetchPlanLimits({ force: true });
-            useProfileStore.getState().fetchProfiles().catch(() => {});
+            useProfileStore.getState().fetchProfiles().catch((err) => { console.debug('[useAccountStore] post-claim profile refresh failed', err); });
             return { success: true, claimedCount: res.claimedCount };
           }
           return { success: false, claimedCount: res?.claimedCount || 0, error: res?.error || 'Failed to claim profiles' };
@@ -576,7 +586,9 @@ export const useAccountStore = create<AccountState>()(
               } : get().currentUser,
             });
           }
-        } catch {}
+        } catch (err) {
+          console.debug('[useAccountStore] syncEntitlements failed', err);
+        }
       },
 
       hasCapability: (cap: string) => {
@@ -619,7 +631,9 @@ export const useAccountStore = create<AccountState>()(
         try {
           const devices = await window.mahiAPI.commercialGetDevices(commercialUser.id);
           set({ userDevices: devices || [] });
-        } catch {}
+        } catch (err) {
+          console.debug('[useAccountStore] fetchUserDevices failed', err);
+        }
       },
 
       revokeUserDevice: async (deviceId) => {

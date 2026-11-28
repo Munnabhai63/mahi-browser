@@ -72,7 +72,9 @@ export default function SignupPage() {
         try {
           localStorage.removeItem('mahi_auth_token');
           localStorage.removeItem('mahi_access_token');
-        } catch {}
+        } catch (err) {
+          console.debug('[signup] legacy localStorage token clear skipped', err);
+        }
 
         if (isUsdPaidFlow) {
           let stripeEnabled = false;
@@ -87,7 +89,9 @@ export default function SignupPage() {
                   gwData.gateways.find((g: any) => g.id === 'stripe')?.enabled
               );
             }
-          } catch {}
+          } catch (err) {
+            console.debug('[signup] gateway capability probe failed', err);
+          }
 
           if (stripeEnabled) {
             const checkoutResp = await fetch(`${BRAND.apiUrl}/api/v1/billing/checkout`, {

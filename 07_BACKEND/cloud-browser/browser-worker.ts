@@ -28,6 +28,9 @@ import { resolveExecutablePath } from '../../02_BROWSER/detector.js';
 import { getProxyById, getDecryptedProxyCredentials } from '../../02_BROWSER/services/proxy-service.js';
 import { createProxyTunnel, ProxyTunnelHandle } from '../../02_BROWSER/proxy-tunnel.js';
 import { prepareCleanProfilePreferences } from '../../02_BROWSER/launcher.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('browser-worker');
 
 export interface CloudWorkerLaunchOptions {
   sessionId: string;
@@ -220,7 +223,13 @@ export class BrowserWorkerManager {
     if (!isReady) {
       try {
         proc.kill('SIGKILL');
-      } catch {}
+      } catch (killErr) {
+        log.debug('SIGKILL skipped for unresponsive cloud worker process', {
+          sessionId,
+          pid,
+          err: killErr instanceof Error ? killErr.message : String(killErr),
+        });
+      }
       if (proxyTunnel) proxyTunnel.close();
       throw new Error(`WORKER_HEALTH_TIMEOUT: Chromium started (PID ${pid}) but CDP port ${cdpPort} did not become ready within timeout.`);
     }
@@ -241,20 +250,42 @@ export class BrowserWorkerManager {
               await new Promise<void>((resolve) => {
                 exec(`taskkill /F /T /PID ${pid}`, () => resolve());
               });
-            } catch {}
+            } catch (taskkillErr) {
+              log.debug('Windows taskkill failed during worker stop', {
+                sessionId,
+                pid,
+                err: taskkillErr instanceof Error ? taskkillErr.message : String(taskkillErr),
+              });
+            }
           } else {
             try {
               proc.kill('SIGTERM');
               await new Promise((resolve) => setTimeout(resolve, 300));
               if (!proc.killed) proc.kill('SIGKILL');
-            } catch {}
+            } catch (sigErr) {
+              log.debug('POSIX signal termination failed during worker stop', {
+                sessionId,
+                pid,
+                err: sigErr instanceof Error ? sigErr.message : String(sigErr),
+              });
+            }
           }
           (proc as any).killed = true;
-        } catch {}
+        } catch (stopErr) {
+          log.warn('Cloud worker stop routine encountered unexpected error', {
+            sessionId,
+            err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+          });
+        }
         if (proxyTunnel) {
           try {
             proxyTunnel.close();
-          } catch {}
+          } catch (tunnelErr) {
+            log.debug('Proxy tunnel close skipped during worker stop', {
+              sessionId,
+              err: tunnelErr instanceof Error ? tunnelErr.message : String(tunnelErr),
+            });
+          }
         }
         this.activeWorkers.delete(sessionId);
       },

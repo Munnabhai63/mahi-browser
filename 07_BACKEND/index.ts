@@ -20,6 +20,8 @@ import { startResourceMonitoring, stopResourceMonitoring } from '../03_HARDWARE/
 import { provisionEngineOnStartup } from '../02_BROWSER/managed-engine.js';
 import { releaseAllCloudLocks } from '../08_SECURITY/cloud-sync-service.js';
 import { getWritableUserDataDir, getBundledResourcePath, isAppPackaged } from './utils/runtime-paths.js';
+import { createLogger } from './utils/logger.js';
+const log = createLogger('index');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,7 +35,14 @@ const desktopDir = process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 
 const isTestEnv = Boolean(process.env.VITEST || process.env.VITEST_WORKER_ID || process.env.NODE_ENV === 'test');
 
 if (!fs.existsSync(localAppDataDir)) {
-  try { fs.mkdirSync(localAppDataDir, { recursive: true }); } catch {}
+  try {
+    fs.mkdirSync(localAppDataDir, { recursive: true });
+  } catch (err) {
+    log.debug('Failed creating localAppDataDir at main bootstrap', {
+      localAppDataDir,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 const crashLogPaths = (isAppPackaged() || isTestEnv)
@@ -61,13 +70,13 @@ export function writeCrashLog(type: string, message: string, stack?: string): vo
     `========================================================================\n`,
   ].join('\n');
 
-  console.error(entry);
+  log.error(entry);
 
   for (const logPath of crashLogPaths) {
     try {
       fs.appendFileSync(logPath, entry + '\n', 'utf8');
     } catch (err) {
-      console.error(`Failed to write crash log to ${logPath}:`, err);
+      log.error(`Failed to write crash log to ${logPath}:`, err);
     }
   }
 }
@@ -77,11 +86,16 @@ export function logCheckpoint(stepName: string, detail?: string): void {
   const safeStep = redactSensitiveTokens(stepName);
   const safeDetail = detail ? redactSensitiveTokens(detail) : undefined;
   const line = `[${timestamp}] [CHECKPOINT] ${safeStep}${safeDetail ? ' - ' + safeDetail : ''}\n`;
-  console.log(line.trim());
+  log.info(line.trim());
   for (const logPath of crashLogPaths) {
     try {
       fs.appendFileSync(logPath, line, 'utf8');
-    } catch {}
+    } catch (err) {
+      log.debug('Checkpoint file append skipped', {
+        logPath,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }
 
@@ -105,10 +119,26 @@ process.on('unhandledRejection', (reason: unknown) => {
 try {
   const header = `=== MAHI BROWSER SESSION STARTED AT ${new Date().toISOString()} ===\n`;
   if (!isAppPackaged() && !isTestEnv) {
-    try { fs.writeFileSync(path.join(projectDir, 'crash-log.txt'), header, 'utf8'); } catch {}
+    try {
+      fs.writeFileSync(path.join(projectDir, 'crash-log.txt'), header, 'utf8');
+    } catch (err) {
+      log.debug('Failed resetting project crash-log.txt header', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
-  try { fs.writeFileSync(path.join(localAppDataDir, 'crash-log.txt'), header, 'utf8'); } catch {}
-} catch {}
+  try {
+    fs.writeFileSync(path.join(localAppDataDir, 'crash-log.txt'), header, 'utf8');
+  } catch (err) {
+    log.debug('Failed resetting userData crash-log.txt header', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+} catch (err) {
+  log.debug('Crash-log header initialization skipped', {
+    err: err instanceof Error ? err.message : String(err),
+  });
+}
 
 logCheckpoint('Step 1: Application Initializing', `Electron version: ${process.versions.electron}`);
 
@@ -271,7 +301,11 @@ function createWindow(): void {
               splashWindow.destroy();
               splashWindow = null;
             }
-          } catch {}
+          } catch (err) {
+            log.debug('Splash window destroy skipped after ready-to-show', {
+              err: err instanceof Error ? err.message : String(err),
+            });
+          }
         }, 500);
       }
     }
@@ -289,7 +323,11 @@ function createWindow(): void {
         try {
           splashWindow.destroy();
           splashWindow = null;
-        } catch {}
+        } catch (err) {
+          log.debug('Splash window destroy skipped in fallback timer', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
     }
   }, 3500);
@@ -413,11 +451,18 @@ if ((gotTheLock || isSmokeTest) && app?.whenReady) {
           fs.copyFileSync(dbPath, bakPath);
           logCheckpoint('Step 3: Corrupt database backed up to', bakPath);
         } catch (copyErr) {
-          console.error('[DATABASE RECOVERY] Failed to create backup of corrupted database:', copyErr);
+          log.error('[DATABASE RECOVERY] Failed to create backup of corrupted database:', copyErr);
         }
       }
       logCheckpoint('Step 3: Attempting recovery - deleting corrupted DB file');
-      try { fs.unlinkSync(dbPath); } catch {}
+      try {
+        fs.unlinkSync(dbPath);
+      } catch (unlinkErr) {
+        log.warn('Failed deleting corrupted SQLite file before re-init', {
+          dbPath,
+          err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+        });
+      }
       setCustomDatabasePath(dbPath);
       await initializeDatabase();
       logCheckpoint('Step 3: Database Recovered & Initialized');
@@ -471,13 +516,13 @@ if ((gotTheLock || isSmokeTest) && app?.whenReady) {
   // Packaged Application Native Smoke Test Mode
   if (process.argv.includes('--smoke-test')) {
     logCheckpoint('SMOKE_TEST: Packaged Application Smoke Test Mode Triggered');
-    console.log('[SMOKE_TEST] Main Process Initialized');
-    console.log('[SMOKE_TEST] SQLite Database Initialized');
-    console.log('[SMOKE_TEST] Splash & Main BrowserWindow Created');
-    console.log(`[SMOKE_TEST] Platform: ${process.platform} Arch: ${process.arch}`);
+    log.info('[SMOKE_TEST] Main Process Initialized');
+    log.info('[SMOKE_TEST] SQLite Database Initialized');
+    log.info('[SMOKE_TEST] Splash & Main BrowserWindow Created');
+    log.info(`[SMOKE_TEST] Platform: ${process.platform} Arch: ${process.arch}`);
 
     const smokeTimeout = setTimeout(async () => {
-      console.error('[SMOKE_TEST_ERROR] Window load timed out after 15s in smoke test mode');
+      log.error('[SMOKE_TEST_ERROR] Window load timed out after 15s in smoke test mode');
       writeCrashLog('SMOKE_TEST_TIMEOUT', 'Window did-finish-load not received within 15 seconds');
       await performCleanExit();
     }, 15000);
@@ -485,15 +530,15 @@ if ((gotTheLock || isSmokeTest) && app?.whenReady) {
     mainWindow.webContents.once('did-finish-load', async () => {
       clearTimeout(smokeTimeout);
       logCheckpoint('SMOKE_TEST: Main window finished loading HTML bundle');
-      console.log('[SMOKE_TEST_WINDOW_PASS] BrowserWindow loaded successfully');
-      console.log('[SMOKE_TEST_PASS] MAHI Browser initialized cleanly without error.');
+      log.info('[SMOKE_TEST_WINDOW_PASS] BrowserWindow loaded successfully');
+      log.info('[SMOKE_TEST_PASS] MAHI Browser initialized cleanly without error.');
       await performCleanExit();
     });
 
     mainWindow.webContents.once('did-fail-load', async (_event, errorCode, errorDescription, validatedURL) => {
       clearTimeout(smokeTimeout);
       const failMsg = `Failed to load ${validatedURL}: [${errorCode}] ${errorDescription}`;
-      console.error(`[SMOKE_TEST_FAIL] ${failMsg}`);
+      log.error(`[SMOKE_TEST_FAIL] ${failMsg}`);
       writeCrashLog('SMOKE_TEST_LOAD_FAILED', failMsg);
       await performCleanExit();
     });
@@ -576,7 +621,12 @@ export async function handleDeepLinkUrl(urlStr: string): Promise<boolean> {
         try {
           const { setActiveUserId } = await import('./commercial/session-context.js');
           setActiveUserId(userId);
-        } catch {}
+        } catch (err) {
+          log.debug('Skipped binding active user context on deep-link login', {
+            userId,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
 
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -648,7 +698,11 @@ async function performCleanExit(): Promise<void> {
   isQuitting = true;
   logCheckpoint('Event: performCleanExit - stopping services and closing app');
   try {
-    await releaseAllCloudLocks().catch(() => {});
+    await releaseAllCloudLocks().catch((lockErr: unknown) => {
+      log.debug('Skipped releasing cloud locks during clean app exit', {
+        err: lockErr instanceof Error ? lockErr.message : String(lockErr),
+      });
+    });
     stopResourceMonitoring();
     await processManager.stopAll();
     stopApiServer();

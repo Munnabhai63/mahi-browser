@@ -74,7 +74,7 @@ export const useAutomationStore = create<AutomationState>((set, get) => ({
         set({ executionLogs });
       }
     } catch (err: unknown) {
-      // ignore
+      console.debug('[useAutomationStore] workflow log fetch failed', err);
     }
   },
 

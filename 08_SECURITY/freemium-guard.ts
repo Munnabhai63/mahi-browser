@@ -10,6 +10,9 @@ import { hasValidAccountSubscription, getAccountPlanLimits, isBusinessPlan, read
 import { getActiveUserId } from '../07_BACKEND/commercial/session-context.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 import { getCanonicalPlan, legacyPlanIdToCanonical } from '../07_BACKEND/commercial/canonical-plan-catalog.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('freemium-guard');
 
 function getUserDataPath(): string {
   return getWritableUserDataDir();
@@ -37,7 +40,11 @@ export function hasValidLicense(): boolean {
         }
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Offline license validation probe skipped', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // 2. Check claimed-licenses.json
   try {
@@ -54,7 +61,11 @@ export function hasValidLicense(): boolean {
         }
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Claimed licenses probe skipped', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   return false;
 }
@@ -69,11 +80,19 @@ export function resolveDefaultOwnerId(explicitOwnerId?: string): string {
   try {
     const session = getAccountSession();
     if (session?.account_id) return session.account_id;
-  } catch {}
+  } catch (err) {
+    log.debug('Account session lookup skipped in resolveDefaultOwnerId', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   try {
     const activeUserId = getActiveUserId();
     if (activeUserId) return activeUserId;
-  } catch {}
+  } catch (err) {
+    log.debug('Active user ID lookup skipped in resolveDefaultOwnerId', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return 'SYSTEM_OWNER';
 }
 
@@ -229,8 +248,11 @@ export function getProxyLimitsInfo(ownerId?: string): {
           effectivePlanId = userRow.plan_id;
         }
       }
-    } catch {
+    } catch (err) {
       // Fall back to account session / license checks when commercial tables aren't initialized
+      log.debug('Commercial quota table lookup skipped; falling back to session cache', {
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

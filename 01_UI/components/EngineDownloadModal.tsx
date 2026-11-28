@@ -121,7 +121,7 @@ export const EngineDownloadModal: React.FC = () => {
 
     return () => {
       for (const d of disposers) {
-        try { d(); } catch {}
+        try { d(); } catch (err) { console.debug('[EngineDownloadModal] listener cleanup failed', err); }
       }
     };
   }, []);
@@ -142,7 +142,9 @@ export const EngineDownloadModal: React.FC = () => {
       } else if (typeof window.mahiAPI?.downloadManagedEngine === 'function') {
         await window.mahiAPI.downloadManagedEngine();
       }
-    } catch {} finally {
+    } catch (err) {
+      console.debug('[EngineDownloadModal] download retry failed', err);
+    } finally {
       setIsRetrying(false);
     }
   };

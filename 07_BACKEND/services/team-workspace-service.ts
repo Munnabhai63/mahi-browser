@@ -13,6 +13,8 @@ import {
 import { getEmailProvider } from '../../05_AUTH/email-service.js';
 import { getCentralUserById, getCentralUserByEmail } from '../../05_AUTH/central-auth-service.js';
 import { appUrl } from '../../10_CONFIG/shared/site-config.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('team-workspace-service');
 
 // ============================================================================
 // PERMISSION CHECK HELPERS
@@ -55,7 +57,7 @@ export function logWorkspaceAudit(
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(id, workspaceId, userId, action, targetId || null, details || null, now);
   } catch (err) {
-    console.error('[WorkspaceAudit] Failed to log audit event:', err);
+    log.error('[WorkspaceAudit] Failed to log audit event:', err);
   }
 }
 

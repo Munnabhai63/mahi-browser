@@ -4,6 +4,9 @@ import * as path from 'path';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
 import { getWritableUserDataDir } from '../utils/runtime-paths.js';
 import { redactSensitiveTokens } from '../utils/http-security.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('ipc-register-handlers');
 import { cleanProfileCaches, CleanCacheResult } from '../services/profile-cache-cleaner.js';
 import { verifyLicense, getHWID } from '../../08_SECURITY/license-service.js';
 import { isOnlineRevoked, isGraceExpired, getOnlineStatusSummary, checkLicenseStatusOnline } from '../../08_SECURITY/license-status-service.js';
@@ -102,16 +105,16 @@ import {
   createProfileShortcut,
 } from '../../03_HARDWARE/distribution-service.js';
 import {
-  isCloudSyncAllowed,
+  isCloudSyncAllowedAsync,
   getCloudSyncUsage,
   getCloudSyncList,
   uploadProfileToCloud,
   downloadAndRestoreProfile,
   deleteCloudProfile,
-  getSyncConfig,
-  setSyncConfig,
-  syncAllProfiles,
-  getAllProfilesSyncStatus,
+  getSyncConfigAsync,
+  setSyncConfigAsync,
+  syncAllProfilesAsync,
+  getAllProfilesSyncStatusAsync,
   initCloudSync,
   resolveSyncConflict,
   acquireCloudLock,
@@ -537,7 +540,11 @@ export function registerIpcHandlers(): void {
               win.webContents.send('profiles:batchProgress', progress);
             }
           }
-        } catch {}
+        } catch (ipcErr) {
+          log.debug('Skipped profiles:batchProgress IPC send', {
+            err: ipcErr instanceof Error ? ipcErr.message : String(ipcErr),
+          });
+        }
       });
     } catch (err) {
       return { results: [], error: sanitizeError(err) };
@@ -1133,10 +1140,8 @@ export function registerIpcHandlers(): void {
       if (targetFilePath && typeof targetFilePath === 'string') {
         const resolved = path.resolve(targetFilePath);
         const parent = path.dirname(resolved);
-        if (!fs.existsSync(parent)) {
-          fs.mkdirSync(parent, { recursive: true });
-        }
-        fs.writeFileSync(resolved, text, 'utf8');
+        await fs.promises.mkdir(parent, { recursive: true });
+        await fs.promises.writeFile(resolved, text, 'utf8');
       }
       return text;
     } catch (err) {
@@ -1592,9 +1597,17 @@ export function registerIpcHandlers(): void {
     try {
       const userDataDir = getWritableUserDataDir();
       const licenseFile = path.join(userDataDir, 'offline-license.key');
-      if (fs.existsSync(licenseFile)) {
-        const rawKey = fs.readFileSync(licenseFile, 'utf8').trim();
-        if (rawKey) {
+      let rawKey = '';
+      try {
+        rawKey = (await fs.promises.readFile(licenseFile, 'utf8')).trim();
+      } catch (readErr: any) {
+        if (readErr?.code !== 'ENOENT') {
+          log.warn('Failed reading offline license key in license:getStatus', {
+            err: readErr instanceof Error ? readErr.message : String(readErr),
+          });
+        }
+      }
+      if (rawKey) {
           const check = verifyLicense(rawKey);
           if (check.valid) {
             if (isOnlineRevoked()) {
@@ -1655,7 +1668,6 @@ export function registerIpcHandlers(): void {
               },
             };
           }
-        }
       }
       return validateCurrentLicense();
     } catch (err) {
@@ -1699,7 +1711,7 @@ export function registerIpcHandlers(): void {
       if (rsaCheck.valid) {
         const userDataDir = getWritableUserDataDir();
         const licenseFile = path.join(userDataDir, 'offline-license.key');
-        fs.writeFileSync(licenseFile, rawKey, 'utf8');
+        await fs.promises.writeFile(licenseFile, rawKey, 'utf8');
         setActiveUserId('local-license-user');
         return {
           success: true,
@@ -2217,19 +2229,19 @@ export function registerIpcHandlers(): void {
       const licenseFile = path.join(getWritableUserDataDir(), 'offline-license.key');
 
       // Helper: read claimed licenses { email -> licenseKey }
-      function readClaimed(): Record<string, string> {
-        try { return JSON.parse(fs.readFileSync(claimedFile, 'utf8')); } catch { return {}; }
+      async function readClaimed(): Promise<Record<string, string>> {
+        try { return JSON.parse(await fs.promises.readFile(claimedFile, 'utf8')); } catch { return {}; }
       }
-      function writeClaimed(data: Record<string, string>) {
-        fs.writeFileSync(claimedFile, JSON.stringify(data), 'utf8');
+      async function writeClaimed(data: Record<string, string>) {
+        await fs.promises.writeFile(claimedFile, JSON.stringify(data), 'utf8');
       }
 
-      // â”€â”€ MODE 1: CHECK_LICENSE â”€â”€
+      // ── MODE 1: CHECK_LICENSE ──
       // Called after user logs in with email+password.
       // Returns: { success: true, licenseKey } if email has valid license
       //          { needsLicense: true }        if email has no license yet
       if (dto.mode === 'CHECK_LICENSE') {
-        const claimed = readClaimed();
+        const claimed = await readClaimed();
         const storedKey = claimed[dto.email?.toLowerCase()];
         if (storedKey) {
           const check = verifyLicense(storedKey);
@@ -2237,16 +2249,16 @@ export function registerIpcHandlers(): void {
             setActiveUserId('local-license-user');
             return { success: true, licenseKey: storedKey };
           } else {
-            // License expired â€” remove it and ask for new one
+            // License expired — remove it and ask for new one
             delete claimed[dto.email?.toLowerCase()];
-            writeClaimed(claimed);
+            await writeClaimed(claimed);
             return { needsLicense: true, error: 'License expired. Please enter a new key.' };
           }
         }
         return { needsLicense: true };
       }
 
-      // â”€â”€ MODE 2: ACTIVATE_LICENSE â”€â”€
+      // ── MODE 2: ACTIVATE_LICENSE ──
       // Called when user submits a new license key.
       // Validates the key, ensures 1-to-1 email mapping, saves it.
       if (dto.mode === 'ACTIVATE_LICENSE') {
@@ -2256,7 +2268,7 @@ export function registerIpcHandlers(): void {
         const check = verifyLicense(rawKey);
         if (!check.valid) return { success: false, error: check.error || 'Invalid license key.' };
 
-        const claimed = readClaimed();
+        const claimed = await readClaimed();
         const emailLower = email.toLowerCase();
 
         // Check if this license key is already claimed by a DIFFERENT email
@@ -2267,20 +2279,20 @@ export function registerIpcHandlers(): void {
 
         // Link license to this email
         claimed[emailLower] = rawKey;
-        writeClaimed(claimed);
-        fs.writeFileSync(licenseFile, rawKey, 'utf8');
+        await writeClaimed(claimed);
+        await fs.promises.writeFile(licenseFile, rawKey, 'utf8');
 
         setActiveUserId('local-license-user');
         return { success: true, licenseKey: rawKey };
       }
 
-      // â”€â”€ LEGACY: LICENSE_MODE (auto-login on app start) â”€â”€
+      // ── LEGACY: LICENSE_MODE (auto-login on app start) ──
       if (dto.password === 'LICENSE_MODE') {
         let licenseKey = dto.email;
         if (licenseKey === 'AUTO') {
-          if (fs.existsSync(licenseFile)) {
-            licenseKey = fs.readFileSync(licenseFile, 'utf8').trim();
-          } else {
+          try {
+            licenseKey = (await fs.promises.readFile(licenseFile, 'utf8')).trim();
+          } catch {
             return { success: false, error: 'NO_SAVED_LICENSE' };
           }
         }
@@ -2435,7 +2447,7 @@ export function registerIpcHandlers(): void {
   });
 
   // Cloud Profile Sync Handlers (GoLogin-style)
-  ipcMain.handle('sync:isAllowed', async () => isCloudSyncAllowed());
+  ipcMain.handle('sync:isAllowed', async () => isCloudSyncAllowedAsync());
   ipcMain.handle('sync:getUsage', async () => getCloudSyncUsage());
   ipcMain.handle('sync:list', async () => getCloudSyncList());
   ipcMain.handle('sync:upload', async (_e, profileId: string, options?: { force?: boolean; baseVersion?: number; mode?: 'full' | 'cookies_only' }) => {
@@ -2449,13 +2461,13 @@ export function registerIpcHandlers(): void {
     return downloadAndRestoreProfile(cloudProfileId, options);
   });
   ipcMain.handle('sync:delete', async (_e, cloudProfileId: string) => deleteCloudProfile(cloudProfileId));
-  ipcMain.handle('sync:getConfig', async () => getSyncConfig());
-  ipcMain.handle('sync:setConfig', async (_e, config: any) => setSyncConfig(config));
+  ipcMain.handle('sync:getConfig', async () => getSyncConfigAsync());
+  ipcMain.handle('sync:setConfig', async (_e, config: any) => setSyncConfigAsync(config));
   ipcMain.handle('sync:syncAll', async () => {
     assertCapability('cloud.sync');
-    return syncAllProfiles();
+    return syncAllProfilesAsync();
   });
-  ipcMain.handle('sync:getAllStatuses', async () => getAllProfilesSyncStatus());
+  ipcMain.handle('sync:getAllStatuses', async () => getAllProfilesSyncStatusAsync());
   ipcMain.handle('sync:resolveConflict', async (_e, profileId: string, resolution: any) => resolveSyncConflict(profileId, resolution));
   ipcMain.handle('sync:lock:acquire', async (_e, cloudProfileId: string, ttlSeconds?: number) => acquireCloudLock(cloudProfileId, ttlSeconds));
   ipcMain.handle('sync:lock:release', async (_e, cloudProfileId: string) => releaseCloudLock(cloudProfileId));
@@ -2548,7 +2560,11 @@ export function registerIpcHandlers(): void {
       if (url.startsWith('https://') || url.startsWith('http://127.0.0.1') || url.startsWith('http://localhost')) {
         try {
           await shell.openExternal(url);
-        } catch {}
+        } catch (shellErr) {
+          log.warn('Failed opening checkout URL in external browser', {
+            err: shellErr instanceof Error ? shellErr.message : String(shellErr),
+          });
+        }
       }
     }
     return remoteRes;
@@ -2659,7 +2675,11 @@ export function registerIpcHandlers(): void {
         const v = app.getVersion();
         if (v) return v;
       }
-    } catch {}
+    } catch (err) {
+      log.debug('app.getVersion skipped outside packaged Electron', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
     return APP_VERSION;
   });
   ipcMain.handle('app:getDiagnostics', async () => {
@@ -2669,20 +2689,33 @@ export function registerIpcHandlers(): void {
         const v = app.getVersion();
         if (v) version = v;
       }
-    } catch {}
+    } catch (err) {
+      log.debug('app.getVersion skipped in diagnostics', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     let logTail = '';
     try {
       const crashLogPath = path.join(getWritableUserDataDir(), 'crash-log.txt');
-      if (fs.existsSync(crashLogPath)) {
-        const content = fs.readFileSync(crashLogPath, 'utf-8');
+      let content = '';
+      try {
+        content = await fs.promises.readFile(crashLogPath, 'utf-8');
+      } catch (readErr: any) {
+        if (readErr?.code !== 'ENOENT') throw readErr;
+      }
+      if (content) {
         const lines = content.split('\n');
         logTail = redactSensitiveTokens(lines.slice(-200).join('\n'));
         if (logTail.length > 20000) {
           logTail = logTail.slice(-20000);
         }
       }
-    } catch {}
+    } catch (readErr) {
+      log.warn('Failed reading crash-log.txt for diagnostics', {
+        err: readErr instanceof Error ? readErr.message : String(readErr),
+      });
+    }
 
     return {
       version,

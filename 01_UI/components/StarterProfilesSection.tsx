@@ -185,7 +185,7 @@ export const StarterProfilesSection: React.FC<StarterProfilesSectionProps> = ({
             setTemplates(res);
           }
         })
-        .catch(() => {});
+        .catch((err: unknown) => { console.debug('[StarterProfilesSection] starter template load failed', err); });
     }
   }, []);
 

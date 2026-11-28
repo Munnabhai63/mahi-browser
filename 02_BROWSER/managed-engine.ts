@@ -25,6 +25,8 @@ import {
 } from '../10_CONFIG/engine-config.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 import { getDatabase } from '../06_DATABASE/connection.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+const log = createLogger('managed-engine');
 
 const execAsync = promisify(exec);
 
@@ -62,7 +64,7 @@ let inFlightDownloadPromise: Promise<string> | null = null;
 function debugLog(msg: string) {
   const fn = (globalThis as any).__mahiDebugLog;
   if (fn) fn(msg);
-  else console.log(msg);
+  else log.info(msg);
 }
 
 export function addManagedEngineProgressListener(listener: ProgressListener): () => void {
@@ -70,7 +72,11 @@ export function addManagedEngineProgressListener(listener: ProgressListener): ()
   // Send current status immediately
   try {
     listener(currentProgress);
-  } catch {}
+  } catch (err) {
+    log.debug('Progress listener callback threw on subscribe', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return () => {
     listeners.delete(listener);
   };
@@ -89,7 +95,11 @@ function broadcastProgress(update: Partial<ManagedEngineProgress>) {
   for (const l of listeners) {
     try {
       l(currentProgress);
-    } catch {}
+    } catch (err) {
+      log.debug('Progress listener callback threw on broadcast', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }
 
@@ -161,7 +171,11 @@ export function getBundledEngineExecutablePath(
     if (resourcesPath && typeof resourcesPath === 'string') {
       candidates.push(path.join(resourcesPath, 'engines', version, archiveSubdir, executableName));
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Skipped process.resourcesPath bundled engine probe', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // 2. Relative to process.execPath (Windows installed app: <install-dir>\resources\engines\...)
   try {
@@ -169,7 +183,11 @@ export function getBundledEngineExecutablePath(
       const installDir = path.dirname(process.execPath);
       candidates.push(path.join(installDir, 'resources', 'engines', version, archiveSubdir, executableName));
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Skipped process.execPath bundled engine probe', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // 3. app.getAppPath() (when running inside app.asar: <install-dir>\resources\app.asar)
   try {
@@ -178,7 +196,11 @@ export function getBundledEngineExecutablePath(
       candidates.push(path.join(path.dirname(appPath), 'engines', version, archiveSubdir, executableName));
       candidates.push(path.join(path.dirname(appPath), 'resources', 'engines', version, archiveSubdir, executableName));
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Skipped app.getAppPath bundled engine probe', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // 4. Standard Windows local programs install location fallback
   if (process.env.LOCALAPPDATA && targetPlatform === 'win32') {
@@ -190,7 +212,12 @@ export function getBundledEngineExecutablePath(
       if (fs.existsSync(candidate)) {
         return candidate;
       }
-    } catch {}
+    } catch (err) {
+      log.debug('Failed checking bundled engine candidate path', {
+        candidate,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   return null;
@@ -397,7 +424,13 @@ export function downloadFileWithProgress(
           if (response.statusCode !== 200) {
             response.resume();
             let host = 'remote server';
-            try { host = new URL(currentUrl).hostname; } catch {}
+            try {
+              host = new URL(currentUrl).hostname;
+            } catch (urlErr) {
+              log.debug('Could not parse engine download hostname for error message', {
+                err: urlErr instanceof Error ? urlErr.message : String(urlErr),
+              });
+            }
             reject(
               new Error(
                 `Failed to download ${label || 'engine'} from ${host}: HTTP ${response.statusCode} (${response.statusMessage})`
@@ -422,13 +455,27 @@ export function downloadFileWithProgress(
 
           response.on('error', (err) => {
             fileStream.close();
-            try { fs.unlinkSync(destinationPath); } catch {}
+            try {
+              fs.unlinkSync(destinationPath);
+            } catch (unlinkErr) {
+              log.debug('Failed unlinking partial engine download on response error', {
+                destinationPath,
+                err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+              });
+            }
             reject(err);
           });
 
           fileStream.on('error', (err) => {
             fileStream.close();
-            try { fs.unlinkSync(destinationPath); } catch {}
+            try {
+              fs.unlinkSync(destinationPath);
+            } catch (unlinkErr) {
+              log.debug('Failed unlinking partial engine download on stream error', {
+                destinationPath,
+                err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+              });
+            }
             reject(err);
           });
 
@@ -442,7 +489,14 @@ export function downloadFileWithProgress(
           response.pipe(fileStream);
         })
         .on('error', (err) => {
-          try { fs.unlinkSync(destinationPath); } catch {}
+          try {
+            fs.unlinkSync(destinationPath);
+          } catch (unlinkErr) {
+            log.debug('Failed unlinking partial engine download on request error', {
+              destinationPath,
+              err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+            });
+          }
           reject(err);
         });
     }
@@ -487,7 +541,11 @@ function collectProfileReferencedEngineVersionsSafe(): Set<string> {
       try {
         const s = row.settings_json ? JSON.parse(row.settings_json) : null;
         if (s?.browser?.version) referenced.add(String(s.browser.version));
-      } catch {}
+      } catch (parseErr) {
+        log.debug('Skipped malformed profile settings_json during engine GC check', {
+          err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        });
+      }
     }
     try {
       const execRows = db
@@ -497,11 +555,17 @@ function collectProfileReferencedEngineVersionsSafe(): Set<string> {
         const match = (r.custom_executable_path || '').match(/engines[\\/](\d+\.\d+\.\d+\.\d+)[\\/]/i);
         if (match?.[1]) referenced.add(match[1]);
       }
-    } catch {
+    } catch (colErr) {
       // Optional column in older test schemas
+      log.debug('Skipped optional custom_executable_path query during engine GC check', {
+        err: colErr instanceof Error ? colErr.message : String(colErr),
+      });
     }
-  } catch {
+  } catch (dbErr) {
     // Headless/unit test without active SQLite DB
+    log.debug('Skipped profile DB query during engine GC check', {
+      err: dbErr instanceof Error ? dbErr.message : String(dbErr),
+    });
   }
   return referenced;
 }
@@ -635,7 +699,14 @@ export async function ensureProductionChromiumInstalled(options?: {
     } catch (primaryErr: any) {
       debugLog(`[ManagedEngine] Primary download failed: ${primaryErr?.message}. Falling back to mirror: ${CHROMIUM_PRODUCTION_CONFIG.fallbackUrl}`);
       if (fs.existsSync(tempZipPath)) {
-        try { fs.unlinkSync(tempZipPath); } catch {}
+        try {
+          fs.unlinkSync(tempZipPath);
+        } catch (unlinkErr) {
+          log.debug('Failed deleting partial primary Chromium zip before mirror fallback', {
+            tempZipPath,
+            err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+          });
+        }
       }
       computedSha256 = await downloadFileWithProgress(CHROMIUM_PRODUCTION_CONFIG.fallbackUrl, tempZipPath, progressCallback);
     }
@@ -654,7 +725,14 @@ export async function ensureProductionChromiumInstalled(options?: {
     debugLog(`[ManagedEngine] Extracting Chromium zip to: ${tempWorkingDir}`);
     await extractZipArchive(tempZipPath, tempWorkingDir);
 
-    try { fs.unlinkSync(tempZipPath); } catch {}
+    try {
+      fs.unlinkSync(tempZipPath);
+    } catch (unlinkErr) {
+      log.debug('Failed deleting extracted Chromium temp zip', {
+        tempZipPath,
+        err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+      });
+    }
 
     const extractedExe = path.join(tempWorkingDir, CHROMIUM_PRODUCTION_CONFIG.archiveSubdir, CHROMIUM_PRODUCTION_CONFIG.executableRelativePath);
     if (!fs.existsSync(extractedExe)) {
@@ -664,7 +742,14 @@ export async function ensureProductionChromiumInstalled(options?: {
     // Atomically move into place
     debugLog(`[ManagedEngine] Atomically renaming ${tempWorkingDir} -> ${finalVersionDir}`);
     if (fs.existsSync(finalVersionDir)) {
-      try { fs.rmSync(finalVersionDir, { recursive: true, force: true }); } catch {}
+      try {
+        fs.rmSync(finalVersionDir, { recursive: true, force: true });
+      } catch (rmErr) {
+        log.debug('Failed removing stale final Chromium version dir prior to rename', {
+          finalVersionDir,
+          err: rmErr instanceof Error ? rmErr.message : String(rmErr),
+        });
+      }
     }
     fs.renameSync(tempWorkingDir, finalVersionDir);
 
@@ -676,7 +761,12 @@ export async function ensureProductionChromiumInstalled(options?: {
       if (fs.existsSync(tempWorkingDir)) {
         fs.rmSync(tempWorkingDir, { recursive: true, force: true });
       }
-    } catch {}
+    } catch (cleanupErr) {
+      log.debug('Failed cleaning up temp Chromium working dir after install error', {
+        tempWorkingDir,
+        err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+      });
+    }
     const errorMsg = err instanceof Error ? err.message : String(err);
     broadcastProgress({ stage: 'ERROR', error: errorMsg });
     throw err;
@@ -777,7 +867,14 @@ export async function ensureManagedEngineInstalled(options?: {
       } catch (primaryErr: any) {
         debugLog(`[ManagedEngine] Primary download failed: ${primaryErr?.message}. Falling back to mirror: ${MANAGED_ENGINE_FALLBACK_URL}`);
         if (fs.existsSync(tempZipPath)) {
-          try { fs.unlinkSync(tempZipPath); } catch {}
+          try {
+            fs.unlinkSync(tempZipPath);
+          } catch (unlinkErr) {
+            log.debug('Failed deleting partial managed engine zip before fallback', {
+              tempZipPath,
+              err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+            });
+          }
         }
         computedSha256 = await downloadFileWithProgress(
           MANAGED_ENGINE_FALLBACK_URL,
@@ -803,7 +900,12 @@ export async function ensureManagedEngineInstalled(options?: {
       // Remove the 170MB zip file after extraction to free disk space immediately
       try {
         fs.unlinkSync(tempZipPath);
-      } catch {}
+      } catch (unlinkErr) {
+        log.debug('Failed deleting extracted managed engine temp zip', {
+          tempZipPath,
+          err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+        });
+      }
 
       // Verify that executable binary exists in extracted content
       const platConfig = getPlatformEngineConfig();
@@ -820,7 +922,12 @@ export async function ensureManagedEngineInstalled(options?: {
       if (fs.existsSync(finalVersionDir)) {
         try {
           fs.rmSync(finalVersionDir, { recursive: true, force: true });
-        } catch {}
+        } catch (rmErr) {
+          log.debug('Failed removing existing managed engine dir prior to rename', {
+            finalVersionDir,
+            err: rmErr instanceof Error ? rmErr.message : String(rmErr),
+          });
+        }
       }
       fs.renameSync(tempWorkingDir, finalVersionDir);
 
@@ -830,7 +937,12 @@ export async function ensureManagedEngineInstalled(options?: {
           if (fs.existsSync(finalExe)) {
             fs.chmodSync(finalExe, 0o755);
           }
-        } catch {}
+        } catch (chmodErr) {
+          log.warn('Failed setting POSIX executable permissions on managed engine binary', {
+            finalExe,
+            err: chmodErr instanceof Error ? chmodErr.message : String(chmodErr),
+          });
+        }
       }
 
       // Step 8: Clean up old versions
@@ -845,7 +957,12 @@ export async function ensureManagedEngineInstalled(options?: {
         if (fs.existsSync(tempWorkingDir)) {
           fs.rmSync(tempWorkingDir, { recursive: true, force: true });
         }
-      } catch {}
+      } catch (cleanupErr) {
+        log.debug('Failed removing temp managed engine working dir on error', {
+          tempWorkingDir,
+          err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        });
+      }
 
       const errorMsg = err instanceof Error ? err.message : String(err);
       broadcastProgress({ stage: 'ERROR', error: errorMsg });
@@ -911,7 +1028,12 @@ export async function repairManagedEngine(): Promise<{
           broadcastProgress({ stage: 'READY', percent: 100 });
           return { success: true, path: bundled };
         }
-      } catch {}
+      } catch (statErr) {
+        log.debug('Failed inspecting bundled engine size during repair', {
+          bundled,
+          err: statErr instanceof Error ? statErr.message : String(statErr),
+        });
+      }
     }
 
     // 2. In test environments (VITEST), verify engine health without deleting test fixtures
@@ -961,7 +1083,12 @@ export function resolveEngineManifest(executablePath: string): MahiEngineManifes
       if (fs.existsSync(executablePath)) {
         realPath = fs.realpathSync(executablePath);
       }
-    } catch {}
+    } catch (rpErr) {
+      log.debug('Failed resolving realpath for engine manifest check', {
+        executablePath,
+        err: rpErr instanceof Error ? rpErr.message : String(rpErr),
+      });
+    }
 
     const normalizedExe = normalizeComparablePath(realPath);
     const engineFolderVersionMatch = realPath.match(/engines[\\/](\d+\.\d+\.\d+\.\d+)[\\/]/i);
@@ -1018,10 +1145,20 @@ export function resolveEngineManifest(executablePath: string): MahiEngineManifes
           if (data.engine === 'mahi-chromium' || data.nativeStealth === true) {
             return data as MahiEngineManifest;
           }
-        } catch {}
+        } catch (manifestErr) {
+          log.warn('Failed parsing mahi-engine.json manifest', {
+            manifestPath,
+            err: manifestErr instanceof Error ? manifestErr.message : String(manifestErr),
+          });
+        }
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Engine manifest resolution aborted safely', {
+      executablePath,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   return null;
 }

@@ -21,7 +21,9 @@ import fs from 'node:fs';
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { BrowserEngine, Profile } from '../../10_CONFIG/shared/types/profile.js';
+import { createLogger } from '../../07_BACKEND/utils/logger.js';
 
+const log = createLogger('platform-adapter');
 const execFileAsync = promisify(execFile);
 const winCpuPrevSamples = new Map<number, { totalCpuSec: number; timestampMs: number }>();
 
@@ -214,8 +216,8 @@ export class PlatformAdapter {
 
       try {
         process.kill(-safePid, 'SIGKILL');
-      } catch {
-        try { process.kill(safePid, 'SIGKILL'); } catch {}
+      } catch (groupErr) {
+        try { process.kill(safePid, 'SIGKILL'); } catch (pidErr) { log.debug('platform-adapter SIGKILL fallback skipped', { pid: safePid, groupErr, pidErr }); }
       }
       return true;
     } catch {
@@ -288,7 +290,9 @@ export class PlatformAdapter {
     try {
       await execFileAsync('tar', ['-xf', zipPath, '-C', destDir]);
       return;
-    } catch {}
+    } catch (tarErr) {
+      log.debug('platform-adapter bsdtar extraction failed, trying OS fallback', { zipPath, err: tarErr });
+    }
 
     // 2. Platform-specific fallback
     if (this.isWindows()) {

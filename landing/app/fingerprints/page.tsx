@@ -95,8 +95,10 @@ export default function FingerprintsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eventName: 'download_started', source: 'fingerprints_page' }),
-      }).catch(() => {});
-    } catch (_) {}
+      }).catch((err) => { console.debug('[fingerprints] funnel telemetry failed', err); });
+    } catch (err) {
+      console.debug('[fingerprints] funnel telemetry skipped', err);
+    }
   };
 
   const handleSelectPreset = (key: string) => {

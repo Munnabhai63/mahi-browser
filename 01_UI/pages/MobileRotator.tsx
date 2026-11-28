@@ -104,8 +104,8 @@ export const MobileRotator: React.FC = () => {
     try {
       const hist = await window.mahiAPI.mobileRotatorGetHistory();
       setRotationHistory(Array.isArray(hist) ? hist : []);
-    } catch {
-      // ignore
+    } catch (err) {
+      console.debug('[MobileRotator] rotation history fetch failed', err);
     }
   }, []);
 
@@ -129,8 +129,8 @@ export const MobileRotator: React.FC = () => {
           setSelectedDevice(firstReady.id);
         }
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.debug('[MobileRotator] ADB status/device refresh failed', err);
     } finally {
       setIsRefreshingDevices(false);
     }

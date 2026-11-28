@@ -3,6 +3,8 @@ import { getPrismaClient } from '../../../06_DATABASE/prisma-client.js';
 import { isPostgresConfigured } from '../../../06_DATABASE/central-repository.js';
 import { getCommercialPlanById, DEFAULT_COMMERCIAL_PLANS } from '../commercial-plan-service.js';
 import { CommercialPlan, BillingCycleType } from '../../../10_CONFIG/shared/types/commercial.js';
+import { createLogger } from '../../utils/logger.js';
+const log = createLogger('payment-types');
 
 export type PaymentProviderType = 'stripe' | 'razorpay' | 'youpi_pg' | 'simulation';
 
@@ -162,7 +164,7 @@ export function resolvePgBillingClient(requiredModels: string[]): any | null {
         `[PaymentService][PG_UNAVAILABLE] Required Prisma billing models (${requiredModels.join(', ')}) unavailable in production.`
       );
     }
-    console.warn(
+    log.warn(
       `[PaymentService][PG_CAPABILITY_MISSING] Prisma client cannot serve ${requiredModels.join(', ')}; falling back to local SQLite.`
     );
     return null;

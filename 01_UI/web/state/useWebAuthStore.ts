@@ -45,10 +45,14 @@ function clearLegacyBrowserTokenStorage(): void {
   for (const key of LEGACY_STORAGE_KEYS) {
     try {
       window.sessionStorage?.removeItem(key);
-    } catch {}
+    } catch (err) {
+      console.debug('[useWebAuthStore] legacy sessionStorage clear skipped', err);
+    }
     try {
       window.localStorage?.removeItem(key);
-    } catch {}
+    } catch (err) {
+      console.debug('[useWebAuthStore] legacy localStorage clear skipped', err);
+    }
   }
 }
 
@@ -72,7 +76,9 @@ function stripLegacyUrlTokenParams(): void {
       const cleanUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}${hash ? `#${hash}` : ''}`;
       window.history.replaceState({}, document.title, cleanUrl);
     }
-  } catch {}
+  } catch (err) {
+    console.debug('[useWebAuthStore] legacy URL token strip skipped', err);
+  }
 }
 
 function mapToWebUser(rawUser: any): WebUser {
@@ -147,7 +153,9 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
           return;
         }
       }
-    } catch {}
+    } catch (err) {
+      console.debug('[useWebAuthStore] session bootstrap failed, treating as signed out', err);
+    }
 
     set({ isAuthenticated: false, user: null, isLoading: false });
   },
@@ -239,7 +247,9 @@ export const useWebAuthStore = create<WebAuthState>((set, get) => ({
     const { refreshToken } = get();
     try {
       await api.logout(refreshToken || undefined);
-    } catch {}
+    } catch (err) {
+      console.debug('[useWebAuthStore] remote logout call failed', err);
+    }
 
     clearLegacyBrowserTokenStorage();
     set({

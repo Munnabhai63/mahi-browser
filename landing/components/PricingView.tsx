@@ -298,7 +298,9 @@ export default function PricingView() {
       try {
         localStorage.removeItem('mahi_auth_token');
         localStorage.removeItem('mahi_access_token');
-      } catch {}
+      } catch (err) {
+        console.debug('[PricingView] legacy localStorage token clear skipped', err);
+      }
 
       const urlCurrency = (params.get('currency') || '').toUpperCase();
       if (urlCurrency === 'USD' || urlCurrency === 'INR') {
@@ -382,8 +384,8 @@ export default function PricingView() {
             if (data.support.sellerName) setSellerName(data.support.sellerName);
           }
         }
-      } catch {
-        // Fall back gracefully on gateway probe error
+      } catch (err) {
+        console.debug('[PricingView] gateway probe failed, using defaults', err);
       } finally {
         if (mounted) {
           setGatewaysLoaded(true);
@@ -405,7 +407,9 @@ export default function PricingView() {
         const blob = new Blob([payload], { type: 'application/json' });
         navigator.sendBeacon('/api/v1/funnel/track', blob);
       }
-    } catch (_) {}
+    } catch (err) {
+      console.debug('[PricingView] funnel telemetry skipped', err);
+    }
   };
 
   const startOnlineCheckout = async (

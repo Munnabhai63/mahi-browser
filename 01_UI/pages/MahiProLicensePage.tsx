@@ -106,13 +106,13 @@ export const MahiProLicensePage: React.FC<MahiProLicensePageProps> = ({ onNaviga
     if (window.mahiAPI?.getDynamicPrice) {
       window.mahiAPI.getDynamicPrice().then((p) => {
         if (typeof p === 'number' && p > 0) setPriceInr(p);
-      }).catch(() => {});
+      }).catch((err) => { console.debug('[MahiProLicensePage] getDynamicPrice failed', err); });
     }
     if (window.mahiAPI?.getHwid) {
-      window.mahiAPI.getHwid().then((id: string) => setHwid(id)).catch(() => {});
+      window.mahiAPI.getHwid().then((id: string) => setHwid(id)).catch((err) => { console.debug('[MahiProLicensePage] getHwid failed', err); });
     }
     if (window.mahiAPI?.getOnlineLicenseStatus) {
-      window.mahiAPI.getOnlineLicenseStatus().then(st => setOnlineStatus(st)).catch(() => {});
+      window.mahiAPI.getOnlineLicenseStatus().then(st => setOnlineStatus(st)).catch((err) => { console.debug('[MahiProLicensePage] getOnlineLicenseStatus failed', err); });
     }
     const unsubChanged = window.mahiAPI?.onLicenseStatusChanged?.((st: any) => {
       setOnlineStatus(st);

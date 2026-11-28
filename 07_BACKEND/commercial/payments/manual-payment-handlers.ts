@@ -17,6 +17,8 @@ import {
   withPgTransaction,
 } from './payment-types.js';
 import { activateSubscriptionFromPaymentImpl } from './payment-activation.js';
+import { createLogger } from '../../utils/logger.js';
+const log = createLogger('manual-payment-handlers');
 
 export async function submitManualUpiPaymentImpl(params: {
   userId: string;
@@ -117,7 +119,12 @@ export async function submitManualUpiPaymentImpl(params: {
               created_at: now,
             },
           });
-        } catch {}
+        } catch (auditErr) {
+          log.debug('Skipped PostgreSQL audit log write for manual UPI submission', {
+            paymentId,
+            err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+          });
+        }
       }
     });
   } else {
@@ -172,7 +179,12 @@ export async function submitManualUpiPaymentImpl(params: {
         targetId: paymentId,
         details: `UPI ₹${amountPaise / 100} pending — UTR ${cleanUtr} — plan ${plan.id}`,
       });
-    } catch {}
+    } catch (auditErr) {
+      log.debug('Skipped SQLite audit log write for manual UPI submission', {
+        paymentId,
+        err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+      });
+    }
   }
 
   try {
@@ -192,7 +204,7 @@ export async function submitManualUpiPaymentImpl(params: {
       }
     );
   } catch (err: any) {
-    console.warn(`[PaymentService] admin UTR notification failed: ${err.message}`);
+    log.warn(`[PaymentService] admin UTR notification failed: ${err.message}`);
   }
 
   return {
@@ -317,7 +329,12 @@ export async function submitManualCryptoPaymentImpl(params: {
               created_at: now,
             },
           });
-        } catch {}
+        } catch (auditErr) {
+          log.debug('Skipped PostgreSQL audit log write for manual UPI submission', {
+            paymentId,
+            err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+          });
+        }
       }
     });
   } else {
@@ -365,7 +382,12 @@ export async function submitManualCryptoPaymentImpl(params: {
         targetId: paymentId,
         details: `USDT ($${(amountCents / 100).toFixed(2)} ${network}) pending — TX ${cleanHash} — plan ${plan.id}`,
       });
-    } catch {}
+    } catch (auditErr) {
+      log.debug('Skipped SQLite audit log write for manual USDT submission', {
+        paymentId,
+        err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+      });
+    }
   }
 
   try {
@@ -385,7 +407,7 @@ export async function submitManualCryptoPaymentImpl(params: {
       }
     );
   } catch (err: any) {
-    console.warn(`[PaymentService] admin crypto notification failed: ${err.message}`);
+    log.warn(`[PaymentService] admin crypto notification failed: ${err.message}`);
   }
 
   return {
@@ -465,7 +487,12 @@ export async function approveManualPaymentImpl(
       let meta: any = {};
       try {
         meta = JSON.parse(lockedPayment.metadata_json || '{}');
-      } catch {}
+      } catch (parseErr) {
+        log.warn('Failed parsing payment metadata_json before PG approval', {
+          paymentId: lockedPayment.id,
+          err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        });
+      }
 
       const activated = await activateSubscriptionFromPaymentImpl({
         userId: lockedPayment.user_id,
@@ -541,7 +568,12 @@ export async function approveManualPaymentImpl(
     let meta: any = {};
     try {
       meta = JSON.parse(payment.metadata_json || '{}');
-    } catch {}
+    } catch (parseErr) {
+      log.warn('Failed parsing payment metadata_json before SQLite approval', {
+        paymentId: payment.id,
+        err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+      });
+    }
 
     actResult = await activateSubscriptionFromPaymentImpl({
       userId: payment.user_id,
@@ -571,7 +603,12 @@ export async function approveManualPaymentImpl(
         targetId: payment.id,
         details: `Approved ${methodLabel} payment ${payment.id} for user ${payment.user_id} (${refLabel}: ${payment.external_payment_id})`,
       });
-    } catch {}
+    } catch (auditErr) {
+      log.debug('Skipped SQLite audit log write for manual payment approval', {
+        paymentId: payment.id,
+        err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+      });
+    }
   }
 
   const formattedAmount =
@@ -590,7 +627,7 @@ export async function approveManualPaymentImpl(
     }
 
     if (!userEmail) {
-      console.log(`[PaymentService] skipping approval email: user or email not found for userId=${payment.user_id}`);
+      log.info(`[PaymentService] skipping approval email: user or email not found for userId=${payment.user_id}`);
     } else {
       const plan = resolveCommercialPlan(payment.plan_id);
       const planName = plan ? plan.name : payment.plan_id;
@@ -605,7 +642,7 @@ export async function approveManualPaymentImpl(
       });
     }
   } catch (err: any) {
-    console.warn(`[PaymentService] payment approval notification failed: ${err.message}`);
+    log.warn(`[PaymentService] payment approval notification failed: ${err.message}`);
   }
 
   return {
@@ -653,7 +690,12 @@ export async function rejectManualPaymentImpl(
       let meta: any = {};
       try {
         meta = JSON.parse(lockedPayment.metadata_json || '{}');
-      } catch {}
+      } catch (parseErr) {
+        log.warn('Failed parsing payment metadata_json before PG approval', {
+          paymentId: lockedPayment.id,
+          err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        });
+      }
       meta.rejectionReason = reason;
       meta.rejectedBy = adminActor.name;
       meta.rejectedAt = now;
@@ -718,7 +760,12 @@ export async function rejectManualPaymentImpl(
       let meta: any = {};
       try {
         meta = JSON.parse(row.metadata_json || '{}');
-      } catch {}
+      } catch (parseErr) {
+        log.warn('Failed parsing payment metadata_json before SQLite rejection', {
+          paymentId: row.id,
+          err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        });
+      }
       meta.rejectionReason = reason;
       meta.rejectedBy = adminActor.name;
       meta.rejectedAt = now;
@@ -748,7 +795,12 @@ export async function rejectManualPaymentImpl(
         targetId: payment.id,
         details: `Rejected manual UPI payment ${payment.id} for user ${payment.user_id}. Reason: ${reason}`,
       });
-    } catch {}
+    } catch (auditErr) {
+      log.debug('Skipped SQLite audit log write for manual payment rejection', {
+        paymentId: payment.id,
+        err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+      });
+    }
   }
 
   try {
@@ -762,7 +814,7 @@ export async function rejectManualPaymentImpl(
     }
 
     if (!userEmail) {
-      console.log(`[PaymentService] skipping rejection email: user or email not found for userId=${payment.user_id}`);
+      log.info(`[PaymentService] skipping rejection email: user or email not found for userId=${payment.user_id}`);
     } else {
       const plan = resolveCommercialPlan(payment.plan_id);
       const planName = plan ? plan.name : payment.plan_id;
@@ -774,7 +826,7 @@ export async function rejectManualPaymentImpl(
       });
     }
   } catch (err: any) {
-    console.warn(`[PaymentService] payment rejection notification failed: ${err.message}`);
+    log.warn(`[PaymentService] payment rejection notification failed: ${err.message}`);
   }
 
   return {

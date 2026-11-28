@@ -15,13 +15,13 @@ export function getEnv(key: string, fallback = ''): string {
     if (typeof process !== 'undefined' && process.env && process.env[key] !== undefined) {
       return String(process.env[key]);
     }
-  } catch {}
+  } catch { /* Non-fatal: browser runtimes without Node process polyfill */ }
 
   try {
     if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key] !== undefined) {
       return String((import.meta as any).env[key]);
     }
-  } catch {}
+  } catch { /* Non-fatal: CJS/Node runtimes without Vite import.meta.env */ }
 
   return fallback;
 }

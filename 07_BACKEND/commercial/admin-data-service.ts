@@ -18,6 +18,8 @@ import { getFunnelMetrics } from './funnel-service.js';
 import { getSupportTickets, getSupportTicketMetrics } from './support-ticket-service.js';
 import { getDemoRequests } from './demo-service.js';
 import type { DemoRequestStatus } from './demo-service.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('admin-data-service');
 
 export interface DashboardSummaryResponse {
   totalUsers: number;
@@ -192,7 +194,7 @@ export async function adminGetDashboardSummary(): Promise<DashboardSummaryRespon
           const planId = sub.plan_id || 'unknown';
           if (!warnedMissingPlans.has(planId)) {
             warnedMissingPlans.add(planId);
-            console.warn(`[AdminDataService] Active subscription references missing plan: ${planId}`);
+            log.warn(`[AdminDataService] Active subscription references missing plan: ${planId}`);
           }
           return acc;
         }
@@ -223,7 +225,7 @@ export async function adminGetDashboardSummary(): Promise<DashboardSummaryRespon
         source: 'postgres',
       };
     } catch (err: any) {
-      console.error('[AdminDataService] Postgres adminGetDashboardSummary failed, falling back to SQLite:', err?.message || err);
+      log.error('[AdminDataService] Postgres adminGetDashboardSummary failed, falling back to SQLite:', err?.message || err);
     }
   }
 
@@ -318,7 +320,7 @@ function sqliteGetDashboardSummary(): DashboardSummaryResponse {
       const planId = sub.plan_id || 'unknown';
       if (!warnedMissingPlans.has(planId)) {
         warnedMissingPlans.add(planId);
-        console.warn(`[AdminDataService] Active subscription references missing plan: ${planId}`);
+        log.warn(`[AdminDataService] Active subscription references missing plan: ${planId}`);
       }
       return acc;
     }
@@ -377,7 +379,12 @@ export async function adminListUsers(filter?: UserListFilter): Promise<UserListR
             featureOverrides = typeof u.feature_overrides === 'string'
               ? JSON.parse(u.feature_overrides)
               : (u.feature_overrides || {});
-          } catch {}
+          } catch (parseErr) {
+            log.warn('Failed parsing user feature_overrides JSON in admin list', {
+              userId: u.id,
+              err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+            });
+          }
         }
 
         const authMatch = authMap.get(u.email.toLowerCase().trim()) as any;
@@ -476,7 +483,7 @@ export async function adminListUsers(filter?: UserListFilter): Promise<UserListR
         source: 'postgres',
       };
     } catch (err: any) {
-      console.error('[AdminDataService] Postgres adminListUsers failed, falling back to SQLite:', err?.message || err);
+      log.error('[AdminDataService] Postgres adminListUsers failed, falling back to SQLite:', err?.message || err);
     }
   }
 
@@ -647,7 +654,7 @@ export async function adminGetUserDetail(id: string): Promise<UserDetailResponse
         missingMirror: false,
       };
     } catch (err: any) {
-      console.error('[AdminDataService] Postgres adminGetUserDetail failed, falling back to SQLite:', err?.message || err);
+      log.error('[AdminDataService] Postgres adminGetUserDetail failed, falling back to SQLite:', err?.message || err);
     }
   }
 
@@ -663,13 +670,23 @@ function sqliteGetUserDetail(id: string): UserDetailResponse | null {
     let authUser: any = null;
     try {
       authUser = db.prepare('SELECT * FROM auth_users WHERE id = ?').get(centralId);
-    } catch {}
+    } catch (err) {
+      log.warn('Failed reading SQLite auth_users for central user detail', {
+        centralId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
     if (!authUser) return null;
 
     let sessionsCount = 0;
     try {
       sessionsCount = (db.prepare('SELECT COUNT(*) as c FROM auth_sessions WHERE user_id = ?').get(centralId) as any)?.c || 0;
-    } catch {}
+    } catch (err) {
+      log.debug('Skipped SQLite auth_sessions count for central user detail', {
+        centralId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     return {
       user: {
@@ -701,40 +718,75 @@ function sqliteGetUserDetail(id: string): UserDetailResponse | null {
   let commUser: any = null;
   try {
     commUser = db.prepare('SELECT * FROM commercial_users WHERE id = ?').get(id);
-  } catch {}
+  } catch (err) {
+    log.warn('Failed querying commercial_users in sqliteGetUserDetail', {
+      userId: id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   if (!commUser) return null;
 
   let plan: any = null;
   try {
     plan = db.prepare('SELECT * FROM commercial_plans WHERE id = ?').get(commUser.plan_id);
-  } catch {}
+  } catch (err) {
+    log.debug('Skipped commercial_plans lookup in sqliteGetUserDetail', {
+      planId: commUser.plan_id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   let sub: any = null;
   try {
     sub = db.prepare('SELECT * FROM commercial_subscriptions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1').get(id);
-  } catch {}
+  } catch (err) {
+    log.debug('Skipped commercial_subscriptions lookup in sqliteGetUserDetail', {
+      userId: id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   let license: any = null;
   if (sub?.license_id) {
     try {
       license = db.prepare('SELECT * FROM licenses WHERE id = ?').get(sub.license_id);
-    } catch {}
+    } catch (err) {
+      log.debug('Skipped licenses lookup in sqliteGetUserDetail', {
+        licenseId: sub.license_id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   let devices: any[] = [];
   try {
     devices = db.prepare('SELECT * FROM commercial_devices WHERE user_id = ?').all(id) as any[];
-  } catch {}
+  } catch (err) {
+    log.debug('Skipped commercial_devices lookup in sqliteGetUserDetail', {
+      userId: id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   let payments: any[] = [];
   try {
     payments = db.prepare('SELECT * FROM commercial_payments WHERE user_id = ? ORDER BY created_at DESC').all(id) as any[];
-  } catch {}
+  } catch (err) {
+    log.debug('Skipped commercial_payments lookup in sqliteGetUserDetail', {
+      userId: id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   let sessionsCount = 0;
   try {
     sessionsCount = (db.prepare('SELECT COUNT(*) as c FROM auth_sessions WHERE user_id = ?').get(id) as any)?.c || 0;
-  } catch {}
+  } catch (err) {
+    log.debug('Skipped auth_sessions count in sqliteGetUserDetail', {
+      userId: id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   return {
     user: commUser,
@@ -804,7 +856,7 @@ export async function adminListLicenses(filter?: { status?: string; searchQuery?
 
       return { items, total: items.length, source: 'postgres' };
     } catch (err: any) {
-      console.error('[AdminDataService] Postgres adminListLicenses failed, falling back to SQLite:', err?.message || err);
+      log.error('[AdminDataService] Postgres adminListLicenses failed, falling back to SQLite:', err?.message || err);
     }
   }
 
@@ -858,7 +910,7 @@ export async function adminListDevices(filter?: { status?: string; searchQuery?:
 
       return { items, total: items.length, source: 'postgres' };
     } catch (err: any) {
-      console.error('[AdminDataService] Postgres adminListDevices failed, falling back to SQLite:', err?.message || err);
+      log.error('[AdminDataService] Postgres adminListDevices failed, falling back to SQLite:', err?.message || err);
     }
   }
 
@@ -888,7 +940,12 @@ export async function adminListPayments(filter?: { status?: string }): Promise<{
         let metadata: any = {};
         try {
           metadata = JSON.parse(r.metadata_json || '{}');
-        } catch {}
+        } catch (parseErr) {
+          log.warn('Failed parsing payment metadata_json in admin payments list', {
+            paymentId: r.id,
+            err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+          });
+        }
         return {
           id: r.id,
           userId: r.user_id,
@@ -909,7 +966,7 @@ export async function adminListPayments(filter?: { status?: string }): Promise<{
 
       return { items, total: items.length, source: 'postgres' };
     } catch (err: any) {
-      console.error('[AdminDataService] Postgres adminListPayments failed, falling back to SQLite:', err?.message || err);
+      log.error('[AdminDataService] Postgres adminListPayments failed, falling back to SQLite:', err?.message || err);
     }
   }
 
@@ -966,7 +1023,7 @@ export async function adminListAuditLogs(filter?: {
 
       return { items, total, source: 'postgres' };
     } catch (err: any) {
-      console.error('[AdminDataService] Postgres adminListAuditLogs failed, falling back to SQLite:', err?.message || err);
+      log.error('[AdminDataService] Postgres adminListAuditLogs failed, falling back to SQLite:', err?.message || err);
     }
   }
 
@@ -1000,7 +1057,7 @@ export async function adminListVersions(): Promise<{ items: any[]; source: strin
         return { items, source: 'postgres' };
       }
     } catch (err: any) {
-      console.error('[AdminDataService] Postgres adminListVersions failed, falling back to SQLite:', err?.message || err);
+      log.error('[AdminDataService] Postgres adminListVersions failed, falling back to SQLite:', err?.message || err);
     }
   }
 
@@ -1060,7 +1117,7 @@ export async function adminFunnelMetrics(days?: number): Promise<any> {
         overallConversionRate: conversionRateTrialToDownload,
       };
     } catch (err: any) {
-      console.error('[AdminDataService] Postgres adminFunnelMetrics failed, falling back to SQLite:', err?.message || err);
+      log.error('[AdminDataService] Postgres adminFunnelMetrics failed, falling back to SQLite:', err?.message || err);
     }
   }
 
@@ -1110,7 +1167,7 @@ export async function adminListSupportTickets(filter?: {
 
       return { items, total: items.length, source: 'postgres' };
     } catch (err: any) {
-      console.error('[AdminDataService] Postgres adminListSupportTickets failed, falling back to SQLite:', err?.message || err);
+      log.error('[AdminDataService] Postgres adminListSupportTickets failed, falling back to SQLite:', err?.message || err);
     }
   }
 
@@ -1152,7 +1209,7 @@ export async function adminListDemoRequests(filter?: {
 
       return { items, total: items.length, source: 'postgres' };
     } catch (err: any) {
-      console.error('[AdminDataService] Postgres adminListDemoRequests failed, falling back to SQLite:', err?.message || err);
+      log.error('[AdminDataService] Postgres adminListDemoRequests failed, falling back to SQLite:', err?.message || err);
     }
   }
 
@@ -1191,7 +1248,7 @@ export async function adminTermsCompliance(): Promise<any> {
 
       return { totalUsers, accepted, missing, byVersion };
     } catch (err: any) {
-      console.error('[AdminDataService] Postgres adminTermsCompliance failed, falling back to SQLite:', err?.message || err);
+      log.error('[AdminDataService] Postgres adminTermsCompliance failed, falling back to SQLite:', err?.message || err);
     }
   }
 
@@ -1211,7 +1268,11 @@ export async function adminTermsCompliance(): Promise<any> {
         rows.push(ar);
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Skipped SQLite auth_users merge during terms acceptance summary', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   const totalUsers = rows.length;
   let accepted = 0;
@@ -1256,7 +1317,12 @@ export async function adminListPlans(includeInactive = true): Promise<{
           let limits: any = {};
           try {
             limits = JSON.parse(p.limits_json || '{}');
-          } catch {}
+          } catch (parseErr) {
+            log.warn('Failed parsing plan limits_json in adminListPlans', {
+              planId: p.id,
+              err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+            });
+          }
           return {
             id: p.id,
             name: p.name,
@@ -1277,7 +1343,7 @@ export async function adminListPlans(includeInactive = true): Promise<{
         return { items, total: items.length, source: 'postgres' };
       }
     } catch (err: any) {
-      console.error('[AdminDataService] Postgres adminListPlans failed, falling back to SQLite:', err?.message || err);
+      log.error('[AdminDataService] Postgres adminListPlans failed, falling back to SQLite:', err?.message || err);
     }
   }
 

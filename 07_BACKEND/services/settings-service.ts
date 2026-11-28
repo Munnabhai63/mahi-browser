@@ -3,6 +3,9 @@ import { AppSettings } from '../../10_CONFIG/shared/types/settings.js';
 import { DEFAULT_APP_SETTINGS } from '../../10_CONFIG/shared/constants/defaults.js';
 import { hashPin, verifyPin } from '../../08_SECURITY/encryption.js';
 import { logActivity } from './audit-service.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('settings-service');
 
 const SETTINGS_KEY = 'main_config';
 const PIN_SALT_KEY = 'pin_salt';
@@ -21,7 +24,11 @@ export function getAppSettings(): AppSettings {
         VALUES (?, ?, ?)
         ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at
       `).run(SETTINGS_KEY, JSON.stringify(DEFAULT_APP_SETTINGS), now);
-    } catch {}
+    } catch (err) {
+      log.warn('Failed initializing default app_settings row', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
     return DEFAULT_APP_SETTINGS;
   }
 
@@ -34,7 +41,10 @@ export function getAppSettings(): AppSettings {
       performance: { ...DEFAULT_APP_SETTINGS.performance, ...(parsed.performance || {}) },
       advanced: { ...DEFAULT_APP_SETTINGS.advanced, ...(parsed.advanced || {}) },
     };
-  } catch {
+  } catch (parseErr) {
+    log.warn('Failed parsing stored app_settings JSON; using defaults', {
+      err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+    });
     return DEFAULT_APP_SETTINGS;
   }
 }
@@ -56,7 +66,11 @@ export function saveAppSettings(settings: Partial<AppSettings>): AppSettings {
         performance: { ...DEFAULT_APP_SETTINGS.performance, ...(parsed.performance || {}) },
         advanced: { ...DEFAULT_APP_SETTINGS.advanced, ...(parsed.advanced || {}) },
       };
-    } catch {}
+    } catch (parseErr) {
+      log.warn('Failed parsing existing app_settings before update', {
+        err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+      });
+    }
   }
 
   const merged: AppSettings = {

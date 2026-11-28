@@ -8,6 +8,8 @@ import { recordFunnelEvent } from './funnel-service.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 import { CURRENT_TERMS_VERSION } from '../../10_CONFIG/shared/types/commercial.js';
 import { getSiteConfig, getTrustedSiteOrigins } from '../../10_CONFIG/shared/site-config.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('google-oauth-service');
 
 export interface GoogleAuthResult {
   success: boolean;
@@ -669,7 +671,7 @@ export async function authenticateWithGoogleClaimsAsync(
     try {
       pgUser = await repo.findAuthUserByEmail(cleanEmail);
     } catch (e: any) {
-      console.error('[GoogleOAuth] Failed to query PostgreSQL by email:', e?.message);
+      log.error('[GoogleOAuth] Failed to query PostgreSQL by email:', e?.message);
       return {
         success: false,
         isNewAccount: false,
@@ -745,7 +747,7 @@ export async function authenticateWithGoogleClaimsAsync(
         last_login_at: now,
       });
     } catch (e: any) {
-      console.error('[GoogleOAuth] Failed to update PostgreSQL user:', e?.message);
+      log.error('[GoogleOAuth] Failed to update PostgreSQL user:', e?.message);
       return {
         success: false,
         isNewAccount: false,
@@ -774,25 +776,47 @@ export async function authenticateWithGoogleClaimsAsync(
               SET id = ?, google_sub = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1, last_login_at = ?, updated_at = ?
               WHERE id = ? OR email = ? OR normalized_email = ?
             `).run(userId, claims.sub, claims.picture || null, now, now, existingUser.id, cleanEmail, cleanEmail);
-          } catch {}
+          } catch (authErr) {
+            log.warn('Failed aligning auth_users ID during Google OAuth migration', {
+              err: authErr instanceof Error ? authErr.message : String(authErr),
+            });
+          }
 
           try {
             db.prepare('UPDATE commercial_subscriptions SET user_id = ? WHERE user_id = ?').run(userId, existingUser.id);
-          } catch {}
+          } catch (subErr) {
+            log.warn('Failed aligning commercial_subscriptions user_id during Google OAuth migration', {
+              err: subErr instanceof Error ? subErr.message : String(subErr),
+            });
+          }
           try {
             db.prepare('UPDATE auth_sessions SET user_id = ? WHERE user_id = ?').run(userId, existingUser.id);
-          } catch {}
+          } catch (sessErr) {
+            log.warn('Failed aligning auth_sessions user_id during Google OAuth migration', {
+              err: sessErr instanceof Error ? sessErr.message : String(sessErr),
+            });
+          }
           try {
             db.prepare('UPDATE cloud_profiles SET owner_id = ? WHERE owner_id = ?').run(userId, existingUser.id);
-          } catch {}
+          } catch (profErr) {
+            log.debug('Skipped aligning cloud_profiles owner_id during Google OAuth migration', {
+              err: profErr instanceof Error ? profErr.message : String(profErr),
+            });
+          }
 
           db.exec('COMMIT;');
         } catch (txErr: any) {
           db.exec('ROLLBACK;');
-          console.error('[GoogleOAuth] Failed to align SQLite user ID with PostgreSQL ID:', txErr?.message);
+          log.error('[GoogleOAuth] Failed to align SQLite user ID with PostgreSQL ID:', txErr?.message);
           throw txErr;
         } finally {
-          try { db.exec('PRAGMA foreign_keys = ON;'); } catch {}
+          try {
+            db.exec('PRAGMA foreign_keys = ON;');
+          } catch (fkErr) {
+            log.debug('Failed restoring SQLite foreign_keys pragma after Google OAuth ID alignment', {
+              err: fkErr instanceof Error ? fkErr.message : String(fkErr),
+            });
+          }
         }
       } else {
         db.prepare(`
@@ -806,7 +830,11 @@ export async function authenticateWithGoogleClaimsAsync(
             SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1, last_login_at = ?, updated_at = ?
             WHERE id = ?
           `).run(claims.sub, claims.picture || null, now, now, userId);
-        } catch {}
+        } catch (authErr) {
+          log.warn('Failed syncing auth_users profile fields after Google OAuth login', {
+            err: authErr instanceof Error ? authErr.message : String(authErr),
+          });
+        }
       }
     } else {
       // Create user in SQLite commercial_users + auth_users with matching pgUser.id
@@ -844,14 +872,14 @@ export async function authenticateWithGoogleClaimsAsync(
           acceptedTermsInt, termsVersion
         );
       } catch (err) {
-        console.error('[GoogleOAuth] SQLite auth_users terms write error', err);
+        log.error('[GoogleOAuth] SQLite auth_users terms write error', err);
       }
 
       if (isPostgresConfigured() && repo && acceptedTermsInt !== null) {
         try {
           await repo.updateAuthUserTerms(userId, acceptedTermsInt, termsVersion || CURRENT_TERMS_VERSION);
         } catch (err) {
-          console.error('[GoogleOAuth] PG terms write error', err);
+          log.error('[GoogleOAuth] PG terms write error', err);
         }
       }
     }
@@ -886,7 +914,11 @@ export async function authenticateWithGoogleClaimsAsync(
         SET google_sub = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1, last_login_at = ?, updated_at = ?
         WHERE id = ?
       `).run(claims.sub, claims.picture || null, now, now, userId);
-    } catch {}
+    } catch (authErr) {
+      log.warn('Failed updating SQLite auth_users during PostgreSQL heal-create', {
+        err: authErr instanceof Error ? authErr.message : String(authErr),
+      });
+    }
 
     // Heal-create in PostgreSQL auth_users
     if (repo) {
@@ -919,7 +951,7 @@ export async function authenticateWithGoogleClaimsAsync(
           last_login_at: now,
         });
       } catch (e: any) {
-        console.error('[GoogleOAuth] Failed to heal-create user in PostgreSQL:', e?.message);
+        log.error('[GoogleOAuth] Failed to heal-create user in PostgreSQL:', e?.message);
         return {
           success: false,
           isNewAccount: false,
@@ -994,7 +1026,7 @@ export async function authenticateWithGoogleClaimsAsync(
         acceptedTermsInt, termsVersion
       );
     } catch (err) {
-      console.error('[GoogleOAuth] SQLite auth_users insert error', err);
+      log.error('[GoogleOAuth] SQLite auth_users insert error', err);
     }
 
     // Insert into Supabase PostgreSQL auth_users via repo
@@ -1027,12 +1059,16 @@ export async function authenticateWithGoogleClaimsAsync(
           terms_version: termsVersion || CURRENT_TERMS_VERSION,
         });
       } catch (e: any) {
-        console.error('[GoogleOAuth] Failed to create user in PostgreSQL:', e?.message);
+        log.error('[GoogleOAuth] Failed to create user in PostgreSQL:', e?.message);
         try {
           db.prepare('DELETE FROM commercial_users WHERE id = ?').run(userId);
           db.prepare('DELETE FROM auth_users WHERE id = ?').run(userId);
           db.prepare('DELETE FROM commercial_subscriptions WHERE user_id = ?').run(userId);
-        } catch {}
+        } catch (rollbackErr) {
+          log.warn('Failed rolling back local SQLite user after PostgreSQL creation error', {
+            err: rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr),
+          });
+        }
         return {
           success: false,
           isNewAccount: false,
@@ -1081,7 +1117,11 @@ export async function authenticateWithGoogleClaimsAsync(
           ipAddress: clientIp,
         });
       }
-    } catch {}
+    } catch (funnelErr) {
+      log.debug('Skipped Google OAuth async funnel telemetry write', {
+        err: funnelErr instanceof Error ? funnelErr.message : String(funnelErr),
+      });
+    }
   }
 
   // Retrieve unified user record
@@ -1197,7 +1237,11 @@ export function authenticateWithGoogleClaims(
             updated_at = ?
         WHERE id = ?
       `).run(claims.sub, claims.picture || null, now, existingUser.id);
-    } catch {}
+    } catch (authErr) {
+      log.warn('Failed updating auth_users during synchronous Google account link', {
+        err: authErr instanceof Error ? authErr.message : String(authErr),
+      });
+    }
 
     logCommercialAudit({
       actorId: existingUser.id,
@@ -1260,7 +1304,11 @@ export function authenticateWithGoogleClaims(
         claims.sub, avatarUrl, now, now, now,
         acceptedTermsInt, termsVersion
       );
-    } catch {}
+    } catch (authErr) {
+      log.warn('Failed inserting mirror auth_users row during synchronous Google signup', {
+        err: authErr instanceof Error ? authErr.message : String(authErr),
+      });
+    }
 
     if (isTrial) {
       const subId = `sub_${crypto.randomUUID()}`;
@@ -1299,7 +1347,11 @@ export function authenticateWithGoogleClaims(
           ipAddress: clientIp,
         });
       }
-    } catch {}
+    } catch (funnelErr) {
+      log.debug('Skipped Google OAuth sync funnel telemetry write', {
+        err: funnelErr instanceof Error ? funnelErr.message : String(funnelErr),
+      });
+    }
 
   } else {
     // Existing User Login: Update last login and avatar

@@ -10,11 +10,13 @@ import { launchBrowser, markCleanExit } from './launcher.js';
 import { synchronizerHub } from '../09_AUTOMATION/sync-hub.js';
 import { platformAdapter } from './services/platform-adapter.js';
 import { ProxyTunnelHandle } from './proxy-tunnel.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+const log = createLogger('process-manager');
 
 function debugLog(msg: string) {
   const fn = (globalThis as any).__mahiDebugLog;
   if (fn) fn(msg);
-  else console.log(msg);
+  else log.info(msg);
 }
 
 interface ActiveProcessEntry {
@@ -55,7 +57,11 @@ export function keepMainWindowActive(): void {
         }, d);
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('keepMainWindowActive skipped cleanly outside Electron window lifecycle', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 
@@ -123,30 +129,73 @@ class ProcessManager {
     entry.closed = true;
 
     this.activeProcesses.delete(profileId);
-    try { recordSessionStop(profileId); } catch {}
+    try {
+      recordSessionStop(profileId);
+    } catch (statsErr) {
+      log.debug('Failed recording session stop stats', {
+        profileId,
+        err: statsErr instanceof Error ? statsErr.message : String(statsErr),
+      });
+    }
     if (entry.proxyTunnel) {
-      try { entry.proxyTunnel.close(); } catch {}
+      try {
+        entry.proxyTunnel.close();
+      } catch (tunnelErr) {
+        log.debug('Failed closing proxy tunnel on browser exit', {
+          profileId,
+          err: tunnelErr instanceof Error ? tunnelErr.message : String(tunnelErr),
+        });
+      }
     }
 
     if (errorMsg) {
       this.notifyStatus(profileId, 'ERROR', undefined, errorMsg);
-      try { logActivity('PROFILE', 'ERROR', 'Browser Error', `"${entry.profileName}" error: ${errorMsg}`, profileId, entry.profileName); } catch {}
+      try {
+        logActivity('PROFILE', 'ERROR', 'Browser Error', `"${entry.profileName}" error: ${errorMsg}`, profileId, entry.profileName);
+      } catch (auditErr) {
+        log.debug('Skipped audit log write on browser error exit', {
+          profileId,
+          err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        });
+      }
     } else {
       this.notifyStatus(profileId, 'STOPPED');
-      try { logActivity('PROFILE', 'INFO', 'Stop Browser', `Profile "${entry.profileName}" closed cleanly`, profileId, entry.profileName); } catch {}
+      try {
+        logActivity('PROFILE', 'INFO', 'Stop Browser', `Profile "${entry.profileName}" closed cleanly`, profileId, entry.profileName);
+      } catch (auditErr) {
+        log.debug('Skipped audit log write on clean browser exit', {
+          profileId,
+          err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        });
+      }
 
       // Auto-Sync and Cloud Lock Release Hook on profile close
       try {
-        import('../08_SECURITY/cloud-sync-service.js').then(({ enqueueSync, getSyncConfig, releaseCloudLock, getProfileCloudBinding }) => {
-          const binding = getProfileCloudBinding(profileId);
+        import('../08_SECURITY/cloud-sync-service.js').then(async ({ enqueueSyncAsync, getSyncConfigAsync, releaseCloudLock, getProfileCloudBindingAsync }) => {
+          const binding = await getProfileCloudBindingAsync(profileId);
           if (binding?.cloudProfileId) {
-            releaseCloudLock(binding.cloudProfileId).catch(() => {});
+            releaseCloudLock(binding.cloudProfileId).catch((lockErr) => {
+              log.debug('Non-fatal cloud lock release error on profile close', {
+                profileId,
+                err: lockErr instanceof Error ? lockErr.message : String(lockErr),
+              });
+            });
           }
-          if (getSyncConfig().autoSync) {
-            enqueueSync(profileId);
+          if ((await getSyncConfigAsync()).autoSync) {
+            await enqueueSyncAsync(profileId);
           }
-        }).catch(() => {});
-      } catch {}
+        }).catch((syncErr) => {
+          log.debug('Post-close cloud sync/lock release hook failed', {
+            profileId,
+            err: syncErr instanceof Error ? syncErr.message : String(syncErr),
+          });
+        });
+      } catch (importErr) {
+        log.debug('Skipped post-close cloud sync dynamic import', {
+          profileId,
+          err: importErr instanceof Error ? importErr.message : String(importErr),
+        });
+      }
     }
 
     // Auto-stop synchronizer if active profiles drop below 2 or master profile closed
@@ -159,7 +208,12 @@ class ProcessManager {
           debugLog(`[ProcessManager] Auto-stopped synchronizer as running profiles count is now ${remaining}.`);
         }
       }
-    } catch {}
+    } catch (syncHubErr) {
+      log.debug('Error checking synchronizer auto-stop on profile close', {
+        profileId,
+        err: syncHubErr instanceof Error ? syncHubErr.message : String(syncHubErr),
+      });
+    }
   }
 
   /**
@@ -279,13 +333,13 @@ class ProcessManager {
       // Cloud lock coordination & pre-launch cloud sync pull
       try {
         const {
-          getProfileCloudBinding,
+          getProfileCloudBindingAsync,
           acquireCloudLock,
           syncProfileIfCloudNewer,
-          getSyncConfig
+          getSyncConfigAsync
         } = await import('../08_SECURITY/cloud-sync-service.js');
 
-        const binding = getProfileCloudBinding(profileId);
+        const binding = await getProfileCloudBindingAsync(profileId);
         if (binding?.cloudProfileId) {
           const lockRes = await acquireCloudLock(binding.cloudProfileId);
           if (!lockRes.acquired) {
@@ -296,7 +350,7 @@ class ProcessManager {
           }
 
           // Launch-time cloud pull: pull latest cloud version if updated remotely
-          if (getSyncConfig().autoSync) {
+          if ((await getSyncConfigAsync()).autoSync) {
             try {
               await syncProfileIfCloudNewer(profileId);
             } catch (syncPullErr) {
@@ -304,8 +358,12 @@ class ProcessManager {
             }
           }
         }
-      } catch {
+      } catch (cloudSyncErr) {
         // Offline mode: never block local launch!
+        log.debug('Pre-launch cloud sync/lock skipped (offline or unbound)', {
+          profileId,
+          err: cloudSyncErr instanceof Error ? cloudSyncErr.message : String(cloudSyncErr),
+        });
       }
 
       this.notifyStatus(profileId, 'STARTING');
@@ -368,7 +426,12 @@ class ProcessManager {
                   });
                 }
               }
-            } catch {}
+            } catch (toastErr) {
+              log.debug('Skipped mobile IP rotation toast IPC', {
+                profileId,
+                err: toastErr instanceof Error ? toastErr.message : String(toastErr),
+              });
+            }
           } catch (rotErr: unknown) {
             const errMsg = rotErr instanceof Error ? rotErr.message : String(rotErr);
             const fullMsg = `Mobile Mode blocked launch: ${errMsg}`;
@@ -400,7 +463,12 @@ class ProcessManager {
                     });
                   }
                 }
-              } catch {}
+              } catch (toastErr) {
+                log.debug('Skipped auto-rotate warning toast IPC', {
+                  profileId,
+                  err: toastErr instanceof Error ? toastErr.message : String(toastErr),
+                });
+              }
             } else if (autoRotate.result?.skippedByCooldown) {
               debugLog(
                 `[ProcessManager] Mobile IP auto-rotate skipped by cooldown (${autoRotate.result.cooldownRemainingSeconds}s remaining).`
@@ -421,7 +489,12 @@ class ProcessManager {
                     });
                   }
                 }
-              } catch {}
+              } catch (toastErr) {
+                log.debug('Skipped auto-rotate completion toast IPC', {
+                  profileId,
+                  err: toastErr instanceof Error ? toastErr.message : String(toastErr),
+                });
+              }
             }
           }
         } catch (autoRotateImportErr) {
@@ -463,7 +536,14 @@ class ProcessManager {
         // Keep MAHI Browser application window in focus so user screen does not shift away
         keepMainWindowActive();
 
-        try { recordSessionStart(profileId); } catch {}
+        try {
+          recordSessionStart(profileId);
+        } catch (statsErr) {
+          log.debug('Failed recording session start stats', {
+            profileId,
+            err: statsErr instanceof Error ? statsErr.message : String(statsErr),
+          });
+        }
         logActivity('PROFILE', 'SUCCESS', 'Start Browser', `Started "${profile.name}" [PID: ${pid}]`, profileId, profile.name);
 
         // Handle process termination cleanly
@@ -614,7 +694,11 @@ class ProcessManager {
             })),
           };
         }
-      } catch {}
+      } catch (mobileCheckErr) {
+        log.debug('Batch launch mobile mode guard skipped cleanly', {
+          err: mobileCheckErr instanceof Error ? mobileCheckErr.message : String(mobileCheckErr),
+        });
+      }
     }
 
     const results: { profileId: string; success: boolean; pid?: number; error?: string }[] = [];
@@ -686,12 +770,30 @@ class ProcessManager {
     for (const [profileId, entry] of this.activeProcesses.entries()) {
       try {
         markCleanExit(entry.storageDir, entry.profileName);
-        platformAdapter.terminateProcess(entry.pid).catch(() => {});
+        platformAdapter.terminateProcess(entry.pid).catch((termErr) => {
+          log.debug('Failed terminating browser process on stopAll', {
+            profileId,
+            pid: entry.pid,
+            err: termErr instanceof Error ? termErr.message : String(termErr),
+          });
+        });
         if (entry.proxyTunnel) {
-          try { entry.proxyTunnel.close(); } catch {}
+          try {
+            entry.proxyTunnel.close();
+          } catch (tunnelErr) {
+            log.debug('Failed closing proxy tunnel on stopAll', {
+              profileId,
+              err: tunnelErr instanceof Error ? tunnelErr.message : String(tunnelErr),
+            });
+          }
         }
         this.notifyStatus(profileId, 'STOPPED');
-      } catch {}
+      } catch (stopErr) {
+        log.warn('Error during stopAll profile cleanup', {
+          profileId,
+          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+        });
+      }
     }
     this.activeProcesses.clear();
 
@@ -699,7 +801,11 @@ class ProcessManager {
       if (synchronizerHub.getState().enabled) {
         synchronizerHub.stopSync();
       }
-    } catch {}
+    } catch (syncErr) {
+      log.debug('Failed stopping synchronizer on stopAll', {
+        err: syncErr instanceof Error ? syncErr.message : String(syncErr),
+      });
+    }
   }
 
   public getRunningPids(): number[] {

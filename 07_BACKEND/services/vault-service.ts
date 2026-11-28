@@ -15,6 +15,9 @@ import {
   MasterVaultImportResult,
 } from '../../10_CONFIG/shared/types/resources.js';
 import { logActivity } from './audit-service.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('vault-service');
 
 export async function exportMasterVault(options: MasterVaultExportOptions = {}): Promise<{ success: boolean; filePath: string; bundle: MasterVaultBundle }> {
   const profiles = getProfiles({ includeTrash: false });
@@ -163,7 +166,12 @@ export async function importMasterVault(bundleJson: string, password?: string): 
             notes: p.notes || 'Vault-Restore',
           });
           proxiesRestored++;
-        } catch {}
+        } catch (proxyErr) {
+          log.warn('Skipped proxy restore entry during vault import', {
+            name: p?.name,
+            err: proxyErr instanceof Error ? proxyErr.message : String(proxyErr),
+          });
+        }
       }
     }
 
@@ -179,7 +187,12 @@ export async function importMasterVault(bundleJson: string, password?: string): 
             });
             workspacesRestored++;
           }
-        } catch {}
+        } catch (wsErr) {
+          log.warn('Skipped workspace restore entry during vault import', {
+            name: w?.name,
+            err: wsErr instanceof Error ? wsErr.message : String(wsErr),
+          });
+        }
       }
     }
 
@@ -197,7 +210,12 @@ export async function importMasterVault(bundleJson: string, password?: string): 
             settings: p.settings,
           });
           profilesRestored++;
-        } catch {}
+        } catch (profErr) {
+          log.warn('Skipped profile restore entry during vault import', {
+            name: p?.name,
+            err: profErr instanceof Error ? profErr.message : String(profErr),
+          });
+        }
       }
     }
 
@@ -212,7 +230,12 @@ export async function importMasterVault(bundleJson: string, password?: string): 
             defaultProfileId: wf.defaultProfileId,
           });
           workflowsRestored++;
-        } catch {}
+        } catch (wfErr) {
+          log.warn('Skipped workflow restore entry during vault import', {
+            name: wf?.name,
+            err: wfErr instanceof Error ? wfErr.message : String(wfErr),
+          });
+        }
       }
     }
 

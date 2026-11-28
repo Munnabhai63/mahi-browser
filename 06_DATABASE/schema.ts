@@ -3,6 +3,9 @@ import {
   getDatabase,
   initSqlEngine,
 } from './connection.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('db-schema');
 
 export const INITIAL_SCHEMA = `
 CREATE TABLE IF NOT EXISTS app_schema_version (
@@ -248,8 +251,19 @@ export function runMigration(db: any, version: number, name: string, fn: () => v
     try {
       db.exec(`ROLLBACK TO SAVEPOINT ${spName}`);
       db.exec(`RELEASE SAVEPOINT ${spName}`);
-    } catch {}
-    console.error(`[MIGRATION] Migration v${version} (${name}) failed and was rolled back:`, err);
+    } catch (rbErr) {
+      log.warn('SQLite migration savepoint rollback failed', {
+        version,
+        name,
+        spName,
+        err: rbErr instanceof Error ? rbErr.message : String(rbErr),
+      });
+    }
+    log.error(`[MIGRATION] Migration v${version} (${name}) failed and was rolled back`, {
+      version,
+      name,
+      err: err instanceof Error ? err.message : String(err),
+    });
     throw err;
   }
 }
@@ -1298,7 +1312,11 @@ export async function initializeDatabase(): Promise<void> {
       const cleanNotes = (r.notes || '').replace(/\[Auto-Warmed on[^\]]*\][^\n]*/g, '').trim();
       db.prepare('UPDATE profiles SET notes = ? WHERE id = ?').run(cleanNotes, r.id);
     }
-  } catch {}
+  } catch (cleanErr) {
+    log.debug('Legacy auto-warmed profile notes cleanup skipped', {
+      err: cleanErr instanceof Error ? cleanErr.message : String(cleanErr),
+    });
+  }
 
   // Migration v19: Production Business Model — Pricing Versioning, Provider Mapping, Usage Ledger
   runMigration(db, 19, 'pricing versioning and audit log', () => {

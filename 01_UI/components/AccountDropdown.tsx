@@ -84,7 +84,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
     let mounted = true;
     setIsLoadingSession(true);
     fetchPlanLimits()
-      .catch(() => {})
+      .catch((err) => { console.debug('[AccountDropdown] initial plan limits fetch failed', err); })
       .finally(() => {
         if (mounted) setIsLoadingSession(false);
       });
@@ -96,7 +96,7 @@ export const AccountDropdown: React.FC<AccountDropdownProps> = ({ onNavigate }) 
   // Refresh session when dropdown opens
   useEffect(() => {
     if (isOpen) {
-      fetchPlanLimits({ force: true }).catch(() => {});
+      fetchPlanLimits({ force: true }).catch((err) => { console.debug('[AccountDropdown] dropdown plan limits refresh failed', err); });
     }
   }, [isOpen, fetchPlanLimits]);
 

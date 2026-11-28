@@ -23,7 +23,9 @@ export default function CompareView() {
         const blob = new Blob([payload], { type: 'application/json' });
         navigator.sendBeacon('/api/v1/funnel/track', blob);
       }
-    } catch (_) {}
+    } catch (err) {
+      console.debug('[CompareView] funnel telemetry skipped', err);
+    }
   };
 
   return (

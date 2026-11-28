@@ -42,7 +42,7 @@ export const StudentWorkspaceDashboard: React.FC<StudentWorkspaceDashboardProps>
 
   useEffect(() => {
     fetchCurrentStatus();
-    fetchPlanLimits({ force: true }).catch(() => {});
+    fetchPlanLimits({ force: true }).catch((err) => { console.debug('[StudentWorkspaceDashboard] plan limits refresh failed', err); });
 
     if (window.mahiAPI) {
       window.mahiAPI.getFleetResources().then(setFleetUsage);

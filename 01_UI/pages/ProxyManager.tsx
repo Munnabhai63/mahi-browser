@@ -466,8 +466,8 @@ export const ProxyManagerPage: React.FC<ProxyManagerProps> = ({ onNavigate }) =>
                       try {
                         const txt = await navigator.clipboard.readText();
                         if (txt) handleSmartParse(txt);
-                      } catch {
-                        // ignore clipboard read failure
+                      } catch (err) {
+                        console.debug('[ProxyManager] clipboard read denied or unavailable', err);
                       }
                     }}
                     className="text-[10px] text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-1 font-semibold"

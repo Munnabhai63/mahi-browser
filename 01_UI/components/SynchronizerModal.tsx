@@ -97,7 +97,9 @@ export const SynchronizerModal: React.FC<SynchronizerModalProps> = ({ isOpen, on
           setActionCount(st.mirroredActionCount || 0);
         }
       }
-    } catch {}
+    } catch (err) {
+      console.debug('[SynchronizerModal] sync state refresh failed', err);
+    }
   };
 
   if (!isOpen) return null;

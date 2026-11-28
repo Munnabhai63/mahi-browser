@@ -8,7 +8,7 @@ import { app, BrowserWindow } from './electron-bridge.js';
 import { getHWID, verifyLicense } from './license-service.js';
 import { ADMIN_API_BASE_URL, isOnlineRevoked, isGraceExpired } from './license-status-service.js';
 import { hasValidLicense, assertCanCreateProfile } from './freemium-guard.js';
-import { hasValidAccountSubscription, getAccountSyncKey, loadEncryptedSession, readCachedStatus } from './account-service.js';
+import { hasValidAccountSubscription, getAccountSyncKey, loadEncryptedSession, loadEncryptedSessionAsync, readCachedStatus, readCachedStatusAsync } from './account-service.js';
 import { resolveCapabilitiesForCanonicalPlan } from '../07_BACKEND/commercial/canonical-plan-catalog.js';
 import { getProfileById, getProfiles, getProfileStoragePath } from '../02_BROWSER/services/profile-service.js';
 import {
@@ -30,6 +30,17 @@ import { encryptProfileArchive, decryptProfileArchive } from './cloud-profile-cr
 import { getDeviceId, getDeviceName } from '../03_HARDWARE/device-id.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 import { cleanUrl, getSiteConfig } from '../10_CONFIG/shared/site-config.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+const log = createLogger('cloud-sync-service');
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.promises.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const MAX_PROFILE_BYTES = 200 * 1024 * 1024; // 200MB
 const MAX_USER_QUOTA_BYTES = 1024 * 1024 * 1024; // 1GB
@@ -92,6 +103,7 @@ export interface CookieDeltaPayload {
  * Computes a deterministic SHA-256 manifest digest over a profile's core state files
  * (excluding Cache, GPUCache, Code Cache, lock/temp files via isPathExcludedFromSync)
  * and core profile metadata.
+ * // sync-compat: synchronous version preserved for sync test assertions; async runtime paths call computeProfileManifestHashAsync
  */
 export function computeProfileManifestHash(profileId: string): string {
   const hash = crypto.createHash('sha256');
@@ -138,13 +150,88 @@ export function computeProfileManifestHash(profileId: string): string {
 
   try {
     walkDir(baseDir);
-  } catch {}
+  } catch (err) {
+    log.debug('Profile manifest walkDir skipped for missing/unreadable dir', {
+      baseDir,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   fileEntries.sort((a, b) => a.relPath.localeCompare(b.relPath));
 
   for (const item of fileEntries) {
     try {
       const content = fs.readFileSync(item.fullPath);
+      const fileDigest = crypto.createHash('sha256').update(content).digest('hex');
+      hash.update(`file:${item.relPath}:${content.length}:${fileDigest}\n`);
+    } catch {
+      hash.update(`file-unreadable:${item.relPath}\n`);
+    }
+  }
+
+  return hash.digest('hex');
+}
+
+/**
+ * Asynchronous counterpart to computeProfileManifestHash for non-blocking runtime sync paths.
+ */
+export async function computeProfileManifestHashAsync(profileId: string): Promise<string> {
+  const hash = crypto.createHash('sha256');
+  const profile = getProfileById(profileId);
+  const baseDir = getProfileStoragePath(profileId);
+
+  const metaSnapshot = profile
+    ? {
+        id: profile.id,
+        name: profile.name,
+        engine: profile.settings?.browser?.engine || 'chromium',
+        fingerprint: profile.settings?.fingerprint || null,
+        tags: profile.tags || [],
+        folder: profile.folder || 'General',
+        notes: profile.notes || '',
+      }
+    : { id: profileId };
+
+  hash.update(`meta:${JSON.stringify(metaSnapshot)}\n`);
+
+  if (!(await pathExists(baseDir))) {
+    hash.update('files:empty\n');
+    return hash.digest('hex');
+  }
+
+  const fileEntries: Array<{ relPath: string; fullPath: string }> = [];
+
+  async function walkDirAsync(currentDir: string): Promise<void> {
+    const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+      if (isPathExcludedFromSync(relPath)) {
+        continue;
+      }
+      if (entry.isDirectory()) {
+        await walkDirAsync(fullPath);
+      } else if (entry.isFile()) {
+        fileEntries.push({ relPath, fullPath });
+      }
+    }
+  }
+
+  try {
+    await walkDirAsync(baseDir);
+  } catch (err) {
+    log.debug('Profile manifest async walkDir skipped for missing/unreadable dir', {
+      baseDir,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  fileEntries.sort((a, b) => a.relPath.localeCompare(b.relPath));
+
+  for (const item of fileEntries) {
+    try {
+      const content = await fs.promises.readFile(item.fullPath);
       const fileDigest = crypto.createHash('sha256').update(content).digest('hex');
       hash.update(`file:${item.relPath}:${content.length}:${fileDigest}\n`);
     } catch {
@@ -174,11 +261,11 @@ function isSafeDeltaRelativePath(relPath: string): boolean {
  * Packages ONLY the lightweight cookie/session delta payload (mahi_cookies.json, Chromium Cookies DB,
  * and bounded Local Storage state) into a compressed buffer ready for AES-256-GCM envelope encryption.
  */
-export function packCookiesDeltaPayload(
+export async function packCookiesDeltaPayload(
   profileId: string,
   baseVersion: number,
   manifestHash: string
-): { buffer: Buffer; rawBytes: number; cookieCount: number; fileCount: number } {
+): Promise<{ buffer: Buffer; rawBytes: number; cookieCount: number; fileCount: number }> {
   const baseDir = getProfileStoragePath(profileId);
   let mahiCookiesJson: string | null = null;
   let cookieCount = 0;
@@ -187,15 +274,20 @@ export function packCookiesDeltaPayload(
   const localStorageFiles: Record<string, string> = {};
 
   const mahiCookiesPath = path.join(baseDir, 'mahi_cookies.json');
-  if (fs.existsSync(mahiCookiesPath)) {
+  if (await pathExists(mahiCookiesPath)) {
     try {
-      mahiCookiesJson = fs.readFileSync(mahiCookiesPath, 'utf8');
+      mahiCookiesJson = await fs.promises.readFile(mahiCookiesPath, 'utf8');
       const parsed = JSON.parse(mahiCookiesJson);
       if (Array.isArray(parsed)) {
         cookieCount = parsed.length;
       }
       fileCount += 1;
-    } catch {}
+    } catch (err) {
+      log.warn('Failed reading mahi_cookies.json during delta pack', {
+        mahiCookiesPath,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   const cookieFileCandidates = [
@@ -207,15 +299,20 @@ export function packCookiesDeltaPayload(
 
   for (const relPath of cookieFileCandidates) {
     const absPath = path.join(baseDir, relPath);
-    if (fs.existsSync(absPath)) {
+    if (await pathExists(absPath)) {
       try {
-        const stat = fs.statSync(absPath);
+        const stat = await fs.promises.stat(absPath);
         if (stat.isFile()) {
-          const data = fs.readFileSync(absPath);
+          const data = await fs.promises.readFile(absPath);
           cookieFiles[relPath] = data.toString('base64');
           fileCount += 1;
         }
-      } catch {}
+      } catch (err) {
+        log.debug('Skipped locked/unreadable cookie file during delta pack', {
+          relPath,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 
@@ -226,35 +323,45 @@ export function packCookiesDeltaPayload(
   ];
 
   for (const lsDir of localStorageDirs) {
-    if (!fs.existsSync(lsDir)) continue;
-    const scanLs = (dir: string) => {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
+    if (!(await pathExists(lsDir))) continue;
+    const scanLs = async (dir: string): Promise<void> => {
+      const entries = await fs.promises.readdir(dir, { withFileTypes: true });
       entries.sort((a, b) => a.name.localeCompare(b.name));
       for (const entry of entries) {
         const full = path.join(dir, entry.name);
         const rel = path.relative(baseDir, full).replace(/\\/g, '/');
         if (isPathExcludedFromSync(rel)) continue;
         if (entry.isDirectory()) {
-          scanLs(full);
+          await scanLs(full);
         } else if (entry.isFile()) {
           const lower = entry.name.toLowerCase();
           if (lower === 'log' || lower === 'log.old' || lower === 'current' || lower.startsWith('manifest')) {
             // Skip internal leveldb logs unless tiny; keep data files (.ldb/.log) within delta cap
           }
           try {
-            const buf = fs.readFileSync(full);
+            const buf = await fs.promises.readFile(full);
             if (localStorageBytes + buf.length <= MAX_COOKIE_DELTA_EXTRA_BYTES) {
               localStorageFiles[rel] = buf.toString('base64');
               localStorageBytes += buf.length;
               fileCount += 1;
             }
-          } catch {}
+          } catch (readErr) {
+            log.debug('Skipped locked Local Storage file during delta pack', {
+              rel,
+              err: readErr instanceof Error ? readErr.message : String(readErr),
+            });
+          }
         }
       }
     };
     try {
-      scanLs(lsDir);
-    } catch {}
+      await scanLs(lsDir);
+    } catch (lsErr) {
+      log.debug('Local Storage delta scan skipped', {
+        lsDir,
+        err: lsErr instanceof Error ? lsErr.message : String(lsErr),
+      });
+    }
   }
 
   const payload: CookieDeltaPayload = {
@@ -283,10 +390,10 @@ export function packCookiesDeltaPayload(
  * Restores a decrypted cookie/session delta payload into the target profile directory
  * with path-traversal validation and atomic file writes.
  */
-export function applyCookiesDeltaPayload(
+export async function applyCookiesDeltaPayload(
   targetProfileId: string,
   decryptedBuffer: Buffer
-): { restoredFiles: number; restoredCookies: number } {
+): Promise<{ restoredFiles: number; restoredCookies: number }> {
   const isGzip =
     decryptedBuffer.length >= 2 &&
     decryptedBuffer[0] === 0x1f &&
@@ -301,7 +408,7 @@ export function applyCookiesDeltaPayload(
   }
 
   const baseDir = getProfileStoragePath(targetProfileId);
-  fs.mkdirSync(baseDir, { recursive: true });
+  await fs.promises.mkdir(baseDir, { recursive: true });
   const resolvedBase = path.resolve(baseDir);
 
   let restoredFiles = 0;
@@ -309,17 +416,22 @@ export function applyCookiesDeltaPayload(
 
   if (typeof payload.mahiCookiesJson === 'string') {
     const targetCookiesPath = path.join(baseDir, 'mahi_cookies.json');
-    fs.writeFileSync(targetCookiesPath, payload.mahiCookiesJson, 'utf8');
+    await fs.promises.writeFile(targetCookiesPath, payload.mahiCookiesJson, 'utf8');
     restoredFiles += 1;
     try {
       const parsed = JSON.parse(payload.mahiCookiesJson);
       if (Array.isArray(parsed)) {
         restoredCookies = parsed.length;
       }
-    } catch {}
+    } catch (parseErr) {
+      log.warn('Restored mahi_cookies.json could not be parsed for cookie count', {
+        targetProfileId,
+        err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+      });
+    }
   }
 
-  const writeSafeDeltaEntries = (entries: Record<string, string> | undefined) => {
+  const writeSafeDeltaEntries = async (entries: Record<string, string> | undefined) => {
     if (!entries || typeof entries !== 'object') return;
     for (const [relPath, b64] of Object.entries(entries)) {
       if (!isSafeDeltaRelativePath(relPath)) {
@@ -329,18 +441,19 @@ export function applyCookiesDeltaPayload(
       if (!targetPath.startsWith(resolvedBase + path.sep)) {
         throw new Error(`SECURITY_ALERT_PATH_TRAVERSAL: Escaping delta entry path "${relPath}"`);
       }
-      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-      fs.writeFileSync(targetPath, Buffer.from(b64, 'base64'));
+      await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+      await fs.promises.writeFile(targetPath, Buffer.from(b64, 'base64'));
       restoredFiles += 1;
     }
   };
 
-  writeSafeDeltaEntries(payload.cookieFiles);
-  writeSafeDeltaEntries(payload.localStorageFiles);
+  await writeSafeDeltaEntries(payload.cookieFiles);
+  await writeSafeDeltaEntries(payload.localStorageFiles);
 
   return { restoredFiles, restoredCookies };
 }
 
+// sync-compat: synchronous JSON accessors preserved for process-manager sync hooks & unit tests; async runtime paths use *Async
 export function getProfileCloudBinding(profileId: string): CloudBindingInfo | null {
   try {
     const file = getSyncBindingsPath();
@@ -348,7 +461,12 @@ export function getProfileCloudBinding(profileId: string): CloudBindingInfo | nu
       const map: Record<string, CloudBindingInfo> = JSON.parse(fs.readFileSync(file, 'utf8'));
       return map[profileId] || null;
     }
-  } catch {}
+  } catch (err) {
+    log.warn('Failed reading cloud profile bindings cache', {
+      profileId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return null;
 }
 
@@ -361,7 +479,7 @@ export function setProfileCloudBinding(profileId: string, binding: CloudBindingI
     map[profileId] = binding;
     fs.writeFileSync(file, JSON.stringify(map, null, 2), 'utf8');
   } catch (err) {
-    console.error('[CloudSync] Failed to save profile binding:', err);
+    log.error('[CloudSync] Failed to save profile binding:', err);
   }
 }
 
@@ -373,7 +491,57 @@ export function removeProfileCloudBinding(profileId: string): void {
       delete map[profileId];
       fs.writeFileSync(file, JSON.stringify(map, null, 2), 'utf8');
     }
-  } catch {}
+  } catch (err) {
+    log.warn('Failed removing cloud profile binding entry', {
+      profileId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+export async function getProfileCloudBindingAsync(profileId: string): Promise<CloudBindingInfo | null> {
+  try {
+    const file = getSyncBindingsPath();
+    if (await pathExists(file)) {
+      const map: Record<string, CloudBindingInfo> = JSON.parse(await fs.promises.readFile(file, 'utf8'));
+      return map[profileId] || null;
+    }
+  } catch (err) {
+    log.warn('Failed reading cloud profile bindings cache asynchronously', {
+      profileId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return null;
+}
+
+export async function setProfileCloudBindingAsync(profileId: string, binding: CloudBindingInfo): Promise<void> {
+  try {
+    const file = getSyncBindingsPath();
+    const map: Record<string, CloudBindingInfo> = (await pathExists(file))
+      ? JSON.parse(await fs.promises.readFile(file, 'utf8'))
+      : {};
+    map[profileId] = binding;
+    await fs.promises.writeFile(file, JSON.stringify(map, null, 2), 'utf8');
+  } catch (err) {
+    log.error('[CloudSync] Failed to save profile binding asynchronously:', err);
+  }
+}
+
+export async function removeProfileCloudBindingAsync(profileId: string): Promise<void> {
+  try {
+    const file = getSyncBindingsPath();
+    if (await pathExists(file)) {
+      const map: Record<string, CloudBindingInfo> = JSON.parse(await fs.promises.readFile(file, 'utf8'));
+      delete map[profileId];
+      await fs.promises.writeFile(file, JSON.stringify(map, null, 2), 'utf8');
+    }
+  } catch (err) {
+    log.warn('Failed removing cloud profile binding entry asynchronously', {
+      profileId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 // ============================================================================
@@ -390,7 +558,11 @@ export function getSyncConfig(): CloudSyncConfig {
         keyDerivationVersion: data.keyDerivationVersion === 2 ? 2 : 1,
       };
     }
-  } catch {}
+  } catch (err) {
+    log.warn('Failed reading cloud sync config; falling back to defaults', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return { autoSync: true, syncPassphrase: DEFAULT_PASSPHRASE, keyDerivationVersion: 1 };
 }
 
@@ -409,7 +581,7 @@ export function setSyncConfig(config: Partial<CloudSyncConfig>): CloudSyncConfig
   try {
     fs.writeFileSync(getSyncConfigPath(), JSON.stringify(updated, null, 2), 'utf8');
   } catch (err) {
-    console.error('[CloudSync] Failed to save sync config:', err);
+    log.error('[CloudSync] Failed to save sync config:', err);
   }
   return updated;
 }
@@ -435,7 +607,11 @@ export function getActiveLicenseKey(): string | null {
           return key;
         }
       }
-    } catch {}
+    } catch (err) {
+      log.warn('Failed reading claimed-licenses.json while resolving sync license key', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
   return null;
 }
@@ -529,6 +705,158 @@ export function isCloudSyncAllowed(): { allowed: boolean; reason?: string } {
   return { allowed: true };
 }
 
+export async function getSyncConfigAsync(): Promise<CloudSyncConfig> {
+  try {
+    const file = getSyncConfigPath();
+    if (await pathExists(file)) {
+      const data = JSON.parse(await fs.promises.readFile(file, 'utf8'));
+      return {
+        autoSync: data.autoSync !== false,
+        syncPassphrase: data.syncPassphrase || DEFAULT_PASSPHRASE,
+        keyDerivationVersion: data.keyDerivationVersion === 2 ? 2 : 1,
+      };
+    }
+  } catch (err) {
+    log.warn('Failed reading cloud sync config asynchronously; falling back to defaults', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return { autoSync: true, syncPassphrase: DEFAULT_PASSPHRASE, keyDerivationVersion: 1 };
+}
+
+export async function setSyncConfigAsync(config: Partial<CloudSyncConfig>): Promise<CloudSyncConfig> {
+  const current = await getSyncConfigAsync();
+  const updated: CloudSyncConfig = {
+    autoSync: config.autoSync !== undefined ? config.autoSync : current.autoSync,
+    syncPassphrase: config.syncPassphrase !== undefined ? config.syncPassphrase : current.syncPassphrase,
+    keyDerivationVersion:
+      config.keyDerivationVersion === 2
+        ? 2
+        : config.keyDerivationVersion === 1
+          ? 1
+          : current.keyDerivationVersion || 1,
+  };
+  try {
+    await fs.promises.writeFile(getSyncConfigPath(), JSON.stringify(updated, null, 2), 'utf8');
+  } catch (err) {
+    log.error('[CloudSync] Failed to save sync config asynchronously:', err);
+  }
+  return updated;
+}
+
+export async function getActiveLicenseKeyAsync(): Promise<string | null> {
+  const userDataDir = getUserDataPath();
+  const licenseFile = path.join(userDataDir, 'offline-license.key');
+  if (await pathExists(licenseFile)) {
+    const key = (await fs.promises.readFile(licenseFile, 'utf8')).trim();
+    if (key) return key;
+  }
+
+  const claimedFile = path.join(userDataDir, 'claimed-licenses.json');
+  if (await pathExists(claimedFile)) {
+    try {
+      const claimed: Record<string, string> = JSON.parse(await fs.promises.readFile(claimedFile, 'utf8'));
+      for (const key of Object.values(claimed)) {
+        if (key && typeof key === 'string' && verifyLicense(key).valid) {
+          return key;
+        }
+      }
+    } catch (err) {
+      log.warn('Failed reading claimed-licenses.json asynchronously while resolving sync license key', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return null;
+}
+
+export async function getSyncAuthHeadersAsync(): Promise<Record<string, string>> {
+  const session = await loadEncryptedSessionAsync();
+  const hwid = getHWID();
+  if (session?.token) {
+    return {
+      'Authorization': `Bearer ${session.token}`,
+      'x-mahi-token': session.token,
+      'x-mahi-hwid': hwid,
+    };
+  }
+  const key = await getActiveLicenseKeyAsync();
+  if (key) {
+    return {
+      'x-mahi-hwid': hwid,
+      'x-mahi-license-key': key,
+    };
+  }
+  return { 'x-mahi-hwid': hwid };
+}
+
+export async function getEffectiveSyncPassphraseAsync(): Promise<string> {
+  const session = await loadEncryptedSessionAsync();
+  if (session?.sync_key) return session.sync_key;
+  const accountKey = getAccountSyncKey();
+  if (accountKey) return accountKey;
+
+  const config = await getSyncConfigAsync();
+  if (config.syncPassphrase && config.syncPassphrase !== DEFAULT_PASSPHRASE) {
+    return config.syncPassphrase;
+  }
+
+  if (session?.account_id) {
+    return crypto
+      .createHash('sha256')
+      .update(`mahi-zk-sync-account:${session.account_id}:${session.email || ''}`)
+      .digest('hex');
+  }
+
+  const lic = await getActiveLicenseKeyAsync();
+  if (lic) {
+    return crypto
+      .createHash('sha256')
+      .update(`mahi-zk-sync-license:${getHWID()}:${lic}`)
+      .digest('hex');
+  }
+
+  return crypto
+    .createHash('sha256')
+    .update(`mahi-zk-sync-device:${getHWID()}`)
+    .digest('hex');
+}
+
+export async function isCloudSyncAllowedAsync(): Promise<{ allowed: boolean; reason?: string }> {
+  const [session, cached] = await Promise.all([
+    loadEncryptedSessionAsync(),
+    readCachedStatusAsync(),
+  ]);
+  if (cached?.plan && hasValidAccountSubscription()) {
+    const caps = resolveCapabilitiesForCanonicalPlan(cached.plan);
+    if (caps['cloud.sync'] === false) {
+      return {
+        allowed: false,
+        reason: 'Encrypted Cloud Backup is unlocked on Growth (25 profiles) and Ultimate (Unlimited) plans.',
+      };
+    }
+  }
+
+  if (session?.token || session?.account_id || hasValidAccountSubscription()) {
+    return { allowed: true };
+  }
+
+  if (isOnlineRevoked()) {
+    return { allowed: false, reason: 'License has been revoked by administration. Cloud sync disabled.' };
+  }
+  if (isGraceExpired()) {
+    return { allowed: false, reason: 'License verification grace period expired. Please connect to internet to verify license.' };
+  }
+  if (!hasValidLicense()) {
+    return { allowed: false, reason: 'Cloud Sync is a MAHI PRO feature. Active license or account required.' };
+  }
+  const key = await getActiveLicenseKeyAsync();
+  if (!key) {
+    return { allowed: false, reason: 'No active license key found.' };
+  }
+  return { allowed: true };
+}
+
 // ============================================================================
 // STATUS TRACKING & BROADCASTING
 // ============================================================================
@@ -538,7 +866,11 @@ function readLocalSyncStatus(): Record<string, { status: CloudSyncStatus; update
     if (fs.existsSync(p)) {
       return JSON.parse(fs.readFileSync(p, 'utf8'));
     }
-  } catch {}
+  } catch (err) {
+    log.warn('Failed reading local sync status cache', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return {};
 }
 
@@ -547,7 +879,13 @@ export function updateLocalSyncStatus(profileId: string, status: CloudSyncStatus
     const map = readLocalSyncStatus();
     map[profileId] = { status, updatedAt: new Date().toISOString() };
     fs.writeFileSync(getSyncStatusCachePath(), JSON.stringify(map, null, 2), 'utf8');
-  } catch {}
+  } catch (err) {
+    log.warn('Failed updating local sync status cache', {
+      profileId,
+      status,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export function getProfileSyncStatus(profileId: string): CloudSyncStatus {
@@ -557,6 +895,43 @@ export function getProfileSyncStatus(profileId: string): CloudSyncStatus {
 
 export function getAllProfilesSyncStatus(): Record<string, CloudSyncStatus> {
   const map = readLocalSyncStatus();
+  const res: Record<string, CloudSyncStatus> = {};
+  for (const [k, v] of Object.entries(map)) {
+    res[k] = v.status;
+  }
+  return res;
+}
+
+async function readLocalSyncStatusAsync(): Promise<Record<string, { status: CloudSyncStatus; updatedAt: string }>> {
+  try {
+    const p = getSyncStatusCachePath();
+    if (await pathExists(p)) {
+      return JSON.parse(await fs.promises.readFile(p, 'utf8'));
+    }
+  } catch (err) {
+    log.warn('Failed reading local sync status cache asynchronously', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return {};
+}
+
+export async function updateLocalSyncStatusAsync(profileId: string, status: CloudSyncStatus): Promise<void> {
+  try {
+    const map = await readLocalSyncStatusAsync();
+    map[profileId] = { status, updatedAt: new Date().toISOString() };
+    await fs.promises.writeFile(getSyncStatusCachePath(), JSON.stringify(map, null, 2), 'utf8');
+  } catch (err) {
+    log.warn('Failed updating local sync status cache asynchronously', {
+      profileId,
+      status,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+export async function getAllProfilesSyncStatusAsync(): Promise<Record<string, CloudSyncStatus>> {
+  const map = await readLocalSyncStatusAsync();
   const res: Record<string, CloudSyncStatus> = {};
   for (const [k, v] of Object.entries(map)) {
     res[k] = v.status;
@@ -584,7 +959,11 @@ export function broadcastSyncToast(type: 'info' | 'warning' | 'error' | 'success
           win.webContents.send('toast:show', { type, title, message });
         }
       });
-    } catch {}
+    } catch (err) {
+      log.debug('Skipped cloud sync toast broadcast IPC', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }
 
@@ -596,7 +975,12 @@ function broadcastProgress(event: CloudSyncProgressEvent): void {
           win.webContents.send('sync:progress', event);
         }
       });
-    } catch {}
+    } catch (err) {
+      log.debug('Skipped cloud sync progress broadcast IPC', {
+        stage: event.stage,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }
 
@@ -635,12 +1019,12 @@ export function requestApi(urlStr: string, options: https.RequestOptions, body?:
 // PUBLIC SYNC APIS
 // ============================================================================
 export async function getCloudSyncUsage(): Promise<CloudSyncUsage> {
-  const check = isCloudSyncAllowed();
+  const check = await isCloudSyncAllowedAsync();
   if (!check.allowed) {
     throw new Error(check.reason);
   }
 
-  const authHeaders = getSyncAuthHeaders();
+  const authHeaders = await getSyncAuthHeadersAsync();
   const baseUrl = getApiBaseUrl();
 
   const res = await requestApi(`${baseUrl}/api/v1/sync/usage`, {
@@ -665,12 +1049,12 @@ export async function getCloudSyncUsage(): Promise<CloudSyncUsage> {
 }
 
 export async function getCloudSyncList(): Promise<CloudProfileMetadata[]> {
-  const check = isCloudSyncAllowed();
+  const check = await isCloudSyncAllowedAsync();
   if (!check.allowed) {
     throw new Error(check.reason);
   }
 
-  const authHeaders = getSyncAuthHeaders();
+  const authHeaders = await getSyncAuthHeadersAsync();
   const baseUrl = getApiBaseUrl();
 
   const res = await requestApi(`${baseUrl}/api/v1/sync/list`, {
@@ -720,9 +1104,9 @@ export async function uploadProfileToCloud(
   profileId: string,
   options?: UploadProfileOptions
 ): Promise<UploadProfileResult> {
-  const check = isCloudSyncAllowed();
+  const check = await isCloudSyncAllowedAsync();
   if (!check.allowed) {
-    updateLocalSyncStatus(profileId, 'ERROR');
+    await updateLocalSyncStatusAsync(profileId, 'ERROR');
     throw new Error(check.reason);
   }
 
@@ -731,8 +1115,8 @@ export async function uploadProfileToCloud(
     throw new Error(`Profile ${profileId} not found locally`);
   }
 
-  const binding = getProfileCloudBinding(profileId);
-  const manifestHash = computeProfileManifestHash(profileId);
+  const binding = await getProfileCloudBindingAsync(profileId);
+  const manifestHash = await computeProfileManifestHashAsync(profileId);
 
   // Manifest Hash Short-Circuit: zero network upload when core state is unchanged
   if (
@@ -741,7 +1125,7 @@ export async function uploadProfileToCloud(
     binding.lastManifestHash &&
     binding.lastManifestHash === manifestHash
   ) {
-    updateLocalSyncStatus(profileId, 'SYNCED');
+    await updateLocalSyncStatusAsync(profileId, 'SYNCED');
     broadcastProgress({
       stage: 'COMPLETED',
       profileId,
@@ -762,8 +1146,8 @@ export async function uploadProfileToCloud(
     };
   }
 
-  const authHeaders = getSyncAuthHeaders();
-  const effectivePassphrase = getEffectiveSyncPassphrase();
+  const authHeaders = await getSyncAuthHeadersAsync();
+  const effectivePassphrase = await getEffectiveSyncPassphraseAsync();
   const baseUrl = getApiBaseUrl();
 
   // Graceful fallback to full tarball sync if cookies_only requested without any base snapshot
@@ -781,7 +1165,7 @@ export async function uploadProfileToCloud(
         ? `Packaging lightweight cookie & session delta for "${profile.name}"...`
         : `Exporting and packaging profile "${profile.name}" (cache excluded)...`,
   });
-  updateLocalSyncStatus(profileId, 'SYNCING');
+  await updateLocalSyncStatusAsync(profileId, 'SYNCING');
 
   const tempExportPath = path.join(getUserDataPath(), `sync_temp_${profileId}_${Date.now()}.tar.gz`);
 
@@ -790,7 +1174,7 @@ export async function uploadProfileToCloud(
       const prepareEncryptedPackage = async (modeToPack: CloudSyncMode) => {
         let rawPayloadBuffer: Buffer;
         if (modeToPack === 'cookies_only') {
-          const deltaPack = packCookiesDeltaPayload(
+          const deltaPack = await packCookiesDeltaPayload(
             profileId,
             options?.baseVersion !== undefined ? options.baseVersion : binding?.lastSyncedVersion || 1,
             manifestHash
@@ -813,7 +1197,7 @@ export async function uploadProfileToCloud(
           message: 'Encrypting archive with client-side zero-knowledge envelope encryption...'
         });
 
-        const keyVer = getSyncConfig().keyDerivationVersion === 2 ? 2 : 1;
+        const keyVer = (await getSyncConfigAsync()).keyDerivationVersion === 2 ? 2 : 1;
         return encryptProfileArchive(rawPayloadBuffer, effectivePassphrase, { keyVersion: keyVer });
       };
 
@@ -865,7 +1249,7 @@ export async function uploadProfileToCloud(
       // Handle Optimistic Concurrency Conflict (HTTP 409)
       if (sessionRes.statusCode === 409) {
         const conflictData = JSON.parse(sessionRes.body.toString('utf8'));
-        updateLocalSyncStatus(profileId, 'CONFLICT');
+        await updateLocalSyncStatusAsync(profileId, 'CONFLICT');
         broadcastProgress({
           stage: 'ERROR',
           profileId,
@@ -887,7 +1271,12 @@ export async function uploadProfileToCloud(
         try {
           const parsed = JSON.parse(errText);
           if (parsed.error) errMsg = parsed.error;
-        } catch {}
+        } catch (parseErr) {
+          log.debug('Upload session error body was not JSON', {
+            statusCode: sessionRes.statusCode,
+            err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+          });
+        }
         const errObj: any = new Error(errMsg);
         errObj.status = sessionRes.statusCode;
         throw errObj;
@@ -960,7 +1349,7 @@ export async function uploadProfileToCloud(
       const finalizeData = JSON.parse(finalizeRes.body.toString('utf8'));
 
       // 7. Store Local Binding with manifest hash & mode metadata
-      setProfileCloudBinding(profileId, {
+      await setProfileCloudBindingAsync(profileId, {
         cloudProfileId: finalizeData.cloudProfileId,
         lastSyncedVersion: finalizeData.version,
         updatedAt: new Date().toISOString(),
@@ -969,7 +1358,7 @@ export async function uploadProfileToCloud(
         ...(finalizeData.deltaVersion ? { lastDeltaVersion: finalizeData.deltaVersion } : {}),
       });
 
-      updateLocalSyncStatus(profileId, 'SYNCED');
+      await updateLocalSyncStatusAsync(profileId, 'SYNCED');
       broadcastProgress({
         stage: 'COMPLETED',
         profileId,
@@ -1004,7 +1393,7 @@ export async function uploadProfileToCloud(
       };
     });
   } catch (err: any) {
-    updateLocalSyncStatus(profileId, 'ERROR');
+    await updateLocalSyncStatusAsync(profileId, 'ERROR');
     broadcastProgress({
       stage: 'ERROR',
       profileId,
@@ -1013,8 +1402,15 @@ export async function uploadProfileToCloud(
     });
     throw err;
   } finally {
-    if (fs.existsSync(tempExportPath)) {
-      try { fs.unlinkSync(tempExportPath); } catch {}
+    if (await pathExists(tempExportPath)) {
+      try {
+        await fs.promises.unlink(tempExportPath);
+      } catch (cleanupErr) {
+        log.debug('Failed deleting temp upload archive', {
+          tempExportPath,
+          err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        });
+      }
     }
   }
 }
@@ -1053,8 +1449,8 @@ export async function downloadAndRestoreProfile(
   if (!targetLocalId) {
     try {
       const bindingsFile = getSyncBindingsPath();
-      if (fs.existsSync(bindingsFile)) {
-        const map: Record<string, CloudBindingInfo> = JSON.parse(fs.readFileSync(bindingsFile, 'utf8'));
+      if (await pathExists(bindingsFile)) {
+        const map: Record<string, CloudBindingInfo> = JSON.parse(await fs.promises.readFile(bindingsFile, 'utf8'));
         for (const [locId, bInfo] of Object.entries(map)) {
           if (bInfo?.cloudProfileId === cloudProfileId) {
             targetLocalId = locId;
@@ -1062,7 +1458,12 @@ export async function downloadAndRestoreProfile(
           }
         }
       }
-    } catch {}
+    } catch (bindErr) {
+      log.warn('Failed reading local bindings while resolving cloud restore target', {
+        cloudProfileId,
+        err: bindErr instanceof Error ? bindErr.message : String(bindErr),
+      });
+    }
   }
 
   let localProfile = targetLocalId ? getProfileById(targetLocalId) : null;
@@ -1074,13 +1475,13 @@ export async function downloadAndRestoreProfile(
     assertCanCreateProfile(1);
   }
 
-  const check = isCloudSyncAllowed();
+  const check = await isCloudSyncAllowedAsync();
   if (!check.allowed) {
     throw new Error(check.reason);
   }
 
-  const authHeaders = getSyncAuthHeaders();
-  const effectivePassphrase = options?.passphrase || getEffectiveSyncPassphrase();
+  const authHeaders = await getSyncAuthHeadersAsync();
+  const effectivePassphrase = options?.passphrase || (await getEffectiveSyncPassphraseAsync());
   const baseUrl = getApiBaseUrl();
 
   broadcastProgress({
@@ -1177,21 +1578,34 @@ export async function downloadAndRestoreProfile(
     }
 
     const targetDir = getProfileStoragePath(localProfile.id);
-    const backupDir = fs.existsSync(targetDir) ? `${targetDir}.delta_backup_${Date.now()}` : null;
+    const backupDir = (await pathExists(targetDir)) ? `${targetDir}.delta_backup_${Date.now()}` : null;
     if (backupDir) {
       try {
-        fs.cpSync(targetDir, backupDir, { recursive: true });
-      } catch {}
+        await fs.promises.cp(targetDir, backupDir, { recursive: true });
+      } catch (cpErr) {
+        log.warn('Failed creating pre-delta profile backup directory', {
+          profileId: localProfile.id,
+          backupDir,
+          err: cpErr instanceof Error ? cpErr.message : String(cpErr),
+        });
+      }
     }
 
     try {
-      applyCookiesDeltaPayload(localProfile.id, plaintextArchiveBuffer);
-      if (backupDir && fs.existsSync(backupDir)) {
-        try { fs.rmSync(backupDir, { recursive: true, force: true }); } catch {}
+      await applyCookiesDeltaPayload(localProfile.id, plaintextArchiveBuffer);
+      if (backupDir && (await pathExists(backupDir))) {
+        try {
+          await fs.promises.rm(backupDir, { recursive: true, force: true });
+        } catch (cleanupErr) {
+          log.debug('Failed deleting pre-delta backup directory after restore', {
+            backupDir,
+            err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+          });
+        }
       }
 
-      const restoredManifestHash = computeProfileManifestHash(localProfile.id);
-      setProfileCloudBinding(localProfile.id, {
+      const restoredManifestHash = await computeProfileManifestHashAsync(localProfile.id);
+      await setProfileCloudBindingAsync(localProfile.id, {
         cloudProfileId,
         lastSyncedVersion: sessionData.version,
         updatedAt: new Date().toISOString(),
@@ -1199,7 +1613,7 @@ export async function downloadAndRestoreProfile(
         lastSyncedMode: 'cookies_only',
         ...(sessionData.deltaVersion ? { lastDeltaVersion: sessionData.deltaVersion } : {}),
       });
-      updateLocalSyncStatus(localProfile.id, 'SYNCED');
+      await updateLocalSyncStatusAsync(localProfile.id, 'SYNCED');
 
       broadcastProgress({
         stage: 'COMPLETED',
@@ -1210,18 +1624,31 @@ export async function downloadAndRestoreProfile(
 
       return localProfile;
     } catch (deltaErr) {
-      if (backupDir && fs.existsSync(backupDir)) {
+      if (backupDir && (await pathExists(backupDir))) {
         try {
-          if (fs.existsSync(targetDir)) {
-            fs.rmSync(targetDir, { recursive: true, force: true });
+          if (await pathExists(targetDir)) {
+            await fs.promises.rm(targetDir, { recursive: true, force: true });
           }
-          fs.renameSync(backupDir, targetDir);
-        } catch {}
+          await fs.promises.rename(backupDir, targetDir);
+        } catch (rbErr) {
+          log.error('Failed rolling back profile directory after delta restore failure', {
+            profileId: localProfile.id,
+            targetDir,
+            err: rbErr instanceof Error ? rbErr.message : String(rbErr),
+          });
+        }
       }
       throw deltaErr;
     } finally {
-      if (backupDir && fs.existsSync(backupDir)) {
-        try { fs.rmSync(backupDir, { recursive: true, force: true }); } catch {}
+      if (backupDir && (await pathExists(backupDir))) {
+        try {
+          await fs.promises.rm(backupDir, { recursive: true, force: true });
+        } catch (cleanupErr) {
+          log.debug('Failed final cleanup of pre-delta backup directory', {
+            backupDir,
+            err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+          });
+        }
       }
     }
   }
@@ -1237,19 +1664,25 @@ export async function downloadAndRestoreProfile(
   const isTarGz = plaintextArchiveBuffer.length >= 2 && plaintextArchiveBuffer[0] === 0x1f && plaintextArchiveBuffer[1] === 0x8b;
   const tempExt = isTarGz ? 'tar.gz' : 'mahi-profile';
   const tempFilePath = path.join(getUserDataPath(), `restore_temp_${cloudProfileId}_${Date.now()}.${tempExt}`);
-  fs.writeFileSync(tempFilePath, plaintextArchiveBuffer);
+  await fs.promises.writeFile(tempFilePath, plaintextArchiveBuffer);
 
   const effectiveLocalId = localProfile?.id || targetLocalId || sessionData.localProfileId || cloudProfileId;
   const existingStorageDir = getProfileStoragePath(effectiveLocalId);
-  const backupStorageDir = existingStorageDir && fs.existsSync(existingStorageDir)
+  const backupStorageDir = existingStorageDir && (await pathExists(existingStorageDir))
     ? `${existingStorageDir}.backup_${Date.now()}`
     : null;
 
   // Backup existing directory if present to guarantee atomic rollback
   if (backupStorageDir && existingStorageDir) {
     try {
-      fs.cpSync(existingStorageDir, backupStorageDir, { recursive: true });
-    } catch {}
+      await fs.promises.cp(existingStorageDir, backupStorageDir, { recursive: true });
+    } catch (cpErr) {
+      log.warn('Failed creating pre-restore profile backup directory', {
+        existingStorageDir,
+        backupStorageDir,
+        err: cpErr instanceof Error ? cpErr.message : String(cpErr),
+      });
+    }
   }
 
   try {
@@ -1294,17 +1727,24 @@ export async function downloadAndRestoreProfile(
         authTag: sessionData.cookieDelta.authTag,
         userMasterKey: effectivePassphrase,
       });
-      applyCookiesDeltaPayload(restored.id, decryptedDelta);
+      await applyCookiesDeltaPayload(restored.id, decryptedDelta);
     }
 
     // Cleanup backup on success
-    if (backupStorageDir && fs.existsSync(backupStorageDir)) {
-      try { fs.rmSync(backupStorageDir, { recursive: true, force: true }); } catch {}
+    if (backupStorageDir && (await pathExists(backupStorageDir))) {
+      try {
+        await fs.promises.rm(backupStorageDir, { recursive: true, force: true });
+      } catch (cleanupErr) {
+        log.debug('Failed deleting restore backup directory after success', {
+          backupStorageDir,
+          err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        });
+      }
     }
 
     // Save cloud binding with computed manifest hash
-    const restoredManifestHash = computeProfileManifestHash(restored.id);
-    setProfileCloudBinding(restored.id, {
+    const restoredManifestHash = await computeProfileManifestHashAsync(restored.id);
+    await setProfileCloudBindingAsync(restored.id, {
       cloudProfileId,
       lastSyncedVersion: sessionData.version,
       updatedAt: new Date().toISOString(),
@@ -1313,7 +1753,7 @@ export async function downloadAndRestoreProfile(
       ...(sessionData.cookieDelta?.deltaVersion ? { lastDeltaVersion: sessionData.cookieDelta.deltaVersion } : {}),
     });
 
-    updateLocalSyncStatus(restored.id, 'SYNCED');
+    await updateLocalSyncStatusAsync(restored.id, 'SYNCED');
 
     broadcastProgress({
       stage: 'COMPLETED',
@@ -1328,21 +1768,40 @@ export async function downloadAndRestoreProfile(
   } catch (err: any) {
     // Atomic rollback: restore previous state if backup exists
     const rollbackTarget = localProfile ? getProfileStoragePath(localProfile.id) : existingStorageDir;
-    if (backupStorageDir && fs.existsSync(backupStorageDir) && rollbackTarget) {
+    if (backupStorageDir && (await pathExists(backupStorageDir)) && rollbackTarget) {
       try {
-        if (fs.existsSync(rollbackTarget)) {
-          fs.rmSync(rollbackTarget, { recursive: true, force: true });
+        if (await pathExists(rollbackTarget)) {
+          await fs.promises.rm(rollbackTarget, { recursive: true, force: true });
         }
-        fs.renameSync(backupStorageDir, rollbackTarget);
-      } catch {}
+        await fs.promises.rename(backupStorageDir, rollbackTarget);
+      } catch (rbErr) {
+        log.error('Failed rolling back profile directory after cloud restore error', {
+          rollbackTarget,
+          err: rbErr instanceof Error ? rbErr.message : String(rbErr),
+        });
+      }
     }
     throw err;
   } finally {
-    if (fs.existsSync(tempFilePath)) {
-      try { fs.unlinkSync(tempFilePath); } catch {}
+    if (await pathExists(tempFilePath)) {
+      try {
+        await fs.promises.unlink(tempFilePath);
+      } catch (cleanupErr) {
+        log.debug('Failed deleting temp restore archive', {
+          tempFilePath,
+          err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        });
+      }
     }
-    if (backupStorageDir && fs.existsSync(backupStorageDir)) {
-      try { fs.rmSync(backupStorageDir, { recursive: true, force: true }); } catch {}
+    if (backupStorageDir && (await pathExists(backupStorageDir))) {
+      try {
+        await fs.promises.rm(backupStorageDir, { recursive: true, force: true });
+      } catch (cleanupErr) {
+        log.debug('Failed cleaning up restore backup directory', {
+          backupStorageDir,
+          err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        });
+      }
     }
   }
 }
@@ -1351,12 +1810,12 @@ export async function downloadAndRestoreProfile(
  * Delete profile from cloud storage and remove local binding.
  */
 export async function deleteCloudProfile(cloudProfileId: string): Promise<boolean> {
-  const check = isCloudSyncAllowed();
+  const check = await isCloudSyncAllowedAsync();
   if (!check.allowed) {
     throw new Error(check.reason);
   }
 
-  const authHeaders = getSyncAuthHeaders();
+  const authHeaders = await getSyncAuthHeadersAsync();
   const baseUrl = getApiBaseUrl();
 
   const res = await requestApi(`${baseUrl}/api/v1/sync/profile/${encodeURIComponent(cloudProfileId)}`, {
@@ -1368,17 +1827,22 @@ export async function deleteCloudProfile(cloudProfileId: string): Promise<boolea
     // Look up and remove binding for local profiles referencing this cloud profile
     try {
       const file = getSyncBindingsPath();
-      if (fs.existsSync(file)) {
-        const map: Record<string, CloudBindingInfo> = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (await pathExists(file)) {
+        const map: Record<string, CloudBindingInfo> = JSON.parse(await fs.promises.readFile(file, 'utf8'));
         for (const [locId, b] of Object.entries(map)) {
           if (b.cloudProfileId === cloudProfileId) {
             delete map[locId];
-            updateLocalSyncStatus(locId, 'LOCAL_ONLY');
+            await updateLocalSyncStatusAsync(locId, 'LOCAL_ONLY');
           }
         }
-        fs.writeFileSync(file, JSON.stringify(map, null, 2), 'utf8');
+        await fs.promises.writeFile(file, JSON.stringify(map, null, 2), 'utf8');
       }
-    } catch {}
+    } catch (bindErr) {
+      log.warn('Failed updating local bindings after deleting cloud profile', {
+        cloudProfileId,
+        err: bindErr instanceof Error ? bindErr.message : String(bindErr),
+      });
+    }
     return true;
   }
   return false;
@@ -1391,7 +1855,7 @@ export async function resolveSyncConflict(
   profileId: string,
   resolution: 'DOWNLOAD_LATEST' | 'KEEP_LOCAL_AS_NEW' | 'OVERWRITE_FORCE'
 ): Promise<any> {
-  const binding = getProfileCloudBinding(profileId);
+  const binding = await getProfileCloudBindingAsync(profileId);
   const profile = getProfileById(profileId);
   if (!profile) {
     throw new Error(`Profile ${profileId} not found locally`);
@@ -1406,8 +1870,8 @@ export async function resolveSyncConflict(
 
   if (resolution === 'KEEP_LOCAL_AS_NEW') {
     // Unlink the profile from the conflicting cloud profile
-    removeProfileCloudBinding(profileId);
-    updateLocalSyncStatus(profileId, 'LOCAL_ONLY');
+    await removeProfileCloudBindingAsync(profileId);
+    await updateLocalSyncStatusAsync(profileId, 'LOCAL_ONLY');
     // Upload as new independent profile
     return uploadProfileToCloud(profileId);
   }
@@ -1434,7 +1898,7 @@ export async function acquireCloudLock(
   ttlSeconds = 300
 ): Promise<{ acquired: boolean; heldBy?: string; expiresAt?: string; statusCode?: number }> {
   try {
-    const authHeaders = getSyncAuthHeaders();
+    const authHeaders = await getSyncAuthHeadersAsync();
     const baseUrl = getApiBaseUrl();
 
     const payload = JSON.stringify({
@@ -1463,15 +1927,24 @@ export async function acquireCloudLock(
       }
       // Start dedicated background heartbeat renewal every 60 seconds for this profile
       const timer = setInterval(() => {
-        renewCloudLock(cloudProfileId).catch(() => {});
+        renewCloudLock(cloudProfileId).catch((renewErr) => {
+          log.debug('Cloud lock heartbeat renewal failed', {
+            cloudProfileId,
+            err: renewErr instanceof Error ? renewErr.message : String(renewErr),
+          });
+        });
       }, 60000);
       activeLockHeartbeats.set(cloudProfileId, timer);
       return { acquired: true, expiresAt: data.expiresAt, statusCode: 200 };
     }
 
     return { acquired: false, heldBy: data.heldBy, expiresAt: data.expiresAt, statusCode: res.statusCode };
-  } catch {
+  } catch (err) {
     // Offline mode or network error: never block local launch!
+    log.debug('Cloud lock acquisition skipped (offline or unreachable)', {
+      cloudProfileId,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return { acquired: true };
   }
 }
@@ -1507,7 +1980,7 @@ async function withProfileCloudSyncLock<T>(
 
 export async function renewCloudLock(cloudProfileId: string, ttlSeconds = 300): Promise<boolean> {
   try {
-    const authHeaders = getSyncAuthHeaders();
+    const authHeaders = await getSyncAuthHeadersAsync();
     const baseUrl = getApiBaseUrl();
 
     const payload = JSON.stringify({
@@ -1539,7 +2012,7 @@ export async function releaseCloudLock(cloudProfileId: string): Promise<boolean>
   }
 
   try {
-    const authHeaders = getSyncAuthHeaders();
+    const authHeaders = await getSyncAuthHeadersAsync();
     const baseUrl = getApiBaseUrl();
 
     const payload = JSON.stringify({
@@ -1576,7 +2049,7 @@ export async function releaseAllCloudLocks(): Promise<void> {
 
 export async function getCloudLockStatus(cloudProfileId: string): Promise<{ isLocked: boolean; heldBy?: string; expiresAt?: string }> {
   try {
-    const authHeaders = getSyncAuthHeaders();
+    const authHeaders = await getSyncAuthHeadersAsync();
     const baseUrl = getApiBaseUrl();
 
     const res = await requestApi(`${baseUrl}/api/v1/sync/lock/status?cloudProfileId=${encodeURIComponent(cloudProfileId)}`, {
@@ -1588,7 +2061,12 @@ export async function getCloudLockStatus(cloudProfileId: string): Promise<{ isLo
       const data = JSON.parse(res.body.toString('utf8'));
       return data.data;
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Cloud lock status query fell back to unlocked', {
+      cloudProfileId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return { isLocked: false };
 }
 
@@ -1601,36 +2079,45 @@ interface QueueItem {
   addedAt: string;
 }
 
-function readQueue(): QueueItem[] {
+async function readQueueAsync(): Promise<QueueItem[]> {
   try {
     const f = getSyncQueuePath();
-    if (fs.existsSync(f)) {
-      return JSON.parse(fs.readFileSync(f, 'utf8'));
+    if (await pathExists(f)) {
+      return JSON.parse(await fs.promises.readFile(f, 'utf8'));
     }
-  } catch {}
+  } catch (err) {
+    log.warn('Failed reading cloud sync queue file asynchronously', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return [];
 }
 
-function saveQueue(queue: QueueItem[]): void {
+async function saveQueueAsync(queue: QueueItem[]): Promise<void> {
   try {
-    fs.writeFileSync(getSyncQueuePath(), JSON.stringify(queue, null, 2), 'utf8');
-  } catch {}
+    await fs.promises.writeFile(getSyncQueuePath(), JSON.stringify(queue, null, 2), 'utf8');
+  } catch (err) {
+    log.warn('Failed persisting cloud sync queue file asynchronously', {
+      queueLength: queue.length,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 let isProcessingQueue = false;
 
 export async function processSyncQueue(): Promise<void> {
   if (isProcessingQueue) return;
-  const config = getSyncConfig();
+  const config = await getSyncConfigAsync();
   if (!config.autoSync) return;
 
-  const auth = isCloudSyncAllowed();
+  const auth = await isCloudSyncAllowedAsync();
   if (!auth.allowed) return;
 
   if (isQueuePausedForQuota) return;
 
   isProcessingQueue = true;
-  const queue = readQueue();
+  const queue = await readQueueAsync();
 
   try {
     while (queue.length > 0) {
@@ -1640,11 +2127,11 @@ export async function processSyncQueue(): Promise<void> {
         if (result.conflict) {
           // If conflict, stop retrying this item
           queue.shift();
-          saveQueue(queue);
+          await saveQueueAsync(queue);
           break;
         }
         queue.shift(); // remove on success
-        saveQueue(queue);
+        await saveQueueAsync(queue);
       } catch (err: any) {
         const status = err.status || (
           err.message.includes('401') ? 401 :
@@ -1656,8 +2143,8 @@ export async function processSyncQueue(): Promise<void> {
 
         if (status === 401 || status === 403) {
           // 401/403 (revoked/expired): retry STOP, clear queue, show single toast, no launch spam
-          console.warn(`[CloudSync] Auth failure (${status}). Halting sync retries and clearing queue.`);
-          saveQueue([]);
+          log.warn(`[CloudSync] Auth failure (${status}). Halting sync retries and clearing queue.`);
+          await saveQueueAsync([]);
           if (!hasBroadcastAuthError) {
             hasBroadcastAuthError = true;
             broadcastSyncToast('error', 'Cloud Sync Disabled', 'Cloud sync suspended: Active license required. Local profiles remain completely safe.');
@@ -1667,19 +2154,19 @@ export async function processSyncQueue(): Promise<void> {
 
         if (status === 413 || status === 507) {
           // 413/507 (quota/disk): pause queue, show single usage toast, keep queue for later
-          console.warn(`[CloudSync] Storage cap reached (${status}). Pausing sync queue.`);
+          log.warn(`[CloudSync] Storage cap reached (${status}). Pausing sync queue.`);
           isQueuePausedForQuota = true;
           broadcastSyncToast('warning', 'Cloud Storage Full', 'Cloud storage quota (1GB) or server disk capacity reached. Sync queue paused.');
           break;
         }
 
-        console.warn(`[CloudSync] Queue item ${item.profileId} failed (attempt ${item.attempts + 1}):`, err.message);
+        log.warn(`[CloudSync] Queue item ${item.profileId} failed (attempt ${item.attempts + 1}):`, err.message);
         item.attempts += 1;
         if (item.attempts >= 5) {
-          updateLocalSyncStatus(item.profileId, 'ERROR');
+          await updateLocalSyncStatusAsync(item.profileId, 'ERROR');
           queue.shift(); // drop after 5 failed attempts
         }
-        saveQueue(queue);
+        await saveQueueAsync(queue);
         break; // Stop and retry later on network error
       }
     }
@@ -1688,30 +2175,49 @@ export async function processSyncQueue(): Promise<void> {
   }
 }
 
-export function enqueueSync(profileId: string): void {
-  const config = getSyncConfig();
+export async function enqueueSyncAsync(profileId: string): Promise<void> {
+  const config = await getSyncConfigAsync();
   if (!config.autoSync) return;
 
-  const auth = isCloudSyncAllowed();
+  const auth = await isCloudSyncAllowedAsync();
   if (!auth.allowed) return;
 
   if (isQueuePausedForQuota) return;
 
-  updateLocalSyncStatus(profileId, 'PENDING');
-  const queue = readQueue();
+  await updateLocalSyncStatusAsync(profileId, 'PENDING');
+  const queue = await readQueueAsync();
   if (!queue.some(q => q.profileId === profileId)) {
     queue.push({
       profileId,
       attempts: 0,
       addedAt: new Date().toISOString()
     });
-    saveQueue(queue);
+    await saveQueueAsync(queue);
   }
 
   // Non-blocking processing
   setTimeout(() => {
-    processSyncQueue().catch(() => {});
+    processSyncQueue().catch((err) => {
+      log.warn('Background cloud sync queue pass failed after enqueue', {
+        profileId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    });
   }, 1000);
+}
+
+export function enqueueSync(profileId: string): void {
+  void enqueueSyncAsync(profileId);
+}
+
+export async function syncAllProfilesAsync(): Promise<void> {
+  const auth = await isCloudSyncAllowedAsync();
+  if (!auth.allowed) throw new Error(auth.reason);
+
+  const profiles = getProfiles();
+  for (const p of profiles) {
+    await enqueueSyncAsync(p.id);
+  }
 }
 
 export function syncAllProfiles(): void {
@@ -1720,7 +2226,7 @@ export function syncAllProfiles(): void {
 
   const profiles = getProfiles();
   for (const p of profiles) {
-    enqueueSync(p.id);
+    void enqueueSyncAsync(p.id);
   }
 }
 
@@ -1731,12 +2237,12 @@ export function syncAllProfiles(): void {
  */
 export async function syncProfileIfCloudNewer(profileId: string): Promise<boolean> {
   try {
-    const binding = getProfileCloudBinding(profileId);
+    const binding = await getProfileCloudBindingAsync(profileId);
     if (!binding?.cloudProfileId) {
       return false;
     }
 
-    const authHeaders = getSyncAuthHeaders();
+    const authHeaders = await getSyncAuthHeadersAsync();
     const baseUrl = getApiBaseUrl();
 
     // Query cloud profile metadata
@@ -1767,7 +2273,7 @@ export async function syncProfileIfCloudNewer(profileId: string): Promise<boolea
 
     return false;
   } catch (err: any) {
-    console.warn(`[CloudSync] Background sync check failed for ${profileId} (continuing offline):`, err?.message);
+    log.warn(`[CloudSync] Background sync check failed for ${profileId} (continuing offline):`, err?.message);
     return false;
   }
 }
@@ -1782,6 +2288,10 @@ export function initCloudSync(): void {
     return;
   }
   setTimeout(() => {
-    processSyncQueue().catch(() => {});
+    processSyncQueue().catch((err) => {
+      log.warn('Startup cloud sync queue pass failed', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    });
   }, 5000);
 }

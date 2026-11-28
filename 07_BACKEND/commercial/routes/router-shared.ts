@@ -21,6 +21,8 @@ import {
   clearLocalDistributedStateNamespace,
   clearDistributedStateNamespaceAsync,
 } from '../../../08_SECURITY/distributed-state-service.js';
+import { createLogger } from '../../utils/logger.js';
+const log = createLogger('router-shared');
 
 export { resolveTrustedClientIp };
 
@@ -251,11 +253,21 @@ export function verifySqliteUserAndSession(
   let userRow: any = null;
   try {
     userRow = db.prepare('SELECT id, email, role, status FROM auth_users WHERE id = ?').get(userId);
-  } catch {}
+  } catch (err) {
+    log.debug('SQLite auth_users lookup skipped in verifySqliteUserAndSession', {
+      userId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   if (!userRow) {
     try {
       userRow = db.prepare('SELECT id, email, role, status FROM commercial_users WHERE id = ?').get(userId);
-    } catch {}
+    } catch (err) {
+      log.debug('SQLite commercial_users lookup skipped in verifySqliteUserAndSession', {
+        userId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   if (userRow) {
@@ -296,7 +308,12 @@ export function verifySqliteUserAndSession(
           return { active: false, foundInDb: true };
         }
       }
-    } catch {}
+    } catch (sessErr) {
+      log.debug('SQLite auth_sessions verification skipped cleanly', {
+        userId,
+        err: sessErr instanceof Error ? sessErr.message : String(sessErr),
+      });
+    }
   }
 
   return {
@@ -333,7 +350,12 @@ export async function verifyPostgresOrSqliteUserAndSessionAsync(
     try {
       const commRow = await repo.findCommercialUserById(userId);
       if (commRow) userRow = commRow;
-    } catch {}
+    } catch (err) {
+      log.debug('PG findCommercialUserById fallback skipped', {
+        userId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   if (userRow) {
@@ -375,7 +397,12 @@ export async function verifyPostgresOrSqliteUserAndSessionAsync(
           }
         }
       }
-    } catch {}
+    } catch (sessErr) {
+      log.debug('PG auth_sessions verification skipped cleanly', {
+        userId,
+        err: sessErr instanceof Error ? sessErr.message : String(sessErr),
+      });
+    }
   }
 
   return {
@@ -542,7 +569,7 @@ export function signAccountStatus(canonical: string): string {
     if (isProdNonElectron) {
       throw new Error(`[AccountStatus] Failed to sign account status in production: ${err?.message || err}`);
     }
-    console.warn('[AccountStatus] sign error:', err?.message);
+    log.warn('[AccountStatus] sign error:', err?.message);
     return '';
   }
 }
@@ -587,13 +614,21 @@ export function pruneWebHandoffSessions(): void {
       try {
         const db = getDatabase();
         db.prepare('DELETE FROM web_handoff_sessions WHERE code = ?').run(code);
-      } catch {}
+      } catch (err) {
+        log.debug('Skipped expiring individual SQLite web_handoff_sessions row', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
   try {
     const db = getDatabase();
     db.prepare('DELETE FROM web_handoff_sessions WHERE expires_at <= ? OR used = 1').run(now);
-  } catch {}
+  } catch (err) {
+    log.debug('Skipped bulk pruning SQLite web_handoff_sessions', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export function _resetWebHandoffSessions(): void {
@@ -601,7 +636,11 @@ export function _resetWebHandoffSessions(): void {
   try {
     const db = getDatabase();
     db.prepare('DELETE FROM web_handoff_sessions').run();
-  } catch {}
+  } catch (err) {
+    log.debug('Skipped resetting SQLite web_handoff_sessions table', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export function getDesktopAuthSuccessHtml(params: {
@@ -783,6 +822,7 @@ export function getDesktopAuthSuccessHtml(params: {
       document.getElementById('statusMessage').style.color = "#10b981";
     }).catch(() => {
       // Local daemon might not be on port 32123 or blocked; deep link and status polling handle fallback cleanly
+      return undefined;
     });
 
     // 2. Launch custom protocol to focus running app
@@ -790,13 +830,13 @@ export function getDesktopAuthSuccessHtml(params: {
       try {
         window.location.href = canonicalDeepLink;
       } catch (e) {
-        try { window.location.href = legacyDeepLink; } catch (_) {}
+        try { window.location.href = legacyDeepLink; } catch (_) { void 0; /* legacy deep link optional */ }
       }
     }, 400);
 
     // 3. Auto-close tab if supported
     setTimeout(() => {
-      try { window.close(); } catch (e) {}
+      try { window.close(); } catch (e) { void 0; /* browser may block script close */ }
     }, 4000);
   </script>
 </body>

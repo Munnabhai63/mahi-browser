@@ -13,6 +13,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { getWritableUserDataDir } from '../utils/runtime-paths.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('profile-cache-cleaner');
 
 export interface CleanCacheOptions {
   baseDir?: string;
@@ -108,9 +110,19 @@ export function getDirectoryMetrics(dirPath: string): { files: number; bytes: nu
             bytes += stat.size;
             files++;
           }
-        } catch {}
+        } catch (statErr) {
+          log.debug('Profile cache file stat skipped during size scan', {
+            full,
+            err: statErr instanceof Error ? statErr.message : String(statErr),
+          });
+        }
       }
-    } catch {}
+    } catch (readErr) {
+      log.debug('Profile cache dir read skipped during size scan', {
+        current,
+        err: readErr instanceof Error ? readErr.message : String(readErr),
+      });
+    }
   }
 
   walk(dirPath);
@@ -129,7 +141,12 @@ export function containsProtectedFiles(dirPath: string): boolean {
         if (containsProtectedFiles(path.join(dirPath, entry.name))) return true;
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Protected-file safety check dir read skipped', {
+      dirPath,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return false;
 }
 
@@ -157,7 +174,7 @@ export async function cleanProfileCaches(options: CleanCacheOptions = {}): Promi
   };
 
   if (!fs.existsSync(baseDir)) {
-    if (!silent) console.log(`[clean-cache] Base directory does not exist: ${baseDir}`);
+    if (!silent) log.info(`[clean-cache] Base directory does not exist: ${baseDir}`);
     return result;
   }
 
@@ -207,7 +224,7 @@ export async function cleanProfileCaches(options: CleanCacheOptions = {}): Promi
       if (ALLOWED_CACHE_FOLDER_NAMES.has(lower)) {
         if (containsProtectedFiles(fullPath)) {
           result.skippedProtectedCount++;
-          if (!silent) console.warn(`[clean-cache] Skipping cache folder containing protected files: ${fullPath}`);
+          if (!silent) log.warn(`[clean-cache] Skipping cache folder containing protected files: ${fullPath}`);
           continue;
         }
         cacheFoldersToProcess.push(fullPath);
@@ -235,7 +252,7 @@ export async function cleanProfileCaches(options: CleanCacheOptions = {}): Promi
         if (err.code === 'EBUSY' || err.code === 'EPERM') {
           result.skippedLockedFolders++;
           if (!silent) {
-            console.warn(`[clean-cache] Skipped locked profile folder (running browser): ${folder}`);
+            log.warn(`[clean-cache] Skipped locked profile folder (running browser): ${folder}`);
           }
         } else {
           result.errors.push(`${folder}: ${err.message}`);

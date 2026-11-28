@@ -24,6 +24,9 @@ import { processManager } from '../../02_BROWSER/process-manager.js';
 import { validateCurrentLicense, getLicenseById } from '../../04_LICENSING/license-engine.js';
 import { hasValidLicense, resolveDefaultOwnerId } from '../../08_SECURITY/freemium-guard.js';
 import { hasValidAccountSubscription, readCachedStatus, getAccountSession, isBusinessPlan } from '../../08_SECURITY/account-service.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('commercial-entitlement-service');
 
 export const CAPABILITY_REQUIREMENTS: Record<
   FeatureCapability,
@@ -217,7 +220,13 @@ export function evaluateUserEntitlements(
         db.prepare("UPDATE commercial_subscriptions SET status = 'EXPIRED' WHERE id = ?").run(subRow.id);
         db.prepare("UPDATE commercial_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
         db.prepare("UPDATE auth_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
-      } catch {}
+      } catch (downgradeErr) {
+        log.warn('Failed persisting expired subscription downgrade to plan_free', {
+          userId: user.id,
+          subId: subRow.id,
+          err: downgradeErr instanceof Error ? downgradeErr.message : String(downgradeErr),
+        });
+      }
       user.planId = 'plan_free';
     }
 
@@ -242,7 +251,12 @@ export function evaluateUserEntitlements(
     activeLicRow = db.prepare(
       "SELECT * FROM licenses WHERE account_id = ? AND status = 'ACTIVE' AND (expires_at IS NULL OR expires_at > ?) ORDER BY created_at DESC LIMIT 1"
     ).get(user.id, new Date().toISOString()) as any;
-  } catch {}
+  } catch (licErr) {
+    log.debug('Skipped legacy licenses lookup during entitlement evaluation', {
+      userId: user.id,
+      err: licErr instanceof Error ? licErr.message : String(licErr),
+    });
+  }
 
   if (!subRow && activeLicRow) {
     let licPlanId = user.planId !== 'plan_free' ? user.planId : '';
@@ -272,7 +286,12 @@ export function evaluateUserEntitlements(
       db.prepare("UPDATE commercial_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
       db.prepare("UPDATE auth_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
       user.planId = 'plan_free';
-    } catch {}
+    } catch (downgradeErr) {
+      log.warn('Failed downgrading expired trial user to plan_free', {
+        userId: user.id,
+        err: downgradeErr instanceof Error ? downgradeErr.message : String(downgradeErr),
+      });
+    }
   }
 
   // 5. Check License Binding (if any)
@@ -432,7 +451,13 @@ export function checkCapability(
           db.prepare("UPDATE commercial_subscriptions SET status = 'EXPIRED' WHERE id = ?").run(subRow.id);
           db.prepare("UPDATE commercial_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
           db.prepare("UPDATE auth_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
-        } catch {}
+        } catch (err) {
+          log.warn('Failed expiring trial subscription and reverting user to plan_free', {
+            userId: user.id,
+            subId: subRow.id,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
         user.planId = 'plan_free';
         isTrialActive = false;
       }
@@ -440,7 +465,12 @@ export function checkCapability(
       try {
         db.prepare("UPDATE commercial_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
         db.prepare("UPDATE auth_users SET plan_id = 'plan_free' WHERE id = ?").run(user.id);
-      } catch {}
+      } catch (err) {
+        log.warn('Failed reverting expired trial user without subscription to plan_free', {
+          userId: user.id,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
       user.planId = 'plan_free';
       isTrialActive = false;
     }
@@ -633,7 +663,12 @@ export function activateUserTrial(
         SET plan_id = ?, trial_started_at = ?, trial_expires_at = ?, trial_used = 1, updated_at = ?
         WHERE id = ?
       `).run(targetPlanId, nowStr, expStr, nowStr, userId);
-    } catch {}
+    } catch (syncErr) {
+      log.debug('Skipped syncing auth_users trial fields during local trial grant', {
+        userId,
+        err: syncErr instanceof Error ? syncErr.message : String(syncErr),
+      });
+    }
 
     // Create active trial subscription record
     const subId = `sub_trial_${Date.now()}`;

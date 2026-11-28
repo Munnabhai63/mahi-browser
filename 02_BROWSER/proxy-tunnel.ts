@@ -4,11 +4,13 @@ import http from 'node:http';
 import https from 'node:https';
 import stream from 'node:stream';
 import { bridgeConnectOverSocks5, forwardHttpRequestOverSocks5 } from './socks-tunnel.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+const log = createLogger('proxy-tunnel');
 
 function debugLog(msg: string) {
   const fn = (globalThis as any).__mahiDebugLog;
   if (fn) fn(msg);
-  else console.log(msg);
+  else log.info(msg);
 }
 
 export interface ProxyTunnelOptions {
@@ -42,7 +44,13 @@ export function checkUpstreamReachability(
     const timer = setTimeout(() => {
       if (!isDone) {
         isDone = true;
-        try { socket.destroy(); } catch {}
+        try {
+          socket.destroy();
+        } catch (err) {
+          log.debug('Proxy preflight timeout socket destroy skipped', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
         reject(new Error(`Proxy ${host}:${port} did not respond within ${timeoutMs}ms.`));
       }
     }, timeoutMs);
@@ -52,7 +60,13 @@ export function checkUpstreamReachability(
         isDone = true;
         clearTimeout(timer);
         const latency = Date.now() - start;
-        try { socket.destroy(); } catch {}
+        try {
+          socket.destroy();
+        } catch (err) {
+          log.debug('Proxy preflight connected socket destroy skipped', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
         resolve(latency);
       }
     };
@@ -76,7 +90,13 @@ export function checkUpstreamReachability(
       if (!isDone) {
         isDone = true;
         clearTimeout(timer);
-        try { socket.destroy(); } catch {}
+        try {
+          socket.destroy();
+        } catch (destroyErr) {
+          log.debug('Proxy preflight error socket destroy skipped', {
+            err: destroyErr instanceof Error ? destroyErr.message : String(destroyErr),
+          });
+        }
         reject(new Error(`Cannot connect to proxy ${host}:${port} — ${err.message}`));
       }
     });
@@ -171,7 +191,13 @@ export async function createProxyTunnel(options: ProxyTunnelOptions): Promise<Pr
 
     const destroyUpstream = () => {
       if (!proxyReq.destroyed) {
-        try { proxyReq.destroy(); } catch {}
+        try {
+          proxyReq.destroy();
+        } catch (err) {
+          log.debug('Upstream HTTP proxy request destroy skipped', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
     };
     clientReq.on('aborted', destroyUpstream);
@@ -221,9 +247,21 @@ export async function createProxyTunnel(options: ProxyTunnelOptions): Promise<Pr
       if (reason) debugLog(`[ProxyTunnel CONNECT] Cleanup (${reason})`);
       activeSockets.delete(clientSocket);
       if (upstreamSocket) activeSockets.delete(upstreamSocket);
-      try { clientSocket.destroy(); } catch {}
+      try {
+        clientSocket.destroy();
+      } catch (err) {
+        log.debug('Proxy tunnel client socket destroy skipped', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
       if (upstreamSocket) {
-        try { upstreamSocket.destroy(); } catch {}
+        try {
+          upstreamSocket.destroy();
+        } catch (err) {
+          log.debug('Proxy tunnel upstream socket destroy skipped', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
     };
 
@@ -292,7 +330,11 @@ export async function createProxyTunnel(options: ProxyTunnelOptions): Promise<Pr
       debugLog(`[ProxyTunnel CONNECT Upstream ERROR] ${err.message}`);
       try {
         clientSocket.write(`HTTP/1.1 502 Bad Gateway\r\n\r\nProxy Error: ${err.message}`);
-      } catch {}
+      } catch (writeErr) {
+        log.debug('Failed writing 502 CONNECT response to closing client socket', {
+          err: writeErr instanceof Error ? writeErr.message : String(writeErr),
+        });
+      }
       cleanupSockets(err.message);
     });
 
@@ -325,7 +367,13 @@ export async function createProxyTunnel(options: ProxyTunnelOptions): Promise<Pr
     close: () => {
       debugLog(`[ProxyTunnel] Shutting down tunnel on port ${port} for profile "${profileId}"...`);
       for (const s of activeSockets) {
-        try { s.destroy(); } catch {}
+        try {
+          s.destroy();
+        } catch (err) {
+          log.debug('Proxy tunnel shutdown socket destroy skipped', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
       activeSockets.clear();
       server.close();

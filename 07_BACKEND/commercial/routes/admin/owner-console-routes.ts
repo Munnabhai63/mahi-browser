@@ -37,6 +37,8 @@ import {
   resolveOwnerTargetOrRespond,
   resolveTrustedClientIp,
 } from './admin-shared.js';
+import { createLogger } from '../../../utils/logger.js';
+const log = createLogger('owner-console-routes');
 
 async function syncCommercialUserPlanPg(
   prisma: any,
@@ -72,7 +74,7 @@ async function syncCommercialUserPlanPg(
       });
     }
   } catch (err: any) {
-    console.warn(`[OwnerService] commercial_users ${label} skipped/warn:`, err?.message);
+    log.warn(`[OwnerService] commercial_users ${label} skipped/warn:`, err?.message);
   }
 }
 
@@ -224,7 +226,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           },
         });
       } catch (err: any) {
-        console.error('[OwnerService][CRITICAL] Postgres license create failed:', err?.message || err);
+        log.error('[OwnerService][CRITICAL] Postgres license create failed:', err?.message || err);
         sendJSON(res, 500, { success: false, error: 'Failed to create license in database' });
         return true;
       }
@@ -235,7 +237,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           data: { plan_id: targetPlan.id, profile_quota: targetPlan.limits?.maxProfiles, updated_at: now },
         });
       } catch (err: any) {
-        console.error('[OwnerService][CRITICAL] PG plan sync error', err?.message);
+        log.error('[OwnerService][CRITICAL] PG plan sync error', err?.message);
         planSyncFailed = true;
       }
 
@@ -259,7 +261,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           });
         }
       } catch (err: any) {
-        console.warn('[OwnerService] commercial_subscriptions grant sync skipped/warn:', err?.message);
+        log.warn('[OwnerService] commercial_subscriptions grant sync skipped/warn:', err?.message);
       }
     } else {
       try {
@@ -282,7 +284,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           }
           db.prepare('UPDATE commercial_users SET plan_id = ?, updated_at = ? WHERE id = ?').run(targetPlan.id, now, userId);
         } catch (e: any) {
-          console.error('[OwnerService][CRITICAL] SQLite plan sync error', e?.message);
+          log.error('[OwnerService][CRITICAL] SQLite plan sync error', e?.message);
           planSyncFailed = true;
         }
 
@@ -293,10 +295,10 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
             ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 'OWNER_GRANT', ?)
           `).run(`sub_${crypto.randomUUID()}`, userId, targetPlan.id, licenseId, durationType === '1_YEAR' ? 'ANNUAL' : 'MONTHLY', now, expiresAt, now);
         } catch (e: any) {
-          console.warn('[OwnerService] SQLite subscription grant sync warn:', e?.message);
+          log.warn('[OwnerService] SQLite subscription grant sync warn:', e?.message);
         }
       } catch (err: any) {
-        console.error('[OwnerService][CRITICAL] SQLite license create failed:', err?.message || err);
+        log.error('[OwnerService][CRITICAL] SQLite license create failed:', err?.message || err);
         sendJSON(res, 500, { success: false, error: 'Failed to create license' });
         return true;
       }
@@ -350,7 +352,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
         }
       }
     } catch (err: any) {
-      console.error('[OwnerService][CRITICAL] License revoke error during remove:', err?.message || err);
+      log.error('[OwnerService][CRITICAL] License revoke error during remove:', err?.message || err);
       sendJSON(res, 500, { success: false, error: 'Failed to revoke licenses' });
       return true;
     }
@@ -364,7 +366,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
       try {
         await prisma.auth_users.update({ where: { id: userId }, data: { plan_id: 'plan_free', updated_at: now } });
       } catch (err: any) {
-        console.error('[OwnerService][CRITICAL] PG plan reset error', err?.message);
+        log.error('[OwnerService][CRITICAL] PG plan reset error', err?.message);
         planSyncFailed = true;
       }
       try {
@@ -375,7 +377,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           }
         }
       } catch (err: any) {
-        console.warn('[OwnerService] commercial_users plan reset skipped/warn:', err?.message);
+        log.warn('[OwnerService] commercial_users plan reset skipped/warn:', err?.message);
       }
     } else {
       try {
@@ -430,7 +432,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           data: { plan_id: targetPlan.id, profile_quota: targetPlan.limits?.maxProfiles, updated_at: now },
         });
       } catch (err: any) {
-        console.error('[OwnerService][CRITICAL] PG set-plan error', err?.message);
+        log.error('[OwnerService][CRITICAL] PG set-plan error', err?.message);
         sendJSON(res, 500, { success: false, error: 'Failed to update plan in database' });
         return true;
       }
@@ -460,7 +462,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           });
         }
       } catch (err: any) {
-        console.warn('[OwnerService] commercial_subscriptions set-plan sync skipped/warn:', err?.message);
+        log.warn('[OwnerService] commercial_subscriptions set-plan sync skipped/warn:', err?.message);
       }
     } else {
       try {
@@ -478,9 +480,14 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           } else {
             db.prepare("UPDATE commercial_subscriptions SET status = 'CANCELLED' WHERE user_id = ? AND status = 'ACTIVE'").run(userId);
           }
-        } catch {}
+        } catch (syncErr) {
+          log.warn('Failed syncing SQLite subscription state during owner set-plan', {
+            userId,
+            err: syncErr instanceof Error ? syncErr.message : String(syncErr),
+          });
+        }
       } catch (err: any) {
-        console.error('[OwnerService][CRITICAL] SQLite set-plan error', err?.message);
+        log.error('[OwnerService][CRITICAL] SQLite set-plan error', err?.message);
         sendJSON(res, 500, { success: false, error: 'Failed to update plan' });
         return true;
       }
@@ -524,7 +531,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
       try {
         await prisma.auth_users.update({ where: { id: userId }, data: { status: newStatus, updated_at: now } });
       } catch (err: any) {
-        console.error('[OwnerService][CRITICAL] PG status update failed:', err?.message);
+        log.error('[OwnerService][CRITICAL] PG status update failed:', err?.message);
         sendJSON(res, 500, { success: false, error: 'Failed to update user status in database' });
         return true;
       }
@@ -536,7 +543,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           }
         }
       } catch (err: any) {
-        console.warn('[OwnerService] commercial_users status update skipped/warn:', err?.message);
+        log.warn('[OwnerService] commercial_users status update skipped/warn:', err?.message);
       }
       if (isSuspend) {
         try {
@@ -549,7 +556,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
             });
           }
         } catch (err: any) {
-          console.warn('[OwnerService] license_devices deactivation skipped/warn:', err?.message);
+          log.warn('[OwnerService] license_devices deactivation skipped/warn:', err?.message);
         }
       }
     } else {
@@ -558,17 +565,28 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
         db.prepare('UPDATE auth_users SET status = ?, updated_at = ? WHERE id = ?').run(newStatus, now, userId);
         try {
           db.prepare('UPDATE commercial_users SET status = ?, updated_at = ? WHERE id = ?').run(newStatus, now, userId);
-        } catch {}
+        } catch (syncErr) {
+          log.warn('Failed updating companion commercial_users status on suspend/resume', {
+            userId,
+            newStatus,
+            err: syncErr instanceof Error ? syncErr.message : String(syncErr),
+          });
+        }
         if (isSuspend) {
           try {
             db.prepare(`
               UPDATE license_devices SET status = 'DEACTIVATED'
               WHERE status = 'ACTIVE' AND license_id IN (SELECT id FROM licenses WHERE account_id = ?)
             `).run(userId);
-          } catch {}
+          } catch (devErr) {
+            log.warn('Failed deactivating license devices on suspend', {
+              userId,
+              err: devErr instanceof Error ? devErr.message : String(devErr),
+            });
+          }
         }
       } catch (err: any) {
-        console.error('[OwnerService][CRITICAL] SQLite status update failed:', err?.message);
+        log.error('[OwnerService][CRITICAL] SQLite status update failed:', err?.message);
         sendJSON(res, 500, { success: false, error: 'Failed to update user status' });
         return true;
       }
@@ -610,7 +628,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
       try {
         await prisma.auth_users.update({ where: { id: userId }, data: { status: 'BANNED', updated_at: now } });
       } catch (err: any) {
-        console.error('[OwnerService][CRITICAL] PG ban status update failed:', err?.message);
+        log.error('[OwnerService][CRITICAL] PG ban status update failed:', err?.message);
         sendJSON(res, 500, { success: false, error: 'Failed to ban user in database' });
         return true;
       }
@@ -622,7 +640,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           }
         }
       } catch (err: any) {
-        console.warn('[OwnerService] commercial_users ban status update skipped/warn:', err?.message);
+        log.warn('[OwnerService] commercial_users ban status update skipped/warn:', err?.message);
       }
       try {
         const userLicenses = await prisma.licenses.findMany({
@@ -633,7 +651,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           if (await revokeLicense(lic.id, reason)) revokedCount++;
         }
       } catch (err: any) {
-        console.error('[OwnerService][CRITICAL] Mass license revoke failed on ban:', err?.message);
+        log.error('[OwnerService][CRITICAL] Mass license revoke failed on ban:', err?.message);
       }
       try {
         const allUserLicenses = await prisma.licenses.findMany({ where: { account_id: userId }, select: { id: true } });
@@ -645,7 +663,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           });
         }
       } catch (err: any) {
-        console.warn('[OwnerService] license_devices deactivation skipped/warn:', err?.message);
+        log.warn('[OwnerService] license_devices deactivation skipped/warn:', err?.message);
       }
     } else {
       try {
@@ -653,7 +671,12 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
         db.prepare('UPDATE auth_users SET status = ?, updated_at = ? WHERE id = ?').run('BANNED', now, userId);
         try {
           db.prepare('UPDATE commercial_users SET status = ?, updated_at = ? WHERE id = ?').run('BANNED', now, userId);
-        } catch {}
+        } catch (syncErr) {
+          log.warn('Failed updating companion commercial_users status on ban', {
+            userId,
+            err: syncErr instanceof Error ? syncErr.message : String(syncErr),
+          });
+        }
         const userLicenses = db.prepare(
           "SELECT id FROM licenses WHERE account_id = ? AND status IN ('ACTIVE', 'NOT_ACTIVATED', 'EXPIRED')"
         ).all(userId) as any[];
@@ -665,9 +688,14 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
             UPDATE license_devices SET status = 'DEACTIVATED'
             WHERE status = 'ACTIVE' AND license_id IN (SELECT id FROM licenses WHERE account_id = ?)
           `).run(userId);
-        } catch {}
+        } catch (devErr) {
+          log.warn('Failed deactivating license devices on ban', {
+            userId,
+            err: devErr instanceof Error ? devErr.message : String(devErr),
+          });
+        }
       } catch (err: any) {
-        console.error('[OwnerService][CRITICAL] SQLite ban failed:', err?.message);
+        log.error('[OwnerService][CRITICAL] SQLite ban failed:', err?.message);
         sendJSON(res, 500, { success: false, error: 'Failed to ban user' });
         return true;
       }
@@ -707,7 +735,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
       try {
         await prisma.auth_users.update({ where: { id: userId }, data: { status: 'ACTIVE', updated_at: now } });
       } catch (err: any) {
-        console.error('[OwnerService][CRITICAL] PG unban failed:', err?.message);
+        log.error('[OwnerService][CRITICAL] PG unban failed:', err?.message);
         sendJSON(res, 500, { success: false, error: 'Failed to unban user in database' });
         return true;
       }
@@ -719,7 +747,7 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
           }
         }
       } catch (err: any) {
-        console.warn('[OwnerService] commercial_users unban status update skipped/warn:', err?.message);
+        log.warn('[OwnerService] commercial_users unban status update skipped/warn:', err?.message);
       }
     } else {
       try {
@@ -727,9 +755,14 @@ export async function handleOwnerConsoleRoutes(ctx: AdminRouteContext): Promise<
         db.prepare('UPDATE auth_users SET status = ?, updated_at = ? WHERE id = ?').run('ACTIVE', now, userId);
         try {
           db.prepare('UPDATE commercial_users SET status = ?, updated_at = ? WHERE id = ?').run('ACTIVE', now, userId);
-        } catch {}
+        } catch (syncErr) {
+          log.warn('Failed updating companion commercial_users status on unban', {
+            userId,
+            err: syncErr instanceof Error ? syncErr.message : String(syncErr),
+          });
+        }
       } catch (err: any) {
-        console.error('[OwnerService][CRITICAL] SQLite unban failed:', err?.message);
+        log.error('[OwnerService][CRITICAL] SQLite unban failed:', err?.message);
         sendJSON(res, 500, { success: false, error: 'Failed to unban user' });
         return true;
       }

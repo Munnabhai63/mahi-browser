@@ -368,7 +368,9 @@ export function getOwnerAdminTemplateHtml(): string {
         try {
           sessionStorage.setItem('mahi_admin_secret', val);
           localStorage.setItem('mahi_admin_secret', val);
-        } catch {}
+        } catch {
+          void 0; /* browser storage blocked */
+        }
         return val;
       }
       try {
@@ -377,7 +379,9 @@ export function getOwnerAdminTemplateHtml(): string {
           if (secretInput && !secretInput.value) secretInput.value = val;
           return val;
         }
-      } catch {}
+      } catch {
+        void 0; /* browser storage blocked */
+      }
       return '';
     }
 
@@ -449,7 +453,9 @@ export function getOwnerAdminTemplateHtml(): string {
           const uEmail = urlParams.get('email') || '';
           selectUser('grant', uId, uName, uEmail, 'ACTIVE');
         }
-      } catch (e) {}
+      } catch (e) {
+        void 0; /* ignore malformed query params in owner console URL */
+      }
     }
 
     async function loadPricingCatalog() {

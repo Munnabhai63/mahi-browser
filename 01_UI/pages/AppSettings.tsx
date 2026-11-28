@@ -63,7 +63,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
     if (window.mahiAPI?.getAppVersion) {
       window.mahiAPI.getAppVersion().then((v) => {
         if (v) setAppVersion(v);
-      }).catch(() => {});
+      }).catch((err) => { console.debug('[AppSettings] getAppVersion failed', err); });
     }
     if (window.mahiAPI?.getUpdateConfig) {
       window.mahiAPI.getUpdateConfig().then((cfg) => {
@@ -78,7 +78,7 @@ export const AppSettingsPage: React.FC<AppSettingsPageProps> = ({ onNavigate }) 
     if (window.mahiAPI?.getManagedEngineStatus) {
       window.mahiAPI.getManagedEngineStatus().then((s) => {
         setEngineStatus({ installed: s.installed, version: s.version });
-      }).catch(() => {});
+      }).catch((err) => { console.debug('[AppSettings] getManagedEngineStatus failed', err); });
     }
   }, []);
 

@@ -1,6 +1,9 @@
 import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { CommercialAuditLog, CommercialAuditResult, CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('commercial-audit-service');
 
 function ensureAuditTable(db: any): void {
   try {
@@ -22,7 +25,11 @@ function ensureAuditTable(db: any): void {
       CREATE INDEX IF NOT EXISTS idx_comm_audit_action ON commercial_audit_logs(action);
       CREATE INDEX IF NOT EXISTS idx_comm_audit_created ON commercial_audit_logs(created_at);
     `);
-  } catch {}
+  } catch (err) {
+    log.debug('Skipped commercial_audit_logs DDL ensure', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export function logCommercialAudit(params: {

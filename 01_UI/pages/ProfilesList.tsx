@@ -135,7 +135,7 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
 
   useEffect(() => {
     if (accountSession?.token) {
-      checkUnassignedGuestProfiles().catch(() => {});
+      checkUnassignedGuestProfiles().catch((err) => { console.debug('[ProfilesList] guest profile probe failed', err); });
     }
   }, [accountSession?.token]);
 
@@ -208,8 +208,8 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
         method: cfg?.method === 'webhook' ? 'webhook' : 'adb',
         webhookConfigured: Boolean(cfg?.webhookUrl && String(cfg.webhookUrl).trim()),
       });
-    } catch {
-      // Ignore optional mobile rotator probe failures
+    } catch (err) {
+      console.debug('[ProfilesList] optional mobile rotator probe failed', err);
     }
   }, []);
 
@@ -224,7 +224,9 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
           const st = await window.mahiAPI.synchronizerGetStatus();
           if (st) setIsSyncActive(Boolean(st.enabled));
         }
-      } catch {}
+      } catch (err) {
+        console.debug('[ProfilesList] synchronizer status poll failed', err);
+      }
     };
     checkSync();
     const syncInterval = setInterval(checkSync, 2000);
@@ -388,8 +390,8 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
           setIsQuickCreateOpen(false);
           if (runImmediately) await handleLaunchWithMobileMode(newP);
         }
-      } catch {
-        // handled by store
+      } catch (err) {
+        console.debug('[ProfilesList] quick create failed (store handled toast)', err);
       } finally {
         setQuickCreating(false);
       }
@@ -409,8 +411,8 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
       try {
         const res = await bulkCreateProfiles(data);
         if (res && res.length > 0) setIsBulkModalOpen(false);
-      } catch {
-        // handled in store
+      } catch (err) {
+        console.debug('[ProfilesList] bulk create failed (store handled toast)', err);
       } finally {
         setIsBulking(false);
       }
@@ -549,7 +551,9 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
             try {
               const parsed = await parseAndCreateProxy(lines[i], `Bulk Proxy ${i + 1}`);
               if (parsed?.proxy) finalProxyIds.push(parsed.proxy.id);
-            } catch {}
+            } catch (err) {
+              console.debug('[ProfilesList] bulk proxy line parse skipped', { lineIndex: i, err });
+            }
           }
         }
         await bulkAssignProxies({
@@ -684,8 +688,8 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
         tags: ['Workspace'],
         settings: defaults,
       });
-    } catch {
-      // handled by store toast
+    } catch (err) {
+      console.debug('[ProfilesList] instant create failed (store handled toast)', err);
     } finally {
       setInstantCreating(false);
     }
@@ -701,7 +705,9 @@ export const ProfilesList: React.FC<ProfilesListProps> = ({ onNavigate }) => {
           await upd(profileId, { settings: { network: { ...defaults.network, directConnection: true, proxyId: undefined } } } as any);
           await fetchProfiles();
           showToast({ type: 'info', title: 'Direct Connection', message: 'Proxy removed.' });
-        } catch {}
+        } catch (err) {
+          console.debug('[ProfilesList] direct connection proxy clear failed', err);
+        }
         return;
       }
 

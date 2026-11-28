@@ -40,6 +40,9 @@ import { getProfileDebugPort, markCleanExit } from '../02_BROWSER/launcher.js';
 import { processManager } from '../02_BROWSER/process-manager.js';
 import { solveCaptcha, getCaptchaConfig } from './captcha-service.js';
 import { humanClick, humanType } from './ai-humanizer.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('automation-engine');
 
 // ============================================================================
 // IN-MEMORY ACTIVE EXECUTION REGISTRY & CONTROLLER
@@ -118,7 +121,9 @@ function cleanupStaleLocks(storageDir: string): void {
       if (fs.existsSync(lockPath)) {
         fs.rmSync(lockPath, { force: true, recursive: true });
       }
-    } catch {}
+    } catch (err) {
+      log.debug('automation-engine clean exit lock removal skipped', { lockPath, err });
+    }
   }
 }
 
@@ -175,7 +180,7 @@ export async function evaluateCondition(
       if (!target) return false;
       const el = await page.$(target).catch(() => null);
       const exists = el !== null;
-      if (el) await el.dispose().catch(() => {});
+      if (el) await el.dispose().catch((disposeErr) => { log.debug('automation-engine element dispose failed', { target, err: disposeErr }); });
       return exists;
     }
 
@@ -183,7 +188,7 @@ export async function evaluateCondition(
       if (!target) return true;
       const el = await page.$(target).catch(() => null);
       const notExists = el === null;
-      if (el) await el.dispose().catch(() => {});
+      if (el) await el.dispose().catch((disposeErr) => { log.debug('automation-engine element dispose failed', { target, err: disposeErr }); });
       return notExists;
     }
 
@@ -260,17 +265,23 @@ function mapWorkflowRecord(r: any, db: any): AutomationWorkflow {
   let variables: WorkflowVariable[] = [];
   try {
     variables = r.variables_json ? JSON.parse(r.variables_json) : [];
-  } catch {}
+  } catch (err) {
+    log.warn('automation-engine workflow variables_json parse failed', { workflowId: r.id, err });
+  }
 
   let tags: string[] = [];
   try {
     tags = r.tags_json ? JSON.parse(r.tags_json) : [];
-  } catch {}
+  } catch (err) {
+    log.warn('automation-engine workflow tags_json parse failed', { workflowId: r.id, err });
+  }
 
   let executionPolicy: any = undefined;
   try {
     executionPolicy = r.settings_json ? JSON.parse(r.settings_json) : undefined;
-  } catch {}
+  } catch (err) {
+    log.warn('automation-engine workflow settings_json parse failed', { workflowId: r.id, err });
+  }
 
   return {
     id: r.id,
@@ -313,7 +324,9 @@ export function saveWorkflow(workflow: Partial<AutomationWorkflow>): AutomationW
           now
         );
       }
-    } catch {}
+    } catch (err) {
+      log.warn('automation-engine version archive snapshot failed', { workflowId: id, err });
+    }
 
     db.prepare(`
       UPDATE automation_workflows 
@@ -401,7 +414,7 @@ export function deleteWorkflow(id: string): boolean {
 
   db.prepare('DELETE FROM automation_workflows WHERE id = ?').run(id);
   db.prepare('DELETE FROM automation_steps WHERE workflow_id = ?').run(id);
-  try { db.prepare('DELETE FROM automation_versions WHERE workflow_id = ?').run(id); } catch {}
+  try { db.prepare('DELETE FROM automation_versions WHERE workflow_id = ?').run(id); } catch (err) { log.warn('automation-engine workflow version cleanup failed', { workflowId: id, err }); }
   logActivity('AUTOMATION', 'WARNING', 'Delete Workflow', `Deleted workflow "${wf.name}"`);
   return true;
 }
@@ -744,7 +757,7 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
             }
           }
           if (!browser) {
-            await processManager.stopProfile(profile.id).catch(() => {});
+            await processManager.stopProfile(profile.id).catch((stopErr) => { log.debug('automation-engine cleanup stopProfile failed', { profileId: profile.id, err: stopErr }); });
             startedByAutomation = false;
             throw connectErr instanceof Error ? connectErr : new Error('Failed to attach Playwright over CDP');
           }
@@ -1088,17 +1101,19 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
 
     if (isAlreadyRunning || startedByAutomation) {
       if (browser) {
-        try { await browser.close(); } catch {}
+        try { await browser.close(); } catch (closeErr) { log.debug('automation-engine browser close cleanup skipped', { profileId: profile.id, err: closeErr }); }
       }
       if (startedByAutomation) {
-        try { await processManager.stopProfile(profile.id); } catch {}
+        try { await processManager.stopProfile(profile.id); } catch (stopErr) { log.debug('automation-engine profile stop cleanup skipped', { profileId: profile.id, err: stopErr }); }
       }
     } else {
       if (context) {
         try {
           await context.close();
           markCleanExit(profile.storagePath, profile.name);
-        } catch {}
+        } catch (closeErr) {
+          log.debug('automation-engine persistent context close cleanup skipped', { profileId: profile.id, err: closeErr });
+        }
       }
     }
   }
@@ -1130,7 +1145,9 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
       completedAt,
       totalDurationMs
     );
-  } catch {}
+  } catch (err) {
+    log.warn('automation-engine workflow_logs insert failed', { executionId, workflowId: workflow.id, err });
+  }
 
   try {
     db.prepare(`
@@ -1154,7 +1171,9 @@ export async function runWorkflow(dto: RunWorkflowDTO): Promise<WorkflowExecutio
       JSON.stringify(executionLog.stepLogs),
       startedAt
     );
-  } catch {}
+  } catch (err) {
+    log.warn('automation-engine automation_runs insert failed', { executionId, workflowId: workflow.id, err });
+  }
 
   logActivity(
     'AUTOMATION',

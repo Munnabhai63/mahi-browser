@@ -10,6 +10,9 @@ import {
 } from '../10_CONFIG/shared/types/captcha.js';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { encryptData, decryptData } from '../08_SECURITY/encryption.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('captcha-service');
 
 const DEFAULT_CONFIG: CaptchaConfig = {
   enabled: false,
@@ -79,13 +82,15 @@ export function getCaptchaConfig(): CaptchaConfig {
         try {
           const decrypted = decryptData(parsed.apiKey);
           if (decrypted) parsed.apiKey = decrypted;
-        } catch {
-          // Legacy unencrypted value fallback
+        } catch (decryptErr) {
+          log.debug('captcha-service apiKey decrypt failed, treating as legacy unencrypted value', { err: decryptErr });
         }
       }
       return parsed;
     }
-  } catch {}
+  } catch (err) {
+    log.debug('captcha-service config load failed, using defaults', { err });
+  }
   return DEFAULT_CONFIG;
 }
 

@@ -21,7 +21,7 @@ export const CommercialUserModal: React.FC<CommercialUserModalProps> = ({ isOpen
 
   useEffect(() => {
     // Fetch HWID on mount
-    (window.mahiAPI as any).getHwid().then((res: string) => setHwid(res)).catch(() => {});
+    (window.mahiAPI as any).getHwid().then((res: string) => setHwid(res)).catch((err: unknown) => { console.debug('[CommercialUserModal] getHwid probe failed', err); });
     fetchMyLicense().then(setMyLicense).catch(() => setMyLicense(null));
   }, []);
 

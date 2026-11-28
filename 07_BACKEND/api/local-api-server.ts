@@ -85,6 +85,8 @@ import { verifyLicense } from '../../08_SECURITY/license-service.js';
 import { CreateProfileDTOSchema } from '../../10_CONFIG/shared/validation/schemas.js';
 import { getAccountSession } from '../../08_SECURITY/account-service.js';
 import { getActiveUserId } from '../commercial/session-context.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('local-api-server');
 
 export function getLocalApiOwnerId(): string {
   const activeUser = getActiveUserId();
@@ -238,7 +240,11 @@ export function authenticateRequest(req: http.IncomingMessage, _parsedUrl: URL, 
       if (session?.token && safeEqualStrings(session.token, tokenToTest)) {
         return { authenticated: true, role: 'user', userId: session.account_id || 'USER', scopes: ['*'] };
       }
-    } catch {}
+    } catch (err) {
+      log.debug('Account session check failed in local API auth', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     const bearerApiKeyCheck = validateApiKey(tokenToTest);
     if (bearerApiKeyCheck) {
@@ -483,7 +489,7 @@ async function sendFile(res: http.ServerResponse, filePath: string, downloadName
   });
   const stream = fs.createReadStream(filePath);
   stream.on('error', (err: NodeJS.ErrnoException) => {
-    console.error('[LocalApi] Error streaming download file:', filePath, err?.message || err);
+    log.error('[LocalApi] Error streaming download file:', filePath, err?.message || err);
     if (!res.headersSent) {
       sendJSON(res, err?.code === 'ENOENT' ? 404 : 500, { success: false, error: 'Failed to stream installer file.' });
     } else if (!res.writableEnded && !res.destroyed) {
@@ -541,7 +547,12 @@ export async function resolveCdpWebSocketEndpoint(
           };
         }
       }
-    } catch {}
+    } catch (pollErr) {
+      log.debug('Waiting for local profile CDP endpoint readiness', {
+        httpEndpoint,
+        err: pollErr instanceof Error ? pollErr.message : String(pollErr),
+      });
+    }
 
     if (Date.now() + pollIntervalMs > deadline) {
       break;
@@ -828,9 +839,13 @@ export async function handleLocalApiRequest(
       try {
         const userDataDir = getProfileStoragePath ? path.dirname(path.dirname(getProfileStoragePath('temp'))) : process.cwd();
         const licenseFile = path.join(userDataDir, 'offline-license.key');
-        if (fs.existsSync(licenseFile)) {
-          const rawKey = fs.readFileSync(licenseFile, 'utf8').trim();
-          if (rawKey) {
+        let rawKey = '';
+        try {
+          rawKey = (await fs.promises.readFile(licenseFile, 'utf8')).trim();
+        } catch (readErr: any) {
+          if (readErr?.code !== 'ENOENT') throw readErr;
+        }
+        if (rawKey) {
             const check = verifyLicense(rawKey);
             if (check.valid) {
               sendJSON(res, 200, {
@@ -851,9 +866,12 @@ export async function handleLocalApiRequest(
               });
               return;
             }
-          }
         }
-      } catch {}
+      } catch (licErr) {
+        log.debug('Offline RSA license probe fell back to standard check', {
+          err: licErr instanceof Error ? licErr.message : String(licErr),
+        });
+      }
       const status = validateCurrentLicense();
       sendJSON(res, 200, { success: true, data: status });
       return;
@@ -1234,17 +1252,14 @@ export async function handleLocalApiRequest(
         }
         const storageDir = getProfileStoragePath(id);
         const qFile = path.join(storageDir, 'mahi_warmer_queue.json');
-        if (fs.existsSync(qFile)) {
-          try {
-            const raw = fs.readFileSync(qFile, 'utf8');
-            const data = JSON.parse(raw);
-            fs.unlinkSync(qFile); // Consume once
-            return sendJSON(res, 200, { success: true, sites: data.sites || [] });
-          } catch {
-            return sendJSON(res, 200, { success: false, sites: [] });
-          }
+        try {
+          const raw = await fs.promises.readFile(qFile, 'utf8');
+          const data = JSON.parse(raw);
+          await fs.promises.unlink(qFile); // Consume once
+          return sendJSON(res, 200, { success: true, sites: data.sites || [] });
+        } catch {
+          return sendJSON(res, 200, { success: false, sites: [] });
         }
-        return sendJSON(res, 200, { success: false, sites: [] });
       }
 
       // PROXIES ROUTES
@@ -1289,7 +1304,13 @@ export async function handleLocalApiRequest(
                   },
                 }, activeOwnerId);
               }
-            } catch {}
+            } catch (assignErr) {
+              log.warn('Failed auto-assigning bulk-created proxy to profile', {
+                profileId: profileIds[i],
+                proxyId: proxyData.id,
+                err: assignErr instanceof Error ? assignErr.message : String(assignErr),
+              });
+            }
           }
         }
 
@@ -1440,7 +1461,7 @@ export async function handleLocalApiRequest(
           const ok = await revokeLicense(body.licenseId, body.reason);
           return sendJSON(res, ok ? 200 : 404, { success: ok });
         } catch (e: any) {
-          console.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+          log.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
           return sendJSON(res, 500, { success: false, error: 'License operation failed.' });
         }
       }
@@ -1465,7 +1486,7 @@ export async function handleLocalApiRequest(
           if (!record) return sendJSON(res, 404, { error: 'License not found' });
           return sendJSON(res, 200, { success: true, data: record });
         } catch (e: any) {
-          console.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+          log.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
           return sendJSON(res, 500, { success: false, error: 'License operation failed.' });
         }
       }
@@ -1639,7 +1660,13 @@ export function startApiServer(): void {
   }
 
   if (apiServer) {
-    try { apiServer.close(); } catch {}
+    try {
+      apiServer.close();
+    } catch (closeErr) {
+      log.debug('Previous local API server close skipped', {
+        err: closeErr instanceof Error ? closeErr.message : String(closeErr),
+      });
+    }
   }
 
   const port = settings.advanced.apiPort || DEFAULT_LOCAL_DAEMON_PORT;
@@ -1648,9 +1675,9 @@ export function startApiServer(): void {
 
   apiServer.on('error', (err: any) => {
     if (err && err.code === 'EADDRINUSE') {
-      console.warn(`[API Server] Port ${port} is already in use. Skipping duplicate server bind.`);
+      log.warn(`[API Server] Port ${port} is already in use. Skipping duplicate server bind.`);
     } else {
-      console.error('[API Server] Error:', err);
+      log.error('[API Server] Error:', err);
     }
   });
 
@@ -1663,8 +1690,10 @@ export function stopApiServer(): void {
   if (apiServer) {
     try {
       apiServer.close();
-    } catch {
-      // ignore
+    } catch (closeErr) {
+      log.debug('Local API server close skipped on stop', {
+        err: closeErr instanceof Error ? closeErr.message : String(closeErr),
+      });
     }
     apiServer = null;
   }

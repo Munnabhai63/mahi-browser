@@ -17,8 +17,10 @@ export default function FeaturesPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eventName: 'download_started', source: 'features_page' }),
-      }).catch(() => {});
-    } catch (_) {}
+      }).catch((err) => { console.debug('[features] funnel telemetry failed', err); });
+    } catch (err) {
+      console.debug('[features] funnel telemetry skipped', err);
+    }
   };
 
   const workflowTabs = [

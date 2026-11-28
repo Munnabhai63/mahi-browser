@@ -14,6 +14,9 @@ import { encryptData, decryptData } from '../../08_SECURITY/encryption.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
 import { testProxy } from './proxy-test-service.js';
 import { assertCanCreateProxy } from '../../08_SECURITY/freemium-guard.js';
+import { createLogger } from '../../07_BACKEND/utils/logger.js';
+
+const log = createLogger('proxy-service');
 
 export function getProxies(): ProxyItem[] {
   const db = getDatabase();
@@ -167,7 +170,11 @@ export function createProxy(dto: CreateProxyDTO): ProxyItem {
   );
 
   if (dto.city) {
-    try { db.prepare('UPDATE proxies SET city = ? WHERE id = ?').run(dto.city, id); } catch {}
+    try {
+      db.prepare('UPDATE proxies SET city = ? WHERE id = ?').run(dto.city, id);
+    } catch (err) {
+      log.debug('proxy-service optional city column update skipped', { proxyId: id, err });
+    }
   }
 
   logActivity('PROXY', 'SUCCESS', 'Create Proxy', `Created proxy "${dto.name}" (${dto.protocol}://${dto.host}:${dto.port})`);

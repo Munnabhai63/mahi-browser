@@ -4,7 +4,10 @@ import { createRequire } from 'node:module';
 import { getProfileStoragePath } from './profile-service.js';
 import { HistoryItem, HistoryFilterOptions } from '../../10_CONFIG/shared/types/history.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
+import { createLogger } from '../../07_BACKEND/utils/logger.js';
 import crypto from 'node:crypto';
+
+const log = createLogger('history-service');
 
 const esmRequire = createRequire(import.meta.url);
 
@@ -99,7 +102,7 @@ function loadChromiumHistory(profileId: string): HistoryItem[] {
         }
       }
     } finally {
-      try { db.close(); } catch {}
+      try { db.close(); } catch (closeErr) { log.debug('history-service sqlite close failed', { err: closeErr }); }
     }
     return items;
   } catch {
@@ -180,8 +183,8 @@ export function clearHistory(profileId: string): boolean {
   if (fs.existsSync(customPath)) {
     try {
       fs.unlinkSync(customPath);
-    } catch {
-      // ignore
+    } catch (err) {
+      log.warn('history-service custom history file unlink failed', { profileId, customPath, err });
     }
   }
   logActivity('HISTORY', 'WARNING', 'Clear History', `Cleared all browsing history for profile`, profileId);

@@ -7,6 +7,9 @@ import { getDefaultProfileSettings, generateConsistentEnvironmentSettings } from
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
 import { CookieItem } from '../../10_CONFIG/shared/types/cookie.js';
 import { Profile } from '../../10_CONFIG/shared/types/profile.js';
+import { createLogger } from '../../07_BACKEND/utils/logger.js';
+
+const log = createLogger('universal-importer-service');
 
 
 export interface ParsedProxyInfo {
@@ -304,7 +307,9 @@ export function detectCompetitorFormat(rawInput: string): DetectedImportFormat {
       const mapped = mapCompetitorJsonItems(parsed);
       if (mapped?.format) return mapped.format;
       if (Array.isArray(parsed)) return 'json';
-    } catch {}
+    } catch (err) {
+      log.debug('universal-importer format detection JSON parse skipped', { err });
+    }
   }
   const firstLine = trimmed.split(/\r?\n/)[0]?.toLowerCase() || '';
   if (firstLine.includes(',') && (firstLine.includes('name') || firstLine.includes('proxy') || firstLine.includes('email') || firstLine.includes('proxy_host') || firstLine.includes('proxyhost'))) {
@@ -345,7 +350,9 @@ export function detectAndParseAccountData(rawInput: string): ParsedAccountItem[]
           rawLine: JSON.stringify(item),
         }));
       }
-    } catch {}
+    } catch (err) {
+      log.debug('universal-importer account data JSON parse skipped, falling back to delimited parser', { err });
+    }
   }
 
   // Parse Line-by-Line (TXT, CSV, Delimited, AdsPower/Dolphin CSV)
@@ -566,7 +573,9 @@ function parseProxyString(raw: string): ParsedProxyInfo | undefined {
     } else if (parts.length >= 2) {
       return { protocol, host: parts[0], port: parseInt(parts[1], 10) || 8080 };
     }
-  } catch {}
+  } catch (err) {
+    log.debug('universal-importer proxy string parse failed', { err });
+  }
   return undefined;
 }
 

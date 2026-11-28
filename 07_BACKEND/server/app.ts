@@ -46,6 +46,8 @@ import {
 import { verifyAdminAccess } from '../../05_AUTH/admin-auth.js';
 import { isValidAdminWebSecret, getApiAuthToken } from '../../08_SECURITY/install-secrets.js';
 import { getProfileDebugPort } from '../../02_BROWSER/launcher.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('app');
 
 function sendJSON(res: http.ServerResponse, statusCode: number, data: unknown) {
   const req = (res as any).__req as http.IncomingMessage | undefined;
@@ -186,7 +188,7 @@ function requireMasterAdminAuth(req: http.IncomingMessage, res: http.ServerRespo
 function pipeReadStream(filePath: string, res: http.ServerResponse): http.ServerResponse {
   const stream = fs.createReadStream(filePath);
   stream.on('error', (err: NodeJS.ErrnoException) => {
-    console.error('[StaticStream] Error streaming file:', filePath, err?.message || err);
+    log.error('[StaticStream] Error streaming file:', filePath, err?.message || err);
     if (!res.headersSent) {
       res.writeHead(err?.code === 'ENOENT' ? 404 : 500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: false, error: 'Failed to read file' }));
@@ -685,7 +687,7 @@ export async function handleCentralV2Routes(
       const ok = await revokeLicense(body.licenseId, body.reason || 'Revoked from Web Admin');
       sendJSON(res, 200, { success: ok });
     } catch (e: any) {
-      console.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+      log.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
       sendJSON(res, 500, { success: false, error: 'License operation failed.' });
     }
     return true;
@@ -705,7 +707,7 @@ export async function handleCentralV2Routes(
       }
       sendJSON(res, 200, { success: true, data: record });
     } catch (e: any) {
-      console.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+      log.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
       sendJSON(res, 500, { success: false, error: 'License operation failed.' });
     }
     return true;

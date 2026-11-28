@@ -7,6 +7,8 @@ import {
   getErrorStatusCode,
   redactSensitiveTokens,
 } from './http-security.js';
+import { createLogger } from './logger.js';
+const log = createLogger('app-error');
 
 export type AppErrorCode =
   | 'VALIDATION_ERROR'
@@ -205,7 +207,7 @@ export function toSafeErrorResponse(
   }
 
   // Never leak raw internal error details (DB errors, filesystem paths, stack traces) to HTTP clients.
-  console.error('[API][SafeError] Masked internal exception:', redactSensitiveTokens(rawMessage || String(err)));
+  log.error('[API][SafeError] Masked internal exception:', redactSensitiveTokens(rawMessage || String(err)));
 
   const fallbackStatus = effectiveStatus;
   const defaultMsg =

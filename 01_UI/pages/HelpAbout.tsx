@@ -42,7 +42,7 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
       if (window.mahiAPI.getAppVersion) {
         window.mahiAPI.getAppVersion().then((v) => {
           if (v) setAppVersion(v);
-        }).catch(() => {});
+        }).catch((err) => { console.debug('[HelpAbout] getAppVersion failed', err); });
       }
 
       if (window.mahiAPI.getUpdateStatus) {
@@ -51,7 +51,7 @@ export const HelpAboutPage: React.FC<HelpAboutProps> = ({ onNavigate }) => {
             setUpdateStatus(status);
             if (status.currentVersion) setAppVersion(status.currentVersion);
           }
-        }).catch(() => {});
+        }).catch((err) => { console.debug('[HelpAbout] getUpdateStatus failed', err); });
       }
 
       const unsubUpdate = window.mahiAPI.onUpdateStatusChanged?.((status) => {

@@ -46,8 +46,8 @@ export const ExtensionManagerPage: React.FC<ExtensionManagerProps> = ({ onNaviga
         const res = await window.mahiAPI.getExtensions(activeProfileId);
         setExtensions(res);
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.debug('[ExtensionManager] extension list load failed', err);
     } finally {
       setLoading(false);
     }

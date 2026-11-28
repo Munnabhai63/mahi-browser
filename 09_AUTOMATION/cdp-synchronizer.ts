@@ -4,6 +4,9 @@ import { EventEmitter } from 'node:events';
 import { Socket } from 'node:net';
 import { getProfileDebugPort } from '../02_BROWSER/launcher.js';
 import { logActivity } from '../07_BACKEND/services/audit-service.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('cdp-synchronizer');
 
 export interface CdpTabInfo {
   id: string;
@@ -156,13 +159,21 @@ class CdpWsClient {
         // Text frame
         try {
           this._onMessage(payload.toString('utf8'));
-        } catch {}
+        } catch (err) {
+          log.warn('CDP WebSocket message handler failed', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
       } else if (opcode === 8) {
         // Close frame
         this._readyState = 3;
         try {
           this.socket?.end();
-        } catch {}
+        } catch (err) {
+          log.debug('Error closing CDP WebSocket on close frame', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
         return;
       }
       // Opcode 9 (ping) → we could send pong but CDP doesn't use them
@@ -205,7 +216,11 @@ class CdpWsClient {
 
     try {
       this.socket.write(Buffer.concat([header, masked]));
-    } catch {}
+    } catch (err) {
+      log.warn('Failed writing frame to CDP WebSocket', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /** Close the WebSocket connection gracefully. */
@@ -220,10 +235,18 @@ class CdpWsClient {
       crypto.randomBytes(4).copy(frame, 2);
       try {
         this.socket.write(frame);
-      } catch {}
+      } catch (err) {
+        log.debug('Failed sending CDP WebSocket close frame', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
       try {
         this.socket.end();
-      } catch {}
+      } catch (err) {
+        log.debug('Failed ending CDP WebSocket socket', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 }
@@ -301,7 +324,14 @@ export class CdpSynchronizer extends EventEmitter {
   public async reconnectSlave(slaveId: string): Promise<boolean> {
     const existing = this.slaveWsCache.get(slaveId);
     if (existing) {
-      try { existing.close(); } catch {}
+      try {
+        existing.close();
+      } catch (err) {
+        log.debug('Error closing stale slave CDP socket on reconnect', {
+          slaveId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
       this.slaveWsCache.delete(slaveId);
     }
     const ws = await this.getSlaveWs(slaveId);
@@ -325,7 +355,14 @@ export class CdpSynchronizer extends EventEmitter {
     this.slaveProfileIds = this.slaveProfileIds.filter((id) => id !== slaveId);
     const ws = this.slaveWsCache.get(slaveId);
     if (ws) {
-      try { ws.close(); } catch {}
+      try {
+        ws.close();
+      } catch (err) {
+        log.debug('Error closing slave CDP socket on removal', {
+          slaveId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
       this.slaveWsCache.delete(slaveId);
     }
     this.slaveStatuses.delete(slaveId);
@@ -358,7 +395,11 @@ export class CdpSynchronizer extends EventEmitter {
         'CDP_SYNCHRONIZER_STARTED',
         `CDP Native Synchronizer active for Master: ${masterProfileId} with ${slaveProfileIds.length} Slaves.`
       );
-    } catch {}
+    } catch (err) {
+      log.debug('Audit log write skipped when starting CDP synchronizer', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     // Initialize slave statuses
     for (const slaveId of slaveProfileIds) {
@@ -376,7 +417,12 @@ export class CdpSynchronizer extends EventEmitter {
     // Pre-connect to slave browsers
     for (const slaveId of slaveProfileIds) {
       if (slaveId !== masterProfileId) {
-        this.getSlaveWs(slaveId).catch(() => {});
+        this.getSlaveWs(slaveId).catch((err) => {
+          log.debug('Slave CDP pre-connect skipped', {
+            slaveId,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        });
       }
     }
 
@@ -403,15 +449,24 @@ export class CdpSynchronizer extends EventEmitter {
     if (this.masterWs) {
       try {
         this.masterWs.close();
-      } catch {}
+      } catch (err) {
+        log.debug('Error closing master CDP socket on stop', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
       this.masterWs = null;
     }
 
     // Close all slave WebSocket connections
-    for (const [, ws] of this.slaveWsCache) {
+    for (const [slaveId, ws] of this.slaveWsCache) {
       try {
         ws.close();
-      } catch {}
+      } catch (err) {
+        log.debug('Error closing slave CDP socket on stop', {
+          slaveId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
     this.slaveWsCache.clear();
   }
@@ -472,10 +527,17 @@ export class CdpSynchronizer extends EventEmitter {
             const action = JSON.parse(msg.params.payload);
             this.handleMasterAction(action);
           }
-        } catch {}
+        } catch (err) {
+          log.debug('Ignored malformed master CDP event payload', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
       };
     } catch (err) {
       // Master connection failed — URL watcher still works as fallback
+      log.warn('Could not connect CDP to master browser; URL watcher fallback active', {
+        err: err instanceof Error ? err.message : String(err),
+      });
       try {
         logActivity(
           'SYSTEM',
@@ -483,7 +545,11 @@ export class CdpSynchronizer extends EventEmitter {
           'CDP_MASTER_CONNECT_FAILED',
           `Could not connect CDP to master browser: ${err}`
         );
-      } catch {}
+      } catch (auditErr) {
+        log.debug('Audit log write skipped after CDP master connect failure', {
+          err: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        });
+      }
     }
   }
 
@@ -497,7 +563,7 @@ export class CdpSynchronizer extends EventEmitter {
   if(window.__mahiSyncCapture)return;
   window.__mahiSyncCapture=true;
 
-  function send(a){try{window.__mahiSync(JSON.stringify(a))}catch(e){}}
+  function send(a){try{window.__mahiSync(JSON.stringify(a))}catch(e){void 0; /* non-fatal page sync bridge */}}
 
   /* ── Click ── */
   document.addEventListener('click',function(e){
@@ -574,7 +640,14 @@ export class CdpSynchronizer extends EventEmitter {
 
     // Clean stale entry
     if (cached) {
-      try { cached.close(); } catch {}
+      try {
+        cached.close();
+      } catch (err) {
+        log.debug('Error closing stale cached slave CDP socket', {
+          slaveId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
       this.slaveWsCache.delete(slaveId);
     }
 
@@ -588,7 +661,12 @@ export class CdpSynchronizer extends EventEmitter {
         this.slaveWsCache.set(slaveId, ws);
         return ws;
       }
-    } catch {}
+    } catch (err) {
+      log.debug('Failed connecting slave CDP WebSocket', {
+        slaveId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     return null;
   }
@@ -660,7 +738,11 @@ export class CdpSynchronizer extends EventEmitter {
           this.lastMasterUrl = masterUrl;
           await this.replicateUrlToSlaves(masterUrl);
         }
-      } catch {}
+      } catch (err) {
+        log.debug('Master CDP URL watcher iteration failed', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }, 450);
   }
 
@@ -843,7 +925,12 @@ export class CdpSynchronizer extends EventEmitter {
                   },
                 })
               );
-            } catch {}
+            } catch (err) {
+              log.debug('Failed dispatching deferred Enter key to slave CDP', {
+                slaveId,
+                err: err instanceof Error ? err.message : String(err),
+              });
+            }
           }, 30);
         }
 

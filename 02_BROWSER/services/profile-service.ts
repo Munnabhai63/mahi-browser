@@ -22,6 +22,9 @@ import { getAllProfileStats, getProfileStats, deleteProfileStats } from '../../0
 import { getPlanLimitsInfo } from '../../08_SECURITY/freemium-guard.js';
 import { getWritableSubdir } from '../../07_BACKEND/utils/runtime-paths.js';
 import { validateAndNormalizeFingerprintCoherence } from '../stealth-native-preferences.js';
+import { createLogger } from '../../07_BACKEND/utils/logger.js';
+
+const log = createLogger('profile-service');
 
 export function getProfilesDirectory(): string {
   return getWritableSubdir('profiles');
@@ -428,8 +431,8 @@ export function deleteProfile(id: string, ownerId?: string): boolean {
   if (fs.existsSync(existing.storagePath)) {
     try {
       fs.rmSync(existing.storagePath, { recursive: true, force: true });
-    } catch {
-      // ignore
+    } catch (err) {
+      log.warn('profile-service storage directory cleanup failed', { profileId: id, storagePath: existing.storagePath, err });
     }
   }
 
@@ -471,8 +474,8 @@ export function cloneProfile(dtoOrSourceId: CloneProfileDTO | string, maybeNewNa
         path.join(sourceStorage, 'Default', 'Network', 'Cookies'),
         path.join(targetNetDir, 'Cookies')
       );
-    } catch {
-      // ignore
+    } catch (err) {
+      log.warn('profile-service clone cookies copy failed', { sourceProfileId: source.id, newProfileId: newProfile.id, err });
     }
   }
 
@@ -485,8 +488,8 @@ export function cloneProfile(dtoOrSourceId: CloneProfileDTO | string, maybeNewNa
         path.join(sourceStorage, 'Default', 'History'),
         path.join(targetDefDir, 'History')
       );
-    } catch {
-      // ignore
+    } catch (err) {
+      log.warn('profile-service clone history copy failed', { sourceProfileId: source.id, newProfileId: newProfile.id, err });
     }
   }
 
@@ -720,7 +723,9 @@ export function bulkDeleteProfiles(profileIds: string[], ownerId?: string): { de
     try {
       const ok = deleteProfile(id, ownerId);
       if (ok) deletedCount++;
-    } catch {}
+    } catch (err) {
+      log.warn('profile-service bulkDeleteProfiles item failed', { profileId: id, err });
+    }
   }
 
   logActivity('PROFILE', 'WARNING', 'Bulk Delete Profiles', `Deleted ${deletedCount} profiles.`);
@@ -860,7 +865,9 @@ export function emptyTrash(ownerId?: string): { deletedCount: number; success: b
   for (const p of trash) {
     try {
       if (permanentDeleteProfile(p.id, ownerId)) deletedCount++;
-    } catch {}
+    } catch (err) {
+      log.warn('profile-service emptyTrash item failed', { profileId: p.id, err });
+    }
   }
   logActivity('PROFILE', 'WARNING', 'Empty Trash', `Permanently deleted ${deletedCount} profiles from Trash Bin.`);
   return { deletedCount, success: true };

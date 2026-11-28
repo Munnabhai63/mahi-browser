@@ -28,6 +28,9 @@ import {
   acquireProfileLock,
   releaseProfileLock,
 } from '../services/cloud-profile-service.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('cloud-browser-control-plane');
 import { evaluateUserEntitlements } from '../commercial/commercial-entitlement-service.js';
 import { getCentralUserById } from '../../05_AUTH/central-auth-service.js';
 import { WebhookService } from '../services/webhook-service.js';
@@ -170,7 +173,7 @@ export class CloudBrowserControlPlane {
       this.updateSessionStatus(sessionId, 'FAILED', prepErr.message);
       sessionScheduler.releaseWorkerSlot(worker.id);
       releaseProfileLock(userId, dto.profileId, lockDeviceId);
-      workerProfileLoader.cleanWorkerDirectory(runtimeDir);
+      await workerProfileLoader.cleanWorkerDirectoryAsync(runtimeDir);
       throw prepErr;
     }
 
@@ -191,7 +194,7 @@ export class CloudBrowserControlPlane {
       this.updateSessionStatus(sessionId, 'FAILED', launchErr.message);
       sessionScheduler.releaseWorkerSlot(worker.id);
       releaseProfileLock(userId, dto.profileId, lockDeviceId);
-      workerProfileLoader.cleanWorkerDirectory(runtimeDir);
+      await workerProfileLoader.cleanWorkerDirectoryAsync(runtimeDir);
       throw launchErr;
     }
 
@@ -206,7 +209,7 @@ export class CloudBrowserControlPlane {
       this.updateSessionStatus(sessionId, 'FAILED', attachErr.message);
       sessionScheduler.releaseWorkerSlot(worker.id);
       releaseProfileLock(userId, dto.profileId, lockDeviceId);
-      workerProfileLoader.cleanWorkerDirectory(runtimeDir);
+      await workerProfileLoader.cleanWorkerDirectoryAsync(runtimeDir);
       throw attachErr;
     }
 
@@ -247,7 +250,12 @@ export class CloudBrowserControlPlane {
         regionId,
         startedAt,
       }, { userId, workspaceId: dto.workspaceId });
-    } catch {}
+    } catch (webhookErr) {
+      log.warn('Failed dispatching cloud_session.started webhook', {
+        sessionId,
+        err: webhookErr instanceof Error ? webhookErr.message : String(webhookErr),
+      });
+    }
 
     return {
       sessionId,
@@ -318,7 +326,7 @@ export class CloudBrowserControlPlane {
     }
 
     // 4. Secure Cleanup of Worker Directory
-    workerProfileLoader.cleanWorkerDirectory(runtimeDir);
+    await workerProfileLoader.cleanWorkerDirectoryAsync(runtimeDir);
 
     // 5. Release Worker Capacity Slot
     if (session.workerId) {
@@ -361,7 +369,12 @@ export class CloudBrowserControlPlane {
         finalState,
         reason,
       }, { userId, workspaceId: session.workspaceId });
-    } catch {}
+    } catch (webhookErr) {
+      log.warn('Failed dispatching cloud_session.ended webhook', {
+        sessionId,
+        err: webhookErr instanceof Error ? webhookErr.message : String(webhookErr),
+      });
+    }
 
     return { success: true, status: finalState };
   }
@@ -476,7 +489,13 @@ export class CloudBrowserControlPlane {
         details ? JSON.stringify(details) : null,
         new Date().toISOString()
       );
-    } catch {}
+    } catch (err) {
+      log.debug('Failed recording cloud_browser_events row', {
+        sessionId,
+        eventType,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }
 

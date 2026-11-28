@@ -5,6 +5,8 @@ import { evaluateUserEntitlements } from '../commercial/commercial-entitlement-s
 import { TeamRole, TeamPermission, ROLE_PERMISSIONS } from '../../10_CONFIG/shared/types/workspace.js';
 import { isRedisConfigured, redisLockService } from '../../08_SECURITY/redis-lock-service.js';
 import { isPostgresConfigured, getCentralRepository } from '../../06_DATABASE/central-repository.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('cloud-profile-service');
 
 /**
  * Check if a user has access to a cloud profile, either directly as owner
@@ -107,7 +109,13 @@ export async function verifyUserProfileAccessAsync(
           };
         }
       }
-    } catch {}
+    } catch (shareErr) {
+      log.debug('Shared workspace profile access lookup fell back cleanly', {
+        userId,
+        cloudProfileId,
+        err: shareErr instanceof Error ? shareErr.message : String(shareErr),
+      });
+    }
     return null;
   }
   return verifyUserProfileAccess(userId, cloudProfileId, requiredPermission);
@@ -191,7 +199,13 @@ async function saveDeltaPointerObject(
       getCookieDeltaPointerKey(ownerId, cloudProfileId),
       Buffer.from(JSON.stringify(pointer), 'utf8')
     );
-  } catch {}
+  } catch (err) {
+    log.warn('Failed writing cookie delta pointer object to storage', {
+      ownerId,
+      cloudProfileId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 async function loadDeltaPointerObject(ownerId: string, cloudProfileId: string): Promise<any | null> {
@@ -239,7 +253,7 @@ function logCloudAudit(userId: string, action: string, details?: string, cloudPr
       new Date().toISOString()
     );
   } catch (err) {
-    console.error('[CloudProfileService] Failed to log audit event:', err);
+    log.error('[CloudProfileService] Failed to log audit event:', err);
   }
 }
 
@@ -252,7 +266,7 @@ async function logCloudAuditAsync(userId: string, action: string, details?: stri
     }
     logCloudAudit(userId, action, details, cloudProfileId, deviceId);
   } catch (err) {
-    console.error('[CloudProfileService] Failed to log audit event:', err);
+    log.error('[CloudProfileService] Failed to log audit event:', err);
   }
 }
 
@@ -307,7 +321,7 @@ export async function getUserSyncUsageAsync(userId: string) {
     try {
       centralUser = await repo.findAuthUserById(userId);
     } catch (e: any) {
-      console.error('[CloudProfileService] Failed to load central user for quota:', e?.message);
+      log.error('[CloudProfileService] Failed to load central user for quota:', e?.message);
     }
 
     const entitlements = evaluateUserEntitlements(userId);
@@ -1162,7 +1176,12 @@ export async function createDownloadSession(
       WHERE cloud_profile_id = ?
       ORDER BY delta_version DESC LIMIT 1
     `).get(cloudProfileId);
-  } catch {}
+  } catch (err) {
+    log.debug('SQLite cloud_profile_deltas query skipped; checking storage pointer', {
+      cloudProfileId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   if (!latestDelta) {
     latestDelta = await loadDeltaPointerObject(profile.owner_id, cloudProfileId);
   }
@@ -1264,7 +1283,12 @@ export async function deleteCloudProfile(userId: string, cloudProfileId: string)
       if (versions) {
         for (const v of versions) {
           if (v.object_key) {
-            await storage.deleteObject(v.object_key).catch(() => {});
+            await storage.deleteObject(v.object_key).catch((delErr) => {
+              log.debug('Cloud profile version object delete skipped on cleanup', {
+                objectKey: v.object_key,
+                err: delErr instanceof Error ? delErr.message : String(delErr),
+              });
+            });
           }
         }
       }
@@ -1275,12 +1299,27 @@ export async function deleteCloudProfile(userId: string, cloudProfileId: string)
       if (deltas) {
         for (const d of deltas) {
           if (d.object_key) {
-            await storage.deleteObject(d.object_key).catch(() => {});
+            await storage.deleteObject(d.object_key).catch((delErr) => {
+              log.debug('Cloud profile delta object delete skipped on cleanup', {
+                objectKey: d.object_key,
+                err: delErr instanceof Error ? delErr.message : String(delErr),
+              });
+            });
           }
         }
       }
-      await storage.deleteObject(getCookieDeltaPointerKey(userId, cloudProfileId)).catch(() => {});
-    } catch {}
+      await storage.deleteObject(getCookieDeltaPointerKey(userId, cloudProfileId)).catch((delErr) => {
+        log.debug('Cloud cookie delta pointer delete skipped on cleanup', {
+          cloudProfileId,
+          err: delErr instanceof Error ? delErr.message : String(delErr),
+        });
+      });
+    } catch (storageErr) {
+      log.warn('Partial storage object cleanup error while deleting cloud profile', {
+        cloudProfileId,
+        err: storageErr instanceof Error ? storageErr.message : String(storageErr),
+      });
+    }
     await repo.deleteLock(cloudProfileId);
     await repo.deleteCloudProfile(cloudProfileId);
     await logCloudAuditAsync(userId, 'CLOUD_PROFILE_DELETED', `Deleted profile and all versions`, cloudProfileId);
@@ -1316,15 +1355,37 @@ export async function deleteCloudProfile(userId: string, cloudProfileId: string)
     `).all(cloudProfileId) as any[];
     for (const d of deltas) {
       if (d.object_key) {
-        await storage.deleteObject(d.object_key).catch(() => {});
+        await storage.deleteObject(d.object_key).catch((delErr) => {
+          log.debug('SQLite cloud delta object delete skipped on cleanup', {
+            objectKey: d.object_key,
+            err: delErr instanceof Error ? delErr.message : String(delErr),
+          });
+        });
       }
     }
-    await storage.deleteObject(getCookieDeltaPointerKey(userId, cloudProfileId)).catch(() => {});
-  } catch {}
+    await storage.deleteObject(getCookieDeltaPointerKey(userId, cloudProfileId)).catch((delErr) => {
+      log.debug('SQLite cloud cookie delta pointer delete skipped on cleanup', {
+        cloudProfileId,
+        err: delErr instanceof Error ? delErr.message : String(delErr),
+      });
+    });
+  } catch (storageErr) {
+    log.debug('SQLite cloud delta cleanup skipped', {
+      cloudProfileId,
+      err: storageErr instanceof Error ? storageErr.message : String(storageErr),
+    });
+  }
 
   // Delete DB records
   db.prepare('DELETE FROM cloud_profile_locks WHERE cloud_profile_id = ?').run(cloudProfileId);
-  try { db.prepare('DELETE FROM cloud_profile_deltas WHERE cloud_profile_id = ?').run(cloudProfileId); } catch {}
+  try {
+    db.prepare('DELETE FROM cloud_profile_deltas WHERE cloud_profile_id = ?').run(cloudProfileId);
+  } catch (deltaDbErr) {
+    log.debug('cloud_profile_deltas DB cleanup skipped', {
+      cloudProfileId,
+      err: deltaDbErr instanceof Error ? deltaDbErr.message : String(deltaDbErr),
+    });
+  }
   db.prepare('DELETE FROM cloud_profile_versions WHERE cloud_profile_id = ?').run(cloudProfileId);
   db.prepare('DELETE FROM cloud_profiles WHERE id = ?').run(cloudProfileId);
 
@@ -1342,7 +1403,11 @@ export function cleanupExpiredLocks(): void {
     const db = getDatabase();
     const now = new Date().toISOString();
     db.prepare('DELETE FROM cloud_profile_locks WHERE expires_at < ?').run(now);
-  } catch {}
+  } catch (err) {
+    log.debug('Expired cloud_profile_locks cleanup skipped', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export function acquireProfileLock(

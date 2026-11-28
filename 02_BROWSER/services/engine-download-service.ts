@@ -15,6 +15,8 @@ import { resolveMultiCoreExecutablePath, getAvailableCores } from './multi-core-
 import { getCamoufoxExecutablePath } from '../detector.js';
 import { getEnginesBaseDir, downloadFileWithProgress, extractZipArchive } from '../managed-engine.js';
 import { APP_VERSION } from '../../10_CONFIG/shared/version.js';
+import { createLogger } from '../../07_BACKEND/utils/logger.js';
+const log = createLogger('engine-download-service');
 
 export interface CamoufoxProgressEvent {
   stage: 'RESOLVING' | 'DOWNLOADING' | 'VERIFYING' | 'EXTRACTING' | 'READY' | 'FAILED';
@@ -91,7 +93,11 @@ export async function resolveCamoufoxRelease(): Promise<CamoufoxReleaseInfo> {
         }
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('GitHub Camoufox release lookup fell back to pinned version', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   return pinned;
 }
@@ -126,10 +132,20 @@ function broadcastCamoufoxProgress(payload: CamoufoxProgressEvent): void {
     const { BrowserWindow } = require('electron');
     if (BrowserWindow && typeof BrowserWindow.getAllWindows === 'function') {
       BrowserWindow.getAllWindows().forEach((win: any) => {
-        try { win.webContents.send('engine:camoufox:progress', payload); } catch {}
+        try {
+          win.webContents.send('engine:camoufox:progress', payload);
+        } catch (winErr) {
+          log.debug('Skipped Camoufox progress IPC for window', {
+            err: winErr instanceof Error ? winErr.message : String(winErr),
+          });
+        }
       });
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Skipped Camoufox progress IPC broadcast outside Electron main', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export interface EngineCoreManifest {
@@ -170,7 +186,12 @@ export function auditLocalEngines(): EngineHealthReport {
       try {
         const stat = fs.statSync(resolvedPath);
         sizeBytes = stat.size;
-      } catch {}
+      } catch (statErr) {
+        log.debug('Unable to stat resolved engine binary', {
+          resolvedPath,
+          err: statErr instanceof Error ? statErr.message : String(statErr),
+        });
+      }
     }
 
     cores.push({
@@ -241,10 +262,10 @@ export async function ensureCamoufoxInstalled(options?: {
     }
 
     broadcastCamoufoxProgress({ stage: 'RESOLVING' });
-    console.log('[Camoufox Provisioner] Resolving latest compatible Camoufox release...');
+    log.info('[Camoufox Provisioner] Resolving latest compatible Camoufox release...');
 
     const releaseInfo = await resolveCamoufoxRelease();
-    console.log(`[Camoufox Provisioner] Resolved release: tag=${releaseInfo.tag}, asset=${releaseInfo.assetName}, url=${releaseInfo.downloadUrl}`);
+    log.info(`[Camoufox Provisioner] Resolved release: tag=${releaseInfo.tag}, asset=${releaseInfo.assetName}, url=${releaseInfo.downloadUrl}`);
 
     // Preflight disk space check: archive is ~530MB - 1.3GB -> require 3x (~1.6GB)
     const requiredFreeBytes = 3 * 550 * 1024 * 1024;
@@ -296,7 +317,14 @@ export async function ensureCamoufoxInstalled(options?: {
       });
 
       await extractZipArchive(tempZipPath, tempExtractDir);
-      try { fs.unlinkSync(tempZipPath); } catch {}
+      try {
+        fs.unlinkSync(tempZipPath);
+      } catch (unlinkErr) {
+        log.debug('Temp Camoufox zip cleanup skipped after extraction', {
+          tempZipPath,
+          err: unlinkErr instanceof Error ? unlinkErr.message : String(unlinkErr),
+        });
+      }
 
       // Collect and score candidate executables in extracted tree
       const candidates: { path: string; score: number }[] = [];
@@ -334,7 +362,12 @@ export async function ensureCamoufoxInstalled(options?: {
               }
             }
           }
-        } catch {}
+        } catch (walkErr) {
+          log.debug('Skipped unreadable directory while scanning extracted Camoufox files', {
+            currentDir,
+            err: walkErr instanceof Error ? walkErr.message : String(walkErr),
+          });
+        }
       }
       collectFiles(tempExtractDir);
       candidates.sort((a, b) => b.score - a.score);
@@ -359,7 +392,14 @@ export async function ensureCamoufoxInstalled(options?: {
         }
       }
 
-      try { fs.rmSync(tempExtractDir, { recursive: true, force: true }); } catch {}
+      try {
+        fs.rmSync(tempExtractDir, { recursive: true, force: true });
+      } catch (rmErr) {
+        log.debug('Temp Camoufox extract dir cleanup skipped', {
+          tempExtractDir,
+          err: rmErr instanceof Error ? rmErr.message : String(rmErr),
+        });
+      }
 
       const finalExe = path.join(camoufoxDir, path.basename(bestCandidate));
       if (!fs.existsSync(finalExe)) {
@@ -385,9 +425,23 @@ export async function ensureCamoufoxInstalled(options?: {
         if (magicBuf[0] !== 0x7F || magicBuf.toString('ascii', 1, 4) !== 'ELF') {
           throw new Error(`Camoufox binary "${finalExe}" missing ELF header on Linux`);
         }
-        try { fs.chmodSync(finalExe, 0o755); } catch {}
+        try {
+          fs.chmodSync(finalExe, 0o755);
+        } catch (chmodErr) {
+          log.warn('Failed to set executable permissions on Linux Camoufox binary', {
+            finalExe,
+            err: chmodErr instanceof Error ? chmodErr.message : String(chmodErr),
+          });
+        }
       } else {
-        try { fs.chmodSync(finalExe, 0o755); } catch {}
+        try {
+          fs.chmodSync(finalExe, 0o755);
+        } catch (chmodErr) {
+          log.warn('Failed to set executable permissions on Camoufox binary', {
+            finalExe,
+            err: chmodErr instanceof Error ? chmodErr.message : String(chmodErr),
+          });
+        }
       }
 
       // Write marker file
@@ -403,9 +457,9 @@ export async function ensureCamoufoxInstalled(options?: {
       // Smoke check
       try {
         const verOutput = execFileSync(finalExe, ['--version'], { timeout: 20000, stdio: 'pipe' }).toString().trim();
-        console.log(`[Camoufox Provisioner] Successfully provisioned Camoufox (${verOutput}) at "${finalExe}"`);
+        log.info(`[Camoufox Provisioner] Successfully provisioned Camoufox (${verOutput}) at "${finalExe}"`);
       } catch (smokeErr: any) {
-        console.log(`[Camoufox Provisioner] Provisioned at "${finalExe}" (smoke notice: ${smokeErr.message})`);
+        log.info(`[Camoufox Provisioner] Provisioned at "${finalExe}" (smoke notice: ${smokeErr.message})`);
       }
 
       broadcastCamoufoxProgress({
@@ -416,14 +470,28 @@ export async function ensureCamoufoxInstalled(options?: {
 
       return finalExe;
     } catch (err: any) {
-      try { if (fs.existsSync(tempZipPath)) fs.unlinkSync(tempZipPath); } catch {}
-      try { if (fs.existsSync(tempExtractDir)) fs.rmSync(tempExtractDir, { recursive: true, force: true }); } catch {}
+      try {
+        if (fs.existsSync(tempZipPath)) fs.unlinkSync(tempZipPath);
+      } catch (zipCleanupErr) {
+        log.debug('Failed removing temp Camoufox zip after download error', {
+          tempZipPath,
+          err: zipCleanupErr instanceof Error ? zipCleanupErr.message : String(zipCleanupErr),
+        });
+      }
+      try {
+        if (fs.existsSync(tempExtractDir)) fs.rmSync(tempExtractDir, { recursive: true, force: true });
+      } catch (dirCleanupErr) {
+        log.debug('Failed removing temp Camoufox extract dir after download error', {
+          tempExtractDir,
+          err: dirCleanupErr instanceof Error ? dirCleanupErr.message : String(dirCleanupErr),
+        });
+      }
       const errMsg = err?.message || String(err);
       broadcastCamoufoxProgress({
         stage: 'FAILED',
         error: errMsg,
       });
-      console.error(`[Camoufox Provisioner ERROR] ${errMsg}`);
+      log.error(`[Camoufox Provisioner ERROR] ${errMsg}`);
       throw err;
     } finally {
       inFlightCamoufoxDownload = null;

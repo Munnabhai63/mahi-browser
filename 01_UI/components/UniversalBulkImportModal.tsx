@@ -70,7 +70,9 @@ export const UniversalBulkImportModal: React.FC<UniversalBulkImportModalProps> =
           const items = await window.mahiAPI.importerParsePreview(rawText);
           setParsedItems(items || []);
         }
-      } catch {}
+      } catch (err) {
+        console.debug('[UniversalBulkImportModal] import preview parse failed', err);
+      }
     }, 200);
 
     return () => clearTimeout(timer);

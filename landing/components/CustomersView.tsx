@@ -69,7 +69,9 @@ export default function CustomersView() {
         const blob = new Blob([payload], { type: 'application/json' });
         navigator.sendBeacon('/api/v1/funnel/track', blob);
       }
-    } catch (_) {}
+    } catch (err) {
+      console.debug('[CustomersView] funnel telemetry skipped', err);
+    }
   };
 
   // Auto-advancing slide animation (silky 33fps progress bar, 6s per slide)

@@ -11,6 +11,8 @@ import { CONTACT_CONFIG } from '../10_CONFIG/contact-config.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 import { getCanonicalPlan, legacyPlanIdToCanonical } from '../07_BACKEND/commercial/canonical-plan-catalog.js';
 import { cleanUrl, getSiteConfig } from '../10_CONFIG/shared/site-config.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+const log = createLogger('account-service');
 
 // ============================================================================
 // CONSTANTS & PUBLIC KEY FOR SIGNATURE VERIFICATION
@@ -80,7 +82,7 @@ function getUserDataPath(): string {
 }
 
 export const ACCOUNT_SERVICE_MODULE = 'account-service';
-console.log('[account-service] Account & subscription module initialized');
+log.info('[account-service] Account & subscription module initialized');
 
 export function getAdminApiBaseUrl(): string {
   return (
@@ -110,7 +112,7 @@ function encryptPayload(plainText: string): Buffer {
       return Buffer.from('SAFE_STORAGE_V1:' + encrypted.toString('base64'), 'utf8');
     }
   } catch (err: any) {
-    console.warn('[AccountService] safeStorage failed, using machine AES fallback:', err?.message);
+    log.warn('[AccountService] safeStorage failed, using machine AES fallback:', err?.message);
   }
 
   // Fallback: AES-256-GCM keyed with CSPRNG install secrets or hardware ID (never plaintext on disk)
@@ -137,7 +139,11 @@ function decryptPayload(rawBuffer: Buffer): string | null {
       try {
         const b64 = str.slice('SAFE_STORAGE_V1:'.length);
         return safeStorage.decryptString(Buffer.from(b64, 'base64'));
-      } catch {}
+      } catch (err) {
+        log.debug('SAFE_STORAGE_V1 session decryption attempt skipped', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 
@@ -145,7 +151,11 @@ function decryptPayload(rawBuffer: Buffer): string | null {
   if (safeStorage && safeStorage.isEncryptionAvailable() && !rawBuffer.subarray(0, 7).equals(Buffer.from('AESGCM:'))) {
     try {
       return safeStorage.decryptString(rawBuffer);
-    } catch {}
+    } catch (err) {
+      log.debug('Legacy raw safeStorage session decryption attempt skipped', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   // Try AES-GCM fallback
@@ -161,7 +171,11 @@ function decryptPayload(rawBuffer: Buffer): string | null {
       const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
       decipher.setAuthTag(tag);
       return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
-    } catch {}
+    } catch (err) {
+      log.debug('AESGCM install-secret session decryption fallback skipped', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     // Try with HWID fallback key
     try {
@@ -169,18 +183,108 @@ function decryptPayload(rawBuffer: Buffer): string | null {
       const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
       decipher.setAuthTag(tag);
       return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
-    } catch {}
+    } catch (err) {
+      log.debug('AESGCM HWID session decryption fallback skipped', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   // Plain JSON fallback (e.g. test environments without safeStorage)
   try {
     const parsed = JSON.parse(str);
     if (parsed && typeof parsed === 'object') return str;
-  } catch {}
+  } catch (err) {
+    log.debug('Plain JSON session fallback failed to parse', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   return null;
 }
 
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.promises.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function saveEncryptedSessionAsync(session: AccountSession): Promise<void> {
+  currentSession = session;
+  const jsonStr = JSON.stringify(session);
+  const filePath = getSessionFilePath();
+  const dir = path.dirname(filePath);
+  await fs.promises.mkdir(dir, { recursive: true });
+
+  try {
+    const encrypted = encryptPayload(jsonStr);
+    await fs.promises.writeFile(filePath, encrypted);
+  } catch (err: any) {
+    log.error('[AccountService] Failed to persist encrypted session asynchronously:', err?.message);
+  }
+}
+
+export async function loadEncryptedSessionAsync(): Promise<AccountSession | null> {
+  if (currentSession) return currentSession;
+
+  const filePath = getSessionFilePath();
+  if (!(await pathExists(filePath))) return null;
+
+  try {
+    const rawBuffer = await fs.promises.readFile(filePath);
+    const decryptedStr = decryptPayload(rawBuffer);
+    if (decryptedStr) {
+      currentSession = JSON.parse(decryptedStr);
+      return currentSession;
+    }
+  } catch (err: any) {
+    log.error('[AccountService] Failed to decrypt session file asynchronously:', err?.message);
+  }
+
+  return null;
+}
+
+export async function clearEncryptedSessionAsync(): Promise<void> {
+  currentSession = null;
+  const filePath = getSessionFilePath();
+  if (await pathExists(filePath)) {
+    try {
+      await fs.promises.unlink(filePath);
+    } catch (err) {
+      log.warn('Failed deleting encrypted session file asynchronously', {
+        filePath,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  const cachePath = getStatusCacheFilePath();
+  if (await pathExists(cachePath)) {
+    try {
+      await fs.promises.unlink(cachePath);
+    } catch (err) {
+      log.warn('Failed deleting encrypted status cache file asynchronously', {
+        cachePath,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  const legacyCachePath = path.join(getUserDataPath(), 'account-status-cache.json');
+  if (await pathExists(legacyCachePath)) {
+    try {
+      await fs.promises.unlink(legacyCachePath);
+    } catch (err) {
+      log.debug('Failed deleting legacy account status cache file asynchronously', {
+        legacyCachePath,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+}
+
+// sync-compat: synchronous session persistence preserved for synchronous entitlement guards & unit tests
 export function saveEncryptedSession(session: AccountSession): void {
   currentSession = session;
   const jsonStr = JSON.stringify(session);
@@ -192,7 +296,7 @@ export function saveEncryptedSession(session: AccountSession): void {
     const encrypted = encryptPayload(jsonStr);
     fs.writeFileSync(filePath, encrypted);
   } catch (err: any) {
-    console.error('[AccountService] Failed to persist encrypted session:', err?.message);
+    log.error('[AccountService] Failed to persist encrypted session:', err?.message);
   }
 }
 
@@ -210,7 +314,7 @@ export function loadEncryptedSession(): AccountSession | null {
       return currentSession;
     }
   } catch (err: any) {
-    console.error('[AccountService] Failed to decrypt session file:', err?.message);
+    log.error('[AccountService] Failed to decrypt session file:', err?.message);
   }
 
   return null;
@@ -220,27 +324,125 @@ export function clearEncryptedSession(): void {
   currentSession = null;
   const filePath = getSessionFilePath();
   if (fs.existsSync(filePath)) {
-    try { fs.unlinkSync(filePath); } catch {}
+    try {
+      fs.unlinkSync(filePath);
+    } catch (err) {
+      log.warn('Failed deleting encrypted session file', {
+        filePath,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
   const cachePath = getStatusCacheFilePath();
   if (fs.existsSync(cachePath)) {
-    try { fs.unlinkSync(cachePath); } catch {}
+    try {
+      fs.unlinkSync(cachePath);
+    } catch (err) {
+      log.warn('Failed deleting encrypted status cache file', {
+        cachePath,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
   const legacyCachePath = path.join(getUserDataPath(), 'account-status-cache.json');
   if (fs.existsSync(legacyCachePath)) {
-    try { fs.unlinkSync(legacyCachePath); } catch {}
+    try {
+      fs.unlinkSync(legacyCachePath);
+    } catch (err) {
+      log.debug('Failed deleting legacy account status cache file', {
+        legacyCachePath,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }
 
 // ============================================================================
 // SIGNED STATUS CACHE & RSA VERIFICATION (Always Encrypted on Disk)
 // ============================================================================
+export async function readCachedStatusAsync(): Promise<CachedAccountStatus | null> {
+  try {
+    const legacyPath = path.join(getUserDataPath(), 'account-status-cache.json');
+    if (await pathExists(legacyPath)) {
+      try {
+        await fs.promises.unlink(legacyPath);
+      } catch (err) {
+        log.debug('Skipped legacy plaintext status cache cleanup on async read', {
+          legacyPath,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    const p = getStatusCacheFilePath();
+    if (await pathExists(p)) {
+      const rawBuffer = await fs.promises.readFile(p);
+      const decryptedStr = decryptPayload(rawBuffer);
+      if (decryptedStr) {
+        return JSON.parse(decryptedStr);
+      }
+    }
+  } catch (err) {
+    log.warn('Failed reading encrypted account status cache asynchronously', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return null;
+}
+
+export async function writeCachedStatusAsync(status: CachedAccountStatus): Promise<void> {
+  try {
+    const legacyPath = path.join(getUserDataPath(), 'account-status-cache.json');
+    if (await pathExists(legacyPath)) {
+      try {
+        await fs.promises.unlink(legacyPath);
+      } catch (err) {
+        log.debug('Skipped legacy plaintext status cache cleanup on async write', {
+          legacyPath,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    const p = getStatusCacheFilePath();
+    const dir = path.dirname(p);
+    await fs.promises.mkdir(dir, { recursive: true });
+
+    const jsonStr = JSON.stringify(status);
+    const encrypted = encryptPayload(jsonStr);
+    await fs.promises.writeFile(p, encrypted);
+  } catch (err: any) {
+    log.error('[AccountService] Failed to write encrypted status cache asynchronously:', err?.message);
+  }
+}
+
+export async function clearCachedStatusAsync(): Promise<void> {
+  try {
+    const p = getStatusCacheFilePath();
+    if (await pathExists(p)) await fs.promises.unlink(p);
+    const legacyPath = path.join(getUserDataPath(), 'account-status-cache.json');
+    if (await pathExists(legacyPath)) await fs.promises.unlink(legacyPath);
+  } catch (err) {
+    log.warn('Failed clearing encrypted account status cache asynchronously', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+// sync-compat: synchronous status cache helpers preserved for synchronous entitlement guards & unit tests
 export function readCachedStatus(): CachedAccountStatus | null {
   try {
     // Delete legacy plaintext json cache if present
     const legacyPath = path.join(getUserDataPath(), 'account-status-cache.json');
     if (fs.existsSync(legacyPath)) {
-      try { fs.unlinkSync(legacyPath); } catch {}
+      try {
+        fs.unlinkSync(legacyPath);
+      } catch (err) {
+        log.debug('Skipped legacy plaintext status cache cleanup on read', {
+          legacyPath,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     const p = getStatusCacheFilePath();
@@ -251,7 +453,11 @@ export function readCachedStatus(): CachedAccountStatus | null {
         return JSON.parse(decryptedStr);
       }
     }
-  } catch {}
+  } catch (err) {
+    log.warn('Failed reading encrypted account status cache', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return null;
 }
 
@@ -260,7 +466,14 @@ export function writeCachedStatus(status: CachedAccountStatus): void {
     // Delete legacy plaintext json cache if present
     const legacyPath = path.join(getUserDataPath(), 'account-status-cache.json');
     if (fs.existsSync(legacyPath)) {
-      try { fs.unlinkSync(legacyPath); } catch {}
+      try {
+        fs.unlinkSync(legacyPath);
+      } catch (err) {
+        log.debug('Skipped legacy plaintext status cache cleanup on write', {
+          legacyPath,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     const p = getStatusCacheFilePath();
@@ -271,7 +484,7 @@ export function writeCachedStatus(status: CachedAccountStatus): void {
     const encrypted = encryptPayload(jsonStr);
     fs.writeFileSync(p, encrypted);
   } catch (err: any) {
-    console.error('[AccountService] Failed to write encrypted status cache:', err?.message);
+    log.error('[AccountService] Failed to write encrypted status cache:', err?.message);
   }
 }
 
@@ -281,7 +494,11 @@ export function clearCachedStatus(): void {
     if (fs.existsSync(p)) fs.unlinkSync(p);
     const legacyPath = path.join(getUserDataPath(), 'account-status-cache.json');
     if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath);
-  } catch {}
+  } catch (err) {
+    log.warn('Failed clearing encrypted account status cache', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export function verifyAccountStatusSignature(
@@ -321,7 +538,13 @@ function makeRequest(urlStr: string, options: https.RequestOptions, bodyData?: a
       res.on('data', (c) => data += c);
       res.on('end', () => {
         let parsedBody = data;
-        try { parsedBody = JSON.parse(data); } catch {}
+        try {
+          parsedBody = JSON.parse(data);
+        } catch (err) {
+          log.debug('Account API response body preserved as raw text', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
         resolve({
           statusCode: res.statusCode || 0,
           headers: res.headers,
@@ -378,7 +601,7 @@ export async function signup(email: string, password: string, name?: string): Pr
   const user = res.body.user;
   if (!token) throw new Error('Missing session token in signup response');
 
-  saveEncryptedSession({
+  await saveEncryptedSessionAsync({
     token,
     refreshToken,
     account_id: user?.id || `usr_${Date.now()}`,
@@ -394,7 +617,11 @@ export async function signup(email: string, password: string, name?: string): Pr
 
   try {
     await fetchAndCacheStatus();
-  } catch {}
+  } catch (err) {
+    log.debug('Post-signup status cache warm-up failed cleanly', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   return { success: true, token, user };
 }
@@ -429,7 +656,7 @@ export async function login(email: string, password: string): Promise<{ success:
   const refreshToken = res.body.tokens?.refreshToken || res.body.refreshToken;
   const user = res.body.user;
 
-  saveEncryptedSession({
+  await saveEncryptedSessionAsync({
     token,
     refreshToken,
     account_id: user?.id || `usr_${Date.now()}`,
@@ -445,7 +672,11 @@ export async function login(email: string, password: string): Promise<{ success:
 
   try {
     await fetchAndCacheStatus();
-  } catch {}
+  } catch (err) {
+    log.debug('Post-signup status cache warm-up failed cleanly', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   return { success: true, token, user };
 }
@@ -479,7 +710,7 @@ export async function loginWithToken(rawToken: string, refreshToken?: string): P
   const entitlements = res.body.entitlements;
   const calculatedQuota = entitlements?.maxProfiles || user.profileQuota || (plan === 'pro' || plan === 'professional_50' ? 100 : plan === 'trial' ? 50 : 15);
 
-  saveEncryptedSession({
+  await saveEncryptedSessionAsync({
     token,
     refreshToken: finalRefreshToken,
     account_id: user.id || `usr_${Date.now()}`,
@@ -497,12 +728,20 @@ export async function loginWithToken(rawToken: string, refreshToken?: string): P
     try {
       const { setActiveUserId } = await import('../07_BACKEND/commercial/session-context.js');
       setActiveUserId(user.id);
-    } catch {}
+    } catch (err) {
+      log.debug('Skipped binding active session user context on token login', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   try {
     await fetchAndCacheStatus();
-  } catch {}
+  } catch (err) {
+    log.debug('Post-token-login status cache warm-up failed cleanly', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   broadcastAccountChanged();
   return { success: true, token, user };
@@ -528,7 +767,7 @@ export async function refreshAccountTokenWithMutex(): Promise<boolean> {
 }
 
 export async function refreshAccountToken(): Promise<{ success: boolean; token?: string; error?: string }> {
-  const session = loadEncryptedSession();
+  const session = await loadEncryptedSessionAsync();
   if (!session?.refreshToken) {
     return { success: false, error: 'No refresh token available' };
   }
@@ -544,7 +783,7 @@ export async function refreshAccountToken(): Promise<{ success: boolean; token?:
         session.refreshToken = res.body.tokens.refreshToken;
       }
       session.saved_at = new Date().toISOString();
-      saveEncryptedSession(session);
+      await saveEncryptedSessionAsync(session);
       return { success: true, token: session.token };
     }
     return { success: false, error: res.body?.error || 'Token refresh failed' };
@@ -554,7 +793,7 @@ export async function refreshAccountToken(): Promise<{ success: boolean; token?:
 }
 
 export async function logout(): Promise<{ success: boolean }> {
-  const session = loadEncryptedSession();
+  const session = await loadEncryptedSessionAsync();
   if (session?.token) {
     try {
       await makeRequest(`${getAdminApiBaseUrl()}/api/v1/auth/logout`, {
@@ -563,9 +802,13 @@ export async function logout(): Promise<{ success: boolean }> {
           'Authorization': `Bearer ${session.token}`
         }
       }, { token: session.token });
-    } catch {}
+    } catch (err) {
+      log.debug('Server-side logout notification failed; clearing local session anyway', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
-  clearEncryptedSession();
+  await clearEncryptedSessionAsync();
   broadcastAccountChanged();
   return { success: true };
 }
@@ -627,7 +870,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
 }
 
 export async function listActiveSessions(): Promise<{ success: boolean; sessions?: any[]; error?: string }> {
-  const session = loadEncryptedSession();
+  const session = await loadEncryptedSessionAsync();
   if (!session?.token) {
     return { success: false, error: 'No active session' };
   }
@@ -648,7 +891,7 @@ export async function listActiveSessions(): Promise<{ success: boolean; sessions
 }
 
 export async function revokeSession(sessionId: string): Promise<{ success: boolean; error?: string }> {
-  const session = loadEncryptedSession();
+  const session = await loadEncryptedSessionAsync();
   if (!session?.token) {
     return { success: false, error: 'No active session' };
   }
@@ -669,7 +912,7 @@ export async function revokeSession(sessionId: string): Promise<{ success: boole
 }
 
 export async function revokeAllSessions(keepCurrent: boolean = true): Promise<{ success: boolean; error?: string }> {
-  const session = loadEncryptedSession();
+  const session = await loadEncryptedSessionAsync();
   if (!session?.token) {
     return { success: false, error: 'No active session' };
   }
@@ -690,7 +933,7 @@ export async function revokeAllSessions(keepCurrent: boolean = true): Promise<{ 
 }
 
 export async function switchDevice(): Promise<{ success: boolean; message: string }> {
-  const session = loadEncryptedSession();
+  const session = await loadEncryptedSessionAsync();
   if (!session?.token) throw new Error('No active account session');
 
   const hwid = getHWID();
@@ -723,7 +966,11 @@ export async function getPaymentInfo(): Promise<PaymentInfo> {
         usdt_enabled: res.body.usdt_enabled ?? CONTACT_CONFIG.USDT_ENABLED,
       };
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Live payment gateway metadata fetch fell back to local CONTACT_CONFIG', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   // Canonical authoritative fallback (never dummy placeholders)
   return {
     upi_id: CONTACT_CONFIG.UPI_ID,
@@ -747,7 +994,7 @@ export async function submitManualUpiPayment(payload: {
   extra_members?: number;
   extra_proxy_gb?: number;
 }): Promise<{ success: boolean; payment_id?: string; status?: string; utr?: string; amount_paise?: number; message?: string; error?: string }> {
-  const session = loadEncryptedSession();
+  const session = await loadEncryptedSessionAsync();
   if (!session?.token) throw new Error('No active account session');
 
   const utrClean = (payload.utr || '').trim();
@@ -803,7 +1050,7 @@ export async function submitManualCryptoPayment(payload: {
   extra_members?: number;
   extra_proxy_gb?: number;
 }): Promise<{ success: boolean; payment_id?: string; status?: string; tx_hash?: string; amount_cents?: number; message?: string; error?: string }> {
-  const session = loadEncryptedSession();
+  const session = await loadEncryptedSessionAsync();
   if (!session?.token) throw new Error('No active account session');
 
   const txHashClean = (payload.tx_hash || '').trim();
@@ -857,12 +1104,16 @@ export async function fetchPricingCatalogFromServer(): Promise<{ success: boolea
     if (res.statusCode >= 200 && res.statusCode < 300) {
       return { success: true, catalog: res.body?.catalog || res.body?.data || res.body };
     }
-  } catch {}
+  } catch (err) {
+    log.warn('Failed fetching pricing catalog from server', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return { success: false, error: 'Failed to fetch catalog from server' };
 }
 
 export async function createCheckoutSessionFromServer(payload: any): Promise<{ success: boolean; session?: any; error?: string }> {
-  const session = loadEncryptedSession();
+  const session = await loadEncryptedSessionAsync();
   const token = session?.token || '';
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -895,7 +1146,7 @@ export async function createCheckoutSessionFromServer(payload: any): Promise<{ s
 }
 
 export async function fetchPaymentStatusFromServer(): Promise<{ success: boolean; payments?: any[]; error?: string }> {
-  const session = loadEncryptedSession();
+  const session = await loadEncryptedSessionAsync();
   const token = session?.token || '';
   if (!token) {
     return { success: false, error: 'Authentication required' };
@@ -921,7 +1172,7 @@ export async function fetchPaymentStatusFromServer(): Promise<{ success: boolean
 // STATUS CHECK & PLAN RESOLUTION
 // ============================================================================
 export async function fetchAndCacheStatus(): Promise<CachedAccountStatus | null> {
-  const session = loadEncryptedSession();
+  const session = await loadEncryptedSessionAsync();
   if (!session?.token) return null;
 
   const hwid = getHWID();
@@ -935,15 +1186,15 @@ export async function fetchAndCacheStatus(): Promise<CachedAccountStatus | null>
     });
   } catch (err: any) {
     // Transient network error / timeout - return cached status, do NOT clear session!
-    console.warn('[AccountService] Status check network error:', err?.message);
-    return readCachedStatus();
+    log.warn('[AccountService] Status check network error:', err?.message);
+    return readCachedStatusAsync();
   }
 
   // If 401 Unauthorized, attempt refresh once via mutex before clearing
   if (res.statusCode === 401 && session.refreshToken) {
     const refreshed = await refreshAccountTokenWithMutex();
     if (refreshed) {
-      const newSession = loadEncryptedSession();
+      const newSession = await loadEncryptedSessionAsync();
       if (newSession?.token) {
         try {
           res = await makeRequest(`${getAdminApiBaseUrl()}/v1/account/status?hwid=${encodeURIComponent(hwid)}`, {
@@ -953,8 +1204,8 @@ export async function fetchAndCacheStatus(): Promise<CachedAccountStatus | null>
             }
           });
         } catch (err: any) {
-          console.warn('[AccountService] Post-refresh status check network error:', err?.message);
-          return readCachedStatus();
+          log.warn('[AccountService] Post-refresh status check network error:', err?.message);
+          return readCachedStatusAsync();
         }
       }
     }
@@ -962,19 +1213,19 @@ export async function fetchAndCacheStatus(): Promise<CachedAccountStatus | null>
 
   if (res.statusCode === 401 || res.statusCode === 403) {
     // Session revoked or refresh failed
-    clearEncryptedSession();
+    await clearEncryptedSessionAsync();
     broadcastAccountChanged();
     return null;
   }
 
   if (res.statusCode >= 500) {
     // Server error - return cached status, do NOT clear session!
-    console.warn(`[AccountService] Status check server error (HTTP ${res.statusCode}), using cached status`);
-    return readCachedStatus();
+    log.warn(`[AccountService] Status check server error (HTTP ${res.statusCode}), using cached status`);
+    return readCachedStatusAsync();
   }
 
   if (res.statusCode !== 200 || !res.body) {
-    return readCachedStatus();
+    return readCachedStatusAsync();
   }
 
   const data = res.body;
@@ -989,14 +1240,14 @@ export async function fetchAndCacheStatus(): Promise<CachedAccountStatus | null>
   }, data.sig);
 
   if (!isSigValid) {
-    console.error('[AccountService] Tampered or invalid RSA signature on account status response');
-    return readCachedStatus();
+    log.error('[AccountService] Tampered or invalid RSA signature on account status response');
+    return readCachedStatusAsync();
   }
 
   // Update sync_key in session if provided
   if (data.sync_key && session.sync_key !== data.sync_key) {
     session.sync_key = data.sync_key;
-    saveEncryptedSession(session);
+    await saveEncryptedSessionAsync(session);
   }
 
   const cached: CachedAccountStatus = {
@@ -1011,7 +1262,7 @@ export async function fetchAndCacheStatus(): Promise<CachedAccountStatus | null>
     sig: data.sig
   };
 
-  writeCachedStatus(cached);
+  await writeCachedStatusAsync(cached);
   broadcastAccountChanged();
   return cached;
 }
@@ -1167,7 +1418,7 @@ export async function refreshAccountPlanLimits(force = false): Promise<{ isPro: 
     try {
       await fetchAndCacheStatus();
     } catch (err: any) {
-      console.warn('[AccountService] Revalidation offline, falling back to cache:', err?.message);
+      log.warn('[AccountService] Revalidation offline, falling back to cache:', err?.message);
     }
   }
 
@@ -1183,7 +1434,11 @@ function broadcastAccountChanged(): void {
           win.webContents.send('account:statusChanged', getAccountPlanLimits());
         }
       });
-    } catch {}
+    } catch (err) {
+      log.debug('Skipped account:statusChanged IPC broadcast', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }
 
@@ -1198,7 +1453,7 @@ export function startAccountStatusScheduler(): void {
     try {
       await fetchAndCacheStatus();
     } catch (err: any) {
-      console.warn('[AccountService] Startup status check offline:', err?.message);
+      log.warn('[AccountService] Startup status check offline:', err?.message);
     }
   }, STARTUP_DELAY_MS);
 
@@ -1207,7 +1462,7 @@ export function startAccountStatusScheduler(): void {
     try {
       await fetchAndCacheStatus();
     } catch (err: any) {
-      console.warn('[AccountService] Periodic status check offline:', err?.message);
+      log.warn('[AccountService] Periodic status check offline:', err?.message);
     }
   }, CHECK_INTERVAL_MS);
 }
@@ -1330,7 +1585,11 @@ export async function exchangeWebHandoffCode(handoffCode: string): Promise<{ suc
     try {
       const { setActiveUserId } = await import('../07_BACKEND/commercial/session-context.js');
       setActiveUserId(loginResult.user.id);
-    } catch {}
+    } catch (err) {
+      log.debug('Skipped binding active session user context on web handoff', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
   return loginResult;
 }
@@ -1339,7 +1598,7 @@ export async function exchangeWebHandoffCode(handoffCode: string): Promise<{ suc
  * Activates 7-day trial from central server for current session
  */
 export async function activateTrialFromServer(planId: string = 'professional_50'): Promise<{ success: boolean; error?: string; trialStatus?: any; entitlements?: any; message?: string }> {
-  const session = getAccountSession();
+  const session = await loadEncryptedSessionAsync();
   if (!session?.token) {
     return { success: false, error: 'No authenticated session found' };
   }
@@ -1365,11 +1624,15 @@ export async function activateTrialFromServer(planId: string = 'professional_50'
   // Refresh and cache status
   try {
     await fetchAndCacheStatus();
-  } catch {}
+  } catch (err) {
+    log.debug('Post-trial status cache warm-up failed cleanly', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // Also refresh session profile_quota
   if (session.account_id) {
-    saveEncryptedSession({
+    await saveEncryptedSessionAsync({
       ...session,
       plan: 'trial',
       profile_quota: res.body.entitlements?.maxProfiles || 50,
@@ -1390,7 +1653,7 @@ export async function activateTrialFromServer(planId: string = 'professional_50'
  * Gets trial status from central server for current session
  */
 export async function getTrialStatusFromServer(): Promise<{ success: boolean; isTrialActive?: boolean; daysRemaining?: number; isEligibleForTrial?: boolean; error?: string }> {
-  const session = getAccountSession();
+  const session = await loadEncryptedSessionAsync();
   if (!session?.token) {
     return { success: false, error: 'No authenticated session found' };
   }

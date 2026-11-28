@@ -17,6 +17,18 @@ import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { getStorageProvider } from '../../08_SECURITY/storage-provider.js';
 import { getJwtSecret } from '../../08_SECURITY/install-secrets.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('worker-profile-loader');
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.promises.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
 import {
   encryptProfileArchive,
   decryptProfileArchive,
@@ -69,9 +81,7 @@ export class WorkerProfileLoader {
     const db = getDatabase();
 
     // Ensure isolated target directory exists
-    if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true });
-    }
+    await fs.promises.mkdir(targetDir, { recursive: true });
 
     const effectivePassphrase =
       passphrase ||
@@ -130,7 +140,7 @@ export class WorkerProfileLoader {
 
           // Write temporary archive file and restore into targetDir
           const tempArchive = path.join(targetDir, `_restore_${sessionId}.mahi-profile`);
-          fs.writeFileSync(tempArchive, plaintextBuffer);
+          await fs.promises.writeFile(tempArchive, plaintextBuffer);
 
           try {
             importProfileFromArchive({
@@ -141,10 +151,20 @@ export class WorkerProfileLoader {
             loadedFromCloud = true;
           } catch (importErr: any) {
             // If import into app DB failed, fallback to direct payload extraction
+            log.debug('Cloud worker profile archive import fell back cleanly', {
+              sessionId,
+              profileId,
+              err: importErr instanceof Error ? importErr.message : String(importErr),
+            });
           } finally {
             try {
-              if (fs.existsSync(tempArchive)) fs.unlinkSync(tempArchive);
-            } catch {}
+              if (await pathExists(tempArchive)) await fs.promises.unlink(tempArchive);
+            } catch (cleanupErr) {
+              log.debug('Failed deleting temp worker profile restore archive', {
+                tempArchive,
+                err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+              });
+            }
           }
         }
       }
@@ -154,16 +174,27 @@ export class WorkerProfileLoader {
     let localProfile: Profile | null = null;
     try {
       localProfile = getProfileById(profileId);
-    } catch {}
+    } catch (lookupErr) {
+      log.debug('Skipped local profile DB lookup in worker-profile-loader', {
+        profileId,
+        err: lookupErr instanceof Error ? lookupErr.message : String(lookupErr),
+      });
+    }
 
     if (localProfile) {
       profileName = localProfile.name;
       const localStorePath = getProfileStoragePath(profileId);
-      if (fs.existsSync(localStorePath) && !loadedFromCloud) {
+      if ((await pathExists(localStorePath)) && !loadedFromCloud) {
         // Copy essential user data to isolated worker directory
         try {
-          fs.cpSync(localStorePath, targetDir, { recursive: true, filter: (src) => !src.toLowerCase().includes('cache') });
-        } catch {}
+          await fs.promises.cp(localStorePath, targetDir, { recursive: true, filter: (src) => !src.toLowerCase().includes('cache') });
+        } catch (cpErr) {
+          log.warn('Failed copying local profile directory to worker sandbox', {
+            profileId,
+            localStorePath,
+            err: cpErr instanceof Error ? cpErr.message : String(cpErr),
+          });
+        }
       }
     }
 
@@ -199,7 +230,7 @@ export class WorkerProfileLoader {
         .digest('hex');
 
     // 1. Flush and ensure directory exists
-    if (!fs.existsSync(targetDir)) {
+    if (!(await pathExists(targetDir))) {
       return { success: true, newVersion: baseVersion };
     }
 
@@ -219,7 +250,7 @@ export class WorkerProfileLoader {
       });
     } catch {
       // If local profile export helper misses, package directory metadata
-      fs.writeFileSync(tempExportPath, JSON.stringify({
+      await fs.promises.writeFile(tempExportPath, JSON.stringify({
         magic: 'MAHI_PROFILE_ARCHIVE',
         version: '1.0',
         syncedAt: new Date().toISOString(),
@@ -227,9 +258,12 @@ export class WorkerProfileLoader {
       }));
     }
 
-    const archiveBuffer = fs.existsSync(tempExportPath)
-      ? fs.readFileSync(tempExportPath)
-      : Buffer.from(JSON.stringify({ profileId, timestamp: Date.now() }));
+    let archiveBuffer: Buffer;
+    try {
+      archiveBuffer = await fs.promises.readFile(tempExportPath);
+    } catch {
+      archiveBuffer = Buffer.from(JSON.stringify({ profileId, timestamp: Date.now() }));
+    }
 
     // 3. Encrypt archive payload in memory with AES-256-GCM
     const encryptedPkg = encryptProfileArchive(archiveBuffer, effectivePassphrase);
@@ -313,8 +347,13 @@ export class WorkerProfileLoader {
 
     // 7. Clean up temporary files and erase sensitive buffers
     try {
-      if (fs.existsSync(tempExportPath)) fs.unlinkSync(tempExportPath);
-    } catch {}
+      if (await pathExists(tempExportPath)) await fs.promises.unlink(tempExportPath);
+    } catch (cleanupErr) {
+      log.debug('Failed deleting temp worker export archive', {
+        tempExportPath,
+        err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+      });
+    }
 
     return {
       success: true,
@@ -323,8 +362,32 @@ export class WorkerProfileLoader {
   }
 
   /**
-   * Securely wipes the isolated worker directory upon session termination.
+   * Asynchronously wipes the isolated worker directory upon session termination.
    */
+  public async cleanWorkerDirectoryAsync(targetDir: string): Promise<void> {
+    if (!(await pathExists(targetDir))) return;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      try {
+        if (await pathExists(targetDir)) {
+          await fs.promises.rm(targetDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+        }
+        if (!(await pathExists(targetDir))) return;
+      } catch (rmErr) {
+        log.debug('Retrying async worker directory cleanup after lock contention', {
+          targetDir,
+          attempt: attempt + 1,
+          err: rmErr instanceof Error ? rmErr.message : String(rmErr),
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  /**
+   * Synchronous worker directory wipe preserved for legacy synchronous unit-test callers.
+   * Runtime cloud control-plane callers use cleanWorkerDirectoryAsync().
+   */
+  // sync-compat-bootstrap: synchronous helper retained strictly for sync unit test assertions
   public cleanWorkerDirectory(targetDir: string): void {
     if (!fs.existsSync(targetDir)) return;
     for (let attempt = 0; attempt < 8; attempt++) {
@@ -333,12 +396,22 @@ export class WorkerProfileLoader {
           fs.rmSync(targetDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
         }
         if (!fs.existsSync(targetDir)) return;
-      } catch {}
+      } catch (rmErr) {
+        log.debug('Retrying worker directory cleanup after lock contention', {
+          targetDir,
+          attempt: attempt + 1,
+          err: rmErr instanceof Error ? rmErr.message : String(rmErr),
+        });
+      }
 
       try {
         const start = Date.now();
         while (Date.now() - start < 100) {}
-      } catch {}
+      } catch (waitErr) {
+        log.debug('Worker directory cleanup backoff aborted', {
+          err: waitErr instanceof Error ? waitErr.message : String(waitErr),
+        });
+      }
     }
   }
 

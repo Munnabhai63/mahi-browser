@@ -14,6 +14,9 @@ import {
   CookieImportResult,
 } from '../../10_CONFIG/shared/types/cookie.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
+import { createLogger } from '../../07_BACKEND/utils/logger.js';
+
+const log = createLogger('cookie-service');
 
 function getProfileCookieDbPath(profileId: string): string | null {
   const base = getProfileStoragePath(profileId);
@@ -123,7 +126,7 @@ function loadChromiumCookies(profileId: string): CookieItem[] {
         }
       }
     } finally {
-      try { db.close(); } catch {}
+      try { db.close(); } catch (closeErr) { log.debug('cookie-service sqlite close failed', { err: closeErr }); }
     }
     return cookies;
   } catch {
@@ -182,8 +185,8 @@ export function deleteAllCookies(profileId: string): boolean {
   if (dbPath && fs.existsSync(dbPath)) {
     try {
       fs.unlinkSync(dbPath);
-    } catch {
-      // ignore
+    } catch (err) {
+      log.warn('cookie-service sqlite cookie DB deletion failed', { profileId, dbPath, err });
     }
   }
   logActivity('COOKIE', 'WARNING', 'Clear Cookies', `Cleared all cookies for profile`, profileId);

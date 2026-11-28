@@ -2,6 +2,9 @@ import crypto from 'node:crypto';
 import { getDatabase } from '../../06_DATABASE/connection.js';
 import { ActivityLogItem, ActivityLogFilter, LogCategory, LogSeverity } from '../../10_CONFIG/shared/types/logs.js';
 import { sanitizeSensitiveString, sanitizeObject } from '../../08_SECURITY/sanitizer.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('audit-service');
 
 type LogListener = (log: ActivityLogItem) => void;
 const listeners: Set<LogListener> = new Set();
@@ -50,8 +53,10 @@ export function logActivity(
   for (const listener of listeners) {
     try {
       listener(logItem);
-    } catch {
-      // ignore
+    } catch (listenerErr) {
+      log.debug('Audit log listener threw asynchronously', {
+        err: listenerErr instanceof Error ? listenerErr.message : String(listenerErr),
+      });
     }
   }
 

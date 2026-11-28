@@ -89,6 +89,8 @@ import { isPostgresConfigured, getCentralRepository } from '../../../06_DATABASE
 import { recordFunnelEvent } from '../funnel-service.js';
 import { reconcileUserPlanOnLogin } from '../commercial-reconcile-service.js';
 import { CURRENT_TERMS_VERSION } from '../../../10_CONFIG/shared/types/commercial.js';
+import { createLogger } from '../../utils/logger.js';
+const log = createLogger('auth-routes');
 
 export async function handleAuthRoutes(
   req: http.IncomingMessage,
@@ -247,7 +249,7 @@ export async function handleAuthRoutes(
         const info = db.prepare('UPDATE commercial_users SET accepted_terms = ?, terms_version = ? WHERE id = ?').run(acceptedTermsVal, termsVersionVal, result.user.id);
         if (info.changes > 0) termsSaved = true;
       } catch (err) {
-        console.error('[Registration] SQLite commercial_users terms write error', err);
+        log.error('[Registration] SQLite commercial_users terms write error', err);
       }
 
       try {
@@ -255,7 +257,7 @@ export async function handleAuthRoutes(
         const info = db.prepare('UPDATE auth_users SET accepted_terms = ?, terms_version = ? WHERE id = ?').run(acceptedTermsVal, termsVersionVal, result.user.id);
         if (info.changes > 0) termsSaved = true;
       } catch (err) {
-        console.error('[Registration] SQLite auth_users terms write error', err);
+        log.error('[Registration] SQLite auth_users terms write error', err);
       }
 
       if (isPostgresConfigured()) {
@@ -263,13 +265,13 @@ export async function handleAuthRoutes(
           const pgOk = await getCentralRepository().updateAuthUserTerms(result.user.id, acceptedTermsVal, termsVersionVal);
           if (pgOk) termsSaved = true;
         } catch (err) {
-          console.error('[Registration] PG terms write error', err);
+          log.error('[Registration] PG terms write error', err);
         }
       }
     }
 
     if (!termsSaved) {
-      console.error('[Registration][CRITICAL] Terms consent could not be saved to ANY store for user', result.user?.id);
+      log.error('[Registration][CRITICAL] Terms consent could not be saved to ANY store for user', result.user?.id);
       sendJSON(res, 500, { success: false, error: 'Registration failed to persist legal consent. Please retry.' });
       return true;
     }
@@ -287,8 +289,7 @@ export async function handleAuthRoutes(
         termsVersion: termsVer,
       }, clientIp, result.user?.id);
     } catch (err: any) {
-      console.error('[REGISTER] commercial mirror write failed for user %s: %s',
-                    result.user?.id, err?.message || err);
+      log.error(`[REGISTER] commercial mirror write failed for user ${result.user?.id}: ${err?.message || err}`);
     }
 
     const registeredUser = commUserResult?.user || result.user;
@@ -315,7 +316,11 @@ export async function handleAuthRoutes(
           ipAddress: clientIp,
         });
       }
-    } catch {}
+    } catch (funnelErr) {
+      log.debug('Skipped register funnel event logging', {
+        err: funnelErr instanceof Error ? funnelErr.message : String(funnelErr),
+      });
+    }
 
     const registeredUserId = registeredUser?.id || result.user?.id;
     const trialStatus = registeredUserId ? getUserTrialStatus(registeredUserId) : { isTrialActive: isTrial, daysRemaining: isTrial ? 7 : 0, isEligibleForTrial: !isTrial };
@@ -416,7 +421,7 @@ export async function handleAuthRoutes(
       try {
         await reconcileUserPlanOnLogin(centralRes.user.id);
       } catch (err) {
-        console.error('[Login] Reconcile error:', err);
+        log.error('[Login] Reconcile error:', err);
       }
       const commUser = getUserById(centralRes.user.id);
       const isTrial = Boolean(commUser?.trialExpiresAt && new Date(commUser.trialExpiresAt).getTime() > Date.now());
@@ -459,7 +464,7 @@ export async function handleAuthRoutes(
         try {
           await reconcileUserPlanOnLogin(legacyResult.user.id);
         } catch (err) {
-          console.error('[Login] Reconcile error:', err);
+          log.error('[Login] Reconcile error:', err);
         }
         const entitlements = evaluateUserEntitlements(legacyResult.user.id, body.deviceId, body.deviceName);
         if (legacyResult.token) {
@@ -870,7 +875,7 @@ export async function handleAuthRoutes(
         expiresAt,
       });
     } catch (dbErr) {
-      console.error('[WEB_HANDOFF] Failed to persist session to central repository:', dbErr);
+      log.error('[WEB_HANDOFF] Failed to persist session to central repository:', dbErr);
     }
 
     sendJSON(res, 200, {
@@ -918,7 +923,7 @@ export async function handleAuthRoutes(
           return true;
         }
       } catch (pgErr) {
-        console.error('[WEB_HANDOFF] PostgreSQL atomic consumption error:', pgErr);
+        log.error('[WEB_HANDOFF] PostgreSQL atomic consumption error:', pgErr);
         sendJSON(res, 403, { success: false, error: 'Handoff code has expired, already been used, or is invalid.' });
         return true;
       }
@@ -930,7 +935,11 @@ export async function handleAuthRoutes(
         try {
           const repo = getCentralRepository();
           await repo.consumeWebHandoffSessionAtomically(handoffCode, now);
-        } catch {}
+        } catch (consumeErr) {
+          log.debug('Failed atomic web handoff expire sync in central repo', {
+            err: consumeErr instanceof Error ? consumeErr.message : String(consumeErr),
+          });
+        }
         webHandoffSessions.delete(handoffCode);
         sendJSON(res, 403, { success: false, error: 'Handoff code has expired, already been used, or is invalid.' });
         return true;
@@ -945,7 +954,11 @@ export async function handleAuthRoutes(
           user = consumed.user;
           webHandoffSessions.delete(handoffCode);
         }
-      } catch {}
+      } catch (consumeErr) {
+        log.warn('Failed consuming web handoff session from central repo', {
+          err: consumeErr instanceof Error ? consumeErr.message : String(consumeErr),
+        });
+      }
 
       // Fallback to in-memory map
       if (!token) {
@@ -1296,7 +1309,12 @@ export async function handleAuthRoutes(
           planId: result.planId,
           ipAddress: clientIp,
         });
-      } catch {}
+      } catch (funnelErr) {
+        log.debug('Skipped trial activation funnel telemetry logging', {
+          userId: auth.userId,
+          err: funnelErr instanceof Error ? funnelErr.message : String(funnelErr),
+        });
+      }
     }
     sendJSON(res, result.success ? 200 : 400, result);
     return true;

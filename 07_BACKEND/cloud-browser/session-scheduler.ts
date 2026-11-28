@@ -10,6 +10,9 @@ import {
   CloudWorkerStatus,
   CloudResourceClass,
 } from '../../10_CONFIG/shared/types/cloud-browser.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('cloud-session-scheduler');
 
 export class SessionScheduler {
   private static instance: SessionScheduler;
@@ -53,6 +56,9 @@ export class SessionScheduler {
       }
     } catch (err: any) {
       // Non-fatal if DB not yet initialized in specific test harnesses
+      log.debug('Default worker node registration deferred (DB uninitialized)', {
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -139,7 +145,12 @@ export class SessionScheduler {
             updated_at = ?
         WHERE id = ?
       `).run(new Date().toISOString(), workerId);
-    } catch {}
+    } catch (err) {
+      log.warn('Failed decrementing cloud browser worker slot count', {
+        workerId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /**
@@ -176,7 +187,11 @@ export class SessionScheduler {
         SET status = 'OFFLINE', updated_at = ?
         WHERE last_heartbeat_at < ? AND status = 'ONLINE' AND id != 'worker-local-01'
       `).run(new Date().toISOString(), staleThreshold);
-    } catch {}
+    } catch (err) {
+      log.debug('Stale worker cleanup query skipped', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }
 

@@ -8,6 +8,9 @@
  */
 
 import { getAccountSession, clearEncryptedSession } from '../../08_SECURITY/account-service.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('session-context');
 
 let _activeUserId: string | null = null;
 
@@ -34,7 +37,11 @@ export function getActiveUserId(): string | null {
       _activeUserId = session.account_id;
       return _activeUserId;
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Skipped disk account session lookup in session-context', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return null;
 }
 
@@ -45,5 +52,9 @@ export function clearActiveSession(): void {
   _activeUserId = null;
   try {
     clearEncryptedSession();
-  } catch {}
+  } catch (err) {
+    log.warn('Failed clearing encrypted session on logout', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }

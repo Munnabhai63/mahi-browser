@@ -9,6 +9,8 @@ import {
   assertSafeProxyTargetSyntax,
   assertSafeProxyTargetRuntime,
 } from './proxy-security.js';
+import { createLogger } from '../../07_BACKEND/utils/logger.js';
+const log = createLogger('proxy-test-service');
 
 export {
   ProxySecurityError,
@@ -20,7 +22,7 @@ export {
 function debugLog(msg: string) {
   const fn = (globalThis as any).__mahiDebugLog;
   if (fn) fn(msg);
-  else console.log(msg);
+  else log.info(msg);
 }
 
 /**
@@ -77,7 +79,11 @@ export async function resolveGeoLocation(target: string): Promise<GeoLocationDet
         };
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('GeoIP primary provider (freeipapi) lookup fell back', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // 2. Fallback to ipapi.co (HTTPS)
   try {
@@ -99,7 +105,11 @@ export async function resolveGeoLocation(target: string): Promise<GeoLocationDet
         };
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('GeoIP secondary provider (ipapi.co) lookup fell back', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // 3. Fallback to ipwho.is (HTTPS)
   try {
@@ -122,7 +132,11 @@ export async function resolveGeoLocation(target: string): Promise<GeoLocationDet
         };
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('GeoIP tertiary provider (ipwho.is) lookup fell back', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   return null;
 }
@@ -152,7 +166,13 @@ function testHttpsConnectThroughProxy(
     const timer = setTimeout(() => {
       if (!isResolved) {
         isResolved = true;
-        try { rawSocket.destroy(); } catch {}
+        try {
+          rawSocket.destroy();
+        } catch (err) {
+          log.debug('Proxy HTTPS test timeout socket destroy skipped', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
         resolve({
           success: false,
           latencyMs: Date.now() - startTime,
@@ -166,7 +186,13 @@ function testHttpsConnectThroughProxy(
       if (!isResolved) {
         isResolved = true;
         clearTimeout(timer);
-        try { rawSocket.destroy(); } catch {}
+        try {
+          rawSocket.destroy();
+        } catch (err) {
+          log.debug('Proxy HTTPS test finish socket destroy skipped', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
         resolve(result);
       }
     };
@@ -230,7 +256,11 @@ function testHttpsConnectThroughProxy(
                     });
                     return;
                   }
-                } catch {}
+                } catch (parseErr) {
+                  log.debug('HTTP proxy public IP JSON parse fell back', {
+                    err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+                  });
+                }
                 finish({ success: true, latencyMs: latency });
               });
 
@@ -323,8 +353,20 @@ async function testSocks5ThroughProxy(
         if (settled) return;
         settled = true;
         clearTimeout(tlsTimer);
-        try { tlsSocket.destroy(); } catch {}
-        try { socket.destroy(); } catch {}
+        try {
+          tlsSocket.destroy();
+        } catch (err) {
+          log.debug('SOCKS5 test TLS socket destroy skipped', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
+        try {
+          socket.destroy();
+        } catch (err) {
+          log.debug('SOCKS5 test raw socket destroy skipped', {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
         resolve(res);
       };
 
@@ -347,9 +389,18 @@ async function testSocks5ThroughProxy(
             );
           }
         );
-      } catch {
+      } catch (tlsErr) {
         clearTimeout(tlsTimer);
-        try { socket.destroy(); } catch {}
+        try {
+          socket.destroy();
+        } catch (destroyErr) {
+          log.debug('SOCKS5 test fallback socket destroy skipped', {
+            err: destroyErr instanceof Error ? destroyErr.message : String(destroyErr),
+          });
+        }
+        log.debug('SOCKS5 test TLS upgrade skipped; CONNECT already succeeded', {
+          err: tlsErr instanceof Error ? tlsErr.message : String(tlsErr),
+        });
         resolve({ success: true, latencyMs: Date.now() - startTime });
         return;
       }
@@ -371,7 +422,11 @@ async function testSocks5ThroughProxy(
             });
             return;
           }
-        } catch {}
+        } catch (parseErr) {
+          log.debug('SOCKS5 proxy public IP JSON parse fell back', {
+            err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+          });
+        }
         done({ success: true, latencyMs: latency });
       });
       tlsSocket.on('error', () => {

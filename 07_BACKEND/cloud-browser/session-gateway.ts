@@ -17,6 +17,9 @@ import {
   CloudServerMessage,
   CloudStreamFrame,
 } from '../../10_CONFIG/shared/types/cloud-browser.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('cloud-session-gateway');
 
 export interface StreamClientSubscriber {
   id: string;
@@ -169,10 +172,21 @@ export class SessionGateway {
           for (const sub of state.subscribers) {
             try {
               sub.send(frameMessage);
-            } catch {}
+            } catch (sendErr) {
+              log.debug('Failed pushing screencast frame to subscriber', {
+                sessionId,
+                subscriberId: sub.id,
+                err: sendErr instanceof Error ? sendErr.message : String(sendErr),
+              });
+            }
           }
         }
-      } catch {}
+      } catch (msgErr) {
+        log.debug('Ignored malformed CDP screencast message', {
+          sessionId,
+          err: msgErr instanceof Error ? msgErr.message : String(msgErr),
+        });
+      }
     });
 
     cdpWs.addEventListener('close', () => {
@@ -366,12 +380,23 @@ export class SessionGateway {
       if (stream.ws && stream.ws.readyState === WebSocket.OPEN) {
         stream.ws.close();
       }
-    } catch {}
+    } catch (wsErr) {
+      log.debug('CDP WebSocket close skipped during detachSession', {
+        sessionId,
+        err: wsErr instanceof Error ? wsErr.message : String(wsErr),
+      });
+    }
 
     for (const sub of stream.subscribers) {
       try {
         sub.close();
-      } catch {}
+      } catch (subErr) {
+        log.debug('Subscriber close skipped during detachSession', {
+          sessionId,
+          subscriberId: sub.id,
+          err: subErr instanceof Error ? subErr.message : String(subErr),
+        });
+      }
     }
 
     this.activeStreams.delete(sessionId);

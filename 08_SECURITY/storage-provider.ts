@@ -53,8 +53,18 @@ export class LocalStorageProvider implements ObjectStorageProvider {
     this.storageDir = options?.storageDir || getWritableSubdir('cloud_storage');
     this.baseUrl = options?.baseUrl || (process.env.COMMERCIAL_API_URL || 'http://127.0.0.1:8989');
 
+    // startup-sync-bootstrap: ensure local storage root directory exists synchronously at provider construction
     if (!fs.existsSync(this.storageDir)) {
       fs.mkdirSync(this.storageDir, { recursive: true });
+    }
+  }
+
+  private async pathExists(targetPath: string): Promise<boolean> {
+    try {
+      await fs.promises.access(targetPath);
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -115,25 +125,21 @@ export class LocalStorageProvider implements ObjectStorageProvider {
 
   async deleteObject(objectKey: string): Promise<boolean> {
     const fullPath = this.resolveFilePath(objectKey);
-    if (fs.existsSync(fullPath)) {
-      try {
-        fs.unlinkSync(fullPath);
-        return true;
-      } catch {
-        return false;
-      }
+    try {
+      await fs.promises.unlink(fullPath);
+      return true;
+    } catch {
+      return false;
     }
-    return false;
   }
 
   async headObject(objectKey: string): Promise<{ exists: boolean; size: number; checksum?: string } | null> {
     const fullPath = this.resolveFilePath(objectKey);
-    if (!fs.existsSync(fullPath)) {
-      return null;
-    }
     try {
-      const stat = fs.statSync(fullPath);
-      const data = fs.readFileSync(fullPath);
+      const [stat, data] = await Promise.all([
+        fs.promises.stat(fullPath),
+        fs.promises.readFile(fullPath),
+      ]);
       const checksum = crypto.createHash('sha256').update(data).digest('hex');
       return { exists: true, size: stat.size, checksum };
     } catch {
@@ -144,23 +150,25 @@ export class LocalStorageProvider implements ObjectStorageProvider {
   async putObject(objectKey: string, data: Buffer, _contentType = 'application/octet-stream'): Promise<{ success: boolean; size: number }> {
     const fullPath = this.resolveFilePath(objectKey);
     const parentDir = path.dirname(fullPath);
-    if (!fs.existsSync(parentDir)) {
-      fs.mkdirSync(parentDir, { recursive: true });
-    }
-    fs.writeFileSync(fullPath, data);
+    await fs.promises.mkdir(parentDir, { recursive: true });
+    await fs.promises.writeFile(fullPath, data);
     return { success: true, size: data.length };
   }
 
   async getObject(objectKey: string): Promise<Buffer | null> {
     const fullPath = this.resolveFilePath(objectKey);
-    if (!fs.existsSync(fullPath)) {
-      return null;
+    try {
+      return await fs.promises.readFile(fullPath);
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        return null;
+      }
+      throw err;
     }
-    return fs.readFileSync(fullPath);
   }
 
   async verifyStorageConnectivity(): Promise<{ connected: boolean; provider: string; message: string }> {
-    const exists = fs.existsSync(this.storageDir);
+    const exists = await this.pathExists(this.storageDir);
     return {
       connected: exists,
       provider: this.name,

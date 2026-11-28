@@ -7,6 +7,9 @@
 import { getPrismaClient, isPostgresConfigured } from './prisma-client.js';
 export { isPostgresConfigured } from './prisma-client.js';
 import { getDatabase } from './connection.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('central-repository');
 
 export interface CentralRepository {
   backendName: 'postgres' | 'sqlite';
@@ -898,7 +901,13 @@ export class PostgresCentralRepository implements CentralRepository {
       const session = await this.client.web_handoff_sessions.findUnique({ where: { code } });
       if (session) {
         let user: any = null;
-        try { user = JSON.parse(session.user_json); } catch {}
+        try {
+          user = JSON.parse(session.user_json);
+        } catch (parseErr) {
+          log.warn('Failed parsing cached SQLite web handoff user_json', {
+            err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+          });
+        }
         return { token: session.token, user };
       }
     }
@@ -1568,7 +1577,13 @@ export class SqliteCentralRepository implements CentralRepository {
     const row = this.db.prepare('SELECT * FROM web_handoff_sessions WHERE code = ?').get(code) as any;
     if (!row) return null;
     if (row.used === 1 || Number(row.expires_at) <= now) {
-      try { this.db.prepare('DELETE FROM web_handoff_sessions WHERE code = ?').run(code); } catch {}
+      try {
+        this.db.prepare('DELETE FROM web_handoff_sessions WHERE code = ?').run(code);
+      } catch (cleanupErr) {
+        log.debug('Expired SQLite web_handoff_sessions cleanup skipped', {
+          err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        });
+      }
       return null;
     }
     const updateRes = this.db.prepare(
@@ -1576,7 +1591,13 @@ export class SqliteCentralRepository implements CentralRepository {
     ).run(code, now);
     if (updateRes.changes === 1) {
       let user: any = null;
-      try { user = JSON.parse(row.user_json); } catch {}
+      try {
+        user = JSON.parse(row.user_json);
+      } catch (parseErr) {
+        log.warn('Failed parsing consumed SQLite web_handoff_sessions user_json', {
+          err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        });
+      }
       return { token: row.token, user };
     }
     return null;

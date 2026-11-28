@@ -25,8 +25,8 @@ export const useLogStore = create<LogState>((set, get) => ({
         const logs = await window.mahiAPI.getActivityLogs(get().filter);
         set({ logs });
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.debug('[useLogStore] activity logs fetch failed', err);
     } finally {
       set({ loading: false });
     }
@@ -47,8 +47,8 @@ export const useLogStore = create<LogState>((set, get) => ({
         await window.mahiAPI.clearActivityLogs();
         set({ logs: [] });
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.debug('[useLogStore] clearActivityLogs failed', err);
     }
   },
 }));

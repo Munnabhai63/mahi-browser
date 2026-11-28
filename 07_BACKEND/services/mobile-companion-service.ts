@@ -18,6 +18,9 @@ import {
   MobileNotificationRecord,
   MobileNotificationCategory,
 } from '../../10_CONFIG/shared/types/mobile.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('mobile-companion-service');
 
 const SENSITIVE_KEYWORDS = [
   'token',
@@ -70,8 +73,11 @@ export class MobileCompanionService {
       db.prepare(`DELETE FROM mobile_device_tokens`).run();
       db.prepare(`DELETE FROM mobile_notification_preferences`).run();
       db.prepare(`DELETE FROM mobile_notifications`).run();
-    } catch {
+    } catch (err) {
       // Table may not be initialized yet in memory
+      log.debug('Skipped resetting mobile companion tables (not initialized)', {
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

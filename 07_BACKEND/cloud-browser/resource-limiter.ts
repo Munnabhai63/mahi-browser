@@ -15,6 +15,9 @@ import {
   CloudBrowserSession,
   CloudResourceClass,
 } from '../../10_CONFIG/shared/types/cloud-browser.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('cloud-browser-resource-limiter');
 
 export interface ResourceLimitConfig {
   maxDurationSeconds: number;
@@ -114,7 +117,13 @@ export class ResourceLimiter {
         item.regionId,
         now
       );
-    } catch {}
+    } catch (err) {
+      log.warn('Failed recording cloud_browser_usage entry', {
+        sessionId: item.sessionId,
+        durationSeconds,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     this.trackedSessions.delete(sessionId);
     return durationSeconds;

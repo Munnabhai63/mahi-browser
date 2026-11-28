@@ -105,7 +105,9 @@ export const CloudSessionViewer: React.FC<CloudSessionViewerProps> = ({
                 img.src = `data:image/jpeg;base64,${data.data}`;
               }
             }
-          } catch {}
+          } catch (err) {
+            console.debug('[CloudSessionViewer] stream frame parse failed', err);
+          }
         };
 
         sse.onerror = async () => {
@@ -159,7 +161,9 @@ export const CloudSessionViewer: React.FC<CloudSessionViewerProps> = ({
           { type: 'mouseClick', x, y, button: btn, clickCount: 1 },
           streamToken
         );
-      } catch {}
+      } catch (err) {
+        console.debug('[CloudSessionViewer] mouseClick input delivery failed', err);
+      }
     },
     [sessionId, streamToken]
   );
@@ -183,7 +187,9 @@ export const CloudSessionViewer: React.FC<CloudSessionViewerProps> = ({
           { type: 'mouseWheel', deltaX: e.deltaX, deltaY: e.deltaY, x, y },
           streamToken
         );
-      } catch {}
+      } catch (err) {
+        console.debug('[CloudSessionViewer] mouseWheel input delivery failed', err);
+      }
     },
     [sessionId, streamToken]
   );
@@ -203,7 +209,9 @@ export const CloudSessionViewer: React.FC<CloudSessionViewerProps> = ({
           },
           streamToken
         );
-      } catch {}
+      } catch (err) {
+        console.debug('[CloudSessionViewer] keyDown input delivery failed', err);
+      }
     },
     [sessionId, streamToken]
   );
@@ -219,25 +227,33 @@ export const CloudSessionViewer: React.FC<CloudSessionViewerProps> = ({
     setUrlInput(target);
     try {
       await api.sendCloudInput(sessionId, { type: 'navigate', url: target }, streamToken);
-    } catch {}
+    } catch (err) {
+      console.debug('[CloudSessionViewer] navigate input failed', err);
+    }
   };
 
   const handleReload = async () => {
     try {
       await api.sendCloudInput(sessionId, { type: 'reload' }, streamToken);
-    } catch {}
+    } catch (err) {
+      console.debug('[CloudSessionViewer] reload input failed', err);
+    }
   };
 
   const handleGoBack = async () => {
     try {
       await api.sendCloudInput(sessionId, { type: 'goBack' }, streamToken);
-    } catch {}
+    } catch (err) {
+      console.debug('[CloudSessionViewer] goBack input failed', err);
+    }
   };
 
   const handleGoForward = async () => {
     try {
       await api.sendCloudInput(sessionId, { type: 'goForward' }, streamToken);
-    } catch {}
+    } catch (err) {
+      console.debug('[CloudSessionViewer] goForward input failed', err);
+    }
   };
 
   // Safe end session and sync back

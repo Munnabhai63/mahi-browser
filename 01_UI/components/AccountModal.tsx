@@ -250,12 +250,12 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
   useEffect(() => {
     if (isOpen) {
-      fetchPlanLimits({ force: true }).catch(() => {});
-      fetchPaymentInfo().catch(() => {});
-      fetchPricingCatalog().catch(() => {});
-      fetchPaymentHistory().catch(() => {});
+      fetchPlanLimits({ force: true }).catch((err) => { console.debug('[AccountModal] plan limits fetch failed', err); });
+      fetchPaymentInfo().catch((err) => { console.debug('[AccountModal] payment info fetch failed', err); });
+      fetchPricingCatalog().catch((err) => { console.debug('[AccountModal] pricing catalog fetch failed', err); });
+      fetchPaymentHistory().catch((err) => { console.debug('[AccountModal] payment history fetch failed', err); });
       if (isUserLoggedIn) {
-        fetchActiveSessions().catch(() => {});
+        fetchActiveSessions().catch((err) => { console.debug('[AccountModal] active sessions fetch failed', err); });
         fetchMyLicense().then(setMyLicense).catch(() => setMyLicense(null));
       } else {
         setMyLicense(null);
@@ -268,8 +268,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
   // Fetch payment coordinates and dynamic pricing on mount with silent fallback
   useEffect(() => {
-    fetchPaymentInfo().catch(() => {});
-    fetchPricingCatalog().catch(() => {});
+    fetchPaymentInfo().catch((err) => { console.debug('[AccountModal] mount payment info fetch failed', err); });
+    fetchPricingCatalog().catch((err) => { console.debug('[AccountModal] mount pricing catalog fetch failed', err); });
   }, [fetchPaymentInfo, fetchPricingCatalog]);
 
   useEffect(() => {
@@ -374,7 +374,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
               message: `Profile "${pendingProfileDto.name}" created.`,
             });
             clearPendingProfileDto();
-          } catch {}
+          } catch (err) {
+            console.debug('[AccountModal] pending profile creation after signup skipped', err);
+          }
         }
       } else {
         const errStr = res.error || 'Failed to create account.';
@@ -457,7 +459,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                 title: 'Signed In',
                 message: `Signed in successfully as ${data.email || 'Google User'}.`,
               });
-              await fetchActiveSessions().catch(() => {});
+              await fetchActiveSessions().catch((err) => { console.debug('[AccountModal] post-google sessions refresh failed', err); });
               setIsGoogleLoading(false);
               onClose();
             } else {
@@ -466,7 +468,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
             }
           }
         }
-      } catch {}
+      } catch (pollErr) {
+        console.debug('[AccountModal] google OAuth poll tick failed', pollErr);
+      }
     }, 1500);
   };
 
@@ -486,7 +490,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           title: 'Connected',
           message: 'Central MAHI account session connected successfully.',
         });
-        await fetchActiveSessions().catch(() => {});
+        await fetchActiveSessions().catch((err) => { console.debug('[AccountModal] token login sessions refresh failed', err); });
         onClose();
       } else {
         setErrorMessage(formatAuthError(res.error || 'Failed to authenticate session token.'));
@@ -518,14 +522,16 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           title: 'Welcome Back!',
           message: 'Successfully logged in to your MAHI Browser account.',
         });
-        await fetchActiveSessions().catch(() => {});
+        await fetchActiveSessions().catch((err) => { console.debug('[AccountModal] token login sessions refresh failed', err); });
         onClose();
 
         if (pendingProfileDto && window.mahiAPI) {
           try {
             await window.mahiAPI.createProfile(pendingProfileDto);
             clearPendingProfileDto();
-          } catch {}
+          } catch (err) {
+            console.debug('[AccountModal] pending profile creation after signup skipped', err);
+          }
         }
       } else {
         const errStr = res.error || 'Invalid credentials.';
@@ -696,7 +702,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           message: res.error || 'Could not revoke session.',
         });
       }
-    } catch {}
+    } catch (err) {
+      console.debug('[AccountModal] revokeSession action failed', err);
+    }
   };
 
   const handleRevokeAllSessionsClick = async () => {
@@ -709,7 +717,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
           message: 'All other devices have been disconnected.',
         });
       }
-    } catch {}
+    } catch (err) {
+      console.debug('[AccountModal] revokeAllSessions action failed', err);
+    }
   };
 
   const handleSwitchDeviceClick = async () => {
@@ -825,7 +835,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
       if (res.success) {
         setPaymentSubmittedStatus(res.status || 'PENDING_VERIFICATION');
-        fetchPaymentHistory().catch(() => {});
+        fetchPaymentHistory().catch((err) => { console.debug('[AccountModal] UTR payment history refresh failed', err); });
         showToast({
           type: 'success',
           title: 'Payment Submitted',
@@ -872,7 +882,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
 
       if (res.success) {
         setPaymentSubmittedStatus(res.status || 'PENDING_VERIFICATION');
-        fetchPaymentHistory().catch(() => {});
+        fetchPaymentHistory().catch((err) => { console.debug('[AccountModal] UTR payment history refresh failed', err); });
         showToast({
           type: 'success',
           title: 'Crypto TX Submitted',

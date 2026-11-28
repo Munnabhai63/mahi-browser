@@ -29,6 +29,8 @@ import {
   resolvePgBillingClient,
   withPgTransaction,
 } from './payment-types.js';
+import { createLogger } from '../../utils/logger.js';
+const log = createLogger('payment-activation');
 
 export async function createCheckoutSessionImpl(
   req: CheckoutSessionRequest,
@@ -329,7 +331,7 @@ export async function activateSubscriptionFromPaymentImpl(params: {
     if (isStrictProductionPostgres()) {
       throw new Error('[PaymentService][PG_UNAVAILABLE] Incomplete Prisma billing client in production.');
     }
-    console.warn(
+    log.warn(
       '[PaymentService][PG_CAPABILITY_MISSING] Prisma client cannot serve commercial_payments chain; falling back to local SQLite activation + PG auth-users sync only'
     );
   }
@@ -496,12 +498,12 @@ export async function activateSubscriptionFromPaymentImpl(params: {
           });
         }
       } catch (err: any) {
-        console.error('[PaymentService][CRITICAL] PG plan sync error', err?.message);
+        log.error('[PaymentService][CRITICAL] PG plan sync error', err?.message);
         planSyncFailed = true;
       }
 
       if (planSyncFailed) {
-        console.error('[PaymentService][RECONCILE_REQUIRED] Subscription active but PG out of sync for user', params.userId);
+        log.error('[PaymentService][RECONCILE_REQUIRED] Subscription active but PG out of sync for user', params.userId);
       }
 
       try {
@@ -518,11 +520,11 @@ export async function activateSubscriptionFromPaymentImpl(params: {
               },
             });
           } else {
-            console.warn(`[PaymentService] Mirror-missing user ${params.userId} in commercial_users; skipping commercial_users update.`);
+            log.warn(`[PaymentService] Mirror-missing user ${params.userId} in commercial_users; skipping commercial_users update.`);
           }
         }
       } catch (err: any) {
-        console.warn(`[PaymentService] Failed to update commercial_users plan_id for ${params.userId}:`, err?.message);
+        log.warn(`[PaymentService] Failed to update commercial_users plan_id for ${params.userId}:`, err?.message);
       }
 
       const existingLicense = await tx.licenses.findFirst({
@@ -543,7 +545,12 @@ export async function activateSubscriptionFromPaymentImpl(params: {
             : await getCentralUserByIdAsync(params.userId);
           if (u?.name) customerName = u.name.trim();
           else if (u?.email) customerName = u.email.trim();
-        } catch {}
+        } catch (err) {
+          log.debug('Customer name lookup fell back to userId during PG license minting', {
+            userId: params.userId,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
 
         const { generateLicenseKey } = await import('../../../04_LICENSING/license-engine.js');
         const { rawKey, keyHash, keyMasked } = generateLicenseKey();
@@ -731,7 +738,7 @@ export async function activateSubscriptionFromPaymentImpl(params: {
           WHERE id = ?
         `).run(targetPlan.id, targetPlan.limits.maxProfiles, now, params.userId);
       } catch (err: any) {
-        console.error('[PaymentService] SQLite auth_users plan update error:', err?.message);
+        log.error('[PaymentService] SQLite auth_users plan update error:', err?.message);
       }
 
       try {
@@ -741,7 +748,7 @@ export async function activateSubscriptionFromPaymentImpl(params: {
           WHERE id = ?
         `).run(targetPlan.id, params.userId);
       } catch (err: any) {
-        console.error('[PaymentService] SQLite commercial_users plan update error:', err?.message);
+        log.error('[PaymentService] SQLite commercial_users plan update error:', err?.message);
       }
 
       try {
@@ -755,7 +762,12 @@ export async function activateSubscriptionFromPaymentImpl(params: {
             const u = getUserById(params.userId);
             if (u?.name) customerName = u.name;
             else if (u?.email) customerName = u.email;
-          } catch {}
+          } catch (err) {
+            log.debug('Customer name lookup fell back to userId during SQLite license minting', {
+              userId: params.userId,
+              err: err instanceof Error ? err.message : String(err),
+            });
+          }
 
           const created = createLicense({
             durationType: 'CUSTOM',
@@ -775,7 +787,7 @@ export async function activateSubscriptionFromPaymentImpl(params: {
           }
         }
       } catch (licErr: any) {
-        console.warn(`[PaymentService] licence creation failed for user ${params.userId}:`, licErr?.message || licErr);
+        log.warn(`[PaymentService] licence creation failed for user ${params.userId}:`, licErr?.message || licErr);
         licenceResult = null;
       }
     };
@@ -798,13 +810,13 @@ export async function activateSubscriptionFromPaymentImpl(params: {
           profile_quota: targetPlan.limits.maxProfiles,
         });
       } catch (err: any) {
-        console.error('[PaymentService][CRITICAL] PG plan sync error', err?.message);
+        log.error('[PaymentService][CRITICAL] PG plan sync error', err?.message);
         planSyncFailed = true;
       }
     }
 
     if (planSyncFailed) {
-      console.error('[PaymentService][RECONCILE_REQUIRED] Subscription active but PG out of sync for user', params.userId);
+      log.error('[PaymentService][RECONCILE_REQUIRED] Subscription active but PG out of sync for user', params.userId);
     }
   }
 
@@ -1108,7 +1120,12 @@ export async function handleWebhookImpl(
   } catch (err) {
     try {
       db.prepare("DELETE FROM commercial_webhook_events WHERE id = ? AND status = 'PROCESSING'").run(event.id);
-    } catch {}
+    } catch (cleanupErr) {
+      log.warn('Failed releasing PROCESSING lock row after webhook processing failure', {
+        eventId: event.id,
+        err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+      });
+    }
     throw err;
   }
 

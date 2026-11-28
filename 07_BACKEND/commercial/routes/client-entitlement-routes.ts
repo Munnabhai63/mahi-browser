@@ -24,6 +24,9 @@ import { isPostgresConfigured } from '../../../06_DATABASE/central-repository.js
 import { getPrismaClient } from '../../../06_DATABASE/prisma-client.js';
 import { getDatabase } from '../../../06_DATABASE/connection.js';
 import { rejectIfEmergencyFrozen } from '../../services/kill-switch-service.js';
+import { createLogger } from '../../utils/logger.js';
+
+const log = createLogger('client-entitlement-routes');
 
 export async function handleClientEntitlementRoutes(
   req: http.IncomingMessage,
@@ -47,7 +50,12 @@ export async function handleClientEntitlementRoutes(
     let centralUser: any = null;
     try {
       centralUser = await getCentralUserByIdAsync(auth.userId);
-    } catch {}
+    } catch (err) {
+      log.debug('Central user fetch skipped during client entitlement probe', {
+        userId: auth.userId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     const entitlements = evaluateUserEntitlements(auth.userId, hwidParam || undefined, undefined, legacyHwidParam);
 
@@ -93,7 +101,12 @@ export async function handleClientEntitlementRoutes(
               : String(activeLic.expires_at);
           }
         }
-      } catch {}
+      } catch (pgErr) {
+        log.debug('PostgreSQL license expiry lookup fell back cleanly', {
+          userId: auth.userId,
+          err: pgErr instanceof Error ? pgErr.message : String(pgErr),
+        });
+      }
     }
     if (expires_at && typeof expires_at !== 'string') {
       expires_at = (expires_at as any) instanceof Date ? (expires_at as any).toISOString() : String(expires_at);
@@ -194,7 +207,13 @@ export async function handleClientEntitlementRoutes(
     if (evaluatedStatus !== row.status) {
       try {
         db.prepare('UPDATE licenses SET status = ? WHERE id = ?').run(evaluatedStatus, row.id);
-      } catch {}
+      } catch (err) {
+        log.warn('Failed updating evaluated license status in SQLite', {
+          licenseId: row.id,
+          evaluatedStatus,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     // Resolve planId and planName

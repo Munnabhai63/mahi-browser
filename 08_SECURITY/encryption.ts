@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { app, safeStorage } from './electron-bridge.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+const log = createLogger('encryption');
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
@@ -28,7 +30,7 @@ function writeMasterKeyFile(keyPath: string, keyBuffer: Buffer): void {
       const encrypted = safeStorage.encryptString(keyHex);
       payload = 'SAFE_STORAGE_V1:' + encrypted.toString('base64');
     } catch (err) {
-      console.warn('[SECURITY] safeStorage.encryptString failed for master key, falling back to restricted file permissions:', err);
+      log.warn('[SECURITY] safeStorage.encryptString failed for master key, falling back to restricted file permissions:', err);
     }
   }
   fs.writeFileSync(keyPath, payload, { encoding: 'utf8', mode: 0o600 });
@@ -41,7 +43,7 @@ function readMasterKeyFile(keyPath: string): Buffer | null {
 
     if (raw.startsWith('SAFE_STORAGE_V1:')) {
       if (!isSafeStorageAvailable()) {
-        console.error('[SECURITY] safeStorage is not available to decrypt .mahi_master.key');
+        log.error('[SECURITY] safeStorage is not available to decrypt .mahi_master.key');
         return null;
       }
       const b64 = raw.slice('SAFE_STORAGE_V1:'.length);
@@ -57,13 +59,17 @@ function readMasterKeyFile(keyPath: string): Buffer | null {
       if (isSafeStorageAvailable()) {
         try {
           writeMasterKeyFile(keyPath, buf);
-          console.log('[SECURITY] Migrated .mahi_master.key to safeStorage encrypted format.');
-        } catch {}
+          log.info('[SECURITY] Migrated .mahi_master.key to safeStorage encrypted format.');
+        } catch (migErr) {
+          log.warn('Master key migration to safeStorage format failed softly', {
+            err: migErr instanceof Error ? migErr.message : String(migErr),
+          });
+        }
       }
       return buf;
     }
   } catch (err) {
-    console.error('[SECURITY] Failed to read .mahi_master.key:', err);
+    log.error('[SECURITY] Failed to read .mahi_master.key:', err);
   }
   return null;
 }

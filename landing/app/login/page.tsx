@@ -44,7 +44,9 @@ export default function LoginPage() {
         try {
           localStorage.removeItem('mahi_auth_token');
           localStorage.removeItem('mahi_access_token');
-        } catch {}
+        } catch (err) {
+          console.debug('[login] legacy localStorage token clear skipped', err);
+        }
         if (redirectPath) {
           window.location.href = redirectPath;
           return;

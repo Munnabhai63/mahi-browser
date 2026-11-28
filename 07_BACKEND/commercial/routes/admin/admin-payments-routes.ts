@@ -34,6 +34,8 @@ import {
 import { revokeLicense, extendLicense } from '../../../../04_LICENSING/license-engine.js';
 import { paymentService } from '../../payment-service.js';
 import { AdminRouteContext, requireAdminAccess } from './admin-shared.js';
+import { createLogger } from '../../../utils/logger.js';
+const log = createLogger('admin-payments-routes');
 
 /** Handles admin plans, pricing versions, licenses, and manual payment approval routes. */
 export async function handleAdminPaymentRoutes(ctx: AdminRouteContext): Promise<boolean> {
@@ -224,7 +226,7 @@ export async function handleAdminPaymentRoutes(ctx: AdminRouteContext): Promise<
       sendJSON(res, ok ? 200 : 404, { success: ok });
       return true;
     } catch (e: any) {
-      console.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+      log.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
       sendJSON(res, 500, { success: false, error: 'License operation failed.' });
       return true;
     }
@@ -241,7 +243,7 @@ export async function handleAdminPaymentRoutes(ctx: AdminRouteContext): Promise<
       sendJSON(res, record ? 200 : 404, { success: Boolean(record), data: record });
       return true;
     } catch (e: any) {
-      console.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
+      log.error('[LicenseEngine][CRITICAL] admin license op failed', e?.message || e);
       sendJSON(res, 500, { success: false, error: 'License operation failed.' });
       return true;
     }

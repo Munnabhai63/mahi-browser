@@ -9,6 +9,8 @@ import { isPostgresConfigured } from '../../../../06_DATABASE/central-repository
 import { getPrismaClient } from '../../../../06_DATABASE/prisma-client.js';
 import { getCentralUserByIdAsync, getCentralUserByEmailAsync } from '../../../../05_AUTH/central-auth-service.js';
 import { getUserById, getUserByEmail } from '../../commercial-auth-service.js';
+import { createLogger } from '../../../utils/logger.js';
+const log = createLogger('admin-shared');
 
 export interface AdminRouteContext {
   req: http.IncomingMessage;
@@ -113,7 +115,7 @@ export async function recordOwnerActionAudit(params: {
       });
       return;
     } catch (err: any) {
-      console.warn('[OwnerService] Postgres audit log write failed (warn-only):', err?.message);
+      log.warn('[OwnerService] Postgres audit log write failed (warn-only):', err?.message);
     }
   }
 
@@ -137,7 +139,7 @@ export async function recordOwnerActionAudit(params: {
       now
     );
   } catch (err: any) {
-    console.warn('[OwnerService] SQLite audit log write failed (warn-only):', err?.message);
+    log.warn('[OwnerService] SQLite audit log write failed (warn-only):', err?.message);
   }
 }
 
@@ -151,17 +153,29 @@ export async function resolveTargetUser(rawIdOrEmail: string): Promise<any | nul
   try {
     const byId = await getCentralUserByIdAsync(clean);
     if (byId) return byId;
-  } catch {}
+  } catch (err) {
+    log.debug('Central user lookup by ID failed in admin resolver', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   try {
     const byEmail = await getCentralUserByEmailAsync(clean);
     if (byEmail) return byEmail;
-  } catch {}
+  } catch (err) {
+    log.debug('Central user lookup by email failed in admin resolver', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   try {
     const comm = getUserById(clean) || getUserByEmail(clean);
     if (comm) return comm;
-  } catch {}
+  } catch (err) {
+    log.debug('SQLite commercial user lookup failed in admin resolver', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   return null;
 }
@@ -182,7 +196,7 @@ export async function resolveOwnerTargetOrRespond(
   try {
     targetUser = await resolveTargetUser(rawTarget);
   } catch (err: any) {
-    console.error(`[OwnerService][CRITICAL] User lookup error for ${opLabel}:`, err?.message || err);
+    log.error(`[OwnerService][CRITICAL] User lookup error for ${opLabel}:`, err?.message || err);
     sendJSON(res, 500, { success: false, error: 'Database error looking up user' });
     return { ok: false };
   }

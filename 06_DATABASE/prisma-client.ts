@@ -6,6 +6,9 @@
 import { createRequire } from 'node:module';
 import type { PrismaClient as PrismaClientType } from '@prisma/client';
 import { parsePgPoolConfig } from './pool-config.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('prisma-client');
 
 const nodeRequire = createRequire(import.meta.url);
 
@@ -133,13 +136,21 @@ export async function disconnectPrisma(): Promise<void> {
   if (prismaInstance) {
     try {
       await prismaInstance.$disconnect();
-    } catch {}
+    } catch (err) {
+      log.debug('Prisma client disconnect error on reset', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
     prismaInstance = null;
   }
   if (pgPoolInstance?.end) {
     try {
       await pgPoolInstance.end();
-    } catch {}
+    } catch (err) {
+      log.debug('PostgreSQL pool end error on reset', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
     pgPoolInstance = null;
   }
 }

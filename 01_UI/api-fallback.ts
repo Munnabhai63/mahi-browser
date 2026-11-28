@@ -414,7 +414,7 @@ export const fallbackMahiAPI: MahiBrowserAPI = {
     verifyAppPin: async () => true,
     setAppPin: async () => true,
     getActivityLogs: async () => { try { const r = await apiGet('/logs'); return Array.isArray(r) ? r : (r.data || []); } catch { return []; } },
-    clearActivityLogs: async () => { try { await apiDelete('/logs'); } catch {} return true; },
+    clearActivityLogs: async () => { try { await apiDelete('/logs'); } catch (err) { console.debug('[api-fallback] clearActivityLogs fallback skipped', err); } return true; },
     getSystemBrowsers: async () => { try { return await apiGet('/system/browsers'); } catch { return [{ name: 'chrome', path: 'Default', engine: 'chrome' }]; } },
     openFileDialog: async () => null,
     openSaveDialog: async () => null,

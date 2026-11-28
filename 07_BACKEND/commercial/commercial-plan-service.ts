@@ -2,6 +2,9 @@ import { getDatabase } from '../../06_DATABASE/connection.js';
 import { CommercialPlan, CommercialPlanLimits, CommercialPlanTier, CommercialRole } from '../../10_CONFIG/shared/types/commercial.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 import { CANONICAL_PLAN_CATALOG, legacyPlanIdToCanonical, INITIAL_PLAN_PRICES, calculateAuthoritativeOrderTotal } from './canonical-plan-catalog.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('commercial-plan-service');
 
 export const DEFAULT_COMMERCIAL_PLANS: CommercialPlan[] = [
   {
@@ -370,7 +373,12 @@ function mapRowToPlan(r: any): CommercialPlan {
 
   try {
     limits = { ...limits, ...JSON.parse(r.limits_json || '{}') };
-  } catch {}
+  } catch (parseErr) {
+    log.warn('Failed parsing plan limits_json in commercial-plan-service', {
+      planId: r.id,
+      err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+    });
+  }
 
   return {
     id: r.id,

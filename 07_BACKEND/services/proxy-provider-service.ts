@@ -31,11 +31,19 @@ import { ProxyItem, CreateProxyDTO } from '../../10_CONFIG/shared/types/proxy.js
 import { createProxy, getProxyById, updateProxy, deleteProxy } from '../../02_BROWSER/services/proxy-service.js';
 import { hasWorkspacePermission } from './team-workspace-service.js';
 import { TeamPermission } from '../../10_CONFIG/shared/types/workspace.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('proxy-provider-service');
 
 function safeLogActivity(category: 'PROXY' | 'SYSTEM', level: 'INFO' | 'WARNING' | 'ERROR' | 'SUCCESS', action: string, details: string) {
   try {
     logActivity(category, level, action, details);
-  } catch {}
+  } catch (err) {
+    log.debug('Proxy provider audit log write skipped', {
+      action,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export interface UserContext {
@@ -86,7 +94,12 @@ export class ProxyProviderService {
             }
           }
         }
-      } catch {}
+      } catch (err) {
+        log.warn('Failed fetching country catalog from proxy provider', {
+          providerId: p?.id,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     const availableCountries = Array.from(countryMap.values());
@@ -196,7 +209,12 @@ export class ProxyProviderService {
         SET provider_id = ?, network_type = ?, session_type = ?
         WHERE id = ?
       `).run(provider.id, request.networkType, request.sessionType, canonicalProxy.id);
-    } catch {}
+    } catch (colErr) {
+      log.debug('Additive proxy provider column update skipped cleanly', {
+        proxyId: canonicalProxy.id,
+        err: colErr instanceof Error ? colErr.message : String(colErr),
+      });
+    }
 
     // Insert session tracking record in proxy_provider_sessions
     db.prepare(`
@@ -238,7 +256,12 @@ export class ProxyProviderService {
         if (settingsRow?.settings_json) {
           try {
             settingsObj = JSON.parse(settingsRow.settings_json);
-          } catch {}
+          } catch (parseErr) {
+            log.warn('Failed parsing profile settings_json during proxy assignment', {
+              profileId: request.profileId,
+              err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+            });
+          }
         }
         if (!settingsObj.network) settingsObj.network = {};
         settingsObj.network.proxyId = canonicalProxy.id;
@@ -356,7 +379,13 @@ export class ProxyProviderService {
     if (provider) {
       try {
         await provider.revokeSession(session.sessionId);
-      } catch {}
+      } catch (revokeErr) {
+        log.warn('Upstream proxy session revocation failed cleanly', {
+          sessionId,
+          providerId: session.providerId,
+          err: revokeErr instanceof Error ? revokeErr.message : String(revokeErr),
+        });
+      }
     }
 
     const db = getDatabase();

@@ -2,6 +2,9 @@ import { exec } from 'node:child_process';
 import { BrowserWindow } from '../08_SECURITY/electron-bridge.js';
 import { processManager } from '../02_BROWSER/process-manager.js';
 import { ProfileResourceUsage, FleetResourceSummary } from '../10_CONFIG/shared/types/resources.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('resource-monitor-service');
 
 let monitorInterval: NodeJS.Timeout | null = null;
 let lastFleetSummary: FleetResourceSummary = {
@@ -122,7 +125,9 @@ export function startResourceMonitoring(): void {
           win.webContents.send('resources:fleetUsage', summary);
         }
       }
-    } catch {}
+    } catch (err) {
+      log.debug('resource-monitor fleet sampling failed', { err });
+    }
   }, 3500);
 }
 
@@ -138,7 +143,9 @@ export function optimizeFleetMemory(): { freedMB: number; status: string } {
     if (global.gc) {
       global.gc();
     }
-  } catch {}
+  } catch (err) {
+    log.debug('resource-monitor manual gc trigger failed', { err });
+  }
 
   const currentCount = processManager.getRunningCount();
   const estimatedFreed = Math.max(25, currentCount * 35);

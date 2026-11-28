@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { app, safeStorage } from './electron-bridge.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+const log = createLogger('install-secrets');
 
 export interface InstallSecrets {
   jwtSecret: string;
@@ -31,7 +33,7 @@ function writeSecretsFile(filePath: string, data: InstallSecrets): void {
       const encrypted = safeStorage.encryptString(jsonStr);
       payload = 'SAFE_STORAGE_V1:' + encrypted.toString('base64');
     } catch (err) {
-      console.warn('[SECURITY] safeStorage.encryptString failed, falling back to restricted file permissions:', err);
+      log.warn('[SECURITY] safeStorage.encryptString failed, falling back to restricted file permissions:', err);
     }
   }
   fs.writeFileSync(filePath, payload, { encoding: 'utf8', mode: 0o600 });
@@ -44,7 +46,7 @@ function readSecretsFile(filePath: string): InstallSecrets | null {
 
     if (raw.startsWith('SAFE_STORAGE_V1:')) {
       if (!isSafeStorageAvailable()) {
-        console.error('[SECURITY] safeStorage encryption is not available to decrypt install-secrets.json');
+        log.error('[SECURITY] safeStorage encryption is not available to decrypt install-secrets.json');
         return null;
       }
       const b64 = raw.slice('SAFE_STORAGE_V1:'.length);
@@ -58,13 +60,17 @@ function readSecretsFile(filePath: string): InstallSecrets | null {
       if (isSafeStorageAvailable()) {
         try {
           writeSecretsFile(filePath, parsed);
-          console.log('[SECURITY] Migrated install-secrets.json to safeStorage encrypted format.');
-        } catch {}
+          log.info('[SECURITY] Migrated install-secrets.json to safeStorage encrypted format.');
+        } catch (migErr) {
+          log.warn('Install secrets migration to safeStorage format failed softly', {
+            err: migErr instanceof Error ? migErr.message : String(migErr),
+          });
+        }
       }
       return parsed;
     }
   } catch (err) {
-    console.error('[SECURITY] Failed to read or parse install-secrets.json:', err);
+    log.error('[SECURITY] Failed to read or parse install-secrets.json:', err);
   }
   return null;
 }
@@ -111,7 +117,7 @@ export function getInstallSecrets(): InstallSecrets {
   try {
     writeSecretsFile(filePath, newSecrets);
   } catch (err) {
-    console.error('[SECURITY] Failed to save install-secrets.json:', err);
+    log.error('[SECURITY] Failed to save install-secrets.json:', err);
   }
 
   cachedSecrets = newSecrets;

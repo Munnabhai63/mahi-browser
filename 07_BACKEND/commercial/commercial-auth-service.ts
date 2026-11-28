@@ -10,6 +10,8 @@ import {
 } from '../../10_CONFIG/shared/types/commercial.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
 import { getJwtSecret } from '../../08_SECURITY/install-secrets.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('commercial-auth-service');
 
 const JWT_EXPIRATION_HOURS = 24 * 7; // 7 days
 
@@ -186,7 +188,7 @@ export function syncSupabaseUser(user: { id: string; email: string; name?: strin
     }
     return { success: true };
   } catch (err: any) {
-    console.error('syncSupabaseUser error:', err);
+    log.error('syncSupabaseUser error:', err);
     return { success: false };
   }
 }
@@ -296,7 +298,12 @@ export function getUserById(userId: string): CommercialUser | null {
     if (row.feature_overrides) {
       try {
         featureOverrides = JSON.parse(row.feature_overrides);
-      } catch {}
+      } catch (parseErr) {
+        log.warn('Failed parsing user feature_overrides JSON in getUserById', {
+          userId: row.id,
+          err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        });
+      }
     }
 
     return {
@@ -416,7 +423,12 @@ export function getAllUsers(filter?: { status?: string; role?: string; searchQue
     if (r.feature_overrides) {
       try {
         featureOverrides = JSON.parse(r.feature_overrides);
-      } catch {}
+      } catch (parseErr) {
+        log.warn('Failed parsing user feature_overrides JSON in getAllUsers', {
+          userId: r.id,
+          err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        });
+      }
     }
     return {
       id: r.id,

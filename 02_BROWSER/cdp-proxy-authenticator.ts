@@ -1,10 +1,12 @@
 import net from 'node:net';
 import http from 'node:http';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+const log = createLogger('cdp-proxy-authenticator');
 
 function debugLog(msg: string) {
   const fn = (globalThis as any).__mahiDebugLog;
   if (fn) fn(msg);
-  else console.log(msg);
+  else log.info(msg);
 }
 
 /**
@@ -70,7 +72,12 @@ export async function attachCdpProxyAuthenticator(
             return data.webSocketDebuggerUrl;
           }
         }
-      } catch {}
+      } catch (pollErr) {
+        log.debug('Waiting for CDP /json/version endpoint in proxy authenticator', {
+          port,
+          err: pollErr instanceof Error ? pollErr.message : String(pollErr),
+        });
+      }
       await new Promise((r) => setTimeout(r, delayMs));
     }
     throw new Error(`Chromium CDP endpoint at 127.0.0.1:${port} was not reachable within timeout.`);
@@ -186,7 +193,12 @@ export async function attachCdpProxyAuthenticator(
       if (ws) {
         try {
           ws.close();
-        } catch {}
+        } catch (closeErr) {
+          log.debug('CDP proxy authenticator WebSocket close skipped', {
+            profileId,
+            err: closeErr instanceof Error ? closeErr.message : String(closeErr),
+          });
+        }
         ws = null;
       }
     },

@@ -5,6 +5,9 @@
  */
 
 import { Redis } from 'ioredis';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('redis-lock-service');
 
 export interface LockAcquireResult {
   acquired: boolean;
@@ -128,7 +131,11 @@ export async function disconnectRedis(): Promise<void> {
   if (redisClientInstance) {
     try {
       await redisClientInstance.quit();
-    } catch {}
+    } catch (err) {
+      log.debug('Redis disconnect quit skipped cleanly', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
     redisClientInstance = null;
   }
 }
@@ -246,7 +253,12 @@ export class RedisDistributedLockService {
           deviceId: existing.deviceId,
           expiresAt: existing.expiresAt,
         };
-      } catch {}
+      } catch (parseErr) {
+        log.warn('Failed parsing existing Redis lock metadata payload', {
+          cloudProfileId,
+          err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        });
+      }
     }
 
     return {
@@ -276,7 +288,12 @@ export class RedisDistributedLockService {
         userId = p.userId || userId;
         deviceName = p.deviceName || deviceName;
         acquiredAt = p.acquiredAt || acquiredAt;
-      } catch {}
+      } catch (parseErr) {
+        log.warn('Failed parsing Redis lock payload during renew', {
+          cloudProfileId,
+          err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        });
+      }
     }
 
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();

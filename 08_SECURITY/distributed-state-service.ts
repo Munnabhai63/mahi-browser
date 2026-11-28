@@ -17,6 +17,8 @@ import { getRedisClient, isRedisConfigured } from './redis-lock-service.js';
 import { isPostgresConfigured } from '../06_DATABASE/central-repository.js';
 import { getPrismaClient } from '../06_DATABASE/prisma-client.js';
 import { getDatabase, SqliteWrapper } from '../06_DATABASE/connection.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+const log = createLogger('distributed-state-service');
 
 export interface FixedWindowRateLimitResult {
   allowed: boolean;
@@ -132,7 +134,7 @@ async function ensurePgStateTable(prisma: any): Promise<boolean> {
     pgInitializedClients.add(prisma);
     return true;
   } catch (err: any) {
-    console.warn('[DistributedState] PostgreSQL state table init warning:', err?.message || err);
+    log.warn('[DistributedState] PostgreSQL state table init warning:', err?.message || err);
     return false;
   }
 }
@@ -242,8 +244,11 @@ function incrementLocalCounter(fullKey: string, windowMs: number, now: number): 
 
     try {
       return typeof db.transaction === 'function' ? db.transaction(runSqlite)() : runSqlite();
-    } catch {
+    } catch (err) {
       // Fall through cleanly to in-memory fallback
+      log.debug('Distributed state SQLite increment fell back to memory', {
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -277,8 +282,11 @@ function readLocalCounter(fullKey: string, now: number): { count: number; expire
         expiresAtMs: Number(existing.expires_at_ms) || 0,
         backend: 'sqlite',
       };
-    } catch {
+    } catch (err) {
       // Fall through to memory
+      log.debug('Distributed state SQLite read fell back to memory', {
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -297,8 +305,11 @@ function deleteLocalKey(fullKey: string): void {
   if (db && ensureSqliteStateTable(db)) {
     try {
       db.prepare('DELETE FROM distributed_runtime_state WHERE state_key = ?').run(fullKey);
-    } catch {
+    } catch (err) {
       // Non-fatal in fallback cleanup
+      log.debug('Distributed state SQLite delete cleanup skipped', {
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }
@@ -333,7 +344,7 @@ export async function consumeFixedWindowRateLimitAsync(params: {
           backend: 'redis',
         };
       } catch (err: any) {
-        console.warn('[DistributedState] Redis rate-limit error, falling back:', err?.message || err);
+        log.warn('[DistributedState] Redis rate-limit error, falling back:', err?.message || err);
       }
     }
 
@@ -370,7 +381,7 @@ export async function consumeFixedWindowRateLimitAsync(params: {
           };
         }
       } catch (err: any) {
-        console.warn('[DistributedState] PostgreSQL rate-limit error, falling back:', err?.message || err);
+        log.warn('[DistributedState] PostgreSQL rate-limit error, falling back:', err?.message || err);
       }
     }
   }
@@ -429,7 +440,7 @@ export async function checkAttemptLockoutAsync(params: {
           backend: 'redis',
         };
       } catch (err: any) {
-        console.warn('[DistributedState] Redis lockout check error, falling back:', err?.message || err);
+        log.warn('[DistributedState] Redis lockout check error, falling back:', err?.message || err);
       }
     }
 
@@ -448,7 +459,11 @@ export async function checkAttemptLockoutAsync(params: {
         const count = Number(rows[0].count) || 0;
         const expiresAt = Number(rows[0].expires_at_ms) || 0;
         if (expiresAt <= now) {
-          await prisma.$executeRaw`DELETE FROM system_runtime_state WHERE state_key = ${fullKey}`.catch(() => {});
+          await prisma.$executeRaw`DELETE FROM system_runtime_state WHERE state_key = ${fullKey}`.catch((pgErr: unknown) => {
+            log.debug('Expired PG lockout state cleanup skipped', {
+              err: pgErr instanceof Error ? pgErr.message : String(pgErr),
+            });
+          });
           return { allowed: true, count: 0, remainingMs: 0, retryAfterSeconds: 0, backend: 'postgres' };
         }
         const remainingMs = Math.max(0, expiresAt - now);
@@ -460,7 +475,7 @@ export async function checkAttemptLockoutAsync(params: {
           backend: 'postgres',
         };
       } catch (err: any) {
-        console.warn('[DistributedState] PostgreSQL lockout check error, falling back:', err?.message || err);
+        log.warn('[DistributedState] PostgreSQL lockout check error, falling back:', err?.message || err);
       }
     }
   }
@@ -510,7 +525,7 @@ export async function clearAttemptsAsync(params: { namespace: string; key: strin
     try {
       await redis.del(fullKey);
     } catch (err: any) {
-      console.warn('[DistributedState] Redis clear attempts warning:', err?.message || err);
+      log.warn('[DistributedState] Redis clear attempts warning:', err?.message || err);
     }
   }
 
@@ -519,7 +534,7 @@ export async function clearAttemptsAsync(params: { namespace: string; key: strin
     try {
       await prisma.$executeRaw`DELETE FROM system_runtime_state WHERE state_key = ${fullKey}`;
     } catch (err: any) {
-      console.warn('[DistributedState] PostgreSQL clear attempts warning:', err?.message || err);
+      log.warn('[DistributedState] PostgreSQL clear attempts warning:', err?.message || err);
     }
   }
 }
@@ -546,7 +561,7 @@ export async function setDistributedKvAsync(params: {
       await redis.set(fullKey, payload, 'EX', ttlSec);
       return;
     } catch (err: any) {
-      console.warn('[DistributedState] Redis KV set warning, falling back:', err?.message || err);
+      log.warn('[DistributedState] Redis KV set warning, falling back:', err?.message || err);
     }
   }
 
@@ -562,7 +577,7 @@ export async function setDistributedKvAsync(params: {
       `;
       return;
     } catch (err: any) {
-      console.warn('[DistributedState] PostgreSQL KV set warning, falling back:', err?.message || err);
+      log.warn('[DistributedState] PostgreSQL KV set warning, falling back:', err?.message || err);
     }
   }
 
@@ -574,8 +589,11 @@ export async function setDistributedKvAsync(params: {
          VALUES (?, ?, 0, ?)`
       ).run(fullKey, payload, expiresAtMs);
       return;
-    } catch {
+    } catch (err) {
       // Fall through to memory
+      log.debug('Distributed KV SQLite write fell back to memory', {
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -603,12 +621,16 @@ export async function getDistributedKvAsync(params: {
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (parsed?.exp && Number(parsed.exp) <= now) {
-        await redis.del(fullKey).catch(() => {});
+        await redis.del(fullKey).catch((delErr: unknown) => {
+          log.debug('Expired Redis KV cleanup skipped', {
+            err: delErr instanceof Error ? delErr.message : String(delErr),
+          });
+        });
         return null;
       }
       return parsed;
     } catch (err: any) {
-      console.warn('[DistributedState] Redis KV get warning, falling back:', err?.message || err);
+      log.warn('[DistributedState] Redis KV get warning, falling back:', err?.message || err);
     }
   }
 
@@ -626,12 +648,16 @@ export async function getDistributedKvAsync(params: {
       }
       const exp = Number(rows[0].expires_at_ms) || 0;
       if (exp > 0 && exp <= now) {
-        await prisma.$executeRaw`DELETE FROM system_runtime_state WHERE state_key = ${fullKey}`.catch(() => {});
+        await prisma.$executeRaw`DELETE FROM system_runtime_state WHERE state_key = ${fullKey}`.catch((pgErr: unknown) => {
+          log.debug('Expired PG KV cleanup skipped', {
+            err: pgErr instanceof Error ? pgErr.message : String(pgErr),
+          });
+        });
         return null;
       }
       return JSON.parse(rows[0].value_json);
     } catch (err: any) {
-      console.warn('[DistributedState] PostgreSQL KV get warning, falling back:', err?.message || err);
+      log.warn('[DistributedState] PostgreSQL KV get warning, falling back:', err?.message || err);
     }
   }
 
@@ -648,8 +674,11 @@ export async function getDistributedKvAsync(params: {
         }
         return JSON.parse(row.value_json);
       }
-    } catch {
+    } catch (err) {
       // Fall through to memory
+      log.debug('Distributed KV SQLite read fell back to memory', {
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -685,8 +714,11 @@ export function clearLocalDistributedStateNamespace(namespace: string): void {
   if (db && ensureSqliteStateTable(db)) {
     try {
       db.prepare('DELETE FROM distributed_runtime_state WHERE state_key LIKE ?').run(`${prefix}%`);
-    } catch {
+    } catch (err) {
       // Non-fatal in test cleanup
+      log.debug('Distributed state SQLite namespace cleanup skipped', {
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }
@@ -699,8 +731,11 @@ export async function clearDistributedStateNamespaceAsync(namespace: string): Pr
   if (prisma && (await ensurePgStateTable(prisma))) {
     try {
       await prisma.$executeRaw`DELETE FROM system_runtime_state WHERE state_key LIKE ${`${prefix}%`}`;
-    } catch {
+    } catch (err) {
       // Non-fatal in test cleanup
+      log.debug('Distributed state PG namespace cleanup skipped', {
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }

@@ -189,7 +189,9 @@ export function getWebAdminTemplateHtml(): string {
         try {
           sessionStorage.setItem('mahi_admin_secret', val);
           localStorage.setItem('mahi_admin_secret', val);
-        } catch {}
+        } catch {
+          void 0; /* browser storage blocked */
+        }
         return val;
       }
       try {
@@ -198,7 +200,9 @@ export function getWebAdminTemplateHtml(): string {
           if (inputEl && !inputEl.value) inputEl.value = val;
           return val;
         }
-      } catch {}
+      } catch {
+        void 0; /* browser storage blocked */
+      }
       return '';
     }
 
@@ -265,7 +269,7 @@ export function getWebAdminTemplateHtml(): string {
       ta.style.opacity = '0';
       document.body.appendChild(ta);
       ta.select();
-      try { document.execCommand('copy'); if (cb) cb(); } catch (e) {}
+      try { document.execCommand('copy'); if (cb) cb(); } catch (e) { void 0; /* browser copy fallback */ }
       document.body.removeChild(ta);
     }
 

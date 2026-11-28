@@ -20,6 +20,8 @@ import { isRedisConfigured, getRedisClient } from '../../08_SECURITY/redis-lock-
 import { isPostgresConfigured } from '../../06_DATABASE/central-repository.js';
 import { getPrismaClient } from '../../06_DATABASE/prisma-client.js';
 import { getDatabase, SqliteWrapper } from '../../06_DATABASE/connection.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('kill-switch-service');
 
 export interface EmergencyKillSwitchState {
   enabled: boolean;
@@ -89,7 +91,7 @@ async function ensurePgFlagsTable(prisma: any): Promise<boolean> {
     pgFlagsTableReady.add(prisma);
     return true;
   } catch (err: any) {
-    console.warn('[KillSwitch] PostgreSQL flags table init warning:', err?.message || err);
+    log.warn('[KillSwitch] PostgreSQL flags table init warning:', err?.message || err);
     return false;
   }
 }
@@ -123,7 +125,7 @@ async function readPersistedKillSwitchRecordAsync(): Promise<{
         return { record: parsed, source: 'redis' };
       }
     } catch (err: any) {
-      console.warn('[KillSwitch] Redis read warning, checking database:', err?.message || err);
+      log.warn('[KillSwitch] Redis read warning, checking database:', err?.message || err);
     }
   }
 
@@ -137,13 +139,17 @@ async function readPersistedKillSwitchRecordAsync(): Promise<{
         const parsed = parsePersistedRecord(rows[0].value_json);
         if (parsed) {
           if (redis) {
-            await redis.set(KILL_SWITCH_REDIS_KEY, JSON.stringify(parsed)).catch(() => {});
+            await redis.set(KILL_SWITCH_REDIS_KEY, JSON.stringify(parsed)).catch((redisErr: unknown) => {
+              log.debug('Kill-switch Redis cache warm-up failed', {
+                err: redisErr instanceof Error ? redisErr.message : String(redisErr),
+              });
+            });
           }
           return { record: parsed, source: 'database' };
         }
       }
     } catch (err: any) {
-      console.warn('[KillSwitch] PostgreSQL read warning, falling back:', err?.message || err);
+      log.warn('[KillSwitch] PostgreSQL read warning, falling back:', err?.message || err);
     }
   }
 
@@ -157,13 +163,20 @@ async function readPersistedKillSwitchRecordAsync(): Promise<{
         const parsed = parsePersistedRecord(row.value_json);
         if (parsed) {
           if (redis) {
-            await redis.set(KILL_SWITCH_REDIS_KEY, JSON.stringify(parsed)).catch(() => {});
+            await redis.set(KILL_SWITCH_REDIS_KEY, JSON.stringify(parsed)).catch((redisErr: unknown) => {
+              log.debug('Kill-switch Redis SQLite warm-up failed', {
+                err: redisErr instanceof Error ? redisErr.message : String(redisErr),
+              });
+            });
           }
           return { record: parsed, source: 'database' };
         }
       }
-    } catch {
+    } catch (sqliteErr) {
       // Ignore if app_settings table is absent in isolated DB tests
+      log.debug('Kill-switch SQLite app_settings lookup skipped', {
+        err: sqliteErr instanceof Error ? sqliteErr.message : String(sqliteErr),
+      });
     }
   }
 
@@ -237,8 +250,11 @@ export async function setEmergencyKillSwitchAsync(params: {
          VALUES (?, ?, ?)`
       ).run(KILL_SWITCH_DB_KEY, payload, now);
       persistedToDb = true;
-    } catch {
+    } catch (sqliteErr) {
       // Fallback safely if app_settings doesn't exist
+      log.debug('Kill-switch SQLite write fell back to memory', {
+        err: sqliteErr instanceof Error ? sqliteErr.message : String(sqliteErr),
+      });
     }
   }
 
@@ -253,7 +269,7 @@ export async function setEmergencyKillSwitchAsync(params: {
     try {
       await redis.set(KILL_SWITCH_REDIS_KEY, payload);
     } catch (err: any) {
-      console.warn('[KillSwitch] Redis sync write warning:', err?.message || err);
+      log.warn('[KillSwitch] Redis sync write warning:', err?.message || err);
     }
   }
 
@@ -297,16 +313,28 @@ export async function resetKillSwitchForTesting(): Promise<void> {
   memoryKillSwitchRecord = null;
   const redis = getRedisKvClient();
   if (redis && typeof redis.del === 'function') {
-    await redis.del(KILL_SWITCH_REDIS_KEY).catch(() => {});
+    await redis.del(KILL_SWITCH_REDIS_KEY).catch((redisErr: unknown) => {
+      log.debug('Kill-switch Redis reset delete skipped', {
+        err: redisErr instanceof Error ? redisErr.message : String(redisErr),
+      });
+    });
   }
   const prisma = getCapablePgPrisma();
   if (prisma && (await ensurePgFlagsTable(prisma))) {
-    await prisma.$executeRaw`DELETE FROM system_runtime_flags WHERE flag_key = ${KILL_SWITCH_DB_KEY}`.catch(() => {});
+    await prisma.$executeRaw`DELETE FROM system_runtime_flags WHERE flag_key = ${KILL_SWITCH_DB_KEY}`.catch((pgErr: unknown) => {
+      log.debug('Kill-switch PG reset delete skipped', {
+        err: pgErr instanceof Error ? pgErr.message : String(pgErr),
+      });
+    });
   }
   const db = tryGetSqlite();
   if (db) {
     try {
       db.prepare('DELETE FROM app_settings WHERE key = ?').run(KILL_SWITCH_DB_KEY);
-    } catch {}
+    } catch (sqliteErr) {
+      log.debug('Kill-switch SQLite reset delete skipped', {
+        err: sqliteErr instanceof Error ? sqliteErr.message : String(sqliteErr),
+      });
+    }
   }
 }

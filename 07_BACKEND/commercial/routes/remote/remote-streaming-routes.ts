@@ -8,6 +8,9 @@ import {
 } from '../../../cloud-browser/index.js';
 import { mobileCompanionService } from '../../../services/mobile-companion-service.js';
 import { parseBody, sendRemoteJSON, RemoteRouteContext } from './remote-shared.js';
+import { createLogger } from '../../../utils/logger.js';
+
+const log = createLogger('remote-streaming-routes');
 
 /** Handles remote cloud browser sessions/SSE streaming/input and mobile companion routes. */
 export async function handleRemoteStreamingAndMobileRoutes(ctx: RemoteRouteContext): Promise<boolean> {
@@ -183,12 +186,20 @@ export async function handleRemoteStreamingAndMobileRoutes(ctx: RemoteRouteConte
         send: (msg) => {
           try {
             res.write(`data: ${JSON.stringify(msg)}\n\n`);
-          } catch {}
+          } catch (writeErr) {
+            log.debug('SSE frame write skipped for disconnected remote stream client', {
+              err: writeErr instanceof Error ? writeErr.message : String(writeErr),
+            });
+          }
         },
         close: () => {
           try {
             res.end();
-          } catch {}
+          } catch (closeErr) {
+            log.debug('SSE stream close skipped', {
+              err: closeErr instanceof Error ? closeErr.message : String(closeErr),
+            });
+          }
         },
       });
     } catch (subErr: any) {

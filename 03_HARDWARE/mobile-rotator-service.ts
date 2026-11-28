@@ -10,7 +10,9 @@ import { logActivity } from '../07_BACKEND/services/audit-service.js';
 import { getDatabase } from '../06_DATABASE/connection.js';
 import { getBundledResourcePath, getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 import { platformAdapter } from '../02_BROWSER/services/platform-adapter.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
 
+const log = createLogger('mobile-rotator-service');
 const nativeExecFileAsync = promisify(execFile);
 
 function buildAdbExecEnv(): NodeJS.ProcessEnv {
@@ -29,7 +31,9 @@ function buildAdbExecEnv(): NodeJS.ProcessEnv {
       const adbHome = path.join(getWritableUserDataDir(), 'adb-home');
       try {
         fs.mkdirSync(adbHome, { recursive: true });
-      } catch {}
+      } catch (err) {
+        log.debug('mobile-rotator adb-home mkdir skipped', { adbHome, err });
+      }
       env.ANDROID_USER_HOME = adbHome;
     }
   }
@@ -294,8 +298,8 @@ export async function resolveAdbExecutable(customPath?: string): Promise<{
     if (firstMatch) {
       return { adbPath: firstMatch, source: 'path' };
     }
-  } catch {
-    // ADB not present on PATH
+  } catch (err) {
+    log.debug('mobile-rotator adb PATH lookup failed', { err });
   }
 
   return { adbPath: null, source: 'missing' };
@@ -325,8 +329,8 @@ export async function getAdbEnvironmentStatus(): Promise<AdbEnvironmentStatus> {
   try {
     const { stdout } = await activeExecFileFn(resolved.adbPath, ['version'], { timeout: 5000 });
     version = stdout.split(/\r?\n/)[0]?.trim() || undefined;
-  } catch {
-    // Version query optional
+  } catch (err) {
+    log.debug('mobile-rotator optional adb version query failed', { adbPath: resolved.adbPath, err });
   }
 
   return {
@@ -381,7 +385,9 @@ export async function installAdbPlatformTools(): Promise<AdbInstallResult> {
       if (process.platform !== 'win32') {
         try {
           fs.chmodSync(expectedAdb, 0o755);
-        } catch {}
+        } catch (err) {
+          log.debug('mobile-rotator adb chmod skipped', { expectedAdb, err });
+        }
       }
 
       const { stdout } = await activeExecFileFn(expectedAdb, ['version'], { timeout: 8000 });
@@ -405,7 +411,9 @@ export async function installAdbPlatformTools(): Promise<AdbInstallResult> {
         if (fs.existsSync(tempZipPath)) {
           fs.unlinkSync(tempZipPath);
         }
-      } catch {}
+      } catch (cleanupErr) {
+        log.debug('mobile-rotator temp platform-tools zip cleanup failed', { tempZipPath, err: cleanupErr });
+      }
       activeAdbInstallPromise = null;
     }
   })();
@@ -465,8 +473,8 @@ export async function checkPublicIp(): Promise<PublicIpInfo> {
           return { ip: cleanIp };
         }
       }
-    } catch {
-      // Try next public IP provider
+    } catch (err) {
+      log.debug('mobile-rotator public IP provider lookup failed, trying fallback', { err });
     }
   }
 
@@ -632,8 +640,8 @@ export async function rotateViaAdb(
     await sleep(boundedDelay);
     await runAdbCommand(adbExe, targetId, ['shell', 'cmd', 'connectivity', 'airplane-mode', 'disable']);
     return { ok: true, deviceId: targetId, strategy: 'cmd-connectivity-airplane-mode' };
-  } catch {
-    // Fall through cleanly if OEM restricts cmd connectivity
+  } catch (err) {
+    log.debug('mobile-rotator cmd connectivity strategy unsupported, falling back', { deviceId: targetId, err });
   }
 
   // Strategy 2: Legacy global setting + broadcast intent
@@ -662,11 +670,13 @@ export async function rotateViaAdb(
       'false',
     ]);
     return { ok: true, deviceId: targetId, strategy: 'settings-airplane-mode-broadcast' };
-  } catch {
-    // Safety recovery: ensure airplane mode is not left ON if step 1 succeeded before broadcast failed
+  } catch (err) {
+    log.warn('mobile-rotator settings airplane-mode broadcast failed, reverting airplane_mode_on=0', { deviceId: targetId, err });
     try {
       await runAdbCommand(adbExe, targetId, ['shell', 'settings', 'put', 'global', 'airplane_mode_on', '0']);
-    } catch {}
+    } catch (revertErr) {
+      log.warn('mobile-rotator airplane_mode_on revert failed', { deviceId: targetId, err: revertErr });
+    }
   }
 
   // Strategy 3: Cellular radio reset via svc data disable/enable (works when airplane-mode broadcast is restricted)
@@ -725,8 +735,8 @@ function appendRotationHistory(entry: MobileRotationHistoryEntry): void {
       VALUES (?, ?, ?)
       ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at
     `).run(ADB_HISTORY_KEY, JSON.stringify(updated), new Date().toISOString());
-  } catch {
-    // Non-fatal in minimal test contexts without initialized DB
+  } catch (err) {
+    log.debug('mobile-rotator history DB write skipped (uninitialized DB in minimal context)', { err });
   }
 }
 
@@ -740,8 +750,8 @@ export function getRotationHistory(): MobileRotationHistoryEntry[] {
       const parsed = JSON.parse(row.value_json);
       return Array.isArray(parsed) ? parsed : [];
     }
-  } catch {
-    // DB unavailable or empty
+  } catch (err) {
+    log.debug('mobile-rotator history DB read failed', { err });
   }
   return [];
 }
@@ -870,8 +880,8 @@ export async function rotateMobileIp(
             break;
           }
         }
-      } catch {
-        // Retry IP poll until carrier finishes re-attaching
+      } catch (err) {
+        log.debug('mobile-rotator IP poll retry while carrier re-attaches', { err });
       }
     }
 
@@ -973,7 +983,9 @@ export function getRotatorConfig(): MobileRotatorConfig {
     if (row?.value_json) {
       return { ...DEFAULT_ROTATOR_CONFIG, ...JSON.parse(row.value_json) };
     }
-  } catch {}
+  } catch (err) {
+    log.debug('mobile-rotator config DB read failed, returning defaults', { err });
+  }
   return { ...DEFAULT_ROTATOR_CONFIG };
 }
 
@@ -997,7 +1009,9 @@ export function saveRotatorConfig(config: Partial<MobileRotatorConfig>): MobileR
       VALUES (?, ?, ?)
       ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at
     `).run(ADB_CONFIG_KEY, JSON.stringify(updated), new Date().toISOString());
-  } catch {}
+  } catch (err) {
+    log.warn('mobile-rotator config DB write failed', { err });
+  }
 
   return updated;
 }

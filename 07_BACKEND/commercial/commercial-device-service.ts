@@ -11,6 +11,9 @@ import {
   HardwareSignals,
 } from '../../03_HARDWARE/device-id.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('commercial-device-service');
 
 function ensureDeviceColumns(db: any): void {
   try {
@@ -23,7 +26,11 @@ function ensureDeviceColumns(db: any): void {
     if (!colNames.has('activated_at')) db.exec('ALTER TABLE commercial_devices ADD COLUMN activated_at TEXT');
     if (!colNames.has('legacy_device_id')) db.exec('ALTER TABLE commercial_devices ADD COLUMN legacy_device_id TEXT');
     if (!colNames.has('hardware_signals_json')) db.exec('ALTER TABLE commercial_devices ADD COLUMN hardware_signals_json TEXT');
-  } catch {}
+  } catch (err) {
+    log.debug('Skipped commercial_devices column ensure', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export function registerOrUpdateDevice(params: {
@@ -61,7 +68,12 @@ export function registerOrUpdateDevice(params: {
       if (r.hardware_signals_json) {
         try {
           parsedSignals = JSON.parse(r.hardware_signals_json);
-        } catch {}
+        } catch (parseErr) {
+          log.warn('Failed parsing stored device hardware_signals_json', {
+            deviceId: r.device_id,
+            err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+          });
+        }
       }
       return isSameDevice(
         { deviceId, legacyDeviceId, signals: hardwareSignals },

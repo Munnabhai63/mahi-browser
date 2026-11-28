@@ -7,6 +7,8 @@ import { getDatabase } from '../../06_DATABASE/connection.js';
 import { ExtensionItem, InstallExtensionDTO } from '../../10_CONFIG/shared/types/extension.js';
 import { getProfileById, getProfilesDirectory } from './profile-service.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
+import { createLogger } from '../../07_BACKEND/utils/logger.js';
+const log = createLogger('extension-service');
 
 function assertSafeZipBuffer(zipBuffer: Buffer, targetDir: string): void {
   const minEocdLen = 22;
@@ -135,7 +137,9 @@ export function resolveLocalizedText(extDir: string, text: string | undefined): 
         if (msgs[key]?.message) {
           return msgs[key].message;
         }
-      } catch {}
+      } catch (err) {
+        log.debug('extension-service _locales messages.json parse failed', { msgFile, err });
+      }
     }
   }
   return text;
@@ -191,7 +195,7 @@ export async function downloadAndExtractCrx(extensionStoreId: string, targetDir:
       // Crucial for Chromium: Remove reserved _metadata directory and update_url from manifest
       const metaDir = path.join(targetDir, '_metadata');
       if (fs.existsSync(metaDir)) {
-        try { fs.rmSync(metaDir, { recursive: true, force: true }); } catch {}
+        try { fs.rmSync(metaDir, { recursive: true, force: true }); } catch (rmErr) { log.debug('extension-service _metadata cleanup skipped', { metaDir, err: rmErr }); }
       }
 
       const manifestPath = path.join(targetDir, 'manifest.json');
@@ -206,7 +210,9 @@ export async function downloadAndExtractCrx(extensionStoreId: string, targetDir:
           if (modified) {
             fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
           }
-        } catch {}
+        } catch (manifestErr) {
+          log.debug('extension-service manifest update_url strip skipped', { manifestPath, err: manifestErr });
+        }
         return true;
       }
     } catch {
@@ -274,11 +280,15 @@ export function getExtensions(profileId: string): ExtensionItem[] {
                 new Date().toISOString()
               );
             }
-          } catch {}
+          } catch (manifestErr) {
+            log.debug('extension-service native extension manifest parse skipped', { manifestPath, err: manifestErr });
+          }
         }
       }
     }
-  } catch {}
+  } catch (syncErr) {
+    log.debug('extension-service native extension directory scan skipped', { profileId, err: syncErr });
+  }
 
   const rows = db.prepare('SELECT * FROM extensions WHERE profile_id = ? ORDER BY name ASC').all(profileId) as {
     id: string;
@@ -336,8 +346,8 @@ export function installExtension(dto: InstallExtensionDTO): ExtensionItem {
             iconPath = path.join(srcPath, manifest.icons[iconKey]);
           }
         }
-      } catch {
-        // use defaults
+      } catch (manifestErr) {
+        log.debug('extension-service unpacked manifest parse failed, using defaults', { extPath: srcPath, err: manifestErr });
       }
     }
   }
@@ -415,7 +425,9 @@ export async function installFromWebStoreUrl(profileId: string, webStoreUrl: str
       name = resolveLocalizedText(extDir, manifest.name) || name;
       version = manifest.version || version;
       description = resolveLocalizedText(extDir, manifest.description) || '';
-    } catch {}
+    } catch (manifestErr) {
+      log.debug('extension-service webstore manifest parse failed, using fallback metadata', { manifestPath, err: manifestErr });
+    }
   }
 
   return installExtension({
@@ -472,7 +484,7 @@ export function removeExtension(profileId: string, extensionId: string): boolean
         }
       }
     } catch (rmErr) {
-      console.warn(`[ExtensionService] Could not remove files at ${row.source_path}:`, rmErr);
+      log.warn(`[ExtensionService] Could not remove files at ${row.source_path}:`, rmErr);
     }
   }
 

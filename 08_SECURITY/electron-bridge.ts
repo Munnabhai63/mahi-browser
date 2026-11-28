@@ -30,18 +30,18 @@ if (isElectronRuntime) {
     if (typeof (process as any).getBuiltinModule === 'function') {
       electronMod = (process as any).getBuiltinModule('electron');
     }
-  } catch {}
+  } catch { /* Non-fatal: Electron built-in module unavailable outside main process */ }
 
   if (!electronMod) {
     try {
       electronMod = esmRequire('electron');
-    } catch {}
+    } catch { /* Non-fatal: headless CLI / gateway server runs without Electron */ }
   }
 
   if (!electronMod && typeof (globalThis as any).require === 'function') {
     try {
       electronMod = (globalThis as any).require('electron');
-    } catch {}
+    } catch { /* Non-fatal: CJS electron fallback unavailable in pure Node */ }
   }
 }
 

@@ -2,6 +2,9 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import child_process from 'node:child_process';
 import fs from 'node:fs';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('license-service');
 
 const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzYel0Zuz0vYdzszLm2z5
@@ -43,7 +46,11 @@ function getMachineGuid(): string {
         return fs.readFileSync('/var/lib/dbus/machine-id', 'utf8').trim();
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Native OS machine-id lookup fell back to secondary signals', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return '';
 }
 

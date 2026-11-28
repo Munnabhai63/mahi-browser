@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Profile } from '../10_CONFIG/shared/types/profile.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+const log = createLogger('stealth-native-preferences');
 
 export {
   getDeterministicSeed,
@@ -261,6 +263,6 @@ export function injectNativeStealthPreferences(
 
     fs.writeFileSync(prefsPath, JSON.stringify(prefs, null, 2), { encoding: 'utf8', mode: 0o666 });
   } catch (err) {
-    console.error(`[StealthNativePreferences] Failed to inject native preferences into ${storageDir}:`, err);
+    log.error(`[StealthNativePreferences] Failed to inject native preferences into ${storageDir}:`, err);
   }
 }

@@ -5,6 +5,8 @@ import { app, BrowserWindow, Notification } from './electron-bridge.js';
 import { getHWID, verifyLicense } from './license-service.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 import { getSiteConfig } from '../10_CONFIG/shared/site-config.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+const log = createLogger('license-status-service');
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -50,8 +52,118 @@ function getCacheFilePath(): string {
   return path.join(getUserDataPath(), 'license-status-cache.json');
 }
 
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.promises.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reads and parses the locally cached signed status response asynchronously.
+ */
+async function readStatusCacheAsync(): Promise<StatusCache | null> {
+  try {
+    const file = getCacheFilePath();
+    if (await pathExists(file)) {
+      const content = await fs.promises.readFile(file, 'utf8');
+      return JSON.parse(content);
+    }
+  } catch (err) {
+    log.warn('Failed reading license status cache asynchronously', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return null;
+}
+
+async function writeStatusCacheAsync(cache: StatusCache): Promise<void> {
+  try {
+    const file = getCacheFilePath();
+    const dir = path.dirname(file);
+    await fs.promises.mkdir(dir, { recursive: true });
+    await fs.promises.writeFile(file, JSON.stringify(cache, null, 2), 'utf8');
+  } catch (err: any) {
+    log.error('[LicenseStatusService] Failed to persist status cache asynchronously:', err?.message);
+  }
+}
+
+async function hasOfflineLicenseKeyAsync(): Promise<boolean> {
+  try {
+    const userDataDir = getUserDataPath();
+    const licenseFile = path.join(userDataDir, 'offline-license.key');
+    if (await pathExists(licenseFile)) {
+      const rawKey = (await fs.promises.readFile(licenseFile, 'utf8')).trim();
+      if (rawKey) {
+        const check = verifyLicense(rawKey);
+        if (check.valid) return true;
+      }
+    }
+
+    const claimedFile = path.join(userDataDir, 'claimed-licenses.json');
+    if (await pathExists(claimedFile)) {
+      const claimed = JSON.parse(await fs.promises.readFile(claimedFile, 'utf8'));
+      for (const k of Object.values(claimed)) {
+        if (k && typeof k === 'string') {
+          const check = verifyLicense(k.trim());
+          if (check.valid) return true;
+        }
+      }
+    }
+  } catch (err) {
+    log.debug('Async offline/claimed license presence check failed', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+  return false;
+}
+
+async function getEarliestOfflineLicenseMtimeAsync(): Promise<number | null> {
+  try {
+    const userDataDir = getUserDataPath();
+    const candidates = [
+      path.join(userDataDir, 'offline-license.key'),
+      path.join(userDataDir, 'claimed-licenses.json'),
+    ];
+    let earliest: number | null = null;
+    for (const file of candidates) {
+      if (await pathExists(file)) {
+        const stat = await fs.promises.stat(file);
+        const ts = stat.birthtimeMs && stat.birthtimeMs > 0 ? Math.min(stat.birthtimeMs, stat.mtimeMs) : stat.mtimeMs;
+        if (earliest === null || ts < earliest) earliest = ts;
+      }
+    }
+    return earliest;
+  } catch {
+    return null;
+  }
+}
+
+async function isGraceExpiredAsync(): Promise<boolean> {
+  if (!(await hasOfflineLicenseKeyAsync())) return false;
+  const cache = await readStatusCacheAsync();
+  if (cache) {
+    if (!verifyStatusSignature(cache, cache.sig)) {
+      return true;
+    }
+    if (!cache.verified_at || cache.verified_at > Date.now() + 3600_000) {
+      return true;
+    }
+    const anchorTime = cache.server_time && cache.server_time < cache.verified_at ? cache.server_time : cache.verified_at;
+    return (Date.now() - anchorTime) > GRACE_PERIOD_MS;
+  }
+  const earliestMtime = await getEarliestOfflineLicenseMtimeAsync();
+  if (earliestMtime !== null && (Date.now() - earliestMtime) > GRACE_PERIOD_MS) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Reads and parses the locally cached signed status response.
+ * // sync-compat-bootstrap: synchronous getter preserved for freemium-guard & sync tests; async paths use readStatusCacheAsync
  */
 export function readStatusCache(): StatusCache | null {
   try {
@@ -60,7 +172,11 @@ export function readStatusCache(): StatusCache | null {
       const content = fs.readFileSync(file, 'utf8');
       return JSON.parse(content);
     }
-  } catch {}
+  } catch (err) {
+    log.warn('Failed reading license status cache', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return null;
 }
 
@@ -73,7 +189,7 @@ function writeStatusCache(cache: StatusCache): void {
     }
     fs.writeFileSync(file, JSON.stringify(cache, null, 2), 'utf8');
   } catch (err: any) {
-    console.error('[LicenseStatusService] Failed to persist status cache:', err?.message);
+    log.error('[LicenseStatusService] Failed to persist status cache:', err?.message);
   }
 }
 
@@ -102,7 +218,11 @@ export function hasOfflineLicenseKey(): boolean {
         }
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Offline/claimed license presence check failed', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return false;
 }
 
@@ -270,7 +390,7 @@ function broadcastNotification(title: string, message: string, type: 'error' | '
       new Notification({ title, body: message }).show();
     }
   } catch (err: any) {
-    console.error('[LicenseStatusService] Broadcast error:', err?.message);
+    log.error('[LicenseStatusService] Broadcast error:', err?.message);
   }
 }
 
@@ -284,7 +404,7 @@ export async function checkLicenseStatusOnline(): Promise<{
   error?: string;
 }> {
   // RULE 6: Free users make ZERO network calls
-  if (!hasOfflineLicenseKey()) {
+  if (!(await hasOfflineLicenseKeyAsync())) {
     return { success: true, status: 'free_no_call' };
   }
 
@@ -307,7 +427,7 @@ export async function checkLicenseStatusOnline(): Promise<{
     clearTimeout(timeoutId);
 
     if (!res.ok) {
-      console.warn(`[LicenseStatusService] Server responded with HTTP ${res.status}`);
+      log.warn(`[LicenseStatusService] Server responded with HTTP ${res.status}`);
       return { success: false, error: `HTTP ${res.status}` };
     }
 
@@ -318,7 +438,7 @@ export async function checkLicenseStatusOnline(): Promise<{
 
     const { status, expires_at, server_time, sig } = payload;
     if (!status || !server_time || !sig) {
-      console.warn('[LicenseStatusService] Incomplete payload fields, ignoring response.');
+      log.warn('[LicenseStatusService] Incomplete payload fields, ignoring response.');
       return { success: false, error: 'Missing required signature or timestamp fields' };
     }
 
@@ -331,14 +451,14 @@ export async function checkLicenseStatusOnline(): Promise<{
     }, sig);
 
     if (!isAuthentic) {
-      console.warn('[LicenseStatusService] Cryptographic signature INVALID or tampered! Ignoring.');
+      log.warn('[LicenseStatusService] Cryptographic signature INVALID or tampered! Ignoring.');
       return { success: false, error: 'Invalid cryptographic signature' };
     }
 
     // RULE 5: Anti-rollback protection
-    const previousCache = readStatusCache();
+    const previousCache = await readStatusCacheAsync();
     if (previousCache && previousCache.server_time && server_time < previousCache.server_time - 60000) {
-      console.warn('[LicenseStatusService] Anti-rollback check failed: server_time is older than previous verified time. Rejecting.');
+      log.warn('[LicenseStatusService] Anti-rollback check failed: server_time is older than previous verified time. Rejecting.');
       return { success: false, error: 'Anti-rollback check failed' };
     }
 
@@ -351,7 +471,7 @@ export async function checkLicenseStatusOnline(): Promise<{
       verified_at: Date.now(),
       sig
     };
-    writeStatusCache(newCache);
+    await writeStatusCacheAsync(newCache);
 
     // RULE 3: Revocation enforcement
     if (status === 'revoked') {
@@ -379,10 +499,10 @@ export async function checkLicenseStatusOnline(): Promise<{
 
     return { success: true, status };
   } catch (err: any) {
-    console.warn('[LicenseStatusService] Online check failed (offline or unreachable):', err?.message);
+    log.warn('[LicenseStatusService] Online check failed (offline or unreachable):', err?.message);
 
     // Check if grace period is expired while offline
-    if (isGraceExpired()) {
+    if (await isGraceExpiredAsync()) {
       broadcastNotification(
         'MAHI BROWSER',
         'Internet se connect karein — license verify ke liye',
@@ -406,11 +526,19 @@ export function startLicenseStatusService(): void {
 
   // 1. Startup check: non-blocking delay (5s)
   setTimeout(() => {
-    checkLicenseStatusOnline().catch(() => {});
+    checkLicenseStatusOnline().catch((err) => {
+      log.debug('Startup online license check failed cleanly', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    });
   }, STARTUP_DELAY_MS);
 
   // 2. Periodic check: every 6 hours
   checkIntervalTimer = setInterval(() => {
-    checkLicenseStatusOnline().catch(() => {});
+    checkLicenseStatusOnline().catch((err) => {
+      log.debug('Periodic online license check failed cleanly', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    });
   }, CHECK_INTERVAL_MS);
 }

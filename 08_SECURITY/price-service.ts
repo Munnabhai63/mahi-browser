@@ -5,6 +5,9 @@ import https from 'node:https';
 import { app } from './electron-bridge.js';
 import { getWritableUserDataDir } from '../07_BACKEND/utils/runtime-paths.js';
 import { getContentJsonUrl } from '../10_CONFIG/shared/site-config.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('price-service');
 
 const DEFAULT_PRICE_INR = 599;
 const FETCH_TIMEOUT_MS = 3000;
@@ -26,7 +29,11 @@ let cachedPriceInr: number = (() => {
         return parsed.price_inr;
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('Initial price cache read skipped; using default INR price', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return DEFAULT_PRICE_INR;
 })();
 
@@ -104,9 +111,17 @@ export async function fetchDynamicPrice(): Promise<number> {
                     JSON.stringify({ price_inr: numPrice, updated_at: Date.now() }),
                     'utf8'
                   );
-                } catch {}
+                } catch (cacheErr) {
+                  log.debug('Failed persisting dynamic price cache', {
+                    err: cacheErr instanceof Error ? cacheErr.message : String(cacheErr),
+                  });
+                }
               }
-            } catch {}
+            } catch (parseErr) {
+              log.debug('Failed parsing remote price content.json payload', {
+                err: parseErr instanceof Error ? parseErr.message : String(parseErr),
+              });
+            }
 
             resolve(cachedPriceInr);
           });
@@ -144,10 +159,18 @@ export async function fetchDynamicPrice(): Promise<number> {
  */
 export function startPriceSync(): void {
   // Initial non-blocking fetch on startup
-  fetchDynamicPrice().catch(() => {});
+  fetchDynamicPrice().catch((err) => {
+    log.debug('Startup dynamic price sync failed cleanly', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  });
 
   // Periodic refresh every 6 hours
   setInterval(() => {
-    fetchDynamicPrice().catch(() => {});
+    fetchDynamicPrice().catch((err) => {
+      log.debug('Periodic dynamic price sync failed cleanly', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    });
   }, 6 * 60 * 60 * 1000);
 }

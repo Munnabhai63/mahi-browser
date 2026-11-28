@@ -37,6 +37,9 @@ import {
   getCanonicalPlansByCategory,
 } from './canonical-plan-catalog.js';
 import { logCommercialAudit } from './commercial-audit-service.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('pricing-admin-service');
 
 // ─── Database Initialization ───────────────────────────────────────────────────
 
@@ -112,7 +115,9 @@ export function initializePricingTables(): void {
 
       CREATE INDEX IF NOT EXISTS idx_pricing_audit_version ON pricing_audit_log(pricing_version);
     `);
-  } catch { /* Tables may already exist */ }
+  } catch (err) {
+    log.debug('pricing-admin-service table DDL skipped (may already exist)', { err });
+  }
 
   // Seed initial pricing version v1 if none exists
   const existingVersion = db.prepare('SELECT version FROM pricing_versions ORDER BY version DESC LIMIT 1').get() as any;
@@ -136,7 +141,9 @@ export function initializePricingTables(): void {
     if (!check) {
       db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (19, ?)').run(new Date().toISOString());
     }
-  } catch { /* Migration table might not exist yet in tests */ }
+  } catch (err) {
+    log.debug('pricing-admin-service schema_migrations v19 check skipped', { err });
+  }
 }
 
 // ─── Active Pricing Authority ──────────────────────────────────────────────────
@@ -386,7 +393,9 @@ export function previewPricingChanges(version: number): AdminPricingPreview {
       "SELECT COUNT(*) as count FROM commercial_subscriptions WHERE status = 'ACTIVE'"
     ).get() as any;
     existingSubscriberCount = result?.count || 0;
-  } catch { /* Table might not exist in tests */ }
+  } catch (err) {
+    log.debug('pricing-admin-service commercial_subscriptions count skipped', { err });
+  }
 
   const annualDiscountChange = active && active.annualDiscountPercent !== draft.annualDiscountPercent
     ? { old: active.annualDiscountPercent, new: draft.annualDiscountPercent }
@@ -787,7 +796,9 @@ export function getAdminRevenueSummary(): {
         }
       }
     }
-  } catch { /* Tables might not exist in minimal setup */ }
+  } catch (err) {
+    log.debug('pricing-admin-service revenue stats aggregation skipped', { err });
+  }
 
   return {
     activeSubscribers,
@@ -858,5 +869,7 @@ function logPricingAudit(db: any, params: {
       params.providerSyncResult || null,
       now
     );
-  } catch { /* Audit failure should not break pricing operations */ }
+  } catch (err) {
+    log.warn('pricing-admin-service pricing_audit_log insert failed', { action: params.action, err });
+  }
 }

@@ -13,6 +13,9 @@ import {
 import { getProfiles, createProfile, getProfileById } from './profile-service.js';
 import { exportProfileToArchive, importProfileFromArchive } from './archive-service.js';
 import { logActivity } from '../../07_BACKEND/services/audit-service.js';
+import { createLogger } from '../../07_BACKEND/utils/logger.js';
+
+const log = createLogger('workspace-service');
 
 let activeWorkspaceId: string | null = null;
 
@@ -226,7 +229,9 @@ export function getWorkspaceMembers(workspaceId: string): TeamMember[] {
     let assignedProfileIds: string[] = [];
     try {
       assignedProfileIds = JSON.parse(r.assigned_profiles_json || '[]');
-    } catch {}
+    } catch (err) {
+      log.warn('workspace-service member assigned_profiles_json parse failed', { memberId: r.id, err });
+    }
 
     return {
       id: r.id,
@@ -293,7 +298,7 @@ export function assignProfileToMember(profileId: string, workspaceId: string, me
     const member = db.prepare('SELECT assigned_profiles_json FROM workspace_members WHERE id = ?').get(memberId) as { assigned_profiles_json: string } | undefined;
     if (member) {
       let ids: string[] = [];
-      try { ids = JSON.parse(member.assigned_profiles_json || '[]'); } catch {}
+      try { ids = JSON.parse(member.assigned_profiles_json || '[]'); } catch (err) { log.warn('workspace-service assigned_profiles_json update parse failed', { memberId, err }); }
       if (!ids.includes(profileId)) ids.push(profileId);
       db.prepare('UPDATE workspace_members SET assigned_profiles_json = ? WHERE id = ?').run(JSON.stringify(ids), memberId);
     }

@@ -21,6 +21,9 @@ import { getProfileDebugPort, cleanupStaleLocks } from '../02_BROWSER/launcher.j
 import { resolveExecutablePath } from '../02_BROWSER/detector.js';
 import { getProxyById, getDecryptedProxyCredentials } from '../02_BROWSER/services/proxy-service.js';
 import { getDatabase } from '../06_DATABASE/connection.js';
+import { createLogger } from '../07_BACKEND/utils/logger.js';
+
+const log = createLogger('cookie-warmer-service');
 
 process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE = process.env.REBROWSER_PATCHES_RUNTIME_FIX_MODE || 'addBinding';
 process.env.MAHI_CDP_ISOLATED = '1';
@@ -278,7 +281,9 @@ export function countProfileCookies(profileId: string): number {
     if (Array.isArray(parsed) && parsed.length > 0) {
       return parsed.length;
     }
-  } catch {}
+  } catch (err) {
+    log.debug('cookie-warmer exported cookie count fallback triggered', { profileId, err });
+  }
 
   // Check physical SQLite cookie DB file size as fallback indicator
   try {
@@ -290,7 +295,9 @@ export function countProfileCookies(profileId: string): number {
         return Math.max(12, Math.floor(stat.size / 512));
       }
     }
-  } catch {}
+  } catch (err) {
+    log.debug('cookie-warmer cookie DB size fallback check failed', { profileId, err });
+  }
 
   return 0;
 }
@@ -436,7 +443,9 @@ export async function warmProfile(
         const { windowId } = await session.send('Browser.getWindowForTarget');
         await session.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'minimized' } });
         await page.close();
-      } catch {}
+      } catch (err) {
+        log.debug('cookie-warmer window minimize skipped', { profileId, err });
+      }
     }
 
     warmerController.status = 'WARMING';
@@ -482,7 +491,7 @@ export async function warmProfile(
           }
         } finally {
           if (page) {
-            try { await page.close(); } catch {}
+            try { await page.close(); } catch (closeErr) { log.debug('cookie-warmer page close cleanup skipped', { profileId, err: closeErr }); }
           }
         }
       }
@@ -501,7 +510,9 @@ export async function warmProfile(
             percent: Math.round(((i + 1) / queue.length) * 100),
             status: warmerController.status,
           });
-        } catch {}
+        } catch (progressErr) {
+          log.debug('cookie-warmer progress callback failed', { profileId, err: progressErr });
+        }
       }
     }
 
@@ -510,18 +521,18 @@ export async function warmProfile(
     }
   } catch (e: any) {
     warmerController.status = 'FAILED';
-    console.error('Warmer CDP Error:', e);
+    log.error('cookie-warmer CDP execution error', { profileId, err: e });
   } finally {
     activeWarmers.delete(profileId);
 
     if (context && isCamoufox) {
-      try { await context.close(); } catch {}
+      try { await context.close(); } catch (closeErr) { log.debug('cookie-warmer camoufox context close cleanup skipped', { profileId, err: closeErr }); }
     }
     if (browserObj) {
-      try { await browserObj.close(); } catch {}
+      try { await browserObj.close(); } catch (closeErr) { log.debug('cookie-warmer browser close cleanup skipped', { profileId, err: closeErr }); }
     }
     if (!wasRunning) {
-      try { await processManager.stopProfile(profileId); } catch {}
+      try { await processManager.stopProfile(profileId); } catch (stopErr) { log.debug('cookie-warmer profile stop cleanup skipped', { profileId, err: stopErr }); }
     }
   }
 
@@ -588,7 +599,9 @@ export async function warmProfile(
       }]),
       new Date(startTime).toISOString()
     );
-  } catch {}
+  } catch (err) {
+    log.warn('cookie-warmer workflow_logs insert failed', { profileId, err });
+  }
 
   return {
     success: warmerController.status !== 'FAILED',

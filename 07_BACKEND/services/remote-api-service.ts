@@ -30,6 +30,8 @@ import {
   RemoteAuthContext,
   RemoteApiKeyAuditRecord,
 } from '../../10_CONFIG/shared/types/remote-api.js';
+import { createLogger } from '../utils/logger.js';
+const log = createLogger('remote-api-service');
 
 // ============================================================================
 // HASHING & KEY HELPERS
@@ -186,7 +188,7 @@ export function saveIdempotentResponse(
       ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(idempotencyKey, userId, endpoint, statusCode, JSON.stringify(response), now.toISOString(), expiresAt);
   } catch (err) {
-    console.error('[Idempotency] Failed to store idempotent record:', err);
+    log.error('[Idempotency] Failed to store idempotent record:', err);
   }
 }
 
@@ -505,7 +507,7 @@ export class RemoteApiService {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(id, keyId, userId, action, ipAddress || null, details || null, now);
     } catch (err) {
-      console.error('[RemoteApiAudit] Error logging audit event:', err);
+      log.error('[RemoteApiAudit] Error logging audit event:', err);
     }
   }
 
